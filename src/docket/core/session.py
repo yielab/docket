@@ -1,112 +1,14 @@
 """Durable turn history + compaction.
 
-docket owns the durable state that survives *between* turns: the
-``HEARTBEAT.md`` task ledger (``core/memory.py``), the conversation registry
-(``core/conversations.py``), memory logs, traces. This module is the durable
-store for the message history *inside* a turn. ``core/agent_loop.py`` loads a
-session's history via this module before each turn and appends to it after,
-keyed on docket's existing session coordinate (``agent:<id>:<project>``, see
-``specs/functional/session-scoping.spec.md``).
+Persists message history *inside* a turn, keyed on ``agent:<id>:<project>``; loaded by
+``core/agent_loop.py`` before each turn and appended after. Full contract, storage layout, and
+wire format: ``specs/functional/session-history.spec.md``.
 
-There is no speculative API surface here beyond what that loop demonstrably
-needs: load a session's history, append new turns to it, and compact it when
-it grows past budget.
-
-## Storage layout
-
-One JSON file per session key, each in its *own* subdirectory:
-
-    $SESSIONS_DIR/<percent-encoded session key>/session.json
-
-Percent-encoding (``urllib.parse.quote``, ``safe=""``) is a deterministic,
-collision-free map from an arbitrary session-key string (``agent:<id>:<project>``
-today, but this module treats it as an opaque string) to a filesystem-safe
-name — two distinct keys can never collide onto the same file. Giving each
-session its **own** subdirectory (rather than one shared registry file, the
-shape ``core/conversations.py``/``core/runs.py`` use for their much smaller
-records) matters for two reasons docket has stated as hard requirements:
-
-1. **Isolation.** ``edges/store.py``'s filelock is scoped per *directory*
-   (``_lock_path`` = ``target.parent / ".docket.lock"``). Sessions sharing one
-   directory would serialize their writes against each other for no reason;
-   giving each session its own directory means one session's write — even a
-   slow one, like the compaction summarisation call below, held under lock —
-   can never block another session's.
-2. **Blast radius.** A read-modify-write mistake or an on-disk corruption is
-   scoped to the one file whose lock is being held. A shared registry (as
-   ``core/conversations.py`` uses) would put every session's history behind
-   one lock and one JSON blob, so a validation failure on load would either
-   wipe every session's data (matching ``load()``'s fail-open-to-empty
-   convention elsewhere in this codebase) or need a more complex per-key
-   partial-recovery scheme there is no evidence is needed yet.
-
-All reads/writes of the per-session JSON go through ``edges/store.py``'s
-single-writer chokepoint — this module never opens the file itself.
-
-## Round-trip serialisation
-
-``StoredMessage``/``StoredToolCall`` mirror ``core.llm.ChatMessage``/
-``ToolCall`` field-for-field (camelCase aliases on the wire, matching every
-other docket-owned JSON shape). ``tool_calls``, ``tool_call_id`` and ``name``
-all round-trip losslessly — ``edges/adapters/llm.py``'s ``_encode_message`` is
-the wire contract this exists to satisfy: a history that has lost a
-``tool_call_id`` produces a request every OpenAI-compatible endpoint rejects.
-
-## Compaction: the atomic tool-call/tool-result unit
-
-An assistant message that requests ``tool_calls`` and the ``tool``-role
-messages answering each one are **one atomic unit** — split them, and the
-next request either carries a ``tool_call_id`` with no preceding call, or a
-call with no result, and every endpoint rejects it outright. ``compact_session``
-never drops or summarises part of a group: ``group_atomic_units`` partitions
-history into whole units first, and every later stage (``plan_compaction``,
-the bounded hierarchical summarisation) operates on whole units only — a unit is
-either entirely kept or entirely folded into the summary, by construction,
-never split. ``find_orphaned_tool_messages``/``find_unanswered_tool_calls`` are
-the explicit post-condition checks ``compact_session`` runs on its own output
-before ever persisting it, so a bug in the grouping logic fails the
-compaction (nothing written) rather than silently writing a broken history.
-
-## Budgeting honesty
-
-Two numbers live on a session and must never be conflated:
-
-- **Estimated** — ``core.context.estimate_tokens``'s existing bytes/divisor
-  approximation (``config.CONTEXT_BYTES_PER_TOKEN``), reused here rather than
-  a second, independently-tunable estimator. This is what ``plan_compaction``
-  measures against a budget to decide *whether* to compact. It is an honest
-  approximation, never billed against, never claimed as an exact count.
-- **Measured** — ``core.llm.TokenUsage``, real counts reported by the
-  completion endpoint. ``MeasuredUsage`` accumulates these on a
-  ``SessionRecord`` across every appended turn. This is docket's first
-  non-estimated token number, measured directly instead of read from any
-  daemon-owned log — but it plays **no role** in compaction's
-  budget math, which stays on the estimate. Do not let the two merge into one
-  field or one docstring claim.
-
-The compaction budget itself is resolved via ``core.context.budget_for_role``
-— the same per-role token-budget compiler built for
-hop-to-hop handoff artifacts — rather than a second, parallel per-role budget
-table. Session compaction does not reuse ``compile_artifact``/``DROP_ORDER``
-directly: those shed a single ``HandoffArtifact``'s *fields*, a shape that
-does not apply to a list of chat messages. The analogous "shed the
-cheapest content first" idea for a message history is summarisation (below),
-which serves the same purpose for a different data shape.
-
-## Fail-closed summarisation
-
-Compacting away old units never bare-deletes them: the units being replaced
-are summarised in one call through the injected ``SessionSummaryRunner`` --
-the same five-argument call shape ``core/memory.py``'s ``distill_memory``
-already uses. The live agent-loop adapter implements it with the already
-resolved ``ChatBackend`` and no recursive turn or session persistence. This
-is never a hand-rolled per-vendor client. If that call fails, or
-replies with nothing usable, ``compact_session`` leaves the session's stored
-history **completely unchanged** and reports ``ok=False`` — the same
-fail-closed contract ``distill_memory``'s ``DistillResult`` gives
-``maintain clean``/``reset --distill-first``. Losing an agent's context to a
-summariser error is exactly the durability failure this module exists to
-prevent, so a failed compaction is a no-op, never a silent truncation.
+Load-bearing facts kept here: an assistant message's ``tool_calls`` and every answering
+``tool``-role reply are one atomic unit ``compact_session`` never splits, drops, or partially
+summarises. If summarisation fails or returns nothing usable, the stored history is left
+unchanged and ``ok=False`` is reported. ``plan_compaction`` budgets against the *estimate*
+(``core.context.estimate_tokens``), never against ``MeasuredUsage``'s *measured* counts.
 """
 
 from __future__ import annotations
@@ -173,12 +75,8 @@ class StoredToolCall(BaseModel):
 
 
 class StoredMessage(BaseModel):
-    """Wire/storage twin of ``core.llm.ChatMessage``.
-
-    Field-for-field with the in-memory type so ``_encode``/``_decode`` are
-    the only translation this module needs -- see the module docstring's
-    round-trip contract.
-    """
+    """Wire/storage twin of ``core.llm.ChatMessage``, field-for-field so ``_encode``/``_decode``
+    are the only translation needed (round-trip contract: session-history.spec.md req 6)."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -190,14 +88,9 @@ class StoredMessage(BaseModel):
 
 
 class MeasuredUsage(BaseModel):
-    """Cumulative token counts **measured** by the completion endpoint across a
-    session's turns (``core.llm.TokenUsage``, real per-call counts).
-
-    Never to be confused with ``core.context.estimate_tokens``'s bytes/divisor
-    *approximation*, which ``plan_compaction`` uses to decide when to act --
-    see the module docstring's "Budgeting honesty" section. This is purely a
-    running total for display/reporting; it is never read by compaction.
-    """
+    """Cumulative **measured** token counts (real, from the completion endpoint) across a
+    session's turns. Distinct from the estimate ``plan_compaction`` budgets against -- never
+    conflate the two. Display/reporting only; never read by compaction."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -277,15 +170,8 @@ def _ensure_session_dir(path: Path) -> None:
 
 
 def load_session(session_key: str, *, sessions_dir: Path | None = None) -> SessionRecord:
-    """Load *session_key*'s durable record, or a fresh empty one if absent.
-
-    A corrupt/unparseable file degrades to a fresh empty record for *this
-    session only* -- the per-session storage layout (see module docstring)
-    means that never touches any other session's file. ``edges/store.py``'s
-    ``write_json`` keeps a ``.bak`` of the previous write, so a corrupt
-    current file is not the only copy on disk, even though this function
-    does not attempt automatic recovery from it (out of scope for this card).
-    """
+    """Load *session_key*'s durable record, or empty if absent/corrupt -- scoped to *this session
+    only*, never touching another's file. ``edges/store.py`` keeps a ``.bak``; no auto-recovery."""
     path = _session_path(session_key, sessions_dir)
     if not path.exists():
         return SessionRecord(session_key=session_key)
@@ -311,13 +197,9 @@ def append_messages(
     now: str | None = None,
     sessions_dir: Path | None = None,
 ) -> SessionRecord:
-    """Atomically append *messages* (and optional measured *usage*) to
-    *session_key*'s durable history, creating the session if it doesn't exist.
-
-    Goes through ``edges/store.py``'s ``read_modify_write`` -- the whole
-    read-append-write is one locked operation, so two concurrent appends to
-    the *same* session key can never interleave and drop one's messages.
-    """
+    """Atomically append *messages* (and optional measured *usage*) to *session_key*'s durable
+    history, creating the session if absent. One locked ``read_modify_write``, so two concurrent
+    appends to the *same* key can never interleave and drop messages."""
     stamp = now or _utc_now()
     path = _session_path(session_key, sessions_dir)
     _ensure_session_dir(path)
@@ -347,17 +229,9 @@ def append_messages(
 
 
 def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage]]:
-    """Partition *messages* into the atomic units compaction must never split.
-
-    An assistant message carrying ``tool_calls`` and every contiguous
-    ``tool``-role message answering one of those calls (matched by
-    ``tool_call_id``) form one group. Every other message is its own
-    single-message group. A tool-call id that is never answered inside
-    *messages* still closes its group at the point the matching results run
-    out -- this function only ever *groups* what is there; it does not
-    invent or require an answer to exist (``find_unanswered_tool_calls``
-    checks that separately).
-    """
+    """Partition *messages* into the atomic units compaction must never split: an assistant
+    message's ``tool_calls`` plus every contiguous ``tool`` reply answering one, matched by
+    ``tool_call_id`` (unanswered ids just close the group; ``find_unanswered_tool_calls`` checks that)."""
     groups: list[list[ChatMessage]] = []
     i = 0
     n = len(messages)
@@ -384,12 +258,9 @@ def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage
 
 
 def find_orphaned_tool_messages(messages: Sequence[ChatMessage]) -> list[int]:
-    """Indices of ``tool``-role messages whose ``tool_call_id`` answers no
-    still-open, preceding assistant ``tool_calls`` entry.
-
-    The post-condition half of the atomicity guarantee: run on
-    ``compact_session``'s own candidate output before it is ever persisted.
-    """
+    """Indices of ``tool``-role messages whose ``tool_call_id`` answers no still-open, preceding
+    assistant ``tool_calls`` entry -- the post-condition check run on ``compact_session``'s
+    candidate output before it is ever persisted."""
     open_ids: set[str] = set()
     orphans: list[int] = []
     for idx, m in enumerate(messages):
@@ -444,15 +315,9 @@ def _messages_estimated_tokens(messages: Sequence[ChatMessage]) -> int:
 
 @dataclass(frozen=True)
 class CompactionPlan:
-    """Pure plan for one compaction pass -- no I/O, no driver call.
-
-    ``keep_head``: real leading ``system`` messages preserved verbatim;
-    generated compacted summaries may be folded into a later hierarchical
-    round. ``keep_tail``: the most-recent atomic units
-    that already fit ``budget_tokens``, flattened back into a plain message
-    list. ``to_summarize``: the atomic units in between, oldest first --
-    always whole units, never a partial one.
-    """
+    """Pure plan for one compaction pass -- no I/O, no driver call. ``keep_head``: leading
+    ``system`` messages kept verbatim. ``keep_tail``: newest atomic units that already fit
+    ``budget_tokens``. ``to_summarize``: the whole atomic units in between, oldest first."""
 
     keep_head: list[ChatMessage]
     to_summarize: list[list[ChatMessage]]
@@ -469,21 +334,9 @@ def plan_compaction(
     *,
     keep_latest_unit: bool = True,
 ) -> CompactionPlan:
-    """Decide what a compaction pass would summarize, without calling anything.
-
-    Never splits a tool-call/tool-result atomic unit (``group_atomic_units``
-    produces whole units; this function only ever assigns a whole unit to
-    ``keep_tail`` or ``to_summarize``, never both). Leading ``system``
-    messages are always kept and are counted against the same budget, so the
-    plan cannot claim to fit while quietly excluding them from the count.
-    Real leading ``system`` messages are always kept; generated compaction
-    summaries are deliberately eligible for a later hierarchical round.
-    Units are walked newest-first and kept while they still fit. By default,
-    at least the single most recent unit is kept even if it alone exceeds the
-    budget. ``keep_latest_unit=False`` lets the ranged live caller summarize
-    the complete selected suffix when an exact conversational anchor remains
-    outside that range.
-    """
+    """Decide what a compaction pass would summarize, without calling anything. Never splits an
+    atomic unit (session-history.spec.md reqs 9-13); by default keeps at least the newest unit.
+    ``keep_latest_unit=False`` is for the ranged caller when an anchor remains outside the range."""
     groups = group_atomic_units(messages)
     if not groups:
         return CompactionPlan([], [], [])
@@ -524,12 +377,9 @@ def plan_compaction(
 
 
 def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -> str:
-    """Build the compaction summarisation prompt from the units being replaced.
-
-    Mirrors ``core.memory._distillation_message``'s shape (a self-contained
-    prompt built from the caller's own data, not a re-read of anything from
-    disk) but over chat-message units instead of daily log files.
-    """
+    """Build the compaction summarisation prompt from the units being replaced -- a self-contained
+    prompt over chat-message units, mirroring ``core.memory._distillation_message``'s shape but
+    never re-reading anything from disk."""
     header = (
         f"You are compacting durable turn history for '{label}'. Below are "
         "older turns from this session, oldest first. Write a concise summary "
@@ -587,14 +437,9 @@ def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
 
 @dataclass
 class CompactionResult:
-    """Outcome of one ``compact_session`` call.
-
-    ``ok=False`` means the session's stored history was left **completely
-    untouched** -- the same fail-closed contract ``core.memory.DistillResult``
-    gives ``maintain clean``/``reset``. ``compacted``
-    (only ever True alongside ``ok=True``) distinguishes "nothing needed
-    compacting" from "compaction ran".
-    """
+    """Outcome of one ``compact_session`` call. ``ok=False`` means the stored history was left
+    **completely untouched** (same fail-closed contract as ``core.memory.DistillResult``).
+    ``compacted`` (only True alongside ``ok=True``) means summarisation actually ran."""
 
     ok: bool
     compacted: bool = False
@@ -625,39 +470,9 @@ def compact_session(
     now: str | None = None,
     sessions_dir: Path | None = None,
 ) -> CompactionResult:
-    """Compact *session_key*'s stored history in place, if it is over budget.
-
-    ``budget_tokens`` defaults to ``core.context.budget_for_role(role)`` --
-    the same per-role token-budget compiler built for hop-to-hop handoff
-    artifacts, reused here rather than a second table (see module docstring).
-    Nothing needing compaction is a no-op: ``ok=True, compacted=False``, no
-    driver call made.
-
-    The whole operation (load, plan, driver call, write) runs inside one
-    ``edges/store.py`` locked read-modify-write on this session's own file, so
-    a concurrent ``append_messages`` for the *same* session key can never
-    interleave with it and get silently discarded; a different session's file
-    is never touched, let alone blocked (see module docstring's storage
-    layout section).
-
-    ``compact_range`` optionally selects a half-open slice of the record to
-    compact while preserving messages outside it verbatim. Its boundaries
-    must fall between complete atomic units. ``keep_latest_unit=False`` is
-    valid only in that ranged mode with at least one unselected message left
-    as the exact conversational anchor.
-
-    Each summarizer prompt is bounded independently. Histories that need more
-    than one prompt are reduced hierarchically in memory; only the final
-    candidate is written. Fails closed: if any summarisation call fails, or
-    replies with nothing usable, or the candidate compacted
-    history would contain an orphaned tool call/result (``find_orphaned_tool_messages``/
-    ``find_unanswered_tool_calls`` -- should be structurally impossible given
-    ``plan_compaction``'s whole-unit guarantee, checked anyway as the explicit
-    post-condition below), nothing is written and
-    ``CompactionResult.ok`` is False. The summarizer always receives an
-    isolated key, and a context-local re-entry guard rejects nested compaction
-    before it can acquire another lock or call another summarizer.
-    """
+    """Compact *session_key*'s history in place if over budget (locking/range/nesting rules:
+    session-history.spec.md). Fail-closed: any summarisation failure, or an orphaned tool
+    call/result, leaves the record unchanged and returns ``ok=False`` -- never a partial write."""
     summary_session_key = summarizer_session_key or f"{session_key}:compaction"
     if summary_session_key == session_key:
         return CompactionResult(
