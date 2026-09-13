@@ -1,23 +1,12 @@
-"""Pod composition model.
-
-A *pod* is the set of project-scoped agents that make up one project. Pure logic
-only — no I/O. The CLI (`docket add` / `docket pod`) turns a `PodPlan`
-into registered agents; this module just decides *what* a pod contains and how
-its members are named.
-
-Default pod is **lean**: a Lead + an Implementer (2 agents).
-Reviewer, Tester, or **additional Implementers** are added later.
-A role may be **duplicated** (e.g. two Implementers); duplicates get an
-indexed member id (``<project>-implementer``, ``<project>-implementer-2``).
-
-The set of valid pod roles is not a hardcoded 4-tuple —
-``normalize_role``/``member_id``/``pod_of``/``members_of`` all resolve against
-``core/archetypes.py``'s registry (built-in four roles + starter library + any
-user-defined archetype), so a fifth role is data, never a new hardcoded string
-here. ``_role_names()`` reads that registry fresh on every call;
-``policy_role_for()`` is the typed lookup for a role's role→model policy key
-(see its own docstring).
-"""
+"""Pod composition model: the set of project-scoped agents making up one project. Pure logic
+only, no I/O — the CLI (`docket add`/`docket pod`) turns a `PodPlan` into registered agents;
+this module only decides what a pod contains and how members are named. Default pod is
+**lean** (Lead + Implementer); Reviewer, Tester, or extra Implementers are added later, and a
+duplicated role gets an indexed member id (``<project>-implementer``, ``...-implementer-2``).
+The set of valid pod roles is not a hardcoded 4-tuple: ``normalize_role``/``member_id``/
+``pod_of``/``members_of`` all resolve against ``core/archetypes.py``'s registry (built-in
+four + starter library + any user-defined archetype), so a fifth role is data, never a new
+hardcoded string. ``_role_names()`` reads that registry fresh on every call."""
 
 from __future__ import annotations
 
@@ -38,14 +27,9 @@ _SINGLETON_POD_ROLES: frozenset[str] = frozenset({"lead"})
 
 
 def _role_names() -> tuple[str, ...]:
-    """Live set of valid pod role names: built-ins + starter library + user overlay.
-
-    Not cached — re-reads the archetype registry every call (mirrors
-    ``models_policy.load_registry``'s own no-caching pattern), so a freshly
-    added user archetype (or a test that monkeypatches
-    ``cfg.ARCHETYPE_REGISTRY_FILE``) is always picked up without needing to
-    reload this module.
-    """
+    """Live set of valid pod role names: built-ins + starter library + user overlay. Not cached
+    — re-reads the archetype registry every call (mirrors ``models_policy.load_registry``'s
+    no-caching pattern), so a freshly added archetype is always picked up without a reload."""
     return _archetypes.load_registry().role_names()
 
 
@@ -66,12 +50,9 @@ class PodMember:
 
 
 def normalize_role(role: str) -> str:
-    """Map user input to a canonical pod role (accepts the ``programmer`` alias).
-
-    Validates against the live archetype registry (``core/archetypes.py``),
-    not a hardcoded list — any built-in, starter-library, or user-defined
-    archetype name is accepted.
-    """
+    """Map user input to a canonical pod role (accepts the ``programmer`` alias). Validates
+    against the live archetype registry (``core/archetypes.py``), not a hardcoded list, so any
+    built-in, starter-library, or user-defined archetype name is accepted."""
     r = role.strip().lower()
     if r == "programmer":
         r = "implementer"
@@ -93,22 +74,16 @@ def pod_prefix(project: str) -> str:
 
 
 def session_key(project: str, project_key: str = "default") -> str:
-    """Return the base scope key written to pod-member metadata.
-
-    Members keep this shared project coordinate for ``docket scope`` and
-    metadata compatibility. Pod-dispatch runtime history does not use it:
-    ``core.dispatch.step_session_key`` derives a task/step key per turn.
-    """
+    """Return the base scope key written to pod-member metadata, kept for ``docket scope`` and
+    metadata compatibility. Pod-dispatch runtime history does not use it — it derives a
+    task/step key per turn via ``core.dispatch.step_session_key`` instead."""
     return f"agent:{project}:{project_key}"
 
 
 def pod_of(member_id: str) -> str | None:
-    """Project a member id belongs to, or ``None`` if it isn't a pod member.
-
-    Reverses ``member_id``: ``demo-lead`` → ``demo``; ``demo-implementer-2`` →
-    ``demo``; ``my-shop-reviewer`` → ``my-shop``. A plain id with no pod-role
-    suffix (e.g. a legacy single agent ``myshop`` or ``my-api``) → ``None``.
-    """
+    """Project a member id belongs to, or ``None`` if it isn't a pod member. Reverses
+    ``member_id``: ``demo-lead`` -> ``demo``, ``demo-implementer-2`` -> ``demo``,
+    ``my-shop-reviewer`` -> ``my-shop``; a plain id with no pod-role suffix -> ``None``."""
     roles = _role_names()
     head, sep, tail = member_id.rpartition("-")
     if sep and tail.isdigit():  # …-<role>-<index>
@@ -122,11 +97,9 @@ def pod_of(member_id: str) -> str | None:
 
 
 def members_of(all_agent_ids: list[str], project: str) -> list[tuple[str, str, int]]:
-    """Pod members among ``all_agent_ids``, as ``(member_id, role, index)``.
-
-    Sorted by role order (lead first) then index, so a pod always lists its Lead
-    before its workers. Ids that don't belong to the pod are ignored.
-    """
+    """Pod members among ``all_agent_ids``, as ``(member_id, role, index)``, sorted by role
+    order (lead first) then index so a pod always lists its Lead before its workers; ids that
+    don't belong to the pod are ignored."""
     found: list[tuple[str, str, int]] = []
     for mid in all_agent_ids:
         parsed = parse_member_id(mid, project)
@@ -154,10 +127,8 @@ def next_index(existing_member_ids: list[str], project: str, role: str) -> int:
 
 
 def parse_member_id(member_id_str: str, project: str) -> tuple[str, int] | None:
-    """Split a member id into ``(role, index)`` if it belongs to ``project``.
-
-    Returns ``None`` when the id is not a member of this project's pod.
-    """
+    """Split a member id into ``(role, index)`` if it belongs to ``project``; ``None`` when the
+    id is not a member of this project's pod."""
     prefix = pod_prefix(project)
     if not member_id_str.startswith(prefix):
         return None
@@ -205,11 +176,9 @@ def plan_pod(
     project_key: str = "default",
     role_models: dict[str, str] | None = None,
 ) -> list[PodMember]:
-    """Resolve a fresh pod's members from a role list (default = lean pod).
-
-    Duplicate non-singleton roles are indexed in order of appearance. A second
-    Lead is rejected (a pod has one orchestrator).
-    """
+    """Resolve a fresh pod's members from a role list (default = lean pod). Duplicate
+    non-singleton roles are indexed in order of appearance; a second Lead is rejected (a pod
+    has one orchestrator)."""
     members: list[PodMember] = []
     counts: dict[str, int] = {}
     for role in roles:
@@ -237,10 +206,8 @@ def plan_added_member(
     project_key: str = "default",
     role_models: dict[str, str] | None = None,
 ) -> PodMember:
-    """Resolve a member being added to an existing pod (handles duplicates).
-
-    Rejects adding a second Lead.
-    """
+    """Resolve a member being added to an existing pod (handles duplicates); rejects adding a
+    second Lead."""
     canon = normalize_role(role)
     if canon in _SINGLETON_POD_ROLES:
         already = any(
@@ -260,30 +227,20 @@ def plan_added_member(
 
 
 def policy_role_for(role: str) -> str:
-    """The role→model policy key ``role``'s archetype resolves through.
-
-    ``models_policy.agent_role()`` calls this directly to get a concrete
-    ``str`` back — the archetype's ``policyRole`` override if set (the four
-    legacy roles), else its own name (every starter-library/user role).
-    """
+    """The role→model policy key ``role``'s archetype resolves through: the archetype's
+    ``policyRole`` override if set (the four legacy roles), else its own name (every
+    starter-library/user role); ``models_policy.agent_role()`` calls this directly."""
     arch = _archetypes.load_registry().get(role)
     return arch.resolved_policy_role if arch is not None else role
 
 
 def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "") -> str:
-    """Resolve the real working directory for a pod member's mechanical operations.
-
-    Preference order: the member's own git **worktree** (an isolated checkout set
-    at provisioning time — see ``cli/_pod.py``'s ``_provision_worktree``, which
-    writes ``worktreeDir`` into the member's meta) → the pod's shared **codebase**
-    root → the member's own docket **workspace** dir (``config.workspace_dir``).
-
-    Both the mechanical verification gate (``core/dispatch.py``) and the TOOLS.md
-    generator (``cli/_pod.py``'s ``_regenerate_member_tools``) resolve through this
-    one helper so they can never disagree again about which tree an implementer's
-    work is actually checked against — a worktree-pod implementer's changes used
-    to be verified against the shared repo root instead of its own worktree.
-    """
+    """Resolve the real working directory for a pod member's mechanical operations. Preference
+    order: the member's own git **worktree** (set at provisioning, see ``cli/_pod.py``'s
+    ``_provision_worktree``) -> the pod's shared **codebase** root -> the member's own docket
+    **workspace** dir. Both the verification gate (``core/dispatch.py``) and the TOOLS.md
+    generator (``cli/_pod.py``) resolve through this one helper so they can never disagree
+    about which tree an implementer's work is checked against."""
     if worktree_dir:
         return worktree_dir
     if codebase:
