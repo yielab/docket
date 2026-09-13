@@ -1,41 +1,14 @@
 """Audit log for mutating operations.
-
-Appends one JSON line per change to ``$DOCKET_HOME/audit.log`` (0600) recording
-who/when/what — table stakes for "what changed this agent/binding/key, and when".
-Secret VALUES are never logged: callers pass only the key name / action target.
-
-Tamper evidence: every line carries a monotonic ``seq`` and a ``prev_hash``
-— the SHA-256 of the previous line's canonical JSON form (stdlib ``hashlib``, no
-new dependency). ``verify_chain()`` walks the file and reports the first broken
-link. A missing/empty file, or a pre-chain legacy line (no ``seq``/``prev_hash``),
-are honest **chain restarts** (seq resets to 1, prev_hash resets to
-``GENESIS_HASH``) rather than tampering — callers treat them as "unchained
-(legacy)", never as a break.
-
-A size-triggered rotation does NOT restart the chain: the first entry written
-after a rotation carries the rotated generation's final ``seq + 1`` and the
-SHA-256 of its final entry, so the new file *declares what it continues from*
-instead of silently claiming to be a fresh install. ``verify_chain()`` checks
-that declaration against the single rotated-backup generation
-(``audit.log.1``) it should still be sitting in; a claim that can't be
-substantiated there (backup missing, or its tail doesn't match) is reported as
-a break, not silently accepted. This makes a deleted or altered backup
-generation *evident* — it does not, and cannot, make erasure impossible: an
-attacker with full filesystem access can always delete both the current file
-and the backup and let the next write start a genuine fresh genesis chain,
-indistinguishable from a real fresh install. See
-specs/functional/audit.spec.md Requirement 9 for the full state table.
-
-There is no environment kill switch: recording is best-effort (a write failure
-never raises) but can no longer be silently switched off — a prior
-``DOCKET_NO_AUDIT=1`` escape hatch was an unauthenticated way to disable the
-only tamper record docket keeps. See specs/functional/audit.spec.md for the
-full rationale and schema.
-
-Exempt from the store.py single-writer rule: appends are line-independent, not
-a read-modify-write of a whole document, so this module writes JSONL directly
-rather than through ``edges/store.py``. The log is a docket-owned artefact
-under DOCKET_HOME, alongside the model/archetype registries and PROJECTS_DIR.
+Appends one JSON line per change to ``$DOCKET_HOME/audit.log`` (0600): who/when/what, secret
+VALUES never logged. Tamper evidence: each line carries a monotonic ``seq`` and ``prev_hash``
+(SHA-256 of the prior line); ``verify_chain()`` reports the first broken link, and a missing/
+empty file or pre-chain legacy line is an honest **chain restart**, never tampering. Rotation
+does NOT restart the chain: the first entry after it declares what generation it continues,
+checked against the single backup (``audit.log.1``); an unsubstantiated claim is a break --
+evident, not prevented, since deleting both files together still yields an indistinguishable
+fresh genesis (specs/functional/audit.spec.md Requirement 9). Recording is best-effort (never
+raises) with no environment kill switch (see that spec). Exempt from the store.py single-writer
+rule: appends are line-independent, so this writes JSONL directly, not through ``edges/store.py``.
 """
 
 from __future__ import annotations
@@ -93,10 +66,8 @@ def _with_audit_lock(logf: Path) -> Iterator[None]:
 
 
 def _utc_now() -> str:
-    """Return current UTC time as YYYY-MM-DDTHH:MM:SS.mmmZ (millisecond resolution).
-
-    Second resolution collided under scripted/rapid-fire use; ms is cheap and
-    stdlib-only (``datetime.microsecond``).
+    """Return current UTC time as ISO ``YYYY-MM-DDTHH:MM:SS.mmmZ``. Millisecond resolution
+    because second resolution collided under scripted/rapid-fire use (stdlib-only).
     """
     now = _dt.datetime.now(_dt.UTC)
     return now.strftime("%Y-%m-%dT%H:%M:%S") + f".{now.microsecond // 1000:03d}Z"
@@ -111,12 +82,8 @@ def _username() -> str:
 
 
 def _canonical(entry: dict[str, Any]) -> str:
-    """Deterministic JSON form used for hashing (sorted keys, no whitespace).
-
-    Hashing the re-serialised, sorted form (rather than the exact on-disk
-    bytes) means the chain is robust to incidental reformatting and only
-    breaks on an actual content change — the property we want tamper
-    evidence to catch.
+    """Deterministic JSON form used for hashing (sorted keys, no whitespace) so the chain is
+    robust to incidental reformatting and only breaks on an actual content change.
     """
     return json.dumps(entry, sort_keys=True, separators=(",", ":"))
 
@@ -139,11 +106,8 @@ def _last_line(logf: Path) -> str | None:
 
 
 def _chain_head(logf: Path) -> tuple[int, str]:
-    """Return (next_seq, prev_hash) for the next entry appended to *logf*.
-
-    A missing/empty file, a last line that predates the chain (no ``seq``/
-    ``prev_hash``), or a corrupt last line all start a fresh chain at seq=1
-    with ``GENESIS_HASH`` — an honest restart boundary, not a defect.
+    """Return (next_seq, prev_hash) for the next append: missing/empty file, pre-chain line, or
+    corrupt line all restart the chain at seq=1/``GENESIS_HASH`` -- honest, not a defect.
     """
     line = _last_line(logf)
     if line is None:
@@ -162,20 +126,12 @@ def _chain_head(logf: Path) -> tuple[int, str]:
 
 
 def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
-    """Rotate *logf* to a single-generation ``<name>.1`` backup once oversized.
-
-    Best-effort: any OSError is swallowed (matches audit_log's never-fail
-    contract) and reported as None, same as "no rotation happened".
-
-    Returns the ``(seq, prev_hash)`` the very next entry should carry to
-    honestly continue the rotated generation's chain — exactly what
-    ``_chain_head`` would have returned for *logf* had it never been renamed
-    away — or ``None`` when either no rotation happened, or the rotated
-    generation's last line had nothing chained to continue from (missing/
-    empty file, or a legacy line with no ``seq``/``prev_hash``). In both
-    ``None`` cases the caller falls back to ``_chain_head(logf)``, which
-    correctly reads the (now-absent) current file as a fresh genesis chain —
-    unchanged from pre-rotation-continuation behaviour.
+    """Rotate *logf* to the single-generation ``<name>.1`` backup once oversized (see
+    specs/functional/audit.spec.md Rotation Requirement 2). Best-effort: OSError is swallowed
+    and reported as ``None``, same as "no rotation happened". Returns ``(seq, prev_hash)`` to
+    continue the rotated chain, or ``None`` in that case or when the rotated generation had no
+    chain to continue -- both collapse to the caller's ``_chain_head(logf)`` fallback, which is
+    correct either way.
     """
     try:
         if not (logf.exists() and logf.stat().st_size >= _cfg.AUDIT_LOG_MAX_BYTES):
@@ -199,12 +155,8 @@ def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
 
 
 def _recovery_head(logf: Path, continuation: tuple[int, str] | None) -> tuple[int, str]:
-    """Return the append head, including the only safe post-rotation recovery.
-
-    If a rotation renamed the current file but its following append failed,
-    the current path is absent and the retained backup is the authoritative
-    tail. The next successful writer resumes from that tail instead of
-    inventing a genesis restart/gap.
+    """Return the append head, including post-rotation recovery: if a rename succeeded but the
+    append failed, the retained backup is authoritative and the next writer resumes from its tail.
     """
     if continuation is not None:
         return continuation
@@ -216,11 +168,8 @@ def _recovery_head(logf: Path, continuation: tuple[int, str] | None) -> tuple[in
 
 
 def _append_entry(logf: Path, encoded: str) -> bool:
-    """Append, flush, close, and permission-restore one entry or roll it back.
-
-    The caller holds the audit lock. A failed append must not leave a partial
-    JSON line, and a newly-created post-rotation current file is removed so
-    its backup remains the recovery authority.
+    """Append or roll back one entry (caller holds the lock): a failed append leaves no partial
+    line, and removes a fresh post-rotation file so the backup stays the recovery authority.
     """
     existed = logf.exists()
     try:
@@ -263,24 +212,12 @@ def _append_entry(logf: Path, encoded: str) -> bool:
 
 
 def audit_log(action: str, detail: str = "") -> AuditWriteResult:
-    """Append one chained audit entry for a mutating operation.
-
-    action: dotted verb, e.g. ``keys.add``, ``gates.enable``, ``agent.delete``.
-    detail: human-readable target (an id, key name, model id — never a secret
-    value).
-
-    Best-effort and never raises audit I/O detail: a failed transition returns
-    ``AuditWriteResult(status="failed")`` without changing the caller's own
-    command result. Existing callers may intentionally ignore the return.
-    Recording cannot be disabled by environment variable — there is no kill
-    switch (see module docstring).
-
-    AUDIT_LOG lives under DOCKET_HOME, which is genuinely docket-owned but not
-    bootstrapped by anything external, so this creates its parent directory
-    itself, exactly like every other DOCKET_HOME-derived writer already does
-    (``core/trace.py``'s ``project_dir.mkdir(parents=True, exist_ok=True)``,
-    ``core/session.py``'s ``_ensure_session_dir``) — the log would otherwise
-    silently lose its very first entry on a fresh ``~/.docket``.
+    """Append one chained audit entry. *action* is a dotted verb (e.g. ``keys.add``); *detail*
+    is a human-readable target, never a secret value. Best-effort, never raises: a failed
+    transition returns ``AuditWriteResult(status="failed")`` without changing the caller's own
+    result, and recording cannot be disabled (no kill switch -- see module docstring). Creates
+    its own parent directory under DOCKET_HOME so a fresh install doesn't silently lose its
+    first entry, matching every other DOCKET_HOME-derived writer.
     """
     logf = _cfg.AUDIT_LOG
     try:
@@ -330,11 +267,8 @@ def read_audit_text() -> str | None:
 
 
 def read_audit() -> list[dict[str, Any]]:
-    """Return every parseable audit entry in file order (oldest first).
-
-    Malformed lines are skipped. Entries from before the tamper-evidence
-    chain landed simply lack ``seq``/``prev_hash`` — callers must not assume
-    those keys are present.
+    """Return every parseable audit entry, oldest first; malformed lines are skipped. Entries
+    predating the tamper-evidence chain lack ``seq``/``prev_hash`` -- callers must not assume so.
     """
     text = read_audit_text()
     if text is None:
@@ -361,15 +295,8 @@ class ChainBreak:
 
 @dataclass(frozen=True)
 class VerifyResult:
-    """Outcome of walking the current audit log's hash chain.
-
-    ``continued_from_seq`` is set only when the current file's first entry
-    made — and this walk successfully verified against ``audit.log.1`` — a
-    rotation-continuation claim (Requirement 9c): the seq the rotated-away
-    generation ended on. ``None`` covers both "no claim was made" (a genuine
-    genesis chain, or a chain restart after a legacy tail) and "this file has
-    no entries at all" — callers that care about the distinction already have
-    ``exists``/``total_lines`` for that.
+    """``continued_from_seq`` is set only for a substantiated rotation-continuation claim (see
+    specs/functional/audit.spec.md Requirement 9); ``None`` means no claim, or no entries at all.
     """
 
     exists: bool
@@ -384,17 +311,12 @@ class VerifyResult:
 def _verify_rotation_continuation(
     logf: Path, claimed_seq: int, claimed_prev_hash: str
 ) -> str | None:
-    """Check a first-entry rotation-continuation claim against ``<logf>.1``.
-
-    *claimed_seq*/*claimed_prev_hash* are the current file's first entry's
-    own ``seq``/``prev_hash`` — i.e. it claims the rotated-away generation
-    ended at ``seq=claimed_seq - 1`` with that hash. Returns ``None`` when
-    the backup's last line substantiates the claim, or an explanatory reason
-    string (unmatched to a specific line — the caller attaches it to line 1,
-    the entry making the claim) when it does not: this is the "erasure"
-    case this card exists to surface. Only ever called when the claim is
-    structurally plausible (``claimed_seq > 1``, ``claimed_prev_hash !=
-    GENESIS_HASH``) — see ``verify_chain``.
+    """Check a first-entry rotation-continuation claim (*claimed_seq*/*claimed_prev_hash*, the
+    entry's own values, claiming the rotated-away generation ended at ``seq - 1`` with that
+    hash) against ``<logf>.1`` -- the "continued, unverifiable" erasure case of
+    specs/functional/audit.spec.md Requirement 9. Returns ``None`` if substantiated, else a
+    reason string. Only called when the claim is structurally plausible (``claimed_seq > 1``,
+    not ``GENESIS_HASH``) -- see ``verify_chain``.
     """
     backup = logf.with_suffix(logf.suffix + ".1")
     claimed_from = claimed_seq - 1
@@ -426,21 +348,12 @@ def _verify_rotation_continuation(
 
 
 def _verify_chain_unlocked(logf: Path) -> VerifyResult:
-    """Walk ``$DOCKET_HOME/audit.log`` and verify its tamper-evidence chain.
-
-    Only the *current* file's entries are re-hashed — but its very first
-    entry may *claim* to continue a rotated-away generation (Requirement 9c),
-    and when it does, that claim is checked against the single rotated
-    backup (``audit.log.1``) it should still be sitting in. Three states
-    follow from this: a genuine genesis chain (no claim made — a fresh
-    install, or a restart after a legacy tail), a claim that the backup
-    substantiates (reported clean, with ``continued_from_seq`` set), or a
-    claim the backup cannot substantiate — missing, unreadable, or simply not
-    a match — which is reported as a break exactly like a hand-tampered
-    line, not silently accepted. Legacy lines (written before this chain
-    existed, i.e. missing ``seq``/``prev_hash``) are counted separately and
-    reset expectations for the next chained line, same as before this card —
-    they are never reported as breaks.
+    """Walk ``$DOCKET_HOME/audit.log`` and verify its tamper-evidence chain. Only the *current*
+    file's entries are re-hashed, but its first entry may *claim* to continue a rotated-away
+    generation, checked against ``audit.log.1``; the three resulting states (genesis /
+    continued-verified / continued-unverifiable) are specs/functional/audit.spec.md
+    Requirement 9. Legacy lines (missing ``seq``/``prev_hash``) are counted separately, reset
+    expectations for the next chained line, and are never reported as breaks.
     """
     rotated = logf.with_suffix(logf.suffix + ".1").exists()
 
@@ -563,12 +476,8 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
 
 
 def verify_chain() -> VerifyResult:
-    """Walk one locked current/backup audit snapshot and verify its chain.
-
-    Readers use the same dedicated lock as writers so a rotation cannot split
-    the current file from the backup that proves its continuation claim.
-    A lock/read failure remains non-raising and is indistinguishable from an
-    unavailable log to this compatibility-preserving API.
+    """Walk one locked snapshot; readers share the writer's lock so rotation can't split the
+    file from the backup proving its claim; failure is non-raising, same as an unavailable log.
     """
     logf = _cfg.AUDIT_LOG
     if not logf.parent.is_dir():
