@@ -1,15 +1,16 @@
 # Security Gates Specification
 
-**Version**: 0.19.0
+**Version**: 0.19.1
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
-argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
-Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
-`ToolContext.approval_mode` (default `"wait"`) picks whether an `ask` verdict blocks on that
-routing or is refused immediately with no record and no wait — see the in-turn tool-call gate
-section below. Cancellation reaches an in-flight `bash` command, the one handler D-30's
-"may finish" rule no longer covers.
-**Last Updated**: 2026-09-12
+argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
+MCP, and Telegram producers, all answering identically; isolation is opt-in and fails closed when
+enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
+`ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
+in-turn tool-call gate section below. `docket gates enable`/`disable`'s approval-routing posture
+flag is a separate, recorded-but-unread thing — see Enablement requirement 2. Cancellation reaches
+an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers.
+**Last Updated**: 2026-09-13
 
 ## Purpose
 
@@ -120,12 +121,26 @@ are owned here, not there.
    the retired installer applying a daemon exec-approval allowlist by default, with `--no-gates` as
    an escape hatch that skipped that daemon config entirely — that daemon config no longer
    exists to skip).
-2. What `--gates`/`--no-gates` on the first `docket init`, and `docket gates enable`/`disable` afterward,
-   actually control is **approval routing** (`core/fleet.py`'s `FleetSecurity.approval_routing_state`):
-   whether a `require_approval`/`ask` verdict's prompt is routed to a channel-bound agent's
-   session. `docket gates enable [--force]` **MUST** remain available for CLI compatibility;
-   `--force` is accepted but is a no-op today — there is no longer an existing-config
-   idempotency state for it to override.
+2. What `--gates`/`--no-gates` on the first `docket init`, and `docket gates enable`/`disable`
+   afterward, actually control is **approval-routing posture** (`core/fleet.py`'s
+   `FleetSecurity.approval_routing_state`/`approval_routing_mode`): a recorded, audited flag that
+   `docket gates status` and `docket doctor` report. **The flag changes nothing about delivery.**
+   `rg -n 'approval_routing|approvalRouting' src/` finds only the two writers
+   (`core/fleet.py`/`core/security.py`, driven by `docket gates enable/disable` and `docket
+   init`) and the two display readers (`cli/_gates.py`, `cli/_doctor.py`) — no reader exists in
+   `core/tools.py`, `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`, or `serve.py`.
+   The tool-call gate itself is unconditionally active regardless of this flag's value, and an
+   `ask` verdict always sits in docket's own approval store where the CLI, HTTP, MCP, and
+   Telegram channels answer it identically whether the flag is on or off; none of them consults
+   it. Docket also never pushes an approval prompt to any channel on its own — see
+   telegram-integration.spec.md's Command-grammar requirements 7-8 (inbound-only, no
+   notification on a newly-created approval) — so there is no prompt delivery for this flag to
+   affect even in principle. `docket gates enable [--force]` **MUST** remain available for CLI
+   compatibility; `--force` is accepted but is a no-op today — there is no longer an
+   existing-config idempotency state for it to override. **Open maintainer decision, not
+   resolved by this spec:** either wire this flag into a real consumer on the live path, or
+   retire `docket gates enable`/`disable` outright; until one happens, treat it as a recorded but
+   unread posture flag.
 3. There **MUST** be a way to verify gate status (`docket doctor`, `docket gates status`) —
    reporting the gate as always-active plus current routing/isolation posture.
 
@@ -662,16 +677,19 @@ otherwise.
 # active (Phase 19 P19-3) -- nothing below turns IT on or off. These commands manage
 # approval-routing and isolation posture only (core/fleet.py's FleetSecurity), per cli/_gates.py.
 docket gates status            # MUST report the gate as always-active, plus routing/isolation posture
-docket gates enable [--force]  # MUST turn approval routing on (--force kept for CLI
-                                #   compatibility; no existing-config state left to force over)
-docket gates disable           # MUST turn approval routing off (reversible)
+docket gates enable [--force]  # MUST record approval-routing posture as on (recorded + audited
+                                #   only -- nothing on the live path reads it; --force kept for CLI
+                                #   compatibility, no existing-config state left to force over)
+docket gates disable           # MUST record approval-routing posture as off (reversible; same
+                                #   caveat -- nothing on the live path reads it either way)
 docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker to
                                 #   turn on; recorded only -- DocketDriver does not yet consult it,
                                 #   so tools still run unsandboxed regardless of this setting)
 docket gates classes           # MUST list the documented high-risk action classes, read-only
 docket init                    # the tool-call gate needs no install step (always active); this
-                                #   MUST apply approval routing by default
-docket init --no-gates      # MUST skip the approval-routing step only (explicit opt-out)
+                                #   MUST record approval-routing posture as on by default
+docket init --no-gates      # MUST skip the approval-routing posture step only (explicit opt-out;
+                                #   changes only the recorded flag, not who can answer an ask verdict)
 docket doctor                  # MUST report gate status, approval routing, and isolation posture
 ```
 
@@ -1088,6 +1106,25 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.19.1 (2026-09-13)
+
+- **W34-C7 corrects the approval-routing prose — no behavior changed.** Enablement requirement 2,
+  the `docket gates` interface-contract command block, `cli/_gates.py`'s help text, the generated
+  `docs/commands.md`, and `docs/SECURITY-SIMPLE.md` all previously claimed that `docket gates
+  enable`/`disable` (and `--gates`/`--no-gates` at `docket init`) change where a `require_approval`/
+  `ask` verdict's prompt is delivered — "routed to a channel-bound agent's session", "reaches a
+  channel", "times out to denied faster". None of that is true: `security.approvalRoutingState`/
+  `approvalRoutingMode` (`core/fleet.py`, written via `core/security.py`) is read only by `docket
+  gates status` and `docket doctor` for display (`rg -n 'approval_routing|approvalRouting' src/`
+  finds no reader in `core/tools.py`, `core/approval.py`, `core/telegram.py`,
+  `core/agent_loop.py`, or `serve.py`). The tool-call gate is unconditionally active and every
+  `ask` verdict sits in docket's own approval store, answered identically by the CLI, HTTP, MCP,
+  and Telegram channels regardless of this flag; docket never pushes a prompt to any of them on
+  its own (telegram-integration.spec.md Command-grammar 7-8). This is the fourth recorded instance
+  of the unwired-machinery shape (after W17-1, W18-3, and the still-open W19-3), and the same
+  spec-vs-prose drift shape as W19-5. Whether to wire this flag into a real consumer or retire
+  `docket gates enable`/`disable` is an open maintainer decision this version does not resolve.
 
 ### Version 0.19.0 (2026-09-12)
 

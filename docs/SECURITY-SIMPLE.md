@@ -24,10 +24,18 @@
 > async dispatch-level approval denies after 15 minutes.
 >
 > `--no-gates` (at install, or `docket gates disable`) does **not** turn the tool-call gate off —
-> it cannot be turned off. What it skips is **approval routing**: without it, an "ask" verdict
-> still blocks the call, but there is no channel actively watching for it, so it simply times out
-> to denied unless a human happens to run `docket approve` in time. Turn routing on anytime with
-> `docket gates enable`. Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
+> it cannot be turned off, and it does not change how an "ask" verdict is answered either. What
+> `--gates`/`--no-gates` and `docket gates enable`/`disable` actually control is
+> `security.approvalRoutingState`/`approvalRoutingMode`, a recorded, audited posture flag that
+> `docket gates status` and `docket doctor` report — nothing on the live path (`core/tools.py`,
+> `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`, `serve.py`) reads it. An "ask"
+> verdict always blocks the call and always sits in docket's own approval store, answerable
+> identically by the CLI, HTTP, MCP, and Telegram channels whether this flag is on or off; docket
+> never pushes a prompt to any of them on its own, so there is no "channel actively watching" for
+> this flag to turn on (see telegram-integration.spec.md's Command-grammar requirements 7-8:
+> inbound-only, no notification on a newly-created approval). Wiring this flag into a real
+> consumer, or retiring `docket gates enable`/`disable`, is an open maintainer decision this repo
+> has not made. Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
 > separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
 > every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
@@ -56,8 +64,10 @@ These are **prompt-level constraints**: agents are instructed to follow them. On
 docket's own tool-call chokepoint is always active regardless of the prompt: non-allowlisted
 dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval before they run —
 see the status note above for who can answer, and for the `git`/`npm` carve-out. A fresh `docket
-install` also turns on approval **routing** by default so a prompt actually reaches a channel; if
-you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
+install` also records approval-**routing** posture as on by default (`docket gates status`
+reports it); that posture flag is recorded and audited but not read by the approval path itself,
+so opting out with `--no-gates` at install, or later with `docket gates disable`, changes nothing
+about who can answer an "ask" verdict — CLI, HTTP, MCP, and Telegram always can.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -244,7 +254,7 @@ quietly closes.
 2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (tool-approval gates) is on by default for new installs.** Opted out with `--no-gates`? Turn it on with `docket gates enable`. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
+**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (at install) and `docket gates disable` only record approval-routing posture as off, a flag nothing on the live path reads; `docket gates enable` records it as on for the same reason `docket gates status`/`doctor` display it, not because it changes how an "ask" verdict is answered. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
 
 ---
 

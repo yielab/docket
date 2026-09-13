@@ -400,7 +400,7 @@ def test_install_no_gates_skips_approval_routing(
 
     _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Approval routing disabled for this workstation (--no-gates)" in out
+    assert "Approval-routing posture recorded as off for this workstation (--no-gates)" in out
     r_state, _mode = _fleet.get_approval_routing()
     assert r_state != "on"
 
@@ -414,7 +414,7 @@ def test_install_with_gates_turns_on_approval_routing(
     rc = _install.bootstrap_workstation(want_gates=True, assume_yes=True)
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Approval routing on" in out
+    assert "Approval-routing posture recorded as on" in out
     r_state, r_mode = _fleet.get_approval_routing()
     assert r_state == "on"
     assert r_mode == "session"
@@ -458,7 +458,7 @@ def test_first_init_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.Mon
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
-    assert "Approval routing on" in result.output
+    assert "Approval-routing posture recorded as on" in result.output
     r_state, _mode = _fleet.get_approval_routing()
     assert r_state == "on"
 
