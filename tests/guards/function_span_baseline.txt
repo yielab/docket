@@ -1,4 +1,2 @@
 # functions over 150 lines; shrink-only, regenerate with --write
-src/docket/core/agent_loop.py::run_agent_turn 909
-src/docket/core/agent_loop.py::run_agent_turn._fit_task_request 184
 src/docket/core/tools.py::builtin_registry 180
