@@ -335,6 +335,26 @@ def _find_pid_by_cmdline_substring(marker: str) -> int | None:
     return None
 
 
+def _poll_for_pid_state(
+    marker: str,
+    *,
+    want_present: bool,
+    deadline_seconds: float = 3.0,
+    interval_seconds: float = 0.02,
+) -> int | None:
+    # The tool_call NDJSON event is emitted before the bash handler spawns the
+    # child, and the kill leaves the process group to be reaped, so a single
+    # /proc lookup right after either moment races the real state change.
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        pid = _find_pid_by_cmdline_substring(marker)
+        if (pid is not None) == want_present:
+            return pid
+        if time.monotonic() >= deadline:
+            return pid
+        time.sleep(interval_seconds)
+
+
 class TestCancelledRun:
     def test_sigterm_after_the_tool_call_event_cancels_within_three_seconds(
         self, tmp_path: Path, llm_server: Any
@@ -397,7 +417,7 @@ class TestCancelledRun:
 
         # The real child process is now blocked in time.sleep(30) -- confirm
         # it genuinely exists before proving cancellation kills it.
-        child_pid = _find_pid_by_cmdline_substring(marker)
+        child_pid = _poll_for_pid_state(marker, want_present=True)
         assert child_pid is not None, "the sleeping child process was never found"
 
         time.sleep(0.5)
@@ -415,7 +435,7 @@ class TestCancelledRun:
         result = json.loads(lines[-1])
         assert result["status"] == "cancelled"
 
-        assert _find_pid_by_cmdline_substring(marker) is None, (
+        assert _poll_for_pid_state(marker, want_present=False) is None, (
             "the child process group was not actually killed"
         )
 
