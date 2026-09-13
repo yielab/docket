@@ -1,55 +1,12 @@
-"""docket-native pipeline spec.
+"""docket-native pipeline spec: the format only. ``core/orchestrator.py`` is the executor.
+See specs/functional/pipeline-format.spec.md for the document shape, gate kinds, rework
+edges, and parallel-group contract this module implements.
 
-This module defines the **format**; ``core/orchestrator.py`` is the executor.
-It resolves a ``PipelineSpec`` against a pod's live roster into a concrete
-``ExecutionPlan``, and ``core/dispatch.py``'s hop loop walks that plan,
-reading each step's *resolved* gate instead of a hardcoded per-role check
-(see ``core/orchestrator.py``'s module docstring). ``docket pipeline plan``
-renders directly from the same ``resolve_plan`` the real executor calls — a
-second, drift-prone pretty-printer is deliberately avoided.
-
-Zero-migration contract: a pod with **no** pipeline file MUST behave exactly
-as it does today. ``load_pipeline(None)`` returns :func:`default_pipeline`
-— a ``PipelineSpec`` equivalent to ``core/dispatch.py``'s hardcoded pipeline
-(same role order, same verdict conventions, same default rework bound) — so a
-caller that always goes through this loader never needs a separate "is there
-a file" branch of its own to get wrong. (The literal equivalence is drift-
-guarded by ``tests/unit/core/test_pipeline__spec.py``, which cross-checks
-against ``dispatch.PIPELINE_ORDER`` and the Reviewer/Tester verdict regexes
-directly — this module does not import ``dispatch`` itself, to keep a pure
-format module decoupled from the heavier dispatch import chain.)
-
-Steps target a **role** or a specific **agent** (mutually exclusive), and may
-carry an optional ``archetype`` — a plain string name referencing a role
-archetype (``core/archetypes.py``). Only the *shape* of that name is
-validated here (a lowercase slug) — never its existence against some
-registry, keeping this module decoupled from the archetype registry's own
-code.
-
-A step's ``gate`` is one of three kinds:
-
-- ``mechanical`` — run a command; nonzero exit fails the step. ``command:
-  None`` defers to the target agent's own configured check (today's
-  Implementer ``verifyCmd`` meta field — see docket-meta.spec.md) rather than
-  a literal command in the pipeline file, which is what lets
-  :func:`default_pipeline` express today's exact behavior.
-- ``verdict`` — match a regex at the start of every non-blank output line and
-  require one distinct normalized marker; a value in ``passValues`` advances the pipeline. Generalizes
-  ``dispatch.py``'s Reviewer (APPROVE/REQUEST-CHANGES) and Tester (PASS/FAIL)
-  conventions to an arbitrary marker vocabulary. May carry a bounded
-  ``rework`` edge (see :class:`ReworkEdge`), generalizing "always the
-  Reviewer, always back to the Implementer" to any earlier step.
-- ``approval`` — the step must not proceed until an operator grants it via
-  docket's existing headless approval channels (see security-gates.spec.md).
-  ``core/dispatch.py``'s ``_pipeline_step_requires_approval`` wires this gate
-  to a real ``core/approval.py`` record before the step's hop ever runs.
-
-``parallel`` groups let a step fan out into concurrently-run child steps
-(e.g. one per ``--count N`` duplicate role member), run by
-``core.orchestrator.run_group`` under a bounded thread pool. Exactly one
-level of nesting is supported; a rework edge declared inside one is rejected
-by :class:`PipelineSpec`'s validator (a group has no single "earlier step" to
-target unambiguously).
+Zero-migration: ``load_pipeline(None)`` returns :func:`default_pipeline`, byte-equivalent to
+``core/dispatch.py``'s hardcoded pipeline (drift-guarded by test, not hand-copied). This module
+does not import ``dispatch`` itself, to stay decoupled from its heavier import chain -- the same
+reason a step's ``archetype`` field validates only slug shape, never existence against the
+archetype registry.
 """
 
 from __future__ import annotations
@@ -72,22 +29,9 @@ def _is_slug(value: str) -> bool:
 
 
 class ReworkEdge(BaseModel):
-    """A bounded backward edge from a verdict gate to an earlier step.
-
-    Mirrors ``core/dispatch.py``'s Reviewer -> Implementer rework loop: while
-    a value in ``when`` keeps being the verdict, the pipeline jumps back to
-    ``to`` up to ``max_cycles`` times before the verdict becomes a terminal
-    failure. ``max_cycles: 0`` disables rework entirely — the gate becomes a
-    hard block, matching ``dispatch.py``'s Tester gate today (no ``rework``
-    at all is the same as ``max_cycles: 0``, just without the edge existing).
-
-    Deliberately named ``when``, not ``on``: YAML 1.1's implicit-boolean
-    resolver (the one PyYAML's ``safe_load`` implements) turns a bare ``on:``
-    key into the boolean ``True`` unless it's quoted — the same "Norway
-    problem" that bit GitHub Actions' top-level ``on:``. Using ``when``
-    sidesteps the trap entirely rather than requiring every pipeline author
-    to remember to quote a key.
-    """
+    """A bounded backward edge from a verdict gate to an earlier step. See
+    specs/functional/pipeline-format.spec.md ("Rework edges") for the ``when``-not-``on``
+    Norway-problem rationale and ``max_cycles: 0`` disabled-edge semantics."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -105,12 +49,9 @@ class ReworkEdge(BaseModel):
 
 
 class MechanicalGate(BaseModel):
-    """Run a command; a nonzero exit fails the step.
-
-    ``command: None`` defers to the target agent's own configured check
-    rather than a literal command in the pipeline file — see the module
-    docstring.
-    """
+    """Run a command; a nonzero exit fails the step. ``command: None`` defers to the target
+    agent's own ``verifyCmd`` check instead of a literal command; see
+    specs/functional/pipeline-format.spec.md ("Gates")."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -120,18 +61,9 @@ class MechanicalGate(BaseModel):
 
 
 class VerdictGate(BaseModel):
-    """Find one distinct line-anchored marker matching ``pattern``.
-
-    ``pattern``'s first capturing group is the verdict marker, compared
-    (case-insensitively unless ``case_sensitive``) against ``pass_values``. A
-    Repeated identical matches collapse to one; zero or conflicting matches
-    are unparseable. A match in ``pass_values`` advances the pipeline; a match named in
-    ``rework.when`` (if ``rework`` is set) triggers a bounded rework cycle;
-    anything else — including no match at all (unparseable output) — fails
-    the step. Unparseable output is never given a rework cycle, matching
-    ``dispatch.py``'s explicit fail-vs-unparseable distinction for both its
-    Reviewer and Tester gates.
-    """
+    """One distinct line-anchored marker matching ``pattern`` decides the step's outcome. See
+    specs/functional/pipeline-format.spec.md ("Gates", the ``verdict`` kind) for the
+    match/pass/rework/unparseable-fail rules."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -164,14 +96,9 @@ class VerdictGate(BaseModel):
 
 
 class ApprovalGate(BaseModel):
-    """The step must not proceed until an operator grants approval.
-
-    Deliberately minimal on its own — this type carries no token, timeout, or
-    resolution state itself; ``core/dispatch.py`` wires an instance of it to
-    a real ``core/approval.py`` record (token, timeout-resolves-to-denied,
-    CLI/HTTP/Telegram grant or deny) before the gated step's hop ever runs.
-    ``message`` is optional context shown to the approver.
-    """
+    """The step must not proceed until an operator grants approval. Carries no
+    token/timeout/resolution state -- ``core/dispatch.py`` wires it to a real
+    ``core/approval.py`` record; see specs/functional/pipeline-format.spec.md ("Gates")."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -189,19 +116,9 @@ Gate = Annotated[
 
 
 class Step(BaseModel):
-    """One node in the pipeline.
-
-    A **unit step** targets exactly one of ``role`` (a pod role / archetype
-    slot, e.g. ``implementer``) or ``agent`` (a specific agent id,
-    e.g. ``myapp-implementer-2``) and may carry ``retries``/``timeout``
-    overrides and a ``gate``.
-
-    A **parallel group** step sets ``parallel`` to a list of unit steps that
-    run concurrently (e.g. one per ``--count N`` duplicate role member) and
-    carries no role/agent/gate/retries/timeout of its own — only its children
-    do. Nesting is limited to one level: a child step must not itself declare
-    ``parallel``.
-    """
+    """One node in the pipeline: a unit step (``role`` xor ``agent``, plus optional
+    gate/retries/timeout) or a parallel group (``parallel``: unit-step children only, one
+    level deep). See specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups")."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -264,11 +181,9 @@ Step.model_rebuild()
 
 
 class Variable(BaseModel):
-    """A pipeline variable: a default value, or ``required`` for one supplied
-    at dispatch time (e.g. a webhook param — see :func:`resolve_variables`).
-    No interpolation engine exists here — that belongs to the executor; this
-    only declares the variable's shape.
-    """
+    """A pipeline variable: a default, or ``required`` for a value supplied at dispatch time
+    (see :func:`resolve_variables`). No interpolation engine exists here -- this only
+    declares the variable's shape; that stays an executor concern."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -284,41 +199,15 @@ class Variable(BaseModel):
 
 
 class VariableError(Exception):
-    """Raised by :func:`resolve_variables` when *provided* does not satisfy a
-    spec's declared variable contract — today, only "a required variable has
-    no value at all" (neither a caller-supplied one nor a default, since a
-    required variable is defined to have no default — see ``Variable._check``
-    above)."""
+    """Raised by :func:`resolve_variables` when a required variable has no value at all --
+    neither a caller-supplied one nor a default, since a required variable is defined to
+    have no default (see ``Variable._check``)."""
 
 
 def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Resolve *spec*'s declared variable namespace against caller-supplied values.
-
-    This is the webhook param the :class:`Variable` docstring
-    above refers to: a caller (``docket serve``'s ``POST /dispatch/<project>``
-    webhook, today) supplies a plain ``{name: value}`` mapping — *provided* —
-    and this function produces the pipeline's final, resolved variable
-    namespace:
-
-    - a name in *provided* wins outright, whatever its value (an explicit
-      ``null`` counts as "the caller supplied a value", not "absent");
-    - a name declared in ``spec.variables`` but absent from *provided* falls
-      back to that variable's ``default`` (``None`` for one with no default);
-    - a ``required`` variable absent from *provided* is an error — every
-      missing required name is collected and raised together as one
-      :class:`VariableError`, not just the first, so a caller can fix its
-      whole payload in one round trip rather than one missing field at a time.
-
-    A key in *provided* that ``spec.variables`` never declared is passed
-    through unchanged. This mirrors the format's own stance: **the document**
-    shape is closed (``extra="forbid"`` everywhere, see the module docstring)
-    but a variable's *runtime value* is deliberately not — nothing here
-    interpolates a variable into a hop's prompt or environment (that stays an
-    executor concern, per the ``Variable``/module docstrings), so there is no
-    text-substitution surface an undeclared key could corrupt; rejecting it
-    would only make a pipeline author pre-declare every field a webhook sender
-    might ever include, for no safety benefit today.
-    """
+    """Resolve *spec*'s variables against caller-supplied *provided*: present wins outright
+    (even ``None``), else the ``default``; a missing ``required`` raises :class:`VariableError`
+    naming every missing name at once. See specs/functional/pipeline-format.spec.md (Req. 4)."""
     values: dict[str, Any] = dict(provided or {})
     missing = sorted(
         name for name, var in spec.variables.items() if var.required and name not in values
@@ -335,14 +224,9 @@ def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None
 
 
 class PipelineSpec(BaseModel):
-    """The docket-native pipeline format.
-
-    ``extra="forbid"`` at every level is the point: an unknown key anywhere
-    in the document is a validation error, not a silently-ignored construct
-    (unlike the retired Lobster YAML dialect's validator, which silently
-    ignored several constructs its own template emitted — exactly the gap
-    this format closes by construction).
-    """
+    """The docket-native pipeline format: ``extra="forbid"`` at every level makes an unknown
+    key anywhere a validation error, never silently ignored. See
+    specs/functional/pipeline-format.spec.md ("Purpose", Requirement 1) for why."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -402,10 +286,8 @@ class PipelineSpec(BaseModel):
 
 @dataclass
 class PipelineLoadResult:
-    """Outcome of :func:`load_pipeline`. Exactly one of ``spec``/``errors`` is
-    meaningful — a successful load has ``errors == []``; a failed one has
-    ``spec is None``.
-    """
+    """Outcome of :func:`load_pipeline`: exactly one of ``spec``/``errors`` is meaningful --
+    ``errors == []`` on success, ``spec is None`` on failure."""
 
     spec: PipelineSpec | None
     errors: list[str] = field(default_factory=list)
@@ -417,12 +299,9 @@ class PipelineLoadResult:
 
 
 def _load_yaml_text(text: str) -> tuple[dict[str, Any] | None, str]:
-    """Parse YAML text. Returns (doc, error); error is '' on success.
-
-    PyYAML is a real project dependency (``pyproject.toml``), but the import
-    stays guarded so a stripped-down environment missing it fails with an
-    actionable message instead of an unguarded traceback.
-    """
+    """Parse YAML text; returns (doc, error), error == "" on success. Import stays guarded
+    despite PyYAML being a declared dependency, so a stripped-down environment gets an
+    actionable message instead of an unguarded traceback."""
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
     except ImportError:
@@ -447,15 +326,9 @@ def _format_validation_error(exc: ValidationError) -> list[str]:
 
 
 def load_pipeline(text: str | None) -> PipelineLoadResult:
-    """Load a pipeline spec from YAML text.
-
-    ``text is None`` is the zero-migration case — no pipeline file exists for
-    this pod — and returns :func:`default_pipeline` (``source="builtin"``)
-    rather than an error, so a caller that always routes through this loader
-    gets today's exact behavior with no separate "file missing" branch to
-    maintain on its own. Passing ``""`` (an existing-but-empty file) is
-    treated as a real, invalid document — not the zero-migration case.
-    """
+    """Load a pipeline spec from YAML text. ``text is None`` is zero-migration (returns
+    :func:`default_pipeline`); ``""`` is a real validation error, not zero-migration. See
+    specs/functional/pipeline-format.spec.md ("Zero migration")."""
     if text is None:
         return PipelineLoadResult(spec=default_pipeline(), errors=[], source="builtin")
 
@@ -471,11 +344,8 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
 
 
 def validate_pipeline(text: str) -> list[str]:
-    """Structural validation only. Returns [] on success.
-
-    A thin wrapper over :func:`load_pipeline`, kept as a separate entry point
-    for callers that only want the error list.
-    """
+    """Structural validation only; returns [] on success. Thin wrapper over
+    :func:`load_pipeline`, kept separate for callers that only want the error list."""
     return load_pipeline(text).errors
 
 
@@ -494,18 +364,9 @@ _DEFAULT_MAX_REWORK_CYCLES = 1
 
 
 def default_pipeline() -> PipelineSpec:
-    """The built-in pipeline equivalent to ``core/dispatch.py``'s hardcoded
-    ``PIPELINE_ORDER`` — the zero-migration contract.
-
-    Lead (no gate) -> Implementer (mechanical check, deferring to its own
-    ``verifyCmd`` meta) -> Reviewer (APPROVE/REQUEST-CHANGES verdict, bounded
-    rework back to Implementer, default 1 cycle) -> Tester (PASS/FAIL
-    verdict, hard gate, no rework). A pod that only has Lead + Implementer
-    (the lean default) simply never reaches the later steps at dispatch time
-    — which roles a pod actually has is a runtime/executor concern, not this
-    spec's (see ``core/dispatch.py``'s ``pod_pipeline``, which already skips
-    absent roles).
-    """
+    """The built-in zero-migration pipeline, equivalent to ``core/dispatch.py``'s hardcoded
+    ``PIPELINE_ORDER``: lead -> implementer -> reviewer -> tester. See
+    specs/functional/pipeline-format.spec.md ("Zero migration") for the exact gates/rework bound."""
     return PipelineSpec(
         name="default",
         description="Built-in lead -> implementer -> reviewer -> tester pipeline (zero migration).",
