@@ -1,19 +1,14 @@
 """Security-gate logic: docket's own command classifier + approval/isolation config.
 
-``core/tools.py``'s ``dispatch_tool`` is the single chokepoint every tool
-call passes through, and the ``pre_tool_call`` policy hook (plus
-``classify_command`` below) is unconditionally live on it — there is no
-separate "enable the gate" step, and no daemon-side exec-approval mechanism
-to configure at all (there is no daemon). What remains configurable is
-docket's own approval-routing and workspace-isolation state
+``dispatch_tool`` (``core/tools.py``) keeps ``pre_tool_call`` and
+``classify_command`` below unconditionally live -- no "enable the gate"
+step, no daemon-side exec-approval mechanism (there is no daemon). Only
+docket's own approval-routing and workspace-isolation state is configurable
 (``core/fleet.py``'s ``FleetSecurity``, ``docket gates enable/disable``,
-``docket gates isolate``) — not whether tool calls are gated, only where a
-resulting prompt is routed and whether tool execution runs sandboxed.
-
-This module also owns ``classify_command``/``match_high_risk``: the
-argument-aware classifier that decides ``allow``/``ask``/``deny`` for a shell
-command, used by both ``core/tools.py``'s live gate and
-``edges/adapters/system.py``'s ``run_verify_cmd``.
+``docket gates isolate``) -- not whether calls are gated, only where a
+prompt routes and whether execution is sandboxed. Also owns
+``match_high_risk``, the argument-aware allow/ask/deny classifier used by
+the live gate and ``edges/adapters/system.py``'s ``run_verify_cmd``.
 """
 
 from __future__ import annotations
@@ -47,22 +42,14 @@ SAFE_BINS: tuple[str, ...] = (
 class HighRiskClass:
     """A named, documented high-risk action class.
 
-    ``pattern`` is a case-insensitive regex matched against a full command
-    string (e.g. ``"git push origin production"``), not just a binary name.
-
-    ``bins`` names the SAFE_BINS members this class can be performed through,
-    for documentation/visibility only (``docket gates classes``) — it does
-    **not** exclude them from ``SAFE_BINS``. Excluding a bin like
-    ``git``/``npm`` wholesale to force its high-risk invocations to ask would
-    also force every benign invocation to ask — an unacceptable usability
-    regression for tools used constantly. Per-argument enforcement of these
-    classes is exactly what ``classify_command`` below provides instead: it
-    reads the whole command line, so ``git push origin production`` asks
-    while ``git status`` does not, without excluding ``git`` from
-    ``SAFE_BINS`` at all. ``match_high_risk`` is the underlying classification
-    entry point — wired into ``run_verify_cmd`` (refuse before the shell
-    starts) and into dispatch's ``pre_output`` scan, in addition to
-    ``classify_command``'s own live use in ``core/tools.py``'s gate.
+    ``pattern`` is matched case-insensitively against the full command
+    string, not just a binary name. ``bins`` names overlapping SAFE_BINS
+    members for visibility only (``docket gates classes``) -- it does
+    **not** exclude them: excluding e.g. ``git``/``npm`` wholesale would
+    force every benign invocation to ask too, so ``classify_command`` below
+    enforces per-argument instead (``git push origin production`` asks;
+    ``git status`` does not). See specs/functional/security-gates.spec.md
+    item 5.
     """
 
     name: str
@@ -109,23 +96,11 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
 def match_high_risk(command: str) -> HighRiskClass | None:
     """Return the first HIGH_RISK_PATTERNS class matching *command*, else None.
 
-    The single classification entry point, wired onto the two paths docket
-    itself controls: ``run_verify_cmd`` (which refuses a matching command
-    outright, before the shell ever starts) and dispatch's ``pre_output``
-    hop-output scan. ``classify_command`` below also calls this to decide
-    ``ask`` for a live tool call — the check ``core/tools.py``'s
-    ``dispatch_tool`` chokepoint actually enforces.
-
-    Three sibling helpers — ``high_risk_bins``, ``is_high_risk`` and
-    ``resolve_command_action`` — were removed rather than kept beside this
-    one: they modelled a bare ask/allow decision at a granularity too coarse
-    to be useful (binary name only, never arguments) and had accumulated
-    zero production callers. ``classify_command`` is their proper
-    replacement: it reads the whole command line, so ``git push origin
-    production`` asks while ``git status`` does not, without needing a
-    coarse always-ask resolver at all. The policy itself is also published,
-    honestly, by ``docket gates classes`` and
-    ``specs/functional/security-gates.spec.md``.
+    The single classification entry point: wired into ``run_verify_cmd``
+    (refuses outright before the shell ever starts) and dispatch's
+    ``pre_output`` scan; ``classify_command`` below also calls this to
+    decide ``ask`` for a live tool call, the check ``dispatch_tool`` enforces.
+    See specs/functional/security-gates.spec.md.
     """
     for cls in HIGH_RISK_PATTERNS:
         if re.search(cls.pattern, command, re.IGNORECASE):
@@ -158,13 +133,10 @@ _OPAQUE_MARKERS: tuple[str, ...] = ("$(", "`", "${", "eval ", "exec ")
 class CommandVerdict:
     """What docket decided about one shell command, and why.
 
-    ``action`` is ``allow`` | ``ask`` | ``deny``. ``ask`` routes to
-    ``core/approval.py``, which fails closed on timeout — so an unclassifiable
-    command never silently runs.
-
-    ``reason`` is written for a human approver reading a Telegram/CLI prompt,
-    not for a log grep: it names the specific binary or risk class that caused
-    the verdict.
+    ``action`` is allow/ask/deny; ``ask`` routes to ``core/approval.py``,
+    which fails closed on timeout, so an unclassifiable command never
+    silently runs. ``reason`` is written for a human approver, naming the
+    specific binary or risk class that caused the verdict.
     """
 
     action: str
@@ -181,12 +153,11 @@ class CommandVerdict:
 def split_command_segments(command: str) -> list[list[str]]:
     """Split a shell command into per-invocation token lists.
 
-    ``ls -la && git push origin main`` becomes ``[["ls", "-la"], ["git",
-    "push", "origin", "main"]]``. Leading ``VAR=value`` assignments are dropped
-    so the binary is always the first token of a segment.
-
-    Raises ``ValueError`` for input shlex cannot tokenize (unbalanced quotes) —
-    the caller treats that as unclassifiable, never as safe.
+    ``ls -la && git push origin main`` -> ``[["ls", "-la"], ["git", "push",
+    "origin", "main"]]``; leading ``VAR=value`` assignments are dropped so
+    the binary is always the first token. Raises ``ValueError`` on input
+    shlex cannot tokenize -- the caller treats that as unclassifiable, never
+    as safe.
     """
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
@@ -220,30 +191,20 @@ def split_command_segments(command: str) -> list[list[str]]:
 
 
 def classify_command(command: str) -> CommandVerdict:
-    """Decide whether *command* may run unattended.
+    """Decide whether *command* may run unattended. First match wins: empty
+    -> deny; opaque (command substitution/``eval``/``exec``) or
+    untokenizable -> ask, since the binary that will run is not knowable; a
+    high-risk class matching the full line -> ask, naming it (argument-aware:
+    ``git`` is allowlisted, but ``git push origin production`` still asks);
+    any segment's binary off ``SAFE_BINS`` -> ask, naming it (every segment
+    is checked, so a safe binary cannot smuggle an unsafe one in behind
+    ``;``/``&&``); otherwise -> allow.
 
-    The rules, in order — first match wins:
-
-    1. **Empty** -> deny. Nothing to run.
-    2. **Opaque** (command substitution, ``eval``, ``exec``) -> ask. The binary
-       that will actually run is not knowable from the text.
-    3. **Untokenizable** -> ask. Same reasoning: an unparseable command is not
-       a safe command.
-    4. **A high-risk action class matches the full line** -> ask, naming the
-       class. This is what makes the check argument-aware rather than
-       binary-only: ``git`` is allowlisted, but ``git push origin
-       production`` is a production deploy that must still ask.
-    5. **Any segment's binary is off ``SAFE_BINS``** -> ask, naming it. Every
-       segment is checked, so a safe binary cannot smuggle an unsafe one in
-       behind ``;`` or ``&&``.
-    6. Otherwise -> allow.
-
-    **What this does not catch, stated plainly:** a safe binary used
-    destructively within its own remit (``git reset --hard``), writes through a
-    redirect to a path outside the workspace (path containment in
-    ``core/tools.py`` covers the file tools, not shell redirects), and anything
-    a script on the allowlist does once started. It is a gate, not a sandbox —
-    sandboxed exec (``core/tools.py``'s ``ToolContext.sandbox``) is a
+    Does not catch: a safe binary used destructively within its own remit
+    (``git reset --hard``), writes through a redirect outside the workspace
+    (path containment in ``core/tools.py`` covers file tools, not shell
+    redirects), or anything a script on the allowlist does once started. A
+    gate, not a sandbox -- sandboxed exec (``ToolContext.sandbox``) is a
     separate, opt-in mechanism this classifier neither provides nor requires.
     """
     text = command.strip()
@@ -291,10 +252,9 @@ def apply_approval_routing() -> int:
     """Route gated-tool-call approval prompts to each agent's session channel.
 
     Writes fleet.json's approval-routing state to on/session. Returns the
-    count of channel-bound agents (informational) -- a bound agent only
-    actually receives a prompt once ``docket serve --telegram`` is running
-    with a bot token configured (``core/telegram.py``), so this count is a
-    readiness signal, not a guarantee a prompt will be delivered.
+    count of channel-bound agents (informational) -- a readiness signal, not
+    a guarantee: a bound agent only receives a prompt once ``docket serve
+    --telegram`` is running with a bot token configured.
     """
     _fleet.set_approval_routing(enabled=True, mode="session")
     count = 0
@@ -313,12 +273,10 @@ def apply_workspace_isolation() -> None:
     """Record that per-agent Docker sandbox isolation is desired.
 
     The Docker capability check at ``docket gates isolate on`` time is the
-    caller's responsibility. Writes fleet.json's isolation mode, which
-    ``edges/adapters/docket_runtime.py``'s ``DocketDriver`` reads on every
-    turn (via ``core.fleet.get_isolation_enabled``) to decide whether to ask
-    for a sandboxed ``ToolContext``: real docker/bwrap containment when a
-    backend is usable, an audited refusal instead of an unsandboxed run when
-    neither is.
+    caller's responsibility. Writes fleet.json's isolation mode, read by
+    ``DocketDriver`` on every turn to decide real docker/bwrap containment
+    when a backend is usable, or an audited refusal instead of an
+    unsandboxed run when neither is.
     """
     _fleet.set_sandbox_isolation(mode="non-main")
 
