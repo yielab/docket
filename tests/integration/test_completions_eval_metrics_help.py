@@ -160,10 +160,9 @@ class TestMetrics:
     def test_guardrail_block_reported_from_a_real_g2_producer(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`guardrail_block` is the live-path producer this reader was
-        waiting for — bucketed by the tripped policy's id (the reader's own
-        `payload.get("action", etype)` convention, fed the policy id rather
-        than the generic word "block" so the table names which policy fired)."""
+        """`guardrail_block` is the live-path producer this reader waits for, bucketed by the
+        tripped policy's id -- the reader's `payload.get("action", etype)` convention is fed
+        the policy id, not the generic word "block", so the table names which policy fired."""
         proj = oc_dir / "traces" / "myapp"
         proj.mkdir(parents=True)
         session = [

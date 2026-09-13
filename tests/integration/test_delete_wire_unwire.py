@@ -197,11 +197,9 @@ class TestCmdUnwire:
 
 
 class TestCmdWire:
-    """`docket wire` discovers Telegram groups through docket's bot, while
-    retaining manual entry as a fallback. The binding it records is the
-    *entire* authorization boundary (see core/telegram.py), so the output
-    states that plainly.
-    """
+    """`docket wire` discovers Telegram groups through docket's bot, retaining manual entry as
+    a fallback. The binding it records is the entire authorization boundary (core/telegram.py),
+    so the output states that plainly."""
 
     def test_wire_discovers_group_without_numeric_id_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

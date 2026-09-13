@@ -1,25 +1,13 @@
-"""The turn loop (`core/agent_loop.py`).
-
-docket owns the loop, so what matters most here is that there is exactly one
-path to tool execution and that every stop condition is a deliberate,
-reported exit -- never a silent hang or a runaway loop. Covers, in order of
-how much each one matters:
-
-* **Single execution path** -- `run_agent_turn` never calls a tool handler
-  except through `core.tools.dispatch_tool`; an architectural guard walks
-  the module's own source to prove it.
-* **Truncation safety** -- a length-truncated response carrying tool calls
-  never has them dispatched, and is never persisted to session history.
-* **All four stop conditions** -- final message, max_iterations,
-  max_tool_calls, wall-clock timeout, token budget -- each independently
-  triggerable and each reporting the right `stop_reason`/`failure_kind`.
-* **Durability** -- history is persisted per iteration, not only at the end;
-  a "crash" after N iterations leaves exactly N iterations on disk.
-* **Tracing** -- every dispatched tool call emits a `tool_call` and a
-  `tool_result` trace event.
-
-No test here sleeps for real or hits the network: `ChatBackend` is a small
-scripted fake, and wall-clock timeout tests inject a fake `clock`.
+"""docket owns the turn loop (`core/agent_loop.py`), so every stop condition must be a
+deliberate, reported exit -- never a silent hang or runaway loop. Covers: a single execution
+path (an architectural guard walks the module's own source to prove `run_agent_turn` never
+calls a tool handler except through `core.tools.dispatch_tool`); truncation safety (a
+length-truncated response carrying tool calls is never dispatched or persisted); all four stop
+conditions -- final message, max_iterations, max_tool_calls, wall-clock timeout, token budget --
+each triggerable with the right `stop_reason`/`failure_kind`; durability (history persisted per
+iteration: a crash after N iterations leaves exactly N on disk); and tracing (every dispatched
+call emits `tool_call`/`tool_result`). No test sleeps for real or hits the network: `ChatBackend`
+is a scripted fake; timeout tests inject a fake `clock`.
 """
 
 from __future__ import annotations
@@ -109,13 +97,8 @@ def ctx(workspace: Path) -> ToolContext:
 
 
 class ScriptedBackend:
-    """Replays a fixed script of `ChatResponse`s, one per `complete()` call.
-
-    Records every call's messages so tests can assert on what was actually
-    sent (e.g. that tool results were fed back). Raises `AssertionError` if
-    asked for more responses than scripted -- a test bug, not something a
-    real backend would ever need to signal this way.
-    """
+    """Replays a fixed script of `ChatResponse`s; records each call's messages for assertions
+    and raises `AssertionError` (a test-bug signal) if asked for more responses than scripted."""
 
     def __init__(self, responses: Sequence[ChatResponse]) -> None:
         self._responses = list(responses)
@@ -1544,20 +1527,9 @@ class TestLiveSessionCompaction:
 
 
 class TestSingleExecutionPath:
-    """Non-negotiable: a tool call that bypasses dispatch_tool bypasses every
-    guardrail the tool-call gate builds. Verified by walking agent_loop.py's
-    own source, not just by observing today's behaviour.
-
-    Proven RED before being trusted. Planted and reverted by hand while
-    writing this test (not committed):
-    temporarily replaced the `dispatch_tool(call, ctx, registry)` call with
-    `tool = registry.get(call.name); tool.handler(call.parsed_arguments(), ctx)`
-    -- a direct second path around the gate. This test went red (the
-    forbidden `toolbox` import check and the "exactly one dispatch_tool call"
-    count both fail against source that reaches for `.handler` directly),
-    confirming it actually inspects behaviour that matters rather than always
-    passing. Restored before committing.
-    """
+    """Non-negotiable: a tool call bypassing `dispatch_tool` bypasses every guardrail the gate
+    builds. Verified by walking agent_loop.py's own source, not by observing today's behaviour;
+    confirmed red when a hand-patched direct-dispatch path replaced the real call."""
 
     def test_never_imports_toolbox_or_calls_a_handler_directly(self) -> None:
         tree = ast.parse(AGENT_LOOP_SRC.read_text(encoding="utf-8"))
@@ -1622,10 +1594,9 @@ class TestSingleExecutionPath:
 
 
 class TestTruncatedResponses:
-    """A truncated response must not have its tool calls executed (the card's
-    requirement #3) -- the most dangerous failure mode this loop exists to
-    prevent, since partial arguments are exactly what a gate cannot evaluate.
-    """
+    """A truncated response must never have its tool calls executed -- the most dangerous
+    failure mode this loop guards against, since partial arguments are exactly what a gate
+    cannot evaluate."""
 
     def test_truncated_with_tool_calls_never_dispatches_them(
         self, ctx: ToolContext, registry: ToolRegistry

@@ -1,30 +1,14 @@
 """Guardrail + loop metrics on the existing Prometheus surface.
-
-Extends `docket serve`'s `/metrics` with denial rate,
-approvals granted/denied/timed-out by channel, policy-hit counts by policy
-id, tool-call rate and turn latency -- all recomputed fresh, on every
-scrape, from durable state already on disk (trace JSONL + the audit log),
-never a second in-process counter store (see `docket.serve.LoopMetrics`).
-No new endpoint, no new dependency: this only exercises `render_metrics()`.
-
-What's pinned here:
-
-1. `docket_tool_calls_total{decision}` counts every `tool_result` trace
-   event (as `core/agent_loop.py` emits for each `dispatch_tool` call),
-   bucketed by gate decision -- fleet-wide, across projects.
-2. `docket_policy_hits_total{policy_id,hook,action}` merges the structured
-   `guardrail_check` trace event (pre_input/pre_output) with the
-   `policy_id=`/`policy_action=` fields on `core/tools.py`'s
-   tool-gate audit entries (pre_tool_call) -- the pre_tool_call half is
-   exercised end-to-end through the real `dispatch_tool` chokepoint, not a
-   hand-crafted audit line, and a bare command-classifier denial (no policy
-   involved) is proven NOT to count as a policy hit.
-3. `docket_approvals_total{channel,outcome}` covers real grant/deny/timeout
-   audit entries across cli, telegram and the fail-closed timeout path (via
-   the real `dispatch_tool` -> `wait_for_approval` -> timeout route).
-4. `docket_turn_duration_seconds_sum`/`_count` sums every completed
-   session_start/session_end bracket across every project's trace file, and
-   excludes a session with no session_end yet.
+Extends `docket serve`'s `/metrics` with denial rate, approvals by channel, policy-hit counts,
+tool-call rate and turn latency -- recomputed fresh, on every scrape, from durable state on
+disk (trace JSONL + audit log), never a second in-process counter store. Pins:
+`docket_tool_calls_total{decision}` counts `tool_result` trace events by gate decision,
+fleet-wide; `docket_policy_hits_total{policy_id,hook,action}` merges `guardrail_check` with
+tool-gate audit entries through the real `dispatch_tool` chokepoint, proving a bare
+command-classifier denial does not count as a policy hit; `docket_approvals_total{channel,
+outcome}` covers real grant/deny/timeout entries across cli, telegram and the fail-closed
+timeout path; and `docket_turn_duration_seconds_sum`/`_count` sums every completed session
+bracket, excluding an unfinished one.
 """
 
 from __future__ import annotations
@@ -47,12 +31,8 @@ SUBJECT = "docket.core.tools"
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate every store this module touches (on top of conftest's autouse
-    isolation, which already repoints TRACES_DIR/AUDIT_LOG/APPROVALS_DIR/
-    POLICIES_DIR to a tmp dir -- this just pins TOOL_APPROVAL_TIMEOUT to 0 so
-    an unanswered `ask` fails closed immediately, no real sleep, matching
-    test_pre_tool_call_policy.py's own fixture.
-    """
+    """On top of conftest's autouse store isolation, pins TOOL_APPROVAL_TIMEOUT to 0 so an
+    unanswered `ask` fails closed immediately, with no real sleep."""
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 
@@ -256,10 +236,9 @@ class TestApprovalsByChannel:
         )
 
     def test_timeout_resolution_surfaces_as_channel_timeout_denied(self, ctx: ToolContext) -> None:
-        """A fail-closed in-turn approval timeout (TOOL_APPROVAL_TIMEOUT=0, set
-        by this module's _hermetic fixture) writes `approval.deny` with
-        `channel=timeout` -- the real producer for "timed out", not a third
-        outcome value invented for this metric."""
+        """A fail-closed in-turn approval timeout writes `approval.deny` with
+        `channel=timeout` -- the real producer for "timed out", not a third outcome value
+        invented for this metric."""
         res = dispatch_tool(
             ToolCall(id="c3", name="bash", arguments=json.dumps({"command": "rm x"})),
             ctx,

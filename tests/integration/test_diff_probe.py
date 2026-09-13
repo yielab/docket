@@ -1,21 +1,13 @@
 """The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
-`HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed
-fields (`core/handoff.py`'s module docstring documents the seam):
-
-  * TestImplementerDiffProbeUnit -- `core/dispatch.py`'s `_implementer_diff_probe`
-    in isolation, with `edges/adapters/system.py`'s git calls monkeypatched out
-    (no real git, no real filesystem).
-  * TestDispatchPopulatesRealDiff -- end to end through a real `dispatch_task`
-    call against a real git repo (and the real git worktree provisioned for
-    a repo pod's Implementer): the hop's artifact carries the actual changed
-    file and the actual checked-out branch.
-  * TestDegradePaths -- the three ways this must degrade to an empty (never
-    exceptional) artifact: a `workdir` (non-codebase) pod, a `codebase` that
-    exists but is not a git repository, and a host with no `git` binary at all
-    -- each pinned end to end through `dispatch_task`, not just at the unit
-    level, so a future change to the call site can't quietly reintroduce a
-    crash.
+`HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
+(`core/handoff.py`'s module docstring documents the seam). Covers: TestImplementerDiffProbeUnit
+(`_implementer_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
+monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_task`
+call against a real git repo and worktree: the hop's artifact carries the actual changed file
+and checked-out branch); and TestDegradePaths (the three ways this must degrade to an empty,
+never exceptional, artifact -- a `workdir` pod, a non-git `codebase`, and no `git` binary --
+each pinned end to end through `dispatch_task` so a call-site change can't reintroduce a crash).
 """
 
 from __future__ import annotations
@@ -159,13 +151,9 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _ImplementerWritesFile:
-    """A dispatch Runner that simulates the Implementer changing a real file.
-
-    Writes into whatever directory the caller resolves as the Implementer's
-    real working tree -- a real git worktree when the pod has one -- *before*
-    returning, so the probe that runs right after this hop completes sees a
-    genuinely dirty tree, not a canned answer.
-    """
+    """A dispatch Runner simulating the Implementer changing a real file: writes into the
+    caller-resolved Implementer working tree (a real git worktree when the pod has one) before
+    returning, so the probe run right after sees a genuinely dirty tree, not a canned answer."""
 
     def __init__(self, implementer_cwd: str) -> None:
         self.implementer_cwd = implementer_cwd
@@ -253,10 +241,9 @@ class TestDegradePaths:
     def test_workdir_pod_degrades_to_empty_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A `workdir` (non-codebase) pod's Implementer has no codebase and no
-        worktree -- its cwd resolves to its own plain docket workspace dir,
-        which is never a git repo. The hop must still complete and produce a
-        valid (empty) artifact, not raise."""
+        """A `workdir` pod's Implementer has no codebase or worktree -- its cwd resolves to
+        its own plain docket workspace dir, never a git repo -- yet the hop must still
+        complete and produce a valid empty artifact, not raise."""
         work_dir = tmp_path / "workdir-target"
         work_dir.mkdir()
         _seed_pod(tmp_path, monkeypatch, "taskpod", work_dir=str(work_dir))
@@ -277,10 +264,9 @@ class TestDegradePaths:
     def test_non_repo_codebase_degrades_to_empty_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A `codebase` that exists on disk but was never `git init`-ed --
-        the worktree provisioning step falls back to a flat workspace,
-        and the diff probe must degrade the same way the mechanical verify
-        gate already does for this exact case."""
+        """A `codebase` that exists but was never `git init`-ed falls back to a flat
+        workspace; the diff probe must degrade the same way the mechanical verify gate
+        already does for this exact case."""
         plain_dir = tmp_path / "plain-codebase"
         plain_dir.mkdir()
         _seed_pod(tmp_path, monkeypatch, "flatpod", codebase=str(plain_dir))

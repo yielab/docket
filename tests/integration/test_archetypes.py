@@ -1,15 +1,12 @@
 """`core/archetypes.py` — the declarative role-archetype registry.
 
-Covers: closed-enum rejection (scope/modelClass/editRights/gateContract kind),
-the built-in/starter-library archetypes each validating, the user-overlay
-pattern (mirrors `docket-models.json`: built-ins + starter library overlaid by
-`~/.docket/docket-roles.json`, user wins by name), `docket roles`
-list/show/add/validate, and that the reviewer/tester
-gate-contract data, translated through `core.orchestrator`'s real
-gate-from-contract resolution, matches `core/pipeline.py`'s own hardcoded
-`default_pipeline()` verdict gates — gate execution is generic, so this is not a
-cross-check against a dispatch-private regex constant (see `core/dispatch.py`'s
-docstring note about `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
+Covers: closed-enum rejection (scope/modelClass/editRights/gateContract kind), the built-in and
+starter-library archetypes validating, the user-overlay pattern (mirrors `docket-models.json`:
+built-ins + starter library overlaid by `~/.docket/docket-roles.json`, user wins by name),
+`docket roles` list/show/add/validate, and that reviewer/tester gate-contract data resolved
+through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
+verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
+constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
 """
 
 from __future__ import annotations
@@ -148,15 +145,9 @@ class TestBuiltinAndStarterArchetypes:
             assert found.resolved_policy_role == name
 
     def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
-        """Gate execution reads a
-        step's *resolved* gate generically (`core.orchestrator.resolve_gate`/
-        `parse_verdict`), so the cross-check that matters now is that
-        this archetype's `gateContract`, translated through
-        `core.orchestrator`'s real gate-from-contract resolution, produces
-        exactly the same pattern/passValues as `core/pipeline.py`'s own
-        hardcoded `default_pipeline()` reviewer step — two independent
-        sources describing the same role must agree.
-        """
+        """The archetype's `gateContract`, resolved through `core.orchestrator`, must produce
+        the same pattern/passValues as `core/pipeline.py`'s hardcoded reviewer step -- two
+        independent sources describing the same role must agree."""
         found = arch.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"
         resolved = _orch._gate_from_contract(found.gate_contract)

@@ -646,14 +646,9 @@ class TestProtocolConformance:
         assert isinstance(adapter.OpenAIChatClient(ENDPOINT), ChatBackend)
 
     def test_core_llm_holds_no_wire_knowledge(self) -> None:
-        """The port must stay format-free — a wire field name appearing in
-        core/llm.py means translation has leaked out of the adapter.
-
-        Checks **executable string literals only**, via the AST: docstrings and
-        comments are excluded, because the module legitimately *describes* the
-        protocol it is a port for. A plain substring scan over the source flags
-        that prose and would have to be weakened until it caught nothing.
-        """
+        """The port must stay format-free -- a wire field name in core/llm.py means translation
+        leaked out of the adapter. Checks executable string literals only via AST, excluding
+        docstrings/comments, since a substring scan would flag legitimate protocol-describing prose."""
         import ast
         from pathlib import Path
 

@@ -1,20 +1,14 @@
 """Budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
 
-Covers:
-
-  * ``AgentMeta.coerce_paused``/``is_paused()`` — the typed accessor that fixes the
-    string/bool display bug (a writer storing a real ``bool`` while old display code
-    compared it against the string ``"true"``, which a Python ``True`` never equals).
-  * The pause writer: ``core/dispatch.py``'s per-hop budget gate marks the pod's Lead
-    ``paused=True, pausedReason="budget"`` once the cap is reached.
-  * Claim-time refusal: ``_claim_next_task`` refuses every claim for a paused pod
-    outright (a ``paused_refused`` trace event, no wasted turn) until resumed.
-  * ``docket profile <id> --resume`` clears both fields, writes an audit entry, and
-    (for a pod Lead) unblocks the pod's budget-blocked tasks.
-  * The token-based estimate fallback (``core/utils.estimate_cost_usd`` /
-    ``core/dispatch.pod_gating_cost``) that lets gating trip even when the
-    driver reports no USD cost at all — always labelled, never contaminating
-    recorded spend.
+Covers: ``AgentMeta.coerce_paused``/``is_paused()`` (typed accessor fixing the string/bool
+display bug: a writer stores a real ``bool`` while old code compared it to the string
+``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
+Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
+(``_claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
+trace event, no wasted turn -- until resumed); ``docket profile <id> --resume`` (clears both
+fields, audits, and for a pod Lead unblocks budget-blocked tasks); and the token-based estimate
+fallback (``core/utils.estimate_cost_usd``/``core/dispatch.pod_gating_cost``) that lets gating
+trip even when the driver reports no USD cost -- always labelled, never contaminating spend.
 """
 
 from __future__ import annotations
@@ -83,19 +77,9 @@ class _RecordingRunner:
 
 
 def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int) -> None:
-    """Seed a docket-native session (``core/session.py``'s on-disk shape) with
-    real measured token counts and no cost figure.
-
-    ``aggregate_cost`` reads through ``DocketDriver``
-    (``edges.adapters.docket_runtime.default_driver()``), which *never*
-    reports a USD cost (see ``core/runtime_driver.py``'s
-    ``TurnResult.cost_usd`` docstring) -- so "tokens without cost" is the
-    normal shape the estimate-fallback behaviour under test always has to
-    handle. *oc_dir* is unused
-    (kept so every existing call site is untouched); the write goes through
-    ``_cfg.SESSIONS_DIR``, which this suite already isolates per test via
-    conftest.py's autouse ``_isolate_docket_home``.
-    """
+    """Seeds a docket-native session with real token counts and no cost -- ``DocketDriver``
+    never reports a USD cost (see ``core/runtime_driver.py``'s ``TurnResult.cost_usd``), so
+    this is the normal shape; ``oc_dir`` is unused but kept so call sites stay untouched."""
     from urllib.parse import quote
 
     session_key = f"agent:{agent_id}:default"

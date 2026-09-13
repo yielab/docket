@@ -168,11 +168,9 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_specialist_gets_full_workspace_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A freshly provisioned specialist gets the same durable workspace set a
-    project agent gets — SOUL/AGENTS/HEARTBEAT plus the WORKFLOW_AUTO/MEMORY/
-    daily-log contract — with 700/600 permissions and a current-version
-    contract marker.
-    """
+    """A freshly provisioned specialist gets the same durable workspace set a project agent
+    gets -- SOUL/AGENTS/HEARTBEAT plus the WORKFLOW_AUTO/MEMORY/daily-log contract -- with
+    700/600 permissions and a current-version contract marker."""
     from docket.core import memory as _mem
 
     home = _seed_fresh(tmp_path, monkeypatch)
@@ -237,10 +235,9 @@ def test_specialist_reprovisioning_preserves_real_content(
 def test_specialist_backfills_bare_legacy_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A legacy install could leave specialists with only `.docket-meta.json`
-    — a subsequent the workstation foundation bootstrap must backfill the full workspace set
-    without needing a fresh agent registration.
-    """
+    """A legacy install could leave specialists with only `.docket-meta.json`; a subsequent
+    foundation bootstrap must backfill the full workspace set without a fresh agent
+    registration."""
     from docket.core import memory as _mem
 
     home = _seed_fresh(tmp_path, monkeypatch)

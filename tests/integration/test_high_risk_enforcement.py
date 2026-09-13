@@ -1,33 +1,14 @@
 """High-risk classes enforced on docket-launched processes.
-
-``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests,
-would be documentation, not enforcement -- the same defect shape the approval store
-and the policy engine also guard against. ``match_high_risk`` is wired into the two
-real paths docket itself controls. Three sibling helpers that once composed it --
-``high_risk_bins``, ``is_high_risk`` and ``resolve_command_action`` -- were
-deleted rather than left beside it: none had a production caller, because
-they modelled an ask/allow decision docket does not make for itself. This
-suite exercises the two real wiring points that remain:
-
-  * TestRunVerifyCmdHighRisk  -- ``edges/adapters/system.py``'s
-    ``run_verify_cmd`` is the one docket-launched subprocess built from a
-    fully free-form, operator-composed command string run through a real
-    shell (every other call in that module is a fixed argv list it built
-    itself -- not a comparable classification target, see
-    ``security-gates.spec.md``). A high-risk match now fails closed: the
-    shell command is never started at all.
-  * TestPreOutputHighRiskClassification -- ``core/dispatch.py``'s
-    ``pre_output`` guardrail scan also classifies a hop's real output
-    against the same built-in list, independently of the JSON policy
-    engine's own shipped ``high-risk-*.json`` templates (those are
-    evaluated at the ``pre_tool_call`` hook, gating a single tool call
-    before it ever runs -- see ``test_pre_tool_call_policy.py``). This
-    built-in classifier catches the same action classes one hop later, over
-    the hop's full output text, so the trip is still recorded even when no
-    matching policy file is installed. A match never downgrades an
-    existing, stronger policy_eval_detail verdict; it only raises a bare
-    "allow" to "warn" -- visibility only, since HIGH_RISK_PATTERNS is a
-    built-in list, not an operator-authored policy.
+``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests, would be
+documentation, not enforcement. ``match_high_risk`` is wired into the two real paths docket
+controls; three sibling helpers that once composed it were deleted since none had a production
+caller. Covers: TestRunVerifyCmdHighRisk (``run_verify_cmd`` is the one docket-launched
+subprocess built from a free-form, operator-composed shell command, unlike every other call in
+that module's fixed argv lists; a high-risk match fails closed, the shell command never
+starts); and TestPreOutputHighRiskClassification (``pre_output`` classifies a hop's real output
+against the same built-in list, independently of the JSON policy engine's ``pre_tool_call``
+hook, so the trip is recorded even with no policy file installed -- it never downgrades an
+existing stronger verdict, only raises a bare "allow" to "warn" for visibility).
 """
 
 from __future__ import annotations

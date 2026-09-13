@@ -1,22 +1,14 @@
 """Every dispatch path yields a queryable run record.
 
-Covers the four ways a pod dispatch can be triggered — CLI (`docket pod <p>
-dispatch`), the serve webhook (`POST /dispatch/<project>`), a due schedule
-(`serve._check_schedules`), and the sweep loop (`serve._run_sweeps(dispatch=True)`)
-— and proves each one:
-
-  1. creates a run record in ``core.runs`` (queryable via ``get_run``/``list_runs``)
-  2. records a success outcome when dispatch succeeds
-  3. records a failure outcome (with the exception text) when dispatch raises,
-     WITHOUT the exception propagating out and killing the caller (CLI prints
-     an error and exits 1 like any other command failure; webhook/schedule/
-     sweep never crash their thread/loop)
-
-``docket.core.dispatch.dispatch_pod`` is monkeypatched directly at each call
-site (the same technique ``test_scheduled_and_webhook_dispatch.py`` already uses) so
-these tests stay fast and hermetic — the pipeline's own internals (hop order,
-budget gating, ...) are covered by ``test_dispatch.py``; this file is only
-about "did the invocation get recorded".
+Covers the four ways a pod dispatch can be triggered -- CLI, the serve webhook (`POST
+/dispatch/<project>`), a due schedule (`serve._check_schedules`), and the sweep loop
+(`serve._run_sweeps(dispatch=True)`) -- and proves each one creates a run record in
+``core.runs`` (queryable via ``get_run``/``list_runs``), records a success outcome when
+dispatch succeeds, and records a failure outcome (with the exception text) when dispatch
+raises, without the exception propagating out and killing the caller (CLI exits 1 like any
+other command failure; webhook/schedule/sweep never crash their thread/loop). ``dispatch_pod``
+is monkeypatched at each call site to stay hermetic -- pipeline internals are covered by
+``test_dispatch.py``; this file only checks the invocation got recorded.
 """
 
 from __future__ import annotations

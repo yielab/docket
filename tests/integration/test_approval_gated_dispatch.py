@@ -1,38 +1,30 @@
 """Approval-gated dispatch — the approval store's missing producer.
 
-This suite exercises the pipeline that wires ``core/approval.py``'s
-``approval_create`` into ``core/dispatch.py`` end to end, so it creates,
-waits on, and resolves a docket approval rather than sitting with zero
-production callers:
+Wires ``core/approval.py``'s ``approval_create`` into ``core/dispatch.py`` end to end: creates,
+waits on, and resolves a real approval rather than sitting with zero production callers.
 
-  * TestGateSources              — the pod-level ``requireApprovalRoles`` gate
-    source in isolation, and the policy/pipeline gate seams staying inert (always False).
-  * TestGateFiresPreHop           — a required hop stops the pipeline *before*
-    its agent turn runs, persists ``waiting_approval`` with a real approval
-    token + the exact pipeline position, and traces ``approval_required``.
-  * TestNotClaimableConcurrently  — a ``waiting_approval`` task is invisible to
-    every claim path (a second ``dispatch_pod`` call, or ``_claim_next_task``
-    directly) until its approval resolves.
-  * TestGrantResumesAtHop         — a grant (``core/dispatch.py`` directly, and
-    through ``cli/_approve.py``) flips the task back to ``pending`` and the
-    *next* dispatch continues from the exact hop it stopped on — never
-    re-running completed hops, never re-prompting for that same hop.
-  * TestDenyFailsTerminally       — a deny (direct, and through
-    ``cli/_deny.py``) fails the task immediately, ``failureKind:
-    "approval_denied"``, never auto-retried (with or without ``--resume``).
-  * TestExpirySweepDenies         — ``approval_sweep_expired`` now resolves a
-    stale pending record to **denied** (fail-closed), not the old, read-by-
-    nobody ``"expired"``, and reaches into dispatch to fail the waiting task.
-  * TestHttpApprovalEndpoint      — ``POST /approvals/<token>`` genuinely
-    resumes/kills the task it gated, the same as the CLI channel.
-  * TestReworkReGatesAfterResume  — the single-use gate-override is consumed
-    exactly once: a Reviewer rework cycle sending the task back to the same
-    Implementer hop gates again, with a fresh token.
-  * TestBudgetGateTakesPrecedence — affordability is still checked before
-    permission: a budget-blocked hop blocks, it does not wait for approval.
-  * TestToolLevelApprovalMode     — the tool-call-level gate's own approval
-    routing (``core/tools.py``'s ``ToolContext.approval_mode``), one level
-    below the pod-dispatch gate the rest of this file covers: ``"wait"`` is
+  * TestGateSources — pod-level ``requireApprovalRoles``, the policy seam (always False), and
+    the pipeline-gate seam, each in isolation.
+  * TestGateFiresPreHop — a required hop stops *before* its turn runs, persists
+    ``waiting_approval`` with a token + exact pipeline position, and traces ``approval_required``.
+  * TestNotClaimableConcurrently — a ``waiting_approval`` task is invisible to every claim path
+    (a second ``dispatch_pod`` call, or ``_claim_next_task`` directly) until its approval resolves.
+  * TestGrantResumesAtHop — a grant (direct, and via ``cli/_approve.py``) flips the task to
+    ``pending`` and the next dispatch resumes at the exact hop it stopped on — never re-running
+    completed hops, never re-prompting for that same hop.
+  * TestDenyFailsTerminally — a deny (direct, and via ``cli/_deny.py``) fails the task
+    immediately with ``failureKind: "approval_denied"``, never auto-retried even with ``--resume``.
+  * TestExpirySweepDenies — ``approval_sweep_expired`` resolves a stale pending record to
+    **denied** (fail-closed, not the old unread ``"expired"``) and fails the waiting task.
+  * TestHttpApprovalEndpoint — ``POST /approvals/<token>`` genuinely resumes/kills the task it
+    gated, same as the CLI channel.
+  * TestReworkReGatesAfterResume — the single-use gate override is consumed exactly once: a
+    Reviewer rework cycle sending the task back to the same Implementer hop gates again, with a
+    fresh token.
+  * TestBudgetGateTakesPrecedence — affordability is checked before permission: a budget-blocked
+    hop blocks, it does not wait for approval.
+  * TestToolLevelApprovalMode — the tool-call-level gate's own routing
+    (``ToolContext.approval_mode``), one level below the pod-dispatch gate: ``"wait"`` is
     unchanged, ``"refuse"`` never touches the approval store at all.
 """
 

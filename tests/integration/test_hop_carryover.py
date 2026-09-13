@@ -1,24 +1,14 @@
 """Bounded hop prompts.
-
-``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior
-hop's *full* raw output into the next hop's prompt, and does not cap the
-total *bytes* threaded forward with one process-wide constant and truncate
-blindly (head+tail, no regard for structure) once a hop's share is exceeded.
-Instead, every prior hop's rendered ``HandoffArtifact`` is fit to a per-role
-*token* budget via ``core/context.py``'s ``compile_artifact``, which sheds
-the artifact's own less-valuable fields (``HandoffArtifact.DROP_ORDER``)
-before ever truncating ``summary`` itself. There is no
-``_hop_carryover_budget``/``_truncate_carryover`` byte-cap machinery and no
-``config.HOP_CARRYOVER_BYTES``. See ``tests/unit/core/test_context.py``
-for the compiler's own unit tests; this file covers:
-  * TestHopMessageCap      — ``_hop_message`` itself, against the new
-    token-budget compiler: small tasks unchanged, the task description never
-    truncated (even when huge), truncation kicks in once a prior hop's
-    artifact exceeds its share, newest-hop-least-truncated, and the
-    aggregate carryover never exceeds the role's budget even with several
-    large prior outputs (the pathological case).
-  * TestContextComposedTrace — the ``context_composed`` trace event emitted
-    per hop by ``dispatch_task``, end to end through a real (lean) pod.
+``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior hop's full raw output
+into the next hop's prompt, nor cap total bytes with one process-wide constant and truncate
+blindly once a hop's share is exceeded. Instead, each rendered ``HandoffArtifact`` is fit to a
+per-role token budget via ``core/context.py``'s ``compile_artifact``, which sheds the
+artifact's less-valuable fields (``DROP_ORDER``) before truncating ``summary`` itself; there is
+no byte-cap machinery left. Covers: TestHopMessageCap (``_hop_message`` against the
+token-budget compiler: small tasks unchanged, the task description never truncated, truncation
+kicks in once a prior hop's share is exceeded, newest-hop-least-truncated, aggregate carryover
+never exceeds the role's budget); and TestContextComposedTrace (the ``context_composed`` trace
+event emitted per hop by ``dispatch_task``, end to end through a real pod).
 """
 
 from __future__ import annotations
