@@ -370,16 +370,12 @@ def _dispatch_retry_role_names() -> set[str]:
 
 
 def _provider_credential_names() -> set[str]:
-    """Provider API-key env var names, read from the two hand-maintained
-    provider -> credential-name maps (core/provider.py, edges/adapters/llm.py)
-    instead of re-typing them."""
-    from docket.core.provider import _PROVIDER_CREDENTIALS
-    from docket.edges.adapters.llm import _PROVIDER_CREDENTIAL_NAMES
+    """Provider API-key env var names, read from the one provider -> credential-name
+    map (core/provider.py, which the llm adapter imports) instead of re-typing them."""
+    from docket.core.provider import PROVIDER_CREDENTIAL_NAMES
 
     names: set[str] = set()
-    for credential_names in _PROVIDER_CREDENTIALS.values():
-        names.update(credential_names)
-    for credential_names in _PROVIDER_CREDENTIAL_NAMES.values():
+    for credential_names in PROVIDER_CREDENTIAL_NAMES.values():
         names.update(credential_names)
     return names
 
