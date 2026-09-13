@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "list info cost commands"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

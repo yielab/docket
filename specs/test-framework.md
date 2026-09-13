@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.16.0
+**Version**: 2.17.0
 **Status**: Active
 **Last Updated**: 2026-09-13
 
@@ -99,7 +99,12 @@ Requirements:
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"`; the module must exist and every `src/` module over 150
    lines must have such a file. A file over 800 lines splits as `test_<module>__<aspect>.py`.
-   File names never encode history (`_v2`, `_migration`, `_removed`, `_legacy`).
+   File names never encode history (`_v2`, `_migration`, `_removed`, `_legacy`). Every
+   `integration/**/test_*.py` also declares `SUBJECT`, naming the most specific importable
+   `docket` module or package the file exercises; a cross-module or process-boundary file may
+   name a package (`docket.core`, `docket.cli`, or the top-level `docket` package for a
+   whole-envelope test). Unlike the unit rule, a mismatch with the file's own name is not an
+   error here — only importability is required.
 3. **A test that reads prose or builds an artifact is agent-lane by definition.** Every file
    under `agent/` declares `LANE`, `REASON` (the recorded defect it prevents) and `RETIRE_WHEN`
    (the condition, not a date, under which it is deleted). The lane's total is ratcheted by a
@@ -127,7 +132,9 @@ landed guards for rules 2, 3, 4, 6 and part of 8: `tests/guards/test_layout.py` 
 unit↔module mapping and `SUBJECT` match (a small named exemption covers files that predate the
 mirror-by-name convention), and separately checks every `src/` module over 150 lines against a
 committed, shrink-only baseline (`tests/guards/layout_baseline.txt`) rather than requiring
-one immediately; `tests/guards/test_lane_headers.py` checks `LANE`/`REASON`/`RETIRE_WHEN` on every
+one immediately; the same file also checks every `integration/**/test_*.py`'s `SUBJECT` resolves
+via `importlib.util.find_spec` to an importable `docket` module or package, reporting every
+offender in one assertion, with no filename-match requirement; `tests/guards/test_lane_headers.py` checks `LANE`/`REASON`/`RETIRE_WHEN` on every
 `agent/` file and the no-`subprocess`-in-`unit/` rule; `tests/guards/test_agent_lane_budget.py`
 ratchets the lane's total against a committed baseline (5,151 lines today) that may only fall;
 `tests/conftest.py` fails a test's own report past its
@@ -405,6 +412,16 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.17.0 (2026-09-13)
+
+- Extends rule 2 to `integration/`: every file declares `SUBJECT` naming an importable `docket`
+  module or package, checked by `tests/guards/test_layout.py` via `importlib.util.find_spec`.
+  Motivation: the integration lane already carried the convention informally, but seven files
+  held free-text values (`"logs command"`, `"edit snapshot"`, and five more) and six named a
+  module the file does not exercise, with nothing checking either. Unlike the unit rule, a
+  mismatch with the file's own name is not an error, since a cross-module or process-boundary
+  test may legitimately name a package.
 
 ### Version 2.16.0 (2026-09-13)
 

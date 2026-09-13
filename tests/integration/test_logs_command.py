@@ -18,7 +18,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "logs command"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

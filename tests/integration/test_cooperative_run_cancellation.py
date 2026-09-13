@@ -27,7 +27,7 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, Too
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 
-SUBJECT = "docket.core.llm"
+SUBJECT = "docket.core.runs"
 
 
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

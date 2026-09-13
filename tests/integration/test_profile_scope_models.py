@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "profile scope models"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

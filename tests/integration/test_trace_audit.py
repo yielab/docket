@@ -20,7 +20,7 @@ from docket.cli import _trace as trace_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
 
-SUBJECT = "docket.core.llm"
+SUBJECT = "docket.core"
 
 if TYPE_CHECKING:
     from docket.core.llm import ChatMessage

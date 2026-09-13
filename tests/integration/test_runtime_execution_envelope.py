@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SUBJECT = "runtime execution envelope"
+SUBJECT = "docket"
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "packages" / "docket-runtime"
