@@ -486,5 +486,13 @@
     "heading": "◇ WAVE 34 CLOSED (2026-09-13) — finish the D-36 function split, two measured fixes, one audit",
     "bytes": 16893,
     "sha256": "b69492bc5e99c28e796e155cde55c2846ce43c5c904cec256fda8a7021785cc4"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 35 CLOSED (2026-09-13) — second docstring sweep, one dead flag, one lane rule",
+    "bytes": 15483,
+    "sha256": "c985ef331993b1f697b2cbe2d03afebdb1a9b62f04b000c40998f31070e74d38"
   }
 ]

@@ -11,21 +11,27 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD — WAVE 35 (2026-09-13): second docstring sweep, one dead flag, one lane rule
+> ## ◉ NO ACTIVE WAVE — one card remains claimable
 >
-> **Wave 35 is the active section below.** Six docstring-only cards take the function-docstring
-> ratchet from 372 towards about 110 (`core/dispatch.py` alone holds 50), one card retires the
-> `gatesEnabled` fleet flag that the Wave 34 audit showed has no reader and no writer outside a
-> hidden debug verb, and one card gives the integration lane's `SUBJECT` line a rule and a guard.
-> All eight are one-worker cards with disjoint file ownership; the board, ROADMAP, README and
-> CONTRIBUTING counts stay integrator-owned.
+> **Wave 35 closed on 2026-09-13** and is archived in
+> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). Six docstring-only packets
+> took the comment baseline from 372/40 to 229/29 over-budget docstrings with the code proved
+> AST-identical; the dead `gatesEnabled` fleet flag was retired (spec 0.19.2); and every
+> integration test's `SUBJECT` now names an importable `docket` path under a new guard (spec
+> 2.17.0). On the way the wave found that the CI docs-drift job had been red since the Wave 34
+> credential-table merge (fixed, and the script is now in the integrator's batch gates) and that
+> the `maintain sessions` banner still denied session compaction (corrected).
 >
-> **Waves 33 and 34 closed on 2026-09-13** and are archived in
-> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md): the Wave 32 audit and a
-> first docstring sweep (558/112 to 372/40), then the D-36 function split under a function-span
-> ratchet, two measured fixes, and the fourth unwired-machinery instance (`docket gates
-> enable/disable`, claims corrected; wire or retire is an open maintainer decision recorded in
+> **Waves 33 and 34 closed the same day**: the Wave 32 audit and a first docstring sweep
+> (558/112 to 372/40), then the D-36 function split under a function-span ratchet, two measured
+> fixes, and the fourth unwired-machinery instance (`docket gates enable/disable`, claims
+> corrected; wire or retire is an open maintainer decision recorded in
 > `specs/functional/security-gates.spec.md`).
+>
+> **Measured and left for the next wave:**
+> `tests/integration/test_agent_loop.py::TestCooperativeRunCancellation::test_cancellation_after_concurrent_approval_grant_never_runs_handler`
+> failed once in three full-suite runs under the load of seven concurrent suites and passed
+> twenty of twenty in isolation; it waits on three 5-second deadlines. Same shape as W34-C5.
 >
 > **W29-C7 stays claimable but unclaimed.** It publishes the provenance-complete beta and
 > closes Phase 23. Its publication approval from 2026-09-07 still stands and only its ordering ever
@@ -77,243 +83,6 @@
 short-lived card branch or isolated worktree per task and integrate it into `main` without rewriting
 history. `platform` may remain as a synchronized historical/integration ref, but it is not a second
 release source.
-
----
-
-## ◉ WAVE 35 ACTIVE (2026-09-13) — second docstring sweep, one dead flag, one lane rule
-
-**Measured at `a6ce41e` (all gates green, main pushed).** `scripts/maint/comment_lint.py` with
-the enforced budget (module 12 lines, def 3 lines) over `src/` and `tests/` counts 372
-over-budget function docstrings and 40 over-budget module docstrings, the shrink-only baseline
-`scripts/maint/comment-baseline.json` left by Wave 33. The per-file tally is steep at the top
-and flat below: `core/dispatch.py` 50, then twenty files at 6 to 11 each, then a long tail
-under 6. The Wave 34 audit classified `FleetSecurity.gates_enabled` as cli-only: `rg -n
-'gates_enabled|gatesEnabled' src/` finds the field, two accessors in `core/fleet.py`, and the
-hidden `_json gates-get`/`gates-set` verbs in `cli/__init__.py`; no live-path reader, no
-product writer, no documentation. The integration lane declares `SUBJECT` on every file with
-no rule behind it: seven values are free text (`"edit snapshot"`, `"logs command"`), six name
-a module the file does not exercise (`test_agent_loop.py` says `docket.core.llm`), and
-`tests/guards/test_layout.py` checks only the unit lane.
-
-**Rules for every docstring card (C1 to C6).** Only docstrings change: the integrator strips
-docstrings from both revisions and compares `ast.dump`; any code difference rejects the branch
-whole. Every invariant, "why", fail-closed, limit, ordering or "never" sentence survives,
-compressed if needed; a docstring may stay over budget when its rationale lives nowhere else.
-History, card ids, dates, signature restatement and step narration go. A paragraph that already
-lives in a spec becomes one line citing the spec path. Typer command docstrings are user help
-and stay byte-identical. No `#` comments added, no other file touched.
-
-**Contention.** The six docstring packets, C7 and C8 own disjoint files. C7 owns
-`tests/integration/test_data_layer.py`; C8 therefore leaves that file's `SUBJECT` line alone
-and the integrator sets it at merge. Merge order: C7 and C8 first (they change tests), then
-C1 to C6 in any order, with the comment baseline lowered by the integrator after each batch.
-
-| Card | Owns | Over-budget def docstrings at open |
-| --- | --- | --- |
-| W35-C1 | `src/docket/core/dispatch.py` | 50 |
-| W35-C2 | `src/docket/cli/_install.py`, `_mcp.py`, `_pod.py`, `_agents.py` | 11, 11, 11, 10 |
-| W35-C3 | `src/docket/core/approval.py`, `llm.py`, `memory.py`, `pod.py` | 11, 11, 11, 10 |
-| W35-C4 | `src/docket/core/telegram.py`, `models_policy.py`, `runs.py`, `trace.py` | 10, 9, 9, 9 |
-| W35-C5 | `src/docket/core/archetypes.py`, `identity.py`, `models.py`, `orchestrator.py`, `runtime_driver.py`, `tools.py` | 8 each |
-| W35-C6 | `src/docket/core/security.py`, `edges/adapters/toolbox.py`, `serve.py`, `cli/_doctor.py`, `core/mcp_tools.py`, `core/policy.py` | 7, 7, 7, 6, 6, 6 |
-
-### W35-C1 — trim docstrings in `core/dispatch.py`
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 50 of the 372 over-budget function docstrings sit in one 2,247-line
-module, the dispatch state machine.
-
-**Goal:** bring every function, method and class docstring in the file to three lines or fewer
-where its content allows, keeping every invariant sentence (claim/hop/finalize ordering, the
-docket-owned `HEARTBEAT.md` region, verify-gate and reviewer-gate semantics, rework bounds,
-cancellation checkpoints). The module docstring is in budget and stays.
-
-**Owns:** `src/docket/core/dispatch.py` only.
-
-**Acceptance / oracle:** `uv run python scripts/maint/comment_lint.py --module-max 12 --def-max 3 src/docket/core/dispatch.py`
-reports a lower `long-def-doc` count than 50, with each remaining entry justified in the
-handoff; `--check` reports zero archaeology; the integrator's docstring-stripped AST comparison
-reports `SAME`; `uv run pytest -q tests/unit/core/test_dispatch.py tests/integration/test_dispatch.py` unchanged and green.
-
-**RED:** the lint command above lists 50 findings on the base commit.
-
-**Focused validation:** the lint command, then `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest -q`.
-
-### W35-C2 — trim docstrings in the `cli/` packet
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 43 over-budget function docstrings across `cli/_install.py`, `cli/_mcp.py`,
-`cli/_pod.py` and `cli/_agents.py`.
-
-**Goal:** as C1, for the four files. Typer `@app.command`/`@app.callback` docstrings are
-rendered as user help and into `docs/commands.md`; they are not touched, so the golden suite
-and the generated reference stay byte-identical.
-
-**Owns:** the four files only.
-
-**Acceptance / oracle:** as C1 over the four files; additionally `bash tests/golden/run.sh verify-all`
-green and `./scripts/gen_cli_docs.py --check` (or the repository's drift check) reports no
-change to `docs/commands.md`.
-
-**RED:** the lint command lists 43 findings on the base commit.
-
-**Focused validation:** lint, `bash tests/golden/run.sh verify-all`, then the full python gates.
-
-### W35-C3 — trim docstrings in `core/` packet A
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 43 over-budget function docstrings across `core/approval.py`, `core/llm.py`,
-`core/memory.py` and `core/pod.py`.
-
-**Goal:** as C1, for the four files. `core/llm.py` carries the `TokenUsage` "measured, never
-estimated" distinction and `core/memory.py` the `CONTRACT_VERSION` resume rules; both survive.
-
-**Owns:** the four files only.
-
-**Acceptance / oracle:** as C1 over the four files.
-
-**RED:** the lint command lists 43 findings on the base commit.
-
-**Focused validation:** lint, then the full python gates.
-
-### W35-C4 — trim docstrings in `core/` packet B
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 37 over-budget function docstrings across `core/telegram.py`,
-`core/models_policy.py`, `core/runs.py` and `core/trace.py`.
-
-**Goal:** as C1, for the four files. `core/telegram.py`'s inbound-only and four-verb sentences,
-`core/runs.py`'s cancellation lifecycle (D-30) and `core/trace.py`'s retention and redaction
-bounds survive.
-
-**Owns:** the four files only.
-
-**Acceptance / oracle:** as C1 over the four files.
-
-**RED:** the lint command lists 37 findings on the base commit.
-
-**Focused validation:** lint, then the full python gates.
-
-### W35-C5 — trim docstrings in `core/` packet C
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 48 over-budget function docstrings, eight in each of `core/archetypes.py`,
-`core/identity.py`, `core/models.py`, `core/orchestrator.py`, `core/runtime_driver.py` and
-`core/tools.py`.
-
-**Goal:** as C1, for the six files. `core/tools.py` is the chokepoint: every sentence about the
-three policy hooks, capability-based denial and the single execution path survives.
-`core/runtime_driver.py`'s one-driver-not-a-framework sentence survives.
-
-**Owns:** the six files only.
-
-**Acceptance / oracle:** as C1 over the six files; `tests/unit/core/test_tools.py` unchanged and
-green.
-
-**RED:** the lint command lists 48 findings on the base commit.
-
-**Focused validation:** lint, then the full python gates.
-
-### W35-C6 — trim docstrings in the mixed packet
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** 39 over-budget function docstrings across `core/security.py`,
-`edges/adapters/toolbox.py`, `serve.py`, `cli/_doctor.py`, `core/mcp_tools.py` and
-`core/policy.py`.
-
-**Goal:** as C1, for the six files. `edges/adapters/toolbox.py` "holds no policy" and
-`core/mcp_tools.py` "every adapted tool is `kind="write"`" survive. `cli/_doctor.py` has Typer
-command docstrings that stay byte-identical.
-
-**Owns:** the six files only.
-
-**Acceptance / oracle:** as C1 over the six files; `bash tests/golden/run.sh verify-all` green.
-
-**RED:** the lint command lists 39 findings on the base commit.
-
-**Focused validation:** lint, golden, then the full python gates.
-
-### W35-C7 — retire the `gatesEnabled` fleet flag
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger (W34-A1, verified by the integrator at `a6ce41e`):** `rg -n 'gates_enabled|gatesEnabled' src/ docs/ specs/ README.md`
-finds `FleetSecurity.gates_enabled` (`core/fleet.py:71`), `get_gates_enabled`/`set_gates_enabled`
-(`core/fleet.py:282-289`), and the hidden `_json gates-get`/`gates-set` verbs in
-`cli/__init__.py` (about line 2636). Nothing on the live path reads it; no product command
-writes it (`docket init --no-gates` and `docket gates enable/disable` write
-`approvalRoutingState`, per `specs/functional/security-gates.spec.md` requirement 2); no spec,
-doc or golden mentions it. Twelve test fixtures seed `"gatesEnabled": false` into `fleet.json`
-and `FleetSecurity` is lenient, so an existing `fleet.json` carrying the key keeps loading.
-
-**Goal:** remove the field, the two accessors and the two verbs, and the three tests in
-`tests/integration/test_data_layer.py` that exist only to exercise them (`test_security_gates`,
-`test_gates_get_false`, `test_gates_set_true`, plus the `gates_enabled` assertion in the
-fixture-loading test). Keep the `test_extra_fields_survive` case: an old `fleet.json` with the
-key must still load, which is now the property that test proves. Record the removal in the
-security-gates spec changelog (version 0.19.2) as the retirement of a flag that had no reader.
-
-**Non-goals:** no change to `approvalRoutingState`/`isolationEnabled` or their commands; no
-fixture edits outside the owned test file (the seeded key is legitimate "unknown key survives"
-data); no golden regeneration (`tests/golden/fixtures/seed.sh` keeps its key for the same
-reason).
-
-**Owns:** `src/docket/core/fleet.py` (the field and the two accessors only),
-`src/docket/cli/__init__.py` (the two `_json` verbs only), `tests/integration/test_data_layer.py`,
-`specs/functional/security-gates.spec.md` (version line, changelog entry, and the one sentence
-near line 678 if it lists the field), the `Security Gates` row in `specs/README.md`.
-
-**Acceptance / oracle:** the `rg` above finds nothing in `src/`; a `fleet.json` containing
-`"security": {"gatesEnabled": false}` still validates (the kept test); `uv run pytest -q`,
-`bash tests/golden/run.sh verify-all`, `bash scripts/validate-specs.sh` green.
-
-**RED:** the `rg` above lists the field, accessors and verbs on the base commit.
-
-**Focused validation:** `uv run pytest -q tests/integration/test_data_layer.py tests/guards`, golden, specs, then the full python gates.
-
-### W35-C8 — give the integration lane's `SUBJECT` a rule and a guard
-
-**Status:** READY · **Size:** S · **Owner:** one worker
-
-**Measured trigger:** every file under `tests/integration/` declares `SUBJECT`, but
-`specs/test-framework.md` requirement 2 and `tests/guards/test_layout.py` cover only
-`tests/unit/`. Measured at `a6ce41e`: seven integration values are free text
-(`test_auth_context_maintain_keys_add.py`, `test_edit_snapshot.py`,
-`test_list_info_cost_commands.py`, `test_logs_command.py`, `test_models_audit.py`,
-`test_profile_scope_models.py`, `test_runtime_execution_envelope.py`) and at least six name a
-module the file does not exercise (`test_agent_loop.py`, `test_cooperative_run_cancellation.py`,
-`test_role_tools_and_identity.py`, `test_runtime_driver.py`, `test_trace_audit.py` all say
-`docket.core.llm`; `test_dispatch_run_records.py` says `docket.serve`).
-
-**Goal:** amend requirement 2 so that every `integration/` file's `SUBJECT` names an importable
-`docket` module or package (dotted path, the most specific one the file exercises; a
-cross-module file may name a package); extend `tests/guards/test_layout.py` to check
-importability for the integration lane (a mismatch with the file name is not an error there);
-see the guard fail on the free-text values before fixing them; then set every wrong or free-text
-`SUBJECT` to the module the file's imports and docstring say it exercises.
-
-**Non-goals:** no test body changes, no file renames, no change to the unit-lane rule or the
-exemption table, no edit to `tests/integration/test_data_layer.py` (C7 owns it; the integrator
-sets its `SUBJECT` at merge).
-
-**Owns:** `specs/test-framework.md` (requirement 2, enforcement-status sentence, version 2.17.0
-and changelog), the `Test Framework` row in `specs/README.md`, `tests/guards/test_layout.py`, and
-the `SUBJECT` line only of every file under `tests/integration/` except `test_data_layer.py`.
-
-**Acceptance / oracle:** the new guard is red on the base commit's seven free-text values (say
-so in the handoff with the failure text) and green after; `uv run pytest -q tests/guards`,
-`uv run pytest -q`, `bash scripts/validate-specs.sh` green; a scan of every integration
-`SUBJECT` shows an importable `docket` path.
-
-**RED:** the extended guard fails on the base commit.
-
-**Focused validation:** `uv run pytest -q tests/guards/test_layout.py`, then the full python gates and `bash scripts/validate-specs.sh`.
 
 ---
 

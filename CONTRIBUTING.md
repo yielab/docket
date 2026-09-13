@@ -119,7 +119,7 @@ All contributions must include appropriate tests:
 
 For scale, so you know what you're getting into: **2,488 tests** in the default suite
 (`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~31,445 lines** of Python in the shipped package, **28 specifications**
+runs separately), **~30,066 lines** of Python in the shipped package, **28 specifications**
 validated in CI, and **38 commands** in the [command reference](docs/commands.md).
 `scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
 cannot silently go stale.
