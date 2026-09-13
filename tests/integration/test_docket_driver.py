@@ -1,22 +1,14 @@
-"""`DocketDriver`, the daemon-free `RuntimeDriver`
-(`edges/adapters/docket_runtime.py`).
+"""`DocketDriver`, the daemon-free `RuntimeDriver` (`edges/adapters/docket_runtime.py`).
 
-`DocketDriver` implements the 7-method `RuntimeDriver` Protocol on top of
-`core/agent_loop.py` with no external daemon underneath. Covers:
-
-* **`run_turn`** maps `AgentLoopResult` onto `TurnResult` honestly: `cost_usd`
-  stays `0.0` always, real tool calls actually execute end-to-end (through
-  the real gated dispatcher, not a stub), and an ordinary failure (missing
-  meta, unresolvable model) comes back as `TurnResult(ok=False, ...)`,
-  never an exception.
-* **Root resolution precedence** for the tool-containment boundary --
-  worktree > codebase > work_dir > bare workspace dir -- proven with the
-  real `read` tool against real marker files, not just by inspecting the
-  helper's logic.
-* **`provision`/`teardown`** are honest no-ops (no daemon to register or
-  unregister with), and `capabilities()` says so.
-* **`list_sessions`/`read_new_turns`/`usage`** read real, durable
-  `core/session.py` storage, scoped correctly to one agent's own sessions.
+Implements the 7-method `RuntimeDriver` Protocol on top of `core/agent_loop.py` with no
+external daemon underneath. Covers: `run_turn` maps `AgentLoopResult` onto `TurnResult`
+honestly (`cost_usd` stays `0.0` always, real tool calls execute end-to-end through the real
+gated dispatcher, and an ordinary failure comes back as `TurnResult(ok=False, ...)`, never an
+exception); root-resolution precedence for the tool-containment boundary -- worktree > codebase
+> work_dir > bare workspace dir -- proven with the real `read` tool against real marker files;
+`provision`/`teardown` are honest no-ops, and `capabilities()` says so; and
+`list_sessions`/`read_new_turns`/`usage` read real, durable `core/session.py` storage, scoped
+correctly to one agent's own sessions.
 """
 
 from __future__ import annotations
@@ -1521,10 +1513,9 @@ class TestSessionIntrospection:
 
 
 def _probe_registry() -> ToolRegistry:
-    """A one-tool registry that reports back the exact `ctx.sandbox` value
-    `run_turn` built, so a test can observe it without hand-constructing a
-    `ToolContext` itself -- the real construction path is the thing under
-    test."""
+    """A one-tool registry reporting back the exact `ctx.sandbox` value `run_turn` built, so a
+    test observes it without hand-constructing a `ToolContext` -- the real construction path
+    is the thing under test."""
     registry = ToolRegistry()
 
     def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
@@ -1574,12 +1565,9 @@ def _probe_call_response() -> ChatResponse:
 
 
 class TestIsolationWiring:
-    """`docket gates isolate on` writes `security.isolationEnabled` to
-    fleet.json -- before this wire, nothing on the real turn path ever read
-    it back, so isolation ON was silently indistinguishable from isolation
-    OFF on every live turn (the reproduction this card was opened against).
-    `DocketDriver.run_turn` now resolves it via `_resolve_sandbox`.
-    """
+    """`docket gates isolate on` writes `security.isolationEnabled` to fleet.json;
+    `DocketDriver.run_turn` resolves it via `_resolve_sandbox`, so isolation ON is no longer
+    silently indistinguishable from OFF on the live turn path."""
 
     def test_isolation_off_leaves_ctx_sandbox_off(self) -> None:
         # No fleet.json write at all -- the default, overwhelmingly common

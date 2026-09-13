@@ -1,22 +1,14 @@
 """Cancellation reaching an in-flight `bash` command.
 
-An already-running tool handler ordinarily runs to completion once
-dispatched, because a Python thread cannot be killed safely. A subprocess
-can, and `bash` is the one handler where a separate process's cancellation
-request reaches all the way into a command already running, not only before
-it starts. Pinned here, in order of how much each matters:
-
-* `run_bash` notices a cancellation callback mid-command and returns promptly,
-  with the process group actually gone -- not just eventually, at the tool's
-  own timeout.
-* A real turn dispatching one `bash` call through `run_agent_turn` stops with
-  `stop_reason="run_cancelled"` on that same signal, with the assistant call
-  and its (cancelled) tool result persisted as one atomic session unit, and
-  the backend called exactly once.
-* With no callback at all, timeout behaviour -- including the exact message
-  -- is untouched, byte for byte: every other handler still simply runs to
-  completion once dispatched.
-* The same holds under the bwrap sandbox backend, when available.
+An already-running tool handler ordinarily runs to completion once dispatched, because a
+Python thread cannot be killed safely; a subprocess can, and `bash` is the one handler where a
+separate process's cancellation request reaches into a command already running. Pinned:
+`run_bash` notices a cancellation callback mid-command and returns promptly with the process
+group actually gone (not just at the tool's own timeout); a real turn dispatching one `bash`
+call through `run_agent_turn` stops with `stop_reason="run_cancelled"`, with the assistant call
+and its cancelled tool result persisted as one atomic session unit and the backend called
+exactly once; with no callback, timeout behaviour -- including the exact message -- is
+untouched byte for byte; and the same holds under the bwrap sandbox backend, when available.
 """
 
 from __future__ import annotations

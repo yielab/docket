@@ -1,25 +1,14 @@
 """Generalized gates, exercised through the real dispatch state machine.
 
-`core/dispatch.py`'s gate execution reads a step's *resolved* gate — its own
-declared `gate`, or (only when a step omits one) its archetype's
-`gateContract` — instead of branching on a hardcoded role name. Covers, via
-`dispatch_task`/`dispatch_pod` with a custom `PipelineSpec` (never the
-built-in default, which is covered byte-for-byte by the pre-existing
-test_dispatch.py/test_retries_and_timeouts.py/test_reviewer_gate.py/
-test_autopause.py/test_verify_gate.py/test_approval_gated_dispatch.py suites):
-
-  * a `mechanical` gate on a non-"implementer" role gets the same
-    worktree-aware cwd resolution the implementer always has ("cwd
-    resolves from workspace kind", generalized beyond one hardcoded role);
-  * a `verdict` gate on a non-built-in (starter-library) archetype gates
-    exactly like reviewer/tester always have, with the new generic trace
-    event names;
-  * a pipeline-declared `approval` step genuinely gates pre-hop — the
-    `_pipeline_step_requires_approval` seam — and a grant resumes
-    it the same way the pod-level `requireApprovalRoles` source always has;
-  * a `parallel` group actually runs its children concurrently through the
-    real state machine and joins (all successful) or fails (any child fails)
-    before the task advances.
+`core/dispatch.py`'s gate execution reads a step's resolved gate -- its own declared `gate`,
+or (only when omitted) its archetype's `gateContract` -- instead of branching on a hardcoded
+role name. Covers, via `dispatch_task`/`dispatch_pod` with a custom `PipelineSpec` (the
+built-in default is covered elsewhere): a `mechanical` gate on a non-"implementer" role gets
+the same worktree-aware cwd resolution the implementer always has; a `verdict` gate on a
+non-built-in archetype gates exactly like reviewer/tester always have, with generic trace
+event names; a pipeline-declared `approval` step genuinely gates pre-hop and a grant resumes
+it the same way `requireApprovalRoles` always has; and a `parallel` group runs its children
+concurrently and joins on all successes or fails on any child failure before the task advances.
 """
 
 from __future__ import annotations
@@ -365,10 +354,8 @@ class TestParallelGroupThroughDispatch:
         assert [h["stepId"] for h in persisted["hops"]] == ["plan", "impl-a", "impl-b"]
 
     def test_approval_gate_inside_a_group_is_a_clear_configuration_error(self) -> None:
-        """Documented scope boundary: a parallel group's children are not
-        individually approval-gated (see core/orchestrator.py's module note).
-        A child whose resolved gate is `approval` fails clearly rather than
-        attempting fragile mid-group human-approval semantics."""
+        """See specs/functional/pod-dispatch.spec.md, "approval gate inside a parallel
+        group": approval gating applies only to top-level steps."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         spec = _pipeline.PipelineSpec(

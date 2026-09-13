@@ -1,36 +1,14 @@
 """MCP client -- pluggable external tool servers.
-
-docket already ships an MCP *server*; this is the client half: connect to a
-configured external MCP server, enumerate its tools, adapt each into an
-ordinary ``core.tools.Tool``, and register it into a ``core.tools.
-ToolRegistry`` via the existing public API only (``register``) --
-``core/tools.py`` itself is never edited to support this.
-
-What's pinned here:
-
-1. **The chokepoint holds for an MCP-provided tool exactly as it does for a
-   built-in one** -- a `pre_tool_call` policy gates an adapted tool through
-   the real `dispatch_tool`, with the handler proven never to run
-   (`TestGatedExactlyLikeABuiltin`). This is the test the work is not done
-   without.
-2. **Namespacing makes a built-in collision structurally impossible** -- every
-   adapted name carries the `mcp__` prefix plus the configured server name;
-   no built-in name can ever equal one (`TestNamespacing`,
-   `TestCollisionRule`).
-3. **Failure isolation** -- an unreachable/slow/misbehaving server degrades to
-   "unavailable"; one bad server never blocks another's tools or a turn
-   (`TestFailureIsolation`, and the adapter's own `TestBoundedTimeout`).
-4. **Untrusted tool descriptions** are screened through the existing
-   `prompt-injection` `pre_input` policy before registration
-   (`TestDescriptionScreening`).
-
-Every test here stubs at the SDK boundary. Tests against `core/mcp_tools.py`
-inject fake `list_tools`/`call_tool` callables (the port
-`core/mcp_tools.py` defines) and never import the real `mcp` package at all.
-Tests against `edges/adapters/mcp_client.py` monkeypatch the real installed
-SDK's `mcp.client.Client` / `mcp.client.stdio.stdio_client` attributes to
-in-process fakes -- no subprocess is ever spawned and no network is ever
-touched, matching the card's testing constraint.
+docket already ships an MCP server; this is the client half: connect to a configured external
+MCP server, enumerate its tools, adapt each into an ordinary ``core.tools.Tool``, and register
+it via the existing public ``register`` API only -- ``core/tools.py`` is never edited. Pins:
+the chokepoint holds for an MCP-provided tool exactly as for a built-in one (`pre_tool_call`
+gates it through the real `dispatch_tool`, handler proven never to run); namespacing (`mcp__`
+prefix plus server name) makes a built-in collision structurally impossible; failure isolation
+(an unreachable/slow/misbehaving server degrades to "unavailable", never blocking another's
+tools or a turn); and untrusted tool descriptions are screened through `prompt-injection`
+before registration. Every test stubs at the SDK boundary with fake callables or monkeypatched
+client attributes -- no subprocess, no network, no real `mcp` package import.
 """
 
 from __future__ import annotations
@@ -133,16 +111,9 @@ def _ok_list(tools: tuple[_mt.McpRemoteTool, ...]) -> _mt.ListToolsFn:
 
 
 class TestOnlyTheInertResultTypeIsImported:
-    """test_tool_registry.py's `TestSinglePathToExecution` allowlists
-    `core/mcp_tools.py` and `edges/adapters/mcp_client.py` as toolbox
-    importers -- both need `ToolOutcome`, the inert "what happened" result
-    dataclass every `Tool.handler` must return. That allowlist is file-level,
-    so it would not by itself notice this card's two files starting to import
-    an actual *handler function* (`read_file`/`write_file`/`edit_file`/
-    `glob_files`/`grep_files`/`run_bash`) instead -- which would be a second,
-    ungated path to the same handlers `core/tools.py`'s chokepoint guards.
-    This test closes that gap for exactly the two files this card added.
-    """
+    """The file-level toolbox-import allowlist (`ToolOutcome` only, for these two files) would
+    not by itself notice them importing an actual handler function instead -- a second,
+    ungated path to the handlers `core/tools.py`'s chokepoint guards. This test closes that gap."""
 
     FILES: tuple[str, ...] = ("core/mcp_tools.py", "edges/adapters/mcp_client.py")
     ALLOWED_TOOLBOX_NAMES: frozenset[str] = frozenset({"ToolOutcome"})
@@ -329,10 +300,9 @@ class TestDescriptionScreening:
         assert "mcp_client.tool_description_blocked" in _audit_actions()
 
     def test_require_approval_also_refuses_registration_no_hanging_approval_flow(self) -> None:
-        """Documented decision: there is no per-tool human-approval channel for
-        a static description, so require_approval folds into the same
-        fail-closed refusal as block -- it must NOT create a pending approval
-        or otherwise wait."""
+        """There is no per-tool human-approval channel for a static description, so
+        `require_approval` folds into the same fail-closed refusal as `block` -- it must never
+        create a pending approval or otherwise wait."""
         _write_pre_input_policy("needs-human", r"launch codes", "require_approval")
         registry = ToolRegistry()
         remote = _mt.McpRemoteTool(name="danger", description="reveals launch codes")
@@ -374,11 +344,9 @@ class TestDescriptionScreening:
 
 
 class TestGatedExactlyLikeABuiltin:
-    """The card's own bar: "Pin this with a test that a policy hooked on
-    pre_tool_call gates an MCP-provided tool exactly as it gates a built-in
-    one." Both tools are dispatched through the real, unmodified
-    `core.tools.dispatch_tool` -- nothing here special-cases the MCP tool.
-    """
+    """A policy hooked on `pre_tool_call` gates an MCP-provided tool exactly as it gates a
+    built-in one: both are dispatched through the real, unmodified `core.tools.dispatch_tool`,
+    with nothing here special-casing the MCP tool."""
 
     def _registry_with_mcp_tool(self, ran: dict[str, bool]) -> ToolRegistry:
         def _call(

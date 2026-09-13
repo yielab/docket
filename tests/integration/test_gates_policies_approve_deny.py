@@ -152,12 +152,9 @@ class TestGatesStatus:
 
 
 class TestGatesEnableDisable:
-    """`docket gates enable/disable` does not seed a daemon exec-approvals.json
-    allowlist (that file format is gone along with the daemon) -- it only
-    flips fleet.json's approval-routing state. There is no existing-config
-    distinction left to force over, so there is no idempotent/--force test
-    here asserting on repeated exec-approvals.json writes.
-    """
+    """`docket gates enable/disable` only flips fleet.json's approval-routing state; there is
+    no daemon exec-approvals.json allowlist to seed, so no idempotent/--force test asserting
+    on repeated exec-approvals.json writes exists here."""
 
     def test_enable_turns_on_routing(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]

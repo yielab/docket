@@ -1,18 +1,14 @@
 """Real pod dispatch — the pipeline driver (hermetic).
 
-``core.dispatch`` is exercised two ways:
-  * with an injected runner (fast, deterministic) for the pipeline
-    semantics: hop order, budget gating, failure-stops, no-cross-pod.
-  * end to end (``TestEndToEnd``) with no injected runner at all -- a real
-    pod-dispatch hop executes through the real production ``DocketDriver``,
-    with only its `ChatBackend` scripted.
+``core.dispatch`` is exercised two ways: with an injected runner (fast, deterministic) for
+pipeline semantics (hop order, budget gating, failure-stops, no-cross-pod), and end to end
+(``TestEndToEnd``) with no injected runner -- a real pod-dispatch hop executes through the real
+production ``DocketDriver``, with only its `ChatBackend` scripted.
 
-The task-state-machine-v2 suites: ``TestConcurrentDispatch`` (the
-thread-race regression this exists to close), ``TestCrashRecovery``
-(stale-claim sweep + resume-from-last-hop), ``TestBlockedStaysBlocked``
-(kills a blocked→pending auto-retry), and ``TestLegacyQueueLoads``
-(a legacy TASK_LIST.json with none of the newer fields still
-loads/dispatches).
+Also covers the task-state-machine suites: ``TestConcurrentDispatch`` (the thread-race
+regression this exists to close), ``TestCrashRecovery`` (stale-claim sweep + resume-from-last-
+hop), ``TestBlockedStaysBlocked`` (kills a blocked-to-pending auto-retry), and
+``TestLegacyQueueLoads`` (a legacy TASK_LIST.json with none of the newer fields still dispatches).
 """
 
 from __future__ import annotations
@@ -546,15 +542,9 @@ class TestEndToEnd:
 
 
 class TestConcurrentDispatch:
-    """The regression this exists to close.
-
-    An unlocked ``dispatch_pod`` would read the queue, decide what to run
-    from that snapshot, and only write back after each task — so two
-    concurrent callers on the same pod could both see the same task
-    ``pending`` and both run it. Claiming (``_claim_next_task``) is a
-    locked read-modify-write, so this cannot happen: concurrent callers
-    may run *different* tasks at once, but never the *same* one twice.
-    """
+    """The double-run regression this exists to close: an unlocked ``dispatch_pod`` could let
+    two concurrent callers both run the same ``pending`` task from a stale queue snapshot.
+    ``_claim_next_task``'s locked read-modify-write prevents this: never the same task twice."""
 
     def test_two_concurrent_dispatch_pod_calls_never_double_run_a_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -617,12 +607,9 @@ class TestConcurrentDispatch:
 
 
 class _CrashOnRoleRunner:
-    """Simulates a hard crash (process death) partway through a role's hop.
-
-    Records the role it was called for *before* raising, matching what really
-    happens: the request went out (recorded), but the process died before a
-    result — and therefore a persisted terminal status — ever came back.
-    """
+    """Simulates a hard crash (process death) partway through a role's hop: records the role
+    before raising, matching reality -- the request went out, but the process died before a
+    result (and a persisted terminal status) came back."""
 
     def __init__(self, crash_role: str):
         self.calls: list[str] = []

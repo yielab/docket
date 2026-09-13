@@ -73,10 +73,8 @@ def _write_docket_session(
     turns: int = 1,
     updated: str = "2024-03-15T10:00:00Z",
 ) -> None:
-    """Seed a docket-native session (``core/session.py``'s on-disk shape)
-    directly -- a pod-dispatch hop's turns land here, through
-    ``DocketDriver``.
-    """
+    """Seed a docket-native session directly -- a pod-dispatch hop's turns land here, through
+    ``DocketDriver``."""
     from urllib.parse import quote
 
     sdir = oc_dir / "sessions" / quote(session_key, safe="")
@@ -360,14 +358,9 @@ class TestCmdCost:
         assert data["history"] == []
 
     def test_cost_history_json_with_data(self, tmp_path: Path) -> None:
-        """``DocketDriver.usage().by_day`` is always ``[]`` -- a session's
-        stored usage is one running total for its lifetime, with no per-turn
-        timestamp to bucket by day (see
-        ``edges/adapters/docket_runtime.py``'s ``usage()`` docstring).
-        ``docket cost --history`` is an honest empty list against the
-        production driver -- a named, permanent capability gap, not a bug
-        this test should paper over.
-        """
+        """``DocketDriver.usage().by_day`` is always ``[]`` -- a session's stored usage is one
+        running total for its lifetime, with no per-turn timestamp to bucket by day, so
+        ``docket cost --history`` is an honest empty list: a named, permanent gap, not a bug."""
         oc_dir = _setup_agent(tmp_path)
         _write_docket_session(oc_dir, "agent:myshop:default", input_tokens=500, output_tokens=100)
         rc, out, _ = _run(["cost", "--history", "--json"], oc_dir)

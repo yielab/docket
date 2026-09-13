@@ -235,15 +235,9 @@ class TestCmdMaintain:
         assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
 
     def test_distill_hermetic_no_daemon_fails_closed(self, tmp_path: Path) -> None:
-        """No provider credentials configured -> the driver call fails ->
-        nothing is deleted.
-
-        Fail-closed distillation, exercised against the real production
-        driver (no `FakeDriver` injection anywhere in this test) -- proof the
-        guarantee holds against a real failure, not just a mocked stand-in.
-        The fake-driven success/failure matrix lives in
-        test_memory_distillation.py and test_maintain_distill_cli.py.
-        """
+        """No provider credentials -> the driver call fails -> nothing is deleted (fail-closed),
+        exercised against the real production driver, not a `FakeDriver`, proving the guarantee
+        holds under a real failure (fake-driven matrix lives in test_memory_distillation.py)."""
         import datetime
 
         home = _setup_agent(tmp_path, with_memory=True)

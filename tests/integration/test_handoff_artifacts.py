@@ -1,25 +1,14 @@
 """Structured handoff artifacts replace raw-text hop concatenation.
-
-``core/dispatch.py``'s ``_hop_message`` does not thread a prior hop's *raw*
-``output`` string straight into the next hop's prompt. This suite covers the
-typed replacement:
-
-  * TestHandoffArtifactModel   — ``core/handoff.py``'s ``HandoffArtifact`` in
-    isolation: ``render()``'s default-vs-populated shape, ``from_legacy_output``,
-    ``dropped()``, and the model's own invariants (frozen, no extra fields).
-  * TestHopResultArtifactBackfill — every ``HopResult`` always carries a real
-    artifact, whether built explicitly or backfilled from ``output`` alone
-    (``__post_init__``) — the same shape every hand-built test hop
-    (``_hop()`` helpers across the suite) still produces.
-  * TestHopRecordRoundTrip     — the persisted-queue-file shape: a new-format
-    record round-trips its artifact exactly; a legacy record with no
-    ``artifact`` key at all (or a malformed one) degrades to
-    ``from_legacy_output`` — the backward-compatibility requirement.
-  * TestDispatchBuildsTypedArtifacts — end to end through a real
-    ``dispatch_task`` call: a verdict-gated hop's artifact carries a real
-    ``verdict`` (not just raw text), the next hop's composed message is built
-    from the *rendered* artifact, and the token-budget compiler still checks
-    that rendered text, not the summary alone.
+``core/dispatch.py``'s ``_hop_message`` no longer threads a prior hop's raw ``output`` string
+into the next hop's prompt. Covers: TestHandoffArtifactModel (``HandoffArtifact`` in isolation
+-- ``render()``'s default-vs-populated shape, ``from_legacy_output``, ``dropped()``, and the
+model's own invariants: frozen, no extra fields); TestHopResultArtifactBackfill (every
+``HopResult`` always carries a real artifact, built explicitly or backfilled via
+``__post_init__``); TestHopRecordRoundTrip (a new-format persisted record round-trips its
+artifact exactly, and a legacy/malformed ``artifact`` key degrades to ``from_legacy_output``);
+and TestDispatchBuildsTypedArtifacts (end to end through ``dispatch_task``: a verdict-gated
+hop's artifact carries a real ``verdict``, the next hop's message is built from the rendered
+artifact, and the token-budget compiler checks that rendered text, not the summary alone).
 """
 
 from __future__ import annotations
@@ -299,10 +288,9 @@ class TestDispatchBuildsTypedArtifacts:
     def test_next_hop_message_is_built_from_rendered_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The tester's prompt must reflect the reviewer's *artifact* -- which
-        now includes a structural "Verdict: approve" line the raw reviewer
-        text alone never contained -- proving the next hop's message is built
-        from HandoffArtifact.render(), not straight from HopResult.output."""
+        """The tester's prompt must reflect the reviewer's artifact -- including a structural
+        "Verdict: approve" line the raw reviewer text never contained -- proving the message
+        is built from ``HandoffArtifact.render()``, not straight from ``HopResult.output``."""
         _seed_pod(tmp_path, monkeypatch, full=True)
 
         from docket.core.runtime_driver import TurnResult
@@ -339,14 +327,9 @@ class TestDispatchBuildsTypedArtifacts:
     def test_budget_checks_the_rendered_artifact_and_sheds_verdict_before_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A verdict-bearing artifact's *rendered* text (summary + the
-        appended ``Verdict:`` line) is what the token-budget compiler checks
-        against budget -- not the summary alone. Unlike a blind byte cap, the
-        compiler sheds the less-valuable ``verdict`` field first
-        (``HandoffArtifact.DROP_ORDER``) rather than truncating ``summary``
-        -- so the reviewer's actual review text reaches the tester intact
-        even though the artifact didn't fit as-is.
-        """
+        """A verdict-bearing artifact's rendered text (summary + ``Verdict:`` line) is what
+        the token-budget compiler checks against budget, not the summary alone; it sheds the
+        less-valuable ``verdict`` field first (``DROP_ORDER``) rather than truncating ``summary``."""
         _seed_pod(tmp_path, monkeypatch, full=True)
         # Force every prior hop's carryover share down to just enough room
         # for the reviewer's raw summary (208 bytes -> 52 tokens) but not its

@@ -1,21 +1,13 @@
 """Audit-log parity for approval grant/deny across all channels.
 
-``approval_grant``/``approval_deny`` already emitted a trace event; they now
-also write an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``,
-detail carrying ``token=... project=... channel=...``) so ``docket audit`` has
-a record of who approved/denied what, and through which surface.
-
-Covers the channel argument and the concrete call sites in this codebase:
-  - CLI      (``docket approve`` / ``docket deny``  -> cli/_approve.py, cli/_deny.py)
-  - HTTP     (``serve.py``'s POST /approvals/<token> webhook)
-  - explicit channel argument (e.g. ``"telegram"``), exercised directly against the core
-    function here while the channel adapter has its own integration coverage.
-
-Acceptance criteria:
-  - grant/deny via each of the three call sites produces both the existing
-    trace event (payload unchanged: ``{"token": token}``) and a new audit-log
-    line carrying the correct channel tag
-  - suite green
+``approval_grant``/``approval_deny`` already emit a trace event; they must also write an
+``audit_log()`` entry (action ``approval.grant``/``approval.deny``, detail carrying
+``token=... project=... channel=...``) so ``docket audit`` has a record of who approved/denied
+what, and through which surface. Covers the concrete call sites: CLI (``docket approve``/
+``docket deny`` -> cli/_approve.py, cli/_deny.py), HTTP (``serve.py``'s POST
+/approvals/<token>), and an explicit channel argument (e.g. ``"telegram"``) exercised directly
+against the core function. Each site must produce both the existing trace event (payload
+unchanged) and the new audit-log line with the correct channel tag.
 """
 
 from __future__ import annotations
@@ -103,13 +95,9 @@ def _last_audit_entry(action: str) -> dict[str, object]:
 def _race_pending_transitions(
     monkeypatch: pytest.MonkeyPatch, *calls: object
 ) -> list[BaseException | None]:
-    """Start two public decisions together at the old read/write seam.
-
-    The barrier is deliberately around ``_set_state``: both callers have already read
-    ``pending`` when they reach it, reproducing the race window.  The implementation
-    keeps that seam but re-checks the state under the store lock, so exactly one
-    caller may return normally.
-    """
+    """Starts two public decisions together at the race window around ``_set_state`` (both
+    callers have already read ``pending``); the implementation re-checks state under the
+    store lock, so exactly one caller may return normally."""
     original = _ap._set_state
     barrier = threading.Barrier(2, timeout=2)
 
@@ -342,13 +330,9 @@ class TestAuditFailureNeverBreaksApproval:
     def test_audit_kill_switch_removed_still_never_raises(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """DOCKET_NO_AUDIT is no longer a kill switch.
-
-        Setting it has no effect — the grant still writes its audit entry.
-        What's preserved is best-effort: an audit write failure (missing
-        AUDIT_LOG parent dir, see the sibling test below) must never break
-        the approval transition itself.
-        """
+        """``DOCKET_NO_AUDIT`` has no effect: the grant still writes its audit entry. What is
+        preserved is best-effort semantics -- an audit write failure (see the sibling test)
+        must never break the approval transition itself."""
         monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
         token = _ap.approval_create("proj-no-audit", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise
@@ -360,10 +344,9 @@ class TestAuditFailureNeverBreaksApproval:
     def test_audit_write_failure_does_not_raise(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A missing AUDIT_LOG parent dir best-effort creates it rather than
-        raising or losing the entry -- nothing external bootstraps
-        DOCKET_HOME, so a missing parent just means "first write" (see
-        core/audit.py's audit_log() docstring)."""
+        """A missing AUDIT_LOG parent dir is best-effort created rather than raising or losing
+        the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
+        "first write" (see `core/audit.py`'s `audit_log()` docstring)."""
         monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "nope" / "audit.log", raising=True)
         token = _ap.approval_create("proj-missing-dir", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise

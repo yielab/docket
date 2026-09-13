@@ -17,11 +17,8 @@ _runner = CliRunner()
 
 
 def _make_fleet(home: Path) -> Path:
-    """Write a minimal fleet.json and return its path.
-
-    Agent registration and channel bindings live here — fleet.json is
-    Docket's only registry; there is no external state registry.
-    """
+    """Write a minimal fleet.json and return its path -- agent registration and channel
+    bindings live here; fleet.json is docket's only registry, with no external state registry."""
     fleet = {
         "agents": [{"id": "myshop"}],
         "bindings": [
@@ -332,12 +329,9 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 class TestFleet:
-    """The Docket-owned `core/fleet.py` registry.
-
-    oc_get_path/oc_set_path had no fleet.py successor: fleet.json is read
-    through a validated Pydantic model now, not raw dotted-path string
-    lookups, so there is nothing to round-trip a dotted path through.
-    """
+    """The docket-owned `core/fleet.py` registry: fleet.json is read through a validated
+    Pydantic model, not raw dotted-path string lookups, so there is nothing to round-trip a
+    dotted path through."""
 
     def test_list_agents(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet

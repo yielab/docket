@@ -1,19 +1,12 @@
 """`docket maintain` distillation wiring.
 
-Covers `cli/_agents.py`'s side of it -- `docket maintain <id> distill`, and
-`clean`/`reset` gaining a `--distill-first` default (with
-`--no-distill-first` as the explicit opt-out) so neither command bare-deletes
-undistilled memory. Calls `run_maintain` directly (the same pattern
-test_pod_blueprint_provisioning.py uses for `run_add`) with `sys.stdin.isatty`/
-`builtins.input` monkeypatched for the confirm prompt, and
-`edges.adapters.docket_runtime.default_driver` monkeypatched to return
-`tests/fakes.py`'s `FakeDriver` -- no live daemon anywhere in this
-file.
-
-A hermetic no-fake proof (the real production driver failing because no
-provider credentials are configured) lives in test_auth_context_maintain_keys_add.py's
-`TestCmdMaintain` class, alongside the rest of `docket maintain`'s
-subprocess-level coverage.
+Covers `cli/_agents.py`'s side: `docket maintain <id> distill`, and `clean`/`reset` gaining a
+`--distill-first` default (`--no-distill-first` opts out) so neither command bare-deletes
+undistilled memory. Calls `run_maintain` directly with `sys.stdin.isatty`/`builtins.input`
+monkeypatched for the confirm prompt, and `default_driver` monkeypatched to return
+`FakeDriver` -- no live daemon anywhere in this file. A hermetic no-fake proof (the real
+production driver failing with no provider credentials) lives in
+test_auth_context_maintain_keys_add.py's `TestCmdMaintain` class.
 """
 
 from __future__ import annotations
@@ -102,16 +95,9 @@ class TestMaintainDistillCommand:
     def test_failure_reports_the_failure_kind_to_the_operator(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A blocked delete has to say *why* it was blocked.
-
-        The fail-closed contract turns a failed distillation into a refused
-        deletion, so the operator's next move depends on the kind: `timeout`
-        and `daemon_error` mean retry, `invalid_output` means the model
-        returned something unusable and a retry will probably repeat it.
-        `DistillResult.failure_kind` carried that classification from the
-        driver, but nothing rendered it -- it was populated but never read,
-        so the operator saw only the raw error string.
-        """
+        """A blocked delete must say why: `failure_kind` must reach the operator's output, not
+        just the raw error string, since it decides the next move -- `timeout`/`daemon_error`
+        mean retry, `invalid_output` means a retry will likely repeat it."""
         ws = _make_ws(tmp_path, monkeypatch)
         (ws / "memory" / "2026-07-01.md").write_text("notes\n", encoding="utf-8")
         fake = FakeDriver(fail_role="demo", error="model returned prose", failure_kind="timeout")
