@@ -44,7 +44,10 @@ def find_long_functions(paths: list[Path] | None = None, span_max: int = SPAN_MA
     hits: list[Hit] = []
     for path in files:
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        rel = path.resolve().relative_to(REPO_ROOT).as_posix()
+        try:
+            rel = path.resolve().relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            rel = path.as_posix()
         _walk(tree, "", rel, span_max, hits)
     return hits
 
