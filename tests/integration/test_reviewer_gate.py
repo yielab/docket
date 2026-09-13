@@ -1,26 +1,13 @@
 """Reviewer verdict gate + bounded rework loop.
 
-Before this card, the Reviewer's documented "APPROVE or REQUEST-CHANGES" veto
-was prose only — dispatch never read a Reviewer hop's output, so a
-REQUEST-CHANGES review still advanced the pipeline to the Tester and let the
-task complete `done`. Separation-of-duties was decorative.
-
-This suite mirrors ``test_verify_gate.py``'s ``TestDispatchTesterGate`` fixture
-pattern (hermetic meta + an injected fake runner) and exercises:
-
-  * TestParseReviewerVerdict     — the pure marker parser in isolation.
-  * TestReviewerGateBasic        — APPROVE advances normally; unparseable
-    output fails distinctly from a rejection; a pod with no Reviewer is
-    completely unaffected (regression guard).
-  * TestReviewerReworkLoop       — REQUEST-CHANGES drives exactly one bounded
-    rework cycle back to the Implementer (review text carried into its
-    brief), a second REQUEST-CHANGES fails the task, every rework hop lands
-    in the persisted ``hops[]``, and ``maxReworkCycles: 0`` disables rework
-    entirely (the Reviewer becomes a hard gate with no retry).
-  * TestReviewerReworkResume     — the integration point that matters most: a
-    crash recorded *after* a REQUEST-CHANGES Reviewer hop persists but
-    *before* the rework Implementer hop runs resumes into that rework hop,
-    not past it.
+Enforces that a Reviewer's "APPROVE or REQUEST-CHANGES" veto is real: an unread verdict would let
+REQUEST-CHANGES still advance to the Tester and complete `done`, making separation-of-duties
+decorative. Mirrors ``test_verify_gate.py``'s ``TestDispatchTesterGate`` fixture pattern (hermetic
+meta + an injected fake runner). TestParseReviewerVerdict covers the pure marker parser;
+TestReviewerGateBasic covers APPROVE advancing normally, unparseable output failing distinctly
+from a rejection, and a pod with no Reviewer being unaffected; TestReviewerReworkLoop and
+TestReviewerReworkResume cover the bounded rework cycle and its resume-after-crash point. See
+specs/functional/pod-dispatch.spec.md Requirements 3-4.
 """
 
 from __future__ import annotations
@@ -104,16 +91,9 @@ def _role_of(agent_id: str) -> str:
 
 
 class TestParseReviewerVerdict:
-    """The reviewer's marker parsing is not a
-    dispatch-private regex/parser pair (``_parse_reviewer_verdict`` /
-    ``_REVIEWER_VERDICT_RE`` — both removed; see ``core/dispatch.py``'s
-    docstring note). Gate execution reads
-    ``core.orchestrator.parse_verdict`` generically against whatever
-    ``VerdictGate`` a step resolves to; these tests exercise that generic
-    parser directly against the reviewer step's own gate from the built-in
-    default pipeline (``core/pipeline.py``), which is the single source
-    of truth for the pattern itself.
-    """
+    """Reviewer marker parsing is not a dispatch-private regex: gate execution reads
+    ``core.orchestrator.parse_verdict`` against a step's ``VerdictGate`` generically. Exercises
+    that parser against the reviewer step's gate from the default pipeline, the source of truth."""
 
     @staticmethod
     def _reviewer_gate() -> _pipeline.VerdictGate:
@@ -302,12 +282,9 @@ class TestReviewerGateBasic:
 
 
 class _ReworkRunner:
-    """Reviewer REQUEST-CHANGES the first N times it's called, then APPROVEs.
-
-    Tester always PASSes (when reached). Records every ``(role, message)`` call
-    so tests can assert on both call order and message content (the rework
-    brief carrying the review text).
-    """
+    """Reviewer REQUEST-CHANGES the first N times, then APPROVEs; Tester always PASSes when
+    reached. Records every ``(role, message)`` call so tests can assert call order and that the
+    rework brief carries the review text."""
 
     def __init__(
         self,
@@ -466,16 +443,9 @@ class TestReviewerReworkLoop:
 
 
 class _CrashOnSecondImplementerCallRunner:
-    """Simulates a hard crash exactly between a persisted REQUEST-CHANGES
-    Reviewer hop and the rework Implementer hop it should drive.
-
-    The first Implementer call and the first Reviewer call succeed normally
-    (Reviewer REQUEST-CHANGES, which gets persisted via ``on_hop`` before
-    dispatch ever tries to run the rework Implementer hop). The *second*
-    Implementer call — the rework hop — raises, matching what a real crash
-    looks like: the request went out, but the process died before a result
-    (and therefore a persisted hop) came back.
-    """
+    """Simulates a crash between a persisted REQUEST-CHANGES Reviewer hop and the rework
+    Implementer hop: the first Implementer and Reviewer calls succeed normally, then the second
+    Implementer call (the rework hop) raises -- the request went out but the process died first."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []

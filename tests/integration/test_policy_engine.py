@@ -1,29 +1,14 @@
 """Policy engine on the live path.
 
-``core/policy.py`` was once fully built and tested but had exactly
-one caller: the CLI's own dry-run printer (``docket policies test``).
-`the workstation foundation bootstrap` never installed the shipped templates, ``pre_input`` was
-never evaluated anywhere real, and ``pre_output`` had no producer at all —
-``cli/_metrics.py``'s "Guardrail trips" reader existed with nothing to read.
-This suite exercises the wiring:
-
-  * TestInstallPolicies     — ``core.policy.install_policies()``, the shared
-    producer behind both ``docket policies init`` and `the workstation foundation bootstrap`'s
-    Step 9 (see also ``test_install.py``'s own Step 9 assertion).
-  * TestPolicyEvalDetail    — the new ``PolicyHit``-returning evaluator
-    underneath the unchanged ``policy_eval``/``policy_test`` (regression: every
-    existing caller of those two functions keeps working unmodified).
-  * TestEnqueuePreInputGate — ``pre_input`` evaluated once, at
-    ``core.dispatch.enqueue_task`` time: block rejects before the task is ever
-    queued; require_approval persists straight into ``waiting_approval`` with
-    a real approval record; redact scrubs the stored description; allow
-    (no policies installed, or a non-matching one) is a no-op.
-  * TestPreOutputGate       — ``pre_output`` evaluated on every hop's real
-    output inside ``dispatch_task``: redact scrubs the carried-forward
-    artifact/persisted hop, block fails the hop (and stops the pipeline) the
-    same way a failed agent turn does, warn/allow pass the text through
-    unchanged. Every non-allow hit emits ``guardrail_check``; a block
-    additionally emits ``guardrail_block`` keyed by policy id.
+Exercises ``core/policy.py``'s ``pre_input``/``pre_output`` hooks wired into the real dispatch
+path, not just the CLI's dry-run printer. TestInstallPolicies covers the shared
+``install_policies()`` producer; TestPolicyEvalDetail covers the ``PolicyHit``-returning evaluator
+underneath the unchanged ``policy_eval``/``policy_test`` (every existing caller keeps working
+unmodified); TestEnqueuePreInputGate and TestPreOutputGate cover the hooks themselves: block
+rejects before/fails a hop and stops the pipeline, require_approval persists a real approval
+record, redact scrubs the stored/carried text, allow/warn pass it through, and every non-allow
+hit emits ``guardrail_check`` (block also ``guardrail_block``). See
+specs/functional/security-gates.spec.md Requirements 2-4.
 """
 
 from __future__ import annotations

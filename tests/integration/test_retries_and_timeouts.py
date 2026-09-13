@@ -1,18 +1,12 @@
 """Retries + configurable timeouts (turn vs verify decoupled).
 
-Three layers:
-  * TestFailureKindClassification — ``TurnResult``'s own backward-compat
-    default for callers that construct it positionally without mentioning
-    ``failure_kind`` (see the failure_kind classification note below for
-    where the real classifier coverage now lives).
-  * TestHopRetryLoop — ``dispatch_task`` driven directly (no persisted queue,
-    mirrors test_verify_gate.py's pattern): a retryable failure (timeout/
-    daemon_error) retries up to the role's budget with ``attempts`` persisted
-    and a ``hop_retry`` trace event per attempt; a non-zero exit or an
-    unretryable kind never retries.
-  * TestTimeoutResolution / TestDispatchPodRetryIntegration — turn vs verify
-    timeouts are independently resolved and applied, and a retrying task never
-    trips the stale-claim sweep (the subtle correctness point here).
+Three layers: TestFailureKindClassification covers ``TurnResult``'s backward-compat default for
+callers that construct it positionally without ``failure_kind``; TestHopRetryLoop drives
+``dispatch_task`` directly (no persisted queue) to show a retryable failure (timeout/daemon_error)
+retries up to the role's budget with ``attempts`` persisted and a ``hop_retry`` trace event per
+attempt, while a non-zero exit or an unretryable kind never retries; TestTimeoutResolution /
+TestDispatchPodRetryIntegration show turn vs verify timeouts resolve and apply independently, and
+that a retrying task never trips the stale-claim sweep.
 """
 
 from __future__ import annotations
@@ -398,25 +392,13 @@ class TestRetryDoesNotTripStaleClaimSweep:
     def test_retrying_task_survives_a_concurrent_stale_claim_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The subtle correctness point here: if `claimedAt` were set once at claim
-        time and never touched again mid-hop, a retry loop's backoff sleeps + extra
-        agent-turn timeouts on top of whatever earlier hops already took could push
-        the elapsed time since the *original* `claimedAt` past CLAIM_STALE_TIMEOUT
-        even though the dispatcher is very much alive — and a *second*,
-        concurrent `dispatch_pod` call on the same pod (the whole scenario
-        claims exist to guard against) would sweep it out from under the first one
-        mid-retry.
-
-        Proof, using real relative timing (no fake clock — `_sweep_stale_claims`
-        compares against real wall-clock time): the first implementer attempt
-        deliberately takes longer than CLAIM_STALE_TIMEOUT before failing
-        retryably, so the *original* claim timestamp alone would already read
-        as stale by the time the retry happens. The retry loop's `on_retry`
-        refreshes `claimedAt` before the (faked, instant) backoff sleep; the
-        second attempt then simulates a concurrent dispatcher's sweep landing
-        exactly there, mid-retry — it must find a *fresh* `claimedAt` (just
-        refreshed) and leave the task alone.
-        """
+        """Proves `on_retry` refreshes `claimedAt` mid-hop: without it, stacked backoff sleeps
+        and agent-turn timeouts could push time since the *original* claim past
+        CLAIM_STALE_TIMEOUT even though the dispatcher is alive, letting a concurrent
+        `dispatch_pod` call sweep the task out from under a live retry. Verified with real
+        wall-clock timing: the first implementer attempt is made to outlast
+        CLAIM_STALE_TIMEOUT before failing retryably, so only a refreshed `claimedAt` lets the
+        second attempt's simulated concurrent sweep leave the task alone."""
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         _dispatch.enqueue_task("demo", "Retry me")
         # Small but real threshold: the deliberate 0.3s sleep below comfortably

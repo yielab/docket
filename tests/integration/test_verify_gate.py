@@ -296,14 +296,9 @@ class TestDispatchVerifyGate:
 
 
 class TestDispatchTesterGate:
-    """The Tester hop's unambiguous PASS/FAIL marker gates the pipeline.
-
-    A successful subprocess call (``run_res.ok``) only means the Tester agent ran —
-    it says nothing about what the Tester found. These tests exercise the marker
-    parser wired into ``dispatch_task`` for a full pod (lead+implementer+reviewer+
-    tester); a pod with no tester member is unaffected (covered by the lean-pod
-    verify-gate tests above, which never seat a tester).
-    """
+    """The Tester hop's unambiguous PASS/FAIL marker gates the pipeline: a successful subprocess
+    call (``run_res.ok``) only means the Tester ran, not what it found. Exercises the marker
+    parser wired into ``dispatch_task`` for a full pod; a pod with no tester is unaffected."""
 
     def _runner_with_tester_output(self, tester_output: str) -> _dispatch.Runner:
         def _run(

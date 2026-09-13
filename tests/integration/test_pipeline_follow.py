@@ -1,17 +1,11 @@
 """`docket pipeline run <project> --follow`.
 
-`--follow` runs the exact same `_pod_dispatch` call `docket pipeline run`
-already makes (no second, drift-prone execution path) on a background
-thread, while the foreground thread tails `core/trace.py`'s durable JSONL
-store for any new event the dispatch itself writes as it runs — the same
-store `docket trace tail`/`export` already reads. This proves:
-
-  - `--follow` still dispatches for real (the queued task reaches `"done"`,
-    exactly like a plain `docket pipeline run`)
-  - at least one trace event written by that dispatch (`session_start`, the
-    first one `dispatch_task` emits) is printed to stdout
-  - `--follow` is accepted as a flag and stripped before the remaining args
-    reach `_pod_dispatch`'s own `--resume`/`--timeout` parsing
+`--follow` runs the exact same `_pod_dispatch` call `docket pipeline run` already makes (no
+second, drift-prone execution path) on a background thread, while the foreground thread tails
+`core/trace.py`'s durable JSONL store — the same one `docket trace tail`/`export` read — for new
+events as the dispatch writes them. Proves the dispatch still completes for real, at least one
+trace event reaches stdout, and `--follow` is stripped before `_pod_dispatch`'s own
+`--resume`/`--timeout` parsing sees the remaining args.
 """
 
 from __future__ import annotations

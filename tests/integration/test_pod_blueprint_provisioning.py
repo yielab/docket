@@ -177,14 +177,9 @@ class TestBuiltinBlueprintsProvision:
 
 
 class TestSoftwareParity:
-    """Two fresh, independent environments (so port/scratch allocation starts
-    from the same empty table in both): one provisioned through the
-    original primitive (`_pod.build_pod`, entirely unaffected by the blueprint layer),
-    one through `build_pod_from_blueprint(..., "software", ...)`. Every
-    generated file must match byte-for-byte once each environment's own
-    tmp-dir root is normalized out of the one line that legitimately embeds
-    it (the Implementer's `DOCKET_SCRATCH_DIR` path in TOOLS.md).
-    """
+    """Provisions two environments, one via `_pod.build_pod`, one via
+    `build_pod_from_blueprint(..., "software", ...)`; every file must match byte-for-byte
+    once each tmp-dir root is normalized out (`DOCKET_SCRATCH_DIR` in TOOLS.md)."""
 
     _MEMBER_FILES = ("SOUL.md", "AGENTS.md", "HEARTBEAT.md", "WORKFLOW_AUTO.md", "MEMORY.md")
 

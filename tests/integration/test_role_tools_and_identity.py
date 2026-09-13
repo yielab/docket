@@ -1,23 +1,14 @@
 """Per-role tool sets + identity composition.
 
-Two gaps this closes rather than papering over:
+`core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
+called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
+not just told not to via SOUL.md prose. `core/identity.py`'s `system_prompt_for_agent` reads
+SOUL.md, the live persona, resolved project roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state
+into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
-1. **`ToolRegistry.without()` existed and was tested, but nothing composed it
-   per role.** A Reviewer was *told* not to edit code (SOUL.md prose); it is
-   now *unable* to. `core/archetypes.py`'s `denied_tools` (data) plus
-   `registry_for_role` (the one composing function) close the gap;
-   `core/agent_loop.py` calls it once per turn.
-2. **The loop's system prompt omitted private runtime state.** `core/identity.py`'s
-   `system_prompt_for_agent` reads SOUL.md, the live persona, resolved project
-   roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state into one runtime-safe
-   prompt without replaying manual private-file instructions or widening roots.
-
-The load-bearing test in this file is
-`TestReviewerCannotDispatchAWrite.test_reviewer_write_is_a_dispatch_level_denial`:
-it proves the guarantee by dispatching a real `write` tool call through a
-real (role-narrowed) registry and asserting `dispatch_tool` returns an
-"unknown tool" denial -- not by inspecting `RoleArchetype.denied_tools` or
-`ToolRegistry.names()` as a set.
+The load-bearing test is `TestReviewerCannotDispatchAWrite`'s dispatch-level-denial test: it
+proves the guarantee by dispatching a real `write` call through a real role-narrowed registry and
+asserting `dispatch_tool` returns an "unknown tool" denial -- not by inspecting `denied_tools`.
 """
 
 from __future__ import annotations
@@ -187,13 +178,9 @@ class TestRegistryForRole:
 
 
 class TestRegistryForRoleExcludesByKindToo:
-    """The gap a name-only denylist cannot close: a namespaced tool (e.g. an
-    MCP-adapted one, `mcp__<server>__<tool>`) never equals `"write"`/`"edit"`/
-    `"bash"`, so `.without(*denied_tools)` alone would never remove it.
-    `registry_for_role` also removes by `Tool.kind`, computed from the kinds
-    the role's own `denied_tools` already imply -- no new archetype field, no
-    per-role branch. See `core/archetypes.py::registry_for_role`'s docstring.
-    """
+    """A namespaced tool (e.g. `mcp__<server>__<tool>`) never equals `"write"`/`"edit"`/`"bash"`,
+    so `.without(*denied_tools)` alone can't remove it; `registry_for_role` also removes by
+    `Tool.kind`, computed from the kinds the role's own `denied_tools` already imply."""
 
     def _registry_with_a_write_kind_extra(self) -> ToolRegistry:
         base = builtin_registry()
@@ -252,18 +239,11 @@ class TestRegistryForRoleExcludesByKindToo:
         assert "mcp__docs__lookup" in narrowed
 
     def test_denied_kinds_do_not_depend_on_the_incoming_registry(self) -> None:
-        """The denial must come from the ROLE's data, never from what `base`
-        happens to contain.
-
-        Deriving the denied kinds by looking each denied name up *in base*
-        makes the whole exclusion conditional on the built-in still being
-        present there. `DocketDriver.registry_factory` exists precisely so a
-        caller can inject a narrower tool set, so a base without `write`/
-        `edit`/`bash` is a supported shape -- and under the lookup-in-base
-        derivation it yielded an empty denied-kind set, handing a Reviewer
-        back the write-capable MCP tool this whole mechanism exists to keep
-        away from it. `BUILTIN_TOOL_KINDS` is a static map for this reason.
-        """
+        """Denial must come from the ROLE's data, never from what `base` happens to contain:
+        looking up denied kinds *in base* makes exclusion conditional on the built-in still being
+        present there, and a narrower injected base (a supported shape) would then yield an empty
+        denied-kind set -- handing a Reviewer back the write-capable tool this mechanism exists to
+        keep away. `BUILTIN_TOOL_KINDS` is a static map for this reason."""
         base = ToolRegistry()
         base.register(
             Tool(
@@ -298,10 +278,8 @@ class TestRegistryForRoleExcludesByKindToo:
 
 
 class TestReviewerCannotDispatchAWrite:
-    """**The card's acceptance criterion.** A Reviewer registry genuinely
-    lacks `write`/`edit` -- proven by dispatching a call and getting a
-    tool-not-found denial, not by inspecting a dict or a set of names.
-    """
+    """A Reviewer registry genuinely lacks `write`/`edit`: proven by dispatching a call and
+    getting a tool-not-found denial, not by inspecting a dict or set of names."""
 
     def test_reviewer_write_is_a_dispatch_level_denial(self, tmp_path: Path) -> None:
         ws = tmp_path / "rev-ws"
@@ -340,11 +318,9 @@ class TestReviewerCannotDispatchAWrite:
     def test_run_agent_turn_actually_narrows_by_role_not_just_the_library_function(
         self, tmp_path: Path
     ) -> None:
-        """The gap this card closes was that `without()` existed but nothing
-        in the loop called it. This drives a full `run_agent_turn` (the full,
-        unnarrowed `builtin_registry()` handed in, exactly like a real caller
-        would) and shows the loop itself narrows by `ctx.role` before ever
-        reaching `dispatch_tool`."""
+        """Drives a full `run_agent_turn` with the full, unnarrowed `builtin_registry()` handed
+        in (exactly like a real caller) and shows the loop itself narrows by `ctx.role` before
+        ever reaching `dispatch_tool`."""
         ws = tmp_path / "rev-ws2"
         ws.mkdir()
         ctx = ToolContext(

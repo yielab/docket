@@ -1,20 +1,10 @@
 """Audit coverage for `models.*` — docket models set/preset/reset.
 
-`docket models set/preset/reset` change the role->model policy for the entire
-fleet -- see audit.spec.md's Version 2.0.0/2.1.0 changelog. This module
-covers:
-
-  - Each of `set`/`preset`/`reset` writes exactly one `models.*` audit entry
-    naming the role(s) affected (or `default`) and the before/after model, so
-    the log alone answers "which role changed, from what, to what, and when"
-    (mirrors `agent.add`'s whole-pod-in-one-line style for multi-role writes).
-  - The entries carry the same hash-chain fields (`seq`/`prev_hash`) as every
-    other family, and `docket audit verify` still walks a log containing them
-    without reporting a break.
-
-All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
-config constant patched to a temp directory, matching the equivalent `models`/
-`profile` tests in test_profile_scope_models.py.
+`docket models set/preset/reset` change the role->model policy for the entire fleet. Covers: each
+writes exactly one `models.*` audit entry naming the role(s) affected (or `default`) and the
+before/after model, so the log alone answers "which role changed, from what, to what, and when";
+and those entries carry the same hash-chain fields (`seq`/`prev_hash`) as every other family, so
+`docket audit verify` walks a log containing them without reporting a break.
 """
 
 from __future__ import annotations

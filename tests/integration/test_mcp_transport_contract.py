@@ -104,12 +104,9 @@ def _audit_actions(action: str) -> list[dict[str, Any]]:
 
 
 async def _call(server: Any, name: str, arguments: dict[str, Any]) -> Any:
-    """Round-trip a tool call through the real SDK's in-memory `Client`
-    transport (not the bare `server.call_tool()` convenience method, which
-    does not go through the same exception-to-isError handling the stdio
-    transport actually uses) — see `mcp.Client`'s own docs: it can talk
-    straight to a server object with no network/subprocess in between, which
-    is exactly the "real dispatch path, no transport" fixture this needs."""
+    """Round-trip through the real SDK's in-memory `Client`, not the bare `server.call_tool()`
+    convenience method, which skips the exception-to-isError handling the stdio transport
+    actually applies."""
     from mcp import Client
 
     async with Client(server) as client:

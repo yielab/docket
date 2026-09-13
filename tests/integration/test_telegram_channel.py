@@ -1,30 +1,14 @@
-"""docket-owned Telegram approval channel -- the routing/authorization
-layer (``core/telegram.py``).
-
-Telegram is a real, docket-owned approval channel here: grant/deny/status/
-delegate all route through it with a real producer, a real audit entry, and
-no daemon bridge required. This module is the proof. **No test here ever
-touches a socket or a real token** -- ``core/telegram.py``'s
-``handle_message`` never does network I/O at all (only ``poll_once`` does,
-and its tests inject fake ``get_updates``/``send_message`` callables, never
-the real adapter).
-
-What's pinned, in order of how much it matters:
-
-1. **An unbound chat cannot approve/deny/status/delegate anything** -- the
-   required "watch it fail" proof for the unauthorized-sender invariant.
-   Proven both as a direct assertion and by literally breaking the
-   authorization check and watching the same test go red (see
-   ``TestUnauthorizedSenderIsAPlantedDriftProof``).
-2. Every grant/deny through this channel writes ``audit_log(...,
-   channel="telegram")`` via the *existing* ``core.approval`` producer --
-   this module never writes its own competing audit entry for a decision,
-   only for a refusal.
-3. Fail-closed on every ambiguous case: missing token, unparseable command,
-   a `pre_input` `block`/`require_approval` verdict on delegated text.
-4. Delegated text is screened through the real `pre_input` policy hook
-   before ``core.dispatch.enqueue_task`` is ever called (the same MCP tool
-   description precedent, applied to inbound channel text).
+"""docket-owned Telegram approval channel -- the routing/authorization layer (``core/telegram.py``).
+Grant/deny/status/delegate all route through this channel with a real producer, a real audit
+entry, and no daemon bridge. **No test here ever touches a socket or a real token** --
+``handle_message`` never does network I/O (only ``poll_once`` does, and its tests inject fake
+``get_updates``/``send_message`` callables). Pins, in order of importance: an unbound chat cannot
+approve/deny/status/delegate anything, proven both directly and by breaking the authorization
+check and watching the same test go red; every grant/deny writes ``audit_log(...,
+channel="telegram")`` via the existing ``core.approval`` producer, never a competing entry except
+for a refusal; fail-closed on every ambiguous case (missing token, unparseable command, a
+`pre_input` block/require_approval verdict); and delegated text is screened through the real
+`pre_input` hook before `enqueue_task` is ever called.
 """
 
 from __future__ import annotations
@@ -131,12 +115,9 @@ def test_wire_handshake_only_confirms_an_existing_binding() -> None:
 
 
 class TestUnauthorizedSenderIsAPlantedDriftProof:
-    """The card requires this exact invariant to be watched RED before GREEN.
-
-    This test breaks the authorization check the same way a regression
-    would -- by making every chat id resolve to a binding -- and asserts the
-    security property fails loudly, proving the guard above is not vacuous.
-    """
+    """Breaks the authorization check the way a regression would -- making every chat id resolve
+    to a binding -- and asserts the security property fails loudly, proving the guard above is
+    not vacuous."""
 
     def test_removing_the_authorization_check_is_caught(
         self, monkeypatch: pytest.MonkeyPatch
@@ -346,10 +327,8 @@ class TestDelegate:
     def test_require_approval_also_refuses_fail_closed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No per-message human-approval channel exists for catalog/chat
-        text (unlike a discrete tool call) -- require_approval folds into
-        the same fail-closed outcome as block, matching
-        core/mcp_tools.py's _screen_description reasoning exactly."""
+        """No per-message human-approval channel exists for chat text (unlike a discrete tool
+        call), so require_approval folds into the same fail-closed outcome as block."""
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -438,11 +417,9 @@ class TestRequestTimeoutIsThreadedFromConfig:
     def test_configured_request_timeout_reaches_the_adapter(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A well-formed pair (request > poll) must reach `get_updates`
-        unmodified -- proving `TELEGRAM_REQUEST_TIMEOUT_S` is not a dead
-        constant. Break the wiring (stop passing `request_timeout` in
-        `poll_once`) and this goes red: it would see the adapter's own
-        hardcoded default (35.0) instead of the configured 99.0."""
+        """A well-formed pair (request > poll) must reach `get_updates` unmodified, proving
+        `TELEGRAM_REQUEST_TIMEOUT_S` is not a dead constant: breaking the wiring would surface
+        the adapter's hardcoded default (35.0) instead of the configured 99.0."""
         monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 25, raising=True)
         monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 99.0, raising=True)
         _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
@@ -526,11 +503,9 @@ class TestRequestTimeoutInvariantIsEnforced:
     def test_request_timeout_not_exceeding_poll_timeout_is_clamped_with_a_warning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The documented invariant (`config.py`: TELEGRAM_REQUEST_TIMEOUT_S
-        MUST exceed TELEGRAM_POLL_TIMEOUT_S) is enforced, not merely stated.
-        A misconfigured pair must not reach the adapter as-is -- that would
-        reproduce exactly the failure the comment warns about (every
-        legitimately-empty long-poll looking like a local timeout)."""
+        """The invariant TELEGRAM_REQUEST_TIMEOUT_S > TELEGRAM_POLL_TIMEOUT_S is enforced, not
+        merely stated: a misconfigured pair must not reach the adapter as-is, or every
+        legitimately-empty long-poll would look like a local timeout."""
         monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
         monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 35.0, raising=True)
         _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
@@ -570,10 +545,8 @@ class TestRequestTimeoutInvariantIsEnforced:
     def test_warning_is_carried_even_on_a_failed_poll(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The misconfiguration warning must not be lost just because the
-        same poll also failed for an unrelated (e.g. network) reason --
-        `serve.py`'s loop should still learn about a bad config on the very
-        first poll, not only once the network happens to succeed."""
+        """The misconfiguration warning must not be lost just because the poll also failed for an
+        unrelated reason -- `serve.py`'s loop must learn of a bad config on the first poll."""
         monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
         monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 5.0, raising=True)
         _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
@@ -588,24 +561,12 @@ class TestRequestTimeoutInvariantIsEnforced:
 
 
 class TestInboundOnly:
-    """spec: telegram-integration, Command grammar 7 -- the channel replies, never initiates.
-
-    A wired chat is a command surface, not a feed. Nothing may message the
-    group unprompted: no notification when an approval is created, no report
-    when a delegated task finishes. That is a security boundary, not a missing
-    feature -- an outbound path would make an approval request itself a message
-    docket pushes onto an untrusted surface, and it would do so from code that
-    never went through `_authorize`.
-
-    Pinned structurally (an AST walk over `src/`) rather than behaviourally,
-    because the failure this guards against is someone *adding* a caller: a
-    behavioural test can only assert about the call sites that already exist.
-    Sibling of `test_tool_registry.py`'s chokepoint guard, same reasoning.
-
-    If outbound messaging is ever implemented deliberately, this test must be
-    updated in the same change -- which is the point. It makes the boundary
-    move visible instead of silent.
-    """
+    """The channel replies, never initiates (specs/functional/telegram-integration.spec.md,
+    Command grammar 7): a security boundary, not a missing feature, since an outbound path would
+    push an unprompted message from code that never went through `_authorize`. Pinned structurally
+    (an AST walk over `src/`) rather than behaviourally, because the failure guarded against is
+    someone *adding* a caller -- a behavioural test can only assert about call sites that already
+    exist. If outbound messaging is ever implemented, this test must change in the same commit."""
 
     _SRC = Path(_tg.__file__).resolve().parent.parent  # src/docket/
 

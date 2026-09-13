@@ -1,23 +1,14 @@
 """VerifyCmd correctness — worktree cwd, bounded shell surface, audited setter.
 
-Two verified defects fixed by this card:
-  1. ``core/dispatch.py``'s verify gate ran in ``meta["codebase"]`` (the shared repo
-     root) even when a pod implementer had its own git-worktree isolation
-     (``worktreeDir``) — so a worktree implementer's work could be verified
-     against stale or someone-else's code.
-  2. ``set-verify``/``--verify`` had no input validation and no audit trail for a
-     value that is later run with ``shell=True``.
+Guards two defects: the verify gate running in ``meta["codebase"]`` (the shared repo root) even
+when a pod implementer has its own git-worktree isolation (``worktreeDir``), verifying a
+worktree implementer's work against stale or someone-else's code; and ``set-verify``/``--verify``
+accepting an unvalidated, unaudited value that is later run with ``shell=True``.
 
-Three groups:
-  * TestResolveMemberCwd    — ``core/pod.py``'s shared cwd-resolution helper
-    (``resolve_member_cwd``), used by both the dispatch verify gate and
-    ``cli/_pod.py``'s ``_regenerate_member_tools`` so the two can't diverge again.
-  * TestDispatchVerifyCwd   — end-to-end: the verify gate's real subprocess
-    actually runs in the resolved directory (proven with marker files, not a
-    mocked ``run_verify_cmd``).
-  * TestSetVerifyValidation — ``cli/_pod.py``'s ``set-verify``/``--verify``:
-    NUL/newline rejection, the length cap, and the audit-log entry a successful
-    set writes (``pod.set-verify``).
+TestResolveMemberCwd covers ``core/pod.py``'s shared ``resolve_member_cwd``, used by both the
+verify gate and ``_regenerate_member_tools`` so the two can't diverge; TestDispatchVerifyCwd
+proves the verify gate's real subprocess runs in the resolved directory; TestSetVerifyValidation
+covers NUL/newline rejection, the length cap, and the ``pod.set-verify`` audit entry.
 """
 
 from __future__ import annotations
@@ -117,13 +108,9 @@ def _fake_runner() -> _dispatch.Runner:
 
 
 class TestDispatchVerifyCwd:
-    """The verify gate's real subprocess must run in the resolved directory.
-
-    Each test plants a distinguishing marker file and asks the verify command to
-    assert on its presence/absence — a real ``shell=True`` subprocess, not a
-    mocked ``run_verify_cmd``, so this proves the actual cwd, not just the value
-    a helper returned.
-    """
+    """The verify gate's real subprocess must run in the resolved directory: each test plants a
+    marker file and asserts on it via a real ``shell=True`` subprocess, not a mocked
+    ``run_verify_cmd``, proving the actual cwd rather than a helper's return value."""
 
     @pytest.fixture(autouse=True)
     def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

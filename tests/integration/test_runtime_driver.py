@@ -1,20 +1,12 @@
 """The RuntimeDriver port.
 
-Covers:
-  * Protocol conformance — both ``DocketDriver`` and ``FakeDriver`` satisfy
-    ``core.runtime_driver.RuntimeDriver``, and
-    ``edges.adapters.docket_runtime.default_driver()``'s singleton contract.
-  * ``trace_ingest`` through the real production ``DocketDriver`` — a
-    pod-dispatch hop's turns live in ``core/session.py``'s own storage, so
-    this is the path that must work for ``docket trace`` to show anything
-    real.
-  * ``FakeDriver`` — the one test double, exercised directly (dispatch.py's
-    own pipeline-semantics coverage of it lives in test_dispatch.py).
-
-``DocketDriver`` backs onto no OS process and no daemon-shaped file at all.
-See ``edges/adapters/llm.py``'s test coverage (test_llm_port.py) for
-the driver's own response-parsing half, and test_docket_driver.py for
-``DocketDriver.run_turn`` itself.
+Covers protocol conformance (both ``DocketDriver`` and ``FakeDriver`` satisfy
+``core.runtime_driver.RuntimeDriver``, and ``default_driver()``'s singleton contract);
+``trace_ingest`` through the real production ``DocketDriver`` (the path that must work for
+``docket trace`` to show anything real, since a pod-dispatch hop's turns live in
+``core/session.py``'s own storage); and ``FakeDriver`` exercised directly. ``DocketDriver`` backs
+onto no OS process and no daemon-shaped file. See test_llm_port.py for response-parsing and
+test_docket_driver.py for ``DocketDriver.run_turn`` itself.
 """
 
 from __future__ import annotations
