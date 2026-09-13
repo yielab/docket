@@ -1,18 +1,13 @@
 """docket-native home + fleet registry.
 
-Two invariants are pinned here, in order of how much they matter:
-
-1. **fleet.json has exactly one writer.** Agent registration, channel
-   bindings, and gates/isolation flags are docket-owned and read/written
-   through `core/fleet.py`, which in turn goes through `edges/store.py`; a
-   second module reaching for `config.FLEET_FILE` directly would reopen the
-   second-writer drift this registry exists to prevent.
-2. **The fleet registry does not duplicate what `.docket-meta.json` already
-   owns.** `FleetAgent` tracks only the bare registration fact (`id`) — no
-   `model`, no `sessionKey`. Re-adding either field would recreate
-   drift-by-construction, even though nothing would look obviously wrong at
-   a glance (the schema is `extra="allow"`, so a stray field round-trips
-   silently).
+Two invariants pinned here: (1) **fleet.json has exactly one writer** --
+agent registration, channel bindings, and gates/isolation flags are
+docket-owned and read/written through `core/fleet.py`, which goes through
+`edges/store.py`; a second module reaching for `config.FLEET_FILE` directly
+would reopen second-writer drift. (2) **The fleet registry does not
+duplicate what `.docket-meta.json` already owns** -- `FleetAgent` tracks
+only the bare `id`, no `model`/`sessionKey`; re-adding either would recreate
+drift-by-construction silently, since the schema is `extra="allow"`.
 """
 
 from __future__ import annotations

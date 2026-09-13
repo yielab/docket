@@ -135,13 +135,9 @@ class TestCheckReadmeUnit:
         assert METRICS.check_readme(readme, metrics) == []
 
     def test_readme_stating_no_claims_at_all_is_a_hard_failure(self, tmp_path: Path) -> None:
-        """A guard that verified nothing must not report success.
-
-        Regression test for the fail-open hole: an unguarded `check_readme` would skip
-        every unmatched claim silently, so a README stating none of them would report
-        "in sync" while checking zero numbers. Combined with the comma bug below, the
-        gate would go fully vacuous.
-        """
+        """A guard that verified nothing must not report success: an
+        unguarded `check_readme` would skip every unmatched claim
+        silently, reporting "in sync" while checking zero numbers."""
         metrics = {"tests": 700, "loc": 12000, "commands": 30, "specs": 15}
         readme = tmp_path / "README.md"
         readme.write_text("Just some unrelated prose with no quoted numbers.\n")
@@ -152,12 +148,9 @@ class TestCheckReadmeUnit:
         assert any("UNGUARDED" in p for p in problems)
 
     def test_thousands_separator_in_a_claim_is_still_checked(self, tmp_path: Path) -> None:
-        """Regression: `**1,188 tests**` must be parsed, not silently skipped.
-
-        The claim patterns used `(\\d+)`, which cannot match a comma-formatted
-        number, so the tests guard silently disarmed itself the moment the suite
-        crossed 1,000 cases — while still printing "in sync".
-        """
+        """`**1,188 tests**` must be parsed, not silently skipped: a claim
+        pattern of `(\\d+)` cannot match a comma-formatted number, so the
+        guard would disarm itself past 1,000 cases while printing "in sync"."""
         metrics = {"tests": 1188, "loc": 12000, "commands": 30, "specs": 15}
         readme = tmp_path / "README.md"
         readme.write_text(
@@ -178,20 +171,12 @@ class TestCheckReadmeUnit:
         assert any("1042" in p and "1188" in p for p in problems)
 
     def test_spec_count_matches_the_blocking_validator(self) -> None:
-        """`count_specs()` must agree with `scripts/validate-specs.sh`.
-
-        These two scripts are both authorities on "how many specifications does
-        this repo have", and they disagreed by one for as long as
-        `specs/acceptance/user-stories.md` has existed: the validator globs
-        `specs/acceptance/*.md`, while `count_specs()` used
-        `rglob("*.spec.md")` and could not see a file without that suffix.
-        README followed the metrics script and published 20 where the
-        CI-blocking gate counted 21.
-
-        Pinning them against each other is the only thing that keeps a future
-        category directory — or a future spec that does not use the `.spec.md`
-        suffix — from re-opening the same one-off silently.
-        """
+        """`count_specs()` must agree with `scripts/validate-specs.sh` --
+        both are authorities on "how many specs does this repo have", and
+        a suffix mismatch (`*.md` vs. `*.spec.md`) can make them silently
+        disagree, with the README following the wrong one. Pinning them
+        against each other is what keeps a future category directory or
+        non-`.spec.md` file from reopening that silently."""
         validator = SCRIPT_PATH.parent / "validate-specs.sh"
         out = subprocess.run(
             ["bash", str(validator)],
@@ -257,14 +242,9 @@ class TestMainCheckExitCodes:
 
 
 def test_cli_subprocess_check_catches_planted_drift_against_live_counts(tmp_path: Path) -> None:
-    """Full CLI invocation (subprocess, not import) against real live counts.
-
-    Builds a synthetic README from the tree's actual current metrics (so this
-    doesn't depend on whether the README's own numbers are currently correct),
-    verifies --check passes on it, then plants drift in a copy and verifies
-    it fails — proving
-    the gate CI runs (`uv run python scripts/metrics.py --check`) is real.
-    """
+    """Full CLI invocation (subprocess, not import): builds a synthetic
+    README from the tree's actual metrics, verifies --check passes, then
+    plants drift in a copy and verifies it fails -- proving the CI gate is real."""
     json_result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--json"],
         cwd=REPO_ROOT,

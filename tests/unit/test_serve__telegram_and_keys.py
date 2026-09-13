@@ -1,17 +1,14 @@
 """`docket serve --telegram` wiring, and the bot token's exclusion
 from per-agent `.env` sync.
 
-Two things are pinned here that the channel/adapter test modules don't
-reach:
-
-1. `serve.py`'s poll loop paces itself (no busy-loop on an unconfigured bot
-   or a transport error) and never lets an unexpected exception escape --
-   a bare `contextlib.suppress(Exception)` around dispatch is banned, so
-   this proves the alternative: catch, print, back off, keep going.
-2. `docket keys add TELEGRAM_BOT_TOKEN` must NOT copy the token into every
-   project agent's `.env` file the way a provider key does -- that would
-   spread docket's own operational credential into every pod's workspace,
-   a strictly wider blast radius than the one process that needs it.
+Two things pinned here that the channel/adapter test modules don't reach:
+(1) `serve.py`'s poll loop paces itself (no busy-loop on an unconfigured
+bot or transport error) and never lets an unexpected exception escape
+silently -- catch, print, back off, keep going, never a bare
+`contextlib.suppress(Exception)`; (2) `docket keys add TELEGRAM_BOT_TOKEN`
+must NOT copy the token into every project agent's `.env` the way a
+provider key does -- that would spread docket's own operational
+credential far wider than the one process that needs it.
 """
 
 from __future__ import annotations
@@ -95,11 +92,9 @@ class TestPollLoopPacing:
     def test_an_unexpected_exception_is_caught_not_left_to_crash_the_loop(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The discipline this loop must uphold: no bare
-        `contextlib.suppress(Exception)` around dispatch, but also no
-        unhandled exception taking the whole background thread down
-        silently -- it must be visible (printed) and the loop must
-        continue."""
+        """No bare `contextlib.suppress(Exception)` around dispatch, but
+        also no unhandled exception silently killing the background
+        thread -- it must be visible (printed) and the loop must continue."""
         stop = threading.Event()
         calls = 0
 
@@ -121,10 +116,9 @@ class TestPollLoopPacing:
     def test_successful_poll_with_messages_loops_again_without_extra_wait(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """On the happy path (configured + ok), the loop must not insert its
-        own sleep -- getUpdates' own long-poll wait already paces it. This is
-        proven by observing many iterations complete well inside a tight
-        wall-clock budget."""
+        """On the happy path the loop must not insert its own sleep --
+        getUpdates' own long-poll wait already paces it -- proven by many
+        iterations completing well inside a tight wall-clock budget."""
         stop = threading.Event()
         calls = 0
         start = time.monotonic()

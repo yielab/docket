@@ -52,15 +52,9 @@ def test_release_publication_is_a_protected_build_consumer() -> None:
 
 
 def test_publish_job_resolves_the_repository_without_a_checkout() -> None:
-    """`gh` cannot infer a repository in a job that never checks out source.
-
-    The publish job downloads `build`'s verified bytes and nothing else -- that
-    is the property `test_release_publication_is_a_protected_build_consumer`
-    exists to keep. The cost of it is that there is no git remote for `gh` to
-    read, so an implicit `gh release create` dies with
-    `failed to run git: fatal: not a git repository` after the attestation has
-    already been produced. The repository must be named explicitly.
-    """
+    """`gh` cannot infer a repository in a job that never checks out
+    source: the publish job downloads only `build`'s verified bytes, so
+    the repository must be named explicitly or `gh release create` dies."""
     document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     publish = document["jobs"]["publish"]
     steps = publish["steps"]
@@ -96,19 +90,12 @@ RELEASE_ASSET_SIDECAR = (
 
 
 def test_formula_digest_matches_the_published_release_asset() -> None:
-    """The formula must pin the digest of the asset users will actually download.
-
-    This cannot be precomputed. The wheel builds byte-identically anywhere, but
-    the sdist -- which is what `docket-v<version>.tar.gz` is a copy of -- does
-    not: the same tagged commit produced three different sdist digests on a
-    developer machine, on the release runner, and in the pin committed with the
-    tag. Only the runner's bytes ever become the release asset, so the pin can
-    only be written afterwards, with `scripts/update-homebrew-sha.sh`.
-
-    Reads the tiny `.sha256` sidecar rather than the multi-megabyte tarball; the
-    release workflow generates both from the same bytes and `sha256sum --check`s
-    them in the build job and again in publish.
-    """
+    """The formula must pin the digest of the asset users will actually
+    download. This cannot be precomputed: the sdist (unlike the wheel)
+    does not build byte-identically everywhere, so only the runner's
+    bytes -- never a developer machine's -- may become the pinned digest,
+    written afterwards by `scripts/update-homebrew-sha.sh`. Reads the tiny
+    `.sha256` sidecar rather than the multi-megabyte tarball."""
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     pinned = re.search(r'^\s*sha256 "([0-9a-f]{64})"', FORMULA.read_text(encoding="utf-8"), re.M)
     assert pinned is not None, "the formula lost its sha256 pin"

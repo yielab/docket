@@ -1,16 +1,12 @@
 """The persisted run registry — one record per dispatch invocation.
 
-Unit-level coverage of ``core/runs.py``'s CRUD primitives and its ``execute()``
-safe-wrapper, hermetic against a tmp ``RUNS_FILE``. Integration coverage (every
-real dispatch call site — CLI/webhook/schedule/sweep — actually creates and
-finishes a record) lives in ``test_dispatch_run_records.py``.
-
-Acceptance criteria this file covers:
-  - create_run/mark_running/finish_run/get_run/list_runs round-trip correctly
-  - list_runs filters by project and orders newest first
-  - execute() records a success (state, taskIds) and never raises
-  - execute() records a failure (state, error text) and never raises
-  - concurrent create_run calls never clobber each other (locked read-modify-write)
+Unit-level coverage of ``core/runs.py``'s CRUD primitives and its
+``execute()`` safe-wrapper, hermetic against a tmp ``RUNS_FILE``.
+Integration coverage (every real dispatch call site actually creates and
+finishes a record) lives in ``test_dispatch_run_records.py``. Covers:
+CRUD round-trip, project-filtered/newest-first listing, ``execute()``
+recording success/failure without raising, and concurrent ``create_run``
+calls never clobbering each other (locked read-modify-write).
 """
 
 from __future__ import annotations

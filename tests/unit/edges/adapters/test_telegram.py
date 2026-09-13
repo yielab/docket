@@ -1,22 +1,14 @@
 """The Telegram Bot API adapter.
 
 ``edges/adapters/telegram.py`` is the only module that knows the Bot API's
-wire format. A real local HTTP server (stdlib ``http.server``) backs every
-network-shaped test here, exactly the discipline
-``test_fetch_tool.py`` set for ``edges/adapters/fetch.py`` -- **no
-test in this module ever contacts the real Telegram API or needs a token**;
-``API_ROOT`` is monkeypatched to the local server's base URL.
+wire format. A real local HTTP server backs every network-shaped test
+here; **no test contacts the real Telegram API or needs a token**.
 
-What this pins, in order of how much it matters:
-
-1. **The bot token never appears in a returned error string** -- proven
-   against a real HTTP 401 response and a real connection failure, not
-   assumed.
-2. Long-poll semantics: an empty result is success, not a failure; the
-   caller's offset is echoed back verbatim (this module never computes the
-   next offset itself -- that is ``core/telegram.py``'s job).
-3. A network failure (timeout, refused connection, malformed body) degrades
-   to a typed ``ok=False`` result and never raises.
+Pins, most important first: (1) the bot token never appears in a returned
+error string, proven against a real 401 and connection failure; (2) an
+empty long-poll result is success, offset echoed back verbatim
+(next-offset computation is ``core/telegram.py``'s job); (3) a network
+failure degrades to a typed ``ok=False`` and never raises.
 """
 
 from __future__ import annotations

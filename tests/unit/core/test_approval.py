@@ -1,16 +1,13 @@
 """Headless approval channel via serve.
 
 Acceptance criteria:
-  - GET /approvals lists pending approvals when authenticated
-  - GET /approvals returns 401 without token or with wrong token
-  - POST /approvals/<token> grants/denies an approval when authenticated
-  - POST /approvals/<token> returns 401 without auth (state unchanged)
-  - POST /approvals/<token>'s optional `channel` field is validated against
-    core.approval.APPROVAL_CHANNELS (an unrecognised value is 400, not a
-    silent fallthrough), defaults to "http" when absent, and a recognised
-    value (e.g. "tack") is tagged onto the audit entry unchanged
+  - GET /approvals lists pending approvals when authenticated, 401 otherwise
+  - POST /approvals/<token> grants/denies when authenticated, 401 (state
+    unchanged) otherwise
+  - POST /approvals/<token>'s `channel` field: see
+    specs/data/serve-read-api.spec.md ("POST /approvals/<token> -- the
+    channel field")
   - Expiry sweep still fail-closes
-  - suite green
 """
 
 from __future__ import annotations

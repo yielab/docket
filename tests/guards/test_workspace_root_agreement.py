@@ -1,19 +1,14 @@
 """The paths a member is *told* to work in must be inside the roots it is *gated* against.
 
-A pod member learns where the code lives from three docket-written files:
-``SOUL.md`` (its system prompt), ``WORKFLOW_AUTO.md`` (the startup contract it
-re-reads after every context reset) and, for a resourced Implementer,
-``TOOLS.md``. Its tool calls are separately contained by
-``docket_runtime._resolve_roots``, which returns the git worktree **alone**
-when the member has one.
+A pod member learns where the code lives from docket-written files
+(``SOUL.md``, ``WORKFLOW_AUTO.md``, ``TOOLS.md``); its tool calls are
+separately contained by ``docket_runtime._resolve_roots``, which returns
+the git worktree **alone** when the member has one.
 
-When those two disagree the failure is silent and expensive: every read of the
-advertised path is refused as "resolves outside the allowed roots", the model
-retries other spellings of the same path, and the turn dies on the token
-budget with no tool call having succeeded. Nothing crashes, so no other test
-notices.
-
-These tests pin the agreement rather than any particular path text.
+When those two disagree the failure is silent and expensive: every read
+of the advertised path is refused, the model retries other spellings, the
+turn dies on the token budget with no tool call having succeeded, and
+nothing crashes. These tests pin the agreement, not any path text.
 """
 
 from __future__ import annotations

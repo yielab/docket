@@ -1,66 +1,45 @@
-"""Guard: one way to repoint DOCKET_HOME, not fifty-six.
+"""Guard: one way to repoint DOCKET_HOME, not many private copies.
 
-``tests/conftest.py::repoint_docket_home`` exists precisely so a test that
-wants its own ``DOCKET_HOME`` never hand-writes a second, private copy of
-``_DOCKET_HOME_PATHS``. Before this guard, 21 test modules had done exactly
-that anyway, each with its own ``_point_at``-shaped helper -- and not one of
-them covered all sixteen constants in the canonical tuple. Every one of
-those tests ran against a home split in two: the constants its private
-helper forgot stayed aimed at the autouse ``_isolate_docket_home`` fixture's
-home, so the test looked isolated and was not, and nothing failed. This is
-the same isolation failure that has already reached the developer's real
-``~/.docket`` three times, one guard-shaped step earlier.
+``tests/conftest.py::repoint_docket_home`` exists so a test that wants its
+own ``DOCKET_HOME`` never hand-writes a second, private copy of
+``_DOCKET_HOME_PATHS``. A hand-rolled helper that forgets even one of the
+sixteen constants leaves a home split in two: the forgotten constants stay
+aimed at the autouse ``_isolate_docket_home`` fixture's home, so the test
+looks isolated and is not, and nothing fails. This has already reached the
+developer's real ``~/.docket`` more than once.
 
-**What this guard actually checks, precisely.** A weaker version of this
-guard would ask only "does this module call ``repoint_docket_home`` anywhere
-in it" -- that is not what this does, and it matters: a module can call the
-helper correctly in one test and still hand-roll a partial subset in
-another, and a module-wide check would not catch that. This guard instead
-walks every function (including nested ones -- a fixture defined inside a
-test class, a helper called by several tests) and requires that a function
-which itself contains a direct ``_cfg.DOCKET_HOME`` assignment also contains
-a call to ``repoint_docket_home`` somewhere in its own body. Each function is
-judged independently, so one correct test next to one drifted test in the
-same file is still caught.
+**What this checks, precisely.** Not "does this module call
+``repoint_docket_home`` anywhere" -- a module can call it correctly in one
+test and still hand-roll a partial subset in another. This walks every
+function (including nested ones) independently and requires that a
+function containing a direct ``_cfg.DOCKET_HOME`` assignment also calls
+``repoint_docket_home`` somewhere in its own body.
 
-**What it does not catch, named rather than assumed away.** If a private
-helper function -- call it ``_point_at`` -- hand-rolls the raw setattr calls
-in its own body, and a *different* function merely calls ``_point_at(...)``,
-this guard flags the defining function (where the raw assignment lives), not
-every caller. That is sufficient to fail the suite and name the offending
-file, which is the guard's job; it does not additionally prove that no
-caller of a legitimate helper was silently relying on a partial subset
-elsewhere. A reviewer reading a failure here should open the named function.
+**What it does not catch.** If a private helper hand-rolls the raw setattr
+calls and a *different* function merely calls that helper, this flags the
+defining function, not every caller -- enough to fail the suite and name
+the offending file, not proof that no caller relies on a partial subset
+elsewhere.
 
-**A second uncovered shape, measured rather than supposed.** The condition
-below keys on ``_cfg.DOCKET_HOME`` itself, so a function that repoints only
-*derived* constants -- traces, sessions, approvals -- and never claims a home
-at all does not trip it. Sixteen functions across thirteen modules do exactly
-that today. They are not the drift this guard was written for: each overrides
-a named constant deliberately, which ``conftest.py`` explicitly blesses, and
-the autouse fixture still isolates everything they leave alone, so none of
-them can reach the real ``~/.docket``. They stay unguarded because the honest
-rule for them is a threshold rather than a boolean -- one deliberate override
-is legitimate, several hand-rolled together is a private partial copy again --
-and a threshold needs its own baseline and its own card. Do not read this
-guard's silence as proof that those sixteen are uniform.
+**A second uncovered shape.** The condition keys on ``_cfg.DOCKET_HOME``
+itself, so a function that repoints only *derived* constants (traces,
+sessions, approvals) and never claims a home at all does not trip it.
+Several functions do exactly that deliberately -- ``conftest.py`` blesses
+a single deliberate override, and the autouse fixture still isolates
+everything else they leave alone -- but several hand-rolled together
+would be a private partial copy again, and telling the two apart needs a
+threshold this guard does not implement. Do not read this guard's silence
+as proof those functions are uniform.
 
-**The allowlist below is for a different shape of test, and it is currently
-empty on purpose.** The card that wrote this guard asked for a class of test
-that sets a ``DOCKET_HOME`` *environment variable* for a child process it
-then spawns, and must never be converted. That class exists in this repo
-(``tests/integration/test_run_cancellation.py``, four ``tests/agent/release/``
-adapter-boundary tests, and one site inside
-``test_cooperative_run_cancellation.py`` sitting next to an already-converted
-in-process repoint) -- but every real instance of it sets ``os.environ`` or a
-plain ``dict`` passed as a subprocess ``env=``, never ``_cfg.DOCKET_HOME``
-itself, because patching the already-imported ``_cfg`` module has no way to
-reach a separate process's fresh import of ``config.py``. None of those
-files therefore ever trips this guard's condition, and the allowlist has
-nothing legitimate to hold. It stays as a mechanism, not a graveyard: add an
-entry, with a reason and the spawn site it protects, only if a future test
-genuinely needs both a raw ``_cfg.DOCKET_HOME`` patch and a reason not to
-call the shared helper.
+**The allowlist is empty on purpose.** It exists for tests that set a
+``DOCKET_HOME`` *environment variable* for a spawned child process and
+must never be converted -- but every real instance of that pattern sets
+``os.environ`` or a subprocess ``env=`` dict, never ``_cfg.DOCKET_HOME``
+itself, since patching the already-imported ``_cfg`` module cannot reach
+a separate process's fresh import of ``config.py``. None of those files
+trips this guard's condition. Add an entry, with a reason and the spawn
+site it protects, only if a future test genuinely needs both a raw
+``_cfg.DOCKET_HOME`` patch and a reason not to call the shared helper.
 """
 
 from __future__ import annotations

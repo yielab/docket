@@ -1,37 +1,14 @@
 """docket-native pipeline spec.
 
-``core/pipeline.py`` defines the format only — a Pydantic model for the YAML
-dialect the executor (`core/orchestrator.py`) runs pods through, replacing
-the Lobster dialect docket could lint but never fully execute (see
-tests/guards/test_removed_commands.py for the `workflow` command's retirement).
-This suite tests the model and its validation only, not dispatch behavior.
+``core/pipeline.py`` defines the format only, a Pydantic model for the
+YAML dialect the executor runs pods through; tests the model and its
+validation only, not dispatch behavior. See
+specs/functional/pipeline-format.spec.md for the zero-migration contract.
 
-  * TestRoundTrip          — a valid, full-featured pipeline parses and
-    round-trips through dump/validate unchanged.
-  * TestUnknownKeyRejected  — ``extra="forbid"`` bites at every level (top,
-    step, gate, rework edge, variable).
-  * TestGateTypes           — mechanical/verdict/approval gates validate
-    their own shape; verdict gates catch bad regexes, empty passValues, and
-    passValues/rework overlap.
-  * TestReworkBounds        — max_cycles must be >= 0; a rework edge must
-    target an existing, earlier, top-level step id.
-  * TestParallelGroups      — a parallel step parses, forbids its own
-    role/agent/gate/retries/timeout, forbids nested parallel, and forbids a
-    rework edge on one of its children.
-  * TestVariables           — variable identifiers and required/default
-    conflict.
-  * TestStepTargeting       — role XOR agent, archetype shape, id shape.
-  * TestZeroMigration       — ``load_pipeline(None)`` returns the built-in
-    pipeline, drift-guarded against ``core/dispatch.py``'s own
-    ``PIPELINE_ORDER`` directly. The built-in Reviewer/Tester verdict
-    *patterns* have no dispatch-private regex to drift-check against
-    (``core/dispatch.py`` has no hardcoded copy of its own; gate execution
-    is generic) — those two checks cross-check against
-    ``core.orchestrator``'s resolved archetype-fallback gate instead, proving
-    the pipeline format's hardcoded default and the archetype registry's
-    ``gateContract`` describe the same role without silently diverging.
-  * TestLoadPipeline        — YAML parse errors, empty/non-mapping
-    documents, and the missing-PyYAML error path.
+  * TestRoundTrip, TestUnknownKeyRejected, TestGateTypes, TestReworkBounds,
+    TestParallelGroups, TestVariables, TestStepTargeting — shape validation.
+  * TestZeroMigration — ``load_pipeline(None)`` vs. the built-in pipeline.
+  * TestLoadPipeline — YAML parse errors and the missing-PyYAML path.
 """
 
 from __future__ import annotations
@@ -591,11 +568,8 @@ class TestStepTargeting:
 
 class TestZeroMigration:
     """Absence of a pipeline file MUST mean today's built-in dispatch order,
-    byte-identical behavior — no separate migration step. Drift-guarded
-    directly against ``core/dispatch.py``'s own constants rather than a
-    hand-copied literal, so a future change to the real pipeline order or
-    verdict conventions fails this suite instead of silently diverging.
-    """
+    byte-identical -- drift-guarded against ``core/dispatch.py``'s own
+    constants, not a hand-copied literal, so real drift fails this suite."""
 
     def test_no_text_returns_builtin_source(self) -> None:
         result = load_pipeline(None)
@@ -618,13 +592,9 @@ class TestZeroMigration:
         assert implementer.gate.command is None
 
     def test_builtin_reviewer_pattern_matches_archetype_resolved_gate(self) -> None:
-        """Gate execution reads a step's resolved gate generically (see
-        ``core/dispatch.py``'s docstring note), not a dispatch-private regex
-        constant. The cross-check that matters is that the pipeline format's
-        hardcoded default and the archetype registry's ``gateContract`` —
-        two independent sources of "what does a bare `role: reviewer` step's
-        gate look like" — agree.
-        """
+        """Gate execution reads a step's resolved gate generically, not a
+        dispatch-private regex constant: checks the format's hardcoded
+        default agrees with the archetype registry's ``gateContract``."""
         spec = default_pipeline()
         reviewer = next(s for s in spec.steps if s.id == "reviewer")
         assert isinstance(reviewer.gate, VerdictGate)
