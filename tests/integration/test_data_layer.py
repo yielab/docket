@@ -9,7 +9,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-SUBJECT = "docket.core.models"
+SUBJECT = "docket.core"
 
 _runner = CliRunner()
 
