@@ -228,12 +228,9 @@ def read_tasks(project: str) -> list[dict[str, Any]]:
 def _enqueue_pre_input_gate(
     project: str, session_id: str, task_id: str, description: str, *, trusted: bool
 ) -> _policy.PolicyHit:
-    """Evaluate the ``pre_input`` policy hook once, at enqueue time. See
-    specs/functional/security-gates.spec.md. Never raises; the caller decides what a
-    ``block``/``require_approval`` result means for the task being built. Unlike ``block``,
-    ``require_approval`` does not synthesize a session_end: the task will still run for real
-    once granted, and that later ``dispatch_task`` call supplies the genuine start/end.
-    """
+    """Evaluate ``pre_input`` once, at enqueue time; never raises. Unlike ``block``,
+    ``require_approval`` does not synthesize a session_end -- the task still runs for real
+    once granted. See specs/functional/security-gates.spec.md."""
     hit = _policy.policy_eval_detail("lead", "pre_input", description, trusted=trusted)
     if hit.action == "allow":
         return hit
@@ -278,15 +275,9 @@ def enqueue_task(
     *,
     trusted: bool | None = None,
 ) -> dict[str, Any]:
-    """Append a pending task to the pod's queue and return it.
-
-    Raises DispatchError if the project has no Lead workspace, or if a ``pre_input``
-    guardrail policy blocks this description (nothing persisted then). A locked
-    read-modify-write, so concurrent ``delegate`` calls cannot clobber each other's task.
-    ``trusted`` overrides only this enqueue's ``pre_input`` check, never the persisted
-    ``source``; ``None`` (every existing caller) preserves prior behavior: trusted iff
-    ``source == "operator"``.
-    """
+    """Locked read-modify-write, so concurrent ``delegate`` calls cannot clobber each other's
+    task. Raises DispatchError with no Lead workspace or a ``pre_input`` block (nothing
+    persisted). ``trusted`` overrides only this check, never the persisted ``source``."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
@@ -370,13 +361,9 @@ def pod_pipeline(project: str) -> list[tuple[str, str]]:
 
 
 def pod_full_roster(project: str) -> dict[str, str]:
-    """Every role this pod actually has, first member per role (``role -> member_id``).
-
-    Unlike :func:`pod_pipeline` (fixed to the four legacy ``PIPELINE_ORDER`` roles), this
-    covers every role name the pod's members carry, so a custom
-    :class:`~docket.core.pipeline.PipelineSpec` can target a non-legacy role (e.g. a
-    starter-library ``researcher``) against the pod's real roster.
-    """
+    """Every role this pod has, first member per role (``role -> member_id``). Unlike
+    :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
+    custom :class:`~docket.core.pipeline.PipelineSpec` can target a non-legacy role."""
     all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
@@ -385,13 +372,9 @@ def pod_full_roster(project: str) -> dict[str, str]:
 
 
 def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
-    """The PipelineSpec this dispatch actually runs. See specs/functional/pod-dispatch.spec.md
-    ("Pipeline order and participation") for the resolution rule and why the rework-budget patch
-    is dispatch's job, not the pipeline format's. A caller-supplied *spec* is used exactly as
-    given, never patched; the patch applies only to the ``None`` (zero-migration) default. Public
-    (not ``_``-prefixed) so ``cli/_pipeline.py``'s ``docket pipeline plan`` renders from this same
-    resolved spec, never a second interpretation.
-    """
+    """The PipelineSpec this dispatch actually runs (see pod-dispatch.spec.md, "Pipeline order
+    and participation"). A caller-supplied *spec* is never patched -- only the ``None`` default
+    gets the rework-budget patch. Public so ``cli/_pipeline.py`` renders this same resolved spec."""
     if spec is not None:
         return spec
     builtin = _pipeline.load_pipeline(None).spec
@@ -433,10 +416,9 @@ def pod_budget(project: str) -> float:
 
 
 def pod_max_rework_cycles(project: str) -> int:
-    """Bounded rework budget for a REQUEST-CHANGES review: the Lead's ``maxReworkCycles``
-    meta field (default ``1``; ``0`` disables rework — a hard gate with no retry). See
-    specs/functional/pod-dispatch.spec.md ("Reviewer verdict gate and bounded rework").
-    """
+    """Bounded rework budget for a REQUEST-CHANGES review: Lead's ``maxReworkCycles`` meta
+    (default ``1``; ``0`` disables rework -- a hard gate, no retry). See pod-dispatch.spec.md
+    ("Reviewer verdict gate and bounded rework")."""
     lead_id = _pod.member_id(project, "lead")
     raw = _fleet.meta_get(lead_id, "maxReworkCycles", "")
     if not raw:
@@ -486,13 +468,9 @@ def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
 
 
 def pod_gating_cost(project: str) -> tuple[float, bool]:
-    """The pod's spend for budget-**gating** purposes: recorded, or estimated. See
-    specs/functional/cost-tracking.spec.md ("labelled estimate fallback for gating") — docket's
-    own driver always reports ``cost_usd = 0.0``, so this falls back to a token x pricing-table
-    estimate. Returns ``(amount, estimated)``; the estimate is for gating/warning only and must
-    never be presented as, or mixed into, recorded spend (``docket cost`` stays the driver's own
-    figure).
-    """
+    """The pod's spend for budget-**gating**: recorded, or a token x pricing-table estimate
+    (the driver always reports ``cost_usd = 0.0``). Returns ``(amount, estimated)`` -- never
+    present the estimate as, or mix it into, recorded spend. See cost-tracking.spec.md."""
     recorded = pod_recorded_cost(project)
     if recorded > 0.0:
         return recorded, False
@@ -513,10 +491,9 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
 
 
 def _pause_lead_for_budget(project: str) -> None:
-    """Mark the pod's Lead paused once its budget cap is reached, so ``_claim_next_task``
-    refuses every further claim for this pod (one write here, not a per-hop recheck) until
-    an operator clears it (``docket profile <lead-id> --resume``). Idempotent if repeated.
-    """
+    """Mark the pod's Lead paused once budget is reached, so ``_claim_next_task`` refuses
+    every further claim (one write here, not a per-hop recheck) until an operator clears it
+    (``docket profile <lead-id> --resume``). Idempotent."""
     lead_id = _pod.member_id(project, "lead")
     _fleet.meta_set(lead_id, "paused", True)
     _fleet.meta_set(lead_id, "pausedReason", "budget")
@@ -538,18 +515,13 @@ def _hop_message(
     prior: list[HopResult],
     rework_hop: HopResult | None = None,
 ) -> tuple[str, _HopComposition]:
-    """Build the message handed to one role, threading prior hops' output through
-    ``core/context.py``'s token-budget compiler. See specs/functional/pod-dispatch.spec.md
-    ("Bounded hop prompts"): the task description is never truncated; each prior hop's
-    artifact is fit to a per-role token share, shedding ``DROP_ORDER`` fields before
-    ``summary`` is ever truncated (with a visible marker), never silently dropped. Returns
-    the message plus a ``_HopComposition`` for the ``context_composed`` trace event.
-
-    *rework_hop* (the Reviewer's REQUEST-CHANGES driving this call, only for
-    ``role == "implementer"``) gets the role's *full* carryover budget in its own section
-    and is excluded from the generic per-hop loop, deliberately rather than relying on
-    recency ranking, since it is what the rework hop exists to address.
-    """
+    """Build one role's message via ``core/context.py``'s token-budget compiler (see
+    pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
+    each prior artifact is fit to a per-role share, shedding ``DROP_ORDER`` fields before
+    ``summary``, which is only ever truncated with a marker, never silently dropped.
+    *rework_hop* gets the implementer's full carryover budget in its own section, deliberately
+    excluded from the generic per-hop loop (not left to recency ranking) since it addresses
+    what the rework hop exists for. Returns the message plus a ``_HopComposition``."""
     from docket.core import context as _ctx
 
     desc = str(task.get("description", "")).strip()
@@ -658,10 +630,9 @@ def _hop_message(
 
 
 def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
-    """Subprocess env override for a hop: only an Implementer with an allocated pod port
-    range gets one (real ``DOCKET_PORT_*``/``DOCKET_SCRATCH_DIR`` vars, not TOOLS.md
-    prose); every other case returns ``None`` (inherit the parent env).
-    """
+    """Subprocess env override: only an Implementer with an allocated port range gets one
+    (real ``DOCKET_PORT_*``/``DOCKET_SCRATCH_DIR`` vars, not TOOLS.md prose); every other
+    case returns ``None`` (inherit the parent env)."""
     if role != "implementer":
         return None
     port_start = _fleet.meta_get(member_id, "portRangeStart", "")
@@ -677,12 +648,10 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
 
 
 def _implementer_diff_probe(member_id: str, role: str) -> tuple[list[str], str | None]:
-    """Real `files_changed`/`diff_ref` for an Implementer hop's artifact. See
-    specs/functional/pod-dispatch.spec.md ("Implementer diff producer"): Implementer-only
-    (every other role gets ``([], None)``); resolves the same working tree the mechanical
-    verify gate uses, via ``core.pod.resolve_member_cwd``, so the two can never disagree;
-    degrades to ``([], None)`` rather than raising when git is missing or unavailable.
-    """
+    """Real ``files_changed``/``diff_ref`` for an Implementer hop (every other role gets
+    ``([], None)``); resolves the same working tree the verify gate uses via
+    ``core.pod.resolve_member_cwd`` so the two can never disagree, degrading to ``([], None)``
+    rather than raising when git is missing or unavailable. See pod-dispatch.spec.md."""
     if role != "implementer":
         return [], None
     worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
@@ -704,11 +673,9 @@ def _prior_implementer_worktree(prior: list[HopResult]) -> str:
 
 
 def _hop_record(h: HopResult) -> dict[str, Any]:
-    """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``). See
-    specs/functional/pod-dispatch.spec.md ("Structured handoff artifacts"). ``artifact`` is
-    persisted alongside the legacy ``output`` field, never replacing it. ``verification_skipped``
-    is deliberately not persisted -- it is this run's own in-memory signal for ``cli/``'s renderer.
-    """
+    """Persisted shape of one hop (round-trips via ``_hop_from_record``; pod-dispatch.spec.md,
+    "Structured handoff artifacts"). ``artifact`` is persisted alongside legacy ``output``, never
+    replacing it; ``verification_skipped`` stays unpersisted -- an in-memory signal for ``cli/``."""
     return {
         "role": h.role,
         "member": h.member_id,
@@ -725,10 +692,8 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
 
 def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     """Reconstruct a HopResult from a persisted hop record (for resume). A legacy record with
-    no (or invalid) ``artifact`` key degrades via ``HandoffArtifact.from_legacy_output``,
-    treating raw ``output`` as ``summary`` — see specs/functional/pod-dispatch.spec.md
-    ("Structured handoff artifacts").
-    """
+    no (or invalid) ``artifact`` degrades via ``HandoffArtifact.from_legacy_output``, treating
+    raw ``output`` as ``summary`` -- see pod-dispatch.spec.md ("Structured handoff artifacts")."""
     output = str(rec.get("output", ""))
     artifact_raw = rec.get("artifact")
     artifact: _handoff.HandoffArtifact | None = None
@@ -754,11 +719,9 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
 
 @dataclass
 class _ResumePosition:
-    """Where a (possibly resumed) dispatch run should continue: ``pipeline_index`` into the
-    resolved run's ``runtime_steps``; ``rework_counts`` (cycles already consumed, keyed by
-    gated step id); ``rework_hop`` (the driving ``HopResult``, set only when resuming into a
-    rework target).
-    """
+    """Where a (possibly resumed) run should continue: ``pipeline_index`` into
+    ``runtime_steps``; ``rework_counts`` (cycles consumed, keyed by gated step id);
+    ``rework_hop`` (set only when resuming into a rework target)."""
 
     pipeline_index: int
     rework_counts: dict[str, int]
@@ -774,16 +737,13 @@ def _group_complete(node: _orch.PlannedGroup, prior: list[HopResult]) -> bool:
 def _replay_pipeline_position(
     runtime_steps: tuple[_orch.PlannedNode, ...], prior: list[HopResult]
 ) -> _ResumePosition:
-    """Replay a hop history to find where dispatch should continue. See
-    specs/functional/pod-dispatch.spec.md ("Per-hop incremental persistence and crash
-    recovery" for why a completed-roles set cannot resume correctly once rework lets a role
-    run more than once; "Parallel step groups" item 6 for the known group-resume limitation
-    this function's trailing loop implements). Matches an arbitrary verdict gate's own
-    ``rework`` edge by step id, not a hardcoded role check. Only ever replays a
-    *non-terminal* history: a terminal outcome is decided and persisted synchronously within
-    the same ``dispatch_task`` call, and a plain-``failed`` task is never reclaimed for
-    resume (only a ``stale_claim``-tagged one is).
-    """
+    """Replay a hop history to find where dispatch should continue. See pod-dispatch.spec.md
+    ("Per-hop incremental persistence and crash recovery" for why a completed-roles set can't
+    resume once rework reruns a role; "Parallel step groups" item 6 for the known group-resume
+    limit this function's trailing loop implements). Matches a verdict gate's ``rework`` edge
+    by step id, not a hardcoded role. Only replays *non-terminal* history -- a terminal outcome
+    is decided/persisted synchronously in the same ``dispatch_task`` call, and a plain-``failed``
+    task is never reclaimed for resume (only ``stale_claim``-tagged)."""
     id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
     pi = 0
     rework_counts: dict[str, int] = {}
@@ -828,10 +788,9 @@ def _replay_pipeline_position(
 
 
 def _pod_requires_approval(project: str, role: str) -> bool:
-    """The pod-level require_approval source: the Lead's ``requireApprovalRoles`` meta, a
-    comma-separated case-insensitive role list; blank/missing means no pod-level gate. See
-    specs/functional/pod-dispatch.spec.md ("require_approval gate and waiting_approval").
-    """
+    """The pod-level require_approval source: Lead's ``requireApprovalRoles`` meta, a
+    comma-separated case-insensitive role list; blank/missing means no gate. See
+    pod-dispatch.spec.md ("require_approval gate and waiting_approval")."""
     lead_id = _pod.member_id(project, "lead")
     raw = _fleet.meta_get(lead_id, "requireApprovalRoles", "")
     if not raw:
@@ -841,19 +800,16 @@ def _pod_requires_approval(project: str, role: str) -> bool:
 
 
 def _policy_requires_approval(project: str, role: str, task: dict[str, Any]) -> bool:
-    """An explicit, documented seam that always returns ``False`` today -- see
-    specs/functional/pod-dispatch.spec.md ("require_approval gate and waiting_approval").
-    Kept as a real function, not deleted, so ``_hop_requires_approval``'s three-source shape
-    stays intact for a genuinely new per-hop policy source, should one ever be designed.
-    """
+    """An explicit seam that always returns ``False`` today; kept as a real function, not
+    deleted, so ``_hop_requires_approval``'s three-source shape stays intact for a future
+    per-hop policy source. See pod-dispatch.spec.md ("require_approval gate and waiting_approval")."""
     return False
 
 
 def _pipeline_step_requires_approval(gate: _pipeline.Gate | None) -> bool:
     """The pipeline-defined ``approval`` step source: *gate* is the current position's
-    resolved gate (``core.orchestrator.resolve_gate``); an ``ApprovalGate`` requires a human
-    decision, same as the pod-level ``requireApprovalRoles`` source.
-    """
+    resolved gate; an ``ApprovalGate`` requires a human decision, same as the pod-level
+    ``requireApprovalRoles`` source."""
     return isinstance(gate, _pipeline.ApprovalGate)
 
 
@@ -864,11 +820,9 @@ def _hop_requires_approval(
     pipeline_index: int,
     gate: _pipeline.Gate | None,
 ) -> bool:
-    """Whether the require_approval gate fires before this hop: an OR of three independent
-    sources (pod-level ``requireApprovalRoles``, the ``_policy_requires_approval`` seam, a
-    pipeline ``approval`` step) -- any one firing is enough. See
-    specs/functional/pod-dispatch.spec.md ("require_approval gate and waiting_approval").
-    """
+    """Whether the require_approval gate fires: an OR of three independent sources (pod-level
+    ``requireApprovalRoles``, the ``_policy_requires_approval`` seam, a pipeline ``approval``
+    step) -- any one firing is enough. See pod-dispatch.spec.md ("require_approval gate")."""
     return (
         _pod_requires_approval(project, role)
         or _policy_requires_approval(project, role, task)
@@ -888,20 +842,16 @@ def _approval_action_text(role: str, task: dict[str, Any]) -> str:
 def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
     """``trace.trace_event``, serialized against ``orchestrator.trace_write_lock`` because a
     parallel group's children share one task's tracefile (the append-only exemption is safe
-    only across *different* session files). See specs/functional/pod-dispatch.spec.md
-    ("Parallel step groups").
-    """
+    only across *different* session files). See pod-dispatch.spec.md ("Parallel step groups")."""
     with _orch.trace_write_lock:
         return _trace.trace_event(*args, **kwargs)
 
 
 def _verdict_event_names(role: str) -> tuple[str, str, str]:
-    """(rework_event, rejected_event, unparseable_event) trace event names for a verdict
-    gate's non-pass outcomes. Preserves the exact legacy names for ``reviewer``/``tester``
-    (pinned by tests/integration/test_reviewer_gate.py and test_verify_gate.py) so gate
-    decision logic can go fully generic without changing what an operator sees in
-    ``docket trace``; any other role gets the generic ``verdict_*`` names.
-    """
+    """(rework_event, rejected_event, unparseable_event) names for a verdict gate's non-pass
+    outcome. Keeps exact legacy names for ``reviewer``/``tester`` (pinned by
+    test_reviewer_gate.py/test_verify_gate.py) so gate logic stays generic without changing
+    operator-visible trace names; other roles get generic ``verdict_*`` names."""
     if role == "reviewer":
         return "rework_started", "review_rejected", "reviewer_verdict_unparseable"
     if role == "tester":
@@ -913,8 +863,7 @@ def _verdict_event_names(role: str) -> tuple[str, str, str]:
 class _UnitOutcome:
     """What happened running one ``PlannedUnit``'s hop. ``kind`` is one of ``"advance" |
     "rework" | "blocked" | "waiting_approval" | "failed" | "cancelled"``; ``hops`` is empty
-    for ``blocked``/``waiting_approval`` (the gate stopped before any turn ran).
-    """
+    for ``blocked``/``waiting_approval`` (the gate stopped before any turn ran)."""
 
     kind: str
     hops: list[HopResult] = field(default_factory=list)
@@ -926,14 +875,11 @@ class _UnitOutcome:
 
 @dataclass
 class _UnitContext:
-    """Per-invocation state a ``PlannedUnit``'s execution needs but does not own (lifted from
-    ``dispatch_task``'s original closure scope). Two attributes are mutated across a run, not
-    just read, and passing a *copy* of this context instead of the same shared object would
-    silently break each: ``rework_counts`` accumulates each gated step's cycle count in
-    place; ``override_index`` is rebound to ``None`` the first time a run reaches the exact
-    pipeline position a granted approval named -- the single-use gate-override handoff (see
-    ``dispatch_task`` and ``_claim_next_task``).
-    """
+    """Per-invocation state a ``PlannedUnit``'s execution needs but does not own. Two
+    attributes are mutated across a run, not just read -- passing a *copy* instead of the
+    same shared object would silently break each: ``rework_counts`` accumulates each gated
+    step's cycle count in place; ``override_index`` is rebound to ``None`` the first time a
+    run reaches the pipeline position a granted approval named (see ``_claim_next_task``)."""
 
     project: str
     task: dict[str, Any]
@@ -955,8 +901,7 @@ class _UnitContext:
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     """Budget gate before the hop (see ``pod_gating_cost``); on trip, marks the Lead paused
     so future dispatch attempts are refused at claim time instead of re-running this check.
-    Returns ``None`` when the hop may proceed.
-    """
+    Returns ``None`` when the hop may proceed."""
     if ctx.cap <= 0.0:
         return None
     spent, estimated = pod_gating_cost(ctx.project)
@@ -991,12 +936,10 @@ def _gate_pre_hop_approval(
     check_approval: bool,
     index_for_context: int,
 ) -> _UnitOutcome | None:
-    """require_approval gate: after budget (affordability), before the hop runs
-    (permission). Mutates ``ctx.override_index``, consuming a granted approval's single-use
-    gate override the first time a run reaches its minted position, so a later hop revisiting
-    that position (a rework cycle) still gates normally. Returns ``None`` when the hop may
-    proceed.
-    """
+    """require_approval gate: after budget (affordability), before the hop (permission).
+    Mutates ``ctx.override_index``, consuming a granted approval's single-use override the
+    first time a run reaches its minted position, so a later hop revisiting that position
+    (a rework cycle) still gates normally. Returns ``None`` when the hop may proceed."""
     if not check_approval:
         return None
     if index_for_context == ctx.override_index:
@@ -1034,11 +977,9 @@ def _compose_hop(
     prior_snapshot: list[HopResult],
     rework_hop: HopResult | None,
 ) -> tuple[str, dict[str, str] | None]:
-    """Build this hop's prompt and environment, and emit its ``context_composed``/
-    ``tool_call`` trace pair. A downstream hop's message gets an extra checkout note naming
-    the real implementation worktree, when one was allocated -- see
-    specs/functional/pod-dispatch.spec.md ("Downstream worktree continuity").
-    """
+    """Build this hop's prompt/environment and emit its ``context_composed``/``tool_call``
+    trace pair. A downstream hop's message gets an extra checkout note naming the real
+    implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     message, composition = _hop_message(ctx.task, role, prior_snapshot, rework_hop)
     pipeline_worktree = ""
     if role not in {"lead", "implementer"}:
@@ -1097,11 +1038,9 @@ def _run_hop_turn(
     env: dict[str, str] | None,
 ) -> tuple[_rd.TurnResult, int]:
     """Run this hop's agent turn, retrying only a retryable failure in place (a non-zero
-    exit or bad verdict is a real answer and stops here) -- see
-    specs/functional/pod-dispatch.spec.md ("Retries and the failure-kind taxonomy"). Returns
-    the total number of tries made. A step's own ``retries``/``timeout`` override wins over
-    the pod's role-based budget and resolved turn timeout.
-    """
+    exit or bad verdict is a real answer and stops here) -- see pod-dispatch.spec.md
+    ("Retries and the failure-kind taxonomy"). Returns the total tries made. A step's own
+    ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout."""
     retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
     hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
 
@@ -1172,14 +1111,11 @@ def _run_hop_turn(
 def _apply_output_guardrails(
     ctx: _UnitContext, role: str, run_res: _rd.TurnResult
 ) -> tuple[str, bool, str]:
-    """``pre_output`` guardrail scan over every hop's real output, before it is embedded in
-    the carried-forward artifact or persisted hop record. See
-    specs/functional/security-gates.spec.md ("pre_output" and the high-risk classification
-    note): only ``redact``/``block`` change what is carried forward; ``require_approval``
-    behaves like ``warn`` (the hop already ran, so there is no "before" moment left to gate).
-    Returns the (possibly redacted) output, whether the hop still counts as ok, and its
-    error text.
-    """
+    """``pre_output`` guardrail scan over the hop's real output, before it is embedded in
+    the carried-forward artifact or persisted record. See security-gates.spec.md
+    ("pre_output"): only ``redact``/``block`` change what is carried forward;
+    ``require_approval`` behaves like ``warn`` since the hop already ran -- there is no
+    "before" moment left to gate. Returns the (possibly redacted) output, hop-ok, error text."""
     hop_output = run_res.output
     hop_ok = run_res.ok
     hop_error = run_res.error
@@ -1248,13 +1184,11 @@ def _build_hop_result(
     hop_error: str,
     attempt: int,
 ) -> HopResult:
-    """Build this hop's persisted record and structured handoff artifact. The verdict is
-    parsed once, before ``on_hop`` persists it, guarded on ``hop_ok`` (not ``run_res.ok``)
-    since a ``pre_output`` block can fail an otherwise-successful call and must not hand a
-    "here is what I changed" artifact downstream; the diff probe is likewise gated. Uses
-    ``hop_output``, never ``run_res.output`` -- the raw subprocess text would silently undo
-    a ``redact`` verdict's rewrite.
-    """
+    """Build this hop's persisted record and handoff artifact. The verdict is parsed once,
+    guarded on ``hop_ok`` (not ``run_res.ok``) since a ``pre_output`` block can fail an
+    otherwise-successful call and must not hand a "here is what I changed" artifact
+    downstream; the diff probe is likewise gated. Uses ``hop_output``, never
+    ``run_res.output`` -- the raw text would silently undo a ``redact`` verdict's rewrite."""
     verdict: str | None = None
     if hop_ok and isinstance(node.gate, _pipeline.VerdictGate):
         verdict = _orch.parse_verdict(node.gate, hop_output)
@@ -1290,10 +1224,8 @@ def _persist_hop_and_trace(
     hop_error: str,
 ) -> _UnitOutcome | None:
     """Persist this hop and trace its result; short-circuit a failed hop. Persisted
-    immediately, not deferred to a parallel group's join, so a crash in a sibling child
-    never loses an already-completed hop. Returns the terminal outcome for a
-    failed/cancelled hop, or ``None`` when post-hop gate evaluation should proceed.
-    """
+    immediately, not deferred to a group join, so a crash in a sibling child never loses an
+    already-completed hop. Returns the terminal outcome, or ``None`` to proceed to the gate."""
     if ctx.on_hop is not None:
         ctx.on_hop(hop)
 
@@ -1338,10 +1270,8 @@ def _evaluate_mechanical_gate(
     hop: HopResult,
 ) -> _UnitOutcome:
     """A ``MechanicalGate``: run ``verifyCmd`` (or the gate's own command) and gate on its
-    exit, in the member's worktree/codebase/workspace dir per ``core.pod.resolve_member_cwd``
-    (shared with cli/_pod.py so the two never disagree). See
-    specs/functional/pod-dispatch.spec.md ("Implementer verification gate").
-    """
+    exit, in the dir from ``core.pod.resolve_member_cwd`` (shared with cli/_pod.py so the two
+    never disagree). See pod-dispatch.spec.md ("Implementer verification gate")."""
     verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
     if not verify_cmd:
         # Honesty rule: never silently skip — a missing verifyCmd is
@@ -1486,10 +1416,8 @@ def _evaluate_post_hop_gate(
     check_approval: bool,
 ) -> _UnitOutcome:
     """Resolve this step's post-hop gate generically, by the gate's own type. See
-    specs/functional/pod-dispatch.spec.md ("Generalized gate execution"). An
-    ``ApprovalGate`` was already handled pre-hop, so once the turn has run it simply
-    advances.
-    """
+    pod-dispatch.spec.md ("Generalized gate execution"). An ``ApprovalGate`` was already
+    handled pre-hop, so once the turn has run it simply advances."""
     gate = node.gate
     if gate is None:
         return _UnitOutcome(kind="advance", hops=[hop])
@@ -1526,9 +1454,7 @@ def _execute_unit(
     """Run one PlannedUnit's hop end to end: budget/approval gates, the agent turn (with
     retries), and its post-hop gate. Shared by a top-level step and a group's children --
     *check_approval* is False for a child, since an ``approval`` gate inside a fan-out is a
-    configuration error, not a mid-group wait. See specs/functional/pod-dispatch.spec.md
-    ("Parallel step groups").
-    """
+    configuration error, not a mid-group wait. See pod-dispatch.spec.md ("Parallel step groups")."""
     role = node.role or node.agent or node.step_id
     member_id = node.member_id
     assert member_id is not None  # runnable_nodes() already filtered out skipped units
@@ -1573,8 +1499,7 @@ def _run_group_node(
 ) -> _UnitOutcome:
     """Run a parallel group's children concurrently; join before advancing. Merge priority:
     cancelled > blocked > failed > advance (rework is impossible here -- the pipeline
-    format's validator forbids a rework edge inside a ``parallel`` group).
-    """
+    format's validator forbids a rework edge inside a ``parallel`` group)."""
     prior_snapshot = list(prior)
     child_outcomes = _orch.run_group(
         node.children,
@@ -1612,8 +1537,7 @@ def _resolve_pipeline_steps(
 ) -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int]]:
     """Resolve *spec* (or this pod's default pipeline) against the pod's live roster into
     this run's ordered, runnable steps. Assumes the caller already validated the pod/Lead
-    exist; this only builds the plan, it does not itself raise for a missing pod.
-    """
+    exist; this only builds the plan, it does not itself raise for a missing pod."""
     effective_spec = effective_pipeline(project, spec)
     registry = _archetypes.load_registry()
     roster = pod_full_roster(project)
@@ -1628,8 +1552,7 @@ def _resolve_resume_state(
 ) -> tuple[list[HopResult], int, dict[str, int], dict[int, HopResult]]:
     """Compute the pipeline position (and rework state) a run should continue from.
     *resume_from* seeds hops already completed before a crash, which can legitimately
-    include the same step more than once mid-rework -- see ``_replay_pipeline_position``.
-    """
+    include the same step more than once mid-rework -- see ``_replay_pipeline_position``."""
     prior: list[HopResult] = list(resume_from) if resume_from else []
     # A step can now legitimately run more than once (a rework cycle re-runs
     # its gate's declared target, then re-runs the gating step), so "where do
@@ -1646,8 +1569,7 @@ def _resolve_resume_state(
 def _resolve_gate_override(task: dict[str, Any]) -> int | None:
     """A granted approval's single-use override for this one claim (see
     ``_claim_next_task``), consumed the first time this run reaches that pipeline position,
-    so a later hop at the same position (a rework cycle) still gates normally.
-    """
+    so a later hop at the same position (a rework cycle) still gates normally."""
     override_index = task.get("gateOverridePipelineIndex")
     return override_index if isinstance(override_index, int) else None
 
@@ -1661,10 +1583,9 @@ def _run_pipeline(
     prior: list[HopResult],
 ) -> None:
     """Advance one task through its resolved pipeline until a terminal outcome. Mutates
-    *result* and *prior* in place as each step completes (the caller already observes each
-    hop via *on_hop* -- see ``_persist_hop_and_trace``). The only backward move is a bounded
-    rework cycle, jumping ``pipeline_index`` back to the gate's declared target.
-    """
+    *result*/*prior* in place per step (each hop is also observed via *on_hop* -- see
+    ``_persist_hop_and_trace``). The only backward move is a bounded rework cycle, jumping
+    back to the gate's declared target."""
     while pipeline_index < len(runtime_steps):
         node = runtime_steps[pipeline_index]
 
@@ -1724,21 +1645,15 @@ def dispatch_task(
     sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
 ) -> TaskResult:
-    """Drive one task through the pod pipeline, hop by hop. Full contract:
-    specs/functional/pod-dispatch.spec.md ("Pipeline order and participation", "Per-hop
-    incremental persistence and crash recovery", "Retries and the failure-kind taxonomy",
-    "Generalized gate execution", "Parallel step groups"). Budget is checked before each hop;
-    a failed hop stops the pipeline, except for a bounded rework loop that re-runs a
-    verdict gate's declared target up to its own cycle budget.
-
-    *spec* ``None`` resolves this pod's zero-migration pipeline (``effective_pipeline``).
-    *resume_from* seeds hops already completed before a crash, skipped rather than
-    re-invoked. *on_hop*, if given, fires per completed hop (including rework hops) for
-    incremental persistence. *turn_timeout*/*verify_timeout* override the pod Lead's meta,
-    then ``DEFAULT_TIMEOUT``, unless a step declares its own. A retryable failure retries via
-    *sleep* up to the role's budget, calling *on_retry* before each attempt so the caller can
-    refresh the task's claim before it goes stale.
-    """
+    """Drive one task through the pod pipeline, hop by hop. Full contract: pod-dispatch.spec.md
+    ("Pipeline order and participation", "Per-hop incremental persistence and crash recovery",
+    "Retries and the failure-kind taxonomy", "Generalized gate execution", "Parallel step
+    groups"). Budget is checked before each hop; a failed hop stops the pipeline except for a
+    bounded rework loop re-running a verdict gate's declared target up to its own cycle budget.
+    *spec* ``None`` resolves the pod's zero-migration pipeline; *resume_from* seeds hops
+    completed before a crash (skipped, not re-invoked); *turn_timeout*/*verify_timeout* override
+    the pod Lead's meta then ``DEFAULT_TIMEOUT``, unless a step declares its own. *on_retry*
+    fires before each retry so the caller can refresh the task's claim before it goes stale."""
     run = runner or _dr.default_driver().run_turn
     # pid tracking (for `docket runs cancel`) only makes sense for a real
     # OS process, i.e. the production driver — never an injected test
@@ -1808,12 +1723,10 @@ def dispatch_task(
 
 
 def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
-    """Fold a TaskResult back onto the stored task dict (terminal state). See
-    specs/functional/pod-dispatch.spec.md ("blocked and terminal-failure re-entry"):
-    ``blocked``/``waiting_approval`` are never rewritten to ``pending`` here, only through
-    ``unblock_pod``/``retry_task``/``resolve_waiting_approval``. Stays pure (no *project*, no
-    workspace access) -- the HEARTBEAT.md ledger sync lives in the caller (``_finalize_task``).
-    """
+    """Fold a TaskResult back onto the stored task dict (terminal state; pod-dispatch.spec.md,
+    "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval`` are never
+    rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
+    ``resolve_waiting_approval``. Stays pure -- HEARTBEAT.md sync lives in ``_finalize_task``."""
     task["status"] = res.status
     task["reason"] = res.reason
     task["hops"] = [_hop_record(h) for h in res.hops]
@@ -1830,10 +1743,9 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
 
 
 def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
-    """Whether *t* can be claimed by this dispatch run. See
-    specs/functional/pod-dispatch.spec.md ("Claiming"): ``pending`` always is; a
-    ``stale_claim``-tagged ``failed`` only when *resume* is set; ``waiting_approval`` never.
-    """
+    """Whether *t* can be claimed by this dispatch run. See pod-dispatch.spec.md ("Claiming"):
+    ``pending`` always is; a ``stale_claim``-tagged ``failed`` only when *resume* is set;
+    ``waiting_approval`` never."""
     status = t.get("status")
     if status == "pending":
         return True
@@ -1843,14 +1755,11 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
 def _claim_next_task(
     project: str, *, resume: bool
 ) -> tuple[dict[str, Any], list[HopResult]] | None:
-    """Locked claim of the pod's next eligible task (highest priority first). See
-    specs/functional/pod-dispatch.spec.md ("Claiming", "Mechanical HEARTBEAT ledger"): one
-    filelocked read-pick-flip-write so two concurrent callers can never claim the same task;
-    a paused pod (Lead's ``paused`` flag) refuses every claim outright, checked outside the
-    queue lock since pause changes are rare and operator-driven. Returns the claimed task
-    (normalized) and any hops already recorded for it, or ``None`` if nothing is claimable. A
-    successful claim also mechanically syncs the Lead's HEARTBEAT.md dispatch ledger.
-    """
+    """Locked claim of the pod's next eligible task (highest priority first; pod-dispatch.spec.md,
+    "Claiming", "Mechanical HEARTBEAT ledger"). One filelocked read-pick-flip-write so two
+    concurrent callers can never claim the same task; a paused pod refuses every claim outright,
+    checked outside the queue lock since pause changes are rare and operator-driven. Returns
+    the claimed task and any recorded hops, or ``None``; also syncs the HEARTBEAT.md ledger."""
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
         _trace.trace_event(
@@ -1905,12 +1814,10 @@ def _claim_next_task(
 
 
 def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
-    """Append one just-completed hop to the task's persisted record, called after every hop
-    (not only at task end) so a crash loses at most the in-flight hop. Also refreshes
-    ``claimedAt`` (see ``_touch_claim``), re-syncs the HEARTBEAT.md ledger, and touches the
-    hop's agent's tracked conversation, if any -- see specs/functional/pod-dispatch.spec.md
-    ("Conversation registry auto-population"); a no-op for an unwired member.
-    """
+    """Append one just-completed hop to the task's record, called after every hop (not only
+    at task end) so a crash loses at most the in-flight hop. Also refreshes ``claimedAt``,
+    re-syncs the HEARTBEAT.md ledger, and touches the hop agent's tracked conversation, if any
+    -- see pod-dispatch.spec.md ("Conversation registry auto-population"); a no-op if unwired."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
@@ -1940,12 +1847,10 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
 
 
 def _touch_claim(project: str, task_id: str) -> None:
-    """Refresh a ``running`` task's ``claimedAt`` without touching anything else, called
-    before every retry attempt. Without this, a long retry run could push the elapsed time
-    since ``claimedAt`` past ``CLAIM_STALE_TIMEOUT`` and a *concurrent* dispatcher's
-    ``_sweep_stale_claims`` would fail the task out from under the one still actively
-    retrying it. Also re-syncs the HEARTBEAT.md ledger. No-op if the task isn't ``running``.
-    """
+    """Refresh a ``running`` task's ``claimedAt``, called before every retry attempt --
+    without this, a long retry could push elapsed time past ``CLAIM_STALE_TIMEOUT`` and a
+    *concurrent* dispatcher's ``_sweep_stale_claims`` would fail the task out from under the
+    one still retrying it. Also re-syncs HEARTBEAT.md. No-op if not ``running``."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
@@ -1966,9 +1871,8 @@ def _touch_claim(project: str, task_id: str) -> None:
 
 def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     """Persist a task's terminal outcome (status/reason/hops/cost), clear its claim, and
-    re-sync the HEARTBEAT.md ledger. This is the only trigger that ever *removes* a ledger
-    entry -- ``_claim_next_task``/``_persist_hop``/``_touch_claim`` only add or keep one current.
-    """
+    re-sync HEARTBEAT.md. The only trigger that ever *removes* a ledger entry --
+    ``_claim_next_task``/``_persist_hop``/``_touch_claim`` only add or keep one current."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
@@ -1990,10 +1894,8 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
 def _sweep_stale_claims(project: str) -> None:
     """Crash recovery: fail a ``running`` task whose claim has gone stale (older than
     ``CLAIM_STALE_TIMEOUT``), tagging ``failureKind: "stale_claim"`` and leaving its
-    persisted ``hops`` untouched for a later ``--resume``. See
-    specs/functional/pod-dispatch.spec.md ("Per-hop incremental persistence and crash
-    recovery"). Runs at the top of every ``dispatch_pod`` call.
-    """
+    persisted ``hops`` untouched for a later ``--resume`` (pod-dispatch.spec.md, "Per-hop
+    incremental persistence and crash recovery"). Runs at the top of every ``dispatch_pod`` call."""
     now = _dt.datetime.now(_dt.UTC)
     swept: list[dict[str, Any]] = []
 
@@ -2036,8 +1938,7 @@ def _sweep_stale_claims(project: str) -> None:
 def retry_task(project: str, task_id: str) -> bool:
     """Un-block a single ``blocked`` task: a locked ``blocked`` -> ``pending`` flip. The only
     other re-entry path is a pod-wide budget change (``unblock_pod``). Returns False if the
-    task doesn't exist or isn't currently blocked.
-    """
+    task doesn't exist or isn't currently blocked."""
     found = False
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -2061,9 +1962,8 @@ def retry_task(project: str, task_id: str) -> bool:
 
 def unblock_pod(project: str) -> int:
     """Un-block every ``blocked`` task in *project*'s queue. Wired to ``docket profile
-    <lead-id> --budget ...`` for that pod's Lead -- the other sanctioned re-entry path besides
-    ``retry_task``. Returns the number of tasks unblocked.
-    """
+    <lead-id> --budget ...`` -- the other sanctioned re-entry path besides ``retry_task``.
+    Returns the number of tasks unblocked."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         return 0
@@ -2088,15 +1988,12 @@ def unblock_pod(project: str) -> int:
 
 
 def resolve_waiting_approval(token: str, decision: str) -> bool:
-    """React to a just-applied approval decision (*decision* ``"granted"``/``"denied"``) by
-    mutating the dispatch task it gated, if any -- this never mutates the approval record
-    itself, only reacts to a transition ``core/approval.py`` already made. See
-    specs/functional/pod-dispatch.spec.md ("require_approval gate and waiting_approval") for
-    the grant (-> ``pending`` + single-use gate override) and deny (-> terminal ``failed``,
-    ``failureKind: "approval_denied"``) outcomes. Returns ``False`` as a harmless no-op for a
-    token this module didn't create, an already-resolved approval, or a task no longer
-    ``waiting_approval`` on this exact token; ``True`` when a task was found and updated.
-    """
+    """React to a just-applied approval decision by mutating the dispatch task it gated, if
+    any -- never mutates the approval record itself, only reacts to a transition
+    ``core/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
+    waiting_approval") for the grant (-> ``pending`` + gate override) and deny (-> ``failed``,
+    ``failureKind: "approval_denied"``) outcomes. Returns ``False`` as a harmless no-op for an
+    unrelated/already-resolved token or a mismatched task; ``True`` when updated."""
     try:
         rec = _ap.approval_get(token)
     except _ap.ApprovalError:
@@ -2158,14 +2055,11 @@ def dispatch_pod(
     spec: _pipeline.PipelineSpec | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
-    ``dispatch_task`` over locked claims (see ``_claim_next_task``) until none remain or
-    *max_tasks* is hit. *spec*/*turn_timeout*/*verify_timeout*/*sleep* are forwarded
-    unchanged to each ``dispatch_task`` call -- see its docstring and
-    specs/functional/pod-dispatch.spec.md for the full claiming/crash-recovery/retry
-    contract. A stale ``running`` claim is swept first (``_sweep_stale_claims``); pass
-    *resume* to also reclaim those and continue from the last persisted hop. Returns one
-    TaskResult per task attempted. Raises DispatchError if the pod has no Lead.
-    """
+    ``dispatch_task`` over locked claims until none remain or *max_tasks* is hit --
+    see ``dispatch_task`` and pod-dispatch.spec.md for the full claiming/crash-recovery/retry
+    contract. A stale ``running`` claim is swept first; pass *resume* to also reclaim those
+    and continue from the last persisted hop. Returns one TaskResult per task attempted.
+    Raises DispatchError if the pod has no Lead."""
     pod_pipeline(project)  # validates pod/lead up front
     _sweep_stale_claims(project)
 
@@ -2215,10 +2109,8 @@ def dispatchable_pods() -> list[str]:
 
 def pod_roster() -> list[dict[str, Any]]:
     """Every provisioned pod (grouped by project, alphabetical) with its member roster. Pure
-    data assembly (no printing) for ``docket mcp serve``'s ``pods`` tool, mirroring
-    ``cli/_pod.py``'s ``_pod_list`` across every pod at once; lives here rather than in
-    ``core/pod.py`` to keep that module I/O-free.
-    """
+    data assembly for ``docket mcp serve``'s ``pods`` tool, mirroring ``cli/_pod.py``'s
+    ``_pod_list``; lives here (not ``core/pod.py``) to keep that module I/O-free."""
     all_ids = [a.id for a in _fleet.list_agents()]
     projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 
