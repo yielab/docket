@@ -1,28 +1,23 @@
 """The pipeline executor and generalized gate resolution.
 
-``core/pipeline.py`` defines the docket-native pipeline *format*;
-``core/archetypes.py`` defines a role's ``gateContract`` as descriptive data.
-This module is what makes both load-bearing: it resolves a
-:class:`~docket.core.pipeline.PipelineSpec` against a pod's live roster into
-a concrete, deterministic :class:`ExecutionPlan`, and gate execution
-(:mod:`docket.core.dispatch`) reads a step's *resolved* gate — its own
-declared ``gate``, or (only when the step omits one) its archetype's
-``gateContract`` — instead of branching on a hardcoded role name.
+``core/pipeline.py`` defines the pipeline *format*; ``core/archetypes.py`` defines a
+role's ``gateContract`` as descriptive data. This module makes both load-bearing: it
+resolves a :class:`~docket.core.pipeline.PipelineSpec` against a pod's live roster
+into a concrete, deterministic :class:`ExecutionPlan`, and gate execution reads a
+step's *resolved* gate -- its own, or (only when omitted) its archetype's
+``gateContract`` -- instead of branching on a hardcoded role name.
 
-This module is deliberately **pure and dispatch-independent** — no filesystem
-I/O, no subprocess, no import of ``core/dispatch.py``. ``core/dispatch.py``
-imports *this* module (a one-way dependency); the reverse would be a cycle,
-since ``dispatch.py``'s hop loop is what actually calls back into this
-module's :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
-:func:`run_group` to walk a spec. ``docket pipeline plan`` renders directly
-from :func:`resolve_plan` too — the same function the real executor calls, so
-there is never a second, drift-prone pretty-printer.
+Deliberately **pure and dispatch-independent**: no filesystem I/O, no subprocess, no
+import of ``core/dispatch.py`` (the dependency runs one-way -- ``dispatch.py``'s hop
+loop calls back into :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
+:func:`run_group`; the reverse would be a cycle). ``docket pipeline plan`` renders
+directly from :func:`resolve_plan` too, so there is never a second, drift-prone
+pretty-printer.
 
-Determinism contract (test-pinned, see ``tests/unit/core/test_orchestrator.py``):
-:func:`resolve_plan` is a pure function of ``(spec, roster, registry)`` — same
-spec + same roster + same registry always produces a byte-identical
-:class:`ExecutionPlan`, independent of wall-clock time, dict-iteration order
-(insertion-ordered by construction), or which thread calls it.
+Determinism contract (test-pinned): :func:`resolve_plan` is a pure function of
+``(spec, roster, registry)`` -- always byte-identical, independent of wall-clock
+time, dict-iteration order, or which thread calls it. See
+specs/functional/pod-dispatch.spec.md's "Generalized gate execution".
 """
 
 from __future__ import annotations
@@ -44,15 +39,10 @@ from docket.core import pipeline as _pipeline
 @dataclass(frozen=True)
 class PlannedUnit:
     """One resolved, runnable step target — a role/agent, its gate, and overrides.
-
-    ``member_id`` is the concrete agent id this step will run against, or
-    ``None`` when the step targets a ``role`` the pod doesn't have (mirrors
-    ``core/dispatch.py``'s existing ``pod_pipeline``, which already skips
-    absent roles) — ``skipped`` is ``True`` in that case. A step targeting a
-    specific ``agent`` id is never skipped by planning (whether that id
-    actually belongs to this pod is an execution-time, no-cross-pod-dispatch
-    concern, not a planning one).
-    """
+    ``member_id`` is the concrete agent id, or ``None`` when the step targets a
+    ``role`` the pod doesn't have (``skipped`` is ``True`` then). A step targeting a
+    specific ``agent`` id is never skipped by planning -- whether that id actually
+    belongs to this pod is an execution-time concern, not a planning one."""
 
     step_id: str
     role: str | None
@@ -78,36 +68,27 @@ PlannedNode = PlannedUnit | PlannedGroup
 
 @dataclass(frozen=True)
 class ExecutionPlan:
-    """The fully resolved, ready-to-run shape of a pipeline against one pod.
-
-    ``nodes`` is top-level order (``parallel`` groups included as a single
-    node); a role-targeted unit the pod doesn't have still appears, marked
-    ``skipped`` — this is what lets ``docket pipeline plan`` show an operator
-    *why* a step won't run, rather than silently omitting it.
-    """
+    """The fully resolved, ready-to-run shape of a pipeline against one pod. ``nodes``
+    is top-level order (``parallel`` groups as a single node); a role-targeted unit
+    the pod doesn't have still appears, marked ``skipped`` -- so ``docket pipeline
+    plan`` can show an operator *why* a step won't run, not silently omit it."""
 
     pipeline_name: str
     nodes: tuple[PlannedNode, ...]
 
     def runnable_nodes(self) -> tuple[PlannedNode, ...]:
-        """``nodes`` with skipped (role-absent) unit steps filtered out.
-
-        This is the executor's actual walk order — a skipped unit consumes no
-        pipeline position, exactly like ``pod_pipeline``'s pre-existing
-        skip-absent-roles behavior.
-        """
+        """``nodes`` with skipped (role-absent) unit steps filtered out -- the
+        executor's actual walk order, since a skipped unit consumes no pipeline
+        position."""
         return tuple(n for n in self.nodes if not (isinstance(n, PlannedUnit) and n.skipped))
 
 
 def _gate_from_contract(gc: _archetypes.GateContract) -> _pipeline.Gate | None:
-    """Translate an archetype's descriptive ``gateContract`` into a real Gate.
-
-    ``verdict``'s marker order is the convention documented in
-    ``role-archetypes.spec.md``: the first regex is the passing value, every
-    other one just fails the step (no rework — a step wanting a bounded
-    rework loop must declare its own ``VerdictGate`` with an explicit
-    ``rework`` edge; an archetype's gate contract carries no rework data).
-    """
+    """Translate an archetype's descriptive ``gateContract`` into a real Gate. For
+    ``verdict``, the first regex is the passing value and every other one just fails
+    the step (no rework -- a step wanting a bounded rework loop must declare its own
+    ``VerdictGate`` with an explicit ``rework`` edge; an archetype's gate contract
+    carries no rework data). See specs/functional/role-archetypes.spec.md."""
     if gc.kind == "none":
         return None
     if gc.kind == "mechanical":
@@ -130,18 +111,12 @@ def _gate_from_contract(gc: _archetypes.GateContract) -> _pipeline.Gate | None:
 def resolve_gate(
     step: _pipeline.Step, registry: _archetypes.ArchetypeRegistry
 ) -> _pipeline.Gate | None:
-    """The gate a step actually runs under.
-
-    A step's own declared ``gate`` always wins. Only when it omits one does
-    this fall back to the resolved archetype's ``gateContract`` — looked up
-    by ``step.archetype`` if set, else ``step.role`` (every built-in
-    archetype's name equals its pod role name, so a plain ``role:
-    implementer`` step with no ``gate``/``archetype`` of its own still
-    resolves the implementer archetype's ``mechanical`` contract). No
-    resolvable archetype (an unknown name, or a bare ``agent``-targeted step
-    with neither ``role`` nor ``archetype`` set) means no gate — the step
-    always advances, same as a plain hop today.
-    """
+    """The gate a step actually runs under. A step's own declared ``gate`` always
+    wins; only when it omits one does this fall back to the resolved archetype's
+    ``gateContract``, looked up by ``step.archetype`` if set else ``step.role``
+    (every built-in archetype's name equals its pod role name, so a plain
+    ``role: implementer`` step resolves the implementer archetype's ``mechanical``
+    contract). No resolvable archetype means no gate -- the step always advances."""
     if step.gate is not None:
         return step.gate
     name = step.archetype or step.role
@@ -182,15 +157,10 @@ def resolve_plan(
     *,
     registry: _archetypes.ArchetypeRegistry | None = None,
 ) -> ExecutionPlan:
-    """Resolve *spec* against a pod's ``{role: member_id}`` roster.
-
-    Pure and deterministic (see module docstring): no filesystem access, no
-    wall-clock dependency, no sensitivity to which thread calls it. *roster*
-    should already be role-order-stable (``core/dispatch.py``'s
-    ``pod_pipeline`` already returns one first-member-per-role, in pipeline
-    order) — this function does not itself impose an order beyond the
-    spec's own ``steps`` order, which is fixed at parse time.
-    """
+    """Resolve *spec* against a pod's ``{role: member_id}`` roster. Pure and
+    deterministic (see module docstring). *roster* should already be
+    role-order-stable -- this function imposes no order beyond the spec's own
+    ``steps`` order, fixed at parse time."""
     reg = registry if registry is not None else _archetypes.load_registry()
     nodes: list[PlannedNode] = []
     for step in spec.steps:
@@ -247,14 +217,11 @@ def normalize_values(values: list[str], case_sensitive: bool) -> frozenset[str]:
 
 
 def parse_verdict(gate: _pipeline.VerdictGate, output: str) -> str | None:
-    """Return one unambiguous line-anchored marker from complete *output*.
-
-    The configured pattern is applied independently at the start of every
-    non-blank line. Repeated matches of one normalized value collapse to a
-    single verdict; zero matches or multiple distinct values are unparseable.
-    This stays generic across every archetype's marker vocabulary and never
-    falls back to substring search.
-    """
+    """Return one unambiguous line-anchored marker from complete *output*. The
+    configured pattern is applied at the start of every non-blank line; repeated
+    matches of one normalized value collapse to a single verdict, while zero matches
+    or multiple distinct values are unparseable. Never falls back to substring
+    search, so it stays generic across every archetype's marker vocabulary."""
     flags = 0 if gate.case_sensitive else re.IGNORECASE
     compiled = re.compile(gate.pattern, flags)
     values: set[str] = set()
@@ -293,23 +260,16 @@ def run_group(
     max_workers: int = DEFAULT_MAX_PARALLEL_WORKERS,
 ) -> list[T]:
     """Run *children* concurrently via a bounded thread pool; join before returning.
-
-    Returns results in *children*'s declaration order (not completion order)
-    — callers fold them back into a task's persisted ``hops[]`` in a
-    deterministic order regardless of which child happened to finish first.
-    ``contextvars.copy_context()`` is propagated into each worker explicitly
-    (``ThreadPoolExecutor.submit`` does not do this on its own) so a
-    context-local like "which run id is this dispatch executing under" (see
-    ``core/runs.py``'s cancellation support) still applies inside a fan-out.
-    Each child gets its *own* cloned ``Context`` (via ``base_ctx.run(copy_context)``)
-    rather than sharing one — a single ``Context`` object may only be entered
-    by one call at a time, which would otherwise raise once two children
-    genuinely run concurrently.
-
-    If any child raises, every other child is still joined (never leaving a
-    sibling's subprocess orphaned mid-run) before the first exception is
-    re-raised.
-    """
+    Returns results in *children*'s declaration order (not completion order), so
+    callers fold them into a task's persisted ``hops[]`` deterministically regardless
+    of which child finishes first. ``contextvars.copy_context()`` is propagated into
+    each worker explicitly (``ThreadPoolExecutor.submit`` does not do this on its
+    own) so a context-local like the executing run id still applies inside a
+    fan-out; each child gets its *own* cloned ``Context`` rather than sharing one,
+    since a single ``Context`` may only be entered by one call at a time -- sharing
+    would raise once two children genuinely run concurrently. If any child raises,
+    every other child is still joined (no sibling subprocess left orphaned) before
+    the first exception is re-raised."""
     if not children:
         return []
     base_ctx = copy_context()

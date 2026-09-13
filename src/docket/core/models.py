@@ -22,27 +22,19 @@ class ModelSource(StrEnum):
 
 
 class AgentScope(StrEnum):
-    """Whose data an agent may see. Orthogonal to ``kind``/``role``.
-
-    ``org``     — a shared, cross-cutting agent (one instance serves all projects).
-    ``project`` — scoped to a single project/pod; never shared across projects.
-    """
+    """Whose data an agent may see. Orthogonal to ``kind``/``role``: ``org`` is a
+    shared, cross-cutting agent (one instance serves all projects); ``project`` is
+    scoped to a single project/pod, never shared across projects."""
 
     org = "org"
     project = "project"
 
 
 class WorkspaceKind(StrEnum):
-    """Whether a project agent's workspace is anchored to a codebase or a
-    plain working directory.
-
-    ``codebase`` — a git-tracked project directory (``codebase`` field);
-    every legacy project agent is implicitly this. ``workdir`` — a plain
-    working directory with no codebase assumption (``workDir`` field
-    instead), for objectives that aren't "build a web site" (research,
-    content, ops blueprints). Mutually exclusive with ``codebase``: an agent
-    has one or the other, never both.
-    """
+    """Whether a project agent's workspace is anchored to a codebase or a plain working
+    directory (mutually exclusive). ``codebase`` is a git-tracked project directory
+    (every legacy agent is implicitly this); ``workdir`` assumes no codebase, for
+    objectives that aren't "build a web site"."""
 
     codebase = "codebase"
     workdir = "workdir"
@@ -55,15 +47,10 @@ _PROJECT_SPECIALIST_ROLES = frozenset({"programmer", "reviewer", "tester"})
 
 
 class Persona(BaseModel):
-    """Optional, operator-assigned cosmetic identity for an agent.
-
-    docket owns this and renders it into ``SOUL.md`` — it is **not** read from a
-    self-authored ``IDENTITY.md``. Keeping the persona as docket metadata
-    (re-derivable, re-renderable, healable) is what keeps a friendly name like
-    "Orion" congruent with docket's "identity = a pure function of metadata" model
-    (see ``internal-docs/agent-structure-analysis.md`` §6). An agent's *role* is its
-    real identity; this is only the display skin on top.
-    """
+    """Optional, operator-assigned cosmetic identity for an agent. docket owns this,
+    rendering it into ``SOUL.md`` — never read from a self-authored ``IDENTITY.md`` --
+    keeping identity a pure function of metadata. An agent's *role* is its real
+    identity; this is only the display skin."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -79,11 +66,9 @@ class Persona(BaseModel):
 
 
 class AgentMeta(BaseModel):
-    """Canonical in-memory representation of .docket-meta.json.
-
-    extra="allow" keeps unknown fields on round-trips (forward-compat).
-    populate_by_name=True lets callers pass either snake_case or the alias.
-    """
+    """Canonical in-memory representation of .docket-meta.json. extra="allow" keeps
+    unknown fields on round-trips (forward-compat); populate_by_name=True lets callers
+    pass either snake_case or the alias."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -134,40 +119,26 @@ class AgentMeta(BaseModel):
     persona: Persona | None = None
 
     def display_name(self) -> str:
-        """The name a human sees: persona label → ``name`` → role.
-
-        Never derived from a self-authored ``IDENTITY.md`` — identity of record is
-        docket metadata. Used by ``docket info``/``edit``/listing surfaces.
-        """
+        """The name a human sees: persona label → ``name`` → role. Never derived from a
+        self-authored ``IDENTITY.md`` — identity of record is docket metadata."""
         if self.persona and self.persona.label():
             return self.persona.label()
         return self.name or self.role or ""
 
     def is_paused(self) -> bool:
-        """Real ``bool`` for this agent's ``paused`` flag.
-
-        ``paused`` is already typed ``bool`` on this model, so pydantic
-        coerces a legacy ``"true"``/``"false"`` string on ``model_validate`` —
-        this accessor is the one place any caller should read the flag from,
-        rather than re-deriving it. See ``coerce_paused`` for the raw-dict
-        equivalent (display code that reads ``.docket-meta.json`` directly
-        without constructing a full ``AgentMeta``).
-        """
+        """Real ``bool`` for the ``paused`` flag; the one place any caller should read
+        it, since pydantic coerces a legacy string on ``model_validate``. See
+        ``coerce_paused`` for the raw-dict equivalent."""
         return self.paused
 
     @staticmethod
     def coerce_paused(value: object) -> bool:
-        """Coerce a raw (possibly legacy) ``paused`` value to a real ``bool``.
-
-        Guards against a type bug: a writer stored a real JSON boolean while
-        display code (``cli/_agents.py``) compared it against the *string*
-        ``"true"`` (``raw.get("paused", "") == "true"``) — which is never
-        equal to a Python ``True``, so a paused agent silently displayed as
-        not-paused. This is the one coercion function every raw-dict read
-        site (and ``core/dispatch.py``'s claim-time refusal) should call
-        instead of re-implementing the comparison. Tolerates both a genuine
-        JSON boolean and the legacy string form (case-insensitive).
-        """
+        """Coerce a raw (possibly legacy) ``paused`` value to a real ``bool``. Guards a
+        type bug: comparing a JSON boolean against the *string* ``"true"`` is never equal
+        to Python ``True``, so a paused agent could silently display as not-paused. Every
+        raw-dict read site (and ``core/dispatch.py``'s claim-time refusal) should call
+        this instead of re-implementing the comparison; tolerates both forms
+        (case-insensitive)."""
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() == "true"
@@ -175,10 +146,8 @@ class AgentMeta(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _backfill_scope(cls, data: object) -> object:
-        """Derive ``scope`` for records written before it existed.
-
-        Only fills when absent — an explicit ``scope`` is always respected.
-        """
+        """Derive ``scope`` for records written before it existed. Only fills when
+        absent — an explicit ``scope`` is always respected."""
         if not isinstance(data, dict) or "scope" in data:
             return data
         if str(data.get("kind", "")) == AgentKind.specialist.value:

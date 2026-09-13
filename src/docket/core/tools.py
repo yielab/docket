@@ -40,13 +40,10 @@ ToolDenialKind = Literal[
 
 @dataclass
 class ToolContext:
-    """Everything a tool call needs to know about who is making it.
-
-    ``roots`` is the containment boundary for path arguments and the bash cwd; empty ``roots``
-    deliberately fails every path-taking tool instead of defaulting to the whole filesystem.
-    ``role``/``project``, ``sandbox``, and ``approval_mode`` are the gate's inputs -- see
-    ``specs/functional/security-gates.spec.md`` items 4 and 11 and its "Exec sandbox" section.
-    """
+    """Everything a tool call needs to know about who is making it. ``roots`` is the
+    containment boundary for paths and the bash cwd; empty ``roots`` deliberately fails
+    every path-taking tool rather than defaulting to the whole filesystem (see
+    specs/functional/security-gates.spec.md items 4, 11)."""
 
     agent_id: str = ""
     session_key: str = ""
@@ -62,14 +59,11 @@ class ToolContext:
 
 @dataclass
 class ToolResult:
-    """Outcome of one call: what was decided, and what happened if it ran.
-
-    ``executed`` is separate from ``ok``: a denied call and a call that ran and failed are
-    different events (a guardrail working vs. a task problem), and audit needs to tell them apart.
-
-    ``policy_id`` is the ``pre_tool_call`` policy that (co-)decided a non-``allow`` verdict; see
-    ``specs/functional/security-gates.spec.md`` item 11 for when it is populated vs. empty.
-    """
+    """Outcome of one call: what was decided, and what happened if it ran. ``executed``
+    is separate from ``ok``: a denied call and a call that ran and failed are different
+    events (a guardrail working vs. a task problem), and audit needs to tell them apart.
+    ``policy_id`` is the ``pre_tool_call`` policy that (co-)decided a non-``allow`` verdict
+    -- see specs/functional/security-gates.spec.md item 11 for when it is populated."""
 
     ok: bool
     content: str = ""
@@ -151,12 +145,10 @@ class ToolRegistry:
         return clone
 
     def without_kind(self, *kinds: ToolKind) -> ToolRegistry:
-        """A copy with every tool whose ``kind`` is in *kinds* removed.
-
-        Keyed on capability, not name, so a namespaced MCP-adapted tool still gets excluded from a
-        role that denies that capability. See ``specs/functional/role-archetypes.spec.md``
-        (``without_kind``) and the sole caller, ``core.archetypes.registry_for_role``.
-        """
+        """A copy with every tool whose ``kind`` is in *kinds* removed. Keyed on
+        capability, not name, so a namespaced MCP-adapted tool still gets excluded from a
+        role that denies that capability. See specs/functional/role-archetypes.spec.md
+        and the sole caller, ``core.archetypes.registry_for_role``."""
         clone = ToolRegistry()
         for tool in self._tools.values():
             if tool.kind not in kinds:
@@ -175,16 +167,12 @@ class ToolRegistry:
 
 def render_tool_call(name: str, args: dict[str, Any]) -> str:
     """Render one tool call as the text a ``pre_tool_call`` regex policy matches.
-
-    Pinned contract (``tests/integration/test_pre_tool_call_policy.py``, load-bearing for every
-    shipped policy template): ``"<name> <key>=<json-value> ..."``, keys in ``args``' own order,
-    each value ``json.dumps``-encoded; a no-argument call renders as just ``name``. Putting the
-    name first and arguments after keeps a command-shaped regex (``rm\\s+-[rf]``) matching this
-    render the same way it matches the bare command -- it is *not* symmetric, so a pattern
-    assuming an argument appears *before* its verb will not match. See
-    ``specs/functional/security-gates.spec.md`` item 1 for the full rationale and the verified
-    pattern fixes it drove.
-    """
+    Pinned contract: ``"<name> <key>=<json-value> ..."``, keys in ``args``' own order,
+    each value ``json.dumps``-encoded; a no-argument call renders as just ``name``.
+    Putting the name first keeps a command-shaped regex (``rm\\s+-[rf]``) matching
+    this render the same way it matches the bare command -- it is *not* symmetric, so
+    a pattern assuming an argument appears *before* its verb will not match. See
+    specs/functional/security-gates.spec.md item 1."""
     parts = [name]
     for key, value in args.items():
         parts.append(f"{key}={json.dumps(value)}")
@@ -212,13 +200,11 @@ _POLICY_ACTION_TO_DECISION: dict[str, Decision] = {
 
 @dataclass(frozen=True)
 class ToolVerdict:
-    """The gate's answer for one call.
-
-    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit, independent of what
-    decided ``decision`` -- so a caller can see a ``warn``/``redact`` fired even when the overall
-    decision is ``allow``. ``policy_action`` is ``""`` when no policy matched, ``"allow"`` when one
-    matched but allowed.
-    """
+    """The gate's answer for one call. ``policy_action``/``policy_id`` carry the *raw*
+    ``pre_tool_call`` hit, independent of what decided ``decision`` -- so a caller can
+    see a ``warn``/``redact`` fired even when the overall decision is ``allow``.
+    ``policy_action`` is ``""`` when no policy matched, ``"allow"`` when one matched
+    but allowed."""
 
     decision: Decision
     reason: str = ""
@@ -227,16 +213,13 @@ class ToolVerdict:
 
 
 def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> ToolVerdict:
-    """Decide whether this call may proceed. **The** decision point.
-
-    Combines the argument-aware command classifier (``exec`` tools only, via
-    ``core/security.classify_command``) and the ``pre_tool_call`` policy hook, both landing in
-    this one function so "what gates a call" has a single answer. Combined most-restrictive-wins
-    (``_DECISION_RANK``: deny beats ask beats allow) -- see
-    ``specs/functional/security-gates.spec.md`` items 1-3 for the full contract and why
-    argument-awareness matters (``git`` is allowlisted, ``git push origin production`` is not).
-    Pure decision function: it never audits or traces, that is ``dispatch_tool``'s job.
-    """
+    """Decide whether this call may proceed. **The** decision point: combines the
+    argument-aware command classifier (``exec`` tools only) and the ``pre_tool_call``
+    policy hook in this one function so "what gates a call" has a single answer,
+    most-restrictive-wins (deny beats ask beats allow) -- see
+    specs/functional/security-gates.spec.md items 1-3 for why argument-awareness
+    matters (``git`` is allowlisted, ``git push origin production`` is not). Pure:
+    never audits or traces, that is ``dispatch_tool``'s job."""
     command_decision: Decision = "allow"
     command_reason = ""
     if tool.kind == "exec":
@@ -272,13 +255,11 @@ def _audit_tool_decision(
     policy_action: str = "",
 ) -> None:
     """Write one audit entry for a non-``allow`` (or ``warn``/``redact``) gate decision.
-
-    Centralized so every gated call is recorded exactly once regardless of which check decided
-    it; arguments are redacted (``core.trace.redact``) first since they can carry a secret (a
-    token in a ``write`` call, a credential in a ``bash`` command). Records ``policy_id``/
-    ``policy_action`` as a fixed, ``repr``-quoted pair (empty when no policy fired) so a reader
-    (``docket serve``'s ``/metrics``) can attribute a hit without parsing free-text ``detail``.
-    """
+    Centralized so every gated call is recorded exactly once regardless of which check
+    decided it; arguments are redacted first since they can carry a secret (a token in a
+    ``write`` call, a credential in a ``bash`` command). Records ``policy_id``/
+    ``policy_action`` as a fixed, ``repr``-quoted pair so a reader can attribute a hit
+    without parsing free-text ``detail``."""
     audit_log(
         action,
         f"tool={tool_name} agent={ctx.agent_id or '?'} role={ctx.role or '?'} "
@@ -453,11 +434,10 @@ def _int_arg(args: dict[str, Any], name: str, default: int = 0) -> int:
 
 
 def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash, fetch.
-
-    Handlers are imported here (not at module scope) so this module stays importable without the
-    filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one point.
-    """
+    """The default tool set: read, write, edit, glob, grep, bash, fetch. Handlers are
+    imported here (not at module scope) so this module stays importable without the
+    filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one
+    point."""
     from docket.edges.adapters import fetch as _fetch
     from docket.edges.adapters import toolbox
 

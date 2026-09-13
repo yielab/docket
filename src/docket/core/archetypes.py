@@ -1,75 +1,46 @@
 """Role archetypes: versioned, declarative role definitions.
 
-A *role archetype* is data, not code: a name, a scope, a model class, SOUL/AGENTS
-prose templates, a gate contract, edit rights, a tool profile, and an enforced
-tool denylist. `core/pod.py`'s
-`normalize_role`/`member_id`/`policy_role_for` resolve pod roles against the
-registry this module builds instead of a hardcoded 4-tuple, so a fifth (sixth,
-...) role is data, never a new hardcoded string in `core/pod.py`/`cli/_pod.py`.
+A role archetype is data, not code: name, scope, model class, SOUL/AGENTS prose
+templates, a gate contract, edit rights, a tool profile, and an enforced tool
+denylist. `core/pod.py` resolves pod roles against this registry instead of a
+hardcoded 4-tuple, so a new role is data, never a hardcoded string in
+`core/pod.py`/`cli/_pod.py`.
 
-## Per-role tool sets
+`tool_profile` is prose -- descriptive, never enforced (a real gap: a Reviewer
+was once *told* "read-only" in SOUL.md but handed the full tool registry
+anyway). `denied_tools` closes that gap as data: built-in tool names a role
+may never call. `registry_for_role` is the sole consumer -- it removes exactly
+those names via `ToolRegistry.without()`, called once per turn by
+`core/agent_loop.py` before advertising tools or dispatching a call. No caller
+ever branches on a role's name.
 
-`tool_profile` (below) is prose — descriptive, never enforced. That was a real
-gap: a Reviewer was *told* "read-only: no write/edit/exec" in its SOUL.md, but
-`core/agent_loop.py` handed it the same full tool registry as an Implementer.
-Being told not to do something is a strictly weaker guarantee than being
-*unable* to, and that distinction is exactly what docket sells (see
-CLAUDE.md's roles-as-data convention).
+Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles --
+lead, implementer, reviewer, tester (golden-tested; see
+`tests/integration/test_archetypes.py`). `STARTER_ARCHETYPES` ships six more:
+researcher, analyst, writer, critic, operator, monitor.
 
-`denied_tools` closes that gap as data: the built-in tool names (from
-`core.tools.builtin_registry()`) a role may never call. `registry_for_role`
-below is the one place that data is consumed — it removes exactly those names
-via `ToolRegistry.without()`, which `core/agent_loop.py` calls once per turn
-before advertising tools to the model or dispatching a call. No caller ever
-branches on a role's name; the branch would be the anti-pattern this card
-exists to close.
-
-Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles —
-lead, implementer, reviewer, tester (golden-tested;
-see `tests/integration/test_archetypes.py`). A starter library ships six more:
-researcher, analyst, writer, critic, operator, monitor (`STARTER_ARCHETYPES`).
-
-Closed vs. open: "no fifth role ever lands
-as a hardcoded string; archetype prose and rosters are user-extensible, but
-gate contracts, edit rights, and scope stay closed typed sets docket can
-reason about." So here: `scope`, `model_class`, `gate_contract.kind`, and
-`edit_rights` are closed enums validated against a fixed set (`SCOPES`,
-`MODEL_CLASSES`, `GATE_KINDS`, `EDIT_RIGHTS`); `name`, `soul_template`,
-`agents_template`, `description`, `tool_profile` are open prose a user
-archetype is free to set to anything.
-
-`modelClass` (cheap|strong) slots into the *existing* role→model policy
+`model_class` (cheap|strong) slots into the existing role->model policy
 (`core/models_policy.py`) rather than replacing it: the four legacy archetypes
-carry a `policy_role` override (`manager`/`programmer`/`reviewer`/`tester`) so
-their model resolves exactly as it did before this module existed — same
-named policy row, same `docket models set <role>` behavior. An archetype with
-no override (every starter-library/user role) resolves through its own
-`model_class` against the live rank anchors instead
-(`models_policy.resolve_role_model`'s archetype fallback) — no new hardcoded
-`ALL_ROLES` entry is needed per role.
+carry a `policy_role` override so their model resolves exactly as before (same
+named policy row, same `docket models set <role>` behavior); an archetype with
+no override resolves through its own `model_class` against the live rank
+anchors instead.
 
-`token_budget` is the role's context-compiler budget —
-how many (approximate) tokens of prior-hop carryover `core/context.py`'s
-`compile_artifact`/`hop_share` may thread into that role's hop prompt. It
-lives here, on the archetype, rather than in a second parallel registry: a
-role's identity (prose, gates, edit rights) and its resource budget are one
-declarative fact, not two things that can drift out of sync. A positive
-integer, defaulting to 6000 for any archetype that doesn't set one
-(hand-built in a test, or parsed from a legacy user overlay file with no
-`tokenBudget` key) — see `core/context.py` for how it's actually spent.
+`token_budget` is the role's context-compiler budget -- how many approximate
+tokens of prior-hop carryover `core/context.py` may thread into that role's
+hop prompt. It lives on the archetype, not a second registry, so identity and
+resource budget cannot drift apart; defaults to 6000 when unset.
 
-User archetypes overlay built-ins via `~/.docket/docket-roles.json` (the
-same overlay pattern as `docket-models.json`; see `core/models_policy.py`) —
-tolerant on load (a malformed entry is skipped, never crashes a live fleet;
-`docket roles validate` is how an operator finds out why). The *authoring*
-format for a new archetype is a standalone YAML file (`docket roles add
-<file.yaml>`) — "a role becomes a versioned YAML definition" — which is
-parsed, validated, and merged into the JSON-backed overlay (the project's
-existing docket-owned-JSON-through-`edges/store.py` convention).
-Docket's own built-in/starter archetypes remain Python literals
-in this module, matching the project's standing convention that workspace
-prose is generated inline in Python, not loaded from shipped template files
-(see CLAUDE.md's `templates/` note).
+User archetypes overlay built-ins via `~/.docket/docket-roles.json` (same
+pattern as `docket-models.json`), tolerant on load (a malformed entry is
+skipped, never crashes a live fleet; `docket roles validate` explains why).
+The authoring format is a standalone YAML file (`docket roles add
+<file.yaml>`), merged into the JSON overlay. Built-in/starter archetypes stay
+Python literals here, matching the project's convention of generating
+workspace prose inline rather than loading shipped template files.
+
+See specs/functional/role-archetypes.spec.md for the full schema (closed vs.
+open fields), the built-in/starter tables, and the user-overlay contract.
 """
 
 from __future__ import annotations
@@ -98,15 +69,9 @@ class ArchetypeError(ValueError):
 
 @dataclass(frozen=True)
 class GateContract:
-    """Closed typed union over the four gate-contract kinds.
-
-    `kind` is one of `"none" | "verdict" | "mechanical" | "approval"`. `regexes`
-    is only meaningful for `kind == "verdict"` — e.g. the reviewer's
-    `("APPROVE", "REQUEST-CHANGES")` or the tester's `("PASS", "FAIL")` first-line
-    markers. When a pipeline step omits its own gate, `core.orchestrator.resolve_gate`
-    falls back to the step's role archetype's `gateContract` here — this is real,
-    consumed data, not merely descriptive.
-    """
+    """Closed typed union over the four gate-contract kinds; `regexes` applies only to
+    `kind == "verdict"` (e.g. reviewer APPROVE/REQUEST-CHANGES, tester PASS/FAIL). Real,
+    consumed data: `core.orchestrator.resolve_gate` falls back to it when a step omits its own."""
 
     kind: str
     regexes: tuple[str, ...] = ()
@@ -133,12 +98,9 @@ class GateContract:
 
 @dataclass(frozen=True)
 class RoleArchetype:
-    """A versioned, declarative role definition.
-
-    Field names below are Python (snake_case); the wire/YAML format uses the
-    card's camelCase names (`modelClass`, `soulTemplate`, `agentsTemplate`,
-    `gateContract`, `editRights`, `toolProfile`) — see `from_wire`/`to_wire`.
-    """
+    """A versioned, declarative role definition. Field names below are Python
+    (snake_case); the wire/YAML format uses camelCase (`modelClass`, `soulTemplate`,
+    `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`) — see `from_wire`/`to_wire`."""
 
     name: str
     version: int
@@ -229,12 +191,8 @@ class RoleArchetype:
 
 def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     """Parse one archetype from its camelCase wire form (overlay JSON or a user YAML file).
-
-    Raises `ArchetypeError` on any missing/invalid field — callers decide whether
-    to propagate (`docket roles add/validate`) or skip-and-continue (`load_registry`
-    tolerating a malformed overlay entry, matching `core/models_policy.py`'s
-    tolerance for a malformed `docket-models.json`).
-    """
+    Raises `ArchetypeError` on any missing/invalid field — callers decide whether to
+    propagate (`docket roles add/validate`) or skip-and-continue (`load_registry`)."""
     if not isinstance(doc, dict):
         raise ArchetypeError(f"archetype {name!r}: definition must be a mapping")
 
@@ -283,13 +241,9 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
 
 
 def render(template: str, variables: dict[str, str]) -> str:
-    """Substitute a `${var}`-style template against `variables` (strict).
-
-    Strict (not `safe_substitute`): a template referencing a variable docket
-    doesn't provide is a real authoring bug — surfacing it as a clear
-    `ArchetypeError` at provisioning/validate time beats silently writing a
-    literal `${typo}` into an agent's SOUL.md.
-    """
+    """Substitute a `${var}`-style template against `variables` (strict, not
+    `safe_substitute`): an unprovided variable is a real authoring bug, raised as
+    `ArchetypeError` rather than silently writing a literal `${typo}`."""
     try:
         return Template(template).substitute(variables)
     except KeyError as exc:
@@ -697,14 +651,9 @@ def _read_overlay_raw() -> dict[str, Any]:
 
 
 def load_registry() -> ArchetypeRegistry:
-    """Built-ins + starter library, overlaid by `~/.docket/docket-roles.json`.
-
-    Not cached — read fresh every call (mirrors `models_policy.load_registry`),
-    so a CLI process that reads the registry more than once (or a test that
-    monkeypatches `cfg.ARCHETYPE_REGISTRY_FILE` mid-session) always sees the
-    live file. A malformed overlay entry is silently skipped here (never
-    crashes a live fleet); `docket roles validate` surfaces exactly why.
-    """
+    """Built-ins + starter library, overlaid by `~/.docket/docket-roles.json`. Not cached
+    -- read fresh every call, so a live file edit or mid-session monkeypatch is always
+    seen. A malformed overlay entry is silently skipped, never crashing a live fleet."""
     archetypes: dict[str, RoleArchetype] = dict(BUILTIN_ARCHETYPES)
     archetypes.update(STARTER_ARCHETYPES)
 
@@ -747,38 +696,27 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
 def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
     """Narrow *base* to exactly what *role* may call.
 
-    Looks *role* up in the live archetype registry and removes every name in
-    its `denied_tools` via the public `ToolRegistry.without()` API — the same
-    method a caller could invoke by hand, just resolved from data instead of
-    a per-role branch (`core/agent_loop.py` is the one caller, once per turn).
-    This is the whole point of the card: a Reviewer's registry genuinely lacks
-    `write`/`edit`, so a call to either is refused by `dispatch_tool` as an
-    *unknown tool* — a strictly stronger guarantee than a SOUL.md instruction
-    telling it not to use them.
+    Looks *role* up in the live archetype registry and removes every name in its
+    `denied_tools` via the public `ToolRegistry.without()` API -- data-driven, not a
+    per-role branch (`core/agent_loop.py` is the one caller, once per turn). A
+    Reviewer's registry genuinely lacks `write`/`edit`, so a call to either is
+    refused by `dispatch_tool` as an *unknown tool* -- stronger than a SOUL.md
+    instruction telling it not to use them. An unrecognized *role* or one with an
+    empty `denied_tools` returns *base* unchanged.
 
-    An unrecognized *role* (empty string, a bare project id, any name absent
-    from the registry) or one with an empty `denied_tools` returns *base*
-    unchanged — today's behavior for anyone this card does not narrow, not a
-    silent denial of everything.
-
-    **Also removes by capability, not only by name.** `denied_tools` is a
-    list of literal built-in names, but `base` may also carry MCP-adapted
-    tools (`core.mcp_tools.load_mcp_tools`), registered under a namespaced
-    name (`mcp__<server>__<tool>`) no denylist could ever spell out in
-    advance -- and every adapted tool is registered `kind="write"`
-    unconditionally (`core/mcp_tools.py` has no way to know whether a remote
-    tool is actually read-only). So after the name-based removal, this also
-    computes the set of `Tool.kind`s implied by the denied names still
-    present in *base* (`write` for `write`/`edit`, `exec` for `bash`) and
-    removes every remaining tool of those kinds via `ToolRegistry.
-    without_kind()`. For every built-in/starter archetype shipped today this
-    is a no-op against a builtins-only registry -- `write`/`edit`/`bash` are
-    already the only built-ins with kind `write`/`exec`, and every role that
-    denies any of them already names all three. It only starts removing
-    something new once an MCP tool is actually present, which is exactly the
-    case a name-only denylist cannot reach: a role denied `write` must not
-    gain a write-capable tool just because it arrived through MCP instead of
-    `core.tools.builtin_registry()`.
+    **Also removes by capability, not only by name.** `denied_tools` is a list of
+    literal built-in names, but `base` may also carry MCP-adapted tools registered
+    under a namespaced name (`mcp__<server>__<tool>`) no denylist could ever spell
+    out in advance -- and every adapted tool is registered `kind="write"`
+    unconditionally, since nothing can prove a remote tool is actually read-only.
+    So after the name-based removal, this also computes the set of `Tool.kind`s
+    implied by the denied names still present in *base* and removes every
+    remaining tool of those kinds via `ToolRegistry.without_kind()`. A no-op
+    against a builtins-only registry (today's shipped archetypes already name all
+    the built-ins of the kinds they deny); it only starts removing something new
+    once an MCP tool is actually present -- exactly the case a name-only denylist
+    cannot reach, so a role denied `write` can never regain a write-capable tool
+    just because it arrived through MCP instead of `core.tools.builtin_registry()`.
     """
     archetype = load_registry().get(role)
     if archetype is None or not archetype.denied_tools:
@@ -793,14 +731,9 @@ def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
 
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
-    """Validate a candidate archetype definition without raising.
-
-    Returns a list of human-readable error strings (empty = valid). Used by
-    `docket roles validate` (both for the live registry's user overlay
-    entries and for a standalone file passed on the command line) and by
-    `docket roles add` to give a full error report instead of stopping at the
-    first problem.
-    """
+    """Validate a candidate archetype definition without raising. Returns a list of
+    human-readable error strings (empty = valid). Used by `docket roles validate`/`add`
+    to give a full error report instead of stopping at the first problem."""
     errors: list[str] = []
     try:
         arch = from_wire(name, doc)
@@ -852,12 +785,9 @@ def parse_yaml_file(path: str) -> dict[str, Any]:
 
 
 def add_user_archetype(doc: dict[str, Any]) -> RoleArchetype:
-    """Validate `doc` and merge it into the user overlay (`docket-roles.json`).
-
-    `doc` must carry a top-level `name`. Overlays (and may override) a
-    built-in or starter archetype by name — the same "user wins" contract
-    `docket-models.json` uses for per-role model overrides.
-    """
+    """Validate `doc` and merge it into the user overlay (`docket-roles.json`). `doc`
+    must carry a top-level `name`. Overlays (and may override) a built-in or starter
+    archetype by name -- the same "user wins" contract `docket-models.json` uses."""
     name = str(doc.get("name", "")).strip()
     if not name:
         raise ArchetypeError("archetype definition must have a top-level 'name'")
