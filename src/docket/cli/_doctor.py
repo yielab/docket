@@ -551,20 +551,12 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     return out
 
 
-def _doctor_json() -> dict[str, Any]:
-    """Assemble the machine-readable health report — the docket-owned schema (no
-    legacy daemon/gateway keys); channel-binding presence is covered per agent
-    below."""
-    issues = 0
-    ids = project_ids()
-
-    has_py = shutil.which("python3")
-    has_fzf = shutil.which("fzf")
-    if not has_py:
-        issues += 1
-
+def _doctor_json_fleet_state() -> tuple[int, dict[str, Any], _fleet.FleetConfig | None]:
+    """Load the fleet for the JSON report; a load failure is one issue and yields the
+    error shape callers below treat as "no fleet"."""
     fleet_data: dict[str, Any]
     fleet = None
+    issues = 0
     try:
         fleet = _fleet.load_fleet()
         fleet_data = {
@@ -576,7 +568,13 @@ def _doctor_json() -> dict[str, Any]:
     except Exception as ex:
         fleet_data = {"ok": False, "path": str(_cfg.FLEET_FILE), "error": str(ex)}
         issues += 1
+    return issues, fleet_data, fleet
 
+
+def _doctor_json_agents(
+    ids: list[str], fleet: _fleet.FleetConfig | None
+) -> tuple[int, list[dict[str, Any]]]:
+    """Per-project workspace/registration issues, JSON shape of `_check_project_agents`."""
     fleet_agent_map = {a.id: a for a in fleet.agents} if fleet else {}
     tg_map: dict[str, str] = {}
     if fleet:
@@ -584,6 +582,7 @@ def _doctor_json() -> dict[str, Any]:
             if b.channel == "telegram":
                 tg_map[b.agent_id] = b.peer_id
 
+    issues = 0
     agents_json: list[dict[str, Any]] = []
     for aid in ids:
         a_issues: list[str] = []
@@ -600,23 +599,39 @@ def _doctor_json() -> dict[str, Any]:
         agents_json.append(
             {"id": aid, "ok": not a_issues, "tg": tg_map.get(aid, ""), "issues": a_issues}
         )
+    return issues, agents_json
 
+
+def _doctor_json_model_config(
+    fleet: _fleet.FleetConfig | None,
+) -> tuple[int, list[dict[str, str]]]:
+    """Stale/aliased model names across every registered agent, JSON shape of `_check_models`."""
+    issues = 0
     invalid_models: list[dict[str, str]] = []
     for a in fleet.agents if fleet else []:
         model = _fleet.meta_get(a.id, "model", "")
         if model in _STALE_MODELS:
             invalid_models.append({"id": a.id, "model": model, "suggest": _STALE_MODELS[model]})
             issues += 1
+    return issues, invalid_models
 
+
+def _doctor_json_model_registry() -> dict[str, Any]:
+    """Legacy `profiles:` migration state, JSON shape of `_check_legacy_model_registry`.
+    Advisory — never contributes to the issue count."""
     legacy_migration_note = _mp.migrate_legacy_profiles()
-    model_registry = {
+    return {
         "migrated": legacy_migration_note,
         "residualProfilesKey": _mp.has_residual_profiles_key(),
     }
 
+
+def _doctor_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
+    """TASK_LIST.json vs. HEARTBEAT.md ledger agreement, JSON shape of `_check_dispatch_ledger`."""
     from docket.core import dispatch as _dispatch_mod
     from docket.core import pod as _pod_ledger_mod
 
+    issues = 0
     dispatch_ledger_results: list[dict[str, Any]] = []
     for project in _dispatch_mod.dispatchable_pods():
         lead_id = _pod_ledger_mod.member_id(project, "lead")
@@ -632,7 +647,15 @@ def _doctor_json() -> dict[str, Any]:
         dispatch_ledger_results.append(
             {"project": project, "ok": ok, "missingFromLedger": missing, "staleInLedger": stale}
         )
+    return issues, dispatch_ledger_results
 
+
+def _doctor_json_budget_runaway(
+    ids: list[str],
+) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Per-agent budget cap + runaway session usage, JSON shape of `_check_budget` and
+    `_check_runaway`."""
+    issues = 0
     cost = _batch_cost(ids)
     budget_results: list[dict[str, Any]] = []
     runaway_results: list[dict[str, Any]] = []
@@ -662,9 +685,17 @@ def _doctor_json() -> dict[str, Any]:
         runaway_results.append(
             {"id": aid, "turns": turns, "costUsd": round(cost_f, 6), "ok": not runaway}
         )
+    return issues, budget_results, runaway_results
 
+
+def _doctor_json_key_hygiene(
+    ids: list[str],
+) -> tuple[int, list[dict[str, str]], list[dict[str, str]]]:
+    """Key age report + missing provider keys, JSON shape of `_check_key_hygiene` and
+    `_check_provider_coverage`."""
     keys_list = [{"name": n, "state": s, "detail": d} for s, n, d in _keys_age_report()]
 
+    issues = 0
     stored = _secrets.secrets_keys()
     missing_keys: list[dict[str, str]] = []
     for aid in ids:
@@ -674,15 +705,23 @@ def _doctor_json() -> dict[str, Any]:
         if expected and expected not in stored:
             missing_keys.append({"agent": aid, "model": model, "needsKey": expected})
             issues += 1
+    return issues, keys_list, missing_keys
 
+
+def _doctor_json_security() -> dict[str, Any]:
+    """Approval-routing/isolation posture, JSON shape of `_check_security_gates`."""
     r_state, r_mode = _fleet.get_approval_routing()
-    security = {
+    return {
         "toolCallGate": "always-on",
         "approvalRouting": r_state,
         "routingMode": r_mode,
         "isolation": _fleet.get_isolation_mode(),
     }
 
+
+def _doctor_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
+    """Template/prompt version drift, JSON shape of `_check_template_version`.
+    Advisory — never contributes to the issue count."""
     from docket.core import pod as _pod_mod
 
     tmpl_results: list[dict[str, Any]] = []
@@ -700,6 +739,43 @@ def _doctor_json() -> dict[str, Any]:
                 "ok": tv_i == TEMPLATE_VERSION,
             }
         )
+    return tmpl_results
+
+
+def _doctor_json() -> dict[str, Any]:
+    """Assemble the machine-readable health report — the docket-owned schema (no
+    legacy daemon/gateway keys); channel-binding presence is covered per agent
+    below."""
+    issues = 0
+    ids = project_ids()
+
+    has_py = shutil.which("python3")
+    has_fzf = shutil.which("fzf")
+    if not has_py:
+        issues += 1
+
+    fleet_issues, fleet_data, fleet = _doctor_json_fleet_state()
+    issues += fleet_issues
+
+    agents_issues, agents_json = _doctor_json_agents(ids, fleet)
+    issues += agents_issues
+
+    model_issues, invalid_models = _doctor_json_model_config(fleet)
+    issues += model_issues
+
+    model_registry = _doctor_json_model_registry()
+
+    ledger_issues, dispatch_ledger_results = _doctor_json_dispatch_ledger()
+    issues += ledger_issues
+
+    budget_issues, budget_results, runaway_results = _doctor_json_budget_runaway(ids)
+    issues += budget_issues
+
+    key_issues, keys_list, missing_keys = _doctor_json_key_hygiene(ids)
+    issues += key_issues
+
+    security = _doctor_json_security()
+    tmpl_results = _doctor_json_template_drift(ids)
 
     return {
         "healthy": issues == 0,
