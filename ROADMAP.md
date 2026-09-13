@@ -12,11 +12,11 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-12.** Every numbered phase 0–22 and Waves 24–28 are complete. **Phase 25
+**Last updated: 2026-09-13.** Every numbered phase 0–22 and Waves 24–28 are complete. **Phase 25
 (human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
 first as Wave 31's thirteen cards and the second as Wave 30's five. **Wave 32 closed the same day** (2026-09-12): a
 documentation truth pass over the drift those two phases left, plus the two follow-ups Wave 31
-measured and deferred. **No program is active.** Phase 23 remains paused with one card left, W29-C7, which publishes the
+measured and deferred. **Wave 33 closed 2026-09-13**: an audit of that closure, repository hygiene, and a docstring-only comment sweep that cut the ratcheted over-budget counts from 558/112 to 372/40 without changing a line of code. **No program is active.** Phase 23 remains paused with one card left, W29-C7, which publishes the
 provenance-complete beta; note that everything since 2026-09-07 has changed what that would
 publish, so its recorded approval covers a tree that no longer exists. Executable cards live in
 [TODO.md](TODO.md).
@@ -62,6 +62,7 @@ publish, so its recorded approval covers a tree that no longer exists. Executabl
 | — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ☑ complete (2026-09-11 to 2026-09-12) — thirteen cards W31-C0…C10, C8 split in two; C9 and C10 opened by defects the work surfaced |
 | — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ☑ complete (2026-09-12) — five cards W30-C1…C5. C1 merged on a second pass after a pipe-drain regression; C2 and C3 formed a seam that emptied the contract's blocked payload until a round-trip test was added |
 | — | **Wave 32** (not a phase): documentation truth pass — four parallel audits over disjoint doc groups, then seven cards splitting the drift Phases 24 and 25 left | ☑ complete (2026-09-12) — removed a script, CI workflow and hook that never existed; swept a repeat of defect W19-5 from the quick start; and found one anti-pattern in three places, a spec index, an env-var table and a blueprint list each checked against retyped rather than derived reference data |
+| — | **Wave 33** (not a phase): audit of the Wave 32 closure, repository hygiene, docstring-only comment sweep | ☑ complete (2026-09-13) — the closure held (gates, baselines, metrics all in sync); fifteen merged worktrees, eight merged branches, a spent migration script and two never-running skips retired; thirteen bounded docstring packets merged, each proved AST-identical with docstrings stripped, and the comment baseline ratcheted to 372/40. Found the gitignored CLAUDE.md still calling session compaction unwired two waves after W20-C2 wired it |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
