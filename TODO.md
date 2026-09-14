@@ -11,37 +11,26 @@
 >
 > ---
 >
-> ## ◉ NO ACTIVE WAVE — one card remains claimable
+> ## ◉ NO ACTIVE WAVE — board clear, no card claimable
 >
-> **Wave 35 closed on 2026-09-13** and is archived in
-> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). Six docstring-only packets
-> took the comment baseline from 372/40 to 229/29 over-budget docstrings with the code proved
-> AST-identical; the dead `gatesEnabled` fleet flag was retired (spec 0.19.2); and every
-> integration test's `SUBJECT` now names an importable `docket` path under a new guard (spec
-> 2.17.0). On the way the wave found that the CI docs-drift job had been red since the Wave 34
-> credential-table merge (fixed, and the script is now in the integrator's batch gates) and that
-> the `maintain sessions` banner still denied session compaction (corrected).
+> **Phase 23 and Wave 29 closed on 2026-09-14** (ROADMAP D-39). W29-C7, the card that would have
+> published a newer beta, was removed at the maintainer's request: its publication half already
+> shipped as `v0.2.0-beta.2` on 2026-09-07 with every provenance asset, and cutting the next beta is
+> a maintainer action through `release.yml`, not a card. Every numbered phase 0–25 is complete and
+> both size targets are met (`TODO.md` under 200 lines, `ROADMAP.md` under 500).
 >
-> **Waves 33 and 34 closed the same day**: the Wave 32 audit and a first docstring sweep
-> (558/112 to 372/40), then the D-36 function split under a function-span ratchet, two measured
-> fixes, and the fourth unwired-machinery instance (`docket gates enable/disable`, claims
-> corrected; wire or retire is an open maintainer decision recorded in
-> `specs/functional/security-gates.spec.md`).
+> **Waves 33, 34 and 35 closed on 2026-09-13** and are archived in
+> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md): two docstring sweeps
+> (558/112 to 229/29 over-budget docstrings), the D-36 function split under a function-span
+> ratchet, the dead `gatesEnabled` flag retired, and an importable-`SUBJECT` rule for the
+> integration lane. Wiring or retiring `docket gates enable/disable` is an open maintainer decision
+> recorded in `specs/functional/security-gates.spec.md`.
 >
-> **Measured and left for the next wave:**
+> **Measured, not scheduled:**
 > `tests/integration/test_agent_loop.py::TestCooperativeRunCancellation::test_cancellation_after_concurrent_approval_grant_never_runs_handler`
 > failed once in three full-suite runs under the load of seven concurrent suites and passed
-> twenty of twenty in isolation; it waits on three 5-second deadlines. Same shape as W34-C5.
->
-> **W29-C7 stays claimable but unclaimed.** It publishes the provenance-complete beta and
-> closes Phase 23. Its publication approval from 2026-09-07 still stands and only its ordering ever
-> changed. It publishes a public release, which cannot be undone, so it waits on an explicit
-> go-ahead rather than on a board gate. Claiming it means marking its section active.
->
-> **Two of this file's size targets are still gated.** `TODO.md` reaches 200 lines and `ROADMAP.md`
-> reaches 500 once Waves 29 and 30 close and their sections archive. Their planned cards and
-> measured triggers are what those waves are executed from, so they were deliberately left in place
-> rather than trimmed early.
+> twenty of twenty in isolation; it waits on three 5-second deadlines. Same shape as W34-C5. A new
+> wave starts from bounded triage, not from this note.
 >
 > **Scheduling rule:** schedule by **file contention**, not phase number, and state ownership at
 > **function** level when a file is hot (`core/tools.py` is the recurring hotspot: give one card a
@@ -83,77 +72,6 @@
 short-lived card branch or isolated worktree per task and integrate it into `main` without rewriting
 history. `platform` may remain as a synchronized historical/integration ref, but it is not a second
 release source.
-
----
-
-## ◇ WAVE 29 UNBLOCKED (2026-09-02, paused 2026-09-11, released 2026-09-12) — adoption evidence and public release
-
-**One card left, and its gate has passed.** C1–C6 are merged, closed and archived in
-`docs/cycles-ended/todo-waves.md`. W29-C7 (publish the provenance-complete beta and close Phase
-23) was deferred behind Wave 31 by maintainer decision on 2026-09-11 so the repository would be
-made maintainable before it was published further. Wave 31 closed on 2026-09-12, so W29-C7 is
-claimable. Its publication approval from 2026-09-07 still stands; only its ordering had changed.
-Claiming it means marking this section active.
-
-**Activation measurement:** bounded inspection used exact `main` commit `de08206`, the current
-public GitHub release/API state on 2026-09-02, the Phase 23 exit contract, and only the live
-starter/metrics/store/release/governance paths. The measurement did not infer demand from stars or
-feature counts and did not reopen telemetry, A2A, a dashboard, multi-tenancy, or more adapters.
-
-| Candidate | Source / threshold | Observed value | Disposition |
-| --- | --- | --- | --- |
-| Extractable ten-minute starter | `examples/`; at least one artifact-installed, copied-outside-checkout starter with a bounded end-to-end test | zero starter directories; `examples/runtime_embed.py` is a single consumer file and fails from the root environment when `docket-runtime` is not installed | **activate C2** |
-| Machine-readable adoption benchmark | repository paths and `docket metrics`; at least one versioned schema/result covering all Phase 23 measures | zero benchmark/baseline files; current metrics omit one comparative record for measured tokens, estimate provenance, approval latency, recovery, and handoff failure | **activate C3** |
-| Persisted-state recovery | `edges/store.py::{read_json,_atomic_write}`; a corrupt primary with a valid owned backup must have one safe recovery path | second write creates `.bak`, but corrupting the primary makes `read_json` raise `JSONDecodeError`; recovery paths: zero | **activate C1**, then prove it in C4 |
-| Adversarial/crash evidence | policy, dispatch, and release focused tests; at least one public-journey scenario/report, not helper-only coverage | 31 focused policy-template, crash-resume, and release-contract tests pass; whole-journey benchmark scenarios/results: zero | **activate C4 after C1+C3**; reuse behavior rather than rebuilding it |
-| Release supply chain | current workflow plus latest public beta; wheel, sdist, checksums, SPDX SBOM, and provenance must be publicly verifiable | workflow code and six release-contract tests already cover the machinery; public `v0.2.0-beta.1` has only tarball + checksum and predates it | **no duplicate implementation**; C7 performs approval-gated publication/verification |
-| Support and succession policy | `SECURITY.md`, `COMPATIBILITY.md`, `.github/CODEOWNERS`, 90-day Git history; one truthful support/deprecation policy and one governance/succession path | main-only security support exists; no deprecation policy or governance document; one CODEOWNER and one underlying human author identity | **activate C5** |
-
-**Execution graph / contention:** C1 through C6 are closed. C7 is the only remaining card and the
-only release/version/tag owner; it may not publish without a fresh explicit approval. `ROADMAP.md`,
-`TODO.md`, `README.md`, `CHANGELOG.md`, `COMPATIBILITY.md`, `SECURITY.md`, `specs/README.md`,
-metrics, tags, and release state remain coordinator-owned unless a card below explicitly assigns
-them.
-
-### W29-C7 — publish a current provenance-complete beta and close Phase 23
-
-**Status:** CLAIMABLE since 2026-09-12, when Wave 31 closed and released the hold placed on
-2026-09-11; publication was approved 2026-09-07 and that approval still stands, only the ordering
-had changed · **Size:** M · **Owner:** integrator
-
-**Measured trigger:** public release `v0.2.0-beta.1` (published 2026-07-03) has two assets—the legacy
-tarball and checksum—and predates the current wheel/sdist/SBOM/provenance workflow. Static release
-machinery and its six focused tests already pass, so publication/verification is the remaining gap.
-
-**Goal:** choose an approved next beta version, align every version surface, run canonical release
-rehearsal and cross-platform artifact journeys, create one signed/immutable tag through the protected
-workflow, verify every public asset and attestation, then close Wave 29 and Phase 23 from evidence.
-
-**Non-goals:** no silent tag, force push, mutable release replacement, package-index publication
-unless separately approved, stable/LTS claim, Homebrew tap mutation beyond the repository formula,
-or release while any required C1–C6 gate is red.
-
-**Owns after approval:** `VERSION`, root/runtime package versions, `Formula/docket-cli.rb`, installer
-default, CHANGELOG release section, release-truth tests, final ROADMAP/TODO/spec/metrics rollups, the
-new Git tag, and GitHub release verification. `.github/workflows/release.yml` changes only if the
-rehearsal proves its current contract false.
-
-**Acceptance / oracle:** before any external mutation, print the proposed version, exact commit,
-asset manifest, and approval boundary. Version/tag/package/formula/installer must agree. Both wheel
-and sdist must install outside checkout and pass the release journey on Linux and macOS. The public
-release must contain wheel, canonical sdist/versioned installer asset, individual checksum,
-`SHA256SUMS`, SPDX JSON, and a GitHub-verifiable provenance attestation bound to exact digests.
-Tampered bytes must fail verification. Fresh Homebrew/versioned-installer paths must resolve to the
-new immutable assets. Only after public verification may Wave 29/Phase 23 become complete.
-
-**Focused validation:** version/release/public-truth tests, local artifact manifest and tamper check,
-release journey, and workflow syntax before approval. Post-publication: query GitHub release assets
-and attestation, install from public URLs on both OS jobs, then run full canonical closure gates and
-snapshot a clean synchronized `main`.
-
-**Handoff:** report approval text/time, tag/commit, release/run/attestation URLs, asset names/digests,
-cross-platform install evidence, failures, cleanup, and the final board/phase status. External
-publication is never implied by claiming the card.
 
 ---
 

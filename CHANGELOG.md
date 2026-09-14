@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose hop is sitting inside a long-running shell command, killing the process group the way a
   timeout already did. Every other tool handler keeps the previous rule that an already-running
   handler may finish.
+- **`docket gates enable`/`disable` help text now says what the commands do.** They record an
+  approval-routing posture that `docket gates status` and `docket doctor` report; nothing on the
+  live path reads it, and every `ask` verdict is answered the same way by the CLI, HTTP, MCP and
+  Telegram channels regardless of it. The previous text said the flag changed where a verdict was
+  delivered.
+- **`docket maintain <id> sessions` no longer says sessions are never compacted.** They compact on
+  the turn path once history exceeds the role budget.
+
+### Removed
+
+- **The `security.gatesEnabled` key in `fleet.json` is no longer read or written.** Nothing had ever
+  read it. An existing `fleet.json` that carries the key still loads.
 
 ### Notes
 

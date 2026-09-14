@@ -494,5 +494,21 @@
     "heading": "◇ WAVE 35 CLOSED (2026-09-13) — second docstring sweep, one dead flag, one lane rule",
     "bytes": 15483,
     "sha256": "c985ef331993b1f697b2cbe2d03afebdb1a9b62f04b000c40998f31070e74d38"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "PHASE 23 — Product truth and ecosystem proof  *(☑ COMPLETE 2026-09-14 — Waves 26–29; W29-C7's closing half removed by D-39)*",
+    "bytes": 12841,
+    "sha256": "4b703cc48ff8770265cc73b06b2f81ffae16b97a2126af4b09db8005c8302e96"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 29 CLOSED (2026-09-14) — adoption evidence and public release",
+    "bytes": 6343,
+    "sha256": "7da8cbf5719e7c13a7a6129b4c914cb4c7d5147e41dffda699f7683db0db8bef"
   }
 ]

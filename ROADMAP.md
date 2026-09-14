@@ -12,19 +12,18 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-13.** Every numbered phase 0–22 and Waves 24–28 are complete. **Phase 25
+**Last updated: 2026-09-14.** Every numbered phase 0–25 is complete. **Phase 25
 (human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
 first as Wave 31's thirteen cards and the second as Wave 30's five. **Wave 32 closed the same day** (2026-09-12): a
 documentation truth pass over the drift those two phases left, plus the two follow-ups Wave 31
-measured and deferred. **Waves 33 and 34 closed 2026-09-13**: an audit of the Wave 32 closure, repository hygiene, a docstring-only comment sweep (558/112 to 372/40 without changing a line of code), then the D-36 function split finished under a new function-span ratchet, two measured fixes, and a read-only audit that found the fourth unwired-machinery instance. **Wave 35 closed the same day**: a second docstring sweep (372/40 to 229/29), the dead `gatesEnabled` flag retired, and the integration lane's `SUBJECT` line given a rule and a guard. **No program is active.** Phase 23 remains paused with one card left, W29-C7, which publishes the
-provenance-complete beta; note that everything since 2026-09-07 has changed what that would
-publish, so its recorded approval covers a tree that no longer exists. Executable cards live in
-[TODO.md](TODO.md).
+measured and deferred. **Waves 33 and 34 closed 2026-09-13**: an audit of the Wave 32 closure, repository hygiene, a docstring-only comment sweep (558/112 to 372/40 without changing a line of code), then the D-36 function split finished under a new function-span ratchet, two measured fixes, and a read-only audit that found the fourth unwired-machinery instance. **Wave 35 closed the same day**: a second docstring sweep (372/40 to 229/29), the dead `gatesEnabled` flag retired, and the integration lane's `SUBJECT` line given a rule and a guard. **Phase 23 closed 2026-09-14** (D-39): its release evidence is the `v0.2.0-beta.2` publication of
+2026-09-07, and the card that would have published a newer beta was removed from the board. The
+next release is a maintainer action, not a card. **No program is active and no card is queued.**
+Executable cards live in [TODO.md](TODO.md).
 
-> **How to read the rest of this file.** Nothing below is a task list. The planned programs
-> (Phases 23–25) hold their own wave tables; executable cards are in `TODO.md`. **The completed
-> phase records (0–22, the Bash→Python migration) and this file's decision changelog were moved
-> verbatim to [docs/cycles-ended/](docs/cycles-ended/README.md)** (`roadmap-phases.md`,
+> **How to read the rest of this file.** Nothing below is a task list; executable cards are in
+> `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
+> decision changelog were moved verbatim to [docs/cycles-ended/](docs/cycles-ended/README.md)** (`roadmap-phases.md`,
 > `roadmap-changelog.md`, SHA-256 manifest). **This table is the authority; a phase heading is not.**
 
 | Phase | What it was | Status |
@@ -44,7 +43,7 @@ publish, so its recorded approval covers a tree that no longer exists. Executabl
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ⏸ paused 2026-09-11 (C1–C6 shipped; W29-C7 deferred behind Phase 25) — — Wave 29 adoption evidence/public release activated |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ☑ **complete (2026-09-14)** — Waves 26–29. Release evidence is the public `v0.2.0-beta.2` (wheel, sdist, installer archive, checksums, SPDX SBOM, provenance attestation); W29-C7's remaining half, a newer beta, was removed by D-39. Record in `docs/cycles-ended/roadmap-phases.md` |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -56,9 +55,9 @@ publish, so its recorded approval covers a tree that no longer exists. Executabl
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
-| — | **Wave 29** (not a phase): adoption evidence and public release | ◇ unblocked (2026-09-12) — C1–C6 done and archived; C7 was deferred behind Wave 31 and is claimable now, its publication approval still standing |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ☑ complete (2026-09-14) — C1–C6 shipped; C7 published `v0.2.0-beta.2` on 2026-09-07 and its closing half was removed from the board by D-39 |
 | 24 | **Harness mode (D-35)** — docket as a governed, non-interactive execution harness a plan-of-record (Tack) spawns as a subprocess | ☑ **complete (2026-09-12)** — Wave 30, five cards. `docket harness run`/`status` ship with a published, versioned, test-pinned contract; the three seams it needed are wired and proved reached by a real subprocess |
-| 25 | **Human maintainability (D-36)** — test lanes with a budgeted agent lane, one unit file per module, zero-archaeology comments ratcheted in CI, generated CLI/API docs, board and roadmap cut to size | ☑ **complete (2026-09-12)** — Wave 31, thirteen cards. The board and roadmap reach their line targets only when Waves 29 and 30 close and their sections archive; their planned cards are what those waves are executed from |
+| 25 | **Human maintainability (D-36)** — test lanes with a budgeted agent lane, one unit file per module, zero-archaeology comments ratcheted in CI, generated CLI/API docs, board and roadmap cut to size | ☑ **complete (2026-09-12)** — Wave 31, thirteen cards. The board and roadmap reached their line targets on 2026-09-14, when the Wave 29 and Phase 23 sections archived |
 | — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ☑ complete (2026-09-11 to 2026-09-12) — thirteen cards W31-C0…C10, C8 split in two; C9 and C10 opened by defects the work surfaced |
 | — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ☑ complete (2026-09-12) — five cards W30-C1…C5. C1 merged on a second pass after a pipe-drain regression; C2 and C3 formed a seam that emptied the contract's blocked payload until a round-trip test was added |
 | — | **Wave 32** (not a phase): documentation truth pass — four parallel audits over disjoint doc groups, then seven cards splitting the drift Phases 24 and 25 left | ☑ complete (2026-09-12) — removed a script, CI workflow and hook that never existed; swept a repeat of defect W19-5 from the quick start; and found one anti-pattern in three places, a spec index, an env-var table and a blueprint list each checked against retyped rather than derived reference data |
@@ -82,10 +81,14 @@ Session compaction is no longer in this deferred table: its trigger fired and W2
 the live fail-closed and hierarchical paths. W20-C3 then measured material cross-hop duplication,
 and W20-C4 closed it with step-scoped durable histories while preserving typed handoffs.
 
-**Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
+**Known-true limits live in [README.md](README.md#known-limits)**, not here — they change faster
+than this file.
 
-**Release:** `0.2.0-beta.2` is in approved publication preflight. Every release carries a SemVer
-`-beta.N` suffix until the project is field-hardened enough to drop it (see README's beta warning).
+**Release:** `v0.2.0-beta.2`, published 2026-09-07 with wheel, sdist, installer archive, checksums,
+SPDX SBOM and a GitHub provenance attestation. `main` has moved on since (see `CHANGELOG.md`
+`[Unreleased]`); cutting the next beta is a maintainer action through `release.yml`, not a board
+card. Every release carries a SemVer `-beta.N` suffix until the project is field-hardened enough to
+drop it (see README's beta warning).
 
 Status legend used in the older sections below: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven,
 planned · 🚧 in progress · 🗓️ planned / deferred
@@ -135,173 +138,6 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 
 > Read §1–§4.5 once for mission, ground truth, conventions and principles; then take work only
 > from `TODO.md`. Completed phase records are in `docs/cycles-ended/roadmap-phases.md`.
-
----
-
-## Paused program — PHASE 23: product truth and ecosystem proof
-
-**Status:** ⏸ PAUSED (2026-09-11; active 2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 29 in
-[TODO.md](TODO.md) · **Resumable coordinator packet:**
-[`docs/cycles-ended/handoffs/phase-23-productization.md`](docs/cycles-ended/handoffs/phase-23-productization.md) (Wave 26 closure packet; Waves 27–29 are recorded below)
-
-### Why this phase is scheduled
-
-The 2026-08-30 read-only audit inspected the live `platform` tree, its release surfaces, 24
-current-state specs, 2,374 collected tests, and current open-source peers. The core governed loop,
-durable pipeline, role-narrowed registry, typed handoffs, and one `dispatch_tool` policy chokepoint
-are valuable. Adoption is nevertheless blocked before those strengths are reached:
-
-- the default `anthropic/claude-sonnet-4-6` onboarding path stores a key but resolves no built-in
-  endpoint, while only OpenRouter and Vercel have built-in compatible URLs;
-- the recommended Homebrew formula has an all-zero SHA and the wrong license, the installer reads
-  mutable `main`, the root wheel exposes `docket-py` rather than the documented `docket`, and the
-  release workflow publishes no installable Python artifacts;
-- `docket-runtime` and the full distribution install overlapping `docket/*` files;
-- audit append, approval resolution, and port/conversation allocation contain unlocked
-  read-modify-write transitions reachable from parallel dispatch or the threaded API;
-- verdict gates depend on marker placement in free-form model prose, and shipped in-process
-  cancellation changes state without interrupting the active turn.
-
-These are deterministic findings from this repository, not generic market-feature requests. They
-fire D-24's measured-need rule. The user explicitly requested the resulting productization and
-ecosystem plan on 2026-08-30.
-
-### Product boundary and exit contract
-
-Phase 23 ships in this order:
-
-1. **Trustworthy first use:** a clean install reaches one deterministic governed tool turn using a
-   provider configuration the onboarding path can actually resolve.
-2. **Truthful local governance:** concurrent decisions preserve one audit chain and one state
-   transition; verdict and cancellation outcomes match what actually happened.
-3. **Hardened single-host operation:** isolation, recovery, secrets, provider compatibility, MCP,
-   and parameterized pipelines are improved only from measured Wave 26 evidence.
-4. **Portable enforcement proof:** two external runtimes demonstrate the same policy, approval,
-   budget, trace identity, and handoff contract before Docket claims framework neutrality.
-5. **Adoption evidence:** reproducible releases, a starter integration, failure/chaos cases, and
-   published completion/cost/safety/recovery measurements.
-
-Phase 23 is complete only when those claims have executable evidence. It does not add a tenant
-axis, hosted scheduler, Docket-owned dashboard, no-code workflow builder, provider-SDK zoo, or a
-second orchestration graph language.
-
-### Activation gate — satisfied 2026-08-30
-
-Wave 25's 45 attributed paths landed in `6b925f0` after W25-C7's single authorized live acceptance.
-The integrated commit passed 2,377 tests with five contract-labelled skips, Ruff, format, strict
-mypy, 24 specs, 18 goldens, metrics, and deterministic smoke. The active-board marker changed once;
-Wave 26 then completed on 2026-08-31. Central files (`ROADMAP.md`, `TODO.md`, `README.md`,
-`specs/README.md`) remain integrator-owned.
-
-### Wave 26 — first-use and governance truth (complete 2026-08-31)
-
-Wave 26 contains independently shippable cards rather than one release-sized branch. Its initial
-ready pool after activation is W26-C1, C2, and C6–C10; C0 is an integrator/maintainer decision, C3
-depends on C0+C2, C4 depends on C1–C3, C5 depends on C2, and C11 is the final truth/release
-integrator. The detailed trigger, non-goals, live paths, RED cases, acceptance oracles, gates, and
-contention boundaries live once in `TODO.md`.
-
-| Card | Outcome | Dependency / parallel boundary |
-| --- | --- | --- |
-| W26-C0 | One public release source/commit lineage | Done; `main` is canonical and synchronized without history rewrite |
-| W26-C1 | Clean configuration reaches the first governed turn | Done; resolvable provider/onboarding path proven |
-| W26-C2 | Canonical installable `docket` wheel/sdist | Done; root artifact owns the documented CLI distribution |
-| W26-C3 | Immutable, checksummed release artifacts | Done (`0251972`, `5bb106a`); tagged package assets are verified before install/publish |
-| W26-C4 | Clean-install-to-first-turn CI release oracle | Done (`f8f897e`, `6c52df7`); exact wheel reaches a governed turn on Ubuntu/macOS |
-| W26-C5 | Non-overlapping, documented runtime distribution | Done; artifact boundary and ownership checks pass |
-| W26-C6 | Atomic, durable audit append | Done; concurrent append/rotation preserves the chain |
-| W26-C7 | Compare-and-set approval resolution | Done; contradictory concurrent winners are rejected |
-| W26-C8 | Collision-free pod resource allocation | Done; allocation and rollback remain isolated |
-| W26-C9 | Lost-update-free conversation mutation | Done; concurrent hop mutation preserves updates |
-| W26-C10 | Cancellation scope split only | Planning-complete; superseded by C10a → C10b → C10c |
-| W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
-| W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
-| W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; whole-path oracle and cancellation wording agree |
-| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Done (`dcce5b2`, `f9a4086`); Wave 26 closure truth and gates pass |
-
-### Wave 27 — bounded post-W26 hardening and public front door (complete 2026-09-01)
-
-Post-W26 triage activated exactly two independent cards. W27-C1 follows GitHub's high-severity
-CVE-2026-69247 alert from the supported optional MCP graph to `cryptography` 49.0.0 and requires a
-patched lock plus MCP compatibility evidence. W27-C2 follows the maintainer's explicit 2026-09-01
-request and the measured 773-line README/stale-asset audit to a smaller public front door and one
-reproducible current visual set. Detailed acceptance and ownership live in `TODO.md`.
-
-Both cards closed on 2026-09-01. The lock now excludes the reported advisory range, and the public
-front door is a compact, tested README backed by one reproducible three-asset terminal visual set.
-
-The remaining Wave 27 candidate measurements are still unscheduled: an isolated coding profile and
-scoped egress/secrets without silently changing D-23; recovery from corrupt or old persisted state;
-real pipeline-variable injection; provider structured-output/streaming needs; MCP transport/cache/
-capability metadata; and a supported local service/TLS-proxy/backup profile. Each needs a
-representative fixture and a measured failure or explicit request. A built-in dashboard and tenant
-model remain out of scope.
-
-### Wave 28 — portable governance proof (complete 2026-09-02)
-
-The bounded pass selected the standard OpenHands SDK `Agent` as the coding runtime and PydanticAI as
-the general Python framework. OpenHands ACP is excluded from the proof because the ACP subprocess
-owns its tools, context, approvals, and execution; Docket could delegate to it but could not prove
-that every relevant action crossed Docket's chokepoint. PydanticAI's custom toolset seam is selected
-over LangGraph's second graph language and Agno's broader hook/concurrency surface. Decisions D-32
-and D-33 record the selection and evidence contract; detailed executable cards live once in
-`TODO.md`.
-
-Both adapters consume one artifact-installed governed-execution envelope and one scenario table.
-The proof uses deterministic, credential-free models: a loopback OpenAI-compatible fake for
-OpenHands and PydanticAI `FunctionModel`. It covers exclusive tool registration, native-bypass
-absence, policy deny, approval deny/grant, Docket-owned reported-token/tool-call budgeting before
-mutation, paired trace identity, existing audit semantics, and a typed terminal handoff. The base
-runtime stays Python 3.11 compatible and dependency-light; the isolated OpenHands fixture uses
-Python 3.12 because that SDK requires it. Port 8081 remains an optional local-model canary, never a
-closure gate.
-
-| Card | Outcome | Dependency / parallel boundary |
-| --- | --- | --- |
-| W28-C1 | Shared public execution envelope + common fixture contract | Done (`9f6a79c`, `d2e1b33`, `2e37361`); bounded facade and shared oracle shipped |
-| W28-C2 | Standard OpenHands SDK adapter and coding fixture | Done (`071a744`, `c7d6a59`, `fbb4084`); nine Python 3.12 artifact cases pass |
-| W28-C3 | PydanticAI custom-toolset adapter and general fixture | Done (`648dec5`, `a6c9197`); seven Python 3.11 artifact cases pass |
-| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Done (`3294f58`, `b1c9f44`, `739b1ca`); 37 focused tests, 2,490 collected tests, scoped claims, and Ubuntu/macOS artifact journeys pass |
-
-No A2A card is activated because the selected coding proof is in-process and needs no remote task
-discovery/state/cancellation. No OTLP card is activated because the fixture is explicitly required
-to first prove whether the existing JSONL trace identity is sufficient. No plugin framework
-precedes the two concrete callers.
-
-### Wave 29 — adoption evidence and public release (active 2026-09-02)
-
-The bounded activation at exact commit `de08206` found zero extractable starter directories and zero
-benchmark/baseline files. It reproduced a concrete recovery defect: `edges.store.write_json`
-created a valid `.bak`, but corrupting the primary still made `read_json` raise `JSONDecodeError`.
-Thirty-one existing policy-template, crash-resume, and release-contract tests passed, proving the
-underlying mechanics should be reused rather than rewritten. `SECURITY.md` has a main-only security
-support statement, but there is no deprecation, governance, or succession policy; CODEOWNERS and the
-90-day Git history resolve to one human owner. Finally, current workflow code already builds wheel,
-sdist, checksums, SPDX SBOM, and provenance, while the public `v0.2.0-beta.1` release predates it and
-contains only a tarball plus checksum. Decision D-34 freezes these measurements and the activation
-boundary.
-
-Wave 29 therefore ships: safe JSON backup recovery; one copied-outside-checkout, credential-free
-ten-minute starter; a deterministic and redacted benchmark schema/runner; adversarial plus
-crash/recovery journeys using existing governance; truthful support/deprecation/governance/
-succession policy; and one reproducible published baseline. The final current beta publication is
-separate and explicit-approval-gated. It verifies existing supply-chain machinery rather than
-building it again.
-
-| Card | Outcome | Dependency / parallel boundary |
-| --- | --- | --- |
-| W29-C1 | Corrupt-primary/valid-backup recovery at the JSON-store chokepoint | Done (`4b796de`, `b673645`); 11 focused recovery/atomicity cases pass |
-| W29-C2 | Extractable artifact-installed ten-minute starter | Done (`b138f25`, `16ef7bc`); copied artifact-installed public CLI journey passes |
-| W29-C3 | Adoption benchmark schema and deterministic runner | Done (`a556fdc`, `2bf46a5`); 11 deterministic schema/runner cases pass |
-| W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Done (`fcdff9a`, `0c8dac7`); 21 isolated C3-valid journeys pass |
-| W29-C5 | Support, deprecation, governance, and succession truth | Done (`ac05dc3`, `c480e97`); 8 policy truth/counterexample cases pass |
-| W29-C6 | Reproducible baseline and scoped public interpretation | Done (`82a3239`, `033bb4b`, `f789bc6`); exact hash and hosted closure pass in run `33812881329` |
-| W29-C7 | Provenance-complete public beta and Phase 23 closure | **Deferred 2026-09-11 behind Wave 31.** Publication approval for `v0.2.0-beta.2` stands; only release-state owner |
-
-No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
-contracts, not model quality. Dollar values are estimates with versioned assumptions or remain
-`null`; failed attempts stay in the denominator. There is no leaderboard, competitor ranking,
-savings claim, telemetry/A2A work, new adapter, or feature-count exit criterion.
 
 ---
 
@@ -532,6 +368,7 @@ address exactly those.
 | D-36 | How should the test suite, comments and documentation be shaped so that a person who did not write docket can maintain it in ordinary time, and where do the checks that exist only for the agent's benefit live? | Phase 25 / Wave 31 | **Lanes with a budgeted agent lane, one unit file per module, a ratcheted comment linter and generated reference docs**, with nothing that reads prose left in the default suite. Full reasoning in [docs/adr/0007-human-maintainability-lanes-comments-docs.md](docs/adr/0007-human-maintainability-lanes-comments-docs.md). |
 | D-37 | Does a sentence in `README.md` get a vote in which tests exist? | Wave 31 / W31-C2 | **No. The README is descriptive, not a requirements document.** It exists to tell a reader which features are there. Requirements live in `specs/`, which is what a test answers to; a README sentence is downstream of the tree and is rewritten to match it, never the other way round. So the shape of the suite is decided on its own terms -- structured, maintainable, correct, inside the agent-lane budget -- and the README is then updated to describe what is true. Applied at 2026-09-11: the harness-script file and the two third-party adapter parity files were retired to bring the lane under 4,000 lines, and the sentence claiming installed-artifact coverage for those adapter configurations left with them, in the same commit. That sentence was describing test coverage rather than a feature, which is not what the README is for. **What this does not license:** deleting a test to dodge a failure, or dropping a requirement from `specs/` because a test was inconvenient. A spec requirement is changed by amending the spec, deliberately, never by deleting its test. |
 | D-38 | The agent lane came in at 5,730 lines against D-36's 4,000-line cap. Cut to the number, or change the number? | Wave 31 / W31-C2 | **Change the number: the cap becomes a shrink-only ratchet.** The 4,000 came from the plan before the classification settled and had no measurement behind it. Checked file by file, 17 of the lane's 18 files back a requirement in `specs/` or cover shipped code -- the third-party adapter configurations in `specs/api/runtime-library.spec.md` and the adoption evidence schema among them -- so reaching 4,000 meant amending specs to make the arithmetic work, which is the back door D-37 closes. Only `test_development_harness.py` answered to nothing but the agent's own hook scripts; it was retired, leaving 5,157. That number is now the baseline and may only fall. **The lane shrinks by its own mechanism:** every file declares `RETIRE_WHEN`, and it is deleted when that condition fires. If a smaller lane is wanted sooner, the question to answer is which requirements docket stops making -- a product decision, taken in the spec, not a line-count exercise. |
+| D-39 | W29-C7 was the last card on the board: publish a newer beta, verify it on Linux and macOS from public URLs, then close Phase 23. Keep it, or close Phase 23 on the evidence already public? | Phase 23 closure, 2026-09-14 | **Remove the card; close Phase 23 on the published `v0.2.0-beta.2`.** The card's publication half already happened on 2026-09-07: that release carries the root wheel, sdist, versioned installer archive, per-file checksum, `SHA256SUMS`, an SPDX SBOM and a GitHub build-provenance attestation, verified again on 2026-09-14. What remained was a second publication of a tree that has since moved 167 commits, which is a release decision rather than an exit criterion. **What this does not claim:** that the current `main` is released, or that install from the public URLs was re-verified on macOS for beta.2 (Wave 28 verified built artifacts on Ubuntu and macOS; `release.yml` runs on Ubuntu). The next beta is cut by the maintainer through `release.yml` when wanted, and needs no card. |
 
 ---
 
@@ -577,7 +414,7 @@ address exactly those.
 > **Status lives in one place — the table at the top of this file.** This section is *how to work*,
 > not *what is left*. Duplicating status here is what let it drift for three phases.
 
-`docket` **0.2.0-beta.1** is cut and tagged — every release from this project carries a SemVer
+`docket` **0.2.0-beta.2** is the current published release — every release from this project carries a SemVer
 `-beta.N` pre-release suffix (not a bare version) for as long as the project stays beta/early-stage
 per README's warning banner; `v0.1.0` predates this convention and stays as-is.
 
@@ -615,12 +452,6 @@ Four scheduling rules, each earned by a merge that went badly before it went wel
 Central files — `ROADMAP.md`, `TODO.md`, `README.md` and their metric counts — are **integrator-owned**.
 Card branches report what they shipped instead of editing the board; Phase 14 lost time to roll-up
 checkboxes and README test counts conflicting on nearly every merge.
-
-**A second scheduling rule, learned in waves 3–4 (keep it):** an index or roll-up table that several
-branches edit in parallel — `specs/README.md`'s status table, README's metric counts, a golden's
-command list — **cannot be merged by picking a side**, because no side holds every branch's change.
-Regenerate it from ground truth (the spec headers, the real CLI, the actual suite) and verify the
-diff. This caught real regressions on three consecutive merges.
 
 **Branch model for this program:** D-31 supersedes the earlier fork-candidate arrangement.
 **`main` is the canonical public/default and release lineage**; the completed `platform` history was

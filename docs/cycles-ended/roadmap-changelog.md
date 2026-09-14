@@ -10,6 +10,13 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-14 (Phase 23 closed / W29-C7 removed, D-39) — the maintainer removed the last board
+  card rather than cut a newer beta.** `v0.2.0-beta.2`, published 2026-09-07, already carries every
+  asset Phase 23's release evidence named, so the phase closed on it. The Wave 29 board section and
+  the Phase 23 roadmap section were archived the same day, bringing `TODO.md` to 77 lines and
+  `ROADMAP.md` to 464 and meeting the D-36 size targets. Waves 33 to 35 (2026-09-13) had already
+  closed: two docstring sweeps, the function split behind a span ratchet, the dead `gatesEnabled`
+  flag, and the integration-lane `SUBJECT` rule.
 - **2026-09-11 (Phase 25 activated / W29-C7 and Wave 30 deferred) — the maintainer chose to make
   the repository maintainable before publishing it further.** Wave 31 is the active board; W29-C7
   (publish the provenance-complete beta, close Phase 23) keeps its 2026-09-07 publication approval

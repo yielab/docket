@@ -1,7 +1,7 @@
 # Cycles ended — the archive of closed work
 
-Everything here was moved **verbatim** out of `TODO.md`, `ROADMAP.md` and `.agents/handoffs/` on
-2026-09-11 so the live files carry only active and planned work. Nothing here is outstanding and
+Everything here was moved **verbatim** out of `TODO.md`, `ROADMAP.md` and `.agents/handoffs/`, first
+on 2026-09-11 so the live files carry only active and planned work. Nothing here is outstanding and
 nothing here is a source of tasks. `manifest.json` records every archived section's heading, byte
 length and SHA-256; verify with:
 
@@ -9,17 +9,25 @@ length and SHA-256; verify with:
 uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 ```
 
+<!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | 28 closed board sections: Waves 5–7, 13–28, the Phase 19 board, dead-code registers, the 2026-08-05 local-environment rebuild, the Phase 14 known-gaps register |
-| [roadmap-phases.md](roadmap-phases.md) | Completed initiatives (Bash→Python migration) and the records of Phases 0–22 |
-| [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go here) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (40 archived) |
+| [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
+| [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
 
 ## Index by date (newest first)
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-09-14 | PHASE 23 — Product truth and ecosystem proof  *(☑ COMPLETE 2026-09-14 — Waves 26–29; W29-C7's closing half removed by D-39)* | `roadmap-phases.md` | 12,841 |
+| 2026-09-14 | ◇ WAVE 29 CLOSED (2026-09-14) — adoption evidence and public release | `todo-waves.md` | 6,343 |
+| 2026-09-13 | ◇ WAVE 34 CLOSED (2026-09-13) — finish the D-36 function split, two measured fixes, one audit | `todo-waves.md` | 16,893 |
+| 2026-09-13 | ◇ WAVE 35 CLOSED (2026-09-13) — second docstring sweep, one dead flag, one lane rule | `todo-waves.md` | 15,483 |
+| 2026-09-12 | ◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups | `todo-waves.md` | 1,977 |
+| 2026-09-11 | ☑ WAVE 31 COMPLETE (2026-09-11 to 2026-09-12) — human maintainability: test lanes, comment budget, generated docs (Phase 25, D-36) | `todo-waves.md` | 43,947 |
+| 2026-09-11 | ☑ WAVE 30 COMPLETE (2026-09-11 to 2026-09-12) — harness mode seams and contract (Phase 24, D-35) | `todo-waves.md` | 14,956 |
 | 2026-09-02 | ☑ WAVE 28 COMPLETE (2026-09-02) — portable governance proof | `todo-waves.md` | 23,624 |
 | 2026-09-01 | ☑ WAVE 27 COMPLETE (2026-09-01) — dependency safety and public front door | `todo-waves.md` | 6,988 |
 | 2026-08-31 | ☑ WAVE 26 COMPLETE (2026-08-31) — first successful turn and release/governance truth | `todo-waves.md` | 52,820 |
@@ -74,7 +82,16 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | PHASE 9 — Contract integrity: close the spec↔runtime gap (de-ceremony)  *(☑ COMPLETE)* | `roadmap-phases.md` | 11,054 |
 | PHASE 10 — Agent architecture: project pods (scope ≠ role ≠ lifecycle)  *(☑ COMPLETE)* | `roadmap-phases.md` | 20,441 |
 | Changelog | `roadmap-changelog.md` | 74,031 |
+| W29-C1 — recover a corrupt Docket JSON primary from its valid backup | `todo-waves.md` | 3,255 |
+| W29-C2 — ship an extractable, artifact-installed ten-minute starter | `todo-waves.md` | 3,419 |
+| W29-C3 — define the adoption benchmark schema and deterministic runner | `todo-waves.md` | 3,207 |
+| W29-C4 — add adversarial governance and crash/recovery benchmark scenarios | `todo-waves.md` | 2,976 |
+| W29-C5 — publish truthful support, deprecation, governance, and succession policy | `todo-waves.md` | 2,884 |
+| W29-C6 — generate and publish the reproducible adoption baseline | `todo-waves.md` | 5,649 |
+| Planned program — PHASE 25: human maintainability (D-36) | `roadmap-phases.md` | 8,260 |
+| Planned program — PHASE 24: harness mode (D-35) | `roadmap-phases.md` | 7,010 |
+<!-- archive-index:end -->
 
 ## Handoffs
 
-- `handoffs/phase-23-productization.md` — Wave 26 closure packet (2026-08-31); superseded by the Wave 27–29 records in `ROADMAP.md` Phase 23.
+- `handoffs/phase-23-productization.md` — Wave 26 closure packet (2026-08-31); superseded by the Wave 27–29 records in `roadmap-phases.md` Phase 23.

@@ -2173,3 +2173,170 @@ evidence, not a fixture. Cost stays `null`; token counts are the session's measu
 
 ---
 
+## PHASE 23 — Product truth and ecosystem proof  *(☑ COMPLETE 2026-09-14 — Waves 26–29; W29-C7's closing half removed by D-39)*
+
+**Status:** ☑ COMPLETE (2026-09-14; active 2026-08-30, paused 2026-09-11) · **Decisions:** D-25, D-39 ·
+**Board record:** Waves 26–29 in `docs/cycles-ended/todo-waves.md` · **Coordinator packet:**
+[`docs/cycles-ended/handoffs/phase-23-productization.md`](docs/cycles-ended/handoffs/phase-23-productization.md) (Wave 26 closure packet; Waves 27–29 are recorded below)
+
+### Why this phase is scheduled
+
+The 2026-08-30 read-only audit inspected the live `platform` tree, its release surfaces, 24
+current-state specs, 2,374 collected tests, and current open-source peers. The core governed loop,
+durable pipeline, role-narrowed registry, typed handoffs, and one `dispatch_tool` policy chokepoint
+are valuable. Adoption is nevertheless blocked before those strengths are reached:
+
+- the default `anthropic/claude-sonnet-4-6` onboarding path stores a key but resolves no built-in
+  endpoint, while only OpenRouter and Vercel have built-in compatible URLs;
+- the recommended Homebrew formula has an all-zero SHA and the wrong license, the installer reads
+  mutable `main`, the root wheel exposes `docket-py` rather than the documented `docket`, and the
+  release workflow publishes no installable Python artifacts;
+- `docket-runtime` and the full distribution install overlapping `docket/*` files;
+- audit append, approval resolution, and port/conversation allocation contain unlocked
+  read-modify-write transitions reachable from parallel dispatch or the threaded API;
+- verdict gates depend on marker placement in free-form model prose, and shipped in-process
+  cancellation changes state without interrupting the active turn.
+
+These are deterministic findings from this repository, not generic market-feature requests. They
+fire D-24's measured-need rule. The user explicitly requested the resulting productization and
+ecosystem plan on 2026-08-30.
+
+### Product boundary and exit contract
+
+Phase 23 ships in this order:
+
+1. **Trustworthy first use:** a clean install reaches one deterministic governed tool turn using a
+   provider configuration the onboarding path can actually resolve.
+2. **Truthful local governance:** concurrent decisions preserve one audit chain and one state
+   transition; verdict and cancellation outcomes match what actually happened.
+3. **Hardened single-host operation:** isolation, recovery, secrets, provider compatibility, MCP,
+   and parameterized pipelines are improved only from measured Wave 26 evidence.
+4. **Portable enforcement proof:** two external runtimes demonstrate the same policy, approval,
+   budget, trace identity, and handoff contract before Docket claims framework neutrality.
+5. **Adoption evidence:** reproducible releases, a starter integration, failure/chaos cases, and
+   published completion/cost/safety/recovery measurements.
+
+Phase 23 is complete only when those claims have executable evidence. It does not add a tenant
+axis, hosted scheduler, Docket-owned dashboard, no-code workflow builder, provider-SDK zoo, or a
+second orchestration graph language.
+
+### Activation gate — satisfied 2026-08-30
+
+Wave 25's 45 attributed paths landed in `6b925f0` after W25-C7's single authorized live acceptance.
+The integrated commit passed 2,377 tests with five contract-labelled skips, Ruff, format, strict
+mypy, 24 specs, 18 goldens, metrics, and deterministic smoke. The active-board marker changed once;
+Wave 26 then completed on 2026-08-31. Central files (`ROADMAP.md`, `TODO.md`, `README.md`,
+`specs/README.md`) remain integrator-owned.
+
+### Wave 26 — first-use and governance truth (complete 2026-08-31)
+
+Wave 26 contains independently shippable cards rather than one release-sized branch. Its initial
+ready pool after activation is W26-C1, C2, and C6–C10; C0 is an integrator/maintainer decision, C3
+depends on C0+C2, C4 depends on C1–C3, C5 depends on C2, and C11 is the final truth/release
+integrator. The detailed trigger, non-goals, live paths, RED cases, acceptance oracles, gates, and
+contention boundaries live once in `TODO.md`.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W26-C0 | One public release source/commit lineage | Done; `main` is canonical and synchronized without history rewrite |
+| W26-C1 | Clean configuration reaches the first governed turn | Done; resolvable provider/onboarding path proven |
+| W26-C2 | Canonical installable `docket` wheel/sdist | Done; root artifact owns the documented CLI distribution |
+| W26-C3 | Immutable, checksummed release artifacts | Done (`0251972`, `5bb106a`); tagged package assets are verified before install/publish |
+| W26-C4 | Clean-install-to-first-turn CI release oracle | Done (`f8f897e`, `6c52df7`); exact wheel reaches a governed turn on Ubuntu/macOS |
+| W26-C5 | Non-overlapping, documented runtime distribution | Done; artifact boundary and ownership checks pass |
+| W26-C6 | Atomic, durable audit append | Done; concurrent append/rotation preserves the chain |
+| W26-C7 | Compare-and-set approval resolution | Done; contradictory concurrent winners are rejected |
+| W26-C8 | Collision-free pod resource allocation | Done; allocation and rollback remain isolated |
+| W26-C9 | Lost-update-free conversation mutation | Done; concurrent hop mutation preserves updates |
+| W26-C10 | Cancellation scope split only | Planning-complete; superseded by C10a → C10b → C10c |
+| W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
+| W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
+| W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; whole-path oracle and cancellation wording agree |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Done (`dcce5b2`, `f9a4086`); Wave 26 closure truth and gates pass |
+
+### Wave 27 — bounded post-W26 hardening and public front door (complete 2026-09-01)
+
+Post-W26 triage activated exactly two independent cards. W27-C1 follows GitHub's high-severity
+CVE-2026-69247 alert from the supported optional MCP graph to `cryptography` 49.0.0 and requires a
+patched lock plus MCP compatibility evidence. W27-C2 follows the maintainer's explicit 2026-09-01
+request and the measured 773-line README/stale-asset audit to a smaller public front door and one
+reproducible current visual set. Detailed acceptance and ownership live in `TODO.md`.
+
+Both cards closed on 2026-09-01. The lock now excludes the reported advisory range, and the public
+front door is a compact, tested README backed by one reproducible three-asset terminal visual set.
+
+The remaining Wave 27 candidate measurements are still unscheduled: an isolated coding profile and
+scoped egress/secrets without silently changing D-23; recovery from corrupt or old persisted state;
+real pipeline-variable injection; provider structured-output/streaming needs; MCP transport/cache/
+capability metadata; and a supported local service/TLS-proxy/backup profile. Each needs a
+representative fixture and a measured failure or explicit request. A built-in dashboard and tenant
+model remain out of scope.
+
+### Wave 28 — portable governance proof (complete 2026-09-02)
+
+The bounded pass selected the standard OpenHands SDK `Agent` as the coding runtime and PydanticAI as
+the general Python framework. OpenHands ACP is excluded from the proof because the ACP subprocess
+owns its tools, context, approvals, and execution; Docket could delegate to it but could not prove
+that every relevant action crossed Docket's chokepoint. PydanticAI's custom toolset seam is selected
+over LangGraph's second graph language and Agno's broader hook/concurrency surface. Decisions D-32
+and D-33 record the selection and evidence contract; detailed executable cards live once in
+`TODO.md`.
+
+Both adapters consume one artifact-installed governed-execution envelope and one scenario table.
+The proof uses deterministic, credential-free models: a loopback OpenAI-compatible fake for
+OpenHands and PydanticAI `FunctionModel`. It covers exclusive tool registration, native-bypass
+absence, policy deny, approval deny/grant, Docket-owned reported-token/tool-call budgeting before
+mutation, paired trace identity, existing audit semantics, and a typed terminal handoff. The base
+runtime stays Python 3.11 compatible and dependency-light; the isolated OpenHands fixture uses
+Python 3.12 because that SDK requires it. Port 8081 remains an optional local-model canary, never a
+closure gate.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W28-C1 | Shared public execution envelope + common fixture contract | Done (`9f6a79c`, `d2e1b33`, `2e37361`); bounded facade and shared oracle shipped |
+| W28-C2 | Standard OpenHands SDK adapter and coding fixture | Done (`071a744`, `c7d6a59`, `fbb4084`); nine Python 3.12 artifact cases pass |
+| W28-C3 | PydanticAI custom-toolset adapter and general fixture | Done (`648dec5`, `a6c9197`); seven Python 3.11 artifact cases pass |
+| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Done (`3294f58`, `b1c9f44`, `739b1ca`); 37 focused tests, 2,490 collected tests, scoped claims, and Ubuntu/macOS artifact journeys pass |
+
+No A2A card is activated because the selected coding proof is in-process and needs no remote task
+discovery/state/cancellation. No OTLP card is activated because the fixture is explicitly required
+to first prove whether the existing JSONL trace identity is sufficient. No plugin framework
+precedes the two concrete callers.
+
+### Wave 29 — adoption evidence and public release (complete 2026-09-14)
+
+The bounded activation at exact commit `de08206` found zero extractable starter directories and zero
+benchmark/baseline files. It reproduced a concrete recovery defect: `edges.store.write_json`
+created a valid `.bak`, but corrupting the primary still made `read_json` raise `JSONDecodeError`.
+Thirty-one existing policy-template, crash-resume, and release-contract tests passed, proving the
+underlying mechanics should be reused rather than rewritten. `SECURITY.md` has a main-only security
+support statement, but there is no deprecation, governance, or succession policy; CODEOWNERS and the
+90-day Git history resolve to one human owner. Finally, current workflow code already builds wheel,
+sdist, checksums, SPDX SBOM, and provenance, while the public `v0.2.0-beta.1` release predates it and
+contains only a tarball plus checksum. Decision D-34 freezes these measurements and the activation
+boundary.
+
+Wave 29 therefore ships: safe JSON backup recovery; one copied-outside-checkout, credential-free
+ten-minute starter; a deterministic and redacted benchmark schema/runner; adversarial plus
+crash/recovery journeys using existing governance; truthful support/deprecation/governance/
+succession policy; and one reproducible published baseline. The final current beta publication is
+separate and explicit-approval-gated. It verifies existing supply-chain machinery rather than
+building it again.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W29-C1 | Corrupt-primary/valid-backup recovery at the JSON-store chokepoint | Done (`4b796de`, `b673645`); 11 focused recovery/atomicity cases pass |
+| W29-C2 | Extractable artifact-installed ten-minute starter | Done (`b138f25`, `16ef7bc`); copied artifact-installed public CLI journey passes |
+| W29-C3 | Adoption benchmark schema and deterministic runner | Done (`a556fdc`, `2bf46a5`); 11 deterministic schema/runner cases pass |
+| W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Done (`fcdff9a`, `0c8dac7`); 21 isolated C3-valid journeys pass |
+| W29-C5 | Support, deprecation, governance, and succession truth | Done (`ac05dc3`, `c480e97`); 8 policy truth/counterexample cases pass |
+| W29-C6 | Reproducible baseline and scoped public interpretation | Done (`82a3239`, `033bb4b`, `f789bc6`); exact hash and hosted closure pass in run `33812881329` |
+| W29-C7 | Provenance-complete public beta and Phase 23 closure | Published `v0.2.0-beta.2` (2026-09-07; wheel, sdist, installer archive, checksums, SPDX SBOM, provenance attestation). The remaining half, a newer beta plus public-URL install on Linux and macOS, was removed on 2026-09-14 by D-39 |
+
+No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
+contracts, not model quality. Dollar values are estimates with versioned assumptions or remain
+`null`; failed attempts stay in the denominator. There is no leaderboard, competitor ranking,
+savings claim, telemetry/A2A work, new adapter, or feature-count exit criterion.
+
+---
+
