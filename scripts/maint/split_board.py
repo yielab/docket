@@ -3,11 +3,12 @@
 
     split_board.py archive SOURCE DEST --level 2 --select 'REGEX' [--manifest PATH]
     split_board.py check MANIFEST
+    split_board.py index MANIFEST [--write]
 
-A section runs from its heading line (``##`` at level 2, ``###`` at level 3) to the next heading of
-the same or a higher level. Matching sections are removed from SOURCE in place and appended to DEST
-in their original order, byte for byte. The manifest records each section's heading, byte length
-and SHA-256 so ``check`` can prove every archived section is present in DEST and absent from SOURCE.
+A section runs from its heading line to the next heading of the same or a higher level. Matching
+sections move from SOURCE to DEST byte for byte; the manifest records heading, length and SHA-256 so
+``check`` proves each is in DEST and gone from SOURCE. The README beside the manifest holds an index
+generated from it between two markers: ``archive`` rewrites it and ``check`` fails when it is stale.
 """
 
 from __future__ import annotations
@@ -43,6 +44,74 @@ def split_sections(text: str, level: int) -> list[tuple[str | None, str]]:
     if buf:
         chunks.append((current_heading, "".join(buf)))
     return chunks
+
+
+INDEX_BEGIN = "<!-- archive-index:begin -->"
+INDEX_END = "<!-- archive-index:end -->"
+_HOLDS = {
+    "todo-waves.md": "Closed board sections: waves, phase boards and registers",
+    "roadmap-phases.md": "Completed-initiative and phase records",
+    "roadmap-changelog.md": "The roadmap decision changelog (new entries go under its live heading)",
+}
+
+
+def render_index(entries: list[dict[str, object]]) -> str:
+    """The generated block: per-file counts, then sections by date (newest first), then undated."""
+
+    def cell(text: str) -> str:
+        return text.replace("|", "\\|")
+
+    counts: dict[str, int] = {}
+    dated: list[tuple[str, dict[str, object]]] = []
+    undated: list[dict[str, object]] = []
+    for e in entries:
+        name = Path(str(e["dest"])).name
+        counts[name] = counts.get(name, 0) + 1
+        m = re.search(r"\d{4}-\d{2}-\d{2}", str(e["heading"]))
+        if m:
+            dated.append((m.group(0), e))
+        else:
+            undated.append(e)
+    dated.sort(key=lambda pair: pair[0], reverse=True)
+    out = ["| File | Holds |", "|---|---|"]
+    for name, count in counts.items():
+        what = _HOLDS.get(name, "archived sections")
+        out.append(f"| [{name}]({name}) | {what} ({count} archived) |")
+    out.append("| [handoffs/](handoffs/) | Superseded coordinator handoff packets |")
+    out += ["", "## Index by date (newest first)", "", "| Date | Section | File | Bytes |"]
+    out.append("|---|---|---|---|")
+    for date, e in dated:
+        name = Path(str(e["dest"])).name
+        out.append(f"| {date} | {cell(str(e['heading']))} | `{name}` | {int(e['bytes']):,} |")
+    out += ["", "## Undated sections", "", "| Section | File | Bytes |", "|---|---|---|"]
+    for e in undated:
+        name = Path(str(e["dest"])).name
+        out.append(f"| {cell(str(e['heading']))} | `{name}` | {int(e['bytes']):,} |")
+    return "\n".join(out) + "\n"
+
+
+def index(manifest_path: Path, write: bool) -> int:
+    """Compare (or with *write*, replace) the README's marked block against the manifest."""
+    readme = manifest_path.parent / "README.md"
+    if not readme.exists():
+        return 0
+    text = readme.read_text(encoding="utf-8")
+    if INDEX_BEGIN not in text or INDEX_END not in text:
+        print(f"{readme}: index markers missing")
+        return 1
+    head, rest = text.split(INDEX_BEGIN, 1)
+    _, tail = rest.split(INDEX_END, 1)
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    fresh = f"{head}{INDEX_BEGIN}\n{render_index(entries)}{INDEX_END}{tail}"
+    if fresh == text:
+        print(f"{readme}: index current ({len(entries)} sections)")
+        return 0
+    if write:
+        readme.write_text(fresh, encoding="utf-8")
+        print(f"{readme}: index rewritten ({len(entries)} sections)")
+        return 0
+    print(f"{readme}: index STALE; run split_board.py index {manifest_path} --write")
+    return 1
 
 
 def archive(source: Path, dest: Path, level: int, select: str, manifest_path: Path) -> int:
@@ -90,7 +159,7 @@ def archive(source: Path, dest: Path, level: int, select: str, manifest_path: Pa
     for heading, chunk in moved:
         print(f"moved  {len(chunk.encode('utf-8')):>7} B  {heading[:80]}")
     print(f"{len(moved)} section(s) -> {dest}; manifest {manifest_path}")
-    return 0
+    return index(manifest_path, write=True)
 
 
 def check(manifest_path: Path) -> int:
@@ -118,7 +187,7 @@ def check(manifest_path: Path) -> int:
             + ("" if found else "  (not verbatim in dest)")
         )
     print(f"{len(entries) - failures}/{len(entries)} archived sections verified")
-    return 1 if failures else 0
+    return 1 if failures or index(manifest_path, write=False) else 0
 
 
 def main() -> int:
@@ -136,9 +205,14 @@ def main() -> int:
     a.add_argument("--manifest", type=Path, default=Path("docs/cycles-ended/manifest.json"))
     c = sub.add_parser("check")
     c.add_argument("manifest", type=Path)
+    i = sub.add_parser("index")
+    i.add_argument("manifest", type=Path)
+    i.add_argument("--write", action="store_true")
     args = ap.parse_args()
     if args.cmd == "archive":
         return archive(args.source, args.dest, args.level, args.select, args.manifest)
+    if args.cmd == "index":
+        return index(args.manifest, args.write)
     return check(args.manifest)
 
 
