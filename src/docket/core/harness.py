@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from docket.core.archetypes import BUILTIN_ARCHETYPES
 from docket.core.models import AgentKind, AgentMeta
@@ -57,7 +57,9 @@ class HarnessEvent(_VersionedEnvelope):
     ts: str
     # The exact record core.trace.trace_event produced (or would produce)
     # for this line -- not a second, harness-specific event vocabulary.
-    event: dict[str, Any]
+    # Stated explicitly: older pydantic 2.x omits it, and the committed schema
+    # must render byte-identically at the dependency floor.
+    event: dict[str, Any] = Field(json_schema_extra={"additionalProperties": True})
 
 
 class BlockedInfo(BaseModel):

@@ -321,7 +321,14 @@ class TestBlockedRun:
 
 def _find_pid_by_cmdline_substring(marker: str) -> int | None:
     proc_dir = Path("/proc")
-    if not proc_dir.is_dir():  # pragma: no cover - non-Linux fallback
+    if not proc_dir.is_dir():  # macOS: no procfs, so ask ps for every command line
+        listing = subprocess.run(
+            ["ps", "-A", "-ww", "-o", "pid=,command="], capture_output=True, text=True, check=True
+        ).stdout
+        for row in listing.splitlines():
+            pid, _, command = row.strip().partition(" ")
+            if marker in command:
+                return int(pid)
         return None
     for entry in proc_dir.iterdir():
         if not entry.name.isdigit():
