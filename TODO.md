@@ -19,6 +19,9 @@
 > a maintainer action through `release.yml`, not a card. Every numbered phase 0–25 is complete and
 > both size targets are met (`TODO.md` under 200 lines, `ROADMAP.md` under 500).
 >
+> **`v0.2.0-beta.3` was published on 2026-09-18** from `release.yml`, with every provenance asset
+> and the Homebrew formula pinned to its digest. Its changes are in `CHANGELOG.md`.
+>
 > **Waves 33, 34 and 35 closed on 2026-09-13** and are archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md): two docstring sweeps
 > (558/112 to 229/29 over-budget docstrings), the D-36 function split under a function-span

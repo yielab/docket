@@ -12,13 +12,15 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-14.** Every numbered phase 0–25 is complete. **Phase 25
+**Last updated: 2026-09-18.** Every numbered phase 0–25 is complete. **Phase 25
 (human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
 first as Wave 31's thirteen cards and the second as Wave 30's five. **Wave 32 closed the same day** (2026-09-12): a
 documentation truth pass over the drift those two phases left, plus the two follow-ups Wave 31
 measured and deferred. **Waves 33 and 34 closed 2026-09-13**: an audit of the Wave 32 closure, repository hygiene, a docstring-only comment sweep (558/112 to 372/40 without changing a line of code), then the D-36 function split finished under a new function-span ratchet, two measured fixes, and a read-only audit that found the fourth unwired-machinery instance. **Wave 35 closed the same day**: a second docstring sweep (372/40 to 229/29), the dead `gatesEnabled` flag retired, and the integration lane's `SUBJECT` line given a rule and a guard. **Phase 23 closed 2026-09-14** (D-39): its release evidence is the `v0.2.0-beta.2` publication of
-2026-09-07, and the card that would have published a newer beta was removed from the board. The
-next release is a maintainer action, not a card. **No program is active and no card is queued.**
+2026-09-07, and the card that would have published a newer beta was removed from the board.
+**`v0.2.0-beta.3` was published 2026-09-18** as a maintainer action, the first with harness mode,
+after CI on `main` went green again on the dependency floor and on macOS. The next release is
+likewise a maintainer action, not a card. **No program is active and no card is queued.**
 Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
