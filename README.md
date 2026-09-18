@@ -25,7 +25,7 @@ inspectable after the fact.
 > breaking changes between beta releases and verify consequential outcomes yourself.
 
 <p align="center">
-  <img src="docs/assets/hero.gif" alt="Animated Docket terminal journey: initialize an isolated project pod, inspect its dedicated state, pause a governed turn for approval, then inspect run and trace evidence" width="820">
+  <img src="docs/assets/hero.gif" alt="Animated Docket terminal journey captured from a real run against a local model: provision a pod, dispatch a fix through Lead, Implementer and Reviewer with a verify gate, stop a production push at the tool-call gate, and refuse the same push in non-interactive harness mode" width="820">
 </p>
 
 ## The pod: a governed team, not a lone agent
@@ -36,22 +36,30 @@ turn through it:
 ```mermaid
 flowchart LR
     Q["Task queue"] --> L["Lead\n(plans + delegates,\nnever edits code)"]
-    L -- "typed handoff" --> I["Implementer\n(writes the change)"]
-    I --> R{"Reviewer\n(optional, read-only)"}
+    L -- "typed handoff" --> I["Implementer\n(writes the change in\nits own git worktree)"]
+    I --> G{"verify command\n(exit code)"}
+    G -- "nonzero" --> F["Task failed"]
+    G -- "zero" --> R{"Reviewer\n(optional, read-only)"}
     R -- "changes requested" --> I
-    R -- "approved" --> T{"Tester\n(optional, verify gate)"}
+    R -- "approved" --> T{"Tester\n(optional, PASS/FAIL)"}
     T -- "reworkable failure" --> I
     T -- "pass" --> V[("Run + trace + audit evidence")]
 ```
 
 Lead + Implementer is the minimum viable pod; Reviewer and Tester are optional, but when present
 their verdict gates advancement instead of becoming advisory prose a model can talk its way past.
+The same holds for the Implementer: `docket pod <id> set-verify <member> "<command>"` makes a
+nonzero exit fail the task, whatever the model claims about its own work.
 `docket init --blueprint <name>` provisions the same pipeline shaped for different work — software
 (the default), research, content, ops, or agentic-product — not just one fixed team template.
 
 Every pod is isolated from every other: its own workspace, session history, scratch directory, a
 non-overlapping port range, and — for the Implementer — its own git worktree, so work on one
-project can't bleed into another.
+project can't bleed into another, and an agent's edit never lands on your checked-out branch.
+
+<p align="center">
+  <img src="docs/assets/isolation.png" alt="Real terminal output: the Implementer's dedicated workspace, codebase and session key, a separate git worktree on its own branch, a clean main checkout, and the one-line fix living only in the worktree" width="820">
+</p>
 
 ## How a tool call is gated
 
@@ -79,6 +87,10 @@ flowchart LR
 
 This is `core/tools.py`'s `dispatch_tool` chokepoint. Every built-in tool and every MCP-registered
 external tool passes through it — there is no code path that reaches a handler another way.
+
+<p align="center">
+  <img src="docs/assets/governance.png" alt="Real terminal output: an Implementer's git push origin production is held for approval by the high-risk-deploy policy, nobody answers, and the call is denied on timeout without executing; the audit chain then verifies clean" width="820">
+</p>
 
 ## Core guarantees
 
@@ -111,16 +123,34 @@ The guarantees that matter before letting autonomous agents touch a production c
 
 ## Features
 
-The guarantees above are the governance surface. Beside them docket ships role-based model routing
-(cheap models for planning roles, stronger ones only where code is generated), domain-allowlisted
-network egress through the `fetch` tool, opt-in Docker or bwrap sandboxing that fails closed when
-the backend is unavailable, pod blueprints for research, content, ops and agentic-product work, and
-crash-recovery evidence: a corrupt docket-owned JSON file recovers from its validated backup
-without overwriting the good copy. Every command and flag is in the generated
-[command reference](docs/commands.md); reproducible benchmark results are in
-[Adoption evidence](docs/ADOPTION-EVIDENCE.md).
+The guarantees above are the governance surface. Beside them docket ships:
 
-## Two ways to use docket
+- **Role-based model routing** (`docket models`) — cheap models for planning and review roles,
+  stronger ones only where code is written; `docket models preset <provider>` switches every role
+  at once, and a pinned agent is never re-resolved behind your back.
+- **Pod blueprints** — software (the default), research, content, ops and agentic-product, each the
+  same gated pipeline shaped for different work.
+- **Pipelines** (`docket pipeline validate|plan|run`) — one declarative dialect, planned from the
+  real executor rather than a second pretty-printer.
+- **Runs and cancellation** (`docket runs list|show|cancel`) — one record per dispatch; a cancel
+  is durable immediately and kills a running `bash` command's process group.
+- **Session compaction on the live turn path** — long histories are summarised without splitting a
+  tool call from its result, so a small-context endpoint keeps working across hops.
+- **MCP in both directions** — `docket mcp serve` exposes the control plane; `docket mcp servers`
+  wires external tool servers whose tools reach a live turn through the same chokepoint.
+- **Four approval channels** — CLI, authenticated HTTP, MCP and an inbound-only Telegram bot
+  (`/approve`, `/deny`, `/status`, `/delegate`), each decision audit-logged with its channel.
+- **Egress and sandboxing** — the `fetch` tool is domain-allowlisted and deny-by-default; opt-in
+  Docker or bwrap isolation (`docket gates isolate on`) fails closed when the backend is missing.
+- **Traces with retention** — `docket trace` renders, tails or exports per-session JSONL;
+  `docket trace expire` prunes terminated traces past a 30-day window.
+- **Crash recovery** — a corrupt docket-owned JSON file recovers from its validated backup without
+  overwriting the good copy; `docket doctor --fix` repairs workspace drift.
+
+Every command and flag is in the generated [command reference](docs/commands.md); reproducible
+benchmark results are in [Adoption evidence](docs/ADOPTION-EVIDENCE.md).
+
+## Three ways to use docket
 
 **As a CLI**, provision and dispatch the pod above from your own terminal against your own
 repository. That is the fastest path to a governed turn, and the quick start below walks it.
@@ -130,8 +160,11 @@ completion, in a workspace and `DOCKET_HOME` the caller supplies, streaming newl
 events on stdout and finishing with a single versioned result. It is built for an external
 plan-of-record that spawns docket as a subprocess; the wire contract is published and test-pinned
 under [docs/contracts/harness-v1/](docs/contracts/harness-v1/). It runs one agent, not a pod, and
-it never waits for a human: a call that would need approval is refused immediately and names the
-rule that stopped it.
+it never waits for a human: a call that would need approval ends the run as `blocked`, naming the
+tool, the call and the reason, without executing it. The exit status is machine-readable — 0
+completed, 1 ran and ended badly, 2 refused before any turn began — and `docket harness status`
+reports on a run by its token. It refuses to start against the operator's own `DOCKET_HOME`, so a
+spawned run never touches your approvals or audit log.
 
 **As an embedded engine**, the standalone `docket-runtime` package lets an application register and
 dispatch tools through docket's policy, approval, trace and audit chokepoint without shelling out
@@ -170,17 +203,20 @@ Studio). Every endpoint is registered explicitly; nothing is guessed.
 ```bash
 docket models provider add local http://127.0.0.1:8081/v1 \
   --model local-model --ctx 32768 --max-tokens 4096
-docket models set default local/local-model
+docket models preset local      # every role now resolves to the local endpoint
 
 cd ~/code/myapp
 docket init
 docket pod myapp delegate "Create FIRST_TURN.md containing: governed first turn"
 docket pod myapp dispatch
 
-docket runs list        # what ran
-docket trace myapp      # what it did, step by step
-docket audit verify     # tamper-evident confirmation of the decision chain
+docket runs list                # what ran
+docket trace tail myapp         # what it did, step by step (Ctrl-C to stop)
+docket audit verify             # tamper-evident confirmation of the decision chain
 ```
+
+`models preset local` matters: `set default` alone changes only the fallback, and the built-in role
+policy would still route the Lead and Implementer to a hosted model you have no key for.
 
 `docket init` provisions a minimum Lead + Implementer pod, and `--blueprint <name>` shapes the same
 pipeline for research, content, ops or agentic-product work instead. For the full walkthrough and
@@ -224,8 +260,16 @@ the way the limits below describe.
   allowed shell/interpreter can still reach the network. Run untrusted work inside a stronger host
   or container boundary.
 - **Cancellation is cooperative:** `cancel requested` is durable immediately, but active work stops
-  only when the owned loop reaches a `safe checkpoint`. An HTTP call or tool handler already
-  executing may finish before its result is discarded or retained atomically.
+  only when the owned loop reaches a `safe checkpoint`. A running `bash` command is killed, but an
+  HTTP call or any other tool handler already executing may finish before its result is discarded
+  or retained atomically.
+- **A read-only role gets no MCP tools at all:** nothing can prove a remote tool is read-only, so
+  every MCP tool is treated as a write and a Reviewer receives none, not a narrowed subset. Each
+  configured stdio server is also re-spawned per turn; there is no listing cache.
+- **Telegram is inbound-only:** four verbs, no free-text chat, and docket never messages a chat
+  first — no approval notifications, no completion reports.
+- **Metrics counters are not monotonic:** they count what current storage holds, so audit
+  rotation and trace retention can drop them. Do not alert on `rate()` over them.
 - **Cost is an estimate:** token counts are measured; dollar values use a local pricing snapshot and
   are not a provider invoice.
 - **Audit evidence is tamper-evident, not undeletable:** rotation preserves one predecessor link.

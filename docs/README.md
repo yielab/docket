@@ -12,7 +12,7 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 > then come back for the guides below.
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Animated Docket terminal journey: initialize an isolated project pod, inspect its dedicated state, pause a governed turn for approval, then inspect run and trace evidence" width="720">
+  <img src="assets/hero.gif" alt="Animated Docket terminal journey captured from a real run against a local model: provision a pod, dispatch a fix through Lead, Implementer and Reviewer with a verify gate, stop a production push at the tool-call gate, and refuse the same push in non-interactive harness mode" width="720">
 </p>
 
 ---

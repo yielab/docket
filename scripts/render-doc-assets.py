@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Render the complete public terminal-visual set.
+"""Render the complete public terminal-visual set from one real captured journey.
 
-The isolation scene consumes a byte-verified CLI golden. The governance scene
-uses the same commands and outcomes as ``scripts/smoke_workflow.py``. Keeping
-the data and renderer together makes every retained PNG/GIF reproducible and
-removes manual terminal captures from the public documentation workflow.
+``scripts/maint/capture-doc-journey.sh`` drives the real CLI against a live model and writes one
+transcript per scene; the scenes below transcribe that output. Keeping the data and renderer
+together makes every retained PNG/GIF reproducible without a model or a terminal screenshot.
 """
 
 from __future__ import annotations
@@ -20,10 +19,8 @@ from PIL.PngImagePlugin import PngInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "docs" / "assets"
-GOLDEN_DIR = ROOT / "tests" / "golden" / "cases"
 OUTPUTS = ("hero.gif", "isolation.png", "governance.png")
 FONT_PATH = ASSET_DIR / "DejaVuSansMono.ttf"
-SMOKE_PATH = ROOT / "scripts" / "smoke_workflow.py"
 CONTRACT_KEY = "docket-render-contract"
 
 WIDTH = 1200
@@ -46,18 +43,6 @@ RED = "#fda4af"
 # The vendored, licensed font keeps glyphs and layout identical on Linux and macOS.
 REGULAR = ImageFont.truetype(str(FONT_PATH), FONT_SIZE)
 BOLD = REGULAR
-
-
-def _golden_lines(relative: str) -> list[str]:
-    """Load one current CLI golden and remove its harness-only exit marker."""
-
-    raw = (GOLDEN_DIR / relative).read_text(encoding="utf-8")
-    lines = raw.replace("<HOME>", "~").splitlines()
-    if lines and lines[0].startswith("EXIT:"):
-        lines = lines[1:]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    return lines
 
 
 def _wrapped(lines: list[str], *, columns: int = 98) -> list[str]:
@@ -84,20 +69,45 @@ def _line_style(line: str) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.Imag
     stripped = line.lstrip()
     if stripped.startswith("$"):
         return BLUE, BOLD
-    if stripped.startswith("✓"):
+    if stripped.startswith("✓") or line.startswith("+"):
         return GREEN, BOLD
-    if stripped.startswith("⚠"):
+    if stripped.startswith(("⚠", "Result:")):
         return YELLOW, BOLD
-    if stripped.startswith(("✗", "ERROR")):
+    if stripped.startswith(("✗", "ERROR")) or line.startswith("-"):
         return RED, BOLD
-    if stripped.startswith(("Project:", "Pod —", "Tool-call gate", "Run evidence")):
+    if stripped.startswith(("Project:", "Pod —")):
         return TEXT, BOLD
-    if not stripped:
+    if not stripped or stripped.startswith(("⋯", "→", "@@")):
         return MUTED, REGULAR
     return TEXT, REGULAR
 
 
+def _styled(
+    lines: list[str],
+) -> list[tuple[str, str, ImageFont.FreeTypeFont | ImageFont.ImageFont]]:
+    """Wrap every line, keeping a command's style across wraps and backslash continuations."""
+
+    result: list[tuple[str, str, ImageFont.FreeTypeFont | ImageFont.ImageFont]] = []
+    continued = False
+    for line in lines:
+        color, font = _line_style("$" if continued else line)
+        for piece in _wrapped([line]):
+            result.append((piece, color, font))
+        continued = line.lstrip().startswith("$") or continued
+        continued = continued and line.endswith("\\")
+    return result
+
+
+def _fit_height(lines: list[str]) -> int:
+    """The smallest frame height that shows every wrapped line of a still image."""
+
+    return max(HEIGHT, TITLE_HEIGHT + 2 * PADDING + LINE_HEIGHT * len(_styled(lines)))
+
+
 def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Image:
+    styled = _styled(lines)
+    if TITLE_HEIGHT + 2 * PADDING + LINE_HEIGHT * len(styled) > height:
+        raise SystemExit(f"scene {title!r} needs {len(styled)} lines; it would be cut off")
     image = Image.new("RGB", (WIDTH, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, WIDTH, TITLE_HEIGHT), fill=TITLEBAR)
@@ -107,82 +117,140 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
     draw.text(((WIDTH - title_width) / 2, 13), title, font=REGULAR, fill=MUTED)
 
     y = TITLE_HEIGHT + PADDING
-    for line in _wrapped(lines):
-        if y + LINE_HEIGHT > height - PADDING:
-            break
-        color, font = _line_style(line)
-        draw.text((PADDING, y), line, font=font, fill=color)
+    for piece, color, font in styled:
+        draw.text((PADDING, y), piece, font=font, fill=color)
         y += LINE_HEIGHT
     return image
 
 
-def _isolation_lines() -> list[str]:
-    golden = _golden_lines("readonly/info_myshop.golden")
-    stop = golden.index("Workspace files") if "Workspace files" in golden else len(golden)
-    public_lines = [line for line in golden[:stop] if not line.strip().startswith("Telegram:")]
-    return [
-        "$ docket info myshop",
-        *public_lines,
-        "Run evidence",
-        "  per-project workspace + session key; no shared worker history",
-    ]
+# Every scene below is a verbatim transcript of one real run of
+# scripts/maint/capture-doc-journey.sh; docs/assets/README.md records which run. Only
+# three edits are allowed when refreshing it: the capture root becomes "~", "⋯" marks elided
+# lines, and a trailing "# ..." on a "$" line is a reader's note, never captured output.
+_INIT = [
+    "$ docket models preset local",
+    "⋯",
+    "✓ Preset 'local' applied.",
+    "⋯",
+    "✓ Registered local endpoint selected; no API key needed.",
+    "$ docket init",
+    "⋯",
+    "✓ Tool-call gate: always active (policy engine + high-risk command classifier)",
+    "✓ Installed 6 baseline policies",
+    "⋯",
+    "→ Provisioning 'software' pod 'myapp' (lead, implementer)...",
+    "✓   myapp-lead  [lead]  local/local-model",
+    "✓   myapp-implementer  [implementer]  local/local-model",
+    "$ docket pod myapp add reviewer",
+    "✓ Added myapp-reviewer [reviewer] local/local-model",
+    "$ docket pod myapp set-verify myapp-implementer \\",
+    "    \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
+    "✓ Set verify command for myapp-implementer: "
+    "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
+]
 
+_DISPATCH = [
+    '$ docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"',
+    "✓ Queued for pod 'myapp': [task-992eeb02-6cef-422d-af5d-339f0511cfcd] Fix calc.add so it "
+    "returns the sum of a and b",
+    "$ docket pod myapp dispatch",
+    "→ Dispatching 1 pending task(s) through: lead → implementer → reviewer",
+    "✓   [task-992eeb02-6cef-422d-af5d-339f0511cfcd] done — 3 hop(s), $0.0000",
+    "$ docket trace agent:myapp:task-992eeb02-6cef-422d-af5d-339f0511cfcd",
+    "  2026-09-18T13:02:18  session_start              (lead)",
+    "  ⋯",
+    "  2026-09-18T13:02:48  context_composed           (implementer)",
+    "  ⋯",
+    "  2026-09-18T13:03:35  context_composed           (reviewer)",
+    "  ⋯",
+    "  2026-09-18T13:04:41  tool_result                (reviewer)  text=I've reviewed the "
+    "implementation. The change is straightforward and correct:",
+    "⋯",
+    "APPROVE",
+    "  2026-09-18T13:04:41  session_end                (lead)  status=done",
+]
 
-def _governance_lines() -> list[str]:
-    return [
-        "$ docket pod myapp dispatch",
-        "→ Dispatching 1 pending task through Lead → Implementer → Reviewer → Tester",
-        "⚠ waiting_approval — tester hop requires an explicit decision",
-        "",
-        "$ docket approve apr-demo",
-        "✓ Approval granted; the waiting action may now proceed",
-        "$ docket pod myapp dispatch",
-        "✓ done — five typed hops; measured token usage retained",
-        "",
-        "$ docket gates status",
-        "Tool-call gate",
-        "✓ Policy engine + high-risk command classifier: always active",
-        "✓ Approval routing: session mode",
-        "✓ Workspace isolation: pod resources + Implementer worktree",
-        "",
-        "$ docket audit verify",
-        "✓ 2 chained line(s) verified clean",
-    ]
+_ISOLATION = [
+    "$ docket info myapp-implementer",
+    "Project: myapp implementer (myapp-implementer)",
+    "  Workspace:         ~/.docket/workspaces/projects/myapp-implementer",
+    "  Codebase:          ~/code/myapp",
+    "  Model:             local/local-model",
+    "  Session Key:       agent:myapp:default",
+    "  Project Scope:     default",
+    "⋯",
+    "$ git worktree list",
+    "~/code/myapp                                              f5d53b3 [main]",
+    "~/.docket/workspaces/projects/myapp-implementer/worktree  f5d53b3 "
+    "[docket/myapp/myapp-implementer]",
+    "$ git status --short                       # your checkout: untouched",
+    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/worktree diff",
+    "⋯",
+    "@@ -1,2 +1,2 @@",
+    " def add(a, b):",
+    "-    return a - b",
+    "+    return a + b",
+]
+
+_GATE = [
+    "$ docket policies test pre_tool_call implementer 'git push origin production'",
+    "  Result: require_approval",
+    "$ docket pod myapp delegate \\",
+    '    "Publish the fix: run exactly this bash command once and report its output: '
+    'git push origin production"',
+    "$ docket pod myapp dispatch",
+    "→ Dispatching 1 pending task(s) through: lead → implementer → reviewer",
+    "✓   [task-fdbcb619-28bd-4ad4-b174-6f0e68497d9d] done — 3 hop(s), $0.0000",
+    "$ docket audit",
+    "  ⋯",
+    "  2026-09-18T13:05:15.720Z  demo        tool.ask          tool=bash agent=myapp-implementer "
+    "role=implementer project=myapp-implementer policy_id='high-risk-deploy' "
+    "policy_action='require_approval' ⋯",
+    "  2026-09-18T13:07:15.781Z  demo        approval.deny     "
+    "token=apr-e3d11049-8601-4011-8e9e-46c5e98bb53e project=myapp-implementer channel=timeout",
+    "$ docket trace export myapp | grep '\"deny\"'",
+    '{⋯ "agent_role": "implementer", "event_type": "tool_result", "payload": {"tool": "bash", '
+    '"callId": "c02cuhNC56eQZyNGRL8RLeKSN1pnWKwX", "decision": "deny", "ok": false, '
+    '"executed": false, "denialKind": "approval_timeout", "policyId": "high-risk-deploy", '
+    '"reason": "approval timed out and was denied"}}',
+    "$ docket audit verify",
+    "✓ 6 chained line(s) verified clean.",
+]
+
+_HARNESS = [
+    "$ export DOCKET_HOME=~/hh DOCKET_LLM_BASE_URL=http://127.0.0.1:8081/v1",
+    "$ docket harness run --workspace ~/code/svc --model local/local-model \\",
+    "    --task 'Run exactly this bash command: git push origin production' \\",
+    "    2>/dev/null | tail -1 | python3 -m json.tool",
+    "{",
+    '    "v": "1.0.0",',
+    '    "token": "run-824ce693-1c71-4333-b781-2ffe641329ea",',
+    '    "status": "blocked",',
+    "    ⋯",
+    '    "blocked": {',
+    '        "tool": "bash",',
+    '        "call_id": "6Kd4UFWbyWfEfzTwkXwD9boT47aFZRiN",',
+    '        "denial_kind": "approval_unavailable",',
+    '        "policy_id": "",',
+    '        "reason": "matches high-risk action class \'prod-deploy\': Production deploys and '
+    'release pushes"',
+    "    },",
+    "    ⋯",
+    '    "run_state": "failed"',
+    "}",
+]
 
 
 def _hero_scenes() -> list[list[str]]:
-    isolation = _isolation_lines()
-    governance = _governance_lines()
-    return [
-        [
-            "$ docket init",
-            "✓ Provisioned project pod myapp: Lead + Implementer",
-            "✓ Allocated a dedicated workspace, git worktree, scratch directory, and port range",
-            "",
-            "Docket owns the turn loop so every tool call crosses one policy chokepoint.",
-        ],
-        isolation,
-        governance[:9],
-        [
-            *governance[:9],
-            "",
-            "$ docket runs list",
-            "✓ terminal run, task, session, trace, usage, and audit evidence retained",
-            "$ docket trace myapp",
-            "✓ model request → gated tool call → tool result → final turn",
-        ],
-    ]
+    trace_export = _GATE.index("$ docket trace export myapp | grep '\"deny\"'")
+    gate = _GATE[:trace_export] + _GATE[trace_export + 2 :]
+    return [_INIT, _DISPATCH, gate, _HARNESS]
 
 
 def _render_contract() -> str:
     """Fingerprint every source that can change the public visual story."""
 
-    sources = (
-        Path(__file__).read_bytes(),
-        FONT_PATH.read_bytes(),
-        (GOLDEN_DIR / "readonly/info_myshop.golden").read_bytes(),
-        SMOKE_PATH.read_bytes(),
-    )
+    sources = (Path(__file__).read_bytes(), FONT_PATH.read_bytes())
     return hashlib.sha256(b"\0".join(sources)).hexdigest()
 
 
@@ -191,10 +259,10 @@ def _write_assets(target: Path) -> None:
     contract = _render_contract()
     png_info = PngInfo()
     png_info.add_text(CONTRACT_KEY, contract)
-    _terminal("docket — project isolation", _isolation_lines()).save(
+    _terminal("docket — pod isolation", _ISOLATION, height=_fit_height(_ISOLATION)).save(
         target / "isolation.png", optimize=True, pnginfo=png_info
     )
-    _terminal("docket — governed turn", _governance_lines()).save(
+    _terminal("docket — the tool-call gate", _GATE, height=_fit_height(_GATE)).save(
         target / "governance.png", optimize=True, pnginfo=png_info
     )
 
@@ -203,7 +271,7 @@ def _write_assets(target: Path) -> None:
         target / "hero.gif",
         save_all=True,
         append_images=frames[1:],
-        duration=[1800, 2400, 2600, 3200],
+        duration=[3200, 3600, 4200, 4200],
         loop=0,
         optimize=True,
         disposal=2,
