@@ -101,7 +101,7 @@ def test_root_artifacts_install_as_canonical_docket_without_source_tree(
 
     lines = metadata.stdout.splitlines()
     assert version.stdout.strip() == f"docket {lines[0]}"
-    assert lines[:4] == ["0.2.0b2", "0.2.0-beta.2", "Apache-2.0", ">=3.11"]
+    assert lines[:4] == ["0.2.0b3", "0.2.0-beta.3", "Apache-2.0", ">=3.11"]
     assert set(lines[4].split("|")) == PROJECT_URLS
     assert lines[5] == "LICENSE"
     assert Path(lines[6]).is_relative_to(environment)

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-09-18
+
+The first beta with harness mode: `docket harness run` executes one governed agent turn for an
+external plan-of-record and reports it as a versioned NDJSON contract. It also carries the changes
+below since `v0.2.0-beta.2`, including one exit-status change: a pod dispatch or pipeline run whose
+task fails now exits 1.
+
 ### Added
 
 - **`docket harness run` and `docket harness status`** — a non-interactive entry point that runs
@@ -511,7 +518,8 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.2...HEAD
+[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.3...HEAD
+[0.2.0-beta.3]: https://github.com/yielab/docket/compare/v0.2.0-beta.2...v0.2.0-beta.3
 [0.2.0-beta.2]: https://github.com/yielab/docket/compare/v0.2.0-beta.1...v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0-beta.1
 [0.1.0]: https://github.com/yielab/docket/releases/tag/v0.1.0

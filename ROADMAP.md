@@ -84,10 +84,10 @@ and W20-C4 closed it with step-scoped durable histories while preserving typed h
 **Known-true limits live in [README.md](README.md#known-limits)**, not here — they change faster
 than this file.
 
-**Release:** `v0.2.0-beta.2`, published 2026-09-07 with wheel, sdist, installer archive, checksums,
-SPDX SBOM and a GitHub provenance attestation. `main` has moved on since (see `CHANGELOG.md`
-`[Unreleased]`); cutting the next beta is a maintainer action through `release.yml`, not a board
-card. Every release carries a SemVer `-beta.N` suffix until the project is field-hardened enough to
+**Release:** `v0.2.0-beta.3`, cut 2026-09-18 and published by `release.yml` with wheel, sdist,
+installer archive, checksums, SPDX SBOM and a GitHub provenance attestation. Changes after it
+land under `CHANGELOG.md` `[Unreleased]`; cutting the next beta is a maintainer action through
+`release.yml`, not a board card. Every release carries a SemVer `-beta.N` suffix until the project is field-hardened enough to
 drop it (see README's beta warning).
 
 Status legend used in the older sections below: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven,
@@ -414,7 +414,7 @@ address exactly those.
 > **Status lives in one place — the table at the top of this file.** This section is *how to work*,
 > not *what is left*. Duplicating status here is what let it drift for three phases.
 
-`docket` **0.2.0-beta.2** is the current published release — every release from this project carries a SemVer
+`docket` **0.2.0-beta.3** is the current release — every release from this project carries a SemVer
 `-beta.N` pre-release suffix (not a bare version) for as long as the project stays beta/early-stage
 per README's warning banner; `v0.1.0` predates this convention and stays as-is.
 

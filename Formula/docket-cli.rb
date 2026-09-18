@@ -12,7 +12,7 @@ class DocketCli < Formula
   # which skips while the release is absent and fails the moment it is stale.
   sha256 "9f48ba443f4c5da6d79ad8071d0e236490bfc33dee725efd2ac3248091e6a955"
   license "Apache-2.0"
-  version "0.2.0-beta.2"
+  version "0.2.0-beta.3"
 
   # Deliberately no Homebrew Bash dependency: bin/docket, the only shell this
   # formula installs, runs on the Bash 3.2 macOS ships. The dependency existed

@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.26.0
+**Version**: 1.27.0
 **Status**: Complete
 **Last Updated**: 2026-09-18
 
@@ -32,7 +32,7 @@ The root `docket` distribution MUST build both a wheel and an sdist that install
 without a source checkout.  Each artifact MUST expose `docket` as the canonical
 console command; `docket --version`, `docket --help`, and `docket init --help`
 MUST run from an artifact-only installation.  Installed project metadata MUST
-report a PEP 440-equivalent form of declared version `0.2.0-beta.2`, Python
+report a PEP 440-equivalent form of declared version `0.2.0-beta.3`, Python
 requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
 issues, and homepage URLs.  Uninstalling the
 distribution MUST remove its executable, package, and distribution metadata
@@ -889,6 +889,11 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.27.0 (2026-09-18)
+
+- Releases `0.2.0-beta.3`; artifact metadata and `docket --version` report its PEP 440 form
+  `0.2.0b3`.
 
 ### Version 1.26.0 (2026-09-18)
 
