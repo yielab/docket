@@ -10,7 +10,7 @@ class DocketCli < Formula
   # one tagged commit; only the published one counts.
   # Pinned by test_release_artifacts.py::test_formula_digest_matches_the_published_release_asset,
   # which skips while the release is absent and fails the moment it is stale.
-  sha256 "9f48ba443f4c5da6d79ad8071d0e236490bfc33dee725efd2ac3248091e6a955"
+  sha256 "83e16267c247d6d856f469c2bcaa64ae8f3ee85932ffeb6418b80b947f254cda"
   license "Apache-2.0"
   version "0.2.0-beta.3"
 
