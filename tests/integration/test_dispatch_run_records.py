@@ -316,6 +316,57 @@ class TestCliDispatchPath:
         assert records[0]["state"] == "succeeded"
         assert records[0]["taskIds"] == ["task-x"]
 
+    def test_failed_task_fails_the_run_and_the_exit_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A failed task exits 1, matching its failed run record, and prints its id and reason."""
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+        _dispatch.enqueue_task("demo", "do the thing")
+        reason = "reviewer hop failed: model wrote [/bold] then [red]stopped"
+
+        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            return [_dispatch.TaskResult(task_id="task-x", status="failed", reason=reason)]
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+
+        with pytest.raises(typer.Exit) as excinfo:
+            _pod.dispatch("demo", "dispatch", [])
+        assert excinfo.value.exit_code == 1
+        assert _runs.list_runs("demo")[0]["state"] == "failed"
+        assert f"[task-x] failed — {reason}" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("status", ["done", "blocked", "waiting_approval"])
+    def test_non_failed_outcomes_exit_zero_and_print_the_task_id(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        status: str,
+    ) -> None:
+        """Success and expected pauses exit 0 and keep the bracketed task id visible."""
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+        _dispatch.enqueue_task("demo", "do the thing")
+
+        def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
+            return [_dispatch.TaskResult(task_id="task-x", status=status, reason="paused")]
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
+
+        _pod.dispatch("demo", "dispatch", [])
+
+        assert f"[task-x] {status}" in capsys.readouterr().out
+
+    def test_delegate_prints_the_queued_task_id_and_description_literally(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The queued task id and a bracket-bearing description survive rendering."""
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+
+        _pod.dispatch("demo", "delegate", ["Fix [/bold] parsing in [red] mode"])
+
+        task_id = _dispatch.read_tasks("demo")[0]["id"]
+        assert f"[{task_id}] Fix [/bold] parsing in [red] mode" in capsys.readouterr().out
+
     def test_exception_is_recorded_and_cli_exits_nonzero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

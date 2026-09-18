@@ -39,6 +39,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delivered.
 - **`docket maintain <id> sessions` no longer says sessions are never compacted.** They compact on
   the turn path once history exceeds the role budget.
+- **`docket pod <project> dispatch` and `docket pipeline run` exit 1 when a task fails.** The exit
+  status now matches the run record: a dispatch whose run ends `failed` exits 1, so
+  `docket pod x dispatch && ...` no longer continues past a failed task. `blocked` and
+  `waiting_approval` are expected pauses and still exit 0.
+- **The release build pins its backend to `hatchling==1.32.0`.** hatchling 1.32.1 writes the
+  unnormalized version (`0.2.0-beta.2`) into wheel metadata, where earlier releases carried the
+  normalized `0.2.0b2`.
+
+### Fixed
+
+- **Pod output no longer drops task ids and roles, and model text can no longer crash it.** Output
+  from `docket pod`, `docket trace <session>` and `docket models preset` passed data through
+  terminal markup: every `[<task-id>]` and `[<role>]` was silently erased, and a task description
+  or model reply containing a closing tag such as `[/bold]` aborted the command with a markup
+  error (for `delegate`, after the task was already queued). All of it now prints literally.
+- **The `local` preset's note names the real command,** `docket models provider add <name>
+  <base-url>`; it omitted `add`, and its bracketed placeholders were erased on screen.
 
 ### Removed
 

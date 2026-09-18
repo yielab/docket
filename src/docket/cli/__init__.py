@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from rich.markup import escape
 
 import docket.config as _cfg
 from docket import ui
@@ -1395,7 +1396,7 @@ def _cmd_models_preset(preset: str | None) -> None:
         for p in _mp.KNOWN_PRESETS:
             t = _mp.PRESET_TABLE[p]
             marker = " (default)" if p == "anthropic" else ""
-            ui.console.print(fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"]))
+            ui.console.print(escape(fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"])))
         ui.console.print()
         ui.console.print("Apply: docket models preset <name>")
         ui.console.print()
@@ -1465,7 +1466,7 @@ def _cmd_models_preset(preset: str | None) -> None:
     else:
         ui.console.print("  cost → paid")
     if note:
-        ui.console.print(f"  note → {note}")
+        ui.console.print(escape(f"  note → {note}"))
     ui.console.print()
 
     _mp.write_registry(updates)

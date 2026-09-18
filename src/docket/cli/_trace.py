@@ -17,6 +17,8 @@ import subprocess
 import sys
 from typing import Any
 
+from rich.markup import escape
+
 import docket.config as _cfg
 from docket import ui
 from docket.core import trace as _trace
@@ -92,10 +94,9 @@ def _render_event(r: dict[str, Any]) -> None:
 
     role_str = f"  ({role})" if role and role != "unknown" else ""
     head = f"{ts}  {etype:<25}"
-    head_markup = f"[{color}]{head}[/{color}]" if color else head
-    # Rich treats '[' as markup — escape the literal bracket in the extras block.
-    extras_markup = extras_str.replace("[", r"\[")
-    ui.console.print(f"  {head_markup}{role_str}{summary}{extras_markup}")
+    head_markup = f"[{color}]{escape(head)}[/{color}]" if color else escape(head)
+    # Only the colour tag is markup; roles, model text and the bracketed extras are data.
+    ui.console.print(f"  {head_markup}{escape(role_str + summary + extras_str)}")
 
 
 def _show(session_id: str) -> int:

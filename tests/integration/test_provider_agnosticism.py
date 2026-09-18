@@ -286,6 +286,15 @@ class TestLocalPresetCli:
         assert rc == 0, err
         assert "local" in out
 
+    def test_applied_preset_prints_its_note_literally(self, tmp_path: Path) -> None:
+        """The preset note, including any bracketed text, reaches the terminal unchanged."""
+        home = _setup_agent(tmp_path)
+        _register_provider(home, "local", "qwen3-30b-a3b")
+        rc, out, err = _run(["models", "preset", "local"], home)
+        assert rc == 0, err
+        assert _mp.PRESET_TABLE["local"]["note"] in out
+        assert "docket models provider add" in _mp.PRESET_TABLE["local"]["note"]
+
     def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _register_provider(home, "local", "qwen3-30b-a3b")

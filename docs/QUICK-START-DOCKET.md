@@ -34,7 +34,7 @@ docket init
 docket pod myapp delegate "Create FIRST_TURN.md containing exactly: governed first turn"
 docket pod myapp dispatch
 docket runs list
-docket trace
+docket trace tail myapp    # prints the latest session, then follows it; Ctrl-C to stop
 ```
 
 `provider add` validates the endpoint before project state is created. The final two commands are

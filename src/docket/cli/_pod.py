@@ -14,6 +14,7 @@ the two surfaces cannot drift apart.
 from __future__ import annotations
 
 import typer
+from rich.markup import escape
 from rich.table import Table
 
 import docket.config as _cfg
@@ -88,7 +89,7 @@ def provision_member(
         budget_usd=budget_usd,
     )
     if fallback_reason:
-        ui.dim(f"  [{member.member_id}] worktree fallback: {fallback_reason}")
+        ui.dim(escape(f"  [{member.member_id}] worktree fallback: {fallback_reason}"))
     return ok, msg
 
 
@@ -122,8 +123,8 @@ def _render_created(members: list[_pp.ProvisionedMember]) -> list[str]:
     """Render each provisioned member's success (+ worktree fallback) line."""
     for m in members:
         if m.worktree_fallback_reason:
-            ui.dim(f"  [{m.member_id}] worktree fallback: {m.worktree_fallback_reason}")
-        ui.success(f"  {m.member_id}  [{m.role}]  {m.model}")
+            ui.dim(escape(f"  [{m.member_id}] worktree fallback: {m.worktree_fallback_reason}"))
+        ui.success(escape(f"  {m.member_id}  [{m.role}]  {m.model}"))
     return [m.member_id for m in members]
 
 
@@ -335,7 +336,7 @@ def _pod_add(project: str, extra: list[str]) -> None:
             blueprint_name=blueprint_name,
         )
         if ok:
-            ui.success(f"Added {member.member_id} [{member.role}] {member.model}")
+            ui.success(escape(f"Added {member.member_id} [{member.role}] {member.model}"))
             created.append(member.member_id)
             if verify_cmd:
                 audit_log("pod.set-verify", f"member={member.member_id} cmd={verify_cmd!r}")
@@ -457,7 +458,7 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    ui.success(f"Queued for pod '{project}': [{task['id']}] {description}")
+    ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {description}"))
     ui.info(f"Run the pipeline: docket pod {project} dispatch")
 
 
@@ -582,17 +583,28 @@ def _pod_dispatch(
         # is the one place that renders it, before the task's own summary line.
         for hop in res.hops:
             if hop.verification_skipped:
-                ui.dim(f"[dispatch] verification skipped — verifyCmd not set for {hop.member_id}")
+                ui.dim(
+                    escape(
+                        f"[dispatch] verification skipped — verifyCmd not set for {hop.member_id}"
+                    )
+                )
+        # Task ids and model-written reasons are data, never Rich markup.
         if res.status == "done":
-            ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
+            ui.success(
+                escape(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
+            )
         elif res.status == "blocked":
-            ui.warn(f"  [{res.task_id}] blocked — {res.reason}")
+            ui.warn(escape(f"  [{res.task_id}] blocked — {res.reason}"))
         elif res.status == "waiting_approval":
             # Waiting on a human decision is an expected pause, not a
             # failure — same warn-not-error treatment as a budget block.
-            ui.warn(f"  [{res.task_id}] waiting_approval — {res.reason}")
+            ui.warn(escape(f"  [{res.task_id}] waiting_approval — {res.reason}"))
         else:
-            ui.error(f"  [{res.task_id}] {res.status} — {res.reason}")
+            ui.error(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
+    final = _runs.get_run(record["id"])
+    if final is not None and final.get("state") == "failed":
+        ui.dim(f"  Details: docket runs show {record['id']}")
+        raise typer.Exit(1)
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:

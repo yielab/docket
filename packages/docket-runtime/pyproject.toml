@@ -1,5 +1,7 @@
 [build-system]
-requires = ["hatchling"]
+# Pinned to benchmarks/results/build-constraints.txt: hatchling 1.32.1 stopped normalizing the
+# METADATA version (0.2.0-beta.2 instead of 0.2.0b2), which changes the published artifact.
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [project]

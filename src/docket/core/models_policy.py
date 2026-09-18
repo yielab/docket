@@ -179,8 +179,8 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "cost": "free",
         "note": (
             "Local OpenAI-compatible endpoint (llama.cpp/LM Studio/vLLM/Ollama) — no API key, "
-            "no per-token cost. Register your endpoint first: docket models provider "
-            "[name] [base_url]."
+            "no per-token cost. Register your endpoint first: docket models provider add "
+            "<name> <base-url>."
         ),
     },
 }

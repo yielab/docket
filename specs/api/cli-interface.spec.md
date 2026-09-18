@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.25.0
+**Version**: 1.26.0
 **Status**: Complete
-**Last Updated**: 2026-09-07
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -346,8 +346,9 @@ Phase 16 W-3 retires it in favor of this command.
   full state machine and pipeline-format.spec.md for the file format
 **Output**: Validation result, rendered plan, or per-task dispatch results (including cost);
 with `--follow`, also every new trace event observed while the dispatch is in flight
-**Return**: `0` on success; `1` on an invalid/missing file, an unknown project/pod, or a dispatch
-error (see `docket runs show <id>` for the recorded error)
+**Return**: `0` on success; `1` on an invalid/missing file, an unknown project/pod, a dispatch
+error, or a dispatch whose run record ends `failed` because a task failed — the same rule as
+`docket pod <project> dispatch` (see `docket runs show <id>` for the recorded error)
 
 ### Pod Commands
 
@@ -389,10 +390,14 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   serve webhook, a due schedule, or the sweep loop) is recorded in the run registry (`docket
   runs`, Phase 14 R-3) with a queryable outcome. See `pod-dispatch.spec.md` for the full state
   machine
-**Output**: Pod roster, queue listing, or per-hop dispatch results (including cost)
+**Output**: Pod roster, queue listing, or per-task dispatch results (including cost). Every
+bracketed identifier (`[<task-id>]`, `[<role>]`, `[<member-id>]`) and every task description or
+failure reason is printed literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
-the project, or dispatch raised an exception — see `docket runs show <id>` for the recorded
-error)
+the project, dispatch raised an exception, or any task in this dispatch ended `failed` — the exit
+status matches the run record's `failed` state; see `docket runs show <id>` for the recorded
+error). A task left `blocked` or `waiting_approval` is an expected pause, not a failure, and
+exits `0`
 
 #### docket roles
 **Purpose**: Inspect and manage declarative role archetypes — built-in, starter-library, and
@@ -884,6 +889,16 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.26.0 (2026-09-18)
+
+- `docket pod <project> dispatch` and `docket pipeline run` exit `1` when any task in the dispatch
+  ends `failed`, matching the run record's `failed` state and the flat convention's "any failure"
+  row. Before, only an exception exited `1`, so `docket pod x dispatch && git push` proceeded past
+  a failed task. `blocked` and `waiting_approval` still exit `0`.
+- Pod output prints bracketed identifiers, descriptions and failure reasons literally. They were
+  passed through terminal markup, which silently erased every `[<task-id>]` and `[<role>]` and
+  would raise on model text containing a closing tag.
 
 ### Version 1.25.0 (2026-09-12)
 
