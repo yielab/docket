@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.12.0
+**Version**: 1.12.1
 **Status**: Complete
-**Last Updated**: 2026-08-20
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -11,7 +11,8 @@ This specification defines the complete lifecycle of docket agents from creation
 ## Scope
 
 This specification covers:
-- Agent creation (`docket add`)
+- Agent creation (`docket init` creates a project pod; `docket add` / `docket pod <p> add` add
+  role agents to an existing pod and never create a project)
 - Agent listing (`docket list`)
 - Agent information display (`docket info`)
 - Agent deletion (`docket delete`)
@@ -30,7 +31,7 @@ This specification does NOT cover:
 
 ## Requirements
 
-### Agent Creation (docket add)
+### Agent Creation (docket init)
 
 1. **MUST** create a unique agent identifier
 2. **MUST** validate the codebase path exists, for a `codebase`-kind blueprint (`software`, the
@@ -62,7 +63,8 @@ This specification does NOT cover:
    default model, stack auto-detection) and require only a `name`
 4. **MUST** be idempotent: an agent whose workspace already exists is skipped, not recreated
 5. **MUST** skip invalid records without aborting the rest of the spec file
-6. **SHOULD** restart the gateway at most once per invocation, after all agents are provisioned
+6. *(Retired.)* ~~**SHOULD** restart the gateway at most once per invocation~~ — docket has no
+   gateway process (ROADMAP D-19), so provisioning restarts nothing
 7. **MAY** carry a `blueprint` field on any entry, provisioning a pod (see pod-blueprints.spec.md)
    instead of the single flat agent described by requirements 1–6 above; an entry with no
    `blueprint` field is entirely unaffected by this option's existence
@@ -105,8 +107,12 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
 
 ### Agent Deletion (docket delete)
 
-1. **MUST** prompt for confirmation (interactive; there is no `--force` bypass flag)
-2. **MUST** remove workspace directory completely
+1. **MUST** prompt for confirmation by typing the exact id (there is no `--force` bypass flag).
+   For a pod, the typed-id prompt is shown only when stdin is a terminal; a non-interactive pod
+   delete proceeds without it (the `docket delete` help text documents this). Org specialists
+   **MUST** be refused outright
+2. **MUST** remove the workspace directory completely for every pod member; for a legacy flat
+   agent id the workspace removal is asked separately
 3. **MUST** unregister from docket's fleet registry (`fleet.json`)
 4. **MUST** remove any Telegram bindings and conversation-registry entries
 5. **SHOULD** display deletion summary
@@ -168,7 +174,9 @@ commands. Six modes **MUST** be supported.
 - Reset project key to default
 
 #### sessions - Session Hygiene
-- Archive large or old session data
+- Report this agent's durable session storage (message count, size, last update per session key)
+- **MUST NOT** trim or archive session data: compaction happens only on the turn path, through
+  `compact_session`'s fail-closed summarisation (see session-history.spec.md)
 - Preserve all configuration and identity files
 
 #### distill - Memory Distillation (ROADMAP Phase 17 C-2)
@@ -190,8 +198,9 @@ commands. Six modes **MUST** be supported.
 - **MUST NOT** require interactive confirmation — it is additive/non-destructive to the daily logs
   (they are archived, not deleted), unlike `reset`/`rebuild`
 
-`reset` and `rebuild` are destructive and **MUST** prompt for confirmation unless forced. `distill`
-is not destructive to the daily logs it processes (they are archived, not deleted) and runs without
+`clean`, `reset` and `rebuild` are destructive and **MUST** prompt for confirmation (`rebuild` by
+typed agent id); there is no force flag, and a non-interactive call is cancelled rather than
+applied. `distill` is not destructive to the daily logs it processes (they are archived, not deleted) and runs without
 a confirmation prompt.
 
 ## Interface Contracts
@@ -199,9 +208,12 @@ a confirmation prompt.
 ### CLI Command Signatures
 
 ```bash
-# Create a project pod from a blueprint (interactive or with args); --blueprint
-# defaults to `software`. --pod full/--with apply only to the software blueprint.
-docket init <project> [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
+# Create a project pod from a blueprint; with no arguments the id, path and stack come
+# from the cwd. --blueprint defaults to `software`. --pod full/--with apply only to it.
+docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
+
+# Add role agents to an existing pod (pod inferred from the cwd, or --project <pod>)
+docket add <role> [--project <pod>] [--count N] [--verify "<cmd>"]
 
 # Create one or more agents (or, with a `blueprint` field, pods) declaratively
 # from a spec file (JSON, or YAML when PyYAML is present)
@@ -217,7 +229,7 @@ docket info <agent-id> [--json]
 docket delete <agent-id>
 
 # Maintain agent (replaces reset/repair/cleanup)
-docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
+docket maintain <agent-id> [check|clean|reset|rebuild|sessions|distill] [--no-distill-first]
 ```
 
 ### Return Codes
@@ -228,15 +240,15 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
 
 ## Examples
 
-### Creating a Project Agent
+### Creating a Project Pod
 
 ```bash
-$ docket add mywebsite ~/projects/website
-[INFO] Creating agent: mywebsite
-[INFO] Stack: node (detected: package.json)
-[INFO] Workspace: ~/.docket/workspaces/projects/mywebsite
-[INFO] Session key: agent:mywebsite:default
-[SUCCESS] Agent 'mywebsite' created and registered
+$ docket init mywebsite ~/projects/website
+→ Provisioning 'software' pod 'mywebsite' (lead, implementer)...
+✓   mywebsite-lead  [lead]  anthropic/claude-haiku-4-5
+✓   mywebsite-implementer  [implementer]  anthropic/claude-sonnet-4-6
+
+✓ Pod 'mywebsite' created with 2 members!
 ```
 
 ### Maintaining an Agent
@@ -297,6 +309,15 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.12.1 (2026-09-18)
+
+- Truth pass: creation is `docket init` (21abc85); `docket add` only adds roles to an existing pod.
+  Retired the gateway-restart SHOULD (no gateway since D-19). Delete confirmation is a typed id,
+  skipped for a non-interactive pod delete, specialists refused, flat-agent workspace removal
+  asked separately. `maintain sessions` reports and never trims; `clean`/`reset`/`rebuild` all
+  confirm, with no force flag. Signatures list `distill`/`--no-distill-first`; example output
+  replaced with the real `docket init` output.
 
 ### Version 1.12.0 (2026-08-20)
 

@@ -23,13 +23,13 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 > regressions, they don't replace hands-on verification. Expect rough edges and breaking changes
 > between versions, and **verify anything important against your own install**. All cost
 > and dollar figures are accounting estimates, not your provider's bill — see
-> [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
+> [Known limits](../README.md#known-limits).
 
 ## Guides
 
 | Doc | What it covers |
 |-----|----------------|
-| [Quick Start](QUICK-START-DOCKET.md) | 5-minute setup: install, create your first project agent, assign work |
+| [Quick Start](QUICK-START-DOCKET.md) | Ten-minute setup: install, provision your first pod, dispatch a governed turn |
 | **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
@@ -70,7 +70,7 @@ docket pod <project> dispatch              # Run the pod's pipeline once
 # Configuration
 docket models                  # Role→model policy (set <role> <model>, presets)
 docket profile <id> <model>    # Pin an agent (<provider/model>) or 'default' = policy
-docket profile <id> --budget 5 # Per-agent spend cap (USD)
+docket profile <id> --budget 5 # Budget cap (USD estimate; a pod's Lead cap gates dispatch)
 docket scope <id> set <key>    # Switch project context
 
 # Maintenance & health
@@ -81,7 +81,7 @@ docket doctor                  # System-wide diagnostics (add --fix to apply aut
 # Keys, auth & security (see Command Reference for the full surface)
 docket keys setup              # Interactive API key wizard
 docket auth status             # Which provider credentials are stored (docket keys is the store)
-docket gates enable            # (Re-)apply approval routing (the tool-call gate is always on)
+docket gates status            # Gate + isolation posture (the tool-call gate is always on)
 docket audit                   # Recent docket-initiated changes
 ```
 

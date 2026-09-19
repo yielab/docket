@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.27.0
+**Version**: 1.27.1
 **Status**: Complete
 **Last Updated**: 2026-09-18
 
@@ -72,8 +72,9 @@ Registry. Conventions:
 
 - Boolean flags default to `false` and take no value (e.g. `--force`, `--debug`).
 - Value options take exactly one argument (e.g. `--model <provider/model>`, `--days <N>`).
-- `--help`/`-h` MUST be honored before any other parsing and exit 0.
-- Unknown options MUST produce a clear error and exit non-zero (Typer's usage error).
+- `--help` MUST be honored before any other parsing and exit 0 (there is no `-h` short form).
+- Unknown options MUST produce a clear error and exit non-zero (Typer's usage error, exit 2 —
+  see Return Code Convention).
 
 ## Global Command Structure
 
@@ -87,12 +88,13 @@ docket [global-options] <command> [command-options] [arguments]
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| --help | -h | Show help message | - |
-| --version | -v | Show version info | - |
-| --debug | -d | Enable debug output | false |
-| --quiet | -q | Suppress informational output | false |
-| --config | -c | Use alternate config file | ~/.docket/docket.conf |
-| --no-color | - | Disable colored output | false |
+| --help | - | Show help message | - |
+| --version | -V | Show version info | - |
+| --debug | - | Enable debug output (sets `DEBUG`, currently read by no command) | false |
+
+These three are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
+`--quiet`, `--config` or `--no-color`; state location is chosen with `DOCKET_HOME`, not a config
+file flag.
 
 ## Command Registry
 
@@ -173,34 +175,32 @@ agent inventory.
 
 #### docket list
 **Purpose**: Display all agents
-**Syntax**: `docket list [options]`
+**Syntax**: `docket list [--json]`
 **Arguments**: None
 **Options**:
-- `--format <table|json|csv>`: Output format (default: table)
-- `--filter <active|stopped|all>`: Filter agents (default: all)
-- `--sort <id|type|activity>`: Sort order (default: id)
+- `--json`: Emit the listing as one JSON document instead of the Rich table (see
+  `cli-json-shapes.spec.md`)
 **Output**: Formatted agent list
 **Return**: 0 always
 
 #### docket info
 **Purpose**: Display detailed agent information
-**Syntax**: `docket info <agent-id> [options]`
+**Syntax**: `docket info [agent-id] [--json]`
 **Arguments**:
-- `agent-id` (required): Agent identifier or interactive selection
+- `agent-id` (optional): Agent identifier; interactive picker if omitted
 **Options**:
-- `--format <detailed|summary|json>`: Output detail level
-- `--costs`: Include detailed cost breakdown
+- `--json`: Emit the agent record as JSON
 **Output**: Agent details in requested format
 **Return**: 0 on success, 1 if not found
 
 #### docket delete
 **Purpose**: Remove agent completely
-**Syntax**: `docket delete <agent-id> [options]`
+**Syntax**: `docket delete [agent-id]`
 **Arguments**:
-- `agent-id` (required): Agent to delete
-**Options**:
-- `--force`: Skip confirmation prompt
-- `--keep-logs`: Preserve memory logs before deletion
+- `agent-id` (optional): A pod id (removes every member) or a legacy flat agent id; interactive
+  picker if omitted. Org specialists cannot be deleted this way
+**Options**: None. A pod deletion requires typing the exact pod id to confirm in an interactive
+terminal; there is no `--force` or `--keep-logs`
 **Output**: Deletion confirmation
 **Return**: 0 on success, 1 if not found
 
@@ -266,10 +266,10 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 
 #### docket scope
 **Purpose**: Manage session keys for project isolation
-**Syntax**: `docket scope <agent-id> <action> [value]`
+**Syntax**: `docket scope [agent-id] [action] [value]`
 **Arguments**:
-- `agent-id` (required): Target agent
-- `action` (required): show/set/reset
+- `agent-id` (optional): Target agent; interactive picker if omitted
+- `action` (optional): show (default)/set/reset
 - `value` (conditional): Required for 'set' action
 **Output**: Current or updated session key
 **Return**: 0 on success, 1 on error (agent not found, or invalid input)
@@ -281,7 +281,8 @@ and matching credentials sync to agent workspaces
 **Actions**:
 - `list`: Show all stored keys (values masked) — default
 - `setup`: Interactive setup wizard for all keys
-- `add <KEY_NAME>`: Add or update a specific key
+- `add <KEY_NAME>`: Add a key (errors, exit 1, if the name already exists — use `rotate`)
+- `rotate <KEY_NAME>`: Replace the value of an existing key (exit 1 if it does not exist)
 - `validate [KEY_NAME]`: Check known local format rules (no network validation)
 - `remove <KEY_NAME>`: Remove a key
 - `export`: Print keys as shell environment variables
@@ -323,8 +324,7 @@ decision D-16 is the durable retirement record.)
 **Purpose**: Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1 format / W-2
 executor). See pipeline-format.spec.md for the file format.
 See pod-dispatch.spec.md for how it actually runs.
-Not the Lobster dialect — `docket workflow` continues to serve that unchanged until ROADMAP
-Phase 16 W-3 retires it in favor of this command.
+Not the Lobster dialect — `docket workflow` was retired by ROADMAP Phase 16 W-3 (see above).
 **Syntax**: `docket pipeline <action> ...`
 **Actions**:
 - `validate <file>`: Structural validation of a pipeline YAML file; does not execute; no project
@@ -444,15 +444,31 @@ run id is unknown or already terminal
 
 **Purpose**: Expose docket's control plane as an MCP (Model Context Protocol) stdio server
 (ROADMAP Phase 18 L-3) — full contract in `mcp-server.spec.md`
-**Syntax**: `docket mcp serve`
+**Syntax**: `docket mcp <serve | servers <list|add|remove> ...>`
 **Actions**:
 - `serve`: Start the stdio MCP server (blocks until the client disconnects). Requires the
   optional `mcp` extra (`pip install 'docket[mcp]'`); prints an actionable hint and exits 1 if
   it isn't installed, rather than a bare traceback
+- `servers list|add|remove`: Configure external stdio MCP tool servers whose tools reach a live
+  turn through the same `dispatch_tool` chokepoint — `add <name> [--env K=V ...] [--timeout S] --
+  <command> [args]`; full contract in `mcp-client.spec.md`
 **Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
 startup naming the registered tools
 **Return**: `0` on clean shutdown or bare `docket mcp` (prints usage), `1` if the SDK is missing or
 an unrecognized subcommand was given
+
+#### docket harness
+**Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
+caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
+contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
+**Syntax**: `docket harness run --workspace DIR (--task TEXT | --task-file PATH) --model
+PROVIDER/ID [--role implementer] [--timeout SECONDS] [--agent-id ID]` · `docket harness status
+TOKEN`
+**Output**: `run` streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
+every log goes to stderr. `status` prints one JSON line
+**Return**: `run` — 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the
+one named exception to the flat convention, see Return Code Convention); `status` — 0 on a
+lookup, 1 on a missing token
 
 ### Memory and Context Commands
 
@@ -497,9 +513,10 @@ peer's activity, and no successor; the command reports memory logs only.
 output **MUST** label the project-agent section as global so running it from one repository cannot
 be mistaken for a repository-local listing; seeing another registered project is inventory
 visibility, not shared workspace or session state.
-**Syntax**: `docket doctor [--verbose]`
+**Syntax**: `docket doctor [--json] [--fix]`
 **Options**:
-- `--verbose`: Detailed diagnostic output
+- `--json`: Emit the machine-readable health probe (see `cli-json-shapes.spec.md`)
+- `--fix`: Apply auto-fixes for detected drift
 **Output**: System health report
 **Checks** (ROADMAP Phase 19 P19-7b — no daemon left to check status of):
 - Required commands availability (`python3`, etc.)
@@ -507,17 +524,17 @@ visibility, not shared workspace or session state.
 - Model config/registry drift
 - Workspace permissions and template drift
 - Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture
-**Return**: 0 if healthy, count of issues found
+**Return**: 0 if healthy, 1 when any issue is flagged
 
 #### docket cost
 **Purpose**: Display usage and costs
-**Syntax**: `docket cost [agent-id] [--period <days>]`
+**Syntax**: `docket cost [agent-id] [--json] [--history [--days N]]`
 **Arguments**:
 - `agent-id` (optional): Specific agent or all
 **Options**:
-- `--period <days>`: Time window (default: 30)
-- `--by-model`: Group by model
-- `--csv`: Export as CSV
+- `--json`: Emit JSON (see `cli-json-shapes.spec.md`)
+- `--history`: Per-day history view (see cost-tracking.spec.md for why it is currently empty)
+- `--days N`: History window in days (default `0`, meaning no limit)
 **Output**: Cost breakdown table
 **Return**: 0 always
 
@@ -533,12 +550,20 @@ visibility, not shared workspace or session state.
 
 #### docket serve
 **Purpose**: Background loop — refresh fleet status and optionally drive pod dispatch pipelines
-**Syntax**: `docket serve [--port <n>] [--interval <s>] [--dispatch]`
+**Syntax**: `docket serve [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--token-file <path>]`
 **Options**:
-- `--port <n>`: Listen port for the read-only HTTP API (default: 7331)
-- `--interval <s>`: Snapshot refresh interval in seconds (default: 30)
-- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket serve` is read-only.
-**Output**: Serves `http://localhost:<port>/status.json`, refreshed on the interval; with `--dispatch`, also logs each dispatch hop
+- `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
+- `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
+- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket serve` never dispatches on its own.
+- `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
+  (needs `TELEGRAM_BOT_TOKEN`; see telegram-integration.spec.md)
+- `--token-file <path>`: Write the Bearer token for the authenticated routes to this file (0600)
+  instead of printing it
+**Output**: Serves the HTTP API on `http://localhost:<port>/` — unauthenticated read routes
+(`/status.json`, `/metrics`, `/health`) plus Bearer-authenticated routes (`/approvals`, `/runs`,
+`/tasks`, `/traces`, `POST /approvals/<token>`, `POST /dispatch/<project>`, `POST /pods`); full
+contract in serve-read-api.spec.md.
+With `--dispatch`, also logs each dispatch hop
 **Return**: 0 on clean shutdown (Ctrl-C)
 
 ### Security and Gates
@@ -556,8 +581,10 @@ narrower: approval-routing destination and isolation-mode posture.
   is accepted for CLI compatibility but is a no-op — there is no exec-approval-allowlist
   config left to (re-)apply
 - `disable`: Turn approval routing off
-- `isolate <on|off>`: Record (not yet enforce — the turn loop does not consult this flag)
-  whether tool execution should run inside a Docker sandbox
+- `isolate <on|off>`: Turn exec isolation on or off. `DocketDriver` reads this flag on every
+  turn (`edges/adapters/docket_runtime.py`, `get_isolation_enabled`): with it on, `bash` runs in
+  the docker/bwrap jail and a turn fails closed when no backend is available (see
+  security-gates.spec.md)
 - `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
   secret-access); read-only, makes no config changes. All three are now fully enforced by
   `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
@@ -586,7 +613,9 @@ skipped silently rather than failing, which is why the drift went unnoticed. Unl
 `docket workflow`/`docket team`, there is **no replacement command**: no CLI entry point runs a
 single agent turn to repoint the harness at (`DocketDriver.run_turn` is only reached from pod
 dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
-private port, not fixing a bug. Running `docket eval` (or its former `evals` alias) prints a
+private port, not fixing a bug. (That was true when CL-J landed; since Phase 24, `docket harness
+run` is such an entry point — see harness-mode.spec.md — but no eval harness was rebuilt on it.)
+Running `docket eval` (or its former `evals` alias) prints a
 removed-command notice saying so plainly. `tests/evals/` and `cli/_eval.py` are deleted; `docket
 doctor` no longer prints an eval-results advisory section. (The former eval.spec.md was removed
 2026-08-04; ROADMAP decision CL-J is the durable retirement record.)
@@ -632,7 +661,9 @@ counts and per-file detail)
 **Subcommands**:
 - `list`: List installed policies in `$POLICIES_DIR`
 - `show <name>`: Print one policy's JSON
-- `init`: Copy baseline policies (block-destructive, prompt-injection, secret-pii-redact)
+- `init`: Copy the six baseline policies (block-destructive, prompt-injection,
+  secret-pii-redact, high-risk-payment, high-risk-deploy, high-risk-credentials)
+- `validate [name]`: Schema-check one installed policy, or every one
 - `test <hook> <role> <text>`: Dry-run the evaluator (no traces emitted)
 **Output**: Policy listing, JSON, or evaluation result
 **Return**: 0 on success, 1 on invalid subcommand
@@ -677,12 +708,12 @@ counts and per-file detail)
 before ROADMAP Phase 19 P19-7b deleted the daemon outright, it kept no durable transcript of its
 own — its per-agent sqlite was a rebuildable RAG index, not a transcript — so docket has always
 owned this, and now there is no daemon at all to contrast it with)
-**Syntax**: `docket conversations <list|show <id>|resume <id>|set <id> [fields]>`
+**Syntax**: `docket conversations [list | show <id|agent-id> | resume <id|agent-id> | set <agent-id> <peer-id> [--topic] [--status] [--last] [--task]]`
 **Actions**:
-- `list`: Table of registered conversations (agent, channel, peer, status, topic)
-- `show <id>`: Print one conversation's fields
-- `resume <id>`: Mark in-progress and point at the agent's durable HEARTBEAT.md/memory
-- `set <id> [fields]`: Upsert registry fields (topic, status, task ref, last message)
+- `list` (default): Table of registered conversations (agent, channel, peer, status, topic)
+- `show <id|agent-id>`: Print one conversation's fields
+- `resume <id|agent-id>`: Mark in-progress and point at the agent's durable HEARTBEAT.md/memory
+- `set <agent-id> <peer-id> [--topic] [--status] [--last] [--task]`: Upsert registry fields
 **Output**: Registry table or confirmation
 **Return**: 0 on success, 1 on error
 
@@ -692,16 +723,18 @@ owned this, and now there is no daemon at all to contrast it with)
 command and does not appear in `docket --help`).
 
 #### docket wire
-**Purpose**: Bind a channel group/peer to an agent — manual ID entry only (see
-telegram-integration.spec.md; ROADMAP Phase 19 P19-7b removed log-based Telegram group
-auto-discovery, `scan_telegram_groups`, along with the daemon gateway log it read)
+**Purpose**: Bind a channel group/peer to an agent (see telegram-integration.spec.md). With
+`TELEGRAM_BOT_TOKEN` stored, docket shows a one-time `/wire <code>` command to send in the group
+and discovers the group from it; manual numeric-ID entry is the fallback. (The daemon-era
+log-scanning discovery, `scan_telegram_groups`, was removed by ROADMAP Phase 19 P19-7b.)
 **Syntax**: `docket wire [agent-id] [--channel <name>]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Prompts for the peer/group ID, records the binding in `fleet.json`, and registers the
-thread in the conversation registry. No docket-owned channel bot exists yet (P19-8) — a binding
-is recorded but nothing listens on it until then. There is no gateway-restart step: it was
-deleted outright, not kept as a no-op (CL-C, ROADMAP Phase 19 wave 14).
+**Output**: Discovers (or prompts for) the group ID, records the binding in `fleet.json`, and
+registers the thread in the conversation registry. The binding is inbound-only: it authorizes the
+chat to use the four verbs `docket serve --telegram` answers; docket never messages it first.
+There is no gateway-restart step: it was deleted outright, not kept as a no-op (CL-C, ROADMAP
+Phase 19 wave 14).
 **Return**: 0 on success, 1 if not found
 
 #### docket unwire
@@ -734,16 +767,15 @@ deleted outright, not kept as a no-op (CL-C, ROADMAP Phase 19 wave 14).
 
 ### Standard Output Structure
 
-```
-[LEVEL] Message text
-```
+Messages go through the Rich helpers in `src/docket/ui.py`, which prefix a glyph rather than a
+bracketed level:
 
-Levels:
-- `[INFO]`: Informational messages (blue)
-- `[SUCCESS]`: Operation completed (green)
-- `[WARN]`: Warning conditions (yellow)
-- `[ERROR]`: Error conditions (red)
-- `[DEBUG]`: Debug output (gray, only with --debug)
+- `→ text`: informational (`ui.info`, cyan)
+- `✓ text`: operation completed (`ui.success`, green)
+- `⚠ text`: warning (`ui.warn`, yellow)
+- `✗ Error: text`: error (`ui.error`, red, on **stderr**); `ui.fail` prints `✗ text` on stderr
+
+There is no debug output level.
 
 ### JSON Output Schema
 
@@ -762,14 +794,22 @@ Default table uses column alignment:
 
 ## Environment Variables
 
+The complete, code-derived table lives in the generated `docs/commands.md` ("Environment
+Variables", checked by `scripts/gen_cli_docs.py --check`). The variables a CLI user most often
+sets:
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOCKET_HOME` | Base directory for all Docket-owned state | `~/.docket` |
-| `DOCKET_DEBUG` | Enable debug (0/1) | 0 |
-| `DOCKET_NO_COLOR` | Disable colors (0/1) | 0 |
-| `DOCKET_MODEL_DEFAULT` | Override the fallback default model (`provider/model`) | (role policy) |
-| `DOCKET_EDITOR` | Preferred editor | $EDITOR or nano |
 | `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` | Process-wide override of the OpenAI-compatible chat endpoint `DocketDriver` talks to (`edges/adapters/llm.py`'s `resolve_endpoint`) | (per-provider resolution) |
+| `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before visible truncation | `30000` |
+| `DOCKET_NO_TRACE` | `1` disables trace-store writes | unset |
+| `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s Bearer token instead of generating one | unset |
+| `EDITOR` / `VISUAL` | Editor for `docket edit` | `nano` |
+
+There is no `DOCKET_DEBUG`, `DOCKET_NO_COLOR`, `DOCKET_MODEL_DEFAULT` or `DOCKET_EDITOR`.
+`DOCKET_APPROVAL_MODE` is not an environment variable despite its name: it is a key of the `env`
+dict `run_turn` receives (see harness-mode.spec.md), never read from `os.environ`.
 
 ## Return Code Convention
 
@@ -797,8 +837,10 @@ ended badly" from "the run never started", which a printed message cannot do for
 `docket harness status` keeps the flat convention: 0 for any successful lookup, including `unknown`,
 and 1 only for a missing token.
 
-No other exit codes are produced. (Earlier revisions of this spec described codes 2–9 and
-127 per failure kind; those were never implemented — removed in v1.5.0.)
+No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
+unknown option or command, before any command body runs) exit `2`. (Earlier revisions of this
+spec described codes 2–9 and 127 per failure kind; those were never implemented — removed in
+v1.5.0.)
 
 ## Validation
 
@@ -810,6 +852,9 @@ the contract-level summary follows.
 - Pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
 - Length: 3-50 characters
 - Reserved IDs: manager, system, docket
+- **Not enforced today** beyond `core/provisioning.py::slugify` — the length and reserved-id
+  checks, and the path checks below beyond existence, have no implementing function (see
+  input-validation.spec.md's Status; open maintainer decision)
 
 ### Path Validation
 - Must be absolute or tilde-expanded
@@ -838,25 +883,20 @@ When agent-id is omitted for commands that need it:
 
 ### Confirmation Prompts
 Required for destructive operations:
-- `docket delete` (unless --force)
-- `docket maintain` reset/rebuild
+- `docket delete` — type the exact pod (or agent) id to confirm; there is no `--force`
+- `docket maintain` reset/rebuild, `docket models reset`
 
-Format: `"Action description. Continue? (y/N): "`
+Format: `Continue? [y/N]: ` for the y/N prompts; `Type the ... id to confirm [<id>]: ` for deletes
 
 ## Error Message Standards
 
 ### Format
-```
-[ERROR] <component>: <description>
-        Details: <specifics>
-        Suggestion: <how to fix>
-```
+One `ui.error` line on stderr (`✗ Error: <what failed>`), optionally followed by a usage or
+recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggestion block.
 
 ### Example
 ```
-[ERROR] Agent not found: myproject
-        Details: No workspace at ~/.docket/workspaces/projects/myproject
-        Suggestion: Use 'docket list' to see available agents
+✗ Error: Project key required. Usage: docket scope <agent-id> set <project-key>
 ```
 
 ## Performance Requirements
@@ -889,6 +929,21 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.27.1 (2026-09-18)
+
+- Truth pass against the live Typer registry (`docket <cmd> --help`) and `src/docket/ui.py`.
+  Global options are `--help`, `--version`/`-V`, `--debug` only (no `-h`/`-v`/`-d`/`--quiet`/
+  `--config`/`--no-color`). Corrected shipped flags for `list`/`info` (`--json` only), `delete`
+  (no `--force`/`--keep-logs`; typed-id confirmation), `doctor` (`--json`/`--fix`; exit 0/1, not an
+  issue count), `cost` (`--json`/`--history`/`--days`), and `serve` (added `--telegram`,
+  `--token-file`, and the authenticated routes). Added the missing `keys rotate`, `policies
+  validate` (six baseline templates, not three), `mcp servers`, and a Command Registry entry for
+  `docket harness`. `gates isolate` is consumed by `DocketDriver` on every turn (W18-3), not
+  "recorded only". `docket wire` discovers the group from a one-time `/wire` command with manual
+  fallback, and the bot exists (P19-8). Replaced four environment variables that do not exist
+  with real ones and pointed at the generated table in `docs/commands.md`. Output/error formats
+  now describe the real glyph prefixes; Return Code Convention notes Typer usage errors exit 2.
 
 ### Version 1.27.0 (2026-09-18)
 

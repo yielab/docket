@@ -2,7 +2,7 @@
 
 **DOCKET = Roles, Autonomy, Context isolation, Knowledge**
 
-Get started with DOCKET-optimized agents in under 5 minutes.
+Get started with DOCKET-optimized agents in about ten minutes.
 
 > [!WARNING]
 > **Beta / early-stage software.** docket is under active development and not yet at a stable
@@ -34,7 +34,7 @@ docket init
 docket pod myapp delegate "Create FIRST_TURN.md containing exactly: governed first turn"
 docket pod myapp dispatch
 docket runs list
-docket trace tail myapp    # prints the latest session, then follows it; Ctrl-C to stop
+docket trace tail myapp    # prints the latest session's tail, then follows it; Ctrl-C to stop
 ```
 
 `provider add` validates the endpoint before project state is created. The final two commands are
@@ -58,9 +58,10 @@ DOCKET is an architecture for autonomous agent teams that:
 
 ## Installation
 
-> **Security gates are on by default** for a new install: exec calls outside the curated
+> **The tool-call gate is always on** and cannot be turned off: exec calls outside the curated
 > allowlist (`rm`, `dd`, `docker`, `systemctl`, …) need an explicit approve/deny before they run.
-> Pass `--no-gates` below to opt out for now — see [Security](SECURITY-SIMPLE.md) and `docket gates`.
+> `--no-gates` only records an approval-routing posture flag that nothing on the live turn path
+> reads — see [Security](SECURITY-SIMPLE.md) and `docket gates`.
 
 ### Initialize a Project
 ```bash
@@ -79,7 +80,7 @@ docket add tester --project myapp     # explicit pod selection
 The default pod shape is a **blueprint** called `software` (codebase, lead + implementer). For
 non-software work, pick a different one in one step — no codebase is assumed or auto-detected:
 ```bash
-docket add my-market-scan --blueprint research   # lead + researcher + analyst + writer + critic
+docket init my-market-scan --blueprint research  # lead + researcher + analyst + writer + critic
 ```
 `docket roles list` shows every role available to compose into a pod (built-in and starter);
 see [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
@@ -95,7 +96,7 @@ docket status               # current project summary
 docket status --all         # global summary by project
 docket list                 # detailed org specialists + agent inventory
 docket pod myapp            # just this project's pod members
-docket doctor               # workstation health check + auto-fix
+docket doctor               # workstation health check (--fix applies auto-fixes)
 ```
 
 **Expected:** `docket list` shows the org specialists (manager, knowledge, security)
@@ -130,14 +131,15 @@ docket serve --dispatch                                       # autonomous: drai
 Each hop is a **real, costed LLM turn**, so dispatch is always explicit (`dispatch`)
 or opt-in (`serve --dispatch`) — never silent. Before each hop docket checks the pod's
 token-based dollar estimate against the Lead's budget cap (`docket profile myapp-lead --budget
-N`); over budget, the task stays **pending** instead of running. Every hop is traced
-(`docket trace`) for a fully auditable run.
+N`); over budget, the task is left **blocked** and the pod auto-pauses instead of running
+(`docket pod myapp queue --retry <task-id>` or `docket profile myapp-lead --resume` un-blocks
+it). Every hop is traced (`docket trace`) for a fully auditable run.
 
 If the pod has a Reviewer or Tester, their hop is **gated**, not advisory: a Reviewer's
 `REQUEST-CHANGES` sends the task back to the Implementer (bounded rework), and a Tester's
 `FAIL` fails the task outright. Give the Implementer a real check with
-`docket pod myapp add --verify "pytest -v"` (or `set-verify`) and a nonzero exit blocks
-advancement the same way. See [Agent Teams](AGENT-TEAMS.md) for the full gate breakdown.
+`docket pod myapp set-verify myapp-implementer "pytest -v"` and a nonzero exit fails the task
+the same way. See [Agent Teams](AGENT-TEAMS.md) for the full gate breakdown.
 
 > The read-only `docket serve` monitor does **not** dispatch — only `--dispatch` does.
 
@@ -162,7 +164,7 @@ single project. For the full before/after picture and the pipeline diagram, see
 ```bash
 docket list               # Org specialists + pods (with scope)
 docket status --all       # One global row per project
-docket doctor             # Health check + auto-fix
+docket doctor             # Health check (--fix applies auto-fixes)
 docket pod <project>      # Inspect a project's pod and its roles
 docket pod <project> queue # That pod's pending task queue
 ```
@@ -212,13 +214,14 @@ docket pod myapp dispatch       # run Lead → Implementer → (Reviewer) → (T
 2. **Implementer** runs *inside* the project workspace, writes the change, signals DONE.
 3. **Reviewer** *(if the pod has one)* read-only veto on the diff.
 4. **Tester** *(if the pod has one)* behaviour-only PASS / FAIL.
-5. **Lead** reports the result; the queue shows per-task status and estimated cost.
+5. The task is finalized as done or failed; the queue shows per-task status and estimated cost.
+   There is no closing Lead hop.
 
 Each hop is budget-gated against the Lead's cap and traced (`docket trace`), so a run
 is fully auditable. Re-check the queue afterward:
 
 ```bash
-docket pod myapp queue          # status flips to done (or pending if over budget)
+docket pod myapp queue          # status flips to done (failed on a gate, blocked if over budget)
 ```
 
 > **Alternative — Telegram:** once the Lead is wired (`docket wire`), the same queue is
@@ -229,9 +232,9 @@ docket pod myapp queue          # status flips to done (or pending if over budge
 > `docket pod myapp queue`, `docket trace`, or the HTTP control plane — docket never
 > pushes a status update or completion report to the chat on its own.
 
-**Why the Lead stays cheap:** its dispatch hops carry a bounded per-role token budget
-(2,000 tokens for the Lead — see `docket roles show lead`), and its workspace + session key
-are scoped to this one pod, never a shared cross-project history.
+**Why the Lead stays cheap:** its hop receives only the task description, never prior-hop
+carryover (its declared 2,000-token budget in `docket roles show lead` is not exercised today),
+and its workspace + session key are scoped to this one pod, never a shared cross-project history.
 
 ---
 
@@ -244,7 +247,7 @@ created lazily by the first `docket init` — they are not part of any single po
 (capabilities, tools, model class) lives in **[DOCKET.md](DOCKET.md#pod-roles)** and
 **[AGENT-TEAMS.md](AGENT-TEAMS.md)** — the short version: the Lead orchestrates and never edits
 code, the Implementer writes the code, an optional Reviewer is a read-only veto, and an optional
-Tester validates behavior only (never reads code).
+Tester is instructed to validate behavior only (it has no `write`/`edit` tool, but can still read).
 
 Roles are declarative, not a hardcoded four (`docket roles list`) — a starter library
 (`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`) ships alongside the four
@@ -259,7 +262,7 @@ Per-pod context isolation is what controls token usage — each agent reads only
 context instead of one shared, growing cross-project history. We don't quote a fixed percentage;
 read your actual numbers with `docket cost`. See
 [DOCKET.md's Performance Results](DOCKET.md#performance-results) for the mechanism and
-[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) for why docket
+[Known limits](../README.md#known-limits) for why docket
 doesn't project dollar savings.
 
 ---

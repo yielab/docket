@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.0.0
+**Version**: 3.0.1
 **Status**: Complete
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -63,6 +63,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `kind` | enum | `project` or `specialist` | local | Yes | `add`, `install` | Whether this is a project or specialist agent |
 | `scope` | enum | `org` or `project` | local | No (backfilled) | `add`, `install`, `doctor` | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent on legacy records → derived from `kind`+`role` on read |
 | `role` | string | — | local | specialists + pod members | `install`, `add`, `pod add` | Role name: org-specialist role (e.g. `security`) or pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
+| `pod` | string | pod id | local | No (pod members) | `add`, `pod add` | The pod (project id) this member belongs to; read by `docket list`/`docket status`, which fall back to the `<project>-<role>` id convention when absent. **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
 | `codebase` | string | absolute path | local | `codebase`-kind project agents | `add` | Absolute path to the project (specialists, and `workdir`-kind pod members, have none) |
 | `workspaceKind` | enum | `codebase` or `workdir` | local | No (defaulted) | `add` (pod blueprints only, ROADMAP Phase 16 W-7) | Whether this agent's workspace is anchored to a codebase or a plain working directory. Absent on every record written before W-7 (and every `codebase`-kind pod member since — see pod-blueprints.spec.md) → implicitly `codebase`, which is what it already is; only ever written as the literal `workdir` |
@@ -87,7 +88,13 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Its lifecycle is coupled to attempt-owned provisioning: rollback removes a scratch/workdir path only when that attempt created it, preserving pre-existing runtime contents and a successful same-project pod's directory. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
 | `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
+| `worktreeDir` / `worktreeBranch` | string | absolute path / branch name | local | No (pod members of a git codebase) | `add`, `pod add` | The member's own git worktree and its dedicated branch, set when provisioning could create one (a non-git codebase falls back to the flat workspace and writes neither). Consumed by dispatch and the driver — see pod-dispatch.spec.md. **Not fields on the `AgentMeta` Pydantic model** — round-trip through `extra="allow"` |
 | `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
+
+In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
+`docket init` (including `docket init --from`); `docket add` and `docket pod <project> add`
+write the same member fields when a role joins an existing pod. `install` means the internal
+workstation bootstrap the first `docket init` runs; there is no `docket install` command.
 
 ## Single-source contract
 
@@ -142,7 +149,8 @@ before it's written):
 - **Enum violation**: `kind`, `modelSource` not in their enum → `error`.
 - Valid writes pass through unchanged to the existing atomic-write/lock path.
 
-On read, a missing file is treated as "agent not found" (return code 2), not an empty object.
+On read, a missing file is treated as "agent not found" (exit code 1, docket's flat CLI
+convention — see agent-lifecycle.spec.md's Return Codes), not an empty object.
 
 `sessionKey` and `projectKey` MUST stay consistent; `docket scope` updates both atomically in
 this one file (P19-6: there is no longer a second file to mirror either into).
@@ -164,13 +172,17 @@ this one file (P19-6: there is no longer a second file to mirror either into).
 
 ## Examples
 
-A project agent created by `docket add myshop ~/Sites/myshop` (the `software` blueprint, the
-default — `codebase`-kind, so `workspaceKind`/`workDir` are absent):
+The Lead of a project pod created by `docket init myshop ~/Sites/myshop` (the `software`
+blueprint, the default — `codebase`-kind, so `workspaceKind`/`workDir` are absent):
 
 ```json
 {
+  "schemaVersion": 1,
   "kind": "project",
-  "name": "My Shop",
+  "scope": "project",
+  "role": "lead",
+  "pod": "myshop",
+  "name": "myshop lead",
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
   "model": "anthropic/claude-sonnet-4-6",
@@ -180,16 +192,21 @@ default — `codebase`-kind, so `workspaceKind`/`workDir` are absent):
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
   "blueprint": "software",
-  "templateVersion": "3"
+  "templateVersion": "2"
 }
 ```
 
-The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 5` and being paused:
+The same agent after `docket profile myshop-lead anthropic/claude-haiku-4-5 --budget 5` and being
+paused:
 
 ```json
 {
+  "schemaVersion": 1,
   "kind": "project",
-  "name": "My Shop",
+  "scope": "project",
+  "role": "lead",
+  "pod": "myshop",
+  "name": "myshop lead",
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
   "model": "anthropic/claude-haiku-4-5",
@@ -202,12 +219,12 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
   "paused": true,
   "pausedReason": "budget",
   "blueprint": "software",
-  "templateVersion": "3"
+  "templateVersion": "2"
 }
 ```
 
 A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md) created by
-`docket add my-market-scan --blueprint research`:
+`docket init my-market-scan --blueprint research`:
 
 ```json
 {
@@ -232,6 +249,14 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.0.1 (2026-09-18)
+
+- Truth pass: added the shipped-but-undocumented `pod`, `worktreeDir` and `worktreeBranch` fields
+  (all written by pod provisioning, none declared on `AgentMeta`); noted that "add" in the
+  Written-by column is now `docket init` provisioning (21abc85) and "install" the internal
+  bootstrap; missing-file "agent not found" exits `1`, not `2`; examples use `docket init` and
+  the real pod-member record (`role`/`pod`/`scope`, pod `templateVersion` `"2"`).
 
 ### Version 3.0.0 (2026-08-30)
 

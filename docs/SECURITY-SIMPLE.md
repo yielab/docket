@@ -1,6 +1,6 @@
 # Security: Layered & Convention-Based
 
-**Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
+**Philosophy:** Security comes from layered defaults — an always-on tool-call gate, agent instructions, an optional read-only reviewer role, and human git review — so that the common cases are covered without extra commands.
 
 > **Status / honesty note.** docket runs the agent turn itself (`core/agent_loop.py`), and every
 > tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
@@ -23,7 +23,7 @@
 > "ask" (blocking a live tool call) denies itself after 120 seconds with nobody watching; an
 > async dispatch-level approval denies after 15 minutes.
 >
-> `--no-gates` (at install, or `docket gates disable`) does **not** turn the tool-call gate off —
+> `--no-gates` (on `docket init`, or `docket gates disable`) does **not** turn the tool-call gate off —
 > it cannot be turned off, and it does not change how an "ask" verdict is answered either. What
 > `--gates`/`--no-gates` and `docket gates enable`/`disable` actually control is
 > `security.approvalRoutingState`/`approvalRoutingMode`, a recorded, audited posture flag that
@@ -50,39 +50,34 @@
 
 ### 1. Agents Are Instructed Not to Do Dangerous Things
 
-**Every agent SOUL.md includes:**
+**A pod member's SOUL.md/AGENTS.md carry short safety lines** (the Implementer's, verbatim):
 ```markdown
-## Safety Constraints (NEVER Violate)
-1. NEVER commit to git
-2. NEVER push to remote
-3. NEVER delete files without explicit instruction
-4. NEVER run production commands
-5. NEVER store secrets
+- Never push to main/master without HITL approval; never delete files without explicit instruction.
 ```
+and every member's AGENTS.md `## Red Lines` repeats "Never push to main/master or delete files
+without HITL approval" plus the stay-in-this-pod rule. Nothing instructs an agent not to *commit*.
 
 These are **prompt-level constraints**: agents are instructed to follow them. On top of that,
 docket's own tool-call chokepoint is always active regardless of the prompt: non-allowlisted
 dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval before they run —
-see the status note above for who can answer, and for the `git`/`npm` carve-out. A fresh `docket
-install` also records approval-**routing** posture as on by default (`docket gates status`
+see the status note above for who can answer, and for the `git`/`npm` carve-out. A first `docket
+init` also records approval-**routing** posture as on by default (`docket gates status`
 reports it); that posture flag is recorded and audited but not read by the approval path itself,
-so opting out with `--no-gates` at install, or later with `docket gates disable`, changes nothing
+so opting out with `--no-gates` on `docket init`, or later with `docket gates disable`, changes nothing
 about who can answer an "ask" verdict — CLI, HTTP, MCP, and Telegram always can.
 
-### 2. Reviewer Checks Everything (Automatic)
+### 2. A Reviewer Can Veto (when the pod has one)
 
-**Reviewer runs 6-point checklist on EVERY change:**
+The default pod from `docket init` is lean — Lead + Implementer, **no Reviewer**. Add one with
+`docket init --pod full`, `--with reviewer`, or later `docket add reviewer`. When present:
 
-1. ✓ No prompt injection in comments
-2. ✓ No hardcoded secrets
-3. ✓ No SQL injection / XSS
-4. ✓ Auth checks present
-5. ✓ No dangerous operations (rm -rf, git push, etc.)
-6. ✓ Tests cover critical paths
-
-**If ANY fail → REJECTED automatically**
-
-That's the entire security model. Simple.
+- Its role prompt tells it to review diffs "for correctness, security, and requirement fit". There
+  is **no fixed checklist** — what it catches is the model's judgment, not a scanner.
+- It is **structurally read-only**: its role's `denied_tools` remove `write`/`edit`/`bash` from its
+  tool registry, so it *cannot* modify code rather than being told not to.
+- Its reply must carry one `APPROVE` or `REQUEST-CHANGES` marker line. `REQUEST-CHANGES` sends the
+  task back to the Implementer for one bounded rework cycle (default), then fails it; a missing or
+  ambiguous marker blocks the pipeline like a rejection.
 
 ---
 
@@ -92,7 +87,8 @@ That's the entire security model. Simple.
 **Nothing.** Security is built-in.
 
 ### During Agent Work
-**Nothing.** Reviewer checks automatically.
+**Nothing.** The tool-call gate runs on every call; a Reviewer, if the pod has one, reviews
+automatically. Answer any pending approvals (`docket approve`).
 
 ### Before Committing
 ```bash
@@ -119,13 +115,14 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 
 ### Layer 1: Prevention (Agent SOUL.md)
 - Agents have constraints written into their identity prompt
-- Instructed not to commit, push, or delete (prompt-level, not enforced)
+- Instructed not to push to main/master or delete files without approval (prompt-level, not
+  enforced by the prompt itself — the tool-call gate is what enforces)
 - **No code — just instructions**
 
-### Layer 2: Detection (Reviewer Checklist)
-- 6-point checklist runs automatically
-- Rejects bad code immediately
-- **No manual scanning needed**
+### Layer 2: Detection (Reviewer verdict, optional role)
+- Runs on every dispatched task in a pod that has a Reviewer
+- `REQUEST-CHANGES` triggers one rework cycle, then fails the task
+- **Model judgment, not a scanner** — keep reviewing diffs yourself
 
 ### Layer 3: Engineer Review (Git Diff)
 - Engineer reviews diff before commit
@@ -165,31 +162,30 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 
 ## Testing Security (Simple)
 
-### Test 1: Can Agent Commit?
+### Test 1: Does the Implementer Carry Its Safety Lines?
 ```bash
 # Check the implementer's constraints (replace "myapp" with your project name)
-grep "NEVER commit" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
+grep "Never push" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
 
-# Should find: "NEVER commit to git"
+# Should find: "Never push to main/master without HITL approval; ..."
 ```
 
-### Test 2: Does Reviewer Check Security?
+### Test 2: Is the Reviewer Read-Only?
 ```bash
-# Check the reviewer's checklist (replace "myapp" with your project name)
-grep "prompt injection\|hardcoded secret" ~/.docket/workspaces/projects/myapp-reviewer/SOUL.md
-
-# Should find: 6-point checklist
+# Only if the pod has a Reviewer (replace "myapp" with your project name)
+grep "Read-only" ~/.docket/workspaces/projects/myapp-reviewer/SOUL.md
+docket roles show reviewer   # its denied_tools are what actually enforce it
 ```
 
-### Test 3: Are There Agent Commits?
+### Test 3: Review Agent Commits
 ```bash
 cd ~/Sites/myproject
-git log --since="30 days ago" --format="%an"  # review automated/agent commit authors
-
-# Should return: NOTHING (agents don't commit!)
+git log --since="30 days ago" --format="%an %s"  # review automated/agent commit authors
 ```
+`git commit` is on the curated allowlist and no prompt forbids it, so an Implementer **can** commit
+locally. Review what landed before you push.
 
-**If all 3 pass → Security works. Done.**
+**The gate itself is covered by docket's own test suite; these checks confirm your pod's setup.**
 
 ---
 
@@ -203,10 +199,11 @@ grep -rn "ignore previous\|you are now" ~/Sites/myproject/src/
 ```
 
 ### Agent Tries to Commit
-The agent is instructed never to commit (SOUL.md), and the reviewer plus your git-diff review
-are the backstops. Note: `git` stays on the gates' curated allowlist (it's used constantly for
-benign work), so `git push` does **not** by itself trigger an approval prompt even with gates
-enabled — the prompt-level instruction and your git-diff review are what actually stop it today.
+Nothing stops a local `git commit`: `git` stays on the gate's curated allowlist (it's used
+constantly for benign work), and no prompt forbids committing. A plain `git push` is also allowed;
+`git push ... main|master|production|prod` matches the `prod-deploy` high-risk class and **asks**.
+The prompt-level "never push to main/master" line, a Reviewer if present, and your git-diff review
+are the backstops for the rest.
 Truly destructive bins (`rm`, `dd`, `docker`, `systemctl`, ...) are gated on a default install
 (see the status note above).
 
@@ -233,7 +230,11 @@ docket audit verify   # walk the tamper-evidence chain
 
 The log is hash-chained: each line records a hash of the one before it, so `docket audit verify`
 can tell you the exact line where something stopped matching — i.e., where a line was edited or
-removed after the fact. There's no environment switch to turn recording off.
+removed after the fact. There's no environment switch to turn recording off. The log rotates to a
+**single** `audit.log.1` backup; the new file's first line claims its predecessor, so `verify`
+reports a break if that backup is missing or altered. Only one generation back is checkable, and
+deleting `audit.log` *and* `audit.log.1` together looks like a fresh install — erasure is made
+evident, not prevented.
 
 **What it can't see.** The log only records what **docket** does. Since docket now owns the
 Telegram bot itself, a bound chat's `/approve`, `/deny`, `/status`, and `/delegate` all go through
@@ -248,13 +249,13 @@ quietly closes.
 
 ## Summary
 
-**Security = 3 things:**
+**Security = 3 things you see, on top of the always-on tool-call gate:**
 
 1. **Agent constraints** (in SOUL.md) → Discourages dangerous actions (prompt-level)
-2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
+2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (at install) and `docket gates disable` only record approval-routing posture as off, a flag nothing on the live path reads; `docket gates enable` records it as on for the same reason `docket gates status`/`doctor` display it, not because it changes how an "ask" verdict is answered. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
+**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) and `docket gates disable` only record approval-routing posture as off, a flag nothing on the live path reads; `docket gates enable` records it as on for the same reason `docket gates status`/`doctor` display it, not because it changes how an "ask" verdict is answered. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
 
 ---
 
@@ -263,7 +264,7 @@ quietly closes.
 None of this needs a human to run day to day — it's here for when you want to check it yourself:
 
 ```bash
-docket gates status       # is exec-approval on, is isolation on, what's the routing
+docket gates status       # gate always active; approval-routing posture; isolation mode
 docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
 docket policies list      # installed guardrail policies
 docket approve            # list pending approvals in docket's own store
@@ -281,8 +282,10 @@ docket init
 # Check only this project's readiness and task state
 docket status
 
-# Agent does work automatically
-# (Reviewer checks security automatically)
+# Queue and run work
+docket pod myproject delegate "<task>"
+docket pod myproject dispatch
+# (a Reviewer, if you added one, reviews automatically)
 
 # Review and commit
 cd ~/Sites/myproject
@@ -290,7 +293,7 @@ git diff
 git commit -m "Feature: ..."
 ```
 
-**That's it. 3 commands total.**
+**That's the whole loop.**
 
 ---
 

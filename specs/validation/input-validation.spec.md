@@ -1,8 +1,14 @@
 # Input Validation Specification
 
-**Version**: 1.4.0
-**Status**: Complete
-**Last Updated**: 2026-08-25
+**Version**: 1.4.1
+**Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
+boundary sanitization rules, and `AgentMeta` are implemented. The agent-id length/consecutive-
+hyphen/reserved-word checks (§1), the forbidden-directory path check (§2), the numeric
+range/leading-zero helper (§4) and the session-key grammar check (§5) have **no implementing
+function in `src/`**: `validate_agent_id`, `validate_path`, `validate_number`,
+`validate_session_key` and `confine_to_base` are reference sketches only (see the note under
+Rules). Whether to implement them or amend the rules is an open maintainer decision.
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -20,6 +26,15 @@ snippets and module pointers show how that contract is enforced today.
 
 ## Rules
 
+> **Implementation note (2026-09-18 truth pass).** `rg` over `src/docket/` finds no
+> `validate_agent_id`, `_AGENT_ID_RE`, `_RESERVED`, `_FORBIDDEN_DIRS`, `validate_path`,
+> `validate_number`, `validate_session_key` or `confine_to_base`. Agent/project ids are produced
+> only by `core/provisioning.py`'s `slugify` (lowercase, non-alphanumeric runs → `-`, trimmed);
+> nothing enforces the 3–50 length, the reserved-word list or the forbidden system directories,
+> and `docket scope <id> set <project-key>` stores the project key unvalidated. The Python blocks
+> in §1, §2, §4 and §5 are therefore reference sketches of the MUST rules, not the shipped code.
+> The rules are left as written pending a maintainer decision.
+
 Validation rules are grouped by input field. Each category states the field, the commands
 that consume it, the RFC 2119 rule set, and the reference implementation (Python module /
 function or Pydantic model).
@@ -27,7 +42,7 @@ function or Pydantic model).
 ### 1. Agent ID Validation
 
 **Field**: agent-id
-**Used By**: add, info, delete, maintain, profile, scope, workflow, pod
+**Used By**: init, add, info, delete, maintain, profile, scope, pod
 
 **Rules**:
 - **MUST** match pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
@@ -41,11 +56,10 @@ function or Pydantic model).
 - admin, root, daemon, service
 - config, settings, help, version
 
-**Reference**: ids are derived from a display name by the slugifier in the `add` flow
-(`src/docket/cli/__init__.py`, `_slugify` → `re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")`),
-then checked for the format/length/reserved-word rules and for uniqueness against
-`config.PROJECTS_DIR` (`~/.docket/workspaces/projects/<agent-id>/`). The canonical
-predicate is expressed as:
+**Reference**: ids are derived from a display name by the slugifier shared by every add path
+(`src/docket/core/provisioning.py`, `slugify` → `re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")`).
+The format/length/reserved-word predicate below is **not implemented** (see the implementation
+note above); it is expressed as:
 
 ```python
 import re
@@ -89,7 +103,7 @@ def validate_agent_id(agent_id: str, *, check_exists: bool = False) -> None:
 ### 2. Path Validation
 
 **Field**: codebase-path, file-path
-**Used By**: add, workflow
+**Used By**: init, add
 
 **Rules**:
 - **MUST** be absolute path or start with ~
@@ -231,9 +245,9 @@ def validate_number(raw: str, *, lo: int, hi: int, name: str = "value") -> int:
 
 **Reference**: the session key is composed, never free-typed — `docket scope <id> set
 <project-key>` builds `session_key = f"agent:{aid}:{project_key}"`
-(`src/docket/cli/__init__.py`, the `scope` command) and persists it via the ACL
-(`_oc.meta_set` / `_oc.sync_session_key`). When a key is parsed back, the format and its two
-components are validated against the agent-id grammar:
+(`src/docket/cli/__init__.py`, the `scope` command) and persists it via `core/fleet.py`'s
+`meta_set` (both `projectKey` and `sessionKey`). The project key is **not** validated today and
+no parse-back validator exists (see the implementation note above); the intended check is:
 
 ```python
 import re
@@ -258,7 +272,7 @@ def validate_session_key(key: str) -> tuple[str, str]:
 ### 6. Command Action Validation
 
 **Field**: action / sub-command
-**Used By**: scope, workflow, team, keys, pod
+**Used By**: scope, keys, pod, gates, runs, pipeline, roles, conversations
 
 **Rules**:
 - **MUST** be from the allowed action list for that command
@@ -266,11 +280,12 @@ def validate_session_key(key: str) -> tuple[str, str]:
 - **MUST** have the required arguments
 
 **Actions by Command**:
-- scope: show, set, reset
-- workflow: create, list, show, delete, run
-- team: status, delegate, queue, done
-- keys: list, add, rotate, remove, sync
-- pod: (show), add, remove
+- scope: show (default), set, reset
+- keys: list (default), add, remove, rotate, validate, export, setup
+- pod: list (default), add, remove, set-verify, delegate, queue, dispatch
+
+(`docket workflow` and `docket team` were retired — D-16 and D-11 — and now print a
+removed-command notice instead of validating actions.)
 
 **Reference**: sub-commands and their required arguments are modelled directly in the Typer
 command signatures (`src/docket/cli/__init__.py` and the split groups under
@@ -285,8 +300,8 @@ if action == "set":
         ui.error(f"Project key required. Usage: docket scope {aid} set <project-key>")
         raise typer.Exit(1)
     ...
-elif action not in {"show", "set", "reset"}:
-    ui.error(f"Invalid scope action: {action}")
+else:  # anything other than show/set/reset
+    ui.error(f"Unknown action '{action}'. Use: show, set, or reset")
     raise typer.Exit(1)
 ```
 
@@ -301,7 +316,7 @@ elif action not in {"show", "set", "reset"}:
 - Value **SHOULD** match the provider's expected prefix / minimum length (a mismatch is a
   non-fatal warning, not a hard reject — keys from new providers must still be storable)
 
-**Provider Formats** (`_KEY_PREFIXES` in `src/docket/cli/__init__.py`, `(prefix, min_len)`):
+**Provider Formats** (`_KEY_PREFIXES` in `src/docket/cli/_keys.py`, `(prefix, min_len)`):
 - `ANTHROPIC_API_KEY`: prefix `sk-ant-`, min length 40
 - `OPENAI_API_KEY`: prefix `sk-`, min length 40
 - `GOOGLE_AI_API_KEY`: prefix `AIza`
@@ -343,13 +358,13 @@ model, or `core/` helper) before acting on it. Validators report failure by emit
 
 | Function / model | Module | Validates | Returns |
 |------------------|--------|-----------|---------|
-| `validate_agent_id` (id rule above) | `core` / `cli` add flow | Agent ID format, length, reserved words, uniqueness | `None`, or `typer.Exit(1)` |
-| `validate_path` (path rule above) | `core` helper | Tilde/absolute path, existence, readability, forbidden dirs | resolved `Path`, or `typer.Exit(1)` |
+| `validate_agent_id` (id rule above) — **not implemented** | — | Agent ID format, length, reserved words, uniqueness | `None`, or `typer.Exit(1)` |
+| `validate_path` (path rule above) — **not implemented** | — | Tilde/absolute path, existence, readability, forbidden dirs | resolved `Path`, or `typer.Exit(1)` |
 | `validate_model(model)` | `core/models_policy.py` | Provider/model id grammar, aliases, deprecated tiers | `(canonical, warnings)`, or raises `ValueError` |
-| `validate_number(raw, lo, hi, name)` | `cli` (typed `int` params) | Positive integer within range, no leading zeros | `int`, or `typer.Exit(1)` |
-| `validate_session_key(key)` | `core` helper | `agent:<id>:<project>` format and components | `(agent_id, project)`, or `typer.Exit(1)` |
+| `validate_number(raw, lo, hi, name)` — **not implemented**; typed `int` params only | — | Positive integer within range, no leading zeros | `int`, or `typer.Exit(1)` |
+| `validate_session_key(key)` — **not implemented** | — | `agent:<id>:<project>` format and components | `(agent_id, project)`, or `typer.Exit(1)` |
 | action matching | `cli/__init__.py`, `cli/_*.py` | Action is in the command's allowed set with required args | proceeds, or `typer.Exit(1)` |
-| `_validate_key_format(name, value)` | `cli/__init__.py` | Provider prefix / min length | `(ok, reason)` — caller warns on mismatch |
+| `_validate_key_format(name, value)` | `cli/_keys.py` | Provider prefix / min length | `(ok, reason)` — caller warns on mismatch |
 | `AgentMeta` | `core/models.py` | Whole `.docket-meta.json` record (kind/scope/type/model/keys) | parsed model, or `pydantic.ValidationError` |
 
 The **`AgentMeta`** Pydantic model in `src/docket/core/models.py` is the structural validator
@@ -482,6 +497,19 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.4.1 (2026-09-18)
+
+- Status corrected from `Complete` to `Partial`: `rg` finds no `validate_agent_id`,
+  `validate_path`, `validate_number`, `validate_session_key` or `confine_to_base` in `src/`, so the
+  §1 length/reserved-word, §2 forbidden-directory, §4 numeric and §5 session-key checks are
+  unimplemented. Marked those reference blocks and Functions-table rows as not implemented; the
+  MUST rules themselves are unchanged pending a maintainer decision.
+- Repointed stale references: the slugifier is `core/provisioning.py::slugify` (not
+  `cli/__init__.py::_slugify`); scope persistence is `core/fleet.py::meta_set` (the `_oc.meta_set`/
+  `_oc.sync_session_key` ACL is deleted); `_KEY_PREFIXES`/`_validate_key_format` live in
+  `cli/_keys.py`. Dropped the retired `workflow`/`team` action sets, corrected the `keys` and `pod`
+  action lists, and matched the `scope` unknown-action message to the code.
 
 ### Version 1.4.0 (2026-08-25)
 

@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.4.0
+**Version**: 1.4.1
 **Status**: Active
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-19
 
 ## Overview
 
@@ -49,8 +49,9 @@ Every story carries two checklists:
 - **Definition of Done** — the engineering bar (tests, docs, error handling) that MUST
   be satisfied before the story is closed.
 
-Criteria SHOULD be phrased so each line maps to at least one test. Stories whose criteria
-are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
+Criteria SHOULD be phrased so each line maps to at least one test. No script tracks
+story-to-test coverage: a criterion without a backing test is simply left unchecked here.
+(`scripts/validate-specs.sh` checks each spec's required sections, not story coverage.)
 
 ## Epic: Agent Management
 
@@ -79,24 +80,26 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 ### Story: AGT-002 - Reset Agent Memory
 
 **As a** developer
-**I want** to reset my agent's memory at different levels
+**I want** to clear my agent's memory at the right depth
 **So that** I can clear context when switching tasks or fixing issues
 
+The numbered reset levels were retired. The surface is `docket maintain <id> <mode>`.
+
 **Acceptance Criteria:**
-- [ ] Level 1 reset clears only daily logs
-- [ ] Level 2 reset also clears MEMORY.md and HEARTBEAT.md
-- [ ] Level 3 reset regenerates all configuration files
-- [ ] User is warned before destructive resets (level 2/3)
-- [ ] Reset preserves codebase path and type
-- [ ] Session key is regenerated only at level 3
-- [ ] Operation completes in under 3 seconds
-- [ ] Confirmation shows what was reset
+- [ ] `clean` clears only the daily memory logs (`memory/*.md`)
+- [ ] `reset` clears memory logs, MEMORY.md, and HEARTBEAT.md
+- [ ] `rebuild` regenerates SOUL.md, AGENTS.md, and TOOLS.md from `.docket-meta.json`
+- [ ] `clean` and `reset` distill pending logs into MEMORY.md first (one driver-backed turn) and
+      archive the originals; `--no-distill-first` opts out
+- [ ] A failed distillation aborts the delete: nothing is touched
+- [ ] `clean`, `reset`, and `rebuild` ask for confirmation and need a TTY; a non-interactive
+      call is cancelled, not applied
+- [ ] Every mode preserves identity (`.docket-meta.json`, including codebase path and session
+      key, and fleet registration)
 
 **Definition of Done:**
-- All three reset levels tested
-- Rollback possible if reset fails
-- Performance meets criteria
-- User documentation includes reset level guide
+- Each maintain mode tested, including the distill-first abort path
+- User documentation lists the modes (`docket maintain --help`, docs/commands.md)
 
 ### Story: AGT-003 - Monitor Agent Costs
 
@@ -106,15 +109,19 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 
 **Acceptance Criteria:**
 - [ ] Cost command shows tokens used (input/output/cache)
-- [ ] Recorded spend preserves its source; budget warnings label any usage-derived estimate
-- [ ] `--history [--days N]` shows daily usage-derived cost history
+- [ ] `Total cost` reads "none recorded for these sessions": `DocketDriver` records no dollar
+      spend, and `docket cost` never substitutes an estimate for it
+- [ ] The token × pricing estimate appears only in the pod-dispatch budget gate, always labelled
+      `(estimated — no cost recorded)`
+- [ ] `--history [--days N]` returns an empty history (known gap: sessions store no per-turn
+      timestamps; cost-tracking.spec.md)
 - [ ] Aggregates across all agents when no id is given
 - [ ] `--json` output available for scripting (cli-json-shapes.spec.md)
-- [ ] Budget warnings render at ≥80% and ≥100% of a configured cap
+- [ ] Budget warnings render at ≥80% and ≥100% of a configured cap (computed from recorded
+      spend, which is always 0 today, so they do not trip in production)
 
 **Definition of Done:**
 - Token totals match Docket's durable session records exactly
-- Performance handles 1000+ sessions (incremental cost index)
 - Budget warning thresholds implemented (display; enforcement per cost-tracking.spec.md)
 
 ## Epic: Team Coordination (Retired, D-11 / CH-4)
@@ -137,7 +144,7 @@ Lobster validator/planner authored, linted, and dry-ran a `.lobster.yml` templat
 executed one (conditional branching, calling other workflows, retries, and progress/token
 tracking were never implemented — a separate "Lobster daemon" was always meant to run the
 YAML, and it never existed). The single pipeline dialect docket actually executes lives in
-`pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its eventual executor (W-2); running
+`pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its executor (W-2, shipped); running
 `docket workflow <anything>` prints a removed-command notice pointing at the `docket pipeline
 validate`/`plan`/`run` names. The retired WF-001/WF-002 story bodies were removed when this
 epic was retired — git history retains them; the durable retirement record is ROADMAP decision
@@ -175,7 +182,7 @@ D-16.
 
 **Acceptance Criteria:**
 - [ ] Default gates for rm, git push, docker stop
-- [ ] Telegram approval workflow implemented
+- [ ] Telegram approval workflow implemented (`/approve`, `/deny`; inbound only)
 - [ ] Timeout for pending approvals (5 minutes)
 - [ ] Audit log of all approvals/denials
 - [ ] Emergency override with logging
@@ -186,7 +193,8 @@ D-16.
 **Definition of Done:**
 - Approval flow tested end-to-end
 - Telegram integration reliable
-- Audit logs tamper-proof
+- Audit log tamper-evident (hash-chained, checked by `docket audit verify`; erasure is made
+  visible, not prevented)
 - Documentation includes security guide
 
 ## Epic: Communication
@@ -202,8 +210,8 @@ D-16.
 - [ ] Commands accepted via messages
 - [ ] Responses formatted for mobile
 - [ ] File uploads/downloads supported
-- [ ] Approval requests sent as buttons
-- [ ] Status updates pushed proactively
+- [ ] Pending approvals discovered by sending `/status` (the channel is inbound-only by
+      design and never messages a chat first — telegram-integration.spec.md requirement 7)
 - [ ] Multiple agents per group supported
 - [ ] Secure token authentication
 
@@ -265,7 +273,7 @@ D-16.
 
 ```gherkin
 Given a clean docket installation
-When I run "docket add testapp ~/projects/app"
+When I run "docket init testapp ~/projects/app"
 Then the pod should be created successfully with members testapp-lead and testapp-implementer
 And workspaces should exist at ~/.docket/workspaces/projects/testapp-lead/ and testapp-implementer/
 
@@ -273,8 +281,9 @@ When I run "docket info testapp-lead"
 Then I should see the agent details
 And the session key should be "agent:testapp:default"
 
-When I run "docket maintain testapp-lead clean"
-Then memory logs should be cleared
+When I run "docket maintain testapp-lead clean" in a terminal and confirm
+Then pending memory logs should be distilled into MEMORY.md and archived
+And the daily memory logs should be cleared
 But SOUL.md should remain unchanged
 
 When I run "docket delete testapp"
@@ -298,7 +307,7 @@ Then I should see:
   | Output Tokens | 25,000         |
   | Total cost    | none recorded for these sessions |
 
-And the total should be labelled as an estimate derived from measured session usage
+And no dollar figure, recorded or estimated, should be printed as the total
 ```
 
 ## Epic: Pod Lifecycle (Phase 10)
@@ -310,12 +319,13 @@ And the total should be labelled as an estimate derived from measured session us
 **So that** each project gets its own Lead + Implementer with no shared state
 
 **Acceptance Criteria:**
-- [ ] `docket add myapp ~/code/myapp` creates `myapp-lead` and `myapp-implementer`
+- [ ] `docket init myapp ~/code/myapp` creates `myapp-lead` and `myapp-implementer`
 - [ ] Each member gets an isolated workspace at `~/.docket/workspaces/projects/<member-id>/`
 - [ ] All members share the pod's session key `agent:myapp:default`
 - [ ] `docket pod myapp` lists the pod members with their roles
-- [ ] `docket add myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
-- [ ] A second `docket add myapp` is idempotent — does not recreate existing members
+- [ ] `docket init myapp ~/code/myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
+- [ ] A second `docket init myapp` fails with "A project or pod 'myapp' already exists." (exit 1)
+      and does not touch the existing members
 - [ ] `docket delete myapp` removes all pod members and their workspaces
 
 **Definition of Done:**
@@ -331,11 +341,18 @@ And the total should be labelled as an estimate derived from measured session us
 
 **Acceptance Criteria:**
 - [ ] `docket pod myapp delegate "<task>"` queues a task on the Lead's TASK_LIST.json
-- [ ] `docket pod myapp queue` shows the task with status `pending` and recorded cost `$0.00`
+- [ ] `docket pod myapp queue` shows the task with status `pending` and `—` in the COST column
+      (no cost is recorded)
 - [ ] `docket pod myapp dispatch` runs Lead → Implementer → (Reviewer) → (Tester), one real LLM turn per hop
-- [ ] Each hop is budget-gated: if the Lead's spend cap is exceeded the task is set to `blocked` (never rewritten to `pending`) and the Lead is paused; it re-enters the queue only via `docket profile <lead-id> --resume` or `docket pod <project> queue --retry <task-id>`
+- [ ] A Reviewer REQUEST-CHANGES sends the task back to the Implementer for one rework cycle by
+      default; a Tester FAIL is terminal
+- [ ] Each hop is budget-gated against the Lead's `budgetUsd` (using the labelled estimate, since
+      recorded spend is always 0). Over the cap, the task is set to `blocked` (never rewritten to
+      `pending`) and the Lead is paused. The task re-enters the queue only via
+      `docket profile <lead-id> --resume`, `docket profile <lead-id> --budget <USD>`, or
+      `docket pod <project> queue --retry <task-id>`
 - [ ] Each hop emits a trace event visible in `docket trace tail myapp`
-- [ ] After completion, `docket pod myapp queue` shows the task as `done` with recorded cost
+- [ ] After completion, `docket pod myapp queue` shows the task as `done` (COST stays `—`)
 
 **Definition of Done:**
 - Dispatch pipeline covered by live-path tests with a deterministic `ChatBackend`
@@ -352,7 +369,8 @@ And the total should be labelled as an estimate derived from measured session us
 - [ ] `docket pod myapp add reviewer` adds `myapp-reviewer` to an existing pod
 - [ ] `docket pod myapp add implementer --count 2` adds `myapp-implementer-2` and `myapp-implementer-3`
 - [ ] `docket pod myapp remove myapp-reviewer` removes that member and its workspace
-- [ ] A second `docket pod myapp add reviewer` rejects adding a duplicate when one already exists
+- [ ] A second `docket pod myapp add reviewer` adds `myapp-reviewer-2`, since duplicated roles
+      get indexed ids
 - [ ] `docket pod myapp add lead` is rejected — a pod may have only one Lead
 - [ ] `docket pod myapp` always reflects the current state after add/remove
 
@@ -378,6 +396,22 @@ And the total should be labelled as an estimate derived from measured session us
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.4.1 (2026-09-19)
+- Doc-truth pass against the shipped CLI, no behavior change:
+  - Dropped the nonexistent `spec-coverage.sh`.
+  - Rewrote AGT-002 from the retired numbered reset levels to `docket maintain`
+    `clean`/`reset`/`rebuild`, with distill-first and abort-on-failed-distill.
+  - AGT-003 and the cost scenario now match `docket cost`: no recorded dollars, the estimate
+    only in the dispatch gate, `--history` always empty. The nonexistent "incremental cost
+    index" is gone.
+  - Scenarios and POD-001 use `docket init`, not `docket add`, which no longer creates projects.
+    A repeat `init` errors instead of being idempotent.
+  - POD-002: the queue shows `—` for cost, the budget gate uses the labelled estimate,
+    `--budget` also unblocks, and the rework/terminal verdict rules are stated.
+  - POD-003: a duplicate Reviewer is indexed, not rejected.
+  - Replaced COM-001's proactive-push and button criteria, and SEC-002's "tamper-proof", with
+    the inbound-only and tamper-evident contracts.
 
 ### Version 1.4.0 (2026-08-19)
 - W21-C1 daemon-free truth pass: replaced the retired daemon's status/path/cost language with

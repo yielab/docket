@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.4.0
+**Version**: 1.4.1
 **Status**: Implemented
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -36,9 +36,10 @@ It does NOT cover:
 ## Design constraint: a server, never a host
 
 `docket mcp serve` exposes docket's own control plane as MCP tools for an external client to
-call. It MUST NOT become an MCP *host* — docket executing other MCP servers' tools inside an
-agent turn is the "standalone-runtime trap" the ROADMAP's Phase 18 program explicitly refuses.
-This server has no notion of an upstream MCP server to call; it only ever answers requests.
+call. It MUST NOT become an MCP *host*: this server has no notion of an upstream MCP server to
+call; it only ever answers requests. Docket consuming external MCP servers' tools inside an agent
+turn does exist since decision D-19 (docket owns the loop), but it lives in `core/mcp_tools.py`
+and `DocketDriver.run_turn` (see `mcp-client.spec.md`), never in this server.
 
 ## Design constraint: through the governance spine, not around it
 
@@ -68,8 +69,9 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
 docket mcp serve
 ```
 
-`docket mcp` with no subcommand, or any subcommand other than `serve`, prints usage (to stderr —
-see stdio discipline below) and exits: `0` for no subcommand, `1` for an unrecognized one.
+`docket mcp` with no subcommand, or any subcommand other than `serve` or `servers` (the MCP
+client configuration commands, see `mcp-client.spec.md`), prints usage (to stderr — see stdio
+discipline below) and exits: `0` for no subcommand, `1` for an unrecognized one.
 
 ## Transport
 
@@ -244,13 +246,15 @@ that changed nothing.
 
 ### `cost`
 
-**Purpose**: Daemon-**recorded** USD spend — one agent or the whole fleet.
+**Purpose**: **Recorded** USD spend — one agent or the whole fleet.
 **Arguments**: `agent_id` (string, optional) — one agent's totals; omitted for the whole fleet.
 **Output**: `{"agents": [...], "totalUsd": ...}` (matches `docket cost --json`) when `agent_id` is
 omitted; a single agent's cost record when given.
 **Failure modes**: raises if `agent_id` is given but not a known project agent.
-**Cost-reporting discipline**: this figure is the daemon's recorded spend from session data —
-never a projected/estimated figure, and never presented as a dollar *savings* claim (a standing
+**Cost-reporting discipline**: this figure is recorded spend from session data, which is always
+`0.0` today because `DocketDriver` records measured tokens but no dollar figure; the
+`MODEL_PRICING` estimate `docket cost` shows is not returned here. It is never a
+projected/estimated figure, and never presented as a dollar *savings* claim (a standing
 product discipline across every docket cost surface — see `cost-tracking.spec.md`).
 
 ## Arguments
@@ -311,7 +315,7 @@ uv sync --extra mcp
 An MCP client is configured to launch `docket mcp serve` as a stdio subprocess — see that
 client's own documentation for how it registers a local MCP server (docket does not provide or
 require any client-side configuration file of its own; this is intentionally the client's
-concern, not docket's — see the Phase 18 L-4 scope note above).
+concern, not docket's — see Scope above).
 
 ### A representative tool call/response (status)
 
@@ -321,10 +325,10 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
 {
   "apiVersion": "2",
   "timestamp": "2026-07-30T12:00:00Z",
-  "gateway": "active",
+  "gateway": "inactive",
   "channels": ["telegram"],
   "agents": [ /* ... */ ],
-  "totalCostUsd": 0.4213
+  "totalCostUsd": 0.0
 }
 ```
 
@@ -339,6 +343,16 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
 ```
 
 ## Changelog
+
+### Version 1.4.1 (2026-09-18)
+
+- Alignment pass, no tool contract change. "A server, never a host" no longer says docket refuses
+  to execute other MCP servers' tools in a turn: since D-19 it does, through `core/mcp_tools.py`,
+  and this server still never calls upstream. Syntax now names `servers` as a recognized
+  subcommand beside `serve`. `cost` no longer says "daemon-recorded": the recorded figure is
+  always `0.0` (`DocketDriver`). The `status` example now shows `"gateway": "inactive"` and
+  `totalCostUsd: 0.0`, the only values the code can return. Dropped a pointer to the removed
+  L-4 scope note.
 
 ### Version 1.4.0 (2026-08-19)
 

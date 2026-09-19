@@ -95,7 +95,7 @@ cli/  ->  core/  ->  edges/
 - **`cli/`** (Typer + Rich) — argument parsing, the interactive picker, and every line of
   Rich-rendered output. This is the only layer allowed to talk to the user; a command aborts by
   raising `typer.Exit` and renders whatever typed result `core/`/`edges/` handed back (a
-  `RestartResult`, a `Drift` list, a `TaskResult`) through `ui.py`'s `info`/`success`/`warn`/
+  `TaskResult`, a `VerifyResult`, a `CompactionResult`) through `ui.py`'s `info`/`success`/`warn`/
   `error` helpers.
 - **`core/`** (Pydantic models + pure services) — the domain: agent data models, role→model
   policy, dispatch's state machine, security/approval/audit/trace/policy logic.
@@ -103,8 +103,8 @@ cli/  ->  core/  ->  edges/
   typed result for `cli/` to render.
 - **`edges/`** (the only side-effecting layer) — `edges/store.py` is the single chokepoint for
   every docket-owned JSON read/write (atomic, filelocked, 0600 permissions, `.bak` rotation);
-  `edges/adapters/system.py` wraps every shell-out to `systemctl`/`docker`/`git`, degrading
-  gracefully when a binary is missing so docket still runs on a systemd-less host.
+  `edges/adapters/system.py` wraps every shell-out to `docker`/`bwrap`/`git`, degrading
+  gracefully when a binary is missing.
 
 This is not a style preference — it is enforced by what each layer is allowed to import, and a
 couple of the newest modules in the tree exist specifically to keep the boundary from eroding (see
@@ -117,16 +117,15 @@ Anti-Corruption Layer owned that daemon's state shape, every agent turn ran in i
 config changes restarted its gateway. **Phase 19 (decision D-19) removed that architecture
 outright, not incrementally.** There is no external agent binary, shared daemon config,
 auth-profile store, ACL module, or gateway service to restart —
-`edges/adapters/system.py`'s `restart_gateway()`/`gateway_active()` are kept
-as stable, always-no-op/always-`False` call sites (so the ~20 pre-existing call sites across
-`cli/` need no individual rewrite), not a live integration. docket runs the agent turn itself
+`edges/adapters/system.py`'s `gateway_active()` survives only as a stable, always-`False` call
+site, not a live integration. docket runs the agent turn itself
 (`core/agent_loop.py`) and talks through one non-streaming OpenAI-compatible chat-completions
 adapter; built-in gateways or explicitly registered compatible endpoints supply the base URL
 (`edges/adapters/llm.py`, stdlib `urllib`, no vendor SDK).
 
 This was a scope ruling, not a migration: **no compatibility layer, no migration steps** — a
-pre-Phase-19 install's files at retired daemon-relative paths are simply not read again; `docket
-install` re-creates a docket-native home from scratch under `~/.docket/` (`DOCKET_HOME`).
+pre-Phase-19 install's files at retired daemon-relative paths are simply not read again; the first
+`docket init` creates a docket-native home from scratch under `~/.docket/` (`DOCKET_HOME`).
 
 ### The RuntimeDriver port (decision D-14)
 
@@ -186,7 +185,8 @@ began — for example a missing `DOCKET_LLM_BASE_URL`, a `DOCKET_HOME` that reso
 operator's own default home, or `DOCKET_NO_TRACE=1` (harness mode refuses to run unobserved rather
 than run silently).
 
-The contract is versioned (`harness_contract_version`, currently `1.0.0`) and published: its JSON
+The contract is versioned (every line carries a `v` field, `HARNESS_CONTRACT_VERSION`, currently
+`1.0.0`) and published: its JSON
 Schema is generated from the Pydantic models in `core/harness.py` at
 [`docs/contracts/harness-v1/schema.json`](contracts/harness-v1/schema.json) and pinned
 byte-for-byte by a regenerate-and-diff test, with example transcripts at
@@ -221,10 +221,14 @@ retired along with the daemon rather than kept around for a problem that no long
 
 ### Durable state docket owns
 
-docket's own turn loop keeps no durable transcript of its own — live conversation context is lost
-on reset or compaction unless something outside the loop preserves it. docket fills that gap with
-a handful of small, docket-owned stores, all under `~/.docket/`:
+A model's context window is lost on reset, so docket keeps a handful of small, docket-owned
+stores, all under `~/.docket/`:
 
+- **Session history** (`core/session.py`, `$SESSIONS_DIR`, default `~/.docket/sessions/`) —
+  durable per-session message history, loaded by `core/agent_loop.py` before each turn and
+  appended after it. Once a session outgrows the role's budget it is compacted on the live turn
+  path: older messages are summarised, and an assistant tool call is never separated from its
+  tool results.
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
   docket-owned region inside its `## Active Tasks` list that `core/dispatch.py` upserts
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
@@ -239,8 +243,12 @@ a handful of small, docket-owned stores, all under `~/.docket/`:
 - **The audit log** (`core/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
   `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket audit verify` can
-  walk the chain and report the first broken link; a missing file, a pre-chain legacy line, or the
-  first entry after a size-triggered rotation are honest chain restarts, not tampering. There is
+  walk the chain and report the first broken link; a missing file or a pre-chain legacy line is an
+  honest chain restart, not tampering. Rotation does **not** restart the chain: the first entry
+  after a size-triggered rotation names the generation it continues, checked against the single
+  backup (`audit.log.1`), and an unsubstantiated claim is reported as a break. That makes erasure
+  *evident*, not impossible — deleting `audit.log` and `audit.log.1` together still looks like a
+  fresh install, and only one rotation back is verifiable. There is
   no environment kill switch — recording is best-effort (a write failure never raises) but cannot
   be silently disabled.
 - **Traces** (`core/trace.py`, `$TRACES_DIR/<project>/<session_id>.jsonl`) — one append-only file
@@ -248,10 +256,10 @@ a handful of small, docket-owned stores, all under `~/.docket/`:
   guardrail trips, budget warnings). `docket trace`/`docket metrics` read this store;
   `DOCKET_NO_TRACE=1` disables writes.
 
-None of these four stores goes through `edges/store.py`'s locked read-modify-write path the same
-way — audit and trace are exempt by design (line-independent JSONL appends, not a whole-document
-read-modify-write), while the conversation registry and the dispatch queue backing the ledger do
-use `store.py`.
+These stores do not all go through `edges/store.py`'s locked read-modify-write path — audit and
+trace are exempt by design (line-independent JSONL appends, not a whole-document
+read-modify-write), while session history, the conversation registry and the dispatch queue
+backing the ledger do use `store.py`.
 
 ---
 
@@ -497,6 +505,12 @@ acceptance-criteria files.
 
 **Model:** cheap class (role policy) (validation is mechanical)
 
+**MCP tools.** Tools from configured external MCP servers (`docket mcp servers`) reach a live turn
+through the same chokepoint, namespaced `mcp__<server>__<tool>`. Denials apply by capability, not
+by name, and every MCP tool is registered as write-capable because nothing can prove a remote tool
+is read-only. So a role that denies `write` (Lead, Reviewer, Tester) gets **zero** MCP tools, not
+a narrowed subset; the Implementer gets all of them.
+
 ## Org Specialists
 
 Shared across all projects, created lazily by the first `docket init`. The `manager` is a cross-cutting
@@ -583,7 +597,11 @@ same tool-call gate and high-risk classifier every agent's calls pass through.
 **Role:** Cross-pod planning and visibility surface (opt-in)
 
 Provisioned only by `docket init --portfolio`, which adds **one** `portfolio-manager`
-(`scope: org`). It is a fleet-wide advisory layer, never a pod member.
+(`scope: org`). The flag is read only by the first `docket init`, the one that builds the shared
+foundation. It is a fleet-wide advisory layer, never a pod member. No dispatch path runs a turn
+for an org specialist, so today the Portfolio Manager is a provisioned workspace with no
+conversational entry point: Telegram accepts only four verbs and `/delegate` works only for a
+pod Lead binding.
 
 **Capabilities:**
 - Sees fleet **metadata** — which pods exist, their queues, budgets, and health
@@ -693,9 +711,9 @@ docket doctor --fix
 
 `docket maintain <id> distill` summarizes an agent's pending daily logs into `MEMORY.md` and
 archives the originals into `memory/.distilled/<day>/` rather than deleting anything outright.
-This is docket's first *self-originated* LLM call (decision D-18): docket asks a pod's own Lead
-(or a utility agent) to write the summary, through the same `RuntimeDriver.run_turn` every
-dispatch hop uses — no new SDK dependency, no direct provider call.
+This is docket's first *self-originated* LLM call (decision D-18): docket runs one turn as the
+agent whose memory is being distilled to write the summary, through the same
+`RuntimeDriver.run_turn` every dispatch hop uses — no new SDK dependency, no direct provider call.
 
 `docket maintain <id> clean` and `reset` run distillation **first by default** before their own
 memory-clearing step (`--no-distill-first` opts back out to the old bare-delete behavior) — so
@@ -712,8 +730,10 @@ delete proceeds normally.
 Three automatic layers — instruction-level SOUL.md constraints (never commit/push/delete without
 instruction), the Reviewer's 6-point checklist (prompt-injection patterns, hardcoded secrets,
 SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-only veto, and a
-final human `git diff` review. Enforced tool-approval gates, a headless approval channel, and
-Docker workspace isolation layer on top and are **on by default** for new installs. Full detail,
+final human `git diff` review. The enforced tool-call gate (policy engine plus argument-aware
+high-risk command classifier) is always active and cannot be turned off, and an `ask` verdict can
+be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). Docker/bwrap workspace
+isolation is **opt-in** (`docket gates isolate on`). Full detail,
 including the exact reviewer checklist and gate/approval-channel mechanics, lives in
 **[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)** — this section intentionally isn't a second copy.
 
@@ -737,7 +757,7 @@ reasoning-density) or the **strong class** (reasoning-dense):
 
 | Class  | Roles                                                    | Why                              |
 |--------|----------------------------------------------------------|----------------------------------|
-| Cheap  | Lead, Manager, Reviewer, Tester, Knowledge, task agents  | High-volume or mechanical work   |
+| Cheap  | Lead, Manager, Reviewer, Tester, Knowledge, Portfolio Manager | High-volume or mechanical work |
 | Strong | Implementer, Security, repo agents                       | Code writing / security reasoning|
 
 Change the policy for a role with `docket models set <role> <provider/model>`, or switch all
@@ -876,7 +896,7 @@ step doesn't declare one — its role archetype's `gateContract`:
 - **`verdict`** — match the first non-blank line of a hop's output against a configured regex
   set; a match in the gate's `passValues` advances the pipeline. This generalizes the Reviewer's
   APPROVE/REQUEST-CHANGES and the Tester's PASS/FAIL to an arbitrary marker vocabulary for any
-  archetype (a `critic`'s SOURCES-VERIFIED/UNVERIFIED, for instance). A verdict gate can carry a
+  archetype (the `critic` starter's APPROVE/REJECT, for instance). A verdict gate can carry a
   bounded `rework` edge — a REQUEST-CHANGES re-runs a target step (by default, back to the
   Implementer) up to a configured cycle budget (`maxReworkCycles`, default `1`) before a second
   rejection fails the task terminally. There is no fixed "3 retries then escalate to a human
@@ -978,12 +998,14 @@ See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full role model details.
 
 ### Q: Do I need to change how I use docket?
 
-**A:** No. `docket init` creates the org specialists and `docket init <project>`
-provisions each project's pod with the right templates. Everything else works the same.
+**A:** No. The first `docket init` creates the org specialists as part of the shared foundation,
+and every `docket init` (run in a project directory, or `docket init <project> [path]`) provisions
+that project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
-**A:** No. Templates are generated per-pod by `docket add` and refreshed by
+**A:** No. Templates are generated per-pod by `docket init` (and per member by `docket add`) and
+refreshed by
 `docket maintain <id> rebuild`:
 - Org specialists (manager, knowledge, security) are created lazily by the first `docket init`
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
@@ -1025,9 +1047,10 @@ Inspect the boundary or copy the lazy constructors from
 
 ## Next Steps
 
-1. **If not installed:** `docket init` (creates org specialists)
-2. **Add a project pod:** `docket init <project>` (provisions lead + implementer)
-3. **Inspect context:** `docket context <project> show` (quick per-project view)
+1. **First project:** `docket init` in the project directory (the first run also creates the org
+   specialists; the pod is a lead + implementer)
+2. **Add another project pod:** `docket init <project> [path]`
+3. **Inspect context:** `docket context <project>-lead show` (quick per-agent view)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (measured tokens + a labelled estimate)
 
@@ -1047,6 +1070,6 @@ Inspect the boundary or copy the lazy constructors from
 
 ---
 
-**Last Updated:** 2026-09-12
+**Last Updated:** 2026-09-18
 **Status:** Implemented, automated-test-backed — not yet field-hardened (see the beta warning at
 the top of this document)

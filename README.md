@@ -42,7 +42,7 @@ flowchart LR
     G -- "zero" --> R{"Reviewer\n(optional, read-only)"}
     R -- "changes requested" --> I
     R -- "approved" --> T{"Tester\n(optional, PASS/FAIL)"}
-    T -- "reworkable failure" --> I
+    T -- "fail" --> F
     T -- "pass" --> V[("Run + trace + audit evidence")]
 ```
 
@@ -85,8 +85,10 @@ flowchart LR
     G --> I[("Trace Evidence")]
 ```
 
-This is `core/tools.py`'s `dispatch_tool` chokepoint. Every built-in tool and every MCP-registered
-external tool passes through it — there is no code path that reaches a handler another way.
+The policy, classifier and approval steps are `core/tools.py`'s `dispatch_tool` chokepoint; the
+budget check runs before each pod-dispatch hop. Every built-in tool and every MCP-registered
+external tool passes through the chokepoint — there is no code path that reaches a handler another
+way.
 
 <p align="center">
   <img src="docs/assets/governance.png" alt="Real terminal output: an Implementer's git push origin production is held for approval by the high-risk-deploy policy, nobody answers, and the call is denied on timeout without executing; the audit chain then verifies clean" width="820">
@@ -109,17 +111,19 @@ The guarantees that matter before letting autonomous agents touch a production c
 - **Tamper-evident audit trail.** Every policy verdict, approval decision and tool execution is
   written to a hash-chained JSONL log, tagged with the channel that decided (CLI, HTTP, MCP or
   Telegram). `docket audit verify` detects a broken chain.
-- **Deterministic budget control.** Per-agent USD caps (`docket profile <id> --budget`) auto-pause a
-  pod the moment they are reached — new tasks are left `blocked`, never silently retried against a
-  cheaper path. Token counts are measured; the dollar figure is a labelled estimate.
-- **Explicit dispatch only.** No background token spend from a queued task. `docket pod <id>
-  dispatch` or an authenticated `POST /dispatch/<project>` triggers a paid run; nothing else does.
+- **Deterministic budget control.** A pod's USD cap (`docket profile <lead-id> --budget`) is checked
+  before every dispatch hop and auto-pauses the pod once it is reached — new tasks are left
+  `blocked`, never silently retried against a cheaper path. Token counts are measured; the dollar figure is a labelled estimate.
+- **Explicit dispatch only.** A queued task never runs on its own. `docket pod <id> dispatch`, an
+  authenticated `POST /dispatch/<project>`, the MCP `dispatch` tool, or an opt-in schedule or
+  `docket serve --dispatch` sweep triggers a paid run; nothing else does.
 - **Evidence that outlives the turn.** Task, run, approval and token counts stay queryable
   afterwards, and each pod's `HEARTBEAT.md` ledger is kept in sync at claim, hop and finalize, so
   the record survives a context reset even if the agent wrote nothing itself.
 - **A read API to feed your own dashboard.** `/status.json` and `/metrics` expose pod and run
-  health to an external control plane over authenticated HTTP. docket feeds a dashboard; it does
-  not ship one.
+  health to an external control plane over loopback HTTP; the task, trace, run, approval and
+  dispatch routes additionally require a Bearer token. docket feeds a dashboard; it does not ship
+  one.
 
 ## Features
 
@@ -158,8 +162,9 @@ repository. That is the fastest path to a governed turn, and the quick start bel
 **As a non-interactive harness**, `docket harness run` executes one agent for one turn, to
 completion, in a workspace and `DOCKET_HOME` the caller supplies, streaming newline-delimited
 events on stdout and finishing with a single versioned result. It is built for an external
-plan-of-record that spawns docket as a subprocess; the wire contract is published and test-pinned
-under [docs/contracts/harness-v1/](docs/contracts/harness-v1/). It runs one agent, not a pod, and
+plan-of-record that spawns docket as a subprocess; the wire contract's schema is published under
+[docs/contracts/harness-v1/](docs/contracts/harness-v1/) and pinned by the fixtures in
+`tests/fixtures/harness-contract/v1/`. It runs one agent, not a pod, and
 it never waits for a human: a call that would need approval ends the run as `blocked`, naming the
 tool, the call and the reason, without executing it. The exit status is machine-readable — 0
 completed, 1 ran and ended badly, 2 refused before any turn began — and `docket harness status`
@@ -238,7 +243,7 @@ reads once; they are not mechanically enforced. Full reference:
 
 Start with the minimum Lead + Implementer pod and add a Reviewer or Tester once a concrete quality
 gate justifies the extra turns. Give the Implementer an objective check with `docket pod <id>
-set-verify "<command>"`, so advancement blocks on a nonzero exit code rather than on how confident
+set-verify <member> "<command>"`, so advancement blocks on a nonzero exit code rather than on how confident
 the model's prose sounds. Keep dispatch explicit before enabling schedules or `docket serve
 --dispatch`, and confirm budgets and approval channels first. Inspect the run, trace, token usage
 and audit chain before accepting a consequential change. Keep docket behind your own boundary:

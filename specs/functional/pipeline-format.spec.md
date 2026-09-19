@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.2.0
+**Version**: 2.2.1
 **Status**: Implemented — format, executor, and variable resolution. The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch
 state machine, and the `docket pipeline validate|plan|run` CLI surface, now exist — see
@@ -10,7 +10,7 @@ caller-supplied `{name: value}` mapping (the serve webhook's JSON body, today) i
 against a spec's declared `variables` before dispatch. This spec still owns only the format
 itself plus that resolution function — interpolating a resolved value into a hop's prompt or
 environment remains unbuilt (see Requirement 4 below).
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -55,26 +55,9 @@ This specification does NOT cover:
   "Cancellation" sections.
 - **The `docket pipeline`/`docket runs cancel` CLI surface itself** (argument shapes, exit codes,
   `--file`/`--resume`/`--timeout` flags) — see `cli-interface.spec.md`. This spec covers only the
-  document format `docket pipeline validate`/the executor read.
-- **The Lobster dialect itself**, its validator, or its retirement — see `workflow-integration.
-  spec.md` and ROADMAP decision D-16 / Phase 16 card W-3 (`docket workflow` still serves Lobster
-  unchanged; W-3 is a separate, not-yet-landed card that retires it in favor of `docket pipeline`).
-
-- **Execution.** No executor for this format exists yet. `core/pipeline.py` never runs a step,
-  spawns a process, or contacts a daemon — it only parses and validates a document into typed
-  Python objects. Running a `PipelineSpec` over the pod-dispatch state machine (`pod-dispatch.
-  spec.md`), a bounded worker pool, per-step trace spans, and cancellation is ROADMAP Phase 16
-  card **W-2**, tracked separately and not built by this card.
-- **A CLI surface.** No `docket pipeline ...` command reads or writes this format yet — wiring one
-  up is ROADMAP Phase 16 card **W-2**'s job, tracked separately and not built by this card.
-  `docket workflow` (the old Lobster surface) was retired outright by **W-3** (D-16), not
-  migrated onto this format — it now prints a removed-command notice pointing at the eventual
-  `docket pipeline validate`/`plan`/`run` names. This spec's functions are called directly by
-  Python today, with no CLI wired to either format.
-- **A `plan`-style dry-render.** ROADMAP is explicit that a future `docket pipeline plan` must
-  render from the real executor, not a second pretty-printer that can drift from it. Building one
-  now — before an executor exists to drift from — would be exactly that drift-prone second
-  printer, so none is built here.
+  document format `docket pipeline validate`/the executor read. `docket pipeline plan` renders
+  from the real executor's `core.orchestrator.resolve_plan`/`render_plan`, not a second
+  pretty-printer.
 - **The Lobster dialect itself**, its validator, or the mechanics of its retirement — see ROADMAP
   decision D-16 / Phase 16 card W-3, the durable retirement record (the former
   `workflow-integration.spec.md` was deleted per `specs/README.md`'s retired-spec convention).
@@ -85,8 +68,8 @@ This specification does NOT cover:
   archetype-gateContract fallback when a step omits its own `gate`) is the executor's job
   (`core.orchestrator.resolve_gate`), documented in `pod-dispatch.spec.md`, not this format's.
 - **Pod provisioning / blueprints** (which roles a pod actually has, `--count N` duplicate
-  members, workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7
-  (not yet shipped). This spec only defines how a *step* may target a role or a specific member
+  members, workspace kind) — see `workspace-structure.spec.md` and `pod-blueprints.spec.md`
+  (ROADMAP Phase 16 card W-7, shipped). This spec only defines how a *step* may target a role or a specific member
   id; whether that role or id exists in a given pod is resolved at execution time — see
   `pod-dispatch.spec.md`'s `pod_full_roster`/`resolve_plan`.
 - **Approval-gated dispatch's runtime semantics** (tokens, timeout-resolves-to-denied, the
@@ -184,8 +167,9 @@ This specification does NOT cover:
    unparseable. A marker mentioned later in prose is not a match, and scanning never falls back to
    substring search.
 4. **`approval`** — an optional `message` (`str`, default `""`) shown to whoever grants the
-   approval. This format defines only the gate's shape; wiring it to docket's approval store
-   (tokens, grant/deny, timeout-resolves-to-denied) is Phase 15 G-1 / W-2's job, not this spec's.
+   approval. This format defines only the gate's shape; its wiring to docket's approval store
+   (tokens, grant/deny, timeout-resolves-to-denied) shipped with Phase 15 G-1 / W-2 and is
+   specified in `pod-dispatch.spec.md` and `security-gates.spec.md`, not here.
 
 ### Rework edges
 
@@ -212,8 +196,9 @@ This specification does NOT cover:
 ### Parallel groups
 
 1. A step **MAY** be a **parallel group** instead of a unit step: it sets `parallel` to a
-   non-empty list of unit steps that (once an executor exists) run concurrently — e.g. one per
-   `--count N` duplicate role member of a pod.
+   non-empty list of unit steps that the executor runs concurrently on a bounded worker pool
+   (`pod-dispatch.spec.md`'s "Parallel step groups") — e.g. one per `--count N` duplicate role
+   member of a pod.
 2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, or
    `timeout` at the group level — only its children carry those; declaring any of them on the
    group itself **MUST** be a validation error.
@@ -399,14 +384,26 @@ steps:
   longer have a dispatch-private regex constant to cross-check against (W-8 deleted
   `core/dispatch.py`'s own hardcoded copy once gate execution went generic) — the drift guard is
   now that `core.orchestrator.resolve_gate`'s archetype-gateContract fallback (a bare `role:
-  reviewer`/`role: tester` step with no `gate` of its own) produces the byte-identical
-  pattern/passValues `default_pipeline()`'s explicit gates declare, checked by the same test class
-  and by `tests/integration/test_archetypes.py`.
+  reviewer`/`role: tester` step with no `gate` of its own) produces the byte-identical `pattern`
+  and case-insensitively equal `passValues` (`APPROVE`/`PASS` from the archetype, `approve`/`pass`
+  in `default_pipeline()`; both gates are `caseSensitive: false`) that `default_pipeline()`'s
+  explicit gates declare, checked by the same test class and by
+  `tests/integration/test_archetypes.py`.
 - This format module itself (`core/pipeline.py`) still contains no executor, CLI command, or
   dry-run renderer — those now exist, but in `core/orchestrator.py` and `cli/_pipeline.py`
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.2.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Removed three stale "Does NOT cover" bullets left over from
+  1.0.x that contradicted the current ones: "no executor exists yet", "no `docket pipeline` CLI",
+  and "no plan renderer". Also removed a duplicate Lobster bullet claiming `docket workflow`
+  still serves Lobster (W-3 retired it). Marked W-7 blueprints as shipped. The approval gate's
+  wiring is now described as shipped, and parallel groups as run by the executor's bounded pool.
+  The zero-migration drift-guard invariant now says `passValues` agree case-insensitively, as
+  the test asserts, rather than byte-for-byte.
 
 ### Version 2.2.0 (2026-08-30)
 

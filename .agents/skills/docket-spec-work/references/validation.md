@@ -10,7 +10,7 @@ spec gates rather than selecting one row.
 | Comments / docstrings | policy in ROADMAP §3 and `CONTRIBUTING.md` | `uv run python scripts/maint/comment_lint.py --check <touched files>` |
 | Prose, artifacts, agent scripts | agent-lane file with `LANE`/`REASON`/`RETIRE_WHEN` | `uv run pytest tests/agent` (job `agent-lane`) |
 | Types/lint | changed module | `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src` |
-| CLI text/shape | focused CLI pytest | `bash tests/golden/run.sh verify-all` |
+| CLI text/shape | focused CLI pytest | `bash tests/golden/run.sh verify-all`, `uv run python scripts/gen_cli_docs.py --check` (CI job `docs`) |
 | Spec | owning spec requirement/changelog | `bash scripts/validate-specs.sh` |
 | README numeric claim | relevant local assertion | `uv run python scripts/metrics.py --check` |
 | Packaging/dependency floor | wheel/import or focused package test | CI-equivalent floor check only when bounds/build change |

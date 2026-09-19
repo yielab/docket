@@ -14,13 +14,13 @@
 ### 1. Engineer (You)
 The human who:
 - Creates projects (each becomes a **pod**)
-- Sends tasks (CLI `docket pod … delegate`, or Telegram to a pod's Lead)
+- Sends tasks (CLI `docket pod … delegate`, or `/delegate` from a Telegram chat bound to a pod's Lead)
 - Reviews diffs and commits the code
 - Makes architectural decisions and approves any HITL gates
 - Sets budget caps and watches measured token usage
 
 ### 2. Project Pods
-One **pod per project/codebase**, created with `docket add`. A pod is a small team of
+One **pod per project/codebase**, created with `docket init`. A pod is a small team of
 project-scoped agents (`scope: project`) that owns exactly one codebase — never shared with
 another project:
 
@@ -41,7 +41,7 @@ the whole fleet (`scope: org`):
   per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
-- **portfolio-manager** *(optional, `docket init --portfolio`)* — advisory cross-pod
+- **portfolio-manager** *(optional, `docket init --portfolio` on the first init)* — advisory cross-pod
   planner over fleet *metadata* (which pods exist, their queues, budgets, health). Never a pod
   member, never edits code, never dispatches into pods.
 
@@ -78,7 +78,7 @@ namespace (`agent:<project>:…`), its own queue. **There is no cross-pod dispat
 
 ---
 
-## End-to-End: a pod from `add` to committed code
+## End-to-End: a pod from `init` to committed code
 
 This is the headline workflow — provision a pod, grow it when the work earns it, queue a task,
 **dispatch the real pipeline**, then inspect the trace, queue, and cost.
@@ -86,7 +86,7 @@ This is the headline workflow — provision a pod, grow it when the work earns i
 ### Step 1 — Provision a lean pod
 
 ```bash
-docket add myapp ~/code/myapp
+docket init myapp ~/code/myapp     # or: cd ~/code/myapp && docket init
 # creates two project-scoped agents:
 #   myapp-lead          (orchestrator, never edits code)
 #   myapp-implementer   (writes code inside ~/code/myapp)
@@ -109,7 +109,8 @@ docket profile myapp-lead --budget 5     # cap pod spend at $5 (token-based esti
 Before *each* hop, docket compares the pod's token-based dollar estimate to this cap — docket's
 own turn loop reports real, measured token counts but no billed dollar figure, so the gate always
 runs off the labelled estimate (`core/dispatch.py`'s `pod_gating_cost`), never a claimed "recorded
-spend". Over budget → the task stays **pending** (blocked), never silently run.
+spend". Over budget → the task is set to **blocked** and the Lead is paused, never silently
+run.
 
 ### Step 3 — Grow the pod when the work warrants it
 
@@ -123,8 +124,9 @@ docket pod myapp add tester       # adds myapp-tester  (behaviour-only PASS/FAIL
 docket pod myapp                  # now: lead, implementer, reviewer, tester
 ```
 
-> You could have provisioned this up front with `docket add myapp ~/code/myapp --pod full` or
-> `--with reviewer,tester`. The pod also scales doers: `docket pod myapp add implementer` adds
+> You could have provisioned this up front with `docket init myapp ~/code/myapp --pod full` or
+> `--with reviewer,tester`. From inside `~/code/myapp`, `docket add reviewer` does the same as
+> `docket pod myapp add reviewer`. The pod also scales doers: `docket pod myapp add implementer` adds
 > `myapp-implementer-2` for parallel work. A pod always has **exactly one Lead.**
 
 ### Step 4 — Delegate a task to the pod
@@ -135,8 +137,8 @@ docket pod myapp delegate --priority high "Patch the open-redirect on /auth/call
 ```
 
 The task lands on the pod's own queue (owned by the Lead). Nothing runs yet — delegation only
-queues. Each task gets its own per-task session (`agent:myapp:<task_id>`) so tasks never bleed
-into each other.
+queues. Each task gets an id (`task-<uuid>`) and its own per-task trace session
+(`agent:myapp:<task_id>`) so tasks never bleed into each other.
 
 ### Step 5 — Inspect the queue
 
@@ -145,13 +147,13 @@ docket pod myapp queue
 ```
 
 ```
-Pod: myapp                         budget: $5.00 cap · $0.00 spent
-┌──────┬──────────┬──────────────────────────────────────┬─────────┬────────┐
-│ id   │ priority │ task                                 │ status  │  cost  │
-├──────┼──────────┼──────────────────────────────────────┼─────────┼────────┤
-│ t-02 │ high     │ Patch the open-redirect on /auth/... │ pending │  $0.00 │
-│ t-01 │ normal   │ Fix the null-token login crash       │ pending │  $0.00 │
-└──────┴──────────┴──────────────────────────────────────┴─────────┴────────┘
+                                Pod queue — myapp
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID                 ┃ PRI    ┃ STATUS  ┃ COST ┃ DESCRIPTION                               ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ task-6443ff59-cfca │ normal │ pending │    — │ Fix the null-token login crash            │
+│ task-9c745f95-984d │ high   │ pending │    — │ Patch the open-redirect on /auth/callback │
+└────────────────────┴────────┴─────────┴──────┴───────────────────────────────────────────┘
 ```
 
 ### Step 6 — Dispatch the pipeline (the real hand-off)
@@ -160,25 +162,26 @@ Pod: myapp                         budget: $5.00 cap · $0.00 spent
 docket pod myapp dispatch
 ```
 
-docket drives the highest-priority pending task through the pod's pipeline, **one real,
-costed agent turn per hop** — and only through the roles this pod actually has:
+docket drives every pending task through the pod's pipeline, highest priority first, **one
+real, costed agent turn per hop** — and only through the roles this pod actually has:
 
 ```
 Lead  →  Implementer  →  Reviewer  →  Tester
 ```
 
 ```
-▶ dispatch  myapp  ·  t-02  "Patch the open-redirect on /auth/callback"
-  budget ok ($0.00 / $5.00)
-  → lead          plan + decompose ........... done   $0.04
-  budget ok ($0.04 / $5.00)
-  → implementer   edit ~/code/myapp ........... done   $0.31
-  budget ok ($0.35 / $5.00)
-  → reviewer      veto on diff ............... APPROVED $0.05
-  budget ok ($0.40 / $5.00)
-  → tester        PASS/FAIL .................. PASS    $0.03
-  ✓ t-02 complete   pod spend now $0.43 / $5.00
+→ Dispatching 2 pending task(s) through: lead → implementer → reviewer → tester
+  Pod budget cap: $5.00 (spent $0.00)
+[dispatch] verification skipped — verifyCmd not set for myapp-implementer
+✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s), $0.0000
+[dispatch] verification skipped — verifyCmd not set for myapp-implementer
+✓   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] done — 4 hop(s), $0.0000
 ```
+
+The per-task dollar figure is *recorded* cost, and docket's own driver never records one, so it
+reads `$0.0000`; the budget gate uses the labelled token estimate instead (Step 2). The command
+exits `1` when a task's run ends `failed`, so `docket pod myapp dispatch && …` stops there;
+`blocked` and `waiting_approval` are expected pauses and exit `0`.
 
 docket stays the orchestrator: it invokes each hop through its own turn loop
 (`core/agent_loop.py`), captures the result, and threads it to the next role. The Lead plans,
@@ -187,21 +190,19 @@ an independent PASS/FAIL.
 
 ### Step 7 — Budget gating in action
 
-Say `t-01` runs while the pod is near its cap:
+Say the pod's estimate crosses its cap partway through a task:
 
 ```bash
 docket pod myapp dispatch
 ```
 
 ```
-▶ dispatch  myapp  ·  t-01  "Fix the null-token login crash"
-  → lead          plan + decompose ........... done   $0.04
-  budget EXCEEDED ($5.02 / $5.00) before implementer hop
-  ✗ t-01 left PENDING — raise the cap to continue
+⚠   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] blocked — pod budget reached (~$5.02 (estimated — no cost recorded) ≥ $5.00) before implementer
 ```
 
-Over-budget tasks are blocked **between hops**, not abandoned mid-write. Raise the cap and
-re-dispatch:
+Over-budget tasks are blocked **between hops**, not abandoned mid-write, and the pod's Lead is
+paused so no further task is claimed. Raising the Lead's cap un-blocks the pod's budget-blocked
+tasks and clears the pause; then re-dispatch:
 
 ```bash
 docket profile myapp-lead --budget 10
@@ -214,18 +215,20 @@ Every hop emits a trace event on the per-task session, so a run is fully auditab
 manual Telegram relay:
 
 ```bash
-docket trace                          # recent dispatch activity across pods
-docket trace --session agent:myapp:t-02   # just this task's pipeline
+docket trace tail myapp                                          # follow the latest session live
+docket trace agent:myapp:task-9c745f95-984d-497b-abdd-1bed9ec9b0b0   # just this task's pipeline
 ```
 
+Each line is `timestamp  event_type  (role)` plus any status and cost/duration fields, for
+example (abridged):
+
 ```
-agent:myapp:t-02
-  12:01:04  lead         dispatch.hop  start
-  12:01:09  lead         dispatch.hop  done       $0.04
-  12:01:09  implementer  dispatch.hop  start
-  12:01:38  implementer  dispatch.hop  done       $0.31   (3 files changed)
-  12:01:38  reviewer     dispatch.hop  APPROVED   $0.05
-  12:01:41  tester       dispatch.hop  PASS       $0.03
+  2026-09-18T12:01:04  session_start              (lead)
+  2026-09-18T12:01:05  tool_call                  (lead)
+  2026-09-18T12:01:05  tool_result                (lead)
+  2026-09-18T12:01:09  tool_call                  (implementer)
+  ...
+  2026-09-18T12:01:41  session_end                (lead)  status=done
 ```
 
 ### Step 9 — Check the cost
@@ -276,9 +279,10 @@ docket serve               # READ-ONLY monitor — health checks only, never dis
 > explicit (`docket pod … dispatch`) or opt-in (`docket serve --dispatch`). Plain `docket serve`
 > only watches health. Budget caps gate the autonomous loop exactly as they gate a manual
 > dispatch — an over-budget pod's tasks are set to `blocked` (not `pending`) and the pod's Lead
-> is paused. A blocked task does **not** resume on its own when the cap changes: clear it with
-> `docket profile <lead-id> --resume`, which unpauses the Lead and unblocks the pod's
-> budget-blocked tasks, or requeue one with `docket pod <project> queue --retry <task-id>`.
+> is paused. A blocked task does **not** resume on its own: raise the Lead's cap
+> (`docket profile <lead-id> --budget N`) or run `docket profile <lead-id> --resume`, either of
+> which unpauses the Lead and unblocks the pod's budget-blocked tasks, or requeue one with
+> `docket pod <project> queue --retry <task-id>`.
 > Leaving them blocked is deliberate — rewriting them straight back to `pending` was the bug that
 > let a budget-capped task retry forever on every sweep.
 
@@ -299,8 +303,7 @@ or swap in a different gate — without touching pod membership at all.
 >
 > ```text
 > $ docket workflow validate myflow
-> docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator
-> ignored four constructs its own template emitted; ROADMAP D-16).
+> docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator ignored four constructs its own template emitted).
 > Use: docket pipeline validate   (was: workflow <id> validate <name>)
 > Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>)
 > Use: docket pipeline run        to actually execute a pipeline
@@ -415,7 +418,8 @@ $ docket pipeline run myapp --file workflows/release.yml
 
 `run` dispatches through `cli._pod._pod_dispatch` — the exact same rendering, run-registry
 recording, budget/approval gating, retries, and crash resume `docket pod myapp dispatch` uses.
-`--file` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes.
+`--file` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes,
+including the exit status: `1` when a task's run ends `failed`.
 
 Three gate kinds, and what a failure does to the task:
 
@@ -576,14 +580,17 @@ names.
 
 There is **no command that runs one pod's work from another pod.** When you need a cross-pod
 *plan* (where to focus, what to rebalance or pause), use the advisory
-**Portfolio Manager** (`docket init --portfolio`). It reads fleet *metadata* and recommends —
-in words, for you — which pods to prioritise. **You** then `delegate` into the chosen pods and
-`dispatch` each one. The Portfolio Manager never dispatches and never touches code.
+**Portfolio Manager** (`docket init --portfolio`, read only by the first `docket init`). It is
+scoped to fleet *metadata* and to recommending, in words, which pods to prioritise. **You** then
+`delegate` into the chosen pods and `dispatch` each one. The Portfolio Manager never dispatches
+and never touches code.
+
+> Today nothing runs a turn for it: dispatch only runs pod members, and Telegram accepts only
+> `/approve`, `/deny`, `/status` and `/delegate` (the last only for a pod Lead binding), so there
+> is no command that asks it a question. Until one exists, do the cross-pod read yourself with
+> `docket status --all`, `docket pod <project> queue` and `docket cost`, then:
 
 ```bash
-docket init --portfolio          # add the optional advisory planner (one-time)
-# ask it (via Telegram or its workspace) which pods need attention this week,
-# then act on its advice:
 docket pod myapp dispatch
 docket pod mywebsite dispatch
 ```
@@ -685,14 +692,17 @@ docket pod myapp dispatch
 docket serve --dispatch
 ```
 
-You can also drive a pod's Lead from Telegram — wire it once with `docket wire myapp-lead` and
-send tasks to its group; the Lead queues them on the same pod queue.
+You can also queue work from Telegram: wire the Lead once with `docket wire myapp-lead`, run
+`docket serve --telegram`, and send `/delegate <task>` in that group. The task lands on the same
+pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
+the only verbs are `/approve`, `/deny`, `/status` and `/delegate`, and docket never messages the
+group first.
 
 ### Monitor
 
 ```bash
 docket pod myapp queue          # this pod's queue + per-task status/cost
-docket trace                    # recent dispatch hops across pods
+docket trace tail myapp         # follow the pod's latest trace session
 docket logs myapp-lead          # the Lead's activity
 ```
 
@@ -744,8 +754,8 @@ Refactor (full pod, high blast radius):
 ```
 
 To bound the dollar cost of any of these, set a per-pod cap on the Lead
-(`docket profile <project>-lead --budget <usd>`) and watch actual spend with `docket cost`. The
-cap is enforced between hops on every dispatch.
+(`docket profile <project>-lead --budget <usd>`) and watch the labelled estimate with
+`docket cost`. The cap is enforced between hops on every dispatch.
 
 ---
 

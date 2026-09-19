@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -14,9 +14,9 @@ separate activation step needed. See "Requirement 25-28" below for the wiring co
 naive wire (add MCP tools before narrowing, without also excluding by `Tool.kind`) would have
 silently defeated a Reviewer's "no write/edit/bash" guarantee, since a namespaced MCP tool name
 (`mcp__<server>__<tool>`) can never equal a literal denied name. That gap is closed, not merely
-avoided by omission — see "Wired to the live turn path (the role-narrowing hazard)" below.
+avoided by omission — see the Version 1.2.0 changelog entry below ("The blocking design question").
 **What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
-turn that reaches a configured server re-spawns it — see "Measured per-turn cost" below and its
+turn that reaches a configured server re-spawns it — see the Version 1.2.0 changelog entry's measured per-turn cost and its
 named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
 scope); a read-only role gets *zero* MCP tools rather than a correctly-narrowed nonzero set,
 because no per-tool trust/capability signal exists yet to tell a genuinely read-only remote tool
@@ -24,7 +24,7 @@ from a write-capable one (every adapted tool is `kind="write"` unconditionally, 
 1.1.0) — this is the correct fail-closed answer today, not a gap this version silently carries.
 Remote tool results use the same live `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved
 for every call so a small-context endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -355,8 +355,8 @@ tool drives a browser."
    docket mcp servers add playwright -- npx -y @playwright/mcp@latest
    ```
 
-2. **What this buys, mechanically, once something calls `load_mcp_tools`** (see Status — not yet a
-   live path): every tool Playwright advertises (`browser_navigate`, `browser_click`,
+2. **What this buys, mechanically, once `DocketDriver.run_turn` calls `load_mcp_tools`** (see
+   Status and Requirements 25-28 — the live turn path since wave 17): every tool Playwright advertises (`browser_navigate`, `browser_click`,
    `browser_snapshot`, ...) registers as `mcp__playwright__<tool>` (Requirement 7). No amount of
    the remote server misbehaving — even a hypothetical hostile fork naming one of its own tools
    `bash` — can make `mcp__playwright__bash` collide with or shadow the real, gated `bash` tool
@@ -479,6 +479,13 @@ dispatch_tool(
   turn failure (backend error, timeout, budget) may do that (Requirement 28).
 
 ## Changelog
+
+### Version 1.3.1 (2026-09-18)
+
+- Alignment pass: the browser recipe (Examples, step 2) no longer calls `load_mcp_tools` "not yet a
+  live path" — `DocketDriver.run_turn` has called it since 1.2.0. Status's two pointers to
+  sections that do not exist ("Measured per-turn cost", "Wired to the live turn path") now point
+  at the Version 1.2.0 entry that holds that material. No requirement changed.
 
 ### Version 1.3.0 (2026-08-19)
 

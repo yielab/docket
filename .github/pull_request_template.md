@@ -12,6 +12,8 @@
 - [ ] `bash tests/golden/run.sh verify-all` passes (recapture goldens if output changed intentionally)
 - [ ] `uv run ruff check . && uv run ruff format --check .` clean
 - [ ] `uv run mypy src` clean
+- [ ] `bash scripts/validate-specs.sh`, `uv run python scripts/metrics.py --check` and `uv run python scripts/gen_cli_docs.py --check` pass (`docs/commands.md` is generated — never hand-edit it)
+- [ ] `uv run python scripts/maint/comment_lint.py --check` clean on touched files
 - [ ] Manually tested: `docket <command>` with the affected path
 
 ## Checklist

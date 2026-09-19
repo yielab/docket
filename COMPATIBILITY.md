@@ -4,7 +4,7 @@ docket has no external daemon dependency. Its compatibility surface is the **mod
 docket's own turn loop talks to, the optional MCP servers it can gate like a built-in tool, and two
 configuration-scoped adapters for the separately built `docket-runtime` package. This document
 records what docket is verified against and how breaks are tracked. See the README's
-[Compatibility](README.md#compatibility) section for the short version.
+[Known limits](README.md#known-limits) section for the short version.
 
 ## Support matrix
 
@@ -68,13 +68,13 @@ constructors. Neither framework is a dependency of the base `docket-runtime` ins
   Pinned by `tests/agent/release/test_public_release_truth.py::test_shipped_shell_surface_runs_on_the_bash_floor`.
 - No `systemd` (or any other service manager) dependency. Earlier versions restarted an
   external daemon's gateway service after config changes; that daemon no longer exists, and
-  `edges/adapters/system.py`'s `restart_gateway`/`gateway_active` are honest no-op stubs kept
-  only so old call sites don't need individual rewrites.
+  `edges/adapters/system.py`'s `gateway_active` is an honest no-op stub kept only so old call
+  sites don't need individual rewrites.
 
 ## Policy
 
 - **Model-endpoint changes.** Providers occasionally change response shapes or error codes.
-  `edges/adapters/llm.py` treats a documented set of HTTP statuses (`408/409/425/429/5xx`) as
+  `edges/adapters/llm.py` treats a documented set of HTTP statuses (`408/409/425/429/500/502/503/504`) as
   retryable and everything else as a real rejection; a genuinely breaking wire-format change
   is called out in [CHANGELOG.md](CHANGELOG.md).
 - **MCP SDK changes.** The `[mcp]` extra pins a floor version, not a ceiling

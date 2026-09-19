@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.9.1
+**Version**: 2.9.2
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -43,15 +43,17 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    - `approval.grant` / `approval.deny`, with a channel tag (`core/approval.py`). A winning
      pending-to-terminal transition writes exactly one matching approval entry; a concurrent
      losing or terminal no-op writes none.
-   - `auth.setup` (`cli/_install.py`)
+   - `auth.setup` — **retired** in P19-7b (bf48ccc): it was written by the daemon-era auth
+     wizard, which was deleted with the daemon; nothing writes it now.
    - `keys.add` / `keys.rotate` / `keys.remove` (`cli/_keys.py`, including the
      `docket keys setup` wizard's per-key adds/rotations)
    - `profile.model` / `profile.budget` / `profile.resume` (`cli/__init__.py`'s `profile`
      command; `profile.resume` is ROADMAP Phase 14 R-5's auto-pause clear)
    - `scope.set` / `scope.reset` (`cli/__init__.py`'s `scope` command)
-   - `agent.add` — both the interactive pod flow (`docket add`, `cli/_agents.py`'s
-     `run_add`) and the declarative flow (`docket init --from <spec>`,
-     `_provision_agent`)
+   - `agent.add` — one line per provisioned pod from `core/pod_provisioning.py`'s
+     `provision_pod` (`docket init`, a `docket init --from <spec>` pod entry, and `POST /pods`),
+     and one line per flat agent from a declarative `docket init --from <spec>` entry
+     (`cli/_agents.py`'s `_provision_agent`)
    - `agent.delete` — both a single non-pod agent (`run_delete`) and a whole pod
      teardown (`cli/__init__.py`'s `_delete_pod`, one line per pod summarizing all
      removed members)
@@ -87,8 +89,8 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      `ok=True` path); an unknown run id or a run already in a terminal state changes nothing and
      writes no entry. `detail` names the run id, its project, its state immediately before
      cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
-     `cli-interface.spec.md`'s `docket runs` entry. This and `approval.*` are the only families
-     written from `core/` rather than `cli/`.
+     `cli-interface.spec.md`'s `docket runs` entry. Written from `core/` rather than `cli/`, like
+     `approval.*`, the pod-path `agent.add`, `telegram.*`, `mcp_client.*` and `tool.*`.
    - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket mcp servers add|remove`,
      ROADMAP Phase 19 P19-13) — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
      `remove_mcp_server` (P19-10). `detail` names the server and, for `add`, the launch command —
@@ -108,6 +110,13 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      entry in this family** — it writes the ordinary `approval.grant`/`approval.deny` entry
      (below) tagged `channel=telegram`, exactly as a CLI or HTTP grant would; this family exists
      only for the channel-specific events (a refusal) that have no other home.
+   - `tool.deny` / `tool.ask` / `tool.warn` / `tool.redact` (`core/tools.py`'s
+     `_audit_tool_decision`, called from `dispatch_tool`) — one entry per gated tool call that is
+     not a plain `allow`. `detail` names the tool, agent, role and project, a fixed
+     `policy_id='…' policy_action='…'` pair, and the redacted call.
+   - `isolation.refused` (`edges/adapters/docket_runtime.py`) — a turn refused because isolation
+     is on and neither docker nor bwrap is usable. `detail` names the agent, role and backend
+     availability.
 2. **What the log does NOT see (scope boundary, not a backlog item).** Both gaps tracked through
    Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version
    2.3.0; the two cards that closed them (Phase 15 G-4b, Phase 16 W-4) landed in the same wave.
@@ -327,8 +336,8 @@ $ docket gates enable
 $ docket approve apr-1234…
 
 $ docket audit 2
-  2026-07-30T08:00:00.041Z  alice       gates.enable      fleet
-  2026-07-30T08:00:11.902Z  alice       approval.grant    token=apr-1234… channel=cli
+  2026-07-30T08:00:00.041Z  alice       gates.enable      routing=on force=False
+  2026-07-30T08:00:11.902Z  alice       approval.grant    token=apr-1234… project=mywebsite channel=cli
 ```
 
 ### Verifying the chain
@@ -400,6 +409,16 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.9.2 (2026-09-18)
+
+- Truth pass against the `audit_log` call sites. `auth.setup` is marked retired (deleted with the
+  daemon-era auth wizard in P19-7b). `agent.add` names its real writers: `core/pod_provisioning.py`
+  for pods (`docket init`, `--from` pod entries, `POST /pods`) and `_provision_agent` for flat
+  declarative agents; `docket add` no longer provisions pods (21abc85). The "only families written
+  from `core/`" sentence was false and now lists them. Added the emitted but unlisted `tool.*`
+  (`core/tools.py`) and `isolation.refused` (`edges/adapters/docket_runtime.py`) families. The
+  `gates.enable` example shows its real `detail` (`routing=on force=False`).
 
 ### Version 2.9.1 (2026-08-31)
 

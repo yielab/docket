@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Status**: Complete
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -13,9 +13,9 @@ against that code.
 
 ## Scope
 
-Covers every command that supports `--json` output: `list`, `info`, `cost` (and
+Covers every command that supports `--json` output: `list`, `status`, `info`, `cost` (and
 `cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3), and the `serve` HTTP
-endpoints. It does **not** cover human-readable (Rich) output or third-party protocol payloads.
+endpoints. `docket audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover human-readable (Rich) output or third-party protocol payloads.
 
 ## Structure
 
@@ -73,7 +73,7 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
   "projectKey":  "string",
   "registered":  "boolean",
   "telegram":    "string (peer id) | null",
-  "lastActive":  "string (relative time, e.g. '3h ago') | null"
+  "lastActive":  "string (YYYY-MM-DD of the newest memory log) | \"—\" (no log yet)"
 }
 ```
 
@@ -87,7 +87,8 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
       "model":     "string",
       "input":     "number (tokens)",
       "output":    "number (tokens)",
-      "costUsd":   "number | null (null when pricing unknown)",
+      "costUsd":   "number",
+      "pricingKnown": "boolean (always true)",
       "turns":     "number",
       "budgetUsd": "number | null"
     }
@@ -100,7 +101,7 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
 
 ```json
 {
-  "scope": "string (agent id or 'all')",
+  "scope": "string (agent id or 'all agents')",
   "history": [
     {
       "date":    "string (YYYY-MM-DD)",
@@ -122,19 +123,47 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
   "checks": {
     "python3":     { "ok": "boolean", "path": "string | null" },
     "fzf":         { "available": "boolean", "path": "string | null" },
-    "fleet":       { "ok": "boolean", "path": "string", "agents": "number", "bindings": "number" },
+    "fleet":       "{ ok: true, path, agents, bindings } | { ok: false, path, error }",
     "agents":      "array of { id, ok, tg, issues }",
     "modelConfig": {
       "ok": "boolean",
       "invalid": "array of { id, model, suggest }"
     },
-    "modelRegistry": { "migrated": "string", "residualProfilesKey": "boolean" },
+    "modelRegistry": { "migrated": "string | null", "residualProfilesKey": "boolean" },
     "dispatchLedger": "array of { project, ok, missingFromLedger, staleInLedger }",
     "budget":      "array of agent budget status objects",
     "runaway":     "array of agent runaway detection objects",
-    "keyHygiene":  { "keys": "array", "missingForAgents": "array of strings" },
-    "securityGates": "object",
+    "keyHygiene":  {
+      "keys": "array of { name, state, detail }",
+      "missingForAgents": "array of { agent, model, needsKey }"
+    },
+    "securityGates": {
+      "toolCallGate": "always-on",
+      "approvalRouting": "string (fleet approvalRoutingState, 'unset' when absent)",
+      "routingMode": "string (fleet approvalRoutingMode, may be empty)",
+      "isolation": "string (isolation mode, 'unset' when absent)"
+    },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
+  }
+}
+```
+
+### `docket status --json` / `docket status --all --json`
+
+`docket status --json` (run inside a project) emits one project object; `--all --json` emits
+`{"projects": [<project object>, ...]}`:
+
+```json
+{
+  "id":          "string (pod id)",
+  "path":        "string (codebase or workDir; may be empty)",
+  "status":      "ready | active | waiting | attention | degraded",
+  "memberCount": "number",
+  "isolation":   "string",
+  "members":     "array of { id, role, status: ready | missing }",
+  "tasks": {
+    "pending": "number", "running": "number", "waitingApproval": "number",
+    "failed": "number", "completed": "number"
   }
 }
 ```
@@ -190,7 +219,7 @@ The snapshot command writes to a file (or stdout). The outer shape:
 ```json
 {
   "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
-  "gateway":      "active | inactive",
+  "gateway":      "inactive (legacy field; there is no gateway process)",
   "channels":     "array of strings (channels present in Docket fleet bindings)",
   "agents":       "array of agent objects (see below)",
   "totalCostUsd": "number"
@@ -224,8 +253,8 @@ list --json` / `docket info <id> --json` for those.
 
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
-| `/status.json` | `application/json` | Same as `docket snapshot` output |
-| `/health` | `application/json` | `{"status": "ok", "gateway": <0 \| 1>}` |
+| `/status.json` | `application/json` | `docket snapshot`'s shape plus a top-level `apiVersion` and per-agent `scope`/`budgetUsd` (full schema: `specs/data/serve-read-api.spec.md`) |
+| `/health` | `application/json` | `{"status":"ok","gateway":0}` (`gateway` is always `0`) |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
 | `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
 | `/runs/<id>` | `application/json` | Same as `docket runs show <id> --json` (auth required) |
@@ -239,7 +268,15 @@ docket_agent_turns_total{agent="<id>"} <N>
 docket_cost_usd_total <F>
 docket_gateway_up <0|1>
 docket_approvals_pending_total <N>
+docket_tool_calls_total{decision="<allow|ask|deny>"} <N>
+docket_policy_hits_total{policy_id="<id>",hook="<hook>",action="<action>"} <N>
+docket_approvals_total{channel="<channel>",outcome="<granted|denied>"} <N>
+docket_turn_duration_seconds_sum <F>
+docket_turn_duration_seconds_count <N>
 ```
+
+The last five are the guardrail/loop metrics; their semantics and durability caveats are owned by
+`specs/data/serve-read-api.spec.md`.
 
 Note: there is no `docket_agents_paused_total` metric, and the per-agent cost/turns labels are
 keyed `agent="<id>"`, not `id="<id>"` (a prior version of this spec documented both incorrectly).
@@ -285,6 +322,16 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.6.1 (2026-09-18)
+
+- Truth pass against the code: added the undocumented `docket status [--all] --json` shape;
+  `info --json` `lastActive` is a date or `"—"`, never relative time or `null`; `cost --json`
+  carries `pricingKnown` and `costUsd` is never `null`; `cost --history` scope reads `all agents`;
+  `doctor --json` `keyHygiene`, `securityGates` (`approvalRouting`/`routingMode`), `fleet` error
+  shape and nullable `modelRegistry.migrated` spelled out per the `_doctor_json_*` helpers;
+  snapshot `gateway` is always `inactive`; `/status.json` and `/health` rows and the `/metrics`
+  list corrected to what `serve.py` emits. Documentation corrections, not shape changes.
 
 ### Version 1.6.0 (2026-08-31)
 

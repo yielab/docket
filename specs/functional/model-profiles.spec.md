@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.8.0
+**Version**: 2.8.1
 **Status**: Complete
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -223,7 +223,8 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 ### Pricing
 
 1. Each built-in direct-provider model whose price Docket claims **MUST** have a pricing entry in
-   USD per million tokens, expressed as `input:output:cacheWrite:cacheRead`. Marketplace gateway
+   USD per million tokens, expressed as `input:output:cacheRead:cacheWrite` (the tuple order
+   `MODEL_PRICING` stores and `core.utils.estimate_cost_usd` unpacks). Marketplace gateway
    models are the explicit exception described in requirement 4.
 2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
 3. A model whose provider prefix is a recognized local provider (`local`, `ollama`,
@@ -243,7 +244,8 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 docket models                              # Show the role→model policy
 docket models set <role|default> <provider/model>
 docket models preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
-docket models reset                        # Restore built-in defaults
+docket models reset                        # Restore built-in defaults (asks to confirm)
+docket models provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
 docket profile <agent-id>                  # Show model, role, source, budget
 docket profile <agent-id> <provider/model> # Pin
 docket profile <agent-id> default          # Follow the role policy
@@ -292,10 +294,13 @@ left uncatalogued — gateways can route and re-price by provider/account — an
 {
   "default": "anthropic/claude-sonnet-4-6",
   "roles":       { "programmer": "openai/gpt-4.1" },
-  "rankAnchors": { "standard": "openai/gpt-4.1-mini" },
-  "pricing":     { "openai/gpt-4.1": {"input": 2.00, "output": 8.00} }
+  "rankAnchors": { "standard": "openai/gpt-4.1-mini" }
 }
 ```
+
+`default`, `roles`, and `rankAnchors` are the only keys `models_policy.load_registry` reads (plus
+the legacy `profiles` key, migrated below). There is no user pricing overlay: prices come only
+from the built-in `MODEL_PRICING` snapshot, and any other key is ignored.
 
 ### Registry file shape (legacy, pre-migration — auto-converted on load)
 
@@ -327,9 +332,13 @@ $ docket models
 
 $ docket models set programmer openai/gpt-4.1
 ✓ programmer → openai/gpt-4.1
+
 → Re-resolving policy-following agents...
-  programmer (programmer): anthropic/claude-sonnet-4-6 → openai/gpt-4.1
+  1 agent(s) updated.
 ```
+
+The count line is printed only when at least one policy-following agent changed;
+`models_policy.reapply_role_policy` returns a count and `core/` never prints per-agent lines.
 
 ### Pinning and unpinning an agent
 
@@ -346,7 +355,11 @@ $ docket profile mywebsite default
 ```bash
 $ docket models preset local
 ✓ Preset 'local' applied.
+
+→ Re-resolving policy-following agents...
+
 ✓ Registered local endpoint selected; no API key needed.
+  ...
 
 $ docket models
   ROLE          MODEL                    PRICE        SOURCE    WHY
@@ -379,6 +392,16 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.8.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Corrected the pricing-tuple order to
+  `input:output:cacheRead:cacheWrite` (what `MODEL_PRICING` stores and `estimate_cost_usd`
+  unpacks). Removed the `pricing` key from the current registry-shape example: nothing reads it,
+  and the shape now names the keys `load_registry` actually reads. Replaced the `models set`
+  example's invented per-agent line with the real `N agent(s) updated.` count, added the
+  re-resolve line to the preset example, and added `docket models provider add` to the command
+  signatures that Scope already covered.
 
 ### Version 2.8.0 (2026-08-30)
 

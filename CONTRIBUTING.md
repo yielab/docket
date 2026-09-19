@@ -57,9 +57,6 @@ git checkout -b feature/your-feature
 
 # Make changes and test
 ./tests/run-all-tests.sh
-
-# Run with debug mode for troubleshooting
-DEBUG=1 docket <command>
 ```
 
 ## Code Style Guidelines
@@ -164,11 +161,13 @@ These all gate CI and must pass locally before opening a PR:
 uv run ruff check .          # lint
 uv run ruff format --check . # formatting
 uv run mypy src              # strict type check
-uv run pytest                # unit/integration suite
+uv run pytest                # default lanes: unit, integration, guards
+uv run pytest tests/agent    # agent lane (CI job `agent-lane`)
 bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
 uv run python scripts/metrics.py --check            # this doc's metric-drift guard (see above)
-uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard
+uv run python scripts/gen_cli_docs.py --check       # docs/commands.md drift (CI job `docs`)
+uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard (run by the agent lane)
 uv run python scripts/release_journey.py            # exact-wheel first-turn release rehearsal
 ```
 
@@ -257,6 +256,8 @@ Use a type-colon prefix followed by a short description, then an optional body w
 - `Refactor:` Code refactoring without behaviour change
 - `Test:` Test updates
 - `Chore:` Maintenance, dependency bumps, tooling
+- `Remove:` Retiring a command, flag, file or test
+- `Release:` Cutting a version or pinning its published assets
 
 Examples:
 ```
@@ -265,7 +266,7 @@ Fix: resolve session key parsing for project names with dashes
 docket scope set <id> now correctly slugifies names that contain
 uppercase letters or underscores before building the session key.
 
-Add: workflow validate subcommand
+Add: pipeline validate subcommand
 Docs: update command reference with trace and metrics entries
 ```
 

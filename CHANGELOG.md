@@ -61,6 +61,11 @@ task fails now exits 1.
   terminal markup: every `[<task-id>]` and `[<role>]` was silently erased, and a task description
   or model reply containing a closing tag such as `[/bold]` aborted the command with a markup
   error (for `delegate`, after the task was already queued). All of it now prints literally.
+- **Trace redaction no longer slows quadratically on long repetitive text.** Two of the
+  secret-shape patterns behind `core/trace.py`'s redaction backtracked on a long run of
+  alphanumeric characters (base64, a hex dump, a minified bundle), the shape a tool result takes
+  near the default output ceiling: 40,000 characters took about ten seconds to redact. The
+  patterns are now bounded and match exactly the same secrets.
 - **The `local` preset's note names the real command,** `docket models provider add <name>
   <base-url>`; it omitted `add`, and its bracketed placeholders were erased on screen.
 

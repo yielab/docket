@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.19.2
+**Version**: 0.19.3
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -10,7 +10,7 @@ enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`)
 in-turn tool-call gate section below. `docket gates enable`/`disable`'s approval-routing posture
 flag is a separate, recorded-but-unread thing — see Enablement requirement 2. Cancellation reaches
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers.
-**Last Updated**: 2026-09-13
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -62,10 +62,11 @@ are owned here, not there.
    command classifier + `pre_tool_call` gate at `core/tools.py`'s `dispatch_tool`, unconditionally
    active on every tool call docket dispatches (there is no install-time "enable the gate" choice
    any more; see the Purpose section). Note: `git`/`npm` ARE on the curated allowlist
-   (`core/security.py`'s `SAFE_BINS`, used constantly for benign work) and so do NOT prompt by
-   default even for a high-risk invocation like `git push origin main` at the *classifier* level —
-   see "High-risk action classes" below for how the `pre_tool_call` policy engine closes that
-   specific, narrower gap on the same dispatcher.
+   (`core/security.py`'s `SAFE_BINS`, used constantly for benign work), so `git status` does not
+   prompt — but `classify_command` matches `HIGH_RISK_PATTERNS` against the whole command line
+   *before* it consults `SAFE_BINS`, so a high-risk invocation like `git push origin main` asks at
+   the classifier level anyway, and the `high-risk-deploy` `pre_tool_call` policy independently
+   asks on the same dispatcher (see "High-risk action classes" below).
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
    channel (CLI `docket approve`/`docket deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
@@ -92,8 +93,9 @@ are owned here, not there.
    fail the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
    log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`cli`, `http`, `telegram`, or `timeout` for the expiry sweep's own fail-closed
-   denial). **Since ROADMAP Phase 19 P19-8, the `telegram` tag is live**: it is docket's own bot
+   through (`core/approval.py`'s `APPROVAL_CHANNELS`: `cli`, `http`, `mcp`, `telegram`, `tack` — an
+   HTTP caller-supplied tag — or `timeout` for the expiry sweep's own fail-closed denial; an
+   in-turn wait that observes run cancellation denies with `cancellation`). **Since ROADMAP Phase 19 P19-8, the `telegram` tag is live**: it is docket's own bot
    (`docket serve --telegram`, `core/telegram.py`) answering through docket's own approval store —
    never, as this spec used to (mis)describe before a daemon existed for the ambiguity to matter,
    a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
@@ -492,8 +494,7 @@ either.
      `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
      caller (requirement 4).
    - `DOCKET_SANDBOX_BACKEND` (`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
-     the same escape-hatch pattern `service_manager()`'s `DOCKET_SANDBOX_BACKEND` uses — for tests
-     and for an operator who wants to force or disable a backend regardless of what is installed.
+     for tests and for an operator who wants to force or disable a backend regardless of what is installed.
 2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
    `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
    handler **MUST NOT** ask for a jail unless the caller explicitly sets `sandbox="auto"`. This
@@ -682,9 +683,11 @@ docket gates enable [--force]  # MUST record approval-routing posture as on (rec
                                 #   compatibility, no existing-config state left to force over)
 docket gates disable           # MUST record approval-routing posture as off (reversible; same
                                 #   caveat -- nothing on the live path reads it either way)
-docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker to
-                                #   turn on; recorded only -- DocketDriver does not yet consult it,
-                                #   so tools still run unsandboxed regardless of this setting)
+docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker on
+                                #   PATH to turn on). Consumed on the live path: DocketDriver.run_turn
+                                #   runs tools with sandbox="auto" while it is on, and refuses the
+                                #   turn (audited isolation.refused) when no docker/bwrap backend is
+                                #   usable -- see Exec sandbox requirement 9
 docket gates classes           # MUST list the documented high-risk action classes, read-only
 docket init                    # the tool-call gate needs no install step (always active); this
                                 #   MUST record approval-routing posture as on by default
@@ -744,7 +747,7 @@ $ docket approve apr-1234
   The waiting action may now proceed.
 
 $ docket pod myapp dispatch
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0091
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
 An unanswered token fail-closes the same way: `approval_sweep_expired` (running only under
@@ -768,7 +771,7 @@ $ docket approve apr-5678
 ✓ Approval granted: apr-5678
 
 $ docket pod myapp dispatch
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0064
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
 A `block` match never reaches the queue at all — the CLI reports the rejection immediately and
@@ -804,7 +807,7 @@ High-risk action classes
 
 money-movement — Payment/financial operations: charges, refunds, payouts, transfers
   pattern: \bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|refund.*amount|...
-  none of this class's bins are in the curated allowlist — always asks today
+  none of this class's bins are allowlisted — always asks today
 
 prod-deploy — Production deploys and release pushes
   pattern: git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish|...
@@ -813,7 +816,7 @@ prod-deploy — Production deploys and release pushes
 
 secret-access — Secret/credential writes and key generation
   pattern: vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa|...
-  none of this class's bins are in the curated allowlist — always asks today
+  none of this class's bins are allowlisted — always asks today
 
   This seed list is intentionally small and built-in (not yet user-configurable).
   Wired: core/tools.py's dispatch_tool classifies every shell command before it runs;
@@ -858,8 +861,8 @@ A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
 
 ```text
 >>> dispatch_tool(ToolCall(id="c1", name="bash", arguments='{"command": "rm -rf /var/data"}'), ctx, registry)
-ToolResult(decision='deny', executed=False,
-           reason="approval timed out and was denied (token=apr-...)")
+ToolResult(decision='deny', executed=False, denial_kind='approval_timeout',
+           policy_id='block-destructive', reason="approval timed out and was denied")
 # the registered handler's own side effect never happened
 ```
 
@@ -888,7 +891,7 @@ Every gated call above leaves an audit trail, not just a return value:
 
 ```text
 $ docket audit
-  ... tool.ask     tool=bash agent=... role=implementer project=demo: ... call=bash command="rm -rf /var/data"
+  ... tool.ask     tool=bash agent=... role=implementer project=demo policy_id='block-destructive' policy_action='require_approval': ... call=bash command="rm -rf /var/data"
   ... approval.deny token=apr-... project=demo channel=timeout
 ```
 
@@ -1004,7 +1007,7 @@ $ git clone https://anywhere.example/repo.git
   not contingent on an install flag (`core/tools.py`'s `dispatch_tool`, live on every pod-dispatch
   hop via `DocketDriver`).
 - Grants and denials through docket's approval store **MUST** appear in the audit log
-  (`cli`/`http`/`timeout` channels). There is no daemon-side `/approve` left to write a
+  (tagged with its channel — see Tool-approval gates requirement 4). There is no daemon-side `/approve` left to write a
   competing, un-audited response — docket's store is the only approval system (P19-7b).
 - A gate prompt with no approver **MUST** resolve to denied. For an in-turn `core/tools.py` call
   this is `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate"); for an async dispatch-level
@@ -1022,7 +1025,8 @@ $ git clone https://anywhere.example/repo.git
 ### Invariants
 
 - A denied or timed-out request **MUST NOT** execute — enforced entirely by docket now that
-  P19-7b removed the daemon: `core/tools.py`'s `wait_for_approval`/`TOOL_APPROVAL_TIMEOUT` for an
+  P19-7b removed the daemon: `core/approval.py`'s `wait_for_approval` (called from `core/tools.py`'s
+  `dispatch_tool`) and `TOOL_APPROVAL_TIMEOUT` for an
   in-turn tool call, and `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
   require_approval gate on a pod dispatch hop.
 - Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
@@ -1106,6 +1110,20 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.19.3 (2026-09-18)
+
+- **Doc-side alignment audit against v0.2.0-beta.3 — no behavior changed.** The `docket gates
+  isolate` interface line still said DocketDriver "does not yet consult" the flag; W18-3 wired it
+  (`edges/adapters/docket_runtime.py::_resolve_sandbox`), as Exec sandbox requirement 9 already
+  stated. Tool-approval gates requirement 1 said `git push origin main` does not ask at the
+  classifier level; `classify_command` matches `HIGH_RISK_PATTERNS` before `SAFE_BINS`, so it asks.
+  Requirement 4's channel list gains `mcp`, `tack` and `cancellation` (`APPROVAL_CHANNELS`,
+  `wait_for_approval`). Dropped a reference to the deleted `service_manager()`. `wait_for_approval`
+  is located in `core/approval.py`. Examples updated to the current timeout reason (no token,
+  `denial_kind`/`policy_id` present), the `tool.*` audit detail's `policy_id`/`policy_action`
+  pair, `docket gates classes`' wording, and `$0.0000` dispatch cost (`DocketDriver` reports no
+  spend).
 
 ### Version 0.19.2 (2026-09-13)
 

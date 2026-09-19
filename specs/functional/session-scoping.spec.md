@@ -1,8 +1,8 @@
 # Session Scoping Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -81,7 +81,8 @@ $ docket scope mywebsite set alpha
 [INFO] Update SOUL.md to reflect the new scope if needed.
 
 $ docket scope mywebsite reset
-[SUCCESS] Scope reset to 'default' for 'mywebsite'
+[SUCCESS] Session scope reset to: default
+[SUCCESS] Session key: agent:mywebsite:default
 ```
 
 ## Validation
@@ -104,6 +105,11 @@ $ docket scope mywebsite reset
 - A metadata scope change **MUST NOT** mutate a pod task's derived step-history or trace identity.
 
 ## Changelog
+
+### Version 2.0.1 (2026-09-18)
+
+- The `reset` example now shows the output `docket scope ... reset` actually prints
+  (`src/docket/cli/__init__.py`). No behavior change.
 
 ### Version 2.0.0 (2026-08-19)
 

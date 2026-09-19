@@ -49,8 +49,12 @@ ROADMAP §6 and date it here.
 
 ---
 
-- **Status:** proposed 2026-09-08 · **audited and corrected 2026-09-11** against `main` at
-  `4032133` (see `internal-docs/harness-mode-audit.md` for the claim-by-claim check).
+- **Status:** **accepted as D-35 and shipped 2026-09-12** (Phase 24 / Wave 30; ROADMAP §6).
+  Proposed 2026-09-08 · audited and corrected 2026-09-11 against `main` at `4032133` (see
+  `internal-docs/harness-mode-audit.md` for the claim-by-claim check). Published schema:
+  `docs/contracts/harness-v1/schema.json`; fixtures: `tests/fixtures/harness-contract/v1/`. As
+  shipped, decision 5's version field is named `v` on the wire (currently `"1.0.0"`), not
+  `harness_contract_version`.
 - **Date:** 2026-09-08
 - **Counterpart:** Tack ADR 0066, `~/Sites/objetivosMios/docs/adr/0066-docket-as-a-third-harness.md`.
   It specifies the consumer side and explicitly builds nothing until this contract exists.
@@ -70,7 +74,11 @@ ROADMAP §6 and date it here.
 
 ## What is true today, measured
 
-Read from this tree at `0d3720a` on 2026-09-08; re-verified at `4032133` on 2026-09-11.
+Read from this tree at `0d3720a` on 2026-09-08; re-verified at `4032133` on 2026-09-11. This is
+the pre-implementation baseline, kept as measured: decisions 9 and 11 have since closed the bold
+rows about `run_bash` ignoring cancellation and about `ask` always waiting (`ToolContext` now
+carries `cancellation_check` and `approval_mode`). `DocketDriver` still ignores `on_spawn`, so
+cancellation reaches an in-flight `bash` through that polled check, not through a recorded pid.
 
 | Fact | Where |
 |---|---|

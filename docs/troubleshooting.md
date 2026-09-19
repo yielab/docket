@@ -7,6 +7,12 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 
 ### Common Causes
 
+#### 0. **It isn't a chat**
+docket's Telegram channel is inbound-only and understands exactly four verbs: `/approve`, `/deny`,
+`/status`, and `/delegate <task>`. Plain prose is refused by design, docket never messages a chat
+first (no approval or completion notifications), and `/delegate` answers with a task id, not the
+pipeline's output. Use `docket pod <p> queue`/`docket trace tail <p>` to see results.
+
 #### 1. **Invalid Model Name**
 
 **Error you might see:** `HTTP 404 from https://api.anthropic.com/v1/...: model not found` (or
@@ -39,7 +45,7 @@ docket models preset anthropic
 > or `docket models` so the change is validated, applied consistently, and audit-logged.
 
 **Valid model names (Anthropic defaults):**
-- `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge, task)
+- `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge)
 - `anthropic/claude-sonnet-4-6` (strong class — programmer, security, repo)
 - `anthropic/claude-opus-4-6` (pin-only via `docket profile <id> <model>`)
 
@@ -67,7 +73,7 @@ from a chat that isn't bound to an agent gets a plain refusal, and the attempt i
 ```bash
 docket audit | grep telegram.unauthorized
 docket list
-# Look for agents with "✓ Wired" and matching group IDs
+# Look for agents with "● telegram (<group-id>)" rather than "○ no telegram"
 ```
 
 **How to fix:**
@@ -104,10 +110,10 @@ cached/re-sent context grows — the same shape of problem any long-lived chat s
 
 #### 1. **Reset Agent Sessions**
 ```bash
-# Level 1: Clear memory logs only
+# Level 1: Clear memory logs only (distills them into MEMORY.md first by default)
 docket maintain <agent-id> clean
 
-# Level 2: Clear memory + HEARTBEAT.md
+# Level 2: Clear memory + MEMORY.md + HEARTBEAT.md (also distills first)
 docket maintain <agent-id> reset
 
 # Level 3: Deep reset - regenerate all from metadata
@@ -155,8 +161,9 @@ docket maintain <agent-id> distill
 docket's own turn loop bounds every turn: a hard cap on model round-trips
 (`AGENT_LOOP_MAX_ITERATIONS`, default 20), a hard cap on total tool calls
 (`AGENT_LOOP_MAX_TOOL_CALLS`, default 40), a wall-clock timeout
-(`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, default 300s), and a measured-token budget
-(`AGENT_LOOP_TOKEN_BUDGET`, default 100,000). These are deliberate stop conditions, not
+(`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, default 300s), a measured-token budget
+(`AGENT_LOOP_TOKEN_BUDGET`, default 100,000), and a cap on consecutive denied tool calls
+(`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`, default 3). These are deliberate stop conditions, not
 throughput knobs — if you're hitting one legitimately, override it via its environment variable
 rather than assuming something is broken.
 
@@ -186,7 +193,9 @@ provider's own response body, truncated to 500 characters.
 
 **Fix:** see "Invalid Model Name" above for a bad model id; `docket keys rotate <KEY>` for a bad
 credential; `docket maintain <agent-id> distill` (or `clean`/`reset`) if the context has grown
-past what the model accepts.
+past what the model accepts. On a small-context endpoint the usual overflow is tool output: lower
+`DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30,000 characters per tool result; about 2,500 suits a
+16k-token window).
 
 ### "docket doctor" flags a model but a turn otherwise succeeds
 ```bash
@@ -202,8 +211,8 @@ docket maintain <agent-id> check
 
 This fixes:
 - Workspace permissions (700 for dirs, 600 for files)
-- Missing files
-- Broken symlinks
+- Missing workspace files and memory directory
+- Missing fleet registration
 
 ## Telegram Issues
 
@@ -292,8 +301,8 @@ To retry a single blocked task without touching the pod-wide pause, use `docket 
 ### A dispatched task fails with "verification_failed" / the verify command failed
 
 The Implementer's hop is gated on its `verifyCmd` (if one is set — see `docket pod <p> add
---verify`/`set-verify`). A non-zero exit from that command fails the hop and leaves the task
-`pending` with a `verification_failed` trace event; it is **not** retried automatically (only a
+--verify`/`set-verify`). A non-zero exit from that command moves the task to `failed` with a
+`verification_failed` trace event; it is **not** retried automatically (only a
 timeout or an endpoint hiccup on the *agent turn* itself is retried — a real, deterministic
 non-zero exit or a bad verdict never is). Inspect the recorded output and either fix the
 underlying failure or clear/adjust the gate:
@@ -301,7 +310,7 @@ underlying failure or clear/adjust the gate:
 ```bash
 docket trace tail <p>                       # see the verify command's (redacted) output
 docket pod <p> set-verify <p>-implementer "npm test"   # change the gate command
-docket pod <p> queue --retry <task-id>      # re-run once you believe it will pass
+docket pod <p> delegate <task>              # re-queue once you believe it will pass
 ```
 
 The command runs in the Implementer's git worktree when one exists, otherwise the pod's shared
@@ -310,8 +319,9 @@ thing to check.
 
 ### A task fails with "tester reported FAIL" (or an unparseable verdict)
 
-The Tester gate is a structural PASS/FAIL parse of the first non-blank line of its reply. `FAIL`
-or anything that doesn't parse as PASS/FAIL (`tester_verdict_failed`) fails the task outright —
+The Tester gate is a structural PASS/FAIL parse: exactly one distinct `PASS` or `FAIL` marker at
+the start of a non-blank line of its reply. `FAIL`, no marker, or both markers
+(`tester_verdict_failed`) fails the task outright —
 there is no rework cycle for a Tester verdict (only a Reviewer's `REQUEST-CHANGES` gets one):
 
 ```bash
@@ -319,17 +329,18 @@ $ docket pod myapp dispatch
   [task-91a2c410-...] failed — tester reported FAIL
 ```
 
-Read the Tester's full reply via `docket trace tail <p>`, fix the underlying issue, then requeue:
+Read the Tester's full reply via `docket trace tail <p>`, fix the underlying issue, then queue it
+again (`queue --retry` only moves a `blocked` task back to `pending`, not a `failed` one):
 
 ```bash
-docket pod myapp queue --retry task-91a2c410-...
+docket pod myapp delegate <task>
 ```
 
 ### "pod has no lead — cannot dispatch"
 The pod is missing its Lead. A pod must have exactly one Lead, which orchestrates dispatch.
-Recreate the pod:
+Add one back (only a *second* Lead is refused):
 ```bash
-docket add <p>
+docket pod <p> add lead
 ```
 
 ### The Portfolio Manager didn't appear
@@ -423,12 +434,13 @@ rather than trying to interpret the exit code alone.
 `DOCKET_HOME` is unset or resolves to the operator's own default home (harness mode refuses to
 touch a real install's approvals/audit log), `DOCKET_LLM_BASE_URL` is unset, `DOCKET_NO_TRACE=1`
 is set (harness mode refuses to run unobserved), or `--workspace` is not a real directory. A
-missing `--model`, a missing/duplicated `--task`/`--task-file`, or a missing `TOKEN` for `status`
-is refused the same way, before `preflight` even runs.
+missing `--model` or a missing/duplicated `--task`/`--task-file` is refused the same way, before
+`preflight` even runs. (`docket harness status` with no `TOKEN` is different: it prints a usage
+line on stderr and exits `1`, with no JSON.)
 
 **Fix:** the caller must supply its own `DOCKET_HOME` (never the operator's `~/.docket`) and a
 `DOCKET_LLM_BASE_URL`, unset `DOCKET_NO_TRACE`, and pass an existing `--workspace` directory. The
-`reason` field on the printed result names which condition failed.
+`error` field on the printed result names which condition failed.
 
 ### Exit code 1 with `"status":"blocked"` — a tool call needed approval
 

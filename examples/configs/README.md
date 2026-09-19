@@ -16,8 +16,8 @@ docket init --from examples/configs/agents.yaml
 ```
 
 Re-applying is safe: an entry whose `id` already exists is skipped. Each entry needs an explicit
-`id` (there is no auto-slugify from `name`) and `name`. Set `blueprint: software` (or `research`/
-`content`/`ops`/`agentic-product` — see `docket roles list`) to provision a full **pod** (a Lead
+`id` (there is no auto-slugify from `name`); `name` defaults to the `id`. Set `blueprint: software`
+(or `research`/`content`/`ops`/`agentic-product` — see `docket init --help`) to provision a full **pod** (a Lead
 plus that blueprint's worker roles); omit `blueprint` and you get a single flat legacy agent
 instead, with no Lead/Implementer split. See the comments in `agents.yaml` for the full field
 list.

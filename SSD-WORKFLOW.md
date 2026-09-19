@@ -61,7 +61,7 @@ cat > specs/functional/new-feature.spec.md << 'EOF'
 
 **Version**: 0.1.0
 **Status**: Draft
-**Last Updated**: $(date +%Y-%m-%d)
+**Last Updated**: YYYY-MM-DD
 
 ## Purpose
 Clear description of what this feature does
@@ -177,7 +177,7 @@ uv run pytest
 bash tests/golden/run.sh verify-all
 
 # Update spec status
-sed -i 's/Status: Draft/Status: Complete/' specs/functional/new-feature.spec.md
+sed -i 's/^\*\*Status\*\*: Draft/**Status**: Complete/' specs/functional/new-feature.spec.md
 ```
 
 ### 6. Documentation Phase
@@ -202,16 +202,21 @@ git commit -m "Add: new-feature per specs/functional/new-feature.spec.md
 
 ### Required Sections
 
-Every specification MUST include:
+Every specification MUST carry a `**Version**:` line (semantic version, X.Y.Z) and a
+`**Status**:` line. The status is free text in practice — current specs use Draft, Active,
+Stable, Complete and Implemented (often with a qualifying sentence) — and it must say what
+actually shipped. `./scripts/validate-specs.sh` then requires these `##` sections, by the
+directory the spec lives in:
 
-1. **Version**: Semantic version (X.Y.Z)
-2. **Status**: Draft | Review | Approved | Complete | Deprecated
-3. **Purpose**: What problem does this solve?
-4. **Scope**: Clear boundaries
-5. **Requirements**: RFC 2119 keywords (MUST, SHOULD, MAY)
-6. **Examples**: Concrete usage examples
-7. **Validation**: How to verify compliance
-8. **Changelog**: Version history
+| Directory | Required sections |
+| --- | --- |
+| `functional/` | Purpose, Scope, Requirements, Interface, Examples, Validation, Changelog |
+| `api/` | Purpose, Scope, Syntax, Arguments, Options, Output, Return, Validation, Changelog |
+| `data/` | Purpose, Scope, Structure, Schema, Validation, Examples, Changelog |
+| `acceptance/` | Overview, Stories, Criteria, Scenarios, Metrics, Changelog |
+| `validation/` | Purpose, Rules, Functions, Testing, Performance, Changelog |
+
+Requirements use RFC 2119 keywords (MUST, SHOULD, MAY); the validator warns when they are absent.
 
 ### RFC 2119 Keywords
 

@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Status**: Implemented
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -38,10 +38,16 @@ This specification does NOT cover:
 - The pipeline format itself (steps, gates, rework edges, variables) — see
   `pipeline-format.spec.md`. A blueprint's `defaultPipeline` is one `PipelineSpec` value; this spec
   only covers which pipeline each built-in blueprint attaches and why
-- Executing a pipeline, or wiring `gateContract`/pipeline gates into the dispatch executor —
-  `core/dispatch.py` still drives every pod through its own hardcoded role order regardless of a
-  pod's blueprint or attached pipeline. Tracked as ROADMAP Phase 16 W-2 (executor) / W-8
-  (generalized gates); out of scope here
+- Executing a pipeline — the executor (ROADMAP Phase 16 W-2/W-8, shipped) is specified in
+  `pod-dispatch.spec.md`. **Known gap:** nothing on the live dispatch path reads a blueprint's
+  `defaultPipeline`. With no caller-supplied spec, `docket pod <project> dispatch` and
+  `docket pipeline run <project>` both run `core.pipeline.default_pipeline()`
+  (`core.dispatch.effective_pipeline`), whatever the pod's `blueprint` meta says. A `research`,
+  `content`, or `ops` pod dispatched that way therefore runs only its Lead step. Its other roles
+  are "skipped — role not in pod", and its Critic/Operator/Monitor gates never run. To run a
+  blueprint's pipeline today, pass an equivalent file with `docket pipeline run <project> --file
+  <path>`. Today `defaultPipeline` is declarative data checked by `TestPipelineGateFidelity`
+  only.
 - User-authored blueprint definitions. Unlike `docket roles add` for archetypes, there is no
   `docket blueprints add <file.yaml>` yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)
@@ -119,7 +125,9 @@ This specification does NOT cover:
    working directory (one per pod, not per member — the same "one codebase root shared by every
    software-pod member" pattern, generalized). When no location is given, docket **MUST**
    auto-provision one at `config.pod_work_dir(<project>)` (mode `700`), mirroring how
-   `config.pod_scratch_dir()` auto-provisions a pod's scratch directory.
+   `config.pod_scratch_dir()` auto-provisions a pod's scratch directory. `docket init` always
+   supplies a location (the current directory when none is passed), so this path is reached from
+   a `--from` entry without `workDir` or a `POST /pods` body without `path`.
 3. Every workspace-contract file a `workdir`-kind member's provisioning writes (`WORKFLOW_AUTO.md`,
    `MEMORY.md`, today's daily log) **MUST** anchor the working directory, not imply a git-tracked
    codebase — no "cd into the codebase" language, no `## Your codebase` heading. A `codebase`-kind
@@ -134,9 +142,10 @@ This specification does NOT cover:
 
 ### CLI surface
 
-1. `docket init <project> [location] [--blueprint <name>]` **MUST** select a blueprint (default
-   `software`) before prompting for anything else, and **MUST** fail cleanly (exit 1, no prompts
-   issued) if `<name>` is not a registered blueprint.
+1. `docket init <project> [location] [--blueprint <name>]` **MUST** resolve the blueprint (default
+   `software`) before provisioning anything, and **MUST** fail cleanly (exit 1, nothing
+   provisioned) if `<name>` is not a registered blueprint. `docket init` is non-interactive: the
+   location defaults to the current directory and the project id to that directory's name.
 2. `--pod full` / `--with <roles>` **MUST** continue to apply only to the `software` blueprint's
    roster (unchanged pre-W-7 behavior); passing them against any other blueprint **MUST** warn and
    provision that blueprint's own fixed roster, not silently combine the two.
@@ -156,7 +165,7 @@ This specification does NOT cover:
 ### User-authored blueprints
 
 1. Unlike role archetypes (`docket roles add <file.yaml>`), there is currently no
-   `docket blueprints add` — the four built-ins in `core/blueprints.py` are Python literals and
+   `docket blueprints add` — the five built-ins in `core/blueprints.py` are Python literals and
    are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
    custom pod shape means adding roles to an existing pod with `docket pod <project> add <role>`
@@ -202,16 +211,11 @@ roster is the only difference, and it is precisely what makes the Reviewer/Teste
 
 ## Examples
 
-### Provisioning a research pod interactively
+### Provisioning a research pod
 
 ```bash
-docket add my-market-scan --blueprint research
-# Working directory [/home/user/my-market-scan]:
-# Display name [my-market-scan]:
-# Agent ID [my-market-scan]:
-# Stack [unknown]:
-# Description (one line): quarterly competitive landscape scan
-# Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, critic)...
+$ docket init my-market-scan /home/user/work/my-market-scan --blueprint research
+→ Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, critic)...
 ```
 
 ### Provisioning a workdir pod declaratively
@@ -233,8 +237,8 @@ docket init --from spec.yaml
 ### An unknown blueprint fails cleanly
 
 ```bash
-docket add myproj --blueprint wizard-pod
-# [ERROR] unknown blueprint 'wizard-pod'; valid blueprints: software, research, content, ops, agentic-product
+$ docket init myproj --blueprint wizard-pod
+✗ Error: unknown blueprint 'wizard-pod'; valid blueprints: software, research, content, ops, agentic-product
 ```
 
 ## Validation
@@ -264,6 +268,18 @@ docket add myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.3.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Replaced the stale "tracked as W-2/W-8" non-goal: the
+  executor shipped, but nothing on the live dispatch path reads a blueprint's
+  `defaultPipeline`. A non-software pod dispatched without `--file` runs only its Lead step, and
+  this is now stated as a known gap (verified with `resolve_plan` against a research roster).
+  Examples moved from the retired interactive `docket add --blueprint` flow to non-interactive
+  `docket init`, with real `ui` prefixes. The CLI requirement no longer talks about prompts
+  `init` does not issue. The user-authored note now says five built-ins, not four. The
+  workspace-kind requirement now says which entry points reach `pod_work_dir`
+  auto-provisioning.
 
 ### Version 1.3.0 (2026-08-20)
 

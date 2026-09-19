@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 2.2.0
+**Version**: 2.2.1
 **Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
 discovers a Telegram group from a one-time `/wire <code>` message (with manual entry as a
 fallback), records its binding in `fleet.json`, and `docket serve
@@ -9,7 +9,7 @@ new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
 fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny through it writes an
 `audit_log()` entry tagged `channel="telegram"`, exactly like the other three.
-**Last Updated**: 2026-08-20
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -193,8 +193,10 @@ docket serve --telegram
 $ docket wire mywebsite
 Wire Telegram: My Shop (mywebsite)
 
-In the Telegram group, send: /wire A1B2C3
-Then return here and press Enter.
+Easy setup:
+  1. Add your Docket bot to the Telegram group.
+  2. In that group, send: /wire A1B2C3
+  3. Return here and press Enter.
 
 Press Enter after sending it, or paste the group ID:
 [SUCCESS] Found Telegram group "My Shop Team"
@@ -273,6 +275,11 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Version 2.2.1 (2026-09-18)
+
+- The `docket wire` example now shows the real three-step "Easy setup" prompt
+  (`cli/__init__.py`'s `cmd_wire`). No requirement changed.
 
 ### Version 2.2.0 (2026-08-20)
 

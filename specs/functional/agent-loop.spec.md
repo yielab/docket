@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.18.0
+**Version**: 1.18.1
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -23,7 +23,7 @@ turn budget. **Wave 30 card W30-C2** adds `ToolContext.approval_mode`: a call ga
 `"refuse"` is denied immediately, with no approval record and no wait, and the loop stops on that
 denial alone rather than folding it into the consecutive-denial count — see requirement 70 and
 `security-gates.spec.md`'s approval-mode clause for the `core/tools.py` half of this contract.
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -137,7 +137,8 @@ This specification does NOT cover:
 
 16. Every tool call actually dispatched **MUST** emit a `tool_call` trace event
     (`core/trace.py`) before it runs and a `tool_result` trace event after, using the same two
-    event types `core/trace.py`'s `trace_ingest` already projects from daemon session logs.
+    event types `core/trace.py`'s `trace_ingest` already projects from the driver's session
+    records.
 17. A turn that dispatches no tool calls **MUST NOT** emit either event type.
 
 ### `DocketDriver` (`RuntimeDriver` conformance)
@@ -184,7 +185,8 @@ This specification does NOT cover:
 ### System prompt composition (ROADMAP Phase 19 P19-12)
 
 29. `run_agent_turn` **MUST** compose a system prompt via
-    `core.identity.system_prompt_for_agent(ctx.agent_id)` once per turn and, when non-empty,
+    `core.identity.system_prompt_for_agent(ctx.agent_id, project_roots=ctx.roots)` once per turn
+    and, when non-empty,
     prepend it as a `system`-role message ahead of the turn's history and incoming user message.
     An empty result (no workspace, no identity files, no `agent_id`) **MUST NOT** add an empty
     `system` message.
@@ -213,8 +215,8 @@ This specification does NOT cover:
     state. An agent with no identity/startup/private files still composes no system message.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
-    so a persona change or a re-seeded `WORKFLOW_AUTO.md` is reflected on the very next turn
-    rather than frozen into a stored message.
+    so a persona change or refreshed private workspace state (requirement 30) is reflected on the
+    very next turn rather than frozen into a stored message.
 
 ### Live session compaction (Wave 20 W20-C2)
 
@@ -434,7 +436,8 @@ This specification does NOT cover:
     measured usage), never before. The loop **MUST** return `stop_reason="approval_unavailable"`
     and `failure_kind="invalid_output"`, make no further backend request, and its actionable error
     **MUST** name the tool, the call id, the policy id, and the reason from the first such result in
-    the batch. A `gate_denied` or `invalid_call` result in the same or a later batch **MUST NOT** be
+    the batch. `core/agent_loop.py::approval_unavailable_error()` is the single renderer of that
+    error string (quoted `key=value` pairs), because `core/harness.py` parses it back. A `gate_denied` or `invalid_call` result in the same or a later batch **MUST NOT** be
     made terminal by this requirement — both remain recoverable and bounded only by the existing
     `max_consecutive_tool_denials` limit (requirements 57-60), exactly as under `approval_mode ==
     "wait"`.
@@ -571,7 +574,8 @@ tool call resolves against the worktree directory, not the codebase — worktree
 ctx = ToolContext(agent_id="rev-1", role="reviewer", project="demo", roots=(workspace,))
 result = agent_loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:rev-1:default", "edit it")
 # the model was never advertised "write"/"edit"/"bash" (registry_for_role narrowed them out);
-# if it requests one anyway, dispatch_tool's tool_result answers "REFUSED: unknown tool ..."
+# if it requests one anyway, dispatch_tool's tool_result answers
+# "REFUSED [invalid_call]: unknown tool ..."
 # result.ok can still be True — the turn completes normally, just without that call executing
 ```
 
@@ -581,7 +585,8 @@ result = agent_loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:rev-
 # ws/SOUL.md exists, ws/WORKFLOW_AUTO.md exists, agent has a persona set
 result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 # backend.complete's first call's messages[0].role == "system"
-# that message's content folds in SOUL.md, the live persona, and WORKFLOW_AUTO.md
+# that message's content folds in SOUL.md, the live persona, and the runtime projection of the
+# startup contract -- never WORKFLOW_AUTO.md's raw prose (requirement 30)
 # core.session.load_messages(session_key) contains no "system"-role message afterward
 ```
 
@@ -624,6 +629,15 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.18.1 (2026-09-18)
+
+- Truth pass against the `_TurnState` refactor (W34-C1): requirement 29 names the real
+  `project_roots=ctx.roots` argument; requirement 31 and the system-prompt example no longer claim
+  raw `WORKFLOW_AUTO.md` content reaches the model (superseded by requirement 30 in 1.14.0);
+  requirement 16 drops the retired "daemon session logs"; requirement 70 names
+  `approval_unavailable_error()` as the error's single renderer; the Reviewer example shows the
+  real `REFUSED [invalid_call]:` refusal text. No behavior change.
 
 ### Version 1.18.0 (2026-09-12)
 

@@ -1,7 +1,8 @@
 # Harness mode v1 — consumer packet
 
 For the external plan-of-record that asked for a versioned non-interactive contract before
-building against docket. Everything below resolves in this repository at the commit named.
+building against docket. Everything below resolves in this repository at tag `v0.2.0-beta.3`, the
+first published release that ships harness mode.
 
 ## What to pin
 
@@ -13,6 +14,7 @@ building against docket. Everything below resolves in this repository at the com
 | Fixtures | `tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson` |
 | Spec | `specs/api/harness-mode.spec.md` v1.1.0 |
 | Shipped in | Phase 24 / Wave 30, cards W30-C1 through W30-C5 |
+| First release | `v0.2.0-beta.3` (2026-09-18) |
 
 The schema is generated from the Pydantic models by `scripts/harness_schema.py` and a test
 regenerates it in memory and compares byte for byte, so the committed artifact cannot drift from

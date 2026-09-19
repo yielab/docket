@@ -264,15 +264,19 @@ permanent filenames.
 
 ### Pointing Docket at a temporary world
 
-Use the shared `fake_home`/`isolated_docket_home` fixtures where available. A focused test that
-needs custom stores may monkeypatch `docket.config` paths explicitly, but every path must remain
-under `tmp_path` and be restored by pytest.
+Every test already runs under the autouse `_isolate_docket_home` and `_isolate_fleet_file`
+fixtures in `tests/conftest.py`, which point every `DOCKET_HOME`-derived constant at `tmp_path`.
+A test that needs a home of its own choosing calls the shared `repoint_docket_home` helper rather
+than patching a subset of `docket.config` paths by hand; a hand-rolled partial copy silently stops
+tracking `_DOCKET_HOME_PATHS` when a constant is added, and `tests/guards/test_partial_repointers.py`
+ratchets the number of test functions that still do it.
 
 ```python
+from tests.conftest import repoint_docket_home
+
+
 def test_example(tmp_path, monkeypatch):
-    state = tmp_path / ".docket"
-    monkeypatch.setattr(config, "DOCKET_HOME", state)
-    monkeypatch.setattr(config, "PROJECTS_DIR", state / "workspaces" / "projects")
+    repoint_docket_home(monkeypatch, tmp_path / ".docket")
 ```
 
 For turn behavior, inject a deterministic `ChatBackend`; for driver-bound behavior, use
@@ -406,6 +410,8 @@ uv run ruff format --check .
 uv run mypy src
 bash scripts/validate-specs.sh
 uv run python scripts/metrics.py --check
+uv run python scripts/gen_cli_docs.py --check
+uv run pytest tests/agent
 ```
 
 Environment-dependent skips are acceptable only when the owning contract labels them optional and

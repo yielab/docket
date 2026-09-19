@@ -1,10 +1,10 @@
 # Cost Tracking Specification
 
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
 Docket's own `DocketDriver` and session store. See requirements 2-4 below.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -93,6 +93,9 @@ pod-dispatch.spec.md).
 5. `docket doctor` and `docket cost` **MUST** warn at ≥80% and flag ≥100% of cap (using recorded
    spend, the same figure `docket cost` reports), and flag runaway sessions (turn/cost
    thresholds) — these two checks remain display-only, independent of the pause writer.
+   Because recorded spend is always `0` under `DocketDriver` (requirement 4), the percentage and
+   the cost-threshold runaway check always read `0%`/below threshold in production; only the
+   turn-count runaway check and the dispatch gate's labelled estimate can actually trip today.
 6. **Known scope limit (unchanged by R-5):** enforcement exists only where docket itself is in
    the execution path — the pod-dispatch lane. A budget cap set on a non-pod agent, or spend
    from a Telegram session / any driver use outside dispatch, is still entirely ungated
@@ -137,7 +140,7 @@ $ docket cost mywebsite
   Total cost:       none recorded for these sessions
 
 $ docket profile mywebsite --budget 5
-[SUCCESS] Budget cap set to $5 for 'mywebsite'.
+✓ Budget cap set to $5 for 'mywebsite'.
 ```
 
 `DocketDriver` never reports a cost (requirement 3), so "none recorded for these sessions" —
@@ -147,24 +150,21 @@ required a daemon that reported a real dollar figure, which no longer exists.
 
 ### A pod pausing at its cap, and resuming
 
+Recorded pod spend is always `0` in production (requirement 4), so the block reason always
+carries the labelled estimate; the unlabelled `($X.XX ≥ $Y.YY)` form only appears if a driver
+ever records a real cost.
+
 ```bash
 $ docket pod myproject dispatch
-✗   myproject-lead: pod budget reached ($5.12 ≥ $5.00) before implementer
+⚠   [<task-id>] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
 $ docket info myproject-lead
   ...
   Status:           PAUSED (budget)
 
 $ docket profile myproject-lead --resume
-  Unblocked 1 budget-blocked task(s) in pod 'myproject'.
-[SUCCESS] Resumed 'myproject-lead' — auto-pause cleared.
-```
-
-### A cap reached via the estimate fallback (no cost recorded)
-
-```bash
-$ docket pod myproject dispatch
-✗   myproject-lead: pod budget reached (~$4.80 (estimated — no cost recorded) ≥ $1.00) before implementer
+→   Unblocked 1 budget-blocked task(s) in pod 'myproject'.
+✓ Resumed 'myproject-lead' — auto-pause cleared.
 ```
 
 ## Validation
@@ -194,6 +194,16 @@ $ docket pod myproject dispatch
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.6.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Examples now show the real `ui` output (`✓`/`→`/`⚠`
+  prefixes, not `[SUCCESS]`) and the real dispatch block line (`cli/_pod.py`: `[<task-id>]
+  blocked — <reason>`), and the pause example uses the labelled-estimate reason — the only form
+  production can emit, since recorded spend is always `0`; the separate estimate example it
+  duplicated was folded in. Requirement 5 (Enforcement) now states that the ≥80%/≥100% cap
+  warnings and the cost-threshold runaway check read recorded spend and therefore never trip
+  under `DocketDriver`.
 
 ### Version 1.6.0 (2026-08-19)
 

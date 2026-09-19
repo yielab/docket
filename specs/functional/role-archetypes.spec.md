@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
@@ -16,7 +16,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -49,8 +49,8 @@ This specification covers:
 - The user-overlay registry (`~/.docket/docket-roles.json`) and its merge/override semantics
 - How `modelClass` integrates with the existing role→model policy (`model-profiles.spec.md`)
   without replacing it
-- How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`/`POD_ROLES`/
-  `POD_ROLE_POLICY` resolve against this registry instead of a hardcoded list
+- How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`/`policy_role_for`
+  resolve against this registry instead of a hardcoded list
 - The `docket roles list/show/add/validate` CLI surface
 
 This specification does NOT cover:
@@ -94,10 +94,12 @@ This specification does NOT cover:
    two classes `model-profiles.spec.md`'s `ROLE_CLASS` already uses.
 4. `gateContract.kind` **MUST** be one of exactly `"none"` | `"verdict"` | `"mechanical"` |
    `"approval"` — a closed enum. `regexes` (a list of strings, each a valid regular expression)
-   **MUST** be present only when `kind == "verdict"`; each entry is a marker alternative matched
-   against the first non-blank line of a reply, mirroring `core/dispatch.py`'s existing
-   Reviewer/Tester verdict-parsing convention (`^\s*(A|B)\b`, case-insensitive) — see "Legacy
-   archetype fidelity" below for the exact values the reviewer/tester archetypes carry.
+   **MUST** be present only when `kind == "verdict"`; each entry is a marker alternative, and
+   `core.orchestrator.resolve_gate` joins them into one `^\s*(A|B)\b` case-insensitive pattern
+   whose first entry is the passing value. `core.orchestrator.parse_verdict` applies that pattern
+   at the start of every non-blank line of the complete reply and accepts exactly one distinct
+   marker (see `pipeline-format.spec.md` Gates requirement 3). See "Legacy archetype fidelity"
+   below for the exact values the reviewer/tester archetypes carry.
 5. `editRights` **MUST** be one of exactly `"none"` | `"read-only"` | `"write"` — a closed enum.
    `editRights` itself remains descriptive metadata, by design — it is not mechanically derived
    into a tool denylist, because the mapping is not one-to-one (the `tester` archetype is
@@ -131,8 +133,8 @@ This specification does NOT cover:
    `objective`, `codebase` (may be an empty string when no codebase is configured — the schema's
    "codebase?" optionality), and `workDir`. Docket's own built-in/starter archetypes additionally
    rely on `role`, `memberId`, `sessionKey`, `stack`, `codebaseOrConfigured`, `codebaseOrIt`, and
-   `requiredStartupFile` — supplied by `cli/_pod.py`'s renderer for every pod member, but not part
-   of the publicly documented minimum a user archetype is guaranteed.
+   `requiredStartupFile` — supplied by `core/pod_provisioning.py`'s `_render_context` for every
+   pod member, but not part of the publicly documented minimum a user archetype is guaranteed.
 3. `docket roles validate` **MUST** dry-run render both templates against a representative sample
    variable set and report any unknown-variable error, so an authoring mistake is caught before
    `docket roles add` persists it (or, for a live registry entry, is caught by an operator
@@ -419,6 +421,15 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.6.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Dropped `POD_ROLES`/`POD_ROLE_POLICY` from the scope list:
+  commit a73a074 removed that compatibility shim, and `policy_role_for` is the live resolver.
+  Updated the `gateContract.regexes` description from the pre-W25-C11 "first non-blank line"
+  rule to the line-anchored, one-distinct-marker contract `parse_verdict` enforces, and named
+  `resolve_gate` as the function that turns regexes into a pattern. Moved the template-variable
+  renderer reference from `cli/_pod.py` to `core/pod_provisioning.py`'s `_render_context`.
 
 ### Version 1.6.0 (2026-08-19)
 

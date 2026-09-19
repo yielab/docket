@@ -55,10 +55,12 @@ Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-implemente
 `docket list`/`info`/`cost`/`doctor` see every pod member for free.
 
 ```bash
-docket add myapp ~/code/myapp        # lean pod: myapp-lead + myapp-implementer
-docket add myapp --pod full          # full pod: + reviewer + tester
-docket add myapp --with reviewer     # lean pod + a reviewer
+docket init myapp ~/code/myapp       # lean pod: myapp-lead + myapp-implementer
+docket init myapp ~/code/myapp --pod full        # full pod: + reviewer + tester
+docket init myapp ~/code/myapp --with reviewer   # lean pod + a reviewer
+cd ~/code/myapp && docket init       # same lean pod, id/path/stack derived from the cwd
 docket pod myapp                     # inspect the pod and its roles
+docket add reviewer --project myapp  # add a role to an existing pod (never creates one)
 docket pod myapp add implementer     # scale out: adds myapp-implementer-2
 docket pod myapp add reviewer        # add a role later
 docket pod myapp remove myapp-tester # drop a member
@@ -116,7 +118,7 @@ next section.
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
 ```bash
-docket add my-market-scan --blueprint research
+docket init my-market-scan --blueprint research
 # Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, critic)...
 ```
 
@@ -128,8 +130,8 @@ docket add my-market-scan --blueprint research
 | `ops` | workdir | lead, operator, monitor | $30 | operator: mechanical; monitor: approval |
 | `agentic-product` | codebase | lead, implementer, reviewer, tester | (none) | implementer: mechanical; reviewer: verdict, rework -> implementer; tester: verdict, hard fail |
 
-Omitting `--blueprint` (or passing `--blueprint software` explicitly) is exactly today's
-`docket add` — same roster, same files, no behavior change. `research`/`content`/`ops` are
+Omitting `--blueprint` (or passing `--blueprint software` explicitly) is exactly a plain
+`docket init` — same roster, same files, no behavior change. `research`/`content`/`ops` are
 **`workdir`-kind**: no codebase is assumed or auto-detected; the pod gets a shared working
 directory instead (auto-provisioned if you don't name one). `agentic-product` is `codebase`-kind
 like `software`, but its roster is the full Lead+Implementer+Reviewer+Tester set, so both gated
@@ -147,7 +149,8 @@ compose a custom shape today, provision the closest built-in and add roles by ha
 
 ## Org specialists — shared across the fleet
 
-`docket init` creates the cross-cutting specialists once. They are genuinely fleet-wide, so a
+The first `docket init` on a machine creates the cross-cutting specialists once, as part of the
+shared workstation foundation it builds before the project pod. They are genuinely fleet-wide, so a
 per-project copy would be waste:
 
 - **manager** — cross-cutting coordination (transitional; `docket team`'s queue was retired in
@@ -160,7 +163,9 @@ any starter or custom role) are pod-scoped — see "Project pods" above — neve
 
 ### Optional: the org Portfolio Manager
 
-`docket init --portfolio` adds **one** `portfolio-manager` (`scope: org`): a cross-pod
+`docket init --portfolio` adds **one** `portfolio-manager` (`scope: org`). The flag is read only
+by the **first** `docket init`, the one that builds the shared foundation; on a machine that
+already has one it is ignored. The Portfolio Manager is a cross-pod
 **planning and visibility** surface. It sees fleet *metadata* — which pods exist, their queues,
 budgets, and health — **not project code.** It is advisory: it recommends where to focus,
 rebalance, or pause, in words for a human. It never edits code and does not dispatch into pods
@@ -208,8 +213,8 @@ docket serve --dispatch                                       # background: driv
 Each hop that isn't the Lead is **gated** before the pipeline advances past it:
 
 - **Implementer → mechanical gate.** If the Implementer has a `verifyCmd` set
-  (`docket pod <project> add --verify "<cmd>"` or `docket pod <project> set-verify <member-id>
-  "<cmd>"`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
+  (`docket pod <project> add implementer --verify "<cmd>"` or
+  `docket pod <project> set-verify <member-id> "<cmd>"`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
   advancing to Reviewer/Tester. An unset `verifyCmd` is never silently skipped — it's a visible
   "verification skipped" line, so you can always tell "not configured" from "configured and
   passing."
@@ -226,7 +231,8 @@ Three guarantees hold on every dispatch:
 - **Budget-gated.** Before *each* hop docket checks the pod's token-based dollar estimate against
   the Lead's budget cap (`docket profile <project>-lead --budget N`) — docket's own turn loop
   reports no billed spend, so the gate always runs off this labelled estimate. Over budget → the
-  task is left **pending** (blocked), not run.
+  task is left **blocked** (not run) and the pod's Lead is paused until you raise its cap or run
+  `docket profile <project>-lead --resume`.
 - **Traced.** Every hop emits a Phase-8 trace event (`docket trace`), on a per-task session
   `agent:<project>:<task_id>` — so a run is fully auditable, with no manual Telegram relay.
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
@@ -354,13 +360,15 @@ See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 
 ```bash
 # Provision / resize a pod
+docket init                               # lean pod for the cwd (id, path, stack derived from it)
 docket init <project> [path]              # lean pod (Lead + Implementer)
-docket init <project> --pod full          # + Reviewer + Tester
-docket init <project> --with reviewer,tester
+docket init <project> [path] --pod full   # + Reviewer + Tester
+docket init <project> [path] --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
 docket pod <project>                     # list members
 docket pod <project> add <role> [--count N]
+docket add <role> [--project <project>] [--count N]  # same, pod inferred from the cwd
 docket pod <project> remove <member-id>
 docket delete <project>                  # tear down the whole pod
 
@@ -374,7 +382,7 @@ docket roles validate [file.yaml]        # dry-run schema + template validation
 docket pod <project> delegate [--priority high|normal|low] "<task>"
 docket pod <project> queue
 docket pod <project> dispatch
-docket pod <project> add --verify "<cmd>"        # Implementer's mechanical gate
+docket pod <project> add implementer --verify "<cmd>"   # Implementer's mechanical gate
 docket pod <project> set-verify <member-id> "<cmd>"
 docket serve --dispatch                  # autonomous: drive every pod's queue
 
@@ -383,9 +391,8 @@ docket persona <member-id> set "<label>" # optional display persona
 docket persona <member-id> clear
 docket persona <member-id> show
 
-# Org specialists
-docket init                           # manager, knowledge, security
-docket init --portfolio               # + the optional org Portfolio Manager (advisory, read-only)
+# Org specialists: created by the first `docket init` (manager, knowledge, security)
+docket init --portfolio               # first init only: + the optional org Portfolio Manager
 ```
 
 > `docket team` (the org manager's own task queue) was **retired** — every project's pod owns

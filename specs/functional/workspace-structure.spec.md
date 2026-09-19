@@ -1,9 +1,9 @@
 # Workspace Structure Specification
 
-**Version**: 1.9.0
+**Version**: 1.9.1
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -126,7 +126,8 @@ covers the resulting file set for either workspace kind, not blueprint selection
 Workspaces are created and repaired through commands, not edited by hand:
 
 ```bash
-docket add <agent-id> [location] [--blueprint <name>]  # Provision a pod (see pod-blueprints.spec.md)
+docket init [<project>] [location] [--blueprint <name>]  # Provision a pod (see pod-blueprints.spec.md)
+docket add <role> [--project <pod>]       # Add a member workspace to an existing pod
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md, project or specialist
@@ -145,9 +146,8 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ├── WORKFLOW_AUTO.md
 ├── MEMORY.md
 ├── .docket-meta.json
-├── memory/
-│   └── 2026-07-30.md
-└── workflows/
+└── memory/
+    └── 2026-07-30.md
 ```
 
 ### A provisioned pod member with no TOOLS.md (`workdir`-kind, non-Implementer)
@@ -187,7 +187,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ### Post-conditions
 
-- After `docket add`, all required core files **MUST** exist with `700`/`600` permissions and
+- After `docket init` (or `docket add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
 - After the first `docket init`, every org specialist (and the opt-in Portfolio Manager, when
   provisioned) **MUST** have the specialist file set above with `700`/`600` permissions and a
@@ -207,6 +207,13 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.9.1 (2026-09-18)
+
+- Truth pass: pods are provisioned by `docket init` (21abc85), with `docket add` adding a member
+  to an existing pod; the Interface Contracts block and post-condition now say so. Dropped
+  `workflows/` from the provisioned-workspace example, since requirement 2 already says docket no
+  longer creates it.
 
 ### Version 1.9.0 (2026-08-19)
 

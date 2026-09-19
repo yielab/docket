@@ -28,7 +28,8 @@ class DocketCli < Formula
 
   def install
     # The CLI is a thin Bash launcher over the Python package; install the
-    # package into an isolated venv (pulls typer/rich/pydantic/filelock).
+    # package into an isolated venv (pulls typer/rich/pydantic/pydantic-settings/
+    # filelock/pyyaml).
     venv = virtualenv_create(libexec, "python3.11")
     venv.pip_install buildpath
 

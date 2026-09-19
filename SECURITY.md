@@ -59,7 +59,7 @@ limits.
 
 **The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,
-`docket install` **enforces tool-approval gates by default** (opt out with `--no-gates`): a
+docket **always enforces its tool-approval gate** — there is no switch that turns it off: a
 curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
 `docker`), with a fail-closed default — a call gated `ask` blocks on docket's own approval
 store (`core/approval.py`) and times out to **denied**, never left pending. Approvals are
@@ -78,9 +78,9 @@ execution to a per-agent Docker (or `bwrap`) sandbox. It **fails closed**: with 
 usable backend, the turn is refused before any model call or tool execution and the refusal is
 audit-logged, rather than silently running unsandboxed.
 
-Re-apply or reverse gate config anytime with `docket
-gates enable`/`docket gates disable`. `docket doctor` and `docket gates status` report the live
-posture. See
+`docket init --no-gates` and `docket gates enable`/`docket gates disable` only record an
+approval-routing posture flag that `docket doctor` and `docket gates status` report; nothing on the
+live turn path reads it, so none of them turns the gate off. See
 [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
 (Status: Implemented, on by default for new installs).
 
@@ -114,7 +114,7 @@ status, including what is configured/gated versus what is wired into a live turn
 > proportionate. Budget caps and session isolation are the features doing the most work here.
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
-> with exec access on an exposed host is a serious liability. Gates are on by default, but also
+> with exec access on an exposed host is a serious liability. The tool-call gate is always on, but also
 > **enable workspace isolation** (`docket gates isolate on` — it fails closed if no backend is
 > available), use the `keyring` secret
 > backend, and never run with broad ambient credentials. Instruction-level constraints alone
@@ -138,24 +138,24 @@ docket is honest about its limits. It does **not**:
   default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but `bash` can still reach the
   network through interpreters and package managers on the curated allowlist (`SAFE_BINS` in
   `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`). `fetch` is the *inspectable* path,
-  not yet the *only* one. Tracked as an open gap, not glossed over — see `README.md`'s "What's
-  next".
+  not yet the *only* one. Tracked as an open gap, not glossed over — see `README.md`'s "Known
+  limits".
 - sandbox or contain the model endpoint itself, or a remote MCP server's own process — if a
   model or an MCP server is compromised, docket's gates constrain what it can ask docket's
   tools to do, but do not contain the endpoint/server itself;
-- defend against a malicious or prompt-injected agent when gates were explicitly disabled
-  (`--no-gates` at install, or `docket gates disable` later);
+- stop a dangerous call a human approves — a granted `ask` verdict runs; and `--no-gates` or
+  `docket gates disable` never turn the gate off, they only record a posture flag;
 - audit or vet the code your agents write or the third-party MCP servers they invoke — a
   gated MCP tool call still runs whatever that server implements;
 - encrypt data at rest beyond the `0600`/keyring options above, or protect against an attacker
   who already has your user account or root;
-- guarantee budget caps are instantaneous — they pause on the next reported usage tick, so a
-  single in-flight call can overshoot;
+- guarantee budget caps are instantaneous — the cap is checked before each dispatch hop against a
+  token-based estimate, so a single in-flight hop can overshoot;
 - enforce anything on a process started **outside** docket's own turn loop — gating covers
   every tool call docket itself dispatches, which is not the same as being a system-wide
   enforcement daemon.
 
-Run docket and its agents only in environments you trust, enable enforced gates on anything
+Run docket and its agents only in environments you trust, enable workspace isolation on anything
 exposed, and review agent output before acting on it.
 
 See [docs/SECURITY-SIMPLE.md](docs/SECURITY-SIMPLE.md) for the full security model.

@@ -4,8 +4,9 @@
 # Usage (from a cloned repo):
 #   ./install.sh [--prefix /usr/local]
 #
-# Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/yielab/docket/main/install.sh | bash
+# Usage (one-liner, pinned to a release tag):
+#   curl -fsSL https://raw.githubusercontent.com/yielab/docket/v<version>/install.sh \
+#     | DOCKET_VERSION=<version> bash
 #
 # Homebrew (macOS/Linux):
 #   brew tap yielab/docket-cli https://github.com/yielab/docket

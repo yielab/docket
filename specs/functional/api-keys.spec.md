@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Status**: Complete
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-09-19
 
 ## Purpose
 
@@ -43,8 +43,8 @@ This specification does NOT cover provider key *format* rules (see input-validat
 
 ### Propagation
 
-1. After `setup`, `add`, or `rotate`, the key for an agent's selected model provider **MUST** be
-   synced automatically to that agent. Generic custom keys **MAY** sync to every agent; Docket-owned
+1. After `setup`, `add`, `rotate`, or `remove`, the key for an agent's selected model provider
+   **MUST** be re-synced automatically to that agent (each agent workspace's `.env`, mode `600`). Generic custom keys **MAY** sync to every agent; Docket-owned
    operational credentials **MUST NOT**.
 2. Docket's model endpoint resolver **MUST** read the selected provider credential directly from
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
@@ -80,13 +80,19 @@ docket keys export                # Print as env vars
 
 ```bash
 $ docket keys add ANTHROPIC_API_KEY
-Enter value for ANTHROPIC_API_KEY: ****
+Enter value for ANTHROPIC_API_KEY (hidden):
 ✓ Key 'ANTHROPIC_API_KEY' stored.
 
 $ docket keys list
-  ANTHROPIC_API_KEY    sk-ant-...••••
-  OPENAI_API_KEY       (not set)
+Stored API Keys
+
+  ✓ ANTHROPIC_API_KEY                 sk-a****wxyz  added 2026-09-19
 ```
+
+`list` shows only stored keys (an unset provider key has no row). A value longer than 12
+characters is masked to its first and last four characters; anything shorter prints `****`. The
+leading badge is `✓` when the value passes the local format rule for that name and `⚠` when it
+does not.
 
 ## Validation
 
@@ -108,6 +114,14 @@ $ docket keys list
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.3.1 (2026-09-19)
+
+- Doc-truth pass, no behavior change. Propagation requirement 1 now includes `remove`, which
+  re-syncs agent `.env` files like `add`/`rotate`/`setup` (`cli/_keys.py`). The example now shows
+  the real hidden-input prompt, the `Stored API Keys` header, the format badge, the
+  first-four/last-four mask, and the `added` date, and drops the `(not set)` row that `list`
+  never prints.
 
 ### Version 1.3.0 (2026-08-30)
 

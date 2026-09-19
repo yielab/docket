@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.6.0
+**Version**: 6.6.1
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -19,8 +19,8 @@ generalized gate execution (Phase 16 W-8) are now implemented — see "Generaliz
 sources (pod-level and pipeline-defined); the policy-driven source (Phase 15 G-2) remains an
 explicit, inert seam — see that section's "Sources" list. Hops run through the RuntimeDriver port
 (Phase 18 L-1) — a containment refactor with no behavior change **at the time it shipped**; P19-7a
-(2026-08-03) is the behavior change that port made possible — see "Runtime driver resolution
-(P19-7a)" below. The role-archetype registry's
+(2026-08-03) is the behavior change that port made possible — see "Runtime driver resolution"
+below. The role-archetype registry's
 `gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
 when the step declares none of its own. **Structured handoff artifacts (ROADMAP Phase 16 W-5)**
 are implemented — see "Structured handoff artifacts" below: a hop's output is a typed
@@ -41,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-18
 
 ## Purpose
 
@@ -96,8 +96,8 @@ This specification covers:
   generically, and the byte-identical-behavior guarantee for the four built-in roles
 - **Parallel step groups** (W-2): bounded concurrent execution of a group's children, join
   semantics, and per-hop persistence ordering
-- **Cancellation** (W-2): how an in-flight hop's process group is tracked and killed by
-  `docket runs cancel <id>`
+- **Cancellation** (W-2, W26-C10c, W30-C1): how `docket runs cancel <id>` reaches an in-flight hop
+  — the cooperative run signal, an in-flight `bash` command's process group, and any tracked pid
 - The require_approval gate's two wired sources for this version (a pod-level Lead-meta role
   list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
   (grant resumes at the exact hop, deny fails the task immediately, an expiry fail-closes to
@@ -143,7 +143,8 @@ This specification does NOT cover:
   spec covers only how the executor *consumes* an archetype's `gateContract` as a gate fallback,
   not the registry's own authoring/validation contract
 - Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
-  workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7 (not shipped)
+  workspace kind) — see `workspace-structure.spec.md` and `pod-blueprints.spec.md` (ROADMAP Phase 16
+  card W-7)
 - `core/context.py`'s own internals (the chars-per-token approximation, `compile_artifact`'s
   field-shedding/summary-truncation mechanics, `RoleArchetype.token_budget`'s schema) — see
   `role-archetypes.spec.md` for the archetype-side schema and `core/context.py`'s own module
@@ -165,8 +166,9 @@ This specification does NOT cover:
 2. A task record loaded from a pre-Phase-14 queue file (missing the fields this version adds)
    **MUST** be transparently backfilled with their defaults on every read (`_normalize_task`) —
    no separate migration step exists or is required.
-3. A task's status **MUST** be one of exactly five values: `pending`, `running`, `done`,
-   `failed`, `blocked`. (See "Task status vocabulary" below for terminal vs. non-terminal.)
+3. A task's status **MUST** be one of exactly seven values: `pending`, `running`, `done`,
+   `failed`, `blocked`, `waiting_approval`, `cancelled`. (See "Task status vocabulary" below for
+   terminal vs. non-terminal.)
 
 #### Delegation input reconstruction (W25-C1)
 
@@ -374,8 +376,8 @@ was seeded once at binding time.)*
    below); the Reviewer and Tester messages additionally state their required verdict-marker
    reply convention verbatim.
 3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST**
-   receive `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its subprocess's
-   real environment (layered on top of the parent env, which is never mutated). Every other hop
+   receive `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool
+   subprocesses' real environment (`ToolContext.env`) (layered on top of the parent env, which is never mutated). Every other hop
    (Lead, Reviewer, Tester, or an Implementer with no allocation) **MUST** receive no environment
    override — today's inherit-the-parent-env behavior. See `docket-meta.spec.md` for the fields
    themselves.
@@ -420,7 +422,8 @@ was seeded once at binding time.)*
 1. Every agent turn's outcome (`core.runtime_driver.TurnResult`) **MUST** carry a `failure_kind`
    on failure: `timeout` (the turn exceeded its timeout), `daemon_error` (the stable compatibility
    label for a runtime or transport failure), `nonzero_exit` (an invoked process returned a real
-   non-zero result), or `invalid_output` (the runtime returned output that could not be used). A
+   non-zero result), `invalid_output` (the runtime returned output that could not be used), or
+   `run_cancelled` (the owning run's cancellation signal was observed — see "Cancellation"). A
    successful turn carries no `failure_kind`. The `daemon_error` enum spelling is persisted API
    vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable — a transient hiccup, not a
@@ -465,9 +468,9 @@ was seeded once at binding time.)*
 1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST**
    check the pod's accumulated spend (summed across all pod members) against the pod's budget
    cap (the Lead's `budgetUsd`, `0` = unlimited).
-2. Spend for this check **MUST** prefer the daemon's recorded cost; when the daemon has recorded
-   exactly `0` across the pod (a real gap in some daemon versions — see `cost-tracking.spec.md`),
-   dispatch **MUST** fall back to a labelled token-based estimate (`pod_gating_cost`) so a real
+2. Spend for this check **MUST** prefer recorded cost; when recorded cost is exactly `0` across
+   the pod (always true under `DocketDriver`, which reports `cost_usd = 0.0` — see "Runtime driver
+   resolution" and `cost-tracking.spec.md`), dispatch **MUST** fall back to a labelled token-based estimate (`pod_gating_cost`) so a real
    cap can still trip. This estimate is for gating only and is rendered distinctly labelled
    wherever it appears (never mixed into `docket cost`'s recorded figures).
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
@@ -479,7 +482,7 @@ was seeded once at binding time.)*
    (`_pause_lead_for_budget`: `paused = true`, `pausedReason = "budget"`, through the Docket
    store's `meta_set`). From that point on, **every** further claim
    attempt against this pod — for this task or any other in its queue — **MUST** be refused
-   outright at claim time (see "Claiming", item 6), not merely re-blocked hop by hop, until an
+   outright at claim time (see "Claiming", item 5), not merely re-blocked hop by hop, until an
    operator clears the pause (`docket profile <lead-id> --resume`; see `cost-tracking.spec.md`).
 
 ### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1 / Phase 16 W-2)
@@ -514,8 +517,8 @@ was seeded once at binding time.)*
    `failed`. It re-enters `pending` only through a resolved approval (below), never automatically,
    and never via `retry_task`/`unblock_pod` (those are budget-gate-only escape hatches).
 4. Resolving the gate's approval (`core/dispatch.py`'s `resolve_waiting_approval`, called by
-   `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, and
-   `approval_sweep_expired`'s fail-closed timeout path — see `security-gates.spec.md`) **MUST**:
+   `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, the Telegram
+   `/approve`/`/deny` verbs (`core/telegram.py`), and `approval_sweep_expired`'s fail-closed timeout path — see `security-gates.spec.md`) **MUST**:
    - **On a grant:** transition the task `waiting_approval` -> `pending`, clear `approvalToken`/
      `pendingApprovalIndex`, and hand the exact pipeline position the gate fired at to the *next*
      claim as a **single-use** `gateOverridePipelineIndex` — "the next dispatch continues from
@@ -613,7 +616,7 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 
 ### Tester PASS/FAIL gate
 
-1. After a **successful** Tester hop (`agent_run` returned `ok`), dispatch **MUST** apply
+1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** apply
    `^(PASS|FAIL)\b` case-insensitively at the start of every non-blank output line. Exactly one
    distinct normalized marker is the verdict; repeated identical marker lines collapse to one,
    while zero matches or both distinct markers are unparseable. Marker words embedded later in a
@@ -746,7 +749,11 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
    one. `core/agent_loop.py` cooperatively checks the run signal at turn boundaries, after backend
    response, before each tool dispatch, and after each tool result. A response or tool result that
-   loses a cancellation race **MUST** be discarded and later handlers **MUST NOT** start.
+   loses a cancellation race **MUST** be discarded and later handlers **MUST NOT** start. An
+   in-flight `bash` tool command is the one handler interrupted mid-call (W30-C1): the same signal
+   reaches `edges/adapters/toolbox.py::run_bash` through `ToolContext.cancellation_check`, which
+   kills the command's process group — see `security-gates.spec.md` and `agent-loop.spec.md`
+   requirement 65.
 4. A hop stopped by that signal returns the typed, non-retryable `run_cancelled` failure kind.
    Dispatch **MUST** persist the hop evidence and transition its owning task to the additive
    terminal status `cancelled`, never `failed`; no later pipeline hop may start. Parallel children
@@ -755,14 +762,14 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    reported as such, never re-signalled or double-finished. A run's own normal completion
    (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
    wrote back to `"succeeded"`/`"failed"`.
-6. The cooperative boundary does not abort Python/backend computation already executing in the
-   current call. The run therefore remains visibly `running` with cancellation requested until
+6. Apart from an in-flight `bash` command (requirement 3), the cooperative boundary does not
+   abort Python/backend computation already executing in the current call. The run therefore remains visibly `running` with cancellation requested until
    that call returns to a checkpoint; `stoppedAt` and terminal `cancelled` are written only after
    the dispatch body has fully returned.
 
 ### Hop-failure semantics (general)
 
-1. If a hop's underlying `agent_run` call is not `ok` and its failure was not retried away (see
+1. If a hop's underlying `run_turn` call is not `ok` and its failure was not retried away (see
    "Retries"), the task **MUST** immediately transition to `failed` with a reason naming the role
    and the underlying error, and **MUST NOT** attempt any later hop.
 2. A `failed` task **MUST** persist its full per-hop record (`role`, `member`, `ok`, `costUsd`,
@@ -951,7 +958,7 @@ the `"cancelled"` state `docket runs cancel <id>` produces, is documented in
 ```text
 session_start              # once, at the start of dispatch_task; carries whether this is a resume
 context_composed           # before each hop's turn — composed-prompt byte accounting
-tool_call                  # before each hop's agent_run attempt
+tool_call                  # before each hop's run_turn attempt
 hop_retry                  # before each retry attempt of a retryable failure
 tool_result                 # after a successful hop; also emitted (payload {"verification":
                              #   "skipped", "member": <id>}) when a mechanical gate's command was
@@ -984,7 +991,7 @@ run_cancelled                # once when execution has fully stopped and termina
 ```text
 $ docket pod myapp dispatch
 [dispatch] verification skipped — verifyCmd not set for myapp-implementer
-  [task-3f2a1c9e-...] done — 2 hop(s), $0.0142
+  [task-3f2a1c9e-...] done — 2 hop(s), $0.0000
 ```
 
 ### A full pod blocked by a Tester FAIL
@@ -992,14 +999,18 @@ $ docket pod myapp dispatch
 ```text
 $ docket pod myapp dispatch
   [task-91a2c410-...] failed — tester reported FAIL
+  Details: docket runs show run-...
 ```
+
+(The command exits 1 because the run ended `failed`; a `blocked` or `waiting_approval` task
+exits 0 — see `cli-interface.spec.md`.)
 
 ### A Reviewer REQUEST-CHANGES driving one rework cycle, then approving
 
 ```text
 $ docket pod myapp dispatch
 Dispatching 1 pending task(s) through: lead → implementer → reviewer → tester
-  [task-7c1e2b90-...] done — 6 hop(s), $0.0891
+  [task-7c1e2b90-...] done — 6 hop(s), $0.0000
 ```
 
 (`hops[]` for this task shows: lead, implementer, reviewer [REQUEST-CHANGES], implementer
@@ -1010,7 +1021,7 @@ Implementer and Reviewer once each.)
 
 ```text
 $ docket pod myapp dispatch
-  [task-c410e91a-...] blocked — pod budget reached ($5.12 ≥ $5.00) before implementer
+  [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
 $ docket profile myapp-lead --resume
   Unblocked 1 budget-blocked task(s) in pod 'myapp'.
@@ -1021,8 +1032,8 @@ $ docket profile myapp-lead --resume
 
 ```text
 $ docket pod myapp dispatch --resume
-Dispatching 0 pending task(s), 1 resumable task(s) through: lead → implementer → reviewer
-  [task-a1b2c3d4-...] done — 3 hop(s), $0.0456
+Dispatching 0 pending, 1 resumable task(s) through: lead → implementer → reviewer
+  [task-a1b2c3d4-...] done — 3 hop(s), $0.0000
 ```
 
 (The Implementer hop that had already completed before the crash is not re-invoked; the resumed
@@ -1039,7 +1050,7 @@ $ docket approve apr-1234
   The waiting action may now proceed.
 
 $ docket pod myapp dispatch
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0091
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
 (The Lead hop already completed before the gate fired is not re-invoked; `docket approve` moves
@@ -1129,6 +1140,19 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.6.1 (2026-09-18)
+
+- Aligned the spec with the shipped code; no behavior change. Task-status requirement 3 now lists
+  all seven statuses (it still said five after `waiting_approval` and `cancelled` shipped);
+  `run_cancelled` joins the failure-kind list; the budget gate's spend source no longer describes a
+  daemon (`DocketDriver` always records `0.0`, so the gate uses the estimate); "Claiming, item 6"
+  corrected to item 5; the Telegram verbs added to `resolve_waiting_approval`'s callers; the deleted
+  `agent_run` replaced by `run_turn`; Cancellation records W30-C1 (an in-flight `bash` command is
+  now killed); Implementer env vars described as tool-subprocess env; W-7 pointed at
+  `pod-blueprints.spec.md` instead of "not shipped". Examples now show `$0.0000` costs, the
+  estimated budget label, the real `--resume` banner, and the exit-1 `Details:` line for a failed
+  run (99c9673).
 
 ### Version 6.6.0 (2026-08-31)
 
