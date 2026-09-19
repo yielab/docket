@@ -1999,13 +1999,12 @@ def cmd_gates(ctx: typer.Context) -> None:
                           it; this flag changes nothing about that
       isolate on|off    records whether tool execution should run inside a
                           Docker sandbox. `on` requires docker on PATH --
-                          errors, exit 1, if missing. Honestly incomplete
-                          today: the setting is recorded in
-                          `~/.docket/fleet.json`, but docket's own turn loop
-                          always runs tools unsandboxed regardless of this
-                          flag -- `docket gates status` says so plainly
-                          rather than claiming live enforcement that doesn't
-                          exist yet.
+                          errors, exit 1, if missing. Enforced on the live
+                          turn: with isolation on, DocketDriver runs tools
+                          sandboxed (docker or bwrap), and refuses the whole
+                          turn -- audited as `isolation.refused` -- when no
+                          backend is usable, rather than running it
+                          unsandboxed.
       classes           lists the built-in high-risk action classes
                           (`HIGH_RISK_PATTERNS` in `core/security.py`) --
                           money-movement, prod-deploy, and secret-access --
@@ -2379,7 +2378,9 @@ def cmd_serve(
     HTTP endpoints while running: GET /status.json, /metrics, /health (no
     auth); GET /approvals, POST /approvals/<token>
     {"action": "grant"|"deny"}, GET /runs and /runs?project=<p>, GET
-    /runs/<id>, POST /dispatch/<project> (all Bearer-token-authed). The
+    /runs/<id>, GET /tasks/<project>, GET /traces/<project>?since=<cursor>,
+    POST /tasks/<project>, POST /dispatch/<project>, POST /pods (all
+    Bearer-token-authed). The
     bearer token is generated fresh per invocation (printed to stdout,
     written to --token-file if given, or overridable via
     DOCKET_SERVE_TOKEN) and compared with secrets.compare_digest. POST
