@@ -225,14 +225,20 @@ serve`'s `POST /approvals/<token>` with `{"action": "grant"}`.
 **Arguments**: `token` (string, required).
 **Gating**: calls `core.approval.approval_grant(token, channel="mcp")` — the exact function every
 other channel calls, tagged so the audit trail records which surface performed the grant. No
-MCP-side bypass, auto-approve, or alternate transition path of any kind.
+MCP-side bypass, auto-approve, or alternate transition path of any kind. If *token* gates a
+pod-dispatch task waiting on it (`waiting_approval`), the same `core.dispatch.resolve_waiting_approval`
+call the CLI/HTTP/Telegram channels make resumes it: the task returns to `pending` with the exact
+hop it stopped on handed to the next dispatch run as a single-use gate override (see
+pod-dispatch.spec.md, "require_approval gate and waiting_approval"). This resolution runs even on
+an already-granted token (see Failure modes) — it is not skipped just because the call raises.
 **Output**: `{"ok": true, "token": "apr-...", "state": "granted"}`.
 **Failure modes**: raises if the token is unknown, or if it is not currently `pending` (already
 granted, denied, or expired) — an already-granted token raises rather than silently reporting
 success, a deliberate difference from `docket approve`'s CLI behavior (which treats a repeat grant
 as a benign warning, exit 0): an automated MCP caller should learn explicitly that its call did
 not perform a fresh state transition, rather than receiving an ambiguous `"ok": true` for a call
-that changed nothing.
+that changed nothing. The `resolve_waiting_approval` follow-up still runs before this raise, so a
+dispatch task stuck `waiting_approval` from an earlier grant that never reached it is still freed.
 
 ### `approvals_deny`
 
@@ -240,9 +246,12 @@ that changed nothing.
 `POST /approvals/<token>` with `{"action": "deny"}`.
 **Arguments**: `token` (string, required).
 **Gating**: calls `core.approval.approval_deny(token, channel="mcp")`, mirroring
-`approvals_grant`.
+`approvals_grant`. If *token* gates a pod-dispatch task waiting on it, the same
+`core.dispatch.resolve_waiting_approval` follow-up fails that task immediately
+(`failureKind: "approval_denied"`) — never auto-retried by a later dispatch, even with `--resume`.
 **Output**: `{"ok": true, "token": "apr-...", "state": "denied"}`.
-**Failure modes**: same as `approvals_grant`.
+**Failure modes**: same as `approvals_grant`, including that the `resolve_waiting_approval`
+follow-up still runs before the raise.
 
 ### `cost`
 
