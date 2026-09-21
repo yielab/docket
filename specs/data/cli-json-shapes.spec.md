@@ -45,7 +45,7 @@ structural rules hold everywhere:
       "modelSource": "policy | pinned",
       "stack":       "string (comma-separated, may be empty)",
       "codebase":    "string (absolute path, may be empty)",
-      "budgetUsd":   "number | \"\"",
+      "budgetUsd":   "number | null",
       "telegram":    "string (peer id) | null",
       "registered":  true
     }
@@ -67,7 +67,7 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
   "codebase":    "string (may be empty)",
   "stack":       "string (may be empty)",
   "model":       "string (provider/model-id)",
-  "budgetUsd":   "number | \"\"",
+  "budgetUsd":   "number | null",
   "paused":      "boolean",
   "sessionKey":  "string (agent:<id>:<project>)",
   "projectKey":  "string",
@@ -307,14 +307,14 @@ reflected in code fails CI.
       "id": "myapp-lead", "kind": "project", "scope": "project", "role": "lead",
       "pod": "myapp", "name": "myapp-lead",
       "model": "anthropic/claude-haiku-4-5", "modelSource": "policy",
-      "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
+      "stack": "", "codebase": "/code/myapp", "budgetUsd": null,
       "telegram": null, "registered": true
     },
     {
       "id": "myapp-implementer", "kind": "project", "scope": "project", "role": "implementer",
       "pod": "myapp", "name": "myapp-implementer",
       "model": "anthropic/claude-sonnet-4-6", "modelSource": "policy",
-      "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
+      "stack": "", "codebase": "/code/myapp", "budgetUsd": null,
       "telegram": null, "registered": true
     }
   ]

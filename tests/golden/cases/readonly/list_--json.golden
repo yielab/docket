@@ -12,7 +12,7 @@ EXIT:0
       "modelSource": "pinned",
       "stack": "",
       "codebase": "",
-      "budgetUsd": 10,
+      "budgetUsd": 10.0,
       "telegram": null,
       "registered": true
     },
@@ -27,7 +27,7 @@ EXIT:0
       "modelSource": "policy",
       "stack": "Docker,git",
       "codebase": "<HOME>/Sites/myshop",
-      "budgetUsd": "",
+      "budgetUsd": null,
       "telegram": "-1001234567890",
       "registered": true
     }

@@ -722,7 +722,7 @@ def _cmd_info_json(agent_id: str) -> None:
                 "codebase": raw.get("codebase", ""),
                 "stack": raw.get("stack", ""),
                 "model": raw.get("model", _cfg.DEFAULT_MODEL),
-                "budgetUsd": raw.get("budgetUsd", ""),
+                "budgetUsd": _pp.parse_budget_usd(raw.get("budgetUsd")),
                 "paused": AgentMeta.coerce_paused(raw.get("paused", False)),
                 "sessionKey": raw.get("sessionKey", f"agent:{agent_id}:default"),
                 "projectKey": raw.get("projectKey", "default"),

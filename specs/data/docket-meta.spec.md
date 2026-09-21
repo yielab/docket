@@ -76,7 +76,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `created` | string | ISO-8601 | local | Yes | `add` | Creation timestamp |
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
-| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
+| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD. Persisted on disk as a numeric string (e.g. `"5"`); `docket list --json` / `docket info --json` emit it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
 | `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
 | `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS` |
@@ -215,7 +215,7 @@ paused:
   "created": "2026-03-05T12:08:17-03:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
-  "budgetUsd": 5,
+  "budgetUsd": "5",
   "paused": true,
   "pausedReason": "budget",
   "blueprint": "software",

@@ -25,6 +25,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod as _pod_core
+from docket.core import pod_provisioning as _pp
 from docket.core.audit import audit_log
 from docket.core.utils import (
     aggregate_cost,
@@ -159,7 +160,7 @@ def _cmd_list_json() -> None:
                 "modelSource": raw.get("modelSource", ""),
                 "stack": raw.get("stack", ""),
                 "codebase": raw.get("codebase", ""),
-                "budgetUsd": raw.get("budgetUsd", ""),
+                "budgetUsd": _pp.parse_budget_usd(raw.get("budgetUsd")),
                 "telegram": tg_bindings.get(aid),
                 "registered": aid in registered,
             }
@@ -2256,6 +2257,14 @@ def cmd_audit(
     raise typer.Exit(run_audit(limit=limit, json_out=json_out))
 
 
+def _last_activity_or_never(agent_id: str) -> str:
+    """Like ``last_activity`` but returns ``"never"`` for no logs -- mirrors
+    ``serve.py``'s ``_last_activity_or_never`` so ``docket snapshot`` and
+    ``/status.json`` emit the same sentinel (cli-json-shapes.spec.md)."""
+    val = last_activity(agent_id)
+    return "never" if val == "—" else val
+
+
 @app.command("snapshot")
 def cmd_snapshot(
     output: str | None = typer.Option(None, "--output", "-o", help="Write JSON to file"),
@@ -2303,7 +2312,7 @@ def cmd_snapshot(
                 "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
                 "registered": pid in registered_ids,
                 "bindings": _agent_bindings(pid),
-                "lastActivity": last_activity(pid),
+                "lastActivity": _last_activity_or_never(pid),
                 "costUsd": round(cost, 6),
             }
         )
@@ -2326,7 +2335,7 @@ def cmd_snapshot(
                 "model": str(raw.get("model", "")),
                 "registered": spec in registered_ids,
                 "bindings": _agent_bindings(spec),
-                "lastActivity": last_activity(spec),
+                "lastActivity": _last_activity_or_never(spec),
                 "costUsd": round(cost, 6),
             }
         )

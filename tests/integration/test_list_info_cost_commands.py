@@ -123,12 +123,24 @@ class TestCmdList:
         assert a["stack"] == "Node.js"
         assert a["modelSource"] == "policy"
 
-    def test_list_json_budget_empty_string_when_absent(self, tmp_path: Path) -> None:
+    def test_list_json_budget_null_when_absent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["list", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        assert data["agents"][0]["budgetUsd"] == ""
+        assert data["agents"][0]["budgetUsd"] is None
+
+    def test_list_json_budget_is_number_when_present(self, tmp_path: Path) -> None:
+        oc_dir = _setup_agent(tmp_path)
+        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        budgeted_meta = {**META, "budgetUsd": "10.50"}
+        (ws / ".docket-meta.json").write_text(json.dumps(budgeted_meta))
+        rc, out, _ = _run(["list", "--json"], oc_dir)
+        assert rc == 0
+        data = json.loads(out)
+        budget = data["agents"][0]["budgetUsd"]
+        assert isinstance(budget, (int, float)) and not isinstance(budget, bool)
+        assert budget == 10.5
 
     def test_list_json_unregistered_agent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -216,12 +228,24 @@ class TestCmdInfo:
         assert data["projectKey"] == "default"
         assert data["stack"] == "Node.js"
 
-    def test_info_json_budget_empty_when_absent(self, tmp_path: Path) -> None:
+    def test_info_json_budget_null_when_absent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        assert data["budgetUsd"] == ""
+        assert data["budgetUsd"] is None
+
+    def test_info_json_budget_is_number_when_present(self, tmp_path: Path) -> None:
+        oc_dir = _setup_agent(tmp_path)
+        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        budgeted_meta = {**META, "budgetUsd": "10.50"}
+        (ws / ".docket-meta.json").write_text(json.dumps(budgeted_meta))
+        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
+        assert rc == 0
+        data = json.loads(out)
+        budget = data["budgetUsd"]
+        assert isinstance(budget, (int, float)) and not isinstance(budget, bool)
+        assert budget == 10.5
 
     def test_info_json_last_active_dash_when_no_logs(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
