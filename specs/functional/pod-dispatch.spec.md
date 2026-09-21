@@ -518,7 +518,9 @@ was seeded once at binding time.)*
    and never via `retry_task`/`unblock_pod` (those are budget-gate-only escape hatches).
 4. Resolving the gate's approval (`core/dispatch.py`'s `resolve_waiting_approval`, called by
    `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, the Telegram
-   `/approve`/`/deny` verbs (`core/telegram.py`), and `approval_sweep_expired`'s fail-closed timeout path — see `security-gates.spec.md`) **MUST**:
+   `/approve`/`/deny` verbs (`core/telegram.py`), `cli/_mcp.py`'s `approvals_grant`/`approvals_deny`
+   MCP tools, and `approval_sweep_expired`'s fail-closed timeout path — see
+   `security-gates.spec.md`) **MUST**:
    - **On a grant:** transition the task `waiting_approval` -> `pending`, clear `approvalToken`/
      `pendingApprovalIndex`, and hand the exact pipeline position the gate fired at to the *next*
      claim as a **single-use** `gateOverridePipelineIndex` — "the next dispatch continues from

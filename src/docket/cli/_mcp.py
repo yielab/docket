@@ -156,26 +156,34 @@ def tool_approvals_list() -> dict[str, Any]:
 
 def tool_approvals_grant(token: str) -> dict[str, Any]:
     """Grant a pending approval token. Identical to `docket approve`/`docket serve`'s
-    `POST /approvals/<token>` — same `core.approval.approval_grant` call, tagged
-    ``channel="mcp"``. No MCP-side auto-approve or bypass of any kind."""
+    `POST /approvals/<token>` — same `core.approval.approval_grant` call (``channel="mcp"``)
+    and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated."""
     _audit("approvals_grant", f"token={token}")
     try:
         _approval.approval_grant(token, channel="mcp")
-    except (_approval.ApprovalNoop, _approval.ApprovalError) as exc:
+    except _approval.ApprovalNoop as exc:
+        _dispatch.resolve_waiting_approval(token, "granted")
         raise McpToolError(str(exc)) from exc
+    except _approval.ApprovalError as exc:
+        raise McpToolError(str(exc)) from exc
+    _dispatch.resolve_waiting_approval(token, "granted")
     rec = _approval.approval_get(token)
     return {"ok": True, "token": token, "state": rec["state"]}
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
     """Deny a pending approval token. Identical to `docket deny`/`docket serve`'s
-    `POST /approvals/<token>` — same `core.approval.approval_deny` call, tagged
-    ``channel="mcp"``."""
+    `POST /approvals/<token>` — same `core.approval.approval_deny` call (``channel="mcp"``)
+    and `core.dispatch.resolve_waiting_approval` follow-up, failing any task it gated."""
     _audit("approvals_deny", f"token={token}")
     try:
         _approval.approval_deny(token, channel="mcp")
-    except (_approval.ApprovalNoop, _approval.ApprovalError) as exc:
+    except _approval.ApprovalNoop as exc:
+        _dispatch.resolve_waiting_approval(token, "denied")
         raise McpToolError(str(exc)) from exc
+    except _approval.ApprovalError as exc:
+        raise McpToolError(str(exc)) from exc
+    _dispatch.resolve_waiting_approval(token, "denied")
     rec = _approval.approval_get(token)
     return {"ok": True, "token": token, "state": rec["state"]}
 

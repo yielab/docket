@@ -25,7 +25,9 @@ from docket.cli import _pod as _pod_cli
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import runs as _runs
+from docket.core import runtime_driver as _rd
 
 SUBJECT = "docket.core"
 
@@ -504,3 +506,91 @@ class TestEveryToolCallIsAudited:
         actions = [e["action"] for e in entries]
         for tool in _mcp._TOOL_NAMES:
             assert actions.count(f"mcp.{tool}") == 1, f"expected exactly one mcp.{tool} entry"
+
+
+# ── grant/deny resolve the dispatch task they gated (pod-dispatch.spec.md req. 4) ──
+
+
+class _GateRunner:
+    """Stub matching agent_run's signature; every hop succeeds."""
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
+
+
+def _gate_then_get_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo"
+) -> str:
+    """Seed a lean pod gated on the Implementer, dispatch one task so it stops in
+    ``waiting_approval``, and return the token -- the same fixture shape
+    test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
+    _seed_pod(tmp_path, monkeypatch, project=project)
+    _fleet.meta_set(f"{project}-lead", "requireApprovalRoles", "implementer")
+    _dispatch.enqueue_task(project, "Ship it")
+    _dispatch.dispatch_pod(project, runner=_GateRunner())
+    task = _dispatch.read_tasks(project)[0]
+    assert task["status"] == "waiting_approval"
+    return str(task["approvalToken"])
+
+
+class TestApprovalsResumeDispatch:
+    """A grant/deny decided over MCP resolves the dispatch task it gated, same as the
+    CLI, HTTP and Telegram channels."""
+
+    def test_grant_flips_the_gated_task_back_to_pending_with_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token = _gate_then_get_token(tmp_path, monkeypatch)
+        _mcp.tool_approvals_grant(token)
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "pending"
+        assert task["approvalToken"] is None
+        assert task["gateOverridePipelineIndex"] == 1
+
+    def test_deny_fails_the_gated_task_immediately(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token = _gate_then_get_token(tmp_path, monkeypatch)
+        _mcp.tool_approvals_deny(token)
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "approval_denied"
+        assert task["approvalToken"] is None
+
+    def test_grant_noop_branch_still_resolves_a_stuck_waiting_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mirrors the ``ApprovalNoop`` branch in cli/_approve.py: an already-granted
+        token still raises to the MCP caller, but only after the stuck
+        waiting_approval task is resolved (e.g. a crashed prior grant)."""
+        token = _gate_then_get_token(tmp_path, monkeypatch)
+        _approval.approval_grant(token, channel="other")  # store moves; task left stuck
+
+        with pytest.raises(_mcp.McpToolError):
+            _mcp.tool_approvals_grant(token)
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "pending"
+        assert task["gateOverridePipelineIndex"] == 1
+
+    def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token = _gate_then_get_token(tmp_path, monkeypatch)
+        _approval.approval_deny(token, channel="other")
+
+        with pytest.raises(_mcp.McpToolError):
+            _mcp.tool_approvals_deny(token)
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "approval_denied"
