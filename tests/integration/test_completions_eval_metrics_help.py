@@ -225,7 +225,6 @@ class TestHelp:
             "PODS & QUEUE",
             "UTILITIES",
             "MODEL POLICY",
-            "FLAGS",
             "EXAMPLES",
             "PATHS",
         ):
