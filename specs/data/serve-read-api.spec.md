@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Stable
 **Last Updated**: 2026-09-21
 
@@ -613,6 +613,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.12.0 (2026-09-21)
+
+- `POST /approvals/<token>`'s `channel` field now accepts only `http`/`tack` from the HTTP transport (W36-C3); `cli`/`mcp`/`telegram`/`timeout` are rejected `400`. Previously any recognised channel was accepted, letting an HTTP Bearer holder forge another surface's audit provenance.
 
 ### Version 2.11.0 (2026-09-21)
 

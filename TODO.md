@@ -183,7 +183,7 @@ still exit 1. Every existing `run_mcp` test passes unchanged; `help.golden` is b
 
 ### W36-C3 — HTTP may not forge an approval's channel
 
-**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** DONE (2026-09-21, merged 9ffbf95) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `serve.py::_handle_post_approvals` accepts any `channel` in
 `core/approval.py::APPROVAL_CHANNELS`, so a Bearer holder can record a decision in the
@@ -318,7 +318,7 @@ file, run with `timeout=1`: within 2 s of return `os.kill(pid, 0)` raises `Proce
 
 ### W36-C8 — CLI `--json` emits the types its spec and `/status.json` already use
 
-**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** DONE (2026-09-21, merged e8745bc) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `list --json` and `info --json` emit `budgetUsd` as the
 stored string; `snapshot` emits `lastActivity: "—"`. `cli-json-shapes.spec.md`, `/status.json`
@@ -342,7 +342,7 @@ without a budget; an agent with no logs has `lastActivity == "never"`.
 
 ### W36-C9 — retire two claims nothing backs: `--debug` and the PRICE override
 
-**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** DONE (2026-09-21, merged 9517c5f) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `--debug` sets `os.environ["DEBUG"]` and `rg DEBUG src/`
 finds no reader, while `cli/_help.py` calls it "Verbose mode". The `docket models` footer says
@@ -365,7 +365,7 @@ and the generated environment table; the models footer loses the override clause
 
 ### W36-C10 — budget warnings read the same estimate the dispatch gate does
 
-**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** DONE (2026-09-21, merged 37301e9) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `cli/_doctor.py::_check_budget` and the cost-threshold
 warning in `cli/_cost.py` compare the budget with **recorded** cost, which `DocketDriver` always
@@ -390,7 +390,7 @@ count; `cost.golden` is byte-identical.
 
 ### W36-C11 — help-text and spec sweep for what the audit left in prose
 
-**Status:** BLOCKED (needs batches 1 and 2 merged) · **Size:** S · **Owner:** one worker · **Batch:** 3
+**Status:** READY (batches 1 and 2 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 3
 
 **Trigger (verified 2026-09-19):** five docstrings and three spec passages still state things
 the code does not do: `cmd_pod` ("created by `docket add`"), `cmd_init` (workdir auto-provision

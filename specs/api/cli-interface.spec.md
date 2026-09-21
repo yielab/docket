@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.27.1
+**Version**: 1.28.0
 **Status**: Complete
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -929,6 +929,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.28.0 (2026-09-21)
+
+- Global Options: `--debug` is a deprecated, hidden no-op (still accepted, sets nothing); it used to set `DEBUG=1` that nothing read (W36-C9). `docket models` no longer claims prices can be overridden in `docket-models.json`.
 
 ### Version 1.27.1 (2026-09-18)
 

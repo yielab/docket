@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.6.1
+**Version**: 1.7.0
 **Status**: Complete
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -322,6 +322,10 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-21)
+
+- `docket list --json` / `docket info --json` `budgetUsd` corrected to `number | null` (was emitted as the stored string, or `""`); examples updated to `null`. `docket snapshot` emits `lastActivity: "never"` like `/status.json` (W36-C8).
 
 ### Version 1.6.1 (2026-09-18)
 

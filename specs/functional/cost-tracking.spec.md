@@ -1,10 +1,10 @@
 # Cost Tracking Specification
 
-**Version**: 1.6.1
+**Version**: 1.7.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
 Docket's own `DocketDriver` and session store. See requirements 2-4 below.
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -205,6 +205,10 @@ $ docket profile myproject-lead --resume
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-21)
+
+- Requirement 5 (Enforcement) now documents that `docket doctor`'s budget check and `docket cost`'s high-cost-session warning read the same recorded-or-estimated gating figure the dispatch gate uses (`core/utils.py::gating_cost`, which `pod_gating_cost` now calls per member), not raw recorded spend, which is always 0.0 under `DocketDriver` (W36-C10). `doctor --json`'s runaway list and `docket cost`'s all-agents table remain recorded-only, a named follow-up.
 
 ### Version 1.6.1 (2026-09-19)
 

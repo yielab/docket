@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.0.1
+**Version**: 3.0.2
 **Status**: Complete
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -249,6 +249,10 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.0.2 (2026-09-21)
+
+- `budgetUsd` row notes the field is persisted as a numeric string and emitted as a number/null by `list`/`info --json`; the paused-agent example corrected from `5` to `"5"` (W36-C8).
 
 ### Version 3.0.1 (2026-09-18)
 

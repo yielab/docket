@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gates. A research, content or ops pod used to run only its Lead; it now runs more hops and spends
   more tokens per dispatch pass. Software and agentic-product pods, and any pod whose Lead has no or
   an unknown blueprint, behave exactly as before.
+- **`--debug` is a hidden, deprecated no-op.** It set `DEBUG=1` and nothing in docket read it;
+  the flag is still accepted so existing scripts do not start exiting 2, but it is gone from
+  `docket --help` and `docket help`. `docket models` no longer claims prices can be overridden in
+  `docket-models.json`; no pricing overlay is read.
 
 ### Fixed
 
@@ -34,7 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flat-agent templates.
 - **A `verifyCmd` that times out is killed as a whole process group**, so a command that
   backgrounds work no longer leaves orphaned processes behind after the hop moves on.
-
+- **`POST /approvals/<token>` accepts only `http` or `tack` as `channel`.** A Bearer holder used
+  to be able to record a decision as `cli`, `mcp`, `telegram` or even `timeout`, forging another
+  surface's provenance in the hash-chained audit log and in `docket_approvals_total`.
+- **`docket list --json` and `docket info --json` emit `budgetUsd` as a number or `null`** (they
+  emitted the stored string, or `""`), and `docket snapshot` emits `lastActivity: "never"`, the
+  same sentinel `/status.json` uses.
+- **`docket doctor`'s budget check and `docket cost`'s high-cost warning can fire.** Both compared
+  recorded spend, which `DocketDriver` always reports as 0.0, so neither ever triggered. They now
+  read the same recorded-or-estimated figure the dispatch budget gate uses, labelled as an
+  estimate when it is one.
 ## [0.2.0-beta.3] - 2026-09-18
 
 The first beta with harness mode: `docket harness run` executes one governed agent turn for an
