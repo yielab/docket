@@ -848,3 +848,32 @@ class TestLegacyQueueLoads:
         legacy_path.parent.mkdir(parents=True, exist_ok=True)
         legacy_path.write_text(json.dumps({}))
         assert _dispatch.read_tasks("demo") == []
+
+
+# ── `docket pod <p> dispatch`'s prologue names the resolved pipeline's roles ──
+
+
+class TestPodDispatchCliPrologue:
+    """The "Dispatching N pending task(s) through: <roles>" prologue must name the pod's
+    own resolved pipeline, not the legacy four-role ``PIPELINE_ORDER`` filter a
+    non-``software`` pod never matches past "lead"."""
+
+    def test_research_pod_prologue_names_its_blueprint_roles(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        repoint_docket_home(monkeypatch, home)
+
+        _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
+        _dispatch.enqueue_task("rsch", "look into it")
+        monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
+
+        result = CliRunner().invoke(app, ["pod", "rsch", "dispatch"])
+
+        assert "through: lead → researcher → analyst → writer → critic" in result.output
