@@ -114,6 +114,24 @@ class TestPipelinePlanCli:
         assert "lead" in out
         assert "demo-lead" in out
 
+    def test_research_pod_plan_renders_its_blueprint_pipeline_with_no_skips(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A caller-spec-free dispatch now resolves the blueprint pipeline, so every one of a
+        research pod's five steps has a present member -- none renders as "skipped — role not
+        in pod"."""
+        _write_meta("demo-lead", {"blueprint": "research"})
+        for role in ("researcher", "analyst", "writer", "critic"):
+            _write_meta(f"demo-{role}")
+
+        rc = run_pipeline("plan", ["demo"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        for role in ("researcher", "analyst", "writer", "critic"):
+            assert role in out
+        assert "skipped — role not in pod" not in out
+
     def test_custom_file_plan_renders_that_pipeline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

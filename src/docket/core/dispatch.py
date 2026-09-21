@@ -26,6 +26,7 @@ from urllib.parse import quote as _url_quote
 import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
+from docket.core import blueprints as _blueprints
 from docket.core import conversations as _conv
 from docket.core import fleet as _fleet
 from docket.core import handoff as _handoff
@@ -371,14 +372,29 @@ def pod_full_roster(project: str) -> dict[str, str]:
     return by_role
 
 
+def _blueprint_pipeline(project: str) -> _pipeline.PipelineSpec:
+    """The resolved base pipeline for a caller-supplied-spec-free dispatch: the Lead's
+    ``blueprint`` meta's ``default_pipeline`` when that meta names a known blueprint, else the
+    built-in default (see pod-dispatch.spec.md, "Pipeline order and participation")."""
+    lead_id = _pod.member_id(project, "lead")
+    name = _fleet.meta_get(lead_id, "blueprint", "")
+    if name:
+        try:
+            return _blueprints.get_blueprint(name).default_pipeline
+        except _blueprints.BlueprintError:
+            pass  # absent/unknown blueprint -- fall through to the built-in default
+    builtin = _pipeline.load_pipeline(None).spec
+    assert builtin is not None  # load_pipeline(None) always succeeds
+    return builtin
+
+
 def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
     """The PipelineSpec this dispatch actually runs (see pod-dispatch.spec.md, "Pipeline order
     and participation"). A caller-supplied *spec* is never patched -- only the ``None`` default
     gets the rework-budget patch. Public so ``cli/_pipeline.py`` renders this same resolved spec."""
     if spec is not None:
         return spec
-    builtin = _pipeline.load_pipeline(None).spec
-    assert builtin is not None  # load_pipeline(None) always succeeds
+    builtin = _blueprint_pipeline(project)
     configured = pod_max_rework_cycles(project)
     new_steps = []
     changed = False

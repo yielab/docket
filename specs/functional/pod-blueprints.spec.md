@@ -39,15 +39,12 @@ This specification does NOT cover:
   `pipeline-format.spec.md`. A blueprint's `defaultPipeline` is one `PipelineSpec` value; this spec
   only covers which pipeline each built-in blueprint attaches and why
 - Executing a pipeline — the executor (ROADMAP Phase 16 W-2/W-8, shipped) is specified in
-  `pod-dispatch.spec.md`. **Known gap:** nothing on the live dispatch path reads a blueprint's
-  `defaultPipeline`. With no caller-supplied spec, `docket pod <project> dispatch` and
-  `docket pipeline run <project>` both run `core.pipeline.default_pipeline()`
-  (`core.dispatch.effective_pipeline`), whatever the pod's `blueprint` meta says. A `research`,
-  `content`, or `ops` pod dispatched that way therefore runs only its Lead step. Its other roles
-  are "skipped — role not in pod", and its Critic/Operator/Monitor gates never run. To run a
-  blueprint's pipeline today, pass an equivalent file with `docket pipeline run <project> --file
-  <path>`. Today `defaultPipeline` is declarative data checked by `TestPipelineGateFidelity`
-  only.
+  `pod-dispatch.spec.md`. A pod dispatched with no caller-supplied spec runs its blueprint's
+  `defaultPipeline`: `core.dispatch.effective_pipeline` resolves the Lead's `blueprint` meta
+  through `core.blueprints.get_blueprint`, falling back to `core.pipeline.default_pipeline()`
+  when the meta is absent, empty, or names an unknown blueprint — see `pod-dispatch.spec.md`,
+  "Pipeline order and participation", for the exact resolution order. A `research`, `content`, or
+  `ops` pod dispatched that way now runs its full roster and gates, not only its Lead step.
 - User-authored blueprint definitions. Unlike `docket roles add` for archetypes, there is no
   `docket blueprints add <file.yaml>` yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)

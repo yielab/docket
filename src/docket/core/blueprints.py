@@ -2,7 +2,9 @@
 
 A *blueprint* is a named, versioned pod shape: an archetype roster (role names
 resolved against ``core/archetypes.py``'s registry), a default pipeline
-(``core/pipeline.py``'s format, attached but not executed), a workspace kind
+(``core/pipeline.py``'s format, resolved and executed by
+``core/dispatch.py::effective_pipeline`` through the Lead's ``blueprint`` meta whenever a
+dispatch runs with no caller-supplied spec), a workspace kind
 (``codebase`` — a git-tracked project directory — or ``workdir`` — a plain
 working directory with no codebase assumption), and an optional default
 per-pod spend cap. Where a blueprint's default pipeline gates a step

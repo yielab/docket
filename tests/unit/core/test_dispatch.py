@@ -52,7 +52,7 @@ def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
-def _write_meta(member_id: str) -> None:
+def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     ws = _cfg.PROJECTS_DIR / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
@@ -68,6 +68,8 @@ def _write_meta(member_id: str) -> None:
         "projectKey": "default",
         "created": "2026-07-30T00:00:00+00:00",
     }
+    if extra:
+        meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
     _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
@@ -480,3 +482,96 @@ class TestExecuteUnitDirectly:
                 check_approval=True,
                 index_for_context=0,
             )
+
+
+class TestEffectivePipelineBlueprint:
+    """``effective_pipeline(project, None)`` resolves the Lead's ``blueprint`` meta through
+    ``core/blueprints.py::get_blueprint`` before falling back to the built-in default -- see
+    pod-dispatch.spec.md "Pipeline order and participation"."""
+
+    def test_research_pod_runs_its_blueprint_pipeline(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"blueprint": "research"})
+        for role in ("researcher", "analyst", "writer", "critic"):
+            _write_meta(f"myapp-{role}")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert [step.role for step in spec.steps] == [
+            "lead",
+            "researcher",
+            "analyst",
+            "writer",
+            "critic",
+        ]
+
+    def test_software_pod_is_unaffected(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert [step.role for step in spec.steps] == [
+            "lead",
+            "implementer",
+            "reviewer",
+            "tester",
+        ]
+
+    def test_absent_blueprint_meta_falls_back_to_the_built_in_default(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert spec == _pipeline.default_pipeline()
+
+    def test_unknown_blueprint_falls_back_without_raising(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"blueprint": "nope"})
+        _write_meta("myapp-implementer")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert [step.role for step in spec.steps] == [
+            "lead",
+            "implementer",
+            "reviewer",
+            "tester",
+        ]
+
+    def test_pod_rework_budget_patches_the_blueprint_pipeline_rework_edge(
+        self, pod_home: Path
+    ) -> None:
+        _write_meta("myapp-lead", {"blueprint": "content", "maxReworkCycles": "3"})
+        for role in ("writer", "critic"):
+            _write_meta(f"myapp-{role}")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        critic_step = next(step for step in spec.steps if step.id == "critic")
+        assert isinstance(critic_step.gate, _pipeline.VerdictGate)
+        assert critic_step.gate.rework is not None
+        assert critic_step.gate.rework.max_cycles == 3
+
+    def test_ops_pod_dispatch_reaches_waiting_approval_at_the_approval_step(
+        self, pod_home: Path
+    ) -> None:
+        """The ``ops`` blueprint's Monitor step is gated by an ``ApprovalGate`` -- with a
+        caller-spec-free dispatch now resolving the blueprint pipeline, an ops pod actually
+        runs the Operator and then stops for sign-off, instead of running only the Lead."""
+        _write_meta("myapp-lead", {"blueprint": "ops"})
+        _write_meta("myapp-operator")
+        _write_meta("myapp-monitor")
+
+        def _run(
+            member_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
+
+        _dispatch.enqueue_task("myapp", "roll it out")
+        results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
+
+        assert len(results) == 1
+        assert results[0].status == "waiting_approval"
+        assert results[0].approval_token
