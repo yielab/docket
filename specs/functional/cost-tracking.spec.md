@@ -90,12 +90,23 @@ pod-dispatch.spec.md).
    (estimated — no cost recorded)`) and **MUST NOT** be mixed into, or
    presented as, recorded spend; `docket cost`'s reported figures and provenance line are
    completely unaffected by this fallback (see "Cost reporting" above).
-5. `docket doctor` and `docket cost` **MUST** warn at ≥80% and flag ≥100% of cap (using recorded
-   spend, the same figure `docket cost` reports), and flag runaway sessions (turn/cost
-   thresholds) — these two checks remain display-only, independent of the pause writer.
-   Because recorded spend is always `0` under `DocketDriver` (requirement 4), the percentage and
-   the cost-threshold runaway check always read `0%`/below threshold in production; only the
-   turn-count runaway check and the dispatch gate's labelled estimate can actually trip today.
+5. **Implemented — budget/runaway warnings read the same gating figure as the dispatch gate.**
+   `docket doctor`'s per-agent budget check (`cli/_doctor.py::_check_budget`) and `docket
+   cost`'s per-agent high-cost-session runaway warning (`cli/_cost.py::_render_agent_cost`)
+   **MUST** warn/flag against the same recorded-or-estimated gating figure requirement 4
+   describes (`core/utils.gating_cost`: recorded spend if nonzero, else the
+   `estimate_cost_usd` token-count × pricing-table fallback), clearly labelled with the same
+   `estimated — no cost recorded` marker requirement 4 uses whenever it is an estimate,
+   at each check's own decimal precision — an estimate **MUST NOT** be
+   presented as, or mixed into, recorded spend. Because recorded spend is always `0` under
+   `DocketDriver` (requirement 4), in production both checks fire from the estimate: the ≥80%
+   warning / ≥100% flag in `docket doctor`, and the high-cost-session warning in `docket cost`'s
+   single-agent view. These remain display-only, independent of the pause writer. The turn-count
+   runaway check is unaffected (it never depended on cost); so are `docket cost`'s all-agents
+   table and `--json` output, and `docket doctor`'s `--json` per-agent `budget`/`runaway`
+   results, which still report only recorded spend (see "Cost reporting" above) — a known,
+   unfixed instance of the same blind spot this requirement closes for the two human-facing
+   warnings above.
 6. **Known scope limit (unchanged by R-5):** enforcement exists only where docket itself is in
    the execution path — the pod-dispatch lane. A budget cap set on a non-pod agent, or spend
    from a Telegram session / any driver use outside dispatch, is still entirely ungated

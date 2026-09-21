@@ -495,12 +495,10 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
     total_est = 0.0
     any_estimate = False
     for mid, _role, _idx in _pod.members_of(all_ids, project):
-        totals = _utils.aggregate_cost(mid)
-        if totals.input_tokens == 0 and totals.output_tokens == 0:
-            continue
-        model = str(_fleet.meta_get(mid, "model", "") or "")
-        est = _utils.estimate_cost_usd(model, totals)
-        if est is not None:
+        # recorded == 0.0 above, so every member's own recorded spend is 0.0 too --
+        # this always resolves through core/utils.py::gating_cost's estimate branch.
+        est, estimated = _utils.gating_cost(mid)
+        if estimated:
             total_est += est
             any_estimate = True
     return round(total_est, 6), any_estimate
