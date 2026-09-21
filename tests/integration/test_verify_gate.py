@@ -10,7 +10,10 @@ Three layers:
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +111,42 @@ class TestRunVerifyCmd:
         passed, output = _sys.run_verify_cmd("sleep 10", str(tmp_path), timeout=1)
         assert passed is False
         assert "timed out" in output
+
+    @pytest.mark.skipif(os.name != "posix", reason="process groups are a POSIX concept")
+    def test_timeout_leaves_no_orphan_grandchild(self, tmp_path: Path) -> None:
+        # The shell backgrounds a grandchild that writes its own pid to a unique marker
+        # file, then the outer shell itself waits — so only the grandchild survives a
+        # `timeout=1` past the deadline. On the base, `subprocess.run(shell=True, ...)`
+        # kills only the immediate `sh` child on TimeoutExpired, leaving this orphan alive.
+        pid_file = tmp_path / "grandchild.pid"
+        cmd = f"(sleep 30 & echo $! > {pid_file}) & wait"
+        passed, output = _sys.run_verify_cmd(cmd, str(tmp_path), timeout=1)
+        assert passed is False
+        assert "timed out" in output
+
+        deadline = time.monotonic() + 2
+        pid: int | None = None
+        while time.monotonic() < deadline:
+            if pid_file.exists() and pid_file.read_text().strip():
+                pid = int(pid_file.read_text().strip())
+                break
+            time.sleep(0.05)
+        assert pid is not None, "grandchild never reported its pid"
+
+        try:
+            deadline = time.monotonic() + 2
+            gone = False
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    gone = True
+                    break
+                time.sleep(0.05)
+            assert gone, f"grandchild pid {pid} is still alive after verify timed out"
+        finally:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, 9)
 
     def test_invalid_cwd_returns_false(self) -> None:
         passed, output = _sys.run_verify_cmd("true", "/nonexistent/path/xyz")

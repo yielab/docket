@@ -742,10 +742,19 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
    fields; this spec covers only how a hop's pid gets into that list and what killing it does to
    the task it belongs to.
-2. Any external verification command or other tracked child process **MUST** run in its own
-   session (`start_new_session=True`), so its pid doubles as its process-group id. Cancelling
-   **MUST** kill the whole group through `edges.adapters.system.kill_process_group` (SIGTERM, a
-   bounded grace period, then SIGKILL), and completed work **MUST NOT** leave stale pids behind.
+2. Any other tracked child process (an in-flight `bash` tool command whose pid was registered via
+   `on_spawn`) **MUST** run in its own session (`start_new_session=True`), so its pid doubles as
+   its process-group id. Cancelling **MUST** kill the whole group through
+   `edges.adapters.system.kill_process_group` (SIGTERM, a bounded grace period, then SIGKILL), and
+   completed work **MUST NOT** leave stale pids behind.
+
+   An external verification command (`edges.adapters.system.run_verify_cmd`) is a **narrower**
+   case: it also **MUST** run in its own session and its whole group **MUST** be killed
+   (`SIGKILL`, tolerating an already-exited process) when the command's own *timeout* expires, so
+   a command that backgrounds work leaves no orphan behind. But its pid is never registered —
+   `DocketDriver.run_turn` ignores `on_spawn` for it — so it is **not** reachable from
+   `docket runs cancel`; a cancelled run's in-flight verify command keeps running until it returns
+   or times out on its own. This is a known limit, not a bug to fix under this requirement.
 3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
    one. `core/agent_loop.py` cooperatively checks the run signal at turn boundaries, after backend
    response, before each tool dispatch, and after each tool result. A response or tool result that
