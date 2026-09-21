@@ -273,7 +273,15 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
     starts. That is the only honest posture here: this call is synchronous
     inside a dispatch hop, with no interactive approver reachable (see
     ``specs/functional/security-gates.spec.md``). ``cwd``/``timeout`` are
-    never classified: they are plumbing, not operator-composed shell text."""
+    never classified: they are plumbing, not operator-composed shell text.
+
+    Runs in its own session (``start_new_session=True``) so a timeout can kill the
+    command's whole process group, not just the immediate ``sh`` child -- otherwise a
+    command that backgrounds work (``build & wait``, a test runner spawning workers)
+    leaves orphans behind every time it is killed on timeout. The pid is never
+    registered anywhere, so this group is reachable only from inside this function;
+    ``docket runs cancel`` cannot interrupt an in-flight verify command (see
+    ``specs/functional/pod-dispatch.spec.md``'s Cancellation requirement 2)."""
     risk_cls = _sec.match_high_risk(cmd)
     if risk_cls is not None:
         return False, (
@@ -281,20 +289,32 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
             f"({risk_cls.description}) -- see `docket gates classes`]"
         )
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             shell=True,
             cwd=cwd or None,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            start_new_session=True,
         )
-        combined = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
-    except subprocess.TimeoutExpired:
-        return False, f"[verify timed out after {timeout}s]"
     except (FileNotFoundError, OSError) as exc:
         return False, f"[verify error: {exc}]"
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        import contextlib
+        import signal as _signal
+
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, _signal.SIGKILL)
+        with contextlib.suppress(subprocess.SubprocessError, OSError):
+            proc.communicate(timeout=5)
+        return False, f"[verify timed out after {timeout}s]"
+    except OSError as exc:
+        return False, f"[verify error: {exc}]"
+    combined = (stdout + stderr).strip()
+    return proc.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
 
 
 def _process_group_alive(pgid: int) -> bool:
