@@ -337,15 +337,22 @@ was seeded once at binding time.)*
 
 1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` (W-1) —
    `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, and `docket pod <project>
-   dispatch` today) resolves `effective_pipeline(project, None)`, which is `core/pipeline.py`'s
+   dispatch` today) resolves `effective_pipeline(project, None)`. The resolution order is:
+   a caller-supplied `spec` always wins outright (returned unpatched); otherwise the Lead's
+   `blueprint` meta is looked up (`core.blueprints.get_blueprint`) and, when it names a known
+   blueprint, that blueprint's `defaultPipeline` is the base pipeline; when the meta is absent,
+   empty, or names an unknown blueprint, the base pipeline is `core/pipeline.py`'s
    `default_pipeline()` — Lead → Implementer → Reviewer → Tester, byte-identical to the pre-W-2
-   hardcoded `PIPELINE_ORDER` walk — patched only so its Reviewer step's rework budget reflects
-   this pod's own `maxReworkCycles` (see "Reviewer verdict gate and bounded rework"). A
-   role-targeted step whose role the pod does not have is skipped and consumes no pipeline
-   position (`core.orchestrator.resolve_plan`'s `skipped` flag), the same behavior
-   `PIPELINE_ORDER`-filtering always had. A lean pod (Lead + Implementer only) running the default
-   pipeline still runs exactly two hops per pass; a full pod runs up to four, plus any rework
-   cycles (see below).
+   hardcoded `PIPELINE_ORDER` walk. Either way the resolved base pipeline is then patched only so
+   every `VerdictGate` step with a rework edge reflects this pod's own `maxReworkCycles` (see
+   "Reviewer verdict gate and bounded rework") — for a blueprint pipeline this reaches whichever
+   step declares the rework edge (e.g. the `research`/`content` blueprints' Critic step), not only
+   a step named `reviewer`. A role-targeted step whose role the pod does not have is skipped and
+   consumes no pipeline position (`core.orchestrator.resolve_plan`'s `skipped` flag), the same
+   behavior `PIPELINE_ORDER`-filtering always had. A lean `software` pod (Lead + Implementer only)
+   running the default pipeline still runs exactly two hops per pass; a full pod runs up to four,
+   plus any rework cycles (see below); a `research`, `content`, or `ops` pod now runs its
+   blueprint's full roster and gates on dispatch, not only its Lead step.
 2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a
    pod with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
 3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod — each
