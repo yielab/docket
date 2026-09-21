@@ -493,12 +493,16 @@ Success response (`201`) — the created pod roster:
 
 **Added in 2.4.0.** The request body accepts an optional `channel` string, tagged onto the
 `approval.grant`/`approval.deny` audit entry this endpoint already writes (`core/approval.py`).
-Validated against the closed vocabulary `core.approval.APPROVAL_CHANNELS` (`cli`\|`http`\|`mcp`\|
-`telegram`\|`timeout`\|`tack`) — an unrecognized value is rejected with `400` rather than let an
-arbitrary caller-supplied string reach the hash-chained audit log. Omitted, it defaults to `"http"`,
-so every caller that predates this field is unchanged. `tack` distinguishes a decision made from
-Tack's board from one made through any other surface — the audit chain's whole value is that its
-provenance is honest, so a Tack-granted approval must not be indistinguishable from a CI job's.
+Validated against `http`\|`tack` — the subset of `core.approval.APPROVAL_CHANNELS` the HTTP
+transport itself may claim — rather than the full closed vocabulary: `cli`, `mcp` and `telegram`
+are audit-logged only by their own surfaces (the CLI, an MCP tool call, the Telegram channel), and
+`timeout` is the fail-closed expiry path, never a caller-supplied value. An HTTP Bearer holder
+asking for any of those, or any other unrecognized value, is rejected with `400` before the
+approval's state changes, rather than let a caller forge which surface a decision came through in
+the hash-chained audit log. Omitted, it defaults to `"http"`, so every caller that predates this
+field is unchanged. `tack` distinguishes a decision made from Tack's board from one made through
+any other surface — the audit chain's whole value is that its provenance is honest, so a
+Tack-granted approval must not be indistinguishable from a CI job's.
 
 ## Validation
 
@@ -543,10 +547,11 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   project with no pod; MUST return a `4xx` naming the policy id for a `block` `pre_input` verdict;
   and MUST return `200` with `status: "waiting_approval"` plus a non-empty `approvalToken` for a
   `require_approval` verdict, never a response implying the task is queued to run.
-- `POST /approvals/<token>`'s optional `channel` field MUST be one of
-  `core.approval.APPROVAL_CHANNELS` (`cli | http | mcp | telegram | timeout | tack`); an
-  unrecognized value MUST be rejected with `400` without changing the approval's state. Omitted, it
-  MUST default to `"http"`.
+- `POST /approvals/<token>`'s optional `channel` field MUST be one of `http | tack` — the subset of
+  `core.approval.APPROVAL_CHANNELS` the HTTP transport may claim; `cli`, `mcp`, `telegram` and
+  `timeout` belong to other surfaces or to the fail-closed expiry path and MUST be rejected the
+  same as any other unrecognized value, with `400` and no change to the approval's state or the
+  audit log. Omitted, it MUST default to `"http"`.
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
   any project state; MUST reject a malformed/non-object body, a missing/empty `project`, a `pod`
   value other than `"full"`, or a non-numeric `budget` with `400` before `provision_pod` is ever

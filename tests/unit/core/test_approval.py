@@ -312,15 +312,37 @@ class TestApprovalChannel:
         assert status == 400
         assert _approval.approval_get(apr_token)["state"] == "pending"
 
-    def test_every_recognised_channel_is_accepted(self, live_server: tuple[str, str]) -> None:
+    def test_every_http_claimable_channel_is_accepted(self, live_server: tuple[str, str]) -> None:
+        """Only the channels the HTTP transport may claim (`http`, `tack`) --
+        not every member of core.approval.APPROVAL_CHANNELS, several of which
+        (`cli`, `mcp`, `telegram`, `timeout`) belong to other surfaces."""
         url, token = live_server
-        for chan in sorted(_approval.APPROVAL_CHANNELS):
+        for chan in ("http", "tack"):
             apr_token = _approval.approval_create("projT6", "implementer", f"deploy via {chan}")
             status, _body = _post(
                 f"{url}/approvals/{apr_token}", {"action": "grant", "channel": chan}, token
             )
             assert status == 200, f"channel {chan!r} should be accepted"
             assert _approval.approval_get(apr_token)["state"] == "granted"
+
+    @pytest.mark.parametrize("chan", ["timeout", "cli", "mcp", "telegram"])
+    def test_non_http_channel_is_rejected_over_http(
+        self, live_server: tuple[str, str], chan: str
+    ) -> None:
+        """A Bearer holder over HTTP must not forge a decision as coming from
+        another surface's channel (`cli`, `mcp`, `telegram`) or as the
+        fail-closed expiry path (`timeout`)."""
+        url, token = live_server
+        apr_token = _approval.approval_create("projT7", "implementer", f"deploy via {chan}")
+        entries_before = [e for e in _audit.read_audit() if e.get("action") == "approval.grant"]
+        status, body = _post(
+            f"{url}/approvals/{apr_token}", {"action": "grant", "channel": chan}, token
+        )
+        assert status == 400, f"channel {chan!r} must not be claimable over HTTP"
+        assert body["ok"] is False
+        assert _approval.approval_get(apr_token)["state"] == "pending"
+        entries_after = [e for e in _audit.read_audit() if e.get("action") == "approval.grant"]
+        assert entries_after == entries_before, "no approval.grant audit entry must be written"
 
 
 # ── expiry still fail-closes ──────────────────────────────────────────────────

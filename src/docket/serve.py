@@ -42,6 +42,14 @@ SERVE_API_VERSION = "2"
 
 _SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
 
+# The channels the HTTP transport itself may claim on POST /approvals/<token>.
+# This is narrower than core.approval.APPROVAL_CHANNELS: "cli", "mcp" and
+# "telegram" belong to their own surfaces, and "timeout" is the fail-closed
+# expiry path -- an HTTP Bearer holder must not be able to forge a decision
+# as coming from any of those. "tack" is the one named HTTP client (Tack's
+# board); "http" is the untagged default.
+_HTTP_APPROVAL_CHANNELS: frozenset[str] = frozenset({"http", "tack"})
+
 
 def _utc_timestamp() -> str:
     """Return current UTC time as 'YYYY-MM-DDTHH:MM:SSZ' (matches `date -u`)."""
@@ -850,11 +858,13 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # `channel` identifies the surface this decision came through, tagged
         # onto the hash-chained audit log entry (`core/approval.py`'s
         # `approval_grant`/`approval_deny`). Default stays "http" (every caller
-        # before this field existed keeps identical behaviour); an unrecognised
-        # value is rejected rather than let free text reach the audit log —
-        # core owns the vocabulary (`approval.APPROVAL_CHANNELS`), not this module.
+        # before this field existed keeps identical behaviour). Validated
+        # against `_HTTP_APPROVAL_CHANNELS`, not the full `approval.
+        # APPROVAL_CHANNELS` -- the HTTP transport may not claim a channel
+        # ("cli", "mcp", "telegram", "timeout") that belongs to another
+        # surface or to the fail-closed expiry path.
         channel = req_body.get("channel", "http")
-        if not isinstance(channel, str) or channel not in approval.APPROVAL_CHANNELS:
+        if not isinstance(channel, str) or channel not in _HTTP_APPROVAL_CHANNELS:
             self._send_json_error(f"Unrecognised channel: {channel!r}", 400)
             return
 
