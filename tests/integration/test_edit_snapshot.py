@@ -193,6 +193,14 @@ class TestCmdSnapshot:
         assert agent["kind"] == "project"
         assert agent["name"] == "My Shop"
 
+    def test_last_activity_is_never_when_no_logs(self, tmp_path: Path) -> None:
+        oc_dir = _setup_agent(tmp_path)
+        rc, out, _ = _run(["snapshot"], oc_dir)
+        assert rc == 0
+        data = json.loads(out)
+        agent = next(a for a in data["agents"] if a["id"] == "myshop")
+        assert agent["lastActivity"] == "never"
+
     def test_bindings_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["snapshot"], oc_dir)

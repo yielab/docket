@@ -5,7 +5,7 @@ EXIT:0
   "codebase": "<HOME>/Sites/myshop",
   "stack": "Docker,git",
   "model": "anthropic/claude-sonnet-4-6",
-  "budgetUsd": "",
+  "budgetUsd": null,
   "paused": false,
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
