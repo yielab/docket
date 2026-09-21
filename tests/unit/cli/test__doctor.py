@@ -47,6 +47,31 @@ def _point_config_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repoint_docket_home(monkeypatch, home)
 
 
+def _write_session(
+    home: Path, session_key: str, *, input_tokens: int, output_tokens: int = 0
+) -> None:
+    """Seed a docket-native session with measured tokens and no recorded cost -- a
+    pod-dispatch hop's turns land here through ``DocketDriver``, whose ``cost_usd`` is
+    always ``0.0`` by design (see core/runtime_driver.py)."""
+    from urllib.parse import quote
+
+    sdir = home / "sessions" / quote(session_key, safe="")
+    sdir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "sessionKey": session_key,
+        "created": "2024-03-15T10:00:00Z",
+        "updated": "2024-03-15T10:00:00Z",
+        "messages": [],
+        "usage": {
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cachedTokens": 0,
+            "turns": 1,
+        },
+    }
+    (sdir / "session.json").write_text(json.dumps(record))
+
+
 def _seed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -253,19 +278,90 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        cost = {"myshop": ("", 0.0, 0)}
+        cost = {"myshop": ("", 0.0, False)}
         assert _doctor._check_budget(["myshop"], cost) == 0
         assert "no cap" in capsys.readouterr().out
 
     def test_budget_over_cap_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """Recorded (non-estimated) spend over cap: flagged with a plain `$` figure, no
+        estimate label."""
         _seed(tmp_path, monkeypatch)
-        cost = {"myshop": ("10", 12.0, 5)}
+        cost = {"myshop": ("10", 12.0, False)}
         issues = _doctor._check_budget(["myshop"], cost)
         out = capsys.readouterr().out
         assert issues == 1
         assert "over budget" in out
+        assert "estimated" not in out
+
+    def test_budget_over_cap_from_estimate_when_nothing_recorded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Unit coverage of `_check_budget` reading an already-computed gating tuple -- see
+        `test_doctor_run_flags_over_budget_from_estimate` below for the behavioural case that
+        drives this through the real `run_doctor()` entry point."""
+        home = _seed(tmp_path, monkeypatch, budget="0.01")
+        _write_session(home, "agent:myshop:default", input_tokens=4000)
+
+        gating = _doctor._batch_gating_cost(["myshop"])
+        issues = _doctor._check_budget(["myshop"], gating)
+        out = capsys.readouterr().out
+
+        assert issues == 1
+        assert "over budget" in out
+        assert "estimated — no cost recorded" in out
+
+    def test_budget_warns_at_80_percent_from_estimate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Unit coverage mirroring the over-cap case at the >=80% threshold; see
+        `test_doctor_run_warns_at_80_percent_from_estimate` below for the behavioural case."""
+        home = _seed(tmp_path, monkeypatch, budget="0.01")
+        _write_session(home, "agent:myshop:default", input_tokens=2833)
+
+        gating = _doctor._batch_gating_cost(["myshop"])
+        issues = _doctor._check_budget(["myshop"], gating)
+        out = capsys.readouterr().out
+
+        assert issues == 0
+        assert "84%" in out
+        assert "estimated — no cost recorded" in out
+
+    def test_doctor_run_flags_over_budget_from_estimate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Behavioural, through the real `run_doctor()` entry point: `DocketDriver` always
+        records `cost_usd = 0.0`, so 4000 input tokens (~$0.012 at $3.00/1M) against a
+        $0.01 cap must still be flagged, via the estimate, not raw recorded spend."""
+        home = _seed(
+            tmp_path, monkeypatch, budget="0.01", secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
+        )
+        _write_session(home, "agent:myshop:default", input_tokens=4000)
+
+        rc = _doctor.run_doctor(json_out=False)
+        out = capsys.readouterr().out
+
+        assert "over budget" in out
+        assert "estimated — no cost recorded" in out
+        assert rc == 1
+
+    def test_doctor_run_warns_at_80_percent_from_estimate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Behavioural mirror at the >=80% warning threshold, through `run_doctor()`: 2833
+        input tokens estimate to ~$0.0085, 84% of a $0.01 cap."""
+        home = _seed(
+            tmp_path, monkeypatch, budget="0.01", secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
+        )
+        _write_session(home, "agent:myshop:default", input_tokens=2833)
+
+        _doctor.run_doctor(json_out=False)
+        out = capsys.readouterr().out
+
+        assert "84%" in out
+        assert "estimated — no cost recorded" in out
+        assert "over budget" not in out
 
     def test_runaway_flagged_by_turns(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

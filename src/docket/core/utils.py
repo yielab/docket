@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import docket.config as cfg
+from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.edges import store
 
@@ -113,6 +114,22 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
         + totals.cache_write / 1_000_000 * cache_write_rate
     )
     return round(usd, 6)
+
+
+def gating_cost(agent_id: str) -> tuple[float, bool]:
+    """One agent's budget-gating figure: recorded cost if nonzero, else the
+    ``estimate_cost_usd`` token-based fallback (mirrors ``pod_gating_cost`` per member).
+    Returns ``(amount, estimated)`` -- an estimate MUST NEVER be presented as recorded spend."""
+    totals = aggregate_cost(agent_id)
+    if totals.cost_usd > 0.0:
+        return totals.cost_usd, False
+    if totals.input_tokens == 0 and totals.output_tokens == 0:
+        return 0.0, False
+    model = str(_fleet.meta_get(agent_id, "model", "") or "")
+    est = estimate_cost_usd(model, totals)
+    if est is None:
+        return 0.0, False
+    return est, True
 
 
 @dataclass

@@ -23,6 +23,7 @@ from docket.core.utils import (
     DayRecord,
     aggregate_cost,
     cost_history,
+    gating_cost,
     model_source,
     project_ids,
     si_format,
@@ -216,11 +217,15 @@ def _render_agent_cost(agent_id: str) -> None:
     if totals.turns > runaway_turns:
         ui.console.print()
         ui.warn(f"  High turn count: {totals.turns} turns (threshold: {runaway_turns})")
-    if totals.cost_usd >= runaway_cost_t:
+    gate_cost, gate_estimated = gating_cost(agent_id)
+    if gate_cost >= runaway_cost_t:
         ui.console.print()
-        ui.warn(
-            f"  High cost session: ${totals.cost_usd:.4f} exceeds ${runaway_cost_t:.0f} threshold"
+        cost_disp = (
+            f"~${gate_cost:.4f} (estimated — no cost recorded)"
+            if gate_estimated
+            else f"${gate_cost:.4f}"
         )
+        ui.warn(f"  High cost session: {cost_disp} exceeds ${runaway_cost_t:.0f} threshold")
 
 
 def _cmd_cost_history(
