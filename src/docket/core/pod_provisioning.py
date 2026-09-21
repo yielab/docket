@@ -27,6 +27,7 @@ from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod
+from docket.core import provisioning as _prov
 from docket.core import resources as _res
 from docket.core.audit import audit_log
 from docket.edges import store as _store
@@ -657,7 +658,10 @@ def provision_pod(
       ``core.blueprints.BlueprintError`` -- unknown blueprint name.
       ``VerifyCmdError`` -- ``verify_cmd`` fails validation.
       ``PodProvisionError`` -- a member failed to provision after rollback.
+      ``core.provisioning.ProjectIdError`` -- ``project`` fails ``validate_project_id``;
+        checked before the lock and before any path is built.
     """
+    project = _prov.validate_project_id(project)
     with _project_provision_lock(project):
         if pod_member_ids(project):
             raise PodAlreadyExistsError(project)

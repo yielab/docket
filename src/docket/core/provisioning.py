@@ -19,6 +19,29 @@ def slugify(name: str) -> str:
     return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+class ProjectIdError(ValueError):
+    """A project/pod id failed ``validate_project_id``. ``core/`` raises, never prints --
+    see specs/validation/input-validation.spec.md §1."""
+
+
+#: Exactly the set `slugify` can ever emit: lowercase alphanumeric segments
+#: joined by single hyphens, no leading/trailing/consecutive hyphen.
+_PROJECT_ID_RE = _re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_PROJECT_ID_MAX_LEN = 64
+
+
+def validate_project_id(project: str) -> str:
+    """Validate a project/pod id: non-empty, at most 64 characters, matching
+    ``^[a-z0-9]+(?:-[a-z0-9]+)*$`` (exactly what ``slugify`` can produce). Raises
+    ``ProjectIdError`` naming the rule, or returns *project* unchanged."""
+    if not project or len(project) > _PROJECT_ID_MAX_LEN or not _PROJECT_ID_RE.match(project):
+        raise ProjectIdError(
+            "project id must be non-empty, at most 64 characters, and match "
+            f"^[a-z0-9]+(?:-[a-z0-9]+)*$ (got: {project[:40]!r})"
+        )
+    return project
+
+
 def default_codebase() -> Path:
     """The codebase path to offer by default: the directory ``docket add`` ran in.
 

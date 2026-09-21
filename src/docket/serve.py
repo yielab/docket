@@ -29,6 +29,7 @@ from typing import Any
 import docket.config as cfg
 from docket.core import audit as _audit
 from docket.core import fleet, utils
+from docket.core import provisioning as _prov
 from docket.core import trace as _trace
 
 DEFAULT_PORT = 7331
@@ -713,6 +714,17 @@ class _DocketHandler(BaseHTTPRequestHandler):
         body = json.dumps({"ok": False, "error": msg}).encode()
         self._send(body, "application/json", status)
 
+    def _reject_bad_project_id(self, project: str) -> bool:
+        """Send a `400` and return `True` if *project* fails `validate_project_id` --
+        every project-path-segment handler but `_handle_post_pods` (whose `400` comes
+        from `provision_pod`'s own boundary check) calls this right after auth."""
+        try:
+            _prov.validate_project_id(project)
+        except _prov.ProjectIdError as exc:
+            self._send_json_error(str(exc), 400)
+            return True
+        return False
+
     def do_GET(self) -> None:
         full_path = self.path
         path = full_path.split("?", 1)[0].rstrip("/")
@@ -770,6 +782,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Unauthorized", 401)
                 return
             project = path[len("/tasks/") :]
+            if self._reject_bad_project_id(project):
+                return
             from docket.core import dispatch as _dispatch
 
             # read_tasks itself returns [] for a project with no pod (absent
@@ -787,6 +801,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Unauthorized", 401)
                 return
             project = path[len("/traces/") :]
+            if self._reject_bad_project_id(project):
+                return
             query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
             since_values = query.get("since")
             since = since_values[0] if since_values else ""
@@ -871,6 +887,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not project:
             self._send_json_error("Missing project", 400)
             return
+        if self._reject_bad_project_id(project):
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -930,6 +948,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
         project = path[len("/dispatch/") :]
         if not project:
             self._send_json_error("Missing project", 400)
+            return
+        if self._reject_bad_project_id(project):
             return
         from docket.core import dispatch as _dispatch
         from docket.core import pipeline as _pipeline
@@ -1052,6 +1072,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
 
         from docket.core import pod_provisioning as _pp
+        from docket.core import provisioning as _prov
 
         try:
             result = _pp.provision_pod(
@@ -1067,6 +1088,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error(str(exc), 400)
             return
         except _pp.VerifyCmdError as exc:
+            self._send_json_error(str(exc), 400)
+            return
+        except _prov.ProjectIdError as exc:
             self._send_json_error(str(exc), 400)
             return
         except _pp.PodAlreadyExistsError:

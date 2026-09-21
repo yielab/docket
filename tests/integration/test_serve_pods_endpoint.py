@@ -180,6 +180,24 @@ class TestBadRequests:
         assert status == 400
         assert _ids() == []
 
+    def test_path_traversal_project_id_returns_400_and_creates_nothing(
+        self, live_server: tuple[str, str], tmp_path: Path
+    ) -> None:
+        # A project id with path-separator/parent-directory characters must
+        # never reach `provision_pod`'s workspace-path construction. Oracle
+        # is the filesystem: no path anywhere under the test's temp root may
+        # contain "escaped", and no such agent is registered.
+        url, token = live_server
+        codebase = tmp_path / "codebase"
+        codebase.mkdir()
+        status, _body = _post(
+            f"{url}/pods", {"project": "../../escaped", "path": str(codebase)}, token
+        )
+        assert status == 400
+        assert _ids() == []
+        escaped_paths = [p for p in tmp_path.rglob("*") if "escaped" in p.name]
+        assert escaped_paths == [], f"escaped paths created on disk: {escaped_paths}"
+
 
 # ── success ──────────────────────────────────────────────────────────────────
 

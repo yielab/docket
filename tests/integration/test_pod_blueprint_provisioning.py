@@ -411,6 +411,22 @@ class TestFromSpecBlueprint:
         assert rc == 0
         assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
 
+    def test_from_spec_invalid_project_id_exits_one_and_provisions_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An `id` that fails validate_project_id (here: path-traversal
+        # characters) must not reach provision_pod's workspace-path
+        # construction -- the command exits 1 and nothing is provisioned.
+        oc_dir = _seed(tmp_path, monkeypatch)
+        spec = [{"id": "../../escaped", "blueprint": "software", "codebase": "/src/demo"}]
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec))
+
+        rc = _agents.run_init(["--from", str(spec_file)])
+
+        assert rc == 1
+        assert _ids(oc_dir) == []
+
     def test_from_spec_without_blueprint_field_is_unaffected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
