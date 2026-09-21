@@ -911,7 +911,7 @@ def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None
     elif action == "reset":
         return _maintain_reset(aid, ws, distill_first=distill_first)
     elif action == "rebuild":
-        _maintain_rebuild(aid, ws)
+        return _maintain_rebuild(aid, ws)
     elif action == "sessions":
         _maintain_sessions(aid)
     elif action == "distill":
@@ -1196,19 +1196,31 @@ def _maintain_reset(agent_id: str, ws: Path, *, distill_first: bool = True) -> i
     return 0
 
 
-def _maintain_rebuild(agent_id: str, ws: Path) -> None:
-    """rebuild: backup existing files then regenerate workspace from metadata."""
+def _maintain_rebuild(agent_id: str, ws: Path) -> int:
+    """rebuild: backup+regenerate a legacy flat agent's templates. Refuses a pod
+    member outright (its files are owned by pod provisioning) and never touches
+    memory/ -- rebuild has no reason to remove logs."""
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    pod_id = str(raw.get("pod", ""))
+    role = str(raw.get("role", ""))
+    if pod_id or role:
+        ui.error(
+            f"'{agent_id}' is a pod member (pod '{pod_id or '?'}', role '{role or '?'}'). "
+            "rebuild supports only legacy flat agents -- a pod member's files are owned "
+            "by pod provisioning, not this command."
+        )
+        return 1
+
     if not sys.stdin.isatty():
         ui.console.print("Confirmation failed. Aborted.")
-        return
+        return 0
 
     ui.warn("This will backup and regenerate all workspace files from metadata.")
     confirm = input(f"Type agent ID to confirm [{agent_id}]: ").strip()
     if confirm != agent_id:
         ui.warn("Aborted.")
-        return
+        return 0
 
-    raw = store.read_json(_cfg.meta_path(agent_id))
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_dir = ws / f".backup-{stamp}"
     backup_dir.mkdir(exist_ok=True)
@@ -1229,11 +1241,8 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
         str(raw.get("model", _cfg.DEFAULT_MODEL)),
     )
 
-    mem_dir = ws / "memory"
-    for f in mem_dir.glob("*.md"):
-        f.unlink()
-
     ui.success(f"Workspace rebuilt for '{agent_id}'.")
+    return 0
 
 
 def _maintain_sessions(agent_id: str) -> None:
