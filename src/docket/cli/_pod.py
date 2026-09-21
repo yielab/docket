@@ -524,8 +524,9 @@ def _pod_dispatch(
     specs/functional/pod-dispatch.spec.md. Recorded in the run registry (source
     ``"cli"``), so a failure is visible afterwards via ``docket runs show``. *spec*,
     when given (by ``docket pipeline run``), is forwarded unchanged; ``None`` resolves
-    the pod's default pipeline — the one shared implementation both CLI surfaces
-    drive, so there is no second, drift-prone copy of this rendering logic."""
+    through ``effective_pipeline`` — the pod's blueprint pipeline, or the built-in
+    default — the one shared resolver both CLI surfaces drive, so the prologue names
+    the same roles the executor actually runs."""
     from docket.core import runs as _runs
 
     try:
@@ -534,7 +535,7 @@ def _pod_dispatch(
         ui.error("--timeout requires a positive integer number of seconds.")
         raise typer.Exit(1) from None
     try:
-        pipeline = _dispatch.pod_pipeline(project)
+        _dispatch.pod_pipeline(project)  # validates the pod exists and has a Lead
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
@@ -554,7 +555,10 @@ def _pod_dispatch(
     if spec is not None:
         ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
     else:
-        roles = " → ".join(role for role, _mid in pipeline)
+        roles = " → ".join(
+            step.role or step.agent or step.id
+            for step in _dispatch.effective_pipeline(project, None).steps
+        )
         ui.info(f"Dispatching {count_label} task(s) through: {roles}")
     cap = _dispatch.pod_budget(project)
     if cap:
