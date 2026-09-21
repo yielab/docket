@@ -10,6 +10,15 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-21 (Wave 36 closed, D-40) — the documentation audit's code-side defects fixed.**
+  Eleven cards in three batches, one Sonnet worker per card in an isolated worktree, one
+  integrator owning every rollup: project ids validated at `provision_pod` (a `POST /pods` path
+  traversal), `docket mcp servers add` reachable through Click, MCP approvals resuming the task
+  they gated, `maintain rebuild` keeping memory and refusing pod members, blueprint pipelines
+  actually executed (the fifth unwired-machinery instance, proved live), verify-command timeouts
+  killing the process group, HTTP approval channels restricted to `http`/`tack`, CLI `--json`
+  types, `--debug` retired, budget warnings that can fire, and a prose sweep. Two ROADMAP §3
+  rules that had gone stale (README line cap, guards line cap) amended in the same close.
 - **2026-09-14 (Phase 23 closed / W29-C7 removed, D-39) — the maintainer removed the last board
   card rather than cut a newer beta.** `v0.2.0-beta.2`, published 2026-09-07, already carries every
   asset Phase 23's release evidence named, so the phase closed on it. The Wave 29 board section and

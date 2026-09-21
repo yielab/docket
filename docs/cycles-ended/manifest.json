@@ -510,5 +510,13 @@
     "heading": "◇ WAVE 29 CLOSED (2026-09-14) — adoption evidence and public release",
     "bytes": 6343,
     "sha256": "7da8cbf5719e7c13a7a6129b4c914cb4c7d5147e41dffda699f7683db0db8bef"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 36 CLOSED (2026-09-21) — eleven defects the documentation audit found in code",
+    "bytes": 19222,
+    "sha256": "d5a3c7abeb2aa9e7fafb4251e87e8159c6e93d1ab921e111eb9dadebff06066f"
   }
 ]

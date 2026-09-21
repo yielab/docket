@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.8.1
+**Version**: 2.8.2
 **Status**: Complete
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -394,6 +394,10 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.8.2 (2026-09-21)
+
+- User registry overlay requirements 1 and 3 corrected: unknown roles and a corrupt registry are ignored silently by `load_registry`, not reported with a warning (W36-C11).
 
 ### Version 2.8.1 (2026-09-19)
 

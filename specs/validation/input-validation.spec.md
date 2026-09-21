@@ -1,6 +1,6 @@
 # Input Validation Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
 project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
 forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
@@ -519,6 +519,10 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-21)
+
+- §2/§4/§5 marked Deferred with the reason (local-operator threat model; no live numeric argument matches the sketched ranges; session keys are URL-quoted for paths and never parsed back), replacing the "open maintainer decision" framing (W36-C11).
 
 ### Version 1.5.0 (2026-09-21)
 
