@@ -95,9 +95,6 @@ MODEL POLICY  (default: Anthropic — change with 'docket models preset')
   'docket models' shows the full role→model table with pricing; 'docket profile <id>'
   pins one agent to any model (incl. opus-class) without changing the policy.
 
-FLAGS
-  --debug         Verbose mode — or set DEBUG=1 in env
-
 EXAMPLES
   docket                            # show the compact command guide
   docket init                       # initialize this repository's project pod

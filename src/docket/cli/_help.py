@@ -121,9 +121,6 @@ def run_help() -> int:
   'docket models' shows the full role→model table with pricing; 'docket profile <id>'
   pins one agent to any model (incl. opus-class) without changing the policy.
 
-{B}FLAGS{R}
-  --debug         Verbose mode — or set DEBUG=1 in env
-
 {B}EXAMPLES{R}
   docket                            # show the compact command guide
   docket init                       # initialize this repository's project pod

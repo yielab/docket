@@ -18,7 +18,7 @@ Role→model policy
 
   Registry file: <HOME>/.docket/docket-models.json
   (user overrides active)
-  PRICE column is an estimate from a snapshot (as of <DATE>); override in docket-models.json
+  PRICE column is an estimate from a snapshot (as of <DATE>)
 
 Change: docket models set <role|default> <provider/model>
 Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]

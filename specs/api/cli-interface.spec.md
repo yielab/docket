@@ -90,7 +90,7 @@ docket [global-options] <command> [command-options] [arguments]
 |--------|-------|-------------|---------|
 | --help | - | Show help message | - |
 | --version | -V | Show version info | - |
-| --debug | - | Enable debug output (sets `DEBUG`, currently read by no command) | false |
+| --debug | - | Deprecated, hidden no-op — accepted for backward compatibility, writes nothing | false |
 
 These three are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
 `--quiet`, `--config` or `--no-color`; state location is chosen with `DOCKET_HOME`, not a config

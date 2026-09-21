@@ -4,7 +4,12 @@ Every command (including `install`) dispatches to Python, so the
 invariant is: the CLI module must contain zero `_not_ported(` call sites.
 """
 
+import os
 from pathlib import Path
+
+from typer.testing import CliRunner
+
+from docket.cli import app
 
 SUBJECT = "docket.cli"
 
@@ -21,3 +26,14 @@ def test_no_not_ported_callsites() -> None:
         if '_not_ported("' in line or "_not_ported('" in line
     ]
     assert call_sites == [], f"un-ported command stubs remain: {call_sites}"
+
+
+def test_debug_flag_is_a_no_op() -> None:
+    """--debug is a deprecated, hidden no-op: it must exit 0 and never set os.environ."""
+    assert "DEBUG" not in os.environ
+    try:
+        result = CliRunner().invoke(app, ["--debug"])
+        assert result.exit_code == 0
+        assert "DEBUG" not in os.environ
+    finally:
+        os.environ.pop("DEBUG", None)
