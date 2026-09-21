@@ -1,6 +1,6 @@
 # Input Validation Specification
 
-**Version**: 1.4.1
+**Version**: 1.5.0
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
 project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
 forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
@@ -8,7 +8,7 @@ session-key grammar check (§5) have **no implementing function in `src/`**: `va
 `validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only (see
 the note under Rules). Whether to implement them or amend those rules is an open maintainer
 decision.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -491,6 +491,10 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-21)
+
+- §1 (Agent/Project ID Validation) documents the shipped `core/provisioning.py::validate_project_id` (W36-C1), called first in `provision_pod`, replacing the unimplemented length/reserved-word sketch. Measured need: `POST /pods` with `../../x` provisioned outside `workspaces/`.
 
 ### Version 1.4.1 (2026-09-18)
 

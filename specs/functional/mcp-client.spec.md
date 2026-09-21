@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.3.1
+**Version**: 1.4.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -24,7 +24,7 @@ from a write-capable one (every adapted tool is `kind="write"` unconditionally, 
 1.1.0) — this is the correct fail-closed answer today, not a gap this version silently carries.
 Remote tool results use the same live `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved
 for every call so a small-context endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -482,6 +482,10 @@ dispatch_tool(
   turn failure (backend error, timeout, budget) may do that (Requirement 28).
 
 ## Changelog
+
+### Version 1.4.0 (2026-09-21)
+
+- Requirement 21 reworded (W36-C2): `--env`/`--timeout` rejection is scoped to flags given before `--`, and the rule holds through the real CLI entry point, where Click used to consume the separator and `docket mcp servers add` always failed.
 
 ### Version 1.3.1 (2026-09-18)
 

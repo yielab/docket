@@ -1072,7 +1072,6 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
 
         from docket.core import pod_provisioning as _pp
-        from docket.core import provisioning as _prov
 
         try:
             result = _pp.provision_pod(

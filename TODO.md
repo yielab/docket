@@ -124,7 +124,7 @@ loopback-only route. The integrator pushes this board together with C1, or C1 fi
 
 ### W36-C1 — validate project ids at the core provisioning boundary
 
-**Status:** READY · **Size:** M · **Owner:** one worker · **Batch:** 1
+**Status:** DONE (2026-09-21, merged a46782c) · **Size:** M · **Owner:** one worker · **Batch:** 1
 
 **Trigger (deterministic reproduction):** `core/pod_provisioning.py::provision_pod("../../x",
 "software", location=<dir>)` under a throwaway home succeeds and creates `x/`, `x-lead/` and
@@ -155,7 +155,7 @@ provisions. A declarative spec with a bad `id` exits 1 and provisions nothing.
 
 ### W36-C2 — make `docket mcp servers add` reachable from the real CLI
 
-**Status:** READY · **Size:** S · **Owner:** one worker · **Batch:** 1
+**Status:** DONE (2026-09-21, merged c68dcbd) · **Size:** S · **Owner:** one worker · **Batch:** 1
 
 **Trigger (deterministic reproduction):** `docket mcp servers add playwright -- npx -y
 @playwright/mcp@latest` — the help text's own example — exits 1 with "Missing '--' separator".
@@ -183,7 +183,7 @@ still exit 1. Every existing `run_mcp` test passes unchanged; `help.golden` is b
 
 ### W36-C3 — HTTP may not forge an approval's channel
 
-**Status:** BLOCKED (needs C1 merged — shares `serve.py` and `serve-read-api.spec.md`) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `serve.py::_handle_post_approvals` accepts any `channel` in
 `core/approval.py::APPROVAL_CHANNELS`, so a Bearer holder can record a decision in the
@@ -208,7 +208,7 @@ before any approval state changes.
 
 ### W36-C4 — an MCP grant or deny resolves the dispatch task it gated
 
-**Status:** READY · **Size:** S · **Owner:** one worker · **Batch:** 1
+**Status:** DONE (2026-09-21, merged 7de7219) · **Size:** S · **Owner:** one worker · **Batch:** 1
 
 **Trigger (read on the live path):** `cli/_mcp.py::tool_approvals_grant` and `_deny` never call
 `core/dispatch.py::resolve_waiting_approval`; the CLI, HTTP and Telegram paths all do. A
@@ -233,7 +233,7 @@ the task `pending` with the gate override recorded; `tool_approvals_deny(token)`
 
 ### W36-C5 — `maintain rebuild` never deletes memory and refuses a pod member
 
-**Status:** READY · **Size:** S · **Owner:** one worker · **Batch:** 1
+**Status:** DONE (2026-09-21, merged e434d57) · **Size:** S · **Owner:** one worker · **Batch:** 1
 
 **Trigger (read on the live path):** `cli/_agents.py::_maintain_rebuild` backs up five top-level
 files, regenerates through the legacy flat-agent `_create_workspace`, then unlinks every
@@ -259,7 +259,7 @@ confirmed rebuild; a pod member's rebuild exits 1 with `SOUL.md` bytes unchanged
 
 ### W36-C6 — dispatch runs the pod's blueprint pipeline
 
-**Status:** READY · **Size:** M · **Owner:** one worker · **Batch:** 1 (merged last)
+**Status:** DONE (2026-09-21, merged f26376d + e1bc9c2) · **Size:** M · **Owner:** one worker · **Batch:** 1
 
 **Trigger (fifth unwired-machinery instance):** `core/dispatch.py::effective_pipeline(project,
 None)` always returns `core/pipeline.py::default_pipeline()`. Nothing on the dispatch path reads
@@ -294,7 +294,7 @@ dispatch against the local endpoint before closing the wave.
 
 ### W36-C7 — a timed-out verify command leaves no orphan
 
-**Status:** READY · **Size:** S · **Owner:** one worker · **Batch:** 1
+**Status:** DONE (2026-09-21, merged e39ef34) · **Size:** S · **Owner:** one worker · **Batch:** 1
 
 **Trigger (measured):** `edges/adapters/system.py::run_verify_cmd("sleep 6 & wait", ".",
 timeout=1)` returns at 1.0 s and the `sleep` is still alive afterwards: `subprocess.run(shell=True,
@@ -318,7 +318,7 @@ file, run with `timeout=1`: within 2 s of return `os.kill(pid, 0)` raises `Proce
 
 ### W36-C8 — CLI `--json` emits the types its spec and `/status.json` already use
 
-**Status:** BLOCKED (needs batch 1 merged — shares `cli/__init__.py` and `cli/_agents.py`) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `list --json` and `info --json` emit `budgetUsd` as the
 stored string; `snapshot` emits `lastActivity: "—"`. `cli-json-shapes.spec.md`, `/status.json`
@@ -342,7 +342,7 @@ without a budget; an agent with no logs has `lastActivity == "never"`.
 
 ### W36-C9 — retire two claims nothing backs: `--debug` and the PRICE override
 
-**Status:** BLOCKED (needs batch 1 merged — shares `cli/__init__.py`) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `--debug` sets `os.environ["DEBUG"]` and `rg DEBUG src/`
 finds no reader, while `cli/_help.py` calls it "Verbose mode". The `docket models` footer says
@@ -365,7 +365,7 @@ and the generated environment table; the models footer loses the override clause
 
 ### W36-C10 — budget warnings read the same estimate the dispatch gate does
 
-**Status:** BLOCKED (needs batch 1 merged) · **Size:** S · **Owner:** one worker · **Batch:** 2
+**Status:** READY (batch 1 merged 2026-09-21) · **Size:** S · **Owner:** one worker · **Batch:** 2
 
 **Trigger (read on the live path):** `cli/_doctor.py::_check_budget` and the cost-threshold
 warning in `cli/_cost.py` compare the budget with **recorded** cost, which `DocketDriver` always

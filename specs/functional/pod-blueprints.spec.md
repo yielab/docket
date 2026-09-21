@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.3.1
+**Version**: 1.4.0
 **Status**: Implemented
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -265,6 +265,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.4.0 (2026-09-21)
+
+- Dispatch now resolves and runs a blueprint's `defaultPipeline` through `core/dispatch.py::effective_pipeline` (W36-C6); the Scope "known gap" note is closed. The 1.3.1 entry below describes the gap as it stood then.
 
 ### Version 1.3.1 (2026-09-19)
 

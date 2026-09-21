@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.6.1
+**Version**: 6.7.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -41,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -1158,6 +1158,12 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.7.0 (2026-09-21)
+
+- Dispatch resolves and runs the pod's blueprint pipeline (W36-C6): "Pipeline order and participation" requirement 1 now states the resolution order caller spec -> Lead's `blueprint` meta pipeline -> built-in default, and the rework-budget patch applies to any `VerdictGate` rework edge, not only `reviewer`. A research, content or ops pod runs its full roster instead of only its Lead.
+- Requirement 4's `resolve_waiting_approval` caller list now includes `cli/_mcp.py`'s `approvals_grant`/`approvals_deny` (W36-C4).
+- Cancellation requirement 2 narrowed (W36-C7): the verify-command process-group kill fires on the command's own timeout, not on `docket runs cancel` (its pid is never registered); tracked bash-tool processes are the only case cancel actually reaches.
 
 ### Version 6.6.1 (2026-09-18)
 

@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.4.1
+**Version**: 1.5.0
 **Status**: Implemented
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -352,6 +352,10 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-21)
+
+- `approvals_grant`/`approvals_deny` now resolve any dispatch task they gated, including on an `ApprovalNoop` (W36-C4). Previously a task decided over MCP stayed `waiting_approval`.
 
 ### Version 1.4.1 (2026-09-18)
 

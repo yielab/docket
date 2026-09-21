@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.12.1
+**Version**: 1.13.0
 **Status**: Complete
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -314,6 +314,10 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.13.0 (2026-09-21)
+
+- `rebuild` scoped to legacy flat agents only (W36-C5): it refuses a pod member (non-empty `pod`/`role` in meta) with exit 1 before any prompt or write, and no longer deletes `memory/*.md`.
 
 ### Version 1.12.1 (2026-09-18)
 

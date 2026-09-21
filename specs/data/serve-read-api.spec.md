@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.10.1
+**Version**: 2.11.0
 **Status**: Stable
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-21
 
 ## Purpose
 
@@ -608,6 +608,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.11.0 (2026-09-21)
+
+- `POST /pods` and the four project-path-segment handlers (`GET`/`POST /tasks/<project>`, `GET /traces/<project>`, `POST /dispatch/<project>`) now document the `400` from `validate_project_id` (W36-C1).
 
 ### Version 2.10.1 (2026-09-18)
 

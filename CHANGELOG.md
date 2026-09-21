@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Non-software pods run their blueprint pipeline.** `docket pod <p> dispatch`, `docket pipeline
+  plan|run` without `--file`, `POST /dispatch/<p>`, the `serve --dispatch` sweep, schedules and
+  Telegram `/delegate` now resolve the Lead's `blueprint` and run that blueprint's full roster and
+  gates. A research, content or ops pod used to run only its Lead; it now runs more hops and spends
+  more tokens per dispatch pass. Software and agentic-product pods, and any pod whose Lead has no or
+  an unknown blueprint, behave exactly as before.
+
+### Fixed
+
+- **`POST /pods` and `docket init --from` validate the project id.** A project id such as
+  `../../x` used to provision workspaces and fleet registrations outside `DOCKET_HOME/workspaces`.
+  `core/provisioning.py::validate_project_id` (lowercase alphanumeric segments joined by single
+  hyphens, at most 64 characters) now runs first in `provision_pod`; the HTTP routes answer `400`
+  and the declarative file exits 1 for an invalid id.
+- **`docket mcp servers add <name> -- <command>` works from the real CLI.** Click consumed the
+  `--` separator before the handler saw it, so the command's own help example always failed with
+  "Missing '--' separator".
+- **An approval granted or denied over MCP resumes or fails the dispatch task it gated**, the same
+  as `docket approve`/`docket deny`, the HTTP route and Telegram. A task decided over MCP used to
+  stay `waiting_approval`.
+- **`docket maintain <id> rebuild` no longer deletes `memory/*.md`**, and refuses a pod member with
+  exit 1 instead of overwriting its role prompt, `TOOLS.md` and `HEARTBEAT.md` with the legacy
+  flat-agent templates.
+- **A `verifyCmd` that times out is killed as a whole process group**, so a command that
+  backgrounds work no longer leaves orphaned processes behind after the hop moves on.
+
 ## [0.2.0-beta.3] - 2026-09-18
 
 The first beta with harness mode: `docket harness run` executes one governed agent turn for an
