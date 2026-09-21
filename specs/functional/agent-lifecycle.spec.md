@@ -165,13 +165,18 @@ commands. Six modes **MUST** be supported.
   a Lead mid-task
 - Reset conversation context
 
-#### rebuild - Complete Rebuild
-- Everything from `reset`
-- Regenerate SOUL.md from metadata
-- Regenerate AGENTS.md from template
-- Regenerate TOOLS.md from stack
-- Generate new session key
-- Reset project key to default
+#### rebuild - Complete Rebuild (legacy flat agents only)
+- **MUST** refuse a pod member outright: an agent whose `.docket-meta.json` carries a non-empty
+  `pod` key or `role` (written by `core/pod_provisioning.py`) is not a legacy flat agent — print
+  an error naming the pod/role and return exit 1, **before** the confirmation prompt and before
+  any write. A pod member's files are owned by pod provisioning, not this command; a role-aware
+  re-render for pod members is a follow-up, not this behaviour.
+- Back up SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md and MEMORY.md to `.backup-<timestamp>/`
+- Regenerate SOUL.md, AGENTS.md, TOOLS.md and HEARTBEAT.md via the legacy flat-agent workspace
+  creator, from the agent's stored metadata
+- **MUST NOT** touch `memory/*.md` — rebuild only regenerates the template files above; it never
+  deletes daily logs, distilled or not (the same rule `clean`/`reset` enforce: memory is never
+  bare-deleted). MEMORY.md is backed up, not regenerated, and is left as-is.
 
 #### sessions - Session Hygiene
 - Report this agent's durable session storage (message count, size, last update per session key)
