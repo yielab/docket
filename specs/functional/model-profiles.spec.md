@@ -64,11 +64,13 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 
 1. `~/.docket/docket-models.json` **MAY** contain a `roles` map (`role → provider/model`);
    well-formed entries **MUST** override the built-in role defaults. Unknown role names
-   **MUST** be ignored with a warning.
+   **MUST** be ignored silently — `load_registry` (`core/models_policy.py`) skips them with no
+   warning, the same tolerance it gives a malformed `rankAnchors`/`default` entry.
 2. A legacy registry containing only a `profiles` map **MUST** keep working: the rank
    anchors are overridden first, then role defaults re-derive from them, then any `roles`
    entries overlay on top.
-3. A corrupt registry **MUST** warn on stderr and keep built-in defaults (no crash).
+3. A corrupt registry **MUST** keep built-in defaults (no crash) and **MUST NOT** warn —
+   `load_registry` falls back silently on any read/parse error.
 4. The registry **MAY** contain a `rankAnchors` map (`{"economy"|"standard"|"premium":
    "provider/model"}`) that overrides the private rank-anchor seed table (see Tier names
    below) *before* role defaults are derived from it (Phase 18 L-2). This is how a fleet on

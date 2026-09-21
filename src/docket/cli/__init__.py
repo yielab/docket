@@ -373,9 +373,14 @@ def cmd_init(ctx: typer.Context) -> None:
                              argument as an existing, never-auto-created
                              codebase path and auto-detects its stack; a
                              workdir blueprint treats it as the pod's one
-                             shared working directory instead (auto-provisioned
-                             under `~/.docket/workspaces/pods/<project>/` if
-                             omitted) -- no stack is auto-detected. Unknown
+                             shared working directory instead -- no stack is
+                             auto-detected. `docket init` always passes the
+                             cwd (or an explicit `--codebase`/`path`) as the
+                             location, so it never hits the auto-provisioned
+                             `~/.docket/workspaces/pods/<project>/` default;
+                             that path is only reached via `--from` entries
+                             that omit `workDir` or `POST /pods` calls that
+                             omit `path`. Unknown
                              name errors with "unknown blueprint 'X'; valid
                              blueprints: software, research, content, ops,
                              agentic-product" and exits 1 before any prompt.
@@ -457,14 +462,9 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
 
 
 def _delete_pod(project: str, members: list[str]) -> int:
-    """Tear down every member of a pod. One gateway restart at the end.
-
-    Kept here (rather than in ``cli/_agents.py``, which owns the rest of the
-    delete flow) because ``tests/integration/test_pod_provisioning.py`` calls it
-    directly as ``docket.cli._delete_pod`` — moving it would be a rename, not
-    a mechanical extraction. ``_agents.run_delete`` reaches back for it with a
-    deferred import, the same convention used for ``_pick_agent`` et al.
-    """
+    """Tear down every member of a pod. Kept here, not ``cli/_agents.py``, because
+    ``tests/integration/test_pod_provisioning.py`` calls it directly as
+    ``docket.cli._delete_pod`` -- moving it would be a rename, not an extraction."""
     from docket.cli import _pod
 
     ui.header(f"Delete pod: {project}  ({len(members)} members)")
@@ -518,17 +518,22 @@ def cmd_maintain(
 
     Subcommands:
       check (default)  health check and auto-fix -- permissions (700/600),
-                        missing workspace files, fleet registration, memory
-                        directory, and a per-turn context-footprint estimate
-                        (warns if SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together
-                        exceed the configured token budget)
+                        missing workspace files, session-key sync between
+                        `.docket-meta.json` and SOUL.md, memory directory,
+                        and a per-turn context-footprint estimate (warns if
+                        SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together exceed
+                        the configured token budget)
       clean             clear memory logs only (`memory/*.md`) -- distills
                         first by default (see below)
       reset             clear memory + MEMORY.md + HEARTBEAT.md -- distills
                         first by default
       rebuild           deep rebuild -- regenerate SOUL.md, AGENTS.md,
-                        TOOLS.md from `.docket-meta.json`
-      sessions          archive large/old session data
+                        TOOLS.md from `.docket-meta.json`. Refuses a pod
+                        member outright (its files are pod-provisioning's,
+                        not this command's); never touches memory/
+      sessions          report per-session message counts, on-disk size,
+                        and last-active time for this agent -- sizes only,
+                        no trimming or archiving
       distill           summarize `memory/*.md` into MEMORY.md via one
                         driver-backed turn, then archive the originals under
                         `memory/<archive-dir>/`
@@ -803,7 +808,8 @@ def cmd_scope(
     `set <project-key>` changes it; `reset` restores `default`. The session
     key has the form `agent:<id>:<project>` and prevents cross-project
     contamination between parallel work on the same agent; changing it
-    updates `.docket-meta.json` and `SOUL.md`."""
+    updates `.docket-meta.json` only -- it prints a reminder to update
+    SOUL.md yourself, it does not rewrite the file."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -1565,8 +1571,9 @@ def cmd_pod(
     implementer's verify command, and run its dispatch pipeline.
 
     A pod is the isolated team of project-scoped agents created by
-    `docket add`; every member has its own permission-locked workspace, so no
-    role is ever shared between projects. See docs/AGENT-TEAMS.md.
+    `docket init`; `pod <project> add <role>` extends an existing one. Every
+    member has its own permission-locked workspace, so no role is ever
+    shared between projects. See docs/AGENT-TEAMS.md.
 
     Subcommands:
       list (default)   show the pod's members and their roles

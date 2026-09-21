@@ -88,8 +88,12 @@ the same fail-closed posture ``core/session.py``'s compaction and
 
 ## Durability: persisted per iteration, not only at the end
 
-The incoming user message is appended to the session immediately, before any
-model call is made. Each iteration that produces tool calls appends the
+The incoming user message is appended to the session before the turn's own
+first model call -- but ``apply_initial_history_compaction`` runs first, and
+when it decides compaction is needed its summariser (``summarize_without_reentry``)
+makes a model call of its own to produce the summary, so "before any model
+call" is not quite true: at most one compaction-summary call can precede the
+append. Each iteration that produces tool calls appends the
 assistant message *and every tool result answering it* in one
 ``core.session.append_messages`` call — one atomic unit, matching
 ``core/session.py``'s own atomicity contract, and never split across two
