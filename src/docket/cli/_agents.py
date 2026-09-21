@@ -393,6 +393,7 @@ def _cmd_add_declarative(from_file: str) -> int:
 
     created: list[str] = []
     skipped: list[str] = []
+    had_invalid_id = False
 
     for spec in agents_spec:
         aid = str(spec.get("id", "")).strip()
@@ -408,7 +409,13 @@ def _cmd_add_declarative(from_file: str) -> int:
         # forcing the single-agent branch to understand pods.
         blueprint_name = str(spec.get("blueprint", "")).strip()
         if blueprint_name:
-            pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
+            try:
+                pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
+            except _prov.ProjectIdError as exc:
+                ui.error(f"'{aid}': {exc}")
+                skipped.append(aid)
+                had_invalid_id = True
+                continue
             if pod_created is None:
                 skipped.append(aid)
                 continue
@@ -458,7 +465,7 @@ def _cmd_add_declarative(from_file: str) -> int:
         ui.warn(f"Skipped {len(skipped)} existing agent(s): {', '.join(skipped)}")
     if not created and not skipped:
         ui.warn("No agents provisioned.")
-    return 0
+    return 1 if had_invalid_id else 0
 
 
 def _apply_persona_from_meta(ws: Path, soul_text: str) -> str:

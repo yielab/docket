@@ -2,12 +2,12 @@
 
 **Version**: 1.4.1
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
-boundary sanitization rules, and `AgentMeta` are implemented. The agent-id length/consecutive-
-hyphen/reserved-word checks (§1), the forbidden-directory path check (§2), the numeric
-range/leading-zero helper (§4) and the session-key grammar check (§5) have **no implementing
-function in `src/`**: `validate_agent_id`, `validate_path`, `validate_number`,
-`validate_session_key` and `confine_to_base` are reference sketches only (see the note under
-Rules). Whether to implement them or amend the rules is an open maintainer decision.
+project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
+forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
+session-key grammar check (§5) have **no implementing function in `src/`**: `validate_path`,
+`validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only (see
+the note under Rules). Whether to implement them or amend those rules is an open maintainer
+decision.
 **Last Updated**: 2026-09-18
 
 ## Purpose
@@ -26,79 +26,73 @@ snippets and module pointers show how that contract is enforced today.
 
 ## Rules
 
-> **Implementation note (2026-09-18 truth pass).** `rg` over `src/docket/` finds no
-> `validate_agent_id`, `_AGENT_ID_RE`, `_RESERVED`, `_FORBIDDEN_DIRS`, `validate_path`,
-> `validate_number`, `validate_session_key` or `confine_to_base`. Agent/project ids are produced
-> only by `core/provisioning.py`'s `slugify` (lowercase, non-alphanumeric runs → `-`, trimmed);
-> nothing enforces the 3–50 length, the reserved-word list or the forbidden system directories,
-> and `docket scope <id> set <project-key>` stores the project key unvalidated. The Python blocks
-> in §1, §2, §4 and §5 are therefore reference sketches of the MUST rules, not the shipped code.
-> The rules are left as written pending a maintainer decision.
+> **Implementation note (2026-09-18 truth pass; §1 updated W36-C1).** `rg` over `src/docket/`
+> finds no `validate_path`, `_FORBIDDEN_DIRS`, `validate_number`, `validate_session_key` or
+> `confine_to_base` — nothing enforces the forbidden system directories (§2), the numeric
+> range/leading-zero rule (§4) or the session-key grammar (§5), and `docket scope <id> set
+> <project-key>` stores the project key unvalidated. The Python blocks in §2, §4 and §5 are
+> therefore reference sketches of the MUST rules, not the shipped code; the rules are left as
+> written pending a maintainer decision. §1 is different: project/pod ids are produced by
+> `core/provisioning.py`'s `slugify` and validated by that module's `validate_project_id`, called
+> as the first statement of `core/pod_provisioning.py::provision_pod` — every caller (`docket
+> add`, `docket init --from`, `POST /pods`, and the four other `serve.py` handlers that take a
+> project path segment) rejects an invalid id before it reaches workspace-path construction.
 
 Validation rules are grouped by input field. Each category states the field, the commands
 that consume it, the RFC 2119 rule set, and the reference implementation (Python module /
 function or Pydantic model).
 
-### 1. Agent ID Validation
+### 1. Agent/Project ID Validation
 
-**Field**: agent-id
-**Used By**: init, add, info, delete, maintain, profile, scope, pod
+**Field**: agent-id / project-id
+**Used By**: init, add, info, delete, maintain, profile, scope, pod; enforced at the core
+provisioning boundary (`core/pod_provisioning.py::provision_pod`) and every HTTP/CLI surface that
+takes a project id.
 
 **Rules**:
-- **MUST** match pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
-- **MUST** be between 3 and 50 characters
-- **MUST NOT** contain consecutive hyphens
-- **MUST NOT** be a reserved word
+- **MUST** be non-empty
+- **MUST** be at most 64 characters
+- **MUST** match pattern: `^[a-z0-9]+(?:-[a-z0-9]+)*$` (lowercase alphanumeric segments joined by
+  a single hyphen — no leading, trailing, or consecutive hyphen; exactly the set the slugifier
+  below can emit)
 - **MUST** be unique (for creation)
 
-**Reserved Words**:
-- system, docket, manager
-- admin, root, daemon, service
-- config, settings, help, version
-
 **Reference**: ids are derived from a display name by the slugifier shared by every add path
-(`src/docket/core/provisioning.py`, `slugify` → `re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")`).
-The format/length/reserved-word predicate below is **not implemented** (see the implementation
-note above); it is expressed as:
+(`src/docket/core/provisioning.py`, `slugify` → `re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")`)
+and enforced by that module's `validate_project_id`, which is **implemented and live**:
 
 ```python
 import re
-import typer
-import docket.config as cfg
-from docket import ui
 
-_AGENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
-_RESERVED = frozenset(
-    {
-        "system", "docket", "manager",
-        "admin", "root", "daemon", "service",
-        "config", "settings", "help", "version",
-    }
-)
+_PROJECT_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_PROJECT_ID_MAX_LEN = 64
 
 
-def validate_agent_id(agent_id: str, *, check_exists: bool = False) -> None:
-    """Raise typer.Exit(1) (after ui.error) if agent_id is not a valid id."""
-    if not 3 <= len(agent_id) <= 50:
-        ui.error("Agent ID must be 3-50 characters")
-        raise typer.Exit(1)
-    if not _AGENT_ID_RE.match(agent_id):
-        ui.error("Agent ID must be lowercase alphanumeric with dashes")
-        raise typer.Exit(1)
-    if "--" in agent_id:
-        ui.error("Agent ID cannot contain consecutive hyphens")
-        raise typer.Exit(1)
-    if agent_id in _RESERVED:
-        ui.error(f"Agent ID '{agent_id}' is reserved")
-        raise typer.Exit(1)
-    # Uniqueness — a project dir or its pod Lead dir already existing is a conflict.
-    if check_exists and (
-        (cfg.PROJECTS_DIR / agent_id).is_dir()
-        or (cfg.PROJECTS_DIR / f"{agent_id}-lead").is_dir()
-    ):
-        ui.error(f"A project or pod '{agent_id}' already exists.")
-        raise typer.Exit(1)
+class ProjectIdError(ValueError):
+    """A project/pod id failed validate_project_id."""
+
+
+def validate_project_id(project: str) -> str:
+    """Raise ProjectIdError (core/ never prints) if project is not a valid id; return it
+    unchanged otherwise."""
+    if not project or len(project) > _PROJECT_ID_MAX_LEN or not _PROJECT_ID_RE.match(project):
+        raise ProjectIdError(
+            "project id must be non-empty, at most 64 characters, and match "
+            f"^[a-z0-9]+(?:-[a-z0-9]+)*$ (got: {project[:40]!r})"
+        )
+    return project
 ```
+
+`core/pod_provisioning.py::provision_pod` calls `validate_project_id` as its first statement,
+before the per-project lock and before any workspace path is built, so every path that reaches
+it — `docket add`/`docket init --from`'s blueprint entries, and `POST /pods` — rejects an invalid
+id (`ProjectIdError` → CLI exit 1 / HTTP 400) before touching disk. `serve.py`'s four other
+project-path-segment handlers (`GET /tasks/<project>`, `GET /traces/<project>`,
+`POST /tasks/<project>`, `POST /dispatch/<project>`) call `validate_project_id` directly and
+return 400 on failure, since those do not go through `provision_pod`. Uniqueness (for creation)
+is still enforced ad hoc at each call site — a pre-existing project/pod workspace directory, or
+`PodAlreadyExistsError` from `provision_pod` — not by this function. There is no reserved-word
+list (a deliberate non-goal, W36-C1).
 
 ### 2. Path Validation
 

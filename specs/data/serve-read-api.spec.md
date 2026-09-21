@@ -274,6 +274,10 @@ legacy queue) — this spec does not re-enumerate them; see `core/dispatch.py`'s
 moment a field is added there.
 
 - The project segment must be non-empty — `GET /tasks` and `GET /tasks/` both reject with `400`.
+- The project segment must also pass `core.provisioning.validate_project_id` (specs/validation/
+  input-validation.spec.md §1) — a segment containing e.g. `/` or `..` rejects with
+  `400 {"error": ...}`, checked after the auth check so an unauthenticated caller still gets `401`
+  first (W36-C1).
 - A project with a pod but an empty queue, and a project with no pod at all, both return `200` with
   `{"tasks": []}` — indistinguishable at this endpoint, matching `read_tasks`' own contract (it has
   no notion of "pod exists but is empty" vs. "no pod").
@@ -300,6 +304,9 @@ that aggregates client-side across calls.
   object) exactly as `core.trace.export_lines` returned it — no field is added, removed or renamed.
 - A project with no trace files returns `200` with `{"events": [], "next": ""}` — not an error.
 - The project segment must be non-empty — `GET /traces` and `GET /traces/` both reject with `400`.
+- The project segment must also pass `core.provisioning.validate_project_id` (specs/validation/
+  input-validation.spec.md §1) — an invalid segment rejects with `400 {"error": ...}`, checked
+  after the auth check so an unauthenticated caller still gets `401` first (W36-C1).
 - **Cursor semantics.** `export_lines`' own `since` filter is `ts >= since` — inclusive — and `ts`
   is second-granularity (`%Y-%m-%dT%H:%M:%SZ`). Several trace events sharing one timestamp is
   routine (one dispatch hop can emit several events inside the same wall-clock second), so neither
@@ -340,6 +347,9 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
   -d '{"env": "staging"}' http://127.0.0.1:7331/dispatch/myapp
 ```
 
+- The project segment must be non-empty and must pass `core.provisioning.validate_project_id`
+  (specs/validation/input-validation.spec.md §1); either failure rejects with `400 {"error": ...}`,
+  checked after the auth check and before the request body is even read (W36-C1).
 - A body that is not a JSON object (e.g. malformed JSON, or valid JSON that isn't an object) is
   rejected with `400` before any pipeline is even resolved.
 - A missing `required` pipeline variable (one absent from both the body and the pipeline's own
@@ -382,6 +392,9 @@ Success response (task queued, `pending`):
 {"ok": true, "task": "task-91a2...", "project": "myapp", "status": "pending"}
 ```
 
+- The project segment must be non-empty and must pass `core.provisioning.validate_project_id`
+  (specs/validation/input-validation.spec.md §1); either failure rejects with `400 {"error": ...}`,
+  checked after the auth check and before the request body is even read (W36-C1).
 - A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
   before `enqueue_task` is ever called.
 - A project with no pod (`docket init <project>` never run) is rejected with `404`, naming the
@@ -430,7 +443,7 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `project` | string | Yes | The pod id (matches `docket init`'s project id, not its display name — a blueprint pod has no separate display-name field). `400` if absent or empty. |
+| `project` | string | Yes | The pod id (matches `docket init`'s project id, not its display name — a blueprint pod has no separate display-name field). `400` if absent, empty, or fails `core.provisioning.validate_project_id` (specs/validation/input-validation.spec.md §1). |
 | `path` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `software`) or `workDir` (a `workdir`-kind blueprint, e.g. `research`/`content`/`ops`) — `provision_pod` picks which one it means from the blueprint's own `workspace_kind`. Defaults to `""` (a `workdir`-kind blueprint then auto-provisions one under `config.pod_work_dir(project)`, exactly as `docket init` with no path does). |
 | `blueprint` | string | No | A `core.blueprints` registry name. Defaults to `"software"` (`core.blueprints.DEFAULT_BLUEPRINT`, `docket init`'s own default). An unknown name is `400`, naming the invalid blueprint (`core.blueprints.BlueprintError`'s own message). |
 | `pod` | `"full"` | No | Mirrors `docket init --pod full` — a CLI roster override (`--with` has no HTTP counterpart), itself restricted to the `software` blueprint (a non-`software` blueprint provisions its own fixed roster; `pod` is silently ignored for one, exactly as the CLI warns-and-ignores rather than erroring). Any value other than `"full"` is `400`. |
@@ -454,6 +467,10 @@ Success response (`201`) — the created pod roster:
 - A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
   before `provision_pod` is ever called.
 - A missing or empty `project` is `400`.
+- A `project` that fails `core.provisioning.validate_project_id` — e.g. contains `/` or `..` — is
+  rejected with `400` (`core.provisioning.ProjectIdError`'s own message), checked inside
+  `provision_pod` as its first statement, before the per-project lock and before any workspace path
+  is built (W36-C1).
 - `project` already having a registered pod member is rejected with `409` — matching `docket init --from`'s
   own idempotence contract (`_provision_pod_from_spec`'s "already exists — skipping"): the existing
   pod is left completely untouched, not silently re-provisioned or clobbered. Concurrent requests for
@@ -493,9 +510,10 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
 - `/metrics` MUST conform to Prometheus text format 0.0.4.
 - `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer token with `401`,
   before touching the run registry.
-- `/tasks/<project>` and `/traces/<project>` MUST reject a request with no (or an invalid) Bearer
-  token with `401`, and MUST reject an empty project segment with `400`, before touching any
-  project state.
+- `/tasks/<project>` and `/traces/<project>` (`GET` and `POST`) and `/dispatch/<project>` MUST
+  reject a request with no (or an invalid) Bearer token with `401`, and MUST reject an empty
+  project segment or one that fails `core.provisioning.validate_project_id` with `400`, before
+  touching any project state (W36-C1).
 - `/traces/<project>`'s `next` cursor MUST be safe to feed back as the next request's `since`
   without either re-delivering an event already returned or skipping one written after the
   previous response — including when several events share one `ts` (see the cursor semantics
@@ -532,8 +550,9 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
   any project state; MUST reject a malformed/non-object body, a missing/empty `project`, a `pod`
   value other than `"full"`, or a non-numeric `budget` with `400` before `provision_pod` is ever
-  called, and an unknown `blueprint` or an invalid `verifyCmd` with `400` from `provision_pod`'s own
-  validation (after its exists-check, before any side effect); MUST reject an already-provisioned `project`
+  called, and a `project` failing `core.provisioning.validate_project_id`, an unknown `blueprint`,
+  or an invalid `verifyCmd` with `400` from `provision_pod`'s own validation (id check first, before
+  its exists-check, before any side effect; W36-C1); MUST reject an already-provisioned `project`
   with `409` without touching the existing pod; and on a genuine mid-provisioning failure MUST leave
   no member workspace, no fleet registration and no orphaned port/scratch allocation created by that
   request behind (full rollback) before responding `500`; concurrent same-project attempts MUST leave
