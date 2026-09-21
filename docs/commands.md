@@ -1332,9 +1332,9 @@ is `live`, `finished` (with a best-effort reconstructed result), or
 
 ### --debug
 
-Reserved compatibility flag. The parser accepts `--debug`, but no command currently reads the
-result or emits additional diagnostic output. Do not rely on it for troubleshooting; use the
-command's normal error output, `docket doctor`, traces, and audit records instead.
+Deprecated, hidden no-op: still accepted so existing scripts do not exit 2, sets nothing,
+emits nothing; use the command's normal error output, `docket doctor`, traces and audit
+records instead.
 
 ### --help / -h
 
@@ -1491,7 +1491,6 @@ No command emits any other exit code today.
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
-| `DEBUG` | Set by `--debug`; currently read by no command (reserved) | `0` |
 | `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |
 | `VISUAL` | Fallback text editor for `docket edit` when `EDITOR` is unset | `nano` |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |

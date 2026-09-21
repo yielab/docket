@@ -89,10 +89,11 @@ def _default(
     version: bool = typer.Option(
         False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version"
     ),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
+    debug: bool = typer.Option(
+        False, "--debug", hidden=True, help="Deprecated no-op, kept for compatibility"
+    ),
 ) -> None:
-    if debug:
-        os.environ["DEBUG"] = "1"
+    del debug  # accepted so existing scripts do not start exiting 2; writes nothing
     if ctx.invoked_subcommand is None:
         ui.console.print("[bold]docket[/bold] — project agent manager")
         ui.console.print("  docket init          initialize this project (Lead + Implementer)")
@@ -1326,10 +1327,7 @@ def _cmd_models_list() -> None:
         ui.console.print("  (user overrides active)")
     else:
         ui.console.print("  (no user overrides — using built-in defaults)")
-    ui.dim(
-        f"  PRICE column is an estimate from a snapshot (as of {_mp.MODEL_PRICING_AS_OF});"
-        f" override in docket-models.json"
-    )
+    ui.dim(f"  PRICE column is an estimate from a snapshot (as of {_mp.MODEL_PRICING_AS_OF})")
     ui.console.print()
     ui.console.print("Change: docket models set <role|default> <provider/model>")
     # markup=False: the literal [anthropic|...] must not be parsed as Rich

@@ -202,9 +202,9 @@ def _render_command(name: str, cmd, aliases_by_target: dict[str, list[str]]) -> 
 _GLOBAL_OPTIONS = """\
 ### --debug
 
-Reserved compatibility flag. The parser accepts `--debug`, but no command currently reads the
-result or emits additional diagnostic output. Do not rely on it for troubleshooting; use the
-command's normal error output, `docket doctor`, traces, and audit records instead.
+Deprecated, hidden no-op: still accepted so existing scripts do not exit 2, sets nothing,
+emits nothing; use the command's normal error output, `docket doctor`, traces and audit
+records instead.
 
 ### --help / -h
 
@@ -632,7 +632,6 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed",
         "auto-detected (docker > bwrap > none)",
     ),
-    (("DEBUG",), "Set by `--debug`; currently read by no command (reserved)", "`0`"),
     (("EDITOR",), "Text editor for `docket edit`, checked before `VISUAL`", "`nano`"),
     (("VISUAL",), "Fallback text editor for `docket edit` when `EDITOR` is unset", "`nano`"),
     (
