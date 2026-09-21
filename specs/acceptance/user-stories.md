@@ -169,9 +169,9 @@ D-16.
 - [ ] Isolation validated by security tests
 
 **Definition of Done:**
-- Penetration testing completed
-- No data leakage detected
-- Performance impact < 5%
+- Penetration testing completed (not scheduled — no ROADMAP card)
+- No data leakage detected (not scheduled — depends on the penetration testing above)
+- Performance impact < 5% (not scheduled — no ROADMAP card, no perf-measurement harness)
 - Security documentation updated
 
 ### Story: SEC-002 - Tool Approval Gates
@@ -209,7 +209,8 @@ D-16.
 - [ ] Agent can be wired to Telegram group
 - [ ] Commands accepted via messages
 - [ ] Responses formatted for mobile
-- [ ] File uploads/downloads supported
+- [ ] File uploads/downloads supported (not scheduled — no ROADMAP card; the channel accepts
+      only its four verbs, none of which transfers a file)
 - [ ] Pending approvals discovered by sending `/status` (the channel is inbound-only by
       design and never messages a chat first — telegram-integration.spec.md requirement 7)
 - [ ] Multiple agents per group supported
@@ -218,7 +219,7 @@ D-16.
 **Definition of Done:**
 - Telegram bot fully functional
 - Message handling reliable
-- Mobile UI/UX optimized
+- Mobile UI/UX optimized (not scheduled — no ROADMAP card; there is no UI beyond the four verbs)
 - Security validated
 
 ## Epic: Monitoring and Maintenance
@@ -234,16 +235,18 @@ D-16.
 - [ ] Memory usage monitored
 - [ ] Stale sessions detected
 - [ ] Workspace corruption identified
-- [ ] Automatic repair attempted
-- [ ] Alerts sent for critical issues
-- [ ] Health metrics dashboard available
-- [ ] Historical health data retained
+- [ ] Automatic repair attempted (not scheduled — no ROADMAP card; `docket maintain check`
+      offers to regenerate missing files, but only with an interactive TTY confirmation, never
+      unattended)
+- [ ] Alerts sent for critical issues (not scheduled — no ROADMAP card, no alerting surface)
+- [ ] Health metrics dashboard available (not scheduled — no ROADMAP card, no dashboard)
+- [ ] Historical health data retained (not scheduled — no ROADMAP card)
 
 **Definition of Done:**
-- Monitoring runs continuously
-- Self-healing successful 80%+
-- Alert fatigue minimized
-- Dashboard provides actionable insights
+- Monitoring runs continuously (not scheduled — no ROADMAP card, no continuous-monitoring daemon)
+- Self-healing successful 80%+ (not scheduled — no ROADMAP card, nothing measures this)
+- Alert fatigue minimized (not scheduled — no ROADMAP card, no alerting surface)
+- Dashboard provides actionable insights (not scheduled — no ROADMAP card, no dashboard)
 
 ### Story: MON-002 - System Diagnostics
 
@@ -380,6 +383,12 @@ And no dollar figure, recorded or estimated, should be printed as the total
 - `docket pod` output verified after each operation
 
 ## Metrics
+
+**Not scheduled.** No ROADMAP card tracks any metric below and docket has no metrics-collection
+or reporting surface that would compute a success rate, a satisfaction score, or a response-time
+percentile. Retained as the illustrative target these stories were written against, not as
+in-progress work, per specs/README.md's prime rule (an aspirational requirement must name the
+card that will make it true — none exists for these).
 
 ### Quantitative Metrics
 - Agent creation success rate > 99%

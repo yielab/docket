@@ -4,10 +4,10 @@
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
 project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
 forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
-session-key grammar check (§5) have **no implementing function in `src/`**: `validate_path`,
-`validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only (see
-the note under Rules). Whether to implement them or amend those rules is an open maintainer
-decision.
+session-key grammar check (§5) are **Deferred — no measured need**: `validate_path`,
+`validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only, with
+no implementing function in `src/` and no incident or measured gap that calls for one today (see
+the reason stated under each section and the note under Rules).
 **Last Updated**: 2026-09-21
 
 ## Purpose
@@ -26,17 +26,28 @@ snippets and module pointers show how that contract is enforced today.
 
 ## Rules
 
-> **Implementation note (2026-09-18 truth pass; §1 updated W36-C1).** `rg` over `src/docket/`
-> finds no `validate_path`, `_FORBIDDEN_DIRS`, `validate_number`, `validate_session_key` or
-> `confine_to_base` — nothing enforces the forbidden system directories (§2), the numeric
-> range/leading-zero rule (§4) or the session-key grammar (§5), and `docket scope <id> set
-> <project-key>` stores the project key unvalidated. The Python blocks in §2, §4 and §5 are
-> therefore reference sketches of the MUST rules, not the shipped code; the rules are left as
-> written pending a maintainer decision. §1 is different: project/pod ids are produced by
-> `core/provisioning.py`'s `slugify` and validated by that module's `validate_project_id`, called
-> as the first statement of `core/pod_provisioning.py::provision_pod` — every caller (`docket
-> add`, `docket init --from`, `POST /pods`, and the four other `serve.py` handlers that take a
-> project path segment) rejects an invalid id before it reaches workspace-path construction.
+> **Implementation note (2026-09-18 truth pass; §1 updated W36-C1; §2/§4/§5 marked deferred
+> W36-C11).** `rg` over `src/docket/` finds no `validate_path`, `_FORBIDDEN_DIRS`,
+> `validate_number`, `validate_session_key` or `confine_to_base` — nothing enforces the
+> forbidden system directories (§2), the numeric range/leading-zero rule (§4) or the
+> session-key grammar (§5), and `docket scope <id> set <project-key>` stores the project key
+> unvalidated. The Python blocks in §2, §4 and §5 are therefore reference sketches of the MUST
+> rules, not the shipped code. Each is deferred rather than open because a specific measured-need
+> check comes back negative today (the reason is repeated under each section): §2's codebase path
+> is only ever chosen by the same local operator who already has unrestricted shell access to
+> that filesystem — a forbidden-dir check would not restrict an untrusted actor docket's threat
+> model includes; §4's ranges (reset level 1-3, cost period 1-365, timeout 1-3600) do not match
+> any live numeric argument — `docket maintain`'s mode is a string subcommand, not a numeric
+> level, and `docket cost --days N` is an untyped-range `int` with no such bound; §5's session key
+> is URL-quoted before it ever becomes a path component (`core/session.py::_session_dir`) and
+> nothing in `src/` parses a session key back into its components, so an unvalidated grammar
+> cannot reach the filesystem or be misread downstream. Whether to implement them anyway, or to
+> retire the MUST rules outright, remains a maintainer decision — this pass only records why no
+> trigger has fired. §1 is different: project/pod ids are produced by `core/provisioning.py`'s
+> `slugify` and validated by that module's `validate_project_id`, called as the first statement of
+> `core/pod_provisioning.py::provision_pod` — every caller (`docket add`, `docket init --from`,
+> `POST /pods`, and the four other `serve.py` handlers that take a project path segment) rejects
+> an invalid id before it reaches workspace-path construction.
 
 Validation rules are grouped by input field. Each category states the field, the commands
 that consume it, the RFC 2119 rule set, and the reference implementation (Python module /
@@ -95,6 +106,11 @@ is still enforced ad hoc at each call site — a pre-existing project/pod worksp
 list (a deliberate non-goal, W36-C1).
 
 ### 2. Path Validation
+
+**Status: Deferred — no measured need.** The forbidden-directory check would guard against
+pointing an agent at a system root, but the codebase path is chosen by the same local operator
+who already has unrestricted shell access to that filesystem — docket's threat model has no
+untrusted actor for this check to stop. No incident has needed it.
 
 **Field**: codebase-path, file-path
 **Used By**: init, add
@@ -187,6 +203,13 @@ canonical, warnings = validate_model("anthropic/claude-sonnet-4-6")
 
 ### 4. Numeric Validation
 
+**Status: Deferred — no measured need.** These ranges predate the current CLI surface and no
+live argument matches them: `docket maintain`'s mode is a string subcommand name (`check`,
+`clean`, `reset`, `rebuild`, `sessions`, `distill`), not a numeric reset level, and
+`docket cost --days N` is a typed `int` with default 0 = no limit and no upper bound. Typer's
+`int` conversion already rejects non-numeric input; nothing measured has needed the range or
+leading-zero checks on top of that.
+
 **Field**: level, period, timeout
 **Used By**: maintain, cost, various
 
@@ -226,6 +249,11 @@ def validate_number(raw: str, *, lo: int, hi: int, name: str = "value") -> int:
 ```
 
 ### 5. Session Key Validation
+
+**Status: Deferred — no measured need.** The session key is URL-quoted before it ever becomes a
+path component (`core/session.py::_session_dir`), so an unvalidated key cannot reach the
+filesystem unsafely, and nothing in `src/` parses a session key back into its components, so a
+malformed grammar cannot be misread downstream either.
 
 **Field**: session-key, project-key
 **Used By**: scope
