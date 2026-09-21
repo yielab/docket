@@ -2143,6 +2143,22 @@ def cmd_harness(ctx: typer.Context) -> None:
     raise typer.Exit(run_harness(sub, args[1:]))
 
 
+def _argv_tail_after(token: str, ctx_args: list[str]) -> list[str] | None:
+    """Recover the `sys.argv` tail after `token`, trusting a candidate only when it equals
+    `ctx_args` (what Click already parsed) with its first `--` dropped -- rules out a
+    coincidental `token` elsewhere in argv, and returns None for a `CliRunner` call."""
+    for i, tok in enumerate(sys.argv):
+        if tok != token:
+            continue
+        tail = sys.argv[i + 1 :]
+        trimmed = list(tail)
+        if "--" in trimmed:
+            trimmed.remove("--")
+        if trimmed == ctx_args:
+            return tail
+    return None
+
+
 @app.command(
     "mcp",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -2193,7 +2209,8 @@ def cmd_mcp(ctx: typer.Context) -> None:
     See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md."""
     from docket.cli._mcp import run_mcp
 
-    args = list(ctx.args)
+    tail = _argv_tail_after("mcp", list(ctx.args))
+    args = tail if tail is not None else list(ctx.args)
     sub = args[0] if args else None
     raise typer.Exit(run_mcp(sub, args[1:]))
 
