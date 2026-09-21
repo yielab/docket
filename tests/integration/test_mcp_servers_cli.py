@@ -14,12 +14,17 @@ Requirements 21-24.
 from __future__ import annotations
 
 import ast
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _mcp
+from docket.cli import _mcp, app
 from docket.core import audit as _audit
 from docket.core import mcp_tools as _mt
 
@@ -305,3 +310,105 @@ class TestServersCliNeverReachesTheToolboxOrCoreTools:
             if isinstance(node, ast.ImportFrom) and "toolbox" in (node.module or ""):
                 imported.update(alias.name for alias in node.names)
         assert not imported, f"{self.FILE} must never import from toolbox: {imported}"
+
+
+# ── real entry point: the "--" separator across the Click seam ──────────────
+
+
+def _child_env(home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["DOCKET_HOME"] = str(home / ".docket")
+    env.pop("DOCKET_NO_TRACE", None)
+    return env
+
+
+def _run_docket(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "docket", *args],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+
+class TestServersAddThroughTheRealEntryPoint:
+    """`_mcp.run_mcp` already receives `--` pre-split in every test above, so none of them
+    cross the Click seam `cmd_mcp` sits behind. These drive the real `python -m docket`
+    process, where Click's own arg parser sees the literal `--` first."""
+
+    def test_add_with_separator_persists_the_command(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        (home / ".docket").mkdir(parents=True)
+        env = _child_env(home)
+        result = _run_docket(
+            ["mcp", "servers", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"],
+            env,
+        )
+        assert result.returncode == 0, result.stderr
+        stored = json.loads((home / ".docket" / "docket-mcp-servers.json").read_text())["servers"]
+        assert stored[0]["command"] == "npx"
+        assert stored[0]["args"] == ["-y", "@playwright/mcp@latest"]
+
+    def test_env_and_timeout_before_separator_flags_after_belong_to_the_command(
+        self, tmp_path: Path
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".docket").mkdir(parents=True)
+        env = _child_env(home)
+        result = _run_docket(
+            [
+                "mcp",
+                "servers",
+                "add",
+                "s",
+                "--env",
+                "K=V",
+                "--timeout",
+                "5",
+                "--",
+                "cmd",
+                "--env",
+                "X=Y",
+            ],
+            env,
+        )
+        assert result.returncode == 0, result.stderr
+        stored = json.loads((home / ".docket" / "docket-mcp-servers.json").read_text())["servers"]
+        assert stored[0]["env"] == {"K": "V"}
+        assert stored[0]["timeout"] == 5.0
+        assert stored[0]["command"] == "cmd"
+        assert stored[0]["args"] == ["--env", "X=Y"]
+
+    def test_missing_separator_still_rejected(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        (home / ".docket").mkdir(parents=True)
+        env = _child_env(home)
+        result = _run_docket(["mcp", "servers", "add", "s", "npx", "-y", "pkg"], env)
+        assert result.returncode == 1
+        assert not (home / ".docket" / "docket-mcp-servers.json").exists()
+
+    def test_empty_command_after_separator_still_rejected(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        (home / ".docket").mkdir(parents=True)
+        env = _child_env(home)
+        result = _run_docket(["mcp", "servers", "add", "s", "--"], env)
+        assert result.returncode == 1
+
+
+class TestArgvRecoveryIgnoresACoincidentalToken:
+    """`_argv_tail_after` must not trust the first `sys.argv` entry that happens to equal "mcp"
+    -- a `CliRunner` invocation never touches `sys.argv`, so a bystander "mcp" left over from the
+    *test runner's own* argv (e.g. `pytest -k mcp ...`) must not be mistaken for the command's."""
+
+    def test_cli_runner_survives_a_coincidental_mcp_in_the_real_argv(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "argv", ["pytest", "-k", "mcp", "tests/x"])
+        runner = CliRunner()
+        result = runner.invoke(app, ["mcp", "servers", "list"])
+        assert result.exit_code == 0, result.output
+        assert "No MCP servers configured" in result.output

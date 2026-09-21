@@ -177,10 +177,13 @@ This specification does NOT cover:
     `load_mcp_servers()`.
 21. `docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command>
     [args...]` **MUST** treat everything after a literal `--` token as the server's launch command
-    and arguments verbatim, so a command's own flags (e.g. `npx -y ...`) are never misparsed as
-    `docket`'s own flags. `--env`/`--timeout` **MUST** be rejected with a descriptive error (exit
-    1) if given after `--`, malformed, or given with no `--` present at all — a missing separator
-    **MUST NOT** silently swallow the rest of the arguments as flags.
+    and arguments verbatim, so a command's own flags (e.g. `npx -y ...`, or a `--env`/`--timeout`
+    that belongs to the launched process rather than to `docket`) are never misparsed as `docket`'s
+    own flags. `--env`/`--timeout` given *before* `--` **MUST** be rejected with a descriptive
+    error (exit 1) if malformed, or if no `--` is present at all — a missing separator **MUST NOT**
+    silently swallow the rest of the arguments as flags. This holds across the real CLI entry
+    point (`docket mcp servers add ...`), not only when `--` has already been split out of the
+    argument list before reaching `cli/_mcp.py`.
 22. `docket mcp servers add` **MUST** build one `McpServerConfig` from the parsed name/command/
     args/env/timeout and pass it to `add_mcp_server` unchanged, surfacing that function's
     `ValueError` (bad/duplicate name) as a CLI error (exit 1) rather than a traceback.
