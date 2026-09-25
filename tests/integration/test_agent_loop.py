@@ -13,6 +13,7 @@ is a scripted fake; timeout tests inject a fake `clock`.
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import threading
 import time
@@ -448,12 +449,17 @@ class TestCooperativeRunCancellation:
         assert _approval.approval_get(token)["state"] == "pending"
 
         probe.request()
-        _approval.approval_grant(token, channel="cli")
+        # The in-turn cancellation self-deny (`wait_for_approval`'s
+        # `channel="cancellation"` path) may win this race instead, a real named
+        # conflict; either winner must still uphold the invariant below: the
+        # handler never runs.
+        with contextlib.suppress(_approval.ApprovalConflict):
+            _approval.approval_grant(token, channel="cli")
         worker.join(timeout=5)
 
         assert not worker.is_alive()
         assert errors == []
-        assert _approval.approval_get(token)["state"] == "granted"
+        assert _approval.approval_get(token)["state"] in {"granted", "denied"}
         assert handler_calls == []
         assert len(results) == 1
         assert results[0].stop_reason == "run_cancelled"

@@ -211,6 +211,19 @@ class TestGrantDenyViaEndpoint:
         assert status == 404
         assert body["ok"] is False
 
+    def test_deny_after_grant_returns_409_naming_winner(self, live_server: tuple[str, str]) -> None:
+        """A resolved token still exists -- the opposite decision is a conflict (409
+        naming the winning state), never the missing-token 404. Regression for the bug
+        where `core.approval.ApprovalError` covered both cases indistinguishably."""
+        url, token = live_server
+        apr_token = _approval.approval_create("proj10", "implementer", "x")
+        _approval.approval_grant(apr_token)
+        status, body = _post(f"{url}/approvals/{apr_token}", {"action": "deny"}, token)
+        assert status == 409
+        assert body["ok"] is False
+        assert "granted" in body["error"]
+        assert _approval.approval_get(apr_token)["state"] == "granted"
+
     def test_post_unknown_path_returns_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, _ = _post(f"{url}/unknown", {"action": "grant"}, token)
@@ -242,10 +255,61 @@ class TestGrantDenyViaEndpoint:
             thread.join(timeout=5)
             assert not thread.is_alive()
 
-        # Opposite terminal state remains the endpoint's existing ApprovalError
-        # path (404); only a duplicate decision is a 409 no-op.
-        assert sorted(status for status, _body in replies) == [200, 404]
+        # Opposite terminal state is a conflict (409 naming the winner), same as a
+        # duplicate decision's 409 no-op -- only a missing token is 404.
+        assert sorted(status for status, _body in replies) == [200, 409]
         assert _approval.approval_get(apr_token)["state"] in {"granted", "denied"}
+
+    @pytest.mark.parametrize("start_grant_first", [True, False], ids=["grant-first", "deny-first"])
+    def test_barrier_forced_grant_vs_cancellation_deny(
+        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch, start_grant_first: bool
+    ) -> None:
+        """Analogue of the flaky agent-loop cancellation test: forces a grant to
+        collide, via a barrier on ``_set_state``, with the in-turn cancellation
+        self-deny at one pending record, in both start orders."""
+        original = _approval._set_state
+        apr_token = _approval.approval_create("proj-race-cancel", "implementer", "x")
+        barrier = threading.Barrier(2, timeout=2)
+
+        def synchronized_set_state(record_token: str, state: str) -> dict[str, object]:
+            barrier.wait()
+            return original(record_token, state)
+
+        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        outcomes: dict[str, str] = {}
+
+        def grant() -> None:
+            try:
+                _approval.approval_grant(apr_token, channel="cli")
+                outcomes["grant"] = "won"
+            except _approval.ApprovalConflict as exc:
+                assert exc.winning_state == "denied"
+                outcomes["grant"] = "lost"
+
+        def deny() -> None:
+            try:
+                _approval.approval_deny(apr_token, channel="cancellation")
+                outcomes["deny"] = "won"
+            except _approval.ApprovalConflict as exc:
+                assert exc.winning_state == "granted"
+                outcomes["deny"] = "lost"
+
+        first, second = (grant, deny) if start_grant_first else (deny, grant)
+        t1 = threading.Thread(target=first)
+        t2 = threading.Thread(target=second)
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+        assert not t1.is_alive()
+        assert not t2.is_alive()
+
+        # Exactly one winner, one loser -- never both, never neither.
+        assert sorted(outcomes.values()) == ["lost", "won"]
+        final_state = _approval.approval_get(apr_token)["state"]
+        assert final_state in {"granted", "denied"}
+        winner = "grant" if outcomes["grant"] == "won" else "deny"
+        assert (winner == "grant") == (final_state == "granted")
 
 
 # ── POST /approvals/<token>'s optional `channel` field ─────────────────────────

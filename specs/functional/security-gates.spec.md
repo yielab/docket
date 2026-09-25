@@ -98,6 +98,15 @@ are owned here, not there.
    `denied`) under the store's locked read-modify-write operation: concurrent decisions, including
    the expiry sweep, have exactly one winner. Only that winner emits the matching trace and audit
    event; a duplicate decision retains its existing no-op/error result and emits neither.
+   The loser's error **MUST** distinguish *why* it lost: `core/approval.py::ApprovalError` covers
+   a genuinely unknown token (HTTP `404`); the same-action repeat (already granted/already
+   denied/expired) is `ApprovalNoop` (HTTP `409`); and the opposite-action-on-resolved case
+   (deny-after-grant or grant-after-deny) is `ApprovalConflict` — a distinct `ApprovalError`
+   subclass so every existing `except ApprovalError` still catches it — carrying the winning
+   state, mapped to HTTP `409` naming that state rather than the missing-token `404`. Every
+   channel's caller (`serve.py`, `cli/_approve.py`, `cli/_deny.py`, `cli/_mcp.py`,
+   `core/telegram.py`) reports which decision won from this same exception, never a generic
+   failure indistinguishable from an unknown token.
 3. A gate prompt with no approver **MUST** fail closed. With the daemon gone, this is entirely
    docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
    `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in

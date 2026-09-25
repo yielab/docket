@@ -41,6 +41,16 @@ class ApprovalError(Exception):
     """Raised for invalid approval transitions or missing tokens."""
 
 
+class ApprovalConflict(ApprovalError):
+    """Raised when the opposite decision already won (grant-after-deny or
+    deny-after-grant), unlike the same-action no-op (:class:`ApprovalNoop`).
+    Carries ``winning_state``; still an ``ApprovalError`` for existing callers."""
+
+    def __init__(self, message: str, winning_state: str) -> None:
+        super().__init__(message)
+        self.winning_state = winning_state
+
+
 class ApprovalNoop(Exception):
     """Raised when a transition is a benign no-op (already in target state)."""
 
@@ -113,12 +123,16 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
             if state == "granted":
                 raise ApprovalNoop(f"Already granted: {token}")
             if state != "pending":
-                raise ApprovalError(f"Cannot grant approval in state '{state}': {token}")
+                raise ApprovalConflict(
+                    f"Cannot grant approval in state '{state}': {token}", winning_state=state
+                )
         elif new_state == "denied":
             if state in ("denied", "expired"):
                 raise ApprovalNoop(f"Already {state}: {token}")
             if state != "pending":
-                raise ApprovalError(f"Cannot deny approval in state '{state}': {token}")
+                raise ApprovalConflict(
+                    f"Cannot deny approval in state '{state}': {token}", winning_state=state
+                )
         else:  # private callers only use the two terminal states above.
             raise ApprovalError(f"Unknown approval state: {new_state}")
 
@@ -173,9 +187,9 @@ def approval_get(token: str) -> dict[str, Any]:
 
 
 def approval_grant(token: str, channel: str = "unknown") -> None:
-    """Transition pending → granted. ``channel`` identifies the surface the grant came
-    through and is recorded in the audit log alongside the trace event. Raises
-    ApprovalNoop if already granted, ApprovalError on any other state."""
+    """Transition pending → granted, audit-logging ``channel``. Raises ApprovalNoop
+    if already granted, ApprovalConflict (naming the winner) if already
+    denied/expired, ApprovalError if the token is unknown."""
     data = _set_state(token, "granted")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
@@ -184,9 +198,9 @@ def approval_grant(token: str, channel: str = "unknown") -> None:
 
 
 def approval_deny(token: str, channel: str = "unknown") -> None:
-    """Transition pending → denied. ``channel`` identifies the surface the denial came
-    through and is recorded in the audit log alongside the trace event. Raises
-    ApprovalNoop if already denied/expired, ApprovalError on any other state."""
+    """Transition pending → denied, audit-logging ``channel``. Raises ApprovalNoop
+    if already denied/expired, ApprovalConflict (naming the winner) if already
+    granted, ApprovalError if the token is unknown."""
     data = _set_state(token, "denied")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
