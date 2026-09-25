@@ -42,6 +42,13 @@ The release sdist MUST exclude the repository-only `Formula/` directory. The
 Homebrew formula hashes that exact archive, so including the formula would make
 the published input depend on its own output digest.
 
+The `[project.scripts]` console-command object MUST be the same entry point that
+`python -m docket` runs (`docket.__main__:main`), not the bare Typer `app` object.
+An installed `docket` MUST therefore honour the removed-command retirement notices
+and the alias table exactly as `python -m docket` does: a removed command prints
+its notice and exits 1, and an alias resolves to its target command, from the
+console script as much as from module invocation.
+
 - `global-options` MUST precede the command (see [Options](#options)).
 - `command` MUST be one of the entries in the Command Registry below.
 - `arguments` are positional and command-specific (see [Arguments](#arguments)).
@@ -760,8 +767,10 @@ Phase 19 wave 14).
 **Syntax**: `docket help [command]`
 **Arguments**:
 - `command` (optional): Show help for a specific command
-**Output**: Command list or per-command usage
-**Return**: 0 always
+**Output**: With no `command`, docket's full hand-written command reference. With a known
+`command`, that command's own usage text (its `--help` output). With an unknown `command`,
+a one-line error naming it.
+**Return**: 0 for no `command` or a known `command`; 1 for an unknown `command`
 
 ## Output Formats
 

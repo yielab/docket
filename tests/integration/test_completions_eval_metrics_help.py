@@ -243,3 +243,23 @@ class TestHelp:
         out = capsys.readouterr().out
         for cmd in ("install", "list", "add", "doctor", "completions", "help"):
             assert cmd in out
+
+    def test_topic_prints_that_commands_own_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = _help.run_help("doctor")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "doctor" in out
+        assert "AGENT TYPES" not in out  # differs from the bare `docket help` reference
+
+    def test_unknown_topic_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = _help.run_help("not-a-real-command")
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "not-a-real-command" in err
+
+    def test_topic_differs_from_bare_help(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _help.run_help("doctor")
+        topic_out = capsys.readouterr().out
+        _help.run_help()
+        bare_out = capsys.readouterr().out
+        assert topic_out != bare_out

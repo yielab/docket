@@ -1363,9 +1363,11 @@ docket <command> --help
 
 Show help.
 
-Prints docket's full hand-written command reference (common commands and
-the current role->model policy) -- richer than `docket --help`'s
-auto-generated command list. Always exits 0.
+With no topic, docket's full hand-written command reference (common
+commands and the current role->model policy) -- richer than
+`docket --help`'s auto-generated command list; always exits 0. With a
+topic, that command's own usage text (exit 0), or an unknown-command
+error naming it (exit 1).
 
 **Syntax:**
 ```bash

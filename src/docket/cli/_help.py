@@ -9,6 +9,8 @@ The MODEL POLICY model names are resolved live from the role→model registry.
 
 from __future__ import annotations
 
+import sys
+
 from docket.core import models_policy as _mp
 
 _BOLD = "\033[1m"
@@ -18,8 +20,31 @@ _DIM = "\033[2m"
 _RESET = "\033[0m"
 
 
-def run_help() -> int:
-    """Print the full docket help text. Always returns 0."""
+def _run_topic_help(topic: str) -> int:
+    """A known command's own `--help`, via typer's public `CliRunner` (no base
+    `click` dependency: typer 0.26 vendors it) -- exit 0, or exit 1 to stderr
+    naming an unknown command."""
+    from typer.core import TyperGroup
+    from typer.main import get_command
+    from typer.testing import CliRunner
+
+    from docket.cli import app
+
+    click_group = get_command(app)
+    assert isinstance(click_group, TyperGroup)
+    if topic not in click_group.commands:
+        print(f"Unknown command: {topic}", file=sys.stderr)
+        return 1
+    result = CliRunner().invoke(app, [topic, "--help"])
+    print(result.output, end="")
+    return 0
+
+
+def run_help(topic: str | None = None) -> int:
+    """No `topic`: the full hand-written reference below (exit 0). A `topic`:
+    delegates to `_run_topic_help`."""
+    if topic is not None:
+        return _run_topic_help(topic)
     B, G, C, D, R = _BOLD, _GREEN, _CYAN, _DIM, _RESET
 
     cheap = _mp.resolve_role_model("tester")
