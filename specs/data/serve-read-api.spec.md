@@ -557,6 +557,13 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   project with no pod; MUST return a `4xx` naming the policy id for a `block` `pre_input` verdict;
   and MUST return `200` with `status: "waiting_approval"` plus a non-empty `approvalToken` for a
   `require_approval` verdict, never a response implying the task is queued to run.
+- `POST /approvals/<token>` MUST return `401` before touching the record for a missing/invalid
+  Bearer token; `400` for a missing/malformed body or an `action` other than `grant`/`deny`; `200`
+  with the resulting `state` on a successful transition; `404` for a token that does not exist;
+  and `409` for a token that already resolved — whether to the *same* action (`ApprovalNoop`) or
+  the *opposite* one (`ApprovalConflict`, deny-after-grant or grant-after-deny) — naming the
+  winning state in the error message either way, never the missing-token `404`
+  (`specs/functional/security-gates.spec.md`'s approval-resolution section).
 - `POST /approvals/<token>`'s optional `channel` field MUST be one of `http | tack` — the subset of
   `core.approval.APPROVAL_CHANNELS` the HTTP transport may claim; `cli`, `mcp`, `telegram` and
   `timeout` belong to other surfaces or to the fail-closed expiry path and MUST be rejected the

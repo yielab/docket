@@ -947,6 +947,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
         except approval.ApprovalNoop as exc:
             _dispatch.resolve_waiting_approval(approval_token, decision)
             self._send_json_error(exc.message, 409)
+        except approval.ApprovalConflict as exc:
+            # The opposite decision already resolved this token (grant-after-deny or
+            # deny-after-grant) -- a real conflict over an existing token, not a missing
+            # one, so 409 naming the winning state rather than 404.
+            self._send_json_error(str(exc), 409)
         except approval.ApprovalError as exc:
             self._send_json_error(str(exc), 404)
 
