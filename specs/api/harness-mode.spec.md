@@ -109,9 +109,15 @@ turn (ADR 0001 decision 11) -- there is no flag to change this in v1.
 The generated schema for both shapes above is committed at
 `docs/contracts/harness-v1/schema.json`, produced by `scripts/harness_schema.py` from the
 `core.harness` Pydantic models. A test regenerates it into memory and asserts byte equality
-with the committed file, so a reshaped field fails CI rather than drifting silently. Four
-hand-authored, line-validated example transcripts live at
-`tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`.
+with the committed file, so a reshaped field fails CI rather than drifting silently. Each
+model's own nested `$defs` are hoisted to one root `$defs` object at generation time, because
+`model_json_schema()` writes refs as `#/$defs/X`, which resolve against the *document* root
+rather than the `definitions.<Model>` object a naive merge would nest them under; a nested
+placement is syntactically valid JSON but not a schema a standard validator can resolve.
+Four hand-authored, line-validated example transcripts live at
+`tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`, and a test validates
+every line of every fixture against the committed file itself as JSON Schema (`#/definitions/
+HarnessEvent` / `#/definitions/HarnessResult`), not only through the Pydantic models.
 
 ## Return
 

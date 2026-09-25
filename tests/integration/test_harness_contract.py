@@ -8,6 +8,8 @@ import types
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from jsonschema.exceptions import ValidationError  # type: ignore[import-untyped]
 
 from docket.core import agent_loop as _agent_loop
 from docket.core import harness
@@ -48,6 +50,35 @@ def test_every_fixture_line_validates_and_ends_on_a_result(name: str) -> None:
     for line in lines[:-1]:
         harness.HarnessEvent.model_validate_json(line)
     harness.HarnessResult.model_validate_json(lines[-1])
+
+
+# Unlike the two tests above, which validate through the Pydantic models directly, this
+# drives the committed file itself as JSON Schema -- the artifact an external consumer
+# actually pins against, which the Pydantic-only checks never exercise.
+def _validator_for(definition: str) -> Draft202012Validator:
+    """Build a validator against one `#/definitions/<name>` of the committed file."""
+    document = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    schema = {**document, "$ref": f"#/definitions/{definition}"}
+    return Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize("name", ["ok", "blocked", "cancelled", "refused"])
+def test_every_fixture_line_validates_against_the_committed_json_schema(name: str) -> None:
+    lines = (FIXTURES_DIR / f"{name}.ndjson").read_text(encoding="utf-8").splitlines()
+    assert lines
+    event_validator = _validator_for("HarnessEvent")
+    result_validator = _validator_for("HarnessResult")
+    for line in lines[:-1]:
+        event_validator.validate(json.loads(line))
+    result_validator.validate(json.loads(lines[-1]))
+
+
+def test_an_invalid_status_fails_the_committed_json_schema() -> None:
+    result_line = (FIXTURES_DIR / "ok.ndjson").read_text(encoding="utf-8").splitlines()[-1]
+    payload = json.loads(result_line)
+    payload["status"] = "not-a-real-status"
+    with pytest.raises(ValidationError):
+        _validator_for("HarnessResult").validate(payload)
 
 
 def test_an_unknown_version_fixture_fails_closed() -> None:
