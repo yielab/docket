@@ -1,4 +1,9 @@
-"""Entry point for `python -m docket` (the thin bin/docket launcher execs this)."""
+"""Entry point for `python -m docket`, the thin `bin/docket` launcher, and the installed
+`docket` console script (`[project.scripts]` in pyproject.toml points at `main` below, not
+at the raw Typer `app` -- that is what makes an installed `docket team` print the retirement
+notice and an installed `docket show` resolve as `info`). Importing this module has no
+side effect; `main()` only runs under `if __name__ == "__main__":`, which is true both for
+`python -m docket` and for the generated console-script wrapper."""
 
 from __future__ import annotations
 
@@ -121,4 +126,5 @@ def main() -> None:
     app()
 
 
-main()
+if __name__ == "__main__":
+    main()

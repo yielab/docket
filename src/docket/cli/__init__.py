@@ -2582,12 +2582,14 @@ def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
 def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     """Show help.
 
-    Prints docket's full hand-written command reference (common commands and
-    the current role->model policy) -- richer than `docket --help`'s
-    auto-generated command list. Always exits 0."""
+    With no topic, docket's full hand-written command reference (common
+    commands and the current role->model policy) -- richer than
+    `docket --help`'s auto-generated command list; always exits 0. With a
+    topic, that command's own usage text (exit 0), or an unknown-command
+    error naming it (exit 1)."""
     from docket.cli._help import run_help
 
-    raise typer.Exit(run_help())
+    raise typer.Exit(run_help(topic))
 
 
 # Invocation: python -m docket _json <verb> [arg ...]

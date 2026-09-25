@@ -1,7 +1,11 @@
 """Guard: every `_REMOVED` entry prints its notice and exits 1.
 
-Importing `docket.__main__` runs `main()` unconditionally against whatever `sys.argv` is
-live, so the removed-command map is read by parsing the module's AST, never by import.
+`docket.__main__` only runs `main()` under `if __name__ == "__main__":`, so this guard still
+reads `_REMOVED` by parsing the module's AST rather than importing it, to keep this file
+import-only and independent of `sys.argv`/subprocess state. This exercises `python -m docket`
+only; `tests/integration/test_console_script_entry_point.py` covers the installed
+console-script entry point (`[project.scripts]`), a distinct object that must resolve to the
+same notices and aliases.
 """
 
 from __future__ import annotations

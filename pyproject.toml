@@ -72,7 +72,7 @@ Source = "https://github.com/yielab/docket"
 mcp = ["mcp>=2.0.0"]
 
 [project.scripts]
-docket = "docket.cli:app"
+docket = "docket.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket"]
