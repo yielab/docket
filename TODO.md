@@ -17,7 +17,7 @@
 > surface each, base `594a753`) found twelve reproducible defects; ROADMAP **D-41** records the
 > three design decisions. Cards below; worker packets in
 > [.agents/handoffs/wave-37-worker-packets.md](.agents/handoffs/wave-37-worker-packets.md).
-> Batch 1 (C1–C4) runs in parallel; batch 2 (C5, C6) starts after batch 1 merges.
+> Batch 1 (C1–C4) merged 2026-09-25, full gates green; batch 2 (C5, C6) is next.
 > `v0.2.0-beta.3` (2026-09-18) is the latest release; the next beta stays a maintainer action.
 > Still open as maintainer decisions, not cards: wiring or retiring `docket gates
 > enable/disable` (`specs/functional/security-gates.spec.md`).
@@ -79,7 +79,7 @@ CHANGELOG, spec headers/changelogs and `specs/README.md` are integrator-owned.
 
 ### W37-C1 — a `cd` prefix must not turn an allowed command into an approval
 
-**Status:** TODO · **Size:** S · **Batch:** 1
+**Status:** DONE (2026-09-25, merged f9d6375 + badc988) · **Size:** S · **Batch:** 1
 
 **Trigger (deterministic, live):** `core/security.py::classify_command("cd /x && git status")`
 returns `ask` ("'cd' is not on the curated allowlist") while `git status` returns `allow`; `pwd`
@@ -109,7 +109,7 @@ test that pins the base verdict); `export X=1 && ls` still asks; `policies test`
 
 ### W37-C2 — HTTP control plane: exactly-once trace cursor and small contract gaps
 
-**Status:** TODO · **Size:** M · **Batch:** 1
+**Status:** DONE (2026-09-25, merged 0defabe + c215a6a) · **Size:** M · **Batch:** 1
 
 **Trigger (deterministic):** `serve.py::_traces_page` — deliver `b.jsonl` line at second S, then
 append a line at S to `a.jsonl`: the next poll with the returned `next` re-delivers the `b` line
@@ -142,7 +142,7 @@ no-store`; `POST /approvals` without a token -> 401, with a token -> 400 "Missin
 
 ### W37-C3 — the installed `docket` command honours aliases, removed-command notices and `help <command>`
 
-**Status:** TODO · **Size:** S · **Batch:** 1
+**Status:** DONE (2026-09-25, merged 82225bc + 7fd3f4c) · **Size:** S · **Batch:** 1
 
 **Trigger (deterministic, sixth unwired-machinery instance):** `pyproject.toml` `[project.scripts]
 docket = "docket.cli:app"` bypasses `docket/__main__.py::main`, so on every pip/uv/Homebrew
@@ -172,7 +172,7 @@ help` and contains `doctor`'s usage; goldens byte-identical except any case the 
 
 ### W37-C4 — the published harness-v1 schema validates real results
 
-**Status:** TODO · **Size:** S · **Batch:** 1
+**Status:** DONE (2026-09-25, merged c1a6ef3 + e314a8a) · **Size:** S · **Batch:** 1
 
 **Trigger (deterministic):** `docs/contracts/harness-v1/schema.json` nests
 `HarnessResult.model_json_schema()` under `definitions.HarnessResult`, whose `$ref`s point at
@@ -231,7 +231,7 @@ commands exit 1). `docket roles list --json` prints the table and exits 0: comma
 
 **Goal:** `cost <id> --json` emits that agent's row in the documented shape (amend
 `cli-json-shapes.spec.md`), unknown id -> stderr error, exit 1. Hand-dispatched commands (`roles`,
-`pod`, `maintain`, `gates`, `keys`, `policies`) reject an unrecognised `--flag` with exit 2 and
+`maintain`, `gates`, `keys`, `policies`; not `add`/`init`/`pod`/`pipeline`, which pass options through) reject an unrecognised `--flag` with exit 2 and
 the usage line, through one shared helper.
 
 **Owns:** `cli/_cost.py`, the `ctx.args` parsers in those modules, a shared helper in `cli/`,

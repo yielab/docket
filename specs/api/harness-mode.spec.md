@@ -1,8 +1,8 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4)
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -164,6 +164,10 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
   caller-supplied home.
 
 ## Changelog
+
+### Version 1.1.1 (2026-09-25)
+
+- The committed schema hoists nested `$defs` to the document root so it validates under a standard Draft 2020-12 validator; every fixture is validated against the file (W37-C4). Contract version unchanged.
 
 ### Version 1.1.0 (2026-09-12)
 

@@ -191,10 +191,39 @@ about the committed schema). **Forbidden:** `core/harness.py` models, the contra
 
 ## W37-C5 — approval conflict vs not-found (batch 2)
 
-**Branch:** `w37-c5-approval-conflict` · **Base:** `main` after batch 1 merges. Packet completed
-by the integrator at batch 2.
+**Branch:** `w37-c5-approval-conflict` · **Base:** `main` at the batch-2 base commit (the
+integrator names it in your prompt). **Where.** `src/docket/core/approval.py::_set_state` (the
+`raise ApprovalError(f"Cannot grant approval in state ...")` / `"Cannot deny ..."` lines) and the
+exception classes near the top (`ApprovalError`, `ApprovalNoop`). Add `ApprovalConflict(ApprovalError)`
+carrying the winning state, so every existing `except ApprovalError` still catches it. Callers
+that render it: `serve.py` `_handle_post_approvals` (the `except approval.ApprovalError` -> 404
+branch: add a preceding `except approval.ApprovalConflict` -> 409 naming the winning state; you
+own only that except-chain in `serve.py`), `cli/_approve.py`, `cli/_deny.py`, `cli/_mcp.py`
+(`tool_approvals_grant`/`_deny`) and `core/telegram.py` approval replies: each prints which
+decision won; keep exit codes as they are unless the spec says otherwise. The flaky test:
+`tests/integration/test_agent_loop.py::TestCooperativeRunCancellation::test_cancellation_after_concurrent_approval_grant_never_runs_handler`
+— make its grant accept `ApprovalConflict` and assert the invariant (`handler_calls == []`,
+`stop_reason == "run_cancelled"`); add a barrier-forced race test (grant vs cancellation
+self-deny, both orders) that passes 50/50 runs locally. **Spec:** the approval-resolution section
+of `specs/functional/security-gates.spec.md` (`rg -n "ApprovalNoop|Already granted|409"
+specs/`) and `serve-read-api.spec.md` `POST /approvals/<token>` status list. **Forbidden:**
+`wait_for_approval` semantics, every other part of `serve.py`, `core/tools.py`.
 
 ## W37-C6 — `cost <id> --json`, unknown flags (batch 2)
 
-**Branch:** `w37-c6-cli-flags` · **Base:** `main` after batch 1 merges. Packet completed by the
-integrator at batch 2.
+**Branch:** `w37-c6-cli-flags` · **Base:** as C5. **Where.** `src/docket/cli/_cost.py::run_cost`
+(the `if json_out: _cmd_cost_json(); return 0` runs before `agent_id` is read) — build the single
+agent's row in the same shape as one element of the all-agents `agents` list, unknown id -> stderr
+error, exit 1, nothing on stdout. Amend `specs/data/cli-json-shapes.spec.md` for the one-agent
+form. Unknown flags: `cli/__init__.py` declares these commands with
+`context_settings={"allow_extra_args": True, "ignore_unknown_options": True}` and hands
+`ctx.args` to a module parser. **Scope is only** `roles` (`cli/_roles.py`), `gates`
+(`cli/_gates.py`), `keys` (`run_keys`), `policies` (`cli/_policies.py`, the arg parse only) and
+`maintain` (`run_maintain`): in each module parser, an argument starting with `-` that the
+command does not document -> error naming it, exit 2 (Typer's usage-error code). Use one small
+helper in a `cli/` module you create or an existing `cli/_*.py` utilities module. **Do not**
+touch `add`, `init`, `pod`, `pipeline` or `mcp servers add` (they pass options or a `--`
+separator through on purpose). Every documented flag must still work: enumerate them from
+`docs/commands.md` for the five commands and test each one parses. Regenerate `docs/commands.md`
+if help text changes. **Forbidden:** `cli/__init__.py` except these five commands' bodies,
+`serve.py`, `core/`.

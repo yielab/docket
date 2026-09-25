@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.19.3
+**Version**: 0.20.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -10,7 +10,7 @@ enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`)
 in-turn tool-call gate section below. `docket gates enable`/`disable`'s approval-routing posture
 flag is a separate, recorded-but-unread thing — see Enablement requirement 2. Cancellation reaches
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -1124,6 +1124,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.20.0 (2026-09-25)
+
+- Tool-approval gates requirement 1: `cd`, `pwd`, `echo`, `true`, `false`, `test`, `[` are allowlisted; `echo` with an output redirect stays off-allowlist; `docket policies test pre_tool_call` evaluates through `core/tools.py::evaluate_tool_call` (W37-C1).
 
 ### Version 0.19.3 (2026-09-18)
 

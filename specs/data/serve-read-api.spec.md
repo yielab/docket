@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.12.0
+**Version**: 2.13.0
 **Status**: Stable
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -623,6 +623,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.13.0 (2026-09-25)
+
+- `GET /traces/<project>` withholds events from the still-open second, closing a cross-file same-second race that redelivered one event and dropped another; every response carries `Cache-Control: no-store`; bare `POST /approvals|/tasks|/dispatch` authenticate before `400`; bodies over 1 MiB are refused `413` (W37-C2).
 
 ### Version 2.12.0 (2026-09-21)
 

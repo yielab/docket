@@ -22,6 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `cd` prefix no longer turns an allowed command into an approval.** `cd`, `pwd`, `echo`,
+  `true`, `false`, `test` and `[` joined the bash allowlist, so `cd <worktree> && git status`
+  runs like `git status`; an unattended implementer hop used to time out three times on exactly
+  that shape and fail. `echo` with an output redirect still asks, and `export`/`source`/`.` still
+  ask. `docket policies test pre_tool_call` now evaluates through the live gate's own function,
+  so it can no longer report `allow` for a command the gate asks about.
+- **`GET /traces/<project>` delivers every event exactly once across session files.** An event
+  written in a second the cursor had already partly delivered, to a session file that sorts
+  earlier, was dropped while another was delivered twice. Events from the still-open second are
+  now held back until it closes; the cursor format is unchanged.
+- **The installed `docket` command honours aliases and removed-command notices.** The console
+  script pointed at the bare Typer app, so on a pip or uv install `docket team` printed a generic
+  "No such command" and `docket show` did not resolve. `docket help <command>` now prints that
+  command's usage, or exits 1 naming an unknown command.
+- **`docs/contracts/harness-v1/schema.json` validates as JSON Schema.** Its nested `$ref`s
+  pointed at definitions the document did not contain, so a standard validator failed on
+  `#/definitions/HarnessResult`. The contract stays `1.0.0`; no field changed.
+- **The HTTP control plane sends `Cache-Control: no-store`**, as its spec always said; a bare
+  `POST /approvals`, `/tasks` or `/dispatch` is authenticated before it is answered `400`; and a
+  request body over 1 MiB is refused `413` without being read.
+
 - **`POST /pods` and `docket init --from` validate the project id.** A project id such as
   `../../x` used to provision workspaces and fleet registrations outside `DOCKET_HOME/workspaces`.
   `core/provisioning.py::validate_project_id` (lowercase alphanumeric segments joined by single

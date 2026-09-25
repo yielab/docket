@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.28.0
+**Version**: 1.29.0
 **Status**: Complete
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -938,6 +938,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.29.0 (2026-09-25)
+
+- The installed console script resolves `docket.__main__:main`, so aliases and removed-command notices behave as under `python -m docket`; `docket help <command>` prints that command's usage and exits 1 for an unknown command (W37-C3).
 
 ### Version 1.28.0 (2026-09-21)
 
