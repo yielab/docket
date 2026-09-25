@@ -360,9 +360,10 @@ class TestWebhookDispatch:
         status, _ = _post(f"{url}/dispatch/myproject", token="wrong")
         assert status == 401
 
-    def test_webhook_missing_project_returns_404(self, live_server: tuple[str, str]) -> None:
+    def test_webhook_missing_project_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        # /dispatch/ with empty project segment → trailing slash stripped → not found
+        # /dispatch/ with an empty project segment (or bare /dispatch) still
+        # reaches auth, then names the missing segment -- not a pre-auth 404.
         status, body = _post(f"{url}/dispatch/", token=token)
-        assert status == 404
+        assert status == 400
         assert body["ok"] is False

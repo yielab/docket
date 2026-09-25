@@ -72,15 +72,25 @@ def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 class _FakeClock:
-    """Deterministic stand-in for trace._now_iso -- advances without sleeping real time."""
+    """Deterministic stand-in for `trace._now_iso` and `serve._now`."""
 
+    # Snapped to a whole second so tick() amounts land on an exact boundary,
+    # with no fractional-second guesswork for callers.
     def __init__(self) -> None:
-        self._current = _dt.datetime.now(_dt.UTC)
+        self._current = _dt.datetime.now(_dt.UTC).replace(microsecond=0)
+
+    def now(self) -> _dt.datetime:
+        return self._current
 
     def now_iso(self) -> str:
         return self._current.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def tick(self, seconds: float = 1.05) -> None:
+    def tick(self, seconds: int | None = None) -> None:
+        """Advance the clock -- default closes out the hold-back window."""
+        # One second past `serve._TRACE_HOLD_BACK_S`: exactly enough that a
+        # write-then-tick()-then-poll always sees the write delivered.
+        if seconds is None:
+            seconds = serve._TRACE_HOLD_BACK_S + 1
         self._current += _dt.timedelta(seconds=seconds)
 
 
@@ -88,6 +98,7 @@ class _FakeClock:
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
     clock = _FakeClock()
     monkeypatch.setattr(_trace, "_now_iso", clock.now_iso)
+    monkeypatch.setattr(serve, "_now", clock.now)
     return clock
 
 
@@ -136,7 +147,7 @@ class TestEmptyProject:
 
 class TestVerbatimPassthrough:
     def test_http_events_round_trip_to_the_same_dicts_export_lines_produced(
-        self, live_server: tuple[str, str], traces_home: Path
+        self, live_server: tuple[str, str], traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         url, token = live_server
         _trace.trace_event(
@@ -145,6 +156,7 @@ class TestVerbatimPassthrough:
         _trace.trace_event(
             "demo", "sess-1", "implementer", "tool_call", json.dumps({"tool": "read"})
         )
+        fake_clock.tick()
 
         expected = [json.loads(line) for line in _trace.export_lines("demo")]
 
@@ -163,7 +175,7 @@ class TestVerbatimPassthrough:
         assert got[1]["agent_role"] == "implementer"
 
     def test_no_filtering_by_event_type_role_or_session(
-        self, live_server: tuple[str, str], traces_home: Path
+        self, live_server: tuple[str, str], traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         """This route deliberately rejects a fleet-wide query UI with filtering --
         every event for the project comes back, regardless of type/role/
@@ -171,6 +183,7 @@ class TestVerbatimPassthrough:
         url, token = live_server
         _trace.trace_event("demo", "sess-a", "lead", "session_start", "{}")
         _trace.trace_event("demo", "sess-b", "tester", "verdict_rejected", "{}")
+        fake_clock.tick()
 
         status, body = _get(f"{url}/traces/demo", token=token)
         assert status == 200
@@ -183,12 +196,13 @@ class TestVerbatimPassthrough:
 
 class TestPollLoopBoundary:
     def test_second_poll_from_returned_cursor_yields_exactly_the_new_events(
-        self, live_server: tuple[str, str], traces_home: Path
+        self, live_server: tuple[str, str], traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         url, token = live_server
         n = 6
         for i in range(n):
             _trace.trace_event("demo", "sess-1", "lead", "tool_call", json.dumps({"i": i}))
+        fake_clock.tick()
 
         status, body = _get(f"{url}/traces/demo", token=token)
         assert status == 200
@@ -210,6 +224,7 @@ class TestPollLoopBoundary:
         m = 4
         for i in range(n, n + m):
             _trace.trace_event("demo", "sess-1", "lead", "tool_call", json.dumps({"i": i}))
+        fake_clock.tick()
 
         status2, body2 = _get(f"{url}/traces/demo?since={cursor}", token=token)
         assert status2 == 200
@@ -225,25 +240,26 @@ class TestPollLoopBoundary:
         assert len(first_batch) + len(second_batch) == n + m
 
     def test_boundary_holds_when_every_event_shares_one_second(
-        self, live_server: tuple[str, str], traces_home: Path
+        self, live_server: tuple[str, str], traces_home: Path, fake_clock: _FakeClock
     ) -> None:
-        """Two batches written back to back routinely land in the same
-        wall-clock second; the compound cursor must still separate them
-        instead of duplicating or skipping the second batch."""
+        """A poll of a still-open second must reveal nothing; once it closes,
+        every event landed in it must come back exactly once."""
         url, token = live_server
         for i in range(5):
             _trace.trace_event("demo", "sess-1", "lead", "tool_call", json.dumps({"i": i}))
         _, body = _get(f"{url}/traces/demo", token=token)
+        assert body["events"] == [], "the still-open second must not be revealed yet"
         cursor = body["next"]
 
         for i in range(5, 9):
             _trace.trace_event("demo", "sess-1", "lead", "tool_call", json.dumps({"i": i}))
+        fake_clock.tick()
         _, body2 = _get(f"{url}/traces/demo?since={cursor}", token=token)
         second_batch = [json.loads(e)["payload"]["i"] for e in body2["events"]]
-        assert second_batch == [5, 6, 7, 8]
+        assert second_batch == [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
     def test_three_polls_in_a_row_ingest_every_event_exactly_once(
-        self, live_server: tuple[str, str], traces_home: Path
+        self, live_server: tuple[str, str], traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         url, token = live_server
         seen: list[int] = []
@@ -253,6 +269,7 @@ class TestPollLoopBoundary:
                 _trace.trace_event(
                     "demo", "sess-1", "lead", "tool_call", json.dumps({"wave": wave, "n": i})
                 )
+            fake_clock.tick()
             status, body = _get(f"{url}/traces/demo?since={cursor}", token=token)
             assert status == 200
             for e in body["events"]:
@@ -312,11 +329,12 @@ class TestTracesPageDirect:
         self, traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         _trace.trace_event("demo", "s1", "lead", "tool_call", json.dumps({"i": 0}))
+        fake_clock.tick()
         events1, cursor1 = serve._traces_page("demo", "")
         assert len(events1) == 1
 
-        fake_clock.tick()
         _trace.trace_event("demo", "s1", "lead", "tool_call", json.dumps({"i": 1}))
+        fake_clock.tick()
         events2, cursor2 = serve._traces_page("demo", cursor1)
         assert len(events2) == 1
         assert json.loads(events2[0])["payload"]["i"] == 1
@@ -342,6 +360,7 @@ class TestMultipleSessionFiles:
         self._write("zzz-older-session", 0)
         fake_clock.tick()
         self._write("aaa-newer-session", 1)
+        fake_clock.tick()
 
         events1, cursor1 = serve._traces_page("demo", "")
         assert len(events1) == 2, "first poll must return both sessions' events"
@@ -358,10 +377,11 @@ class TestMultipleSessionFiles:
         self._write("zzz-older-session", 0)
         fake_clock.tick()
         self._write("aaa-newer-session", 1)
+        fake_clock.tick()
         _events1, cursor1 = serve._traces_page("demo", "")
 
-        fake_clock.tick()
         self._write("zzz-older-session", 2)
+        fake_clock.tick()
 
         events2, _cursor2 = serve._traces_page("demo", cursor1)
         assert [json.loads(e)["payload"]["i"] for e in events2] == [2]
@@ -374,8 +394,46 @@ class TestMultipleSessionFiles:
         self._write("aaa-newer-session", 1)
         fake_clock.tick()
         self._write("mmm-newest-session", 2)
+        fake_clock.tick()
 
         events, _cursor = serve._traces_page("demo", "")
         assert [json.loads(e)["payload"]["i"] for e in events] == [0, 1, 2], (
             "a consumer folding events onto a board reads them in order"
         )
+
+
+# ── the hold-back rule: a still-open second is never split across a race ────
+
+
+class TestCrossFileSameSecondRace:
+    """The exact race the hold-back rule closes -- see the module comment
+    above `_trace_line_ts` in serve.py for why filename-order concatenation
+    makes this racy without it."""
+
+    # Two DIFFERENT session files ("a", "b") each gain a line in the same
+    # still-open second; "a" sorts before "b" regardless of which was
+    # written first. Without the hold-back, a poll revealing "b" before "a"
+    # exists mints a cursor whose "skip N" count is invalidated the moment
+    # "a" lands, redelivering "b" and losing "a" for good. With it, neither
+    # line is handed out until the second is closed, so both come back
+    # together, exactly once.
+    def test_delivers_both_lines_exactly_once_across_three_polls(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
+        _trace.trace_event("demo", "b", "lead", "tool_call", json.dumps({"who": "b"}))
+        events1, cursor1 = serve._traces_page("demo", "")
+        assert events1 == [], "the second this line landed in is still open"
+
+        _trace.trace_event("demo", "a", "lead", "tool_call", json.dumps({"who": "a"}))
+        events2, cursor2 = serve._traces_page("demo", cursor1)
+        assert events2 == [], "still open -- a same-second write must not surface yet"
+        assert cursor2 == cursor1, "no progress to report while the second stays open"
+
+        fake_clock.tick()
+        events3, cursor3 = serve._traces_page("demo", cursor2)
+        delivered = {json.loads(e)["payload"]["who"] for e in events3}
+        assert delivered == {"a", "b"}, f"expected both lines exactly once, got {events3}"
+        assert cursor3 != cursor2
+
+        events4, _cursor4 = serve._traces_page("demo", cursor3)
+        assert events4 == [], "nothing left to redeliver on a fourth poll"

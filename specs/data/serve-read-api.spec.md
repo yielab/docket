@@ -317,6 +317,16 @@ that aggregates client-side across calls.
   so a poll loop that always passes back the previous response's `next` as its `since` ingests every
   event exactly once, even across a same-second boundary. A bare timestamp (no `:<n>` suffix) is
   also accepted as `since`, with `n` treated as 0.
+- **Hold-back.** The compound cursor alone is not sufficient: `export_lines` concatenates a
+  project's session files in *filename* order, and a brand-new file can sort earlier than one
+  already on disk, so the "skip the first `n` lines at this `ts`" bookkeeping is only stable
+  within one poll, not across two. A page therefore never includes a line whose `ts` is within one
+  second of the current time (`ts >= now - 1s` is withheld, not dropped) — by the time any line at
+  a given `ts` is handed out, that second is guaranteed closed, so no later write from any session
+  file can ever land at that `ts` again and invalidate an already-minted cursor. A withheld line is
+  delivered, in full, on a later poll once it has aged past the hold-back window; the cursor is
+  left unadvanced past it in the meantime, and a poll that returns nothing because everything new
+  is still within the hold-back window returns its unchanged incoming cursor as `next`.
 - A trace line `export_lines` cannot key on (malformed JSON, or valid JSON missing `ts`) is a
   pre-existing limitation of that function, not solved by this endpoint: such a line is always
   re-included whenever any `since` filter is active, regardless of cursor value. This endpoint never
