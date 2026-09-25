@@ -22,6 +22,7 @@ from typing import Any, NoReturn
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli._flags import find_unknown_flag
 from docket.core import policy as _policy
 from docket.core import tools as _tools
 
@@ -269,14 +270,18 @@ def run_policies(sub: str | None = None, *, args: list[str] | None = None) -> in
     """
     rest = args or []
     subcmd = sub or "list"
+    if subcmd == "test":
+        return _test(rest)
+    bad = find_unknown_flag(rest, frozenset())
+    if bad is not None:
+        ui.error(f"docket policies: unrecognized flag '{bad}'")
+        return 2
     if subcmd == "list":
         return _list()
     if subcmd == "show":
         return _show(rest)
     if subcmd == "init":
         return _init()
-    if subcmd == "test":
-        return _test(rest)
     if subcmd == "validate":
         return _validate(rest)
     return _help()

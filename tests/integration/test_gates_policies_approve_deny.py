@@ -257,6 +257,28 @@ class TestGatesIsolate:
         assert "Usage: docket gates" in out
 
 
+class TestGatesCliFlagParsing:
+    """`--force` is parsed out of raw `ctx.args` in `cmd_gates` before `run_gates` ever sees them,
+    so an unrecognized flag can only be caught at the real CLI boundary, not through run_gates."""
+
+    def test_enable_force_still_parses(self, oc_dir: Path) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app as _app
+
+        result = CliRunner().invoke(_app, ["gates", "enable", "--force"])
+        assert result.exit_code == 0
+
+    def test_status_rejects_unknown_flag(self, oc_dir: Path) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app as _app
+
+        result = CliRunner().invoke(_app, ["gates", "status", "--bogus"])
+        assert result.exit_code == 2
+        assert "--bogus" in (result.stdout + result.stderr)
+
+
 # ── policies ──────────────────────────────────────────────────────────────────
 
 
@@ -356,6 +378,25 @@ class TestPolicies:
         out = capsys.readouterr().out
         assert rc == 0
         assert "docket policies list" in out
+
+    def test_list_rejects_unknown_flag(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`policies` documents no flags at all, so `--json` must be a usage error rather than a
+        silently ignored token that still prints the table and exits 0."""
+        rc = _policies.run_policies("list", args=["--json"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "--json" in err
+
+    def test_test_subcommand_free_text_is_never_treated_as_a_flag(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`test`'s third argument is arbitrary dry-run text, so a leading `-` in it must reach the
+        evaluator untouched instead of being rejected as an unrecognized flag."""
+        rc = _policies.run_policies("test", args=["pre_tool_call", "programmer", "-rf /tmp/foo"])
+        capsys.readouterr()
+        assert rc == 0
 
     # ── validate (wires core.policy.validate_policy) ──────────────────────────────
 

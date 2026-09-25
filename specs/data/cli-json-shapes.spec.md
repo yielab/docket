@@ -97,6 +97,27 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
 }
 ```
 
+### `docket cost <id> --json`
+
+A bare object in the same shape as one element of `docket cost --json`'s `agents` array --
+**not** wrapped in `{"agents": [...], "totalUsd": ...}`:
+
+```json
+{
+  "id":        "string",
+  "model":     "string",
+  "input":     "number (tokens)",
+  "output":    "number (tokens)",
+  "costUsd":   "number",
+  "pricingKnown": "boolean (always true)",
+  "turns":     "number",
+  "budgetUsd": "number | null"
+}
+```
+
+An unknown id prints an error to stderr and exits 1, with nothing on stdout -- the same contract
+`docket cost <id>` (without `--json`) already has.
+
 ### `docket cost --history [<id>] --json`
 
 ```json

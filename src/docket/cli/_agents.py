@@ -21,6 +21,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli._flags import find_unknown_flag
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import memory as _mem
@@ -886,8 +887,12 @@ def run_delete(agent_id: str | None) -> int:
 
 def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None = None) -> int:
     """Dispatch `docket maintain`; returns the exit code. ``extra`` carries flags
-    following ``mode`` (currently only ``--no-distill-first``) — Typer allows/ignores
+    following ``mode`` (``--no-distill-first``/``--distill-first``) — Typer allows/ignores
     unknown options so they land here, the pattern every ``ctx.args`` subcommand uses."""
+    bad = find_unknown_flag(extra or [], frozenset({"--no-distill-first", "--distill-first"}))
+    if bad is not None:
+        ui.error(f"docket maintain: unrecognized flag '{bad}'")
+        return 2
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")

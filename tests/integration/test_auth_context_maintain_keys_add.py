@@ -266,6 +266,23 @@ class TestCmdMaintain:
         combined = out + err
         assert "distill" in combined.lower()
 
+    def test_check_rejects_unknown_flag(self, tmp_path: Path) -> None:
+        """Only `--no-distill-first`/`--distill-first` are documented, so an unrelated flag must
+        be a usage error rather than a silently ignored token that still runs the check."""
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["maintain", "test-agent", "check", "--bogus"], home)
+        assert rc == 2
+        combined = out + err
+        assert "--bogus" in combined
+
+    def test_clean_accepts_distill_first_affirmation(self, tmp_path: Path) -> None:
+        """`--distill-first` is a documented no-op affirmation of the default, not an error."""
+        home = _setup_agent(tmp_path, with_memory=True)
+        rc, out, err = _run(["maintain", "test-agent", "clean", "--distill-first"], home)
+        assert rc == 0
+        combined = out + err
+        assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestCmdKeys
@@ -344,6 +361,14 @@ class TestCmdKeys:
         assert rc == 0
         assert "export MY_CUSTOM_KEY=" in out
         assert "abc123" in out
+
+    def test_list_rejects_unknown_flag(self, tmp_path: Path) -> None:
+        """`keys` documents no flags at all, so `--json` must be a usage error rather than a
+        silently ignored token that still prints the table and exits 0."""
+        home = _setup_bare(tmp_path)
+        rc, _out, err = _run(["keys", "list", "--json"], home)
+        assert rc == 2
+        assert "--json" in err
 
 
 # ---------------------------------------------------------------------------

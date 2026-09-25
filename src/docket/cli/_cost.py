@@ -42,12 +42,35 @@ def run_cost(
     if history:
         return _cmd_cost_history(agent_id, days, json_out)
     if json_out:
+        if agent_id:
+            return _cmd_cost_single_json(agent_id)
         _cmd_cost_json()
         return 0
     if agent_id:
         return _cmd_cost_single(agent_id)
     _cmd_cost_all()
     return 0
+
+
+def _agent_cost_row(agent_id: str) -> tuple[dict[str, Any], float]:
+    """Build one agent's `docket cost --json` row, plus its raw (unrounded) cost."""
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    model = str(raw.get("model", _cfg.DEFAULT_MODEL))
+    budget_raw = raw.get("budgetUsd")
+    totals: CostTotals = aggregate_cost(agent_id)
+    cost = totals.cost_usd
+    budget_val = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
+    row = {
+        "id": agent_id,
+        "model": model,
+        "input": totals.input_tokens,
+        "output": totals.output_tokens,
+        "costUsd": round(cost, 6),
+        "pricingKnown": True,
+        "turns": totals.turns,
+        "budgetUsd": budget_val,
+    }
+    return row, cost
 
 
 def cost_snapshot() -> dict[str, Any]:
@@ -64,30 +87,24 @@ def cost_snapshot() -> dict[str, Any]:
     agents_out = []
     total = 0.0
     for pid in ids:
-        raw = store.read_json(_cfg.meta_path(pid))
-        model = str(raw.get("model", _cfg.DEFAULT_MODEL))
-        budget_raw = raw.get("budgetUsd")
-        totals: CostTotals = aggregate_cost(pid)
-        cost = totals.cost_usd
+        row, cost = _agent_cost_row(pid)
+        agents_out.append(row)
         total += cost
-        budget_val = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
-        agents_out.append(
-            {
-                "id": pid,
-                "model": model,
-                "input": totals.input_tokens,
-                "output": totals.output_tokens,
-                "costUsd": round(cost, 6),
-                "pricingKnown": True,
-                "turns": totals.turns,
-                "budgetUsd": budget_val,
-            }
-        )
     return {"agents": agents_out, "totalUsd": round(total, 6)}
 
 
 def _cmd_cost_json() -> None:
     print(_json.dumps(cost_snapshot(), indent=2))
+
+
+def _cmd_cost_single_json(agent_id: str) -> int:
+    ws = _cfg.workspace_dir(agent_id)
+    if not ws.is_dir():
+        ui.error(f"Project '{agent_id}' not found.")
+        return 1
+    row, _cost = _agent_cost_row(agent_id)
+    print(_json.dumps(row, indent=2))
+    return 0
 
 
 def _cmd_cost_single(agent_id: str) -> int:
