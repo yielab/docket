@@ -23,6 +23,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli._flags import find_unknown_flag
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.core.utils import project_ids
@@ -343,6 +344,10 @@ def run_keys(sub: str | None, extra: list[str]) -> int:
     sub:   list (default) | add | remove | rotate | validate | export | setup
     extra: trailing positional args (e.g. KEY_NAME) from the Typer context.
     """
+    bad = find_unknown_flag(extra, frozenset())
+    if bad is not None:
+        ui.error(f"docket keys: unrecognized flag '{bad}'")
+        return 2
     action = sub or "list"
 
     if action == "list":

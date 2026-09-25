@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli._flags import find_unknown_flag
 from docket.core import archetypes as _arch
+
+_DOCUMENTED_FLAGS: frozenset[str] = frozenset()
 
 
 def _help() -> int:
@@ -159,6 +162,10 @@ def run_roles(sub: str | None = None, *, args: list[str] | None = None) -> int:
     args: trailing positional args for show/add/validate.
     """
     rest = args or []
+    bad = find_unknown_flag(rest, _DOCUMENTED_FLAGS)
+    if bad is not None:
+        ui.error(f"docket roles: unrecognized flag '{bad}'")
+        return 2
     subcmd = sub or "list"
     if subcmd == "list":
         return _list()

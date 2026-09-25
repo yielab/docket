@@ -63,6 +63,21 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     return oc_dir
 
 
+def _add_agent(oc_dir: Path, agent_id: str, name: str) -> None:
+    """Register a second project agent workspace + fleet entry in an already-set-up oc_dir."""
+    agent_ws = oc_dir / "workspaces" / "projects" / agent_id
+    (agent_ws / "memory").mkdir(parents=True)
+    meta = dict(META)
+    meta["name"] = name
+    (agent_ws / ".docket-meta.json").write_text(json.dumps(meta))
+    (agent_ws / "SOUL.md").write_text("# SOUL\n")
+    (agent_ws / "MEMORY.md").write_text("# MEMORY\n")
+
+    fleet = json.loads((oc_dir / "fleet.json").read_text())
+    fleet["agents"].append({"id": agent_id})
+    (oc_dir / "fleet.json").write_text(json.dumps(fleet))
+
+
 def _write_docket_session(
     oc_dir: Path,
     session_key: str,
@@ -371,6 +386,30 @@ class TestCmdCost:
         oc_dir = _setup_agent(tmp_path)
         rc, _out, err = _run(["cost", "no-such-agent"], oc_dir)
         assert rc == 1
+        assert "not found" in err
+
+    def test_cost_json_single_agent_scopes_to_that_id(self, tmp_path: Path) -> None:
+        """`cost <id> --json` must return only that agent's row, not the whole fleet."""
+        oc_dir = _setup_agent(tmp_path, "myshop")
+        _add_agent(oc_dir, "otherapp", "Other App")
+        rc, out, err = _run(["cost", "myshop", "--json"], oc_dir)
+        assert rc == 0, f"exit {rc}\nstderr: {err}"
+        data = json.loads(out)
+        assert "agents" not in data
+        assert "totalUsd" not in data
+        assert data["id"] == "myshop"
+        assert data["input"] == 0
+        assert data["output"] == 0
+        assert data["turns"] == 0
+        assert data["costUsd"] == 0.0
+        assert data["pricingKnown"] is True
+        assert data["budgetUsd"] is None
+
+    def test_cost_json_unknown_agent_exits_1_with_nothing_on_stdout(self, tmp_path: Path) -> None:
+        oc_dir = _setup_agent(tmp_path)
+        rc, out, err = _run(["cost", "no-such-agent", "--json"], oc_dir)
+        assert rc == 1
+        assert out == ""
         assert "not found" in err
 
     def test_cost_history_json_no_data(self, tmp_path: Path) -> None:

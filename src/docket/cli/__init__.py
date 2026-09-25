@@ -2035,13 +2035,19 @@ def cmd_gates(ctx: typer.Context) -> None:
     deny` or `POST /approvals/<token>` (`docket serve`), or MCP, in addition
     to Telegram -- all four channels are audit-logged regardless of this
     flag. See specs/functional/security-gates.spec.md."""
+    from docket.cli._flags import find_unknown_flag
     from docket.cli._gates import run_gates
 
     args = list(ctx.args)
     sub = args[0] if args else None
-    force = "--force" in args
-    rest = [a for a in args[1:] if a != "--force"]
-    want = rest[0] if rest else "on"
+    rest = args[1:]
+    bad = find_unknown_flag(rest, frozenset({"--force"}))
+    if bad is not None:
+        ui.error(f"docket gates: unrecognized flag '{bad}'")
+        raise typer.Exit(2)
+    force = "--force" in rest
+    positional = [a for a in rest if a != "--force"]
+    want = positional[0] if positional else "on"
     raise typer.Exit(run_gates(sub, want=want, force=force))
 
 

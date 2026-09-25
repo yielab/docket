@@ -400,3 +400,15 @@ class TestRolesCli:
         out = capsys.readouterr().out
         assert rc == 0
         assert "docket roles" in out
+
+    def test_list_rejects_unknown_flag(
+        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`roles` documents no flags at all, so `--json` reaching `list` must be a usage error,
+        not a silently ignored token that still prints the table and exits 0."""
+        from docket.cli._roles import run_roles
+
+        rc = run_roles("list", args=["--json"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "--json" in err
