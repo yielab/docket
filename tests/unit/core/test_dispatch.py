@@ -188,14 +188,14 @@ class TestBadRequests:
         status, _body = _post(f"{url}/tasks/myapp", {"description": ""}, token)
         assert status == 400
 
-    def test_empty_project_segment_falls_through_to_404(self, live_server: tuple[str, str]) -> None:
-        # Mirrors the existing /dispatch/ precedent (test_scheduled_and_webhook_
-        # dispatch.py's test_webhook_missing_project_returns_404): a trailing
-        # slash is stripped before routing, so "/tasks/" no longer matches the
-        # "/tasks/" prefix and falls through to the generic 404 handler.
+    def test_empty_project_segment_returns_400(self, live_server: tuple[str, str]) -> None:
+        # Mirrors the /dispatch/ precedent (test_scheduled_and_webhook_dispatch.py's
+        # test_webhook_missing_project_returns_400): a trailing slash is stripped
+        # before routing, but the bare "/tasks" path still reaches auth and then
+        # the handler's own "Missing project" 400, not a pre-auth 404.
         url, token = live_server
         status, body = _post(f"{url}/tasks/", {"description": "x"}, token)
-        assert status == 404
+        assert status == 400
         assert body["ok"] is False
 
 

@@ -596,6 +596,28 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
 # — stable, since trace files are append-only and never reordered — are
 # exactly the ones already delivered, so they're dropped before the response
 # is built. See `_traces_page`.
+#
+# That "stable, never reordered" premise holds only within one poll's page —
+# NOT across two polls, because `export_lines` concatenates session files in
+# *filename* order, and a brand-new file can sort earlier than one already on
+# disk. A page delivering ts=S from file "b" and minting "S:1" can be followed
+# by a write to file "a" at that same ts=S; the next poll's concatenation puts
+# "a" before "b", so "skip the first 1 line at S" now skips "a" instead of
+# "b" — redelivering "b" and permanently losing "a". The one-second hold-back
+# below closes that race: nothing with ts >= now - 1s is ever handed out, so
+# by the time any line at ts=S is delivered, no writer can still be mid-write
+# for that second and every same-second sibling is already on disk.
+
+
+def _now() -> _dt.datetime:
+    """Monkeypatchable seam for the hold-back check in `_traces_page` --
+    tests pin this to make second-boundary behavior deterministic."""
+    return _dt.datetime.now(_dt.UTC)
+
+
+# Seconds a trace event must have aged before `_traces_page` will hand it
+# out -- see the hold-back rationale above.
+_TRACE_HOLD_BACK_S = 1
 
 
 def _trace_line_ts(line: str) -> str:
@@ -629,7 +651,8 @@ def _decode_trace_cursor(raw: str) -> tuple[str, int]:
 
 def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     """One cursor'd page of *project*'s raw trace JSONL, delivered exactly once (sorted by ts
-    across session files, verbatim, unfiltered). Returns (lines, next_cursor); cursor contract:
+    across session files, held back within `_TRACE_HOLD_BACK_S` of `_now()`, verbatim otherwise
+    unfiltered). Returns (lines, next_cursor); cursor contract:
     specs/data/serve-read-api.spec.md (GET /traces/<project>).
 
     A trailing line this module cannot key on (`_trace_line_ts` returns "") is a pre-existing
@@ -646,6 +669,12 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     # anchor in glob order. Stable, so same-second lines keep their file order,
     # and unkeyable ("") lines sort to the front where the skip loop expects them.
     lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_ts)
+
+    # Hold back anything from a second that might not be closed yet (see the
+    # rationale above `_now`) -- an unkeyable ("") line always passes through,
+    # same as everywhere else in this function.
+    threshold = (_now() - _dt.timedelta(seconds=_TRACE_HOLD_BACK_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [ln for ln in lines if (ts := _trace_line_ts(ln)) == "" or ts < threshold]
 
     if already:
         skipped = 0
@@ -690,12 +719,22 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     return lines, f"{anchor_ts}:{count_at_anchor}"
 
 
+# Cap on a POST request body this server will read -- above it, `_read_body`
+# sends 413 without touching `rfile`, so a caller cannot pin a handler thread
+# by promising (and trickling) an unbounded body.
+MAX_POST_BODY_BYTES = 1024 * 1024
+
+
 class _DocketHandler(BaseHTTPRequestHandler):
     """Serves the docket endpoints; builds responses on demand. ``serve_token``
     (a `run_serve` subclass attribute) empty means "disallow all auth" --
     never an accidental unauthenticated pass-through."""
 
     serve_token: str = ""
+    # Bounds every blocking socket read (request line, headers, body) so a
+    # client that opens a connection and never finishes sending cannot pin a
+    # handler thread forever.
+    timeout = 30
 
     def log_message(self, fmt: str, *args: Any) -> None:
         return
@@ -704,9 +743,26 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _read_body(self) -> bytes | None:
+        """Read a POST body up to `MAX_POST_BODY_BYTES`, sending `413` and
+        returning `None` without touching `rfile` above the cap."""
+        # An absent/zero Content-Length reads as `b"{}"`, matching every
+        # caller's existing no-body behavior.
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        if length > MAX_POST_BODY_BYTES:
+            self._send_json_error("Request body too large", 413)
+            return None
+        if length <= 0:
+            return b"{}"
+        return self.rfile.read(length)
 
     def _check_auth(self) -> bool:
         if not self.serve_token:
@@ -822,11 +878,15 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0].rstrip("/")
-        if path.startswith("/approvals/"):
+        # A bare prefix (no trailing segment survives `rstrip("/")`) still
+        # routes to its handler -- slicing the missing segment off yields ""
+        # the same as an explicit empty one, so auth is checked before the
+        # handler's own "Missing ..." `400`, instead of a `404` pre-auth.
+        if path == "/approvals" or path.startswith("/approvals/"):
             self._handle_post_approvals(path)
-        elif path.startswith("/tasks/"):
+        elif path == "/tasks" or path.startswith("/tasks/"):
             self._handle_post_tasks(path)
-        elif path.startswith("/dispatch/"):
+        elif path == "/dispatch" or path.startswith("/dispatch/"):
             self._handle_post_dispatch(path)
         elif path == "/pods":
             self._handle_post_pods()
@@ -841,11 +901,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not approval_token:
             self._send_json_error("Missing approval token", 400)
             return
+        raw = self._read_body()
+        if raw is None:
+            return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length) if length > 0 else b"{}"
             req_body: dict[str, object] = json.loads(raw)
-        except (ValueError, json.JSONDecodeError):
+        except json.JSONDecodeError:
             self._send_json_error("Invalid JSON body", 400)
             return
         action = str(req_body.get("action", ""))
@@ -899,11 +960,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         if self._reject_bad_project_id(project):
             return
+        raw = self._read_body()
+        if raw is None:
+            return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length) if length > 0 else b"{}"
             task_body: Any = json.loads(raw)
-        except (ValueError, json.JSONDecodeError):
+        except json.JSONDecodeError:
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(task_body, dict):
@@ -971,11 +1033,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # before anything is dispatched. A missing body (no Content-Length)
         # is the same as `{}`, so an omitted body still behaves as a
         # no-params dispatch.
+        raw = self._read_body()
+        if raw is None:
+            return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length) if length > 0 else b"{}"
             params: Any = json.loads(raw)
-        except (ValueError, json.JSONDecodeError):
+        except json.JSONDecodeError:
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(params, dict):
@@ -1018,11 +1081,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             self._send_json_error("Unauthorized", 401)
             return
+        raw = self._read_body()
+        if raw is None:
+            return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length) if length > 0 else b"{}"
             body: Any = json.loads(raw)
-        except (ValueError, json.JSONDecodeError):
+        except json.JSONDecodeError:
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(body, dict):
