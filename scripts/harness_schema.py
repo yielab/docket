@@ -24,19 +24,45 @@ SCHEMA_PATH = ROOT / "docs" / "contracts" / "harness-v1" / "schema.json"
 sys.path.insert(0, str(SRC))
 
 
+# model_json_schema() writes refs as "#/$defs/X", which resolve against the *document*
+# root -- not against the "definitions.<Model>" object they were nested under. Nesting them
+# there is why a standard validator raised PointerToNowhere against the published file even
+# though pydantic's own validation never looks at it. Hoisting satisfies the refs as written.
+def _hoist_defs(definitions: dict[str, object]) -> dict[str, object]:
+    """Pull every model's nested ``$defs`` up to one root ``$defs``."""
+    root_defs: dict[str, object] = {}
+    for model_name, schema in definitions.items():
+        nested = schema.pop("$defs", None)  # type: ignore[union-attr]
+        if not nested:
+            continue
+        for def_name, def_body in nested.items():
+            if def_name in root_defs and root_defs[def_name] != def_body:
+                raise ValueError(
+                    f"harness_schema: '{def_name}' from {model_name} collides with an "
+                    "earlier definition of the same name but a different body"
+                )
+            root_defs[def_name] = def_body
+    return root_defs
+
+
 def render() -> str:
     """Return the generated schema.json content, trailing newline included."""
     from docket.core import harness
+
+    definitions = {
+        "HarnessEvent": harness.HarnessEvent.model_json_schema(),
+        "HarnessResult": harness.HarnessResult.model_json_schema(),
+    }
+    root_defs = _hoist_defs(definitions)
 
     document = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "docket harness contract",
         "version": harness.HARNESS_CONTRACT_VERSION,
-        "definitions": {
-            "HarnessEvent": harness.HarnessEvent.model_json_schema(),
-            "HarnessResult": harness.HarnessResult.model_json_schema(),
-        },
+        "definitions": definitions,
     }
+    if root_defs:
+        document["$defs"] = root_defs
     return json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 
