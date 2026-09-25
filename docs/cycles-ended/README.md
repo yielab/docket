@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (41 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (42 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-09-25 | ◇ WAVE 37 CLOSED (2026-09-25) — defects found by running the product (D-41) | `todo-waves.md` | 10,940 |
 | 2026-09-21 | ◇ WAVE 36 CLOSED (2026-09-21) — eleven defects the documentation audit found in code | `todo-waves.md` | 19,222 |
 | 2026-09-14 | PHASE 23 — Product truth and ecosystem proof  *(☑ COMPLETE 2026-09-14 — Waves 26–29; W29-C7's closing half removed by D-39)* | `roadmap-phases.md` | 12,841 |
 | 2026-09-14 | ◇ WAVE 29 CLOSED (2026-09-14) — adoption evidence and public release | `todo-waves.md` | 6,343 |

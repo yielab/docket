@@ -518,5 +518,13 @@
     "heading": "◇ WAVE 36 CLOSED (2026-09-21) — eleven defects the documentation audit found in code",
     "bytes": 19222,
     "sha256": "d5a3c7abeb2aa9e7fafb4251e87e8159c6e93d1ab921e111eb9dadebff06066f"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 37 CLOSED (2026-09-25) — defects found by running the product (D-41)",
+    "bytes": 10940,
+    "sha256": "37539e90559a08c28273dd5c67944ed786729798ca397b47863e5b0651264d18"
   }
 ]

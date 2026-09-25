@@ -42,7 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The HTTP control plane sends `Cache-Control: no-store`**, as its spec always said; a bare
   `POST /approvals`, `/tasks` or `/dispatch` is authenticated before it is answered `400`; and a
   request body over 1 MiB is refused `413` without being read.
-
+- **Resolving an approval the other way answers `409`, not `404`.** Denying an approval that was
+  already granted (or the reverse) raised the same error as an unknown token, so
+  `POST /approvals/<token>` said the token did not exist. It now answers `409` naming the decision
+  that won. The same seam made one cancellation test flaky when the in-turn cancellation denied
+  first; the test now accepts either winner and still proves the tool never ran.
+- **`docket cost <id> --json` returns that agent only.** It used to return the whole fleet and
+  exit 0 even for an id that does not exist; an unknown id now exits 1 with nothing on stdout.
+  `docket roles`, `gates`, `keys`, `policies` and `maintain` reject an unrecognised `--flag` with
+  exit 2 instead of silently ignoring it.
 - **`POST /pods` and `docket init --from` validate the project id.** A project id such as
   `../../x` used to provision workspaces and fleet registrations outside `DOCKET_HOME/workspaces`.
   `core/provisioning.py::validate_project_id` (lowercase alphanumeric segments joined by single

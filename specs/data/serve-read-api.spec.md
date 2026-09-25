@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.13.0
+**Version**: 2.13.1
 **Status**: Stable
 **Last Updated**: 2026-09-25
 
@@ -630,6 +630,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.13.1 (2026-09-25)
+
+- `POST /approvals/<token>` documents its full status list (401/400/200/404/409) and the two distinct `409` causes (W37-C5).
 
 ### Version 2.13.0 (2026-09-25)
 

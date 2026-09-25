@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Complete
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -343,6 +343,10 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.8.0 (2026-09-25)
+
+- `docket cost <id> --json` is a bare single-agent object in the shape of one `agents` element; an unknown id writes an error to stderr, nothing to stdout, and exits 1 (W37-C6).
 
 ### Version 1.7.0 (2026-09-21)
 

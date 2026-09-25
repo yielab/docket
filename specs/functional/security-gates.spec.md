@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.20.0
+**Version**: 0.20.1
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1133,6 +1133,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.20.1 (2026-09-25)
+
+- Approval resolution distinguishes `ApprovalConflict` (the opposite decision already won; `409` naming the winner) from `ApprovalNoop` (same decision repeated; `409`) and a missing token (`404`); every channel reports which decision won (W37-C5).
 
 ### Version 0.20.0 (2026-09-25)
 
