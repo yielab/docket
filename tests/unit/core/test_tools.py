@@ -133,6 +133,32 @@ class TestCommandClassifierIsArgumentAware:
         assert classify_command("rm x").blocked is True
         assert classify_command("ls").blocked is False
 
+    def test_cd_prefix_does_not_force_approval(self) -> None:
+        """A `cd <worktree> && <safe command>` pattern must not ask just because `cd`
+        was never on the allowlist."""
+        assert classify_command("cd /x && git status").action == "allow"
+        assert classify_command("pwd").action == "allow"
+        assert classify_command("echo hi").action == "allow"
+
+    def test_cd_prefix_still_asks_for_a_high_risk_segment(self) -> None:
+        verdict = classify_command("cd /x && git push origin production")
+        assert verdict.action == "ask"
+        assert verdict.risk_class == "prod-deploy"
+
+    def test_export_still_requires_approval(self) -> None:
+        """Non-goal: `export` changes what a later segment resolves to, so it stays
+        off the allowlist even though `cd`/`pwd`/`echo` joined it."""
+        verdict = classify_command("export X=1 && ls")
+        assert verdict.action == "ask" and verdict.bin_name == "export"
+
+    def test_echo_redirect_verdict_is_not_weakened_by_the_allowlist_change(self) -> None:
+        """Adding `echo` to SAFE_BINS must not turn a redirected invocation into an
+        unattended write: both targets still ask, for the identical reason."""
+        for command in ("echo x > f", "echo x > /etc/passwd"):
+            verdict = classify_command(command)
+            assert verdict.action == "ask", command
+            assert verdict.reason == "'echo' is not on the curated allowlist", command
+
 
 class TestSegmentSplitting:
     def test_operators_start_new_segments(self) -> None:

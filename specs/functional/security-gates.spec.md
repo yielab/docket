@@ -66,7 +66,21 @@ are owned here, not there.
    prompt — but `classify_command` matches `HIGH_RISK_PATTERNS` against the whole command line
    *before* it consults `SAFE_BINS`, so a high-risk invocation like `git push origin main` asks at
    the classifier level anyway, and the `high-risk-deploy` `pre_tool_call` policy independently
-   asks on the same dispatcher (see "High-risk action classes" below).
+   asks on the same dispatcher (see "High-risk action classes" below). **Shell builtins with no
+   side effect beyond the invoking shell's own state** (`cd`, `pwd`, `true`, `false`, `test`, `[`)
+   and `echo` **MUST NOT** force approval merely because they lead a segment — since W37-C1 they
+   are on `SAFE_BINS` too, so `cd <path> && git status` reads as `cd` (allowed) then `git status`
+   (allowed), not as an unclassifiable prefix; `export`, `source`, `.`, `eval` and `exec` stay OFF
+   the allowlist because they change what a later segment resolves to. `echo` is
+   redirect-sensitive (`core/security.py`'s `_REDIRECT_SENSITIVE_BINS`): a bare `echo hi` is
+   allowed, but `echo ... >`/`>>`/`&>` still asks by the same "not on the curated allowlist" path,
+   because its argument is often model-composed text and an output redirect turns that into an
+   unattended arbitrary-path write — adding `echo` to the allowlist **MUST NOT** also unlock that.
+   `docket policies test pre_tool_call <role> "<text>"` **MUST** report the same verdict a live
+   exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
+   function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
+   `cd`-prefixed or otherwise-shaped command cannot get a different answer in the dry-run than it
+   would live.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
    channel (CLI `docket approve`/`docket deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is

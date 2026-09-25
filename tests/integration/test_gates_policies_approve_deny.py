@@ -322,6 +322,21 @@ class TestPolicies:
         assert rc == 0
         assert "Result: allow" in out
 
+    def test_test_pre_tool_call_matches_the_live_gate_for_an_offlist_binary(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A `cd`-prefixed command with an off-allowlist later segment (no declarative
+        policy matches `export`) must ask here exactly as the live gate would, not
+        `allow` from a declarative-only dry-run that never consults the classifier."""
+        _seed_policies(oc_dir)
+        rc = _policies.run_policies(
+            "test", args=["pre_tool_call", "implementer", "cd /worktree && export FOO=bar"]
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Result: ask" in out
+        assert "curated allowlist" in out
+
     def test_test_unknown_hook(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = _policies.run_policies("test", args=["bogus_hook", "programmer", "x"])
         captured = capsys.readouterr()

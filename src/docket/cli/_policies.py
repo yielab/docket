@@ -9,19 +9,29 @@
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
 docket-owned artefacts read/written directly.
 
-``validate`` wires ``core/policy.py``'s ``validate_policy`` into this CLI surface.
+``validate`` wires ``core/policy.py``'s ``validate_policy`` into this CLI surface. ``test``'s
+``pre_tool_call`` case evaluates through ``core/tools.py::evaluate_tool_call`` -- the same
+function ``dispatch_tool`` calls -- so this dry-run cannot drift from a real exec call's verdict.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, NoReturn
 
 import docket.config as _cfg
 from docket import ui
 from docket.core import policy as _policy
+from docket.core import tools as _tools
 
 _VALID_HOOKS = ("pre_input", "pre_tool_call", "pre_output")
+
+
+def _unreachable_handler(_args: dict[str, Any], _ctx: _tools.ToolContext) -> NoReturn:
+    """``evaluate_tool_call`` is pure and never calls a handler; this dry-run ``Tool``
+    exists only to carry ``kind="exec"`` through it."""
+    raise AssertionError("policies test must never execute a tool")
 
 
 def _help() -> int:
@@ -135,7 +145,33 @@ def _test(args: list[str]) -> int:
         return 1
 
     ui.info("Evaluating policies (dry-run, no traces emitted)...")
-    action = _policy.policy_test(hook, role, text)
+
+    reason = ""
+    policy_id = ""
+    policy_action = ""
+    action: str
+    if hook == "pre_tool_call":
+        # Route through the live gate's own decision function so a `cd`- or
+        # otherwise-prefixed command that the command classifier alone would
+        # ask on (see security-gates.spec.md "Tool-approval gates" item 1) is
+        # reported here exactly as it would be for a real exec tool call.
+        verdict = _tools.evaluate_tool_call(
+            _tools.Tool(
+                name="bash",
+                description="",
+                parameters={"required": ["command"]},
+                handler=_unreachable_handler,
+                kind="exec",
+            ),
+            {"command": text},
+            _tools.ToolContext(role=role),
+        )
+        action = verdict.decision
+        reason = verdict.reason
+        policy_id = verdict.policy_id
+        policy_action = verdict.policy_action
+    else:
+        action = _policy.policy_test(hook, role, text)
 
     ui.console.print()
     ui.console.print(f"  Hook:   {hook}")
@@ -149,11 +185,20 @@ def _test(args: list[str]) -> int:
         "redact": "yellow",
         "require_approval": "cyan",
         "block": "red",
+        "ask": "cyan",
+        "deny": "red",
     }.get(action)
     if colour:
         ui.console.print(f"  Result: [{colour}]{action}[/{colour}]")
     else:
         ui.console.print(f"  Result: {action}")
+    if reason:
+        # Names the classifier's own verdict when it (co-)decided -- distinct
+        # wording ("... is not on the curated allowlist", "matches high-risk
+        # action class ...") from a declarative policy's own `message`.
+        ui.console.print(f"  Reason: {reason}")
+    if policy_id:
+        ui.console.print(f"  Policy: {policy_id!r} -> {policy_action}")
     ui.console.print()
     return 0
 

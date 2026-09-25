@@ -26,6 +26,12 @@ from docket.core import fleet as _fleet
 # NOTE: a bin listed here (e.g. git, npm) can still have a HIGH_RISK_PATTERNS
 # class attached for documentation/visibility (`docket gates classes`) — see
 # `HighRiskClass`'s docstring for why that does not exclude it from this list.
+#
+# `cd`/`pwd`/`true`/`false`/`test`/`[` are shell builtins with no filesystem
+# side effect beyond the invoking shell's own state -- unlike `export`,
+# `source`, `.`, `eval` and `exec`, none of them changes what a later segment
+# resolves to. `echo` joins them for the same low-risk reason but is
+# redirect-sensitive: see _REDIRECT_SENSITIVE_BINS below.
 SAFE_BINS: tuple[str, ...] = (
     "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "nl",
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
@@ -35,7 +41,21 @@ SAFE_BINS: tuple[str, ...] = (
     "go", "cargo", "rustc", "make", "cmake",
     "date", "env", "printf", "which", "xargs", "tee", "less",
     "mkdir", "touch", "cp", "mv", "ln",
+    "cd", "pwd", "echo", "true", "false", "test", "[",
 )  # fmt: skip
+
+# `echo`'s argument is often model-composed text, so redirecting it (`>`/`>>`/
+# `&>`) is an unattended arbitrary-path write in a way a bare `echo hi` is not.
+# Adding `echo` to SAFE_BINS above must not also unlock that -- a redirected
+# invocation of a bin in this set still asks, by the same generic "not on the
+# curated allowlist" path (`classify_command` below), verbatim identical to
+# the verdict `echo` got before it was ever added to SAFE_BINS. `cd`, `pwd` and
+# the rest do not take free-form model-composed content, so they are not here.
+_REDIRECT_SENSITIVE_BINS: frozenset[str] = frozenset({"echo"})
+
+# Output-writing redirects only -- `<` (input) and a bare `2>` (stderr) do not
+# let arbitrary content reach a file the way `>`/`>>`/`&>` do.
+_OUTPUT_REDIRECT_OPS: frozenset[str] = frozenset({">", ">>", "&>"})
 
 
 @dataclass(frozen=True)
@@ -150,6 +170,43 @@ class CommandVerdict:
         return self.action != "allow"
 
 
+def _split_segments_with_redirect_flags(command: str) -> list[tuple[list[str], bool]]:
+    """Same walk as :func:`split_command_segments`, plus whether an output redirect
+    attached to each segment -- kept internal, used only by ``classify_command``."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    tokens = list(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
+
+    segments: list[tuple[list[str], bool]] = []
+    current: list[str] = []
+    redirected = False
+    for token in tokens:
+        if token in _COMMAND_SEPARATORS:
+            if current:
+                segments.append((current, redirected))
+            current, redirected = [], False
+            continue
+        # Redirections attach to the current invocation rather than starting a
+        # new one, but the target is not a binary — drop the operator and let
+        # the path stay as an argument.
+        if token in (">", ">>", "<", "2>", "&>"):
+            if token in _OUTPUT_REDIRECT_OPS:
+                redirected = True
+            continue
+        current.append(token)
+    if current:
+        segments.append((current, redirected))
+
+    cleaned: list[tuple[list[str], bool]] = []
+    for segment, flag in segments:
+        idx = 0
+        while idx < len(segment) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", segment[idx]):
+            idx += 1
+        if idx < len(segment):
+            cleaned.append((segment[idx:], flag))
+    return cleaned
+
+
 def split_command_segments(command: str) -> list[list[str]]:
     """Split a shell command into per-invocation token lists.
 
@@ -159,35 +216,7 @@ def split_command_segments(command: str) -> list[list[str]]:
     shlex cannot tokenize -- the caller treats that as unclassifiable, never
     as safe.
     """
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    tokens = list(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
-
-    segments: list[list[str]] = []
-    current: list[str] = []
-    for token in tokens:
-        if token in _COMMAND_SEPARATORS:
-            if current:
-                segments.append(current)
-            current = []
-            continue
-        # Redirections attach to the current invocation rather than starting a
-        # new one, but the target is not a binary — drop the operator and let
-        # the path stay as an argument.
-        if token in (">", ">>", "<", "2>", "&>"):
-            continue
-        current.append(token)
-    if current:
-        segments.append(current)
-
-    cleaned: list[list[str]] = []
-    for segment in segments:
-        idx = 0
-        while idx < len(segment) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", segment[idx]):
-            idx += 1
-        if idx < len(segment):
-            cleaned.append(segment[idx:])
-    return cleaned
+    return [tokens for tokens, _redirected in _split_segments_with_redirect_flags(command)]
 
 
 def classify_command(command: str) -> CommandVerdict:
@@ -198,14 +227,18 @@ def classify_command(command: str) -> CommandVerdict:
     ``git`` is allowlisted, but ``git push origin production`` still asks);
     any segment's binary off ``SAFE_BINS`` -> ask, naming it (every segment
     is checked, so a safe binary cannot smuggle an unsafe one in behind
-    ``;``/``&&``); otherwise -> allow.
+    ``;``/``&&``); a redirect-sensitive SAFE_BINS entry (``echo``) used with an
+    output redirect -> ask, by that same not-on-the-allowlist path, so adding
+    it to SAFE_BINS did not also unlock unattended arbitrary-path writes;
+    otherwise -> allow.
 
     Does not catch: a safe binary used destructively within its own remit
     (``git reset --hard``), writes through a redirect outside the workspace
-    (path containment in ``core/tools.py`` covers file tools, not shell
-    redirects), or anything a script on the allowlist does once started. A
-    gate, not a sandbox -- sandboxed exec (``ToolContext.sandbox``) is a
-    separate, opt-in mechanism this classifier neither provides nor requires.
+    for a binary that is not redirect-sensitive (path containment in
+    ``core/tools.py`` covers file tools, not shell redirects), or anything a
+    script on the allowlist does once started. A gate, not a sandbox --
+    sandboxed exec (``ToolContext.sandbox``) is a separate, opt-in mechanism
+    this classifier neither provides nor requires.
     """
     text = command.strip()
     if not text:
@@ -219,10 +252,10 @@ def classify_command(command: str) -> CommandVerdict:
             )
 
     try:
-        segments = split_command_segments(text)
+        segment_pairs = _split_segments_with_redirect_flags(text)
     except ValueError as ex:
         return CommandVerdict("ask", f"command could not be parsed ({ex})")
-    if not segments:
+    if not segment_pairs:
         return CommandVerdict("deny", "no binary found in command")
 
     risk = match_high_risk(text)
@@ -230,13 +263,16 @@ def classify_command(command: str) -> CommandVerdict:
         return CommandVerdict(
             "ask",
             f"matches high-risk action class {risk.name!r}: {risk.description}",
-            bin_name=os.path.basename(segments[0][0]),
+            bin_name=os.path.basename(segment_pairs[0][0][0]),
             risk_class=risk.name,
         )
 
-    for segment in segments:
+    for segment, redirected in segment_pairs:
         bin_name = os.path.basename(segment[0])
-        if bin_name not in SAFE_BINS:
+        off_allowlist = bin_name not in SAFE_BINS
+        if not off_allowlist and redirected and bin_name in _REDIRECT_SENSITIVE_BINS:
+            off_allowlist = True
+        if off_allowlist:
             return CommandVerdict(
                 "ask", f"{bin_name!r} is not on the curated allowlist", bin_name=bin_name
             )
@@ -244,7 +280,7 @@ def classify_command(command: str) -> CommandVerdict:
     return CommandVerdict(
         "allow",
         "all binaries allowlisted, no high-risk class matched",
-        bin_name=os.path.basename(segments[0][0]),
+        bin_name=os.path.basename(segment_pairs[0][0][0]),
     )
 
 
