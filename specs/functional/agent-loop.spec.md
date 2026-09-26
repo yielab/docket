@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.18.1
+**Version**: 1.19.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -23,7 +23,11 @@ turn budget. **Wave 30 card W30-C2** adds `ToolContext.approval_mode`: a call ga
 `"refuse"` is denied immediately, with no approval record and no wait, and the loop stops on that
 denial alone rather than folding it into the consecutive-denial count — see requirement 70 and
 `security-gates.spec.md`'s approval-mode clause for the `core/tools.py` half of this contract.
-**Last Updated**: 2026-09-18
+Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace sections are fitted,
+so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
+prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
+emits one `prompt_composed` trace event naming every section's fit outcome.
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -212,7 +216,22 @@ This specification does NOT cover:
     The projected contract plus appended state **MUST** fit the existing
     `CONTEXT_TOKEN_BUDGET` estimate, preserve higher priorities first, and mark any
     truncation/omission visibly rather than silently growing an endpoint's context or dropping
-    state. An agent with no identity/startup/private files still composes no system message.
+    state. The runtime contract is never truncated; `HEARTBEAT.md` and `TOOLS.md` **MUST NOT** be
+    crowded out in favor of `SOUL.md` — an oversized `SOUL.md` **MUST** itself be visibly,
+    middle-truncated (head and tail kept, a marker naming the omitted byte count in between) to a
+    bounded share of the budget *before* the private-workspace sections are fitted, so `SOUL.md`
+    alone can never exhaust the room the runtime contract and private-workspace sections need. When
+    fitting the private-workspace sections in the priority order above, a section that does not fit
+    in the room left by the sections ahead of it **MUST NOT** stop composition of the sections
+    behind it: that section, and every later one that also does not fit, each **MUST** still
+    receive their own one-line `[... <name> omitted: <n> bytes omitted ...]` marker (or a
+    truncation marker, for one that partially fits), so a crowded middle section never silently
+    erases what follows it. `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace
+    event per non-empty composition, listing every section actually attempted — `SOUL.md` plus
+    whichever of `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had content — with the bytes
+    included and a `full`/`truncated`/`omitted` status per section. An agent with no
+    identity/startup/private files still composes no system message and emits no `prompt_composed`
+    event for that empty composition.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
     so a persona change or refreshed private workspace state (requirement 30) is reflected on the
@@ -629,6 +648,18 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.19.0 (2026-09-25)
+
+- P26-2 fixes requirement 30's crowding bug: a 24.4 KB `SOUL.md` used to leave the composed prompt
+  with no `HEARTBEAT`, `AGENTS`, `TOOLS`, or `MEMORY` state at all, and no marker saying so, because
+  `SOUL.md` itself was never bounded and `_runtime_workspace_context` silently stopped at the first
+  section that would not fit. `SOUL.md` is now capped and visibly middle-truncated (reusing the
+  same marker style `HEARTBEAT`/`AGENTS`/`TOOLS`/`MEMORY` already used) before the private-workspace
+  budget is computed, and the fitting loop keeps going after a section does not fit instead of
+  stopping, giving every later section its own one-line omission marker. `run_agent_turn` now emits
+  one `prompt_composed` trace event per non-empty composition, naming every attempted section's
+  included bytes and `full`/`truncated`/`omitted` status.
 
 ### Version 1.18.1 (2026-09-18)
 
