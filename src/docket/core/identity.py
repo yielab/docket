@@ -41,6 +41,10 @@ from typing import Literal
 
 import docket.config as _cfg
 from docket.core import context as _context
+from docket.core import fleet as _fleet
+from docket.core import pod as _pod
+from docket.core import policy as _policy
+from docket.core.audit import audit_log
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
 from docket.core.models import AgentMeta, Persona
 from docket.edges import store as _store
@@ -62,6 +66,13 @@ SOUL_FILE = "SOUL.md"
 #: home for instructions an operator wants every turn to see, so they survive
 #: a template/archetype re-render that would otherwise overwrite them.
 INSTRUCTIONS_FILE = "INSTRUCTIONS.md"
+
+#: The `PromptSectionReport` name for the opt-in project-instructions section: this
+#: pod's `PodSettings.project_instructions` files, read from the codebase root (never
+#: the docket workspace) and composed right after ``INSTRUCTIONS.md``. Not a real
+#: filename -- it can fold in more than one file -- so it is named after the
+#: `PodSettings` key it reads, not a path on disk.
+PROJECT_INSTRUCTIONS_LABEL = "projectInstructions"
 
 _RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
 _RUNTIME_CONTEXT_NOTE = (
@@ -180,21 +191,29 @@ def compose_system_prompt(
     persona: Persona | None,
     runtime_context: str = "",
     instructions_text: str = "",
+    project_instructions_text: str = "",
 ) -> str:
-    """Fold SOUL.md, the live persona, operator instructions, and a runtime contract
-    into one system prompt. Pure — no I/O (``system_prompt_for_agent`` below is the I/O
-    entry point). *soul_text* is passed through ``upsert_persona_block`` unconditionally
-    (idempotent no-op if already matching) so the persona reflects *persona* as given,
-    not whatever ``SOUL.md`` had on disk. *instructions_text* (already fit to budget by
-    the caller) is placed right after the SOUL section, ahead of the runtime contract.
+    """Fold SOUL.md, the live persona, operator instructions, opt-in project
+    instructions, and a runtime contract into one system prompt. Pure — no I/O
+    (``system_prompt_for_agent`` below is the I/O entry point). *soul_text* is passed
+    through ``upsert_persona_block`` unconditionally (idempotent no-op if already
+    matching) so the persona reflects *persona* as given, not whatever ``SOUL.md`` had
+    on disk. *instructions_text* (already fit to budget by the caller) is placed right
+    after the SOUL section; *project_instructions_text* (also pre-fit) is placed right
+    after *instructions_text* and still ahead of the runtime contract.
     Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract composes to
     ``""``, which ``core/agent_loop.py`` treats as "no system message this turn" rather
     than sending the model an empty one."""
     effective_soul = upsert_persona_block(soul_text, persona).strip()
     instructions = instructions_text.strip()
+    project_instructions = project_instructions_text.strip()
     workflow = runtime_contract_text.strip()
     runtime = runtime_context.strip()
-    parts = [part for part in (effective_soul, instructions, workflow, runtime) if part]
+    parts = [
+        part
+        for part in (effective_soul, instructions, project_instructions, workflow, runtime)
+        if part
+    ]
     return "\n\n---\n\n".join(parts)
 
 
@@ -415,6 +434,67 @@ def _runtime_workspace_context(
     return "".join(parts), tuple(reports)
 
 
+# Reuses core.mcp_tools._screen_description's exact verdict handling for an untrusted
+# remote tool description -- this is the second caller of that same shape, never a
+# second screen. block/require_approval excludes *text* (an audited marker instead);
+# warn/redact still composes it (audited); allow is silent. Always trusted=False:
+# unlike operator-authored INSTRUCTIONS.md, file content came from the codebase, not
+# the operator typing at docket directly.
+def _screen_project_instructions_file(
+    role: str, name: str, text: str
+) -> tuple[str, PromptSectionStatus]:
+    """Screen one project-instructions file's content through the `pre_input` policy
+    hook; returns the text to compose (or an audited marker) and its status."""
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    if hit.action in ("block", "require_approval"):
+        audit_log(
+            "identity.project_instructions_blocked",
+            f"file={name!r} policy={hit.policy_id!r} action={hit.action}",
+        )
+        return (
+            f"[... {name} blocked by policy {hit.policy_id!r} (action={hit.action}) ...]",
+            "omitted",
+        )
+    if hit.action in ("warn", "redact"):
+        audit_log(
+            "identity.project_instructions_warn",
+            f"file={name!r} policy={hit.policy_id!r} action={hit.action}",
+        )
+    return text, "full"
+
+
+# "" when the setting is unset, this agent has no pod, or no root was resolved -- the
+# default, composing byte-identically to before this section existed. A malformed
+# stored PodSettings value (any key, not just this one) is swallowed here rather than
+# raised: unlike a dispatch entry point reading one named setting on purpose, this runs
+# on every turn's prompt composition, and an unrelated bad pod setting (e.g. a
+# hand-edited turnTimeoutS) must not be able to break composing a prompt at all.
+def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) -> str:
+    """This agent's pod's opt-in project-instructions files, read from the first
+    resolved codebase root and screened as untrusted input; joined into one block."""
+    project = _pod.pod_of(agent_id)
+    if project is None:
+        return ""
+    try:
+        settings = _pod.PodSettings.load_for(project)
+    except _pod.PodSettingsError:
+        return ""
+    relative_paths = settings.project_instructions
+    if not relative_paths or not project_roots:
+        return ""
+    role = _fleet.meta_get(agent_id, "role", "")
+    root = project_roots[0]
+    parts: list[str] = []
+    for rel in relative_paths:
+        path = root / rel
+        if not path.is_file():
+            parts.append(f"[... {rel} not found ...]")
+            continue
+        screened, status = _screen_project_instructions_file(role, rel, _read_workspace_text(path))
+        parts.append(screened if status == "omitted" else f"## {rel}\n{screened}")
+    return "\n\n".join(parts)
+
+
 def load_agent_persona(agent_id: str) -> Persona | None:
     """Read *agent_id*'s persona straight from ``.docket-meta.json`` — the single
     source of truth ``AgentMeta.display_name()`` also reads, never derived from
@@ -461,12 +541,14 @@ def compose_agent_prompt(
     ws = _cfg.workspace_dir(agent_id)
     soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
     instructions_raw = _read_workspace_text(ws / INSTRUCTIONS_FILE)
+    project_instructions_raw = _project_instructions_raw(agent_id, project_roots)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
     persona = load_agent_persona(agent_id)
     has_private_state = any((ws / name).is_file() for name in _RUNTIME_CONTEXT_FILES)
     has_prompt_material = bool(
         soul_text_raw.strip()
         or instructions_raw.strip()
+        or project_instructions_raw.strip()
         or workflow_text.strip()
         or has_private_state
         or (persona is not None and persona.label())
@@ -483,17 +565,37 @@ def compose_agent_prompt(
     instructions_text, instructions_report = _cap_leading_section(
         instructions_raw, remaining_after_soul, INSTRUCTIONS_FILE
     )
+    # Project instructions are fit into whatever room INSTRUCTIONS.md's own cap left,
+    # not a fresh share of the whole budget -- same reasoning as INSTRUCTIONS.md's own
+    # comment above: SOUL + INSTRUCTIONS + project instructions together can never
+    # exceed the bound the first of them alone is already held to.
+    remaining_after_instructions = max(
+        0, remaining_after_soul - len(instructions_text.encode("utf-8"))
+    )
+    project_instructions_text, project_instructions_report = _cap_leading_section(
+        project_instructions_raw, remaining_after_instructions, PROJECT_INSTRUCTIONS_LABEL
+    )
     runtime_contract = _runtime_startup_contract(project_roots)
     base_prompt = compose_system_prompt(
-        soul_text, runtime_contract, persona, instructions_text=instructions_text
+        soul_text,
+        runtime_contract,
+        persona,
+        instructions_text=instructions_text,
+        project_instructions_text=project_instructions_text,
     )
     runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt, max_bytes)
     text = compose_system_prompt(
-        soul_text, runtime_contract, persona, runtime_context, instructions_text
+        soul_text,
+        runtime_contract,
+        persona,
+        runtime_context,
+        instructions_text,
+        project_instructions_text,
     )
     sections = (
         ((soul_report,) if soul_report is not None else ())
         + ((instructions_report,) if instructions_report is not None else ())
+        + ((project_instructions_report,) if project_instructions_report is not None else ())
         + context_reports
     )
     return PromptComposition(text, sections, budget_tokens, budget_source)

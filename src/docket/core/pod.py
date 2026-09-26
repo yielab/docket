@@ -285,6 +285,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "allowCommands": "allow_commands",
     "pipeline": "pipeline",
     "schedule": "schedule",
+    "projectInstructions": "project_instructions",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -332,6 +333,17 @@ class PodSettings(BaseModel):
     # this pod's actual source of truth in `docket-schedules.json` -- see that function's
     # docstring for why this field exists alongside a second, non-meta store.
     schedule: str | None = Field(None, alias="schedule")
+    # Relative paths (comma-joined in storage, like allowCommands) inside this pod's
+    # codebase root, composed into a turn's system prompt right after INSTRUCTIONS.md
+    # (core/identity.py's opt-in section) -- the AGENTS.md/CLAUDE.md convention, but
+    # never auto-discovered: unset (the default) composes byte-identically to today.
+    # Validated here (not at codebase-resolution time) so a path that could only ever
+    # escape the root -- absolute, home-relative, or containing a ".." segment -- is
+    # refused at `set`, before this pod even has a resolved codebase root to check it
+    # against; a plain `coerce` is enough because that check needs no filesystem
+    # access, unlike `pipeline`'s dedicated CLI path (which must read and plan an
+    # operator file) or `schedule`'s (which writes a second store).
+    project_instructions: tuple[str, ...] = Field((), alias="projectInstructions")
 
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
@@ -344,6 +356,7 @@ class PodSettings(BaseModel):
         "allowCommands",
         "pipeline",
         "schedule",
+        "projectInstructions",
     )
 
     @field_validator("allow_commands", mode="before")
@@ -385,6 +398,32 @@ class PodSettings(BaseModel):
         if reason:
             raise ValueError(reason)
         return text
+
+    # Rejects the only shapes that could ever resolve outside the codebase root this
+    # pod's agents already have containment-checked access to (core/tools.py's
+    # ``roots``). Purely syntactic -- no filesystem access -- so it refuses an
+    # escaping value at `set` even before a codebase root exists to check it against.
+    @field_validator("project_instructions", mode="before")
+    @classmethod
+    def _parse_project_instructions(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated relative paths, like ``allow_commands``. Rejects (naming
+        the path) an absolute, home-relative (``~``), or ``..``-containing value."""
+        if value in (None, ""):
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip()
+            if not name:
+                continue
+            if "\x00" in name:
+                raise ValueError(f"{name!r} contains a null byte")
+            if name.startswith("~") or Path(name).is_absolute():
+                raise ValueError(f"{name!r} is not a relative path inside the codebase root")
+            if ".." in Path(name).parts:
+                raise ValueError(f"{name!r} escapes the codebase root")
+            kept.setdefault(name, None)
+        return tuple(kept.keys())
 
     @classmethod
     def _validated(cls, present: dict[str, str]) -> PodSettings:

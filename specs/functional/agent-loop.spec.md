@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.21.0
+**Version**: 1.22.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -201,6 +201,20 @@ This specification does NOT cover:
     startup contract. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
     Docket at any point (provisioning, `sync`, `set-verify`, `doctor --fix`) — it is the durable
     home for operator instructions precisely because nothing on this path ever overwrites it.
+    Right after `INSTRUCTIONS.md` and still ahead of the runtime contract, an **opt-in** section
+    (P26-17) composes this pod's `PodSettings.projectInstructions` — relative paths inside the
+    codebase root, the AGENTS.md/CLAUDE.md convention, unset by default so composition is
+    byte-identical to before this section existed. Each configured path is resolved against the
+    first of `project_roots` (the same containment root a live turn's project tools already use)
+    and, unlike `INSTRUCTIONS.md`, is never trusted: it **MUST** be screened through the
+    `pre_input` policy hook (`trusted=False`) exactly as `core.mcp_tools` already screens an
+    untrusted remote tool description, before it ever reaches the composed text — no second
+    screening path. A `block`/`require_approval` verdict excludes that file's content, replacing
+    it with an audited one-line marker naming the file and the policy; `warn`/`redact` still
+    compose it (audited); a path with no file on disk composes to a visible one-line marker, never
+    an error and never a raise. This section carries no path off the codebase root: `PodSettings`
+    refuses an absolute, home-relative, or `..`-containing path at `set`, before a pod even has a
+    resolved root to check it against.
     The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
     to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
     manual/external reset path, while the live runtime has already read the state itself. Instead,
@@ -239,7 +253,12 @@ This specification does NOT cover:
     middle-truncated to at most half of whatever budget remains after `SOUL.md`'s own cap, so
     `SOUL.md` and `INSTRUCTIONS.md` together can never exhaust that room either, and reports its
     own `full`/`truncated`/`omitted` `PromptSectionReport` exactly like every other section — never
-    a second composer, never merged into `SOUL.md`'s report. When fitting the private-workspace
+    a second composer, never merged into `SOUL.md`'s report. The opt-in project-instructions
+    section, when configured, **MUST** likewise be middle-truncated to at most half of whatever
+    budget remains after `INSTRUCTIONS.md`'s own cap, so `SOUL.md`, `INSTRUCTIONS.md`, and project
+    instructions together can never exhaust that room either, and reports its own `PromptSectionReport`
+    under the name `projectInstructions` (it is a synthesized block, not a single filename) —
+    never merged into `INSTRUCTIONS.md`'s report. When fitting the private-workspace
     sections in the priority order above, a section that does not fit in the room left by the
     sections ahead of it **MUST NOT** stop composition of the sections behind it: that section, and
     every later one that also does not fit, each **MUST** still receive their own one-line
@@ -247,7 +266,8 @@ This specification does NOT cover:
     partially fits), so a crowded middle section never silently erases what follows it.
     `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace event per non-empty
     composition, listing every section actually attempted — `SOUL.md`, optional
-    `INSTRUCTIONS.md`, plus whichever of `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had
+    `INSTRUCTIONS.md`, optional `projectInstructions`, plus whichever of
+    `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had
     content — with the bytes included and a `full`/`truncated`/`omitted` status per section, plus
     the resolved
     `budgetTokens` and its `budgetSource` (`env`/`window`/`default`) for this composition. An agent
@@ -671,6 +691,30 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.22.0 (2026-09-26)
+
+- **P26-17 adds opt-in project instructions from the codebase (the AGENTS.md/CLAUDE.md
+  convention).** A new `PodSettings.projectInstructions` key (relative paths inside the codebase
+  root; unset by default) is composed right after `INSTRUCTIONS.md` and still ahead of the runtime
+  contract, inside the same static-context budget requirement 30 already governs. Unlike
+  `INSTRUCTIONS.md` (operator-authored, trusted), each configured file's content is codebase data
+  and is screened through the `pre_input` policy hook (`trusted=False`) on every composition —
+  reusing `core.mcp_tools`'s existing untrusted-content screen rather than adding a second one: a
+  `block`/`require_approval` verdict excludes the file (an audited one-line marker names the file
+  and the policy), `warn`/`redact` still compose it (audited). A configured path with no file on
+  disk composes to a visible one-line marker, never an error. It gets its own `PromptSectionReport`
+  (name `projectInstructions`) and its own middle-truncation cap (bounded to at most half of
+  whatever `INSTRUCTIONS.md`'s own cap left), so it cannot crowd out `SOUL.md`, `INSTRUCTIONS.md`,
+  the runtime contract, or the private-workspace sections any more than an oversized `SOUL.md` or
+  `INSTRUCTIONS.md` already could not. No second composer: `core.identity.compose_system_prompt`
+  places it, and the existing `prompt_composed` trace event lists it like any other section.
+  `PodSettings` refuses an absolute, home-relative, or `..`-containing path at `set` (a plain,
+  filesystem-free `coerce` validator, the same shape `allowCommands` already uses — no dedicated
+  CLI path was needed, unlike `pipeline`/`schedule`, since nothing here needs to read a file or
+  write a second store before persisting the setting). Default unset composes byte-identically to
+  before this section existed, and a non-pod agent is unaffected (`core.pod.pod_of` returns
+  `None`). See `pod-dispatch.spec.md`'s "Pod dispatch settings" for the setting's own contract.
 
 ### Version 1.21.0 (2026-09-26)
 

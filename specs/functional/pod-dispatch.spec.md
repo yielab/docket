@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.14.0
+**Version**: 6.15.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -607,6 +607,19 @@ was seeded once at binding time.)*
    sweep, not the Lead's meta) and mirrors the same string into the Lead's meta via
    `meta_set` purely so `config get`/`list` can display it through the same generic
    `value_and_source` path every other setting uses. `unset schedule` clears both.
+6. `PodSettings` also carries `projectInstructions` (`tuple[str, ...]`, comma-joined in storage
+   like `allowCommands`): relative paths inside this pod's codebase root that
+   `core.identity`'s opt-in project-instructions section composes into a live turn's system
+   prompt right after `INSTRUCTIONS.md` (see `agent-loop.spec.md` requirement 30) — the
+   AGENTS.md/CLAUDE.md convention, never auto-discovered, unset by default. Unlike `pipeline`
+   (a dedicated CLI path that reads and plans an operator file) or `schedule` (a dedicated path
+   that writes a second store), `set projectInstructions <paths>` needs neither: it goes through
+   the same generic `coerce`-then-`meta_set` path every scalar/tuple key uses. Its own `coerce`
+   validator is what makes that safe — it refuses an absolute path, a home-relative (`~`) path,
+   or any path containing a `..` segment, naming the offending path, because those are the only
+   shapes that could ever resolve outside the codebase root once `core.identity` joins them
+   against it; the check is purely syntactic (no filesystem access), so it fires at `set` even
+   before this pod has a resolved codebase root to check the path against.
 
 ### Schedule configuration and doctor visibility (ROADMAP P26-12)
 
@@ -1393,6 +1406,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.15.0 (2026-09-26)
+
+- **P26-17: `PodSettings` gains `projectInstructions`.** New "Pod dispatch settings" item 6: a
+  sixth key, relative paths inside the codebase root that `core.identity`'s opt-in
+  project-instructions section (`agent-loop.spec.md` requirement 30) composes into a live turn's
+  system prompt. Written through the same generic `coerce`-then-`meta_set` path every
+  scalar/tuple key uses (no dedicated CLI code path, unlike `pipeline`/`schedule` — nothing here
+  reads a file or writes a second store before persisting); its own `coerce` validator refuses an
+  absolute, home-relative, or `..`-containing path, syntactically, at `set`.
 
 ### Version 6.14.0 (2026-09-26)
 
