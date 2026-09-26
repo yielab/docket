@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -15,16 +15,31 @@ naive wire (add MCP tools before narrowing, without also excluding by `Tool.kind
 silently defeated a Reviewer's "no write/edit/bash" guarantee, since a namespaced MCP tool name
 (`mcp__<server>__<tool>`) can never equal a literal denied name. That gap is closed, not merely
 avoided by omission — see the Version 1.2.0 changelog entry below ("The blocking design question").
+**Phase 27, P27-3 (2026-09-26): a server now declares its own kind.** `McpServerConfig` gained
+`kind: Literal["read","write"] = "write"` and `tools: list[str] = []` (empty = all) — an operator
+assertion, not a proof: docket still cannot verify a remote tool is actually read-only, but an
+operator who configures a genuinely read-only server (a search/fetch server with no mutating
+tool) can now say so, and `_build_tool` registers every one of that server's adapted tools with
+the declared `kind` instead of the unconditional `"write"` 1.1.0 shipped. Because
+`registry_for_role` already excludes by `Tool.kind` (`role-archetypes.spec.md` requirement 6), a
+`kind: read` server's tools now reach a role whose `denied_tools` implies only `write`/`exec` —
+no change to `core/archetypes.py` needed. `tools` narrows registration to a named subset of a
+server's advertised tools (every other tool is skipped with a reason); leaving it empty keeps
+today's "register everything" behavior. An existing `docket-mcp-servers.json` written before this
+version has neither key and loads unchanged (`kind` defaults to `"write"`, `tools` to `[]`), so a
+pre-1.5.0 install's behavior does not change until an operator opts in. See Requirements 6 and
+32-33.
 **What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
 turn that reaches a configured server re-spawns it — see the Version 1.2.0 changelog entry's measured per-turn cost and its
 named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
-scope); a read-only role gets *zero* MCP tools rather than a correctly-narrowed nonzero set,
-because no per-tool trust/capability signal exists yet to tell a genuinely read-only remote tool
-from a write-capable one (every adapted tool is `kind="write"` unconditionally, unchanged from
-1.1.0) — this is the correct fail-closed answer today, not a gap this version silently carries.
-Remote tool results use the same live `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved
-for every call so a small-context endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-09-21
+scope); **per-tool** trust/capability metadata still does not exist — `kind`/`tools` are declared
+once per *server*, so a server that mixes read and mutating tools still cannot be split finer than
+"trust none of it" (leave `kind` at the default `write`) or "trust all of it" (`kind: read`); a
+role that denies `write` gets zero tools from a mixed server exactly as before, and docket still
+cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
+`DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
+endpoint cannot be bypassed through MCP output.
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -82,9 +97,12 @@ This specification does NOT cover:
   contract
 - **Per-turn caching of a server's tool listing** — not built; every turn that reaches a
   configured server re-spawns it (see Status above for the measured cost and named trigger)
-- **Per-tool trust/capability metadata** — there is no way today to mark a specific remote tool
-  (or a whole server) as read-only, which is why a role that denies `write` gets zero MCP tools
-  rather than a correctly-narrowed subset (see Status above)
+- **Per-tool trust/capability metadata** — a whole server can be declared `kind: read` (P27-3,
+  Requirement 6), but there is still no way to mark one specific tool on a mixed server as
+  read-only; a role that denies `write` gets zero tools from a server left at the default `write`
+  kind, whole-server, not a correctly-narrowed per-tool subset (see Status above)
+- **Proving a `kind: read` declaration true** — `kind` is an operator assertion recorded at
+  configuration time; nothing here connects to a server and inspects what its tools actually do
 
 ## Requirements
 
@@ -110,7 +128,9 @@ This specification does NOT cover:
    — the same, unmodified chokepoint a built-in tool call reaches. This module **MUST NOT**
    invoke an adapted tool's handler itself under any circumstance; the only thing it does with a
    `Tool` object is build it and hand it to `ToolRegistry.register`.
-6. An adapted tool's `kind` **MUST** be `"write"`, never `"exec"` — an MCP tool call is not a
+6. An adapted tool's `kind` **MUST** be its server's declared `McpServerConfig.kind`
+   (`"read"` or `"write"`, defaulting to `"write"` when a config predates this field), never
+   `"exec"` — an MCP tool call is not a
    shell command and does not carry the `args["command"]` shape `evaluate_tool_call`'s exec-kind
    path expects. This does not weaken gating: the `pre_tool_call` policy hook gates every tool
    kind identically (Requirement 5 already covers this); only the *additional* shell-command
@@ -234,6 +254,23 @@ This specification does NOT cover:
     constant or default argument at import time. Changing the configured value after import
     **MUST** affect the next remote tool result.
 
+### Declared kind and tool subset (P27-3)
+
+32. `McpServerConfig` **MUST** carry `kind: Literal["read", "write"] = "write"` and
+    `tools: list[str] = []`. Both are operator assertions validated at write time by
+    `add_mcp_server` (a `kind` outside `{"read", "write"}` **MUST** raise `ValueError`, surfaced by
+    the CLI as an exit-1 error naming the field, per Requirement 22); neither is ever inferred by
+    connecting to the server. An empty `tools` list means "every tool the server advertises";
+    a non-empty one is the exhaustive allow-list of remote tool names `load_mcp_tools` **MUST**
+    register — every other advertised tool **MUST** be recorded in that server's
+    `McpServerLoadResult.skipped` with an `McpToolSkip` reason naming that it is "not in the
+    server's `tools` list", exactly like Requirement 10's existing collision-skip, never silently
+    dropped. Reading a `docket-mcp-servers.json` written before this version (neither key present)
+    **MUST** produce `kind="write", tools=[]` — today's behavior — unchanged.
+33. The load outcome `load_mcp_tools` returns for each server **MUST** name that server's declared
+    `kind`, so an operator (or an audit trail reader) can see which trust level a given load ran
+    under without re-reading the config file.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.mcp_tools`)
@@ -241,13 +278,18 @@ This specification does NOT cover:
 ```python
 NAMESPACE_PREFIX = "mcp__"
 
-class McpServerConfig(BaseModel):              # name, command, args, env, timeout
+class McpServerConfig(BaseModel):              # name, command, args, env, timeout, kind, tools
     def resolved_timeout(self) -> float: ...   # clamped to MCP_CLIENT_MAX_TIMEOUT_S
+    # kind: Literal["read", "write"] = "write" -- declared trust level, an operator
+    #   assertion (Requirement 32), never inferred by connecting to the server
+    # tools: list[str] = []                    -- non-empty = exhaustive allow-list of
+    #   remote tool names to register; empty = register everything advertised
 
 class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]
 
 def load_mcp_servers() -> list[McpServerConfig]: ...
-def add_mcp_server(config: McpServerConfig) -> None: ...      # raises ValueError on bad/dup name
+def add_mcp_server(config: McpServerConfig) -> None: ...      # raises ValueError on bad/dup name,
+                                                                 #   or a kind outside read|write
 def remove_mcp_server(name: str) -> bool: ...                  # False if not found
 def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str: ...
 
@@ -258,7 +300,7 @@ ListToolsFn = Callable[[McpServerConfig, float], McpListResult]
 CallToolFn = Callable[[McpServerConfig, str, dict[str, Any], float], ToolOutcome]
 
 class McpToolSkip:                              # tool_name, reason
-class McpServerLoadResult:                      # server, ok, registered, skipped, error
+class McpServerLoadResult:                      # server, ok, kind, registered, skipped, error
 
 def load_mcp_tools(
     registry: ToolRegistry,
@@ -316,22 +358,32 @@ unrelated call's connection state.
       "command": "npx",
       "args": ["-y", "@example/weather-mcp-server"],
       "env": {},
-      "timeout": 0.0
+      "timeout": 0.0,
+      "kind": "write",
+      "tools": []
     }
   ]
 }
 ```
 
 `timeout: 0.0` means "use `docket.config.MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped
-to `MCP_CLIENT_MAX_TIMEOUT_S`.
+to `MCP_CLIENT_MAX_TIMEOUT_S`. `kind`/`tools` are optional on read (Requirement 32): a file written
+before P27-3 has neither key and loads as `kind="write", tools=[]`.
 
 ### CLI syntax (`cli/_mcp.py`)
 
 ```
 docket mcp servers list
-docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command> [args...]
+docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
+    [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
 docket mcp servers remove <name>
 ```
+
+`--kind`/`--tools` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21);
+an invalid `--kind` value exits 1 naming the field rather than reaching `add_mcp_server`'s own
+`ValueError` path. `--tools` takes a single comma-separated argument (no repeated flag, unlike
+`--env`) since it names a subset of one server's own tools, not a set of independent key/value
+pairs.
 
 `add`'s `--`-separator convention (Requirement 21) is deliberate: an MCP server's own launch
 command frequently carries flags of its own (`npx -y ...`, `-- --headless`, ...), and a

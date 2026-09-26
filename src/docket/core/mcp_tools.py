@@ -3,12 +3,12 @@ registry, tool dispatch and every gate; MCP is only a tool *transport*, rented -
 dispatcher. This module adapts a configured server's tools into ordinary ``core.tools.Tool``
 objects, registered into a ``ToolRegistry`` so every call still passes through
 ``core.tools.dispatch_tool``. **Wired to the live turn path**: ``DocketDriver.run_turn`` loads MCP
-tools before ``core/agent_loop.py``'s role-narrowing step; every adapted tool registers
-``kind="write"`` unconditionally (:func:`_build_tool`), so a role denied ``write`` loses every MCP
-tool too, since ``kind`` is shared narrowing data. See specs/functional/mcp-client.spec.md for the
-namespacing rule that makes a built-in collision structurally impossible, failure isolation
-(:func:`load_mcp_tools` never raises; a bad server is skipped and recorded, bounded by
-``MCP_CLIENT_TIMEOUT_S``), and untrusted-description screening through
+tools before ``core/agent_loop.py``'s role-narrowing step; every adapted tool registers its
+server's declared ``kind`` (:func:`_build_tool`, ``McpServerConfig.kind``, defaulting to
+``"write"``), so a role denied ``write`` loses every MCP tool from a server left at the default.
+A server may also narrow *which* of its tools get registered via ``McpServerConfig.tools``. See
+specs/functional/mcp-client.spec.md for the namespacing rule, failure isolation
+(:func:`load_mcp_tools` never raises), and untrusted-description screening through
 ``core.policy.policy_eval_detail(role, "pre_input", ..., trusted=False)`` before registration."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -75,6 +75,16 @@ class McpServerConfig(BaseModel):
     # clamped to MCP_CLIENT_MAX_TIMEOUT_S by resolved_timeout() below --
     # timeouts must be bounded regardless of what a config asks for.
     timeout: float = 0.0
+    # Operator assertion, never inferred by connecting to the server (see
+    # specs/functional/mcp-client.spec.md Requirement 32). "write" is the
+    # fail-closed default -- a config from before this field existed loads
+    # as "write", matching 1.1.0-1.4.0's unconditional behavior exactly.
+    kind: Literal["read", "write"] = "write"
+    # Non-empty = the exhaustive allow-list of this server's remote tool
+    # names to register; every other advertised tool is skipped (recorded
+    # in McpServerLoadResult.skipped), never silently dropped. Empty (the
+    # default) means "register everything advertised" -- today's behavior.
+    tools: list[str] = Field(default_factory=list)
 
     def resolved_timeout(self) -> float:
         """The actual per-call bound this server's calls will honor.
@@ -221,10 +231,13 @@ def _build_tool(
 ) -> Tool:
     """Adapt one remote tool into an ordinary ``core.tools.Tool``.
 
-    ``kind="write"`` always -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
+    ``kind`` is the *server's* declared ``McpServerConfig.kind`` -- ``"read"`` or ``"write"``,
+    defaulting to ``"write"`` -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
     through the shell-command classifier, which reads ``args["command"]`` and would not find one
-    here. `write` still passes through the full `pre_tool_call` policy gate; it is simply not
-    additionally classified as a shell command, which is correct -- an MCP tool call is not one."""
+    here. Either kind still passes through the full `pre_tool_call` policy gate; a declared
+    ``"read"`` kind is simply not additionally classified as a shell command and is excluded from
+    a role's ``write``-implied denial, which is correct -- an MCP tool call is not a shell
+    command, and `kind` is an operator assertion about the server, not a docket-verified fact."""
     parameters = remote.parameters
     if not isinstance(parameters, dict) or parameters.get("type") != "object":
         parameters = {"type": "object", "properties": {}, "required": []}
@@ -238,7 +251,11 @@ def _build_tool(
 
     description = f"[MCP:{config.name}] {remote.description}".strip()
     return Tool(
-        name=name, description=description, parameters=parameters, handler=_handler, kind="write"
+        name=name,
+        description=description,
+        parameters=parameters,
+        handler=_handler,
+        kind=config.kind,
     )
 
 
@@ -255,10 +272,12 @@ class McpToolSkip:
 
 @dataclass
 class McpServerLoadResult:
-    """Outcome of loading one configured server's tools into a registry."""
+    """Outcome of loading one configured server's tools into a registry. ``kind`` names the
+    server's declared trust level at load time."""
 
     server: str
     ok: bool
+    kind: Literal["read", "write"] = "write"
     registered: tuple[str, ...] = ()
     skipped: tuple[McpToolSkip, ...] = ()
     error: str = ""
@@ -301,7 +320,9 @@ def load_mcp_tools(
 
         if not listing.ok:
             audit_log("mcp_client.unavailable", f"server={config.name!r}: {listing.error}")
-            reports.append(McpServerLoadResult(config.name, ok=False, error=listing.error))
+            reports.append(
+                McpServerLoadResult(config.name, ok=False, kind=config.kind, error=listing.error)
+            )
             continue
 
         registered: list[str] = []
@@ -311,6 +332,10 @@ def load_mcp_tools(
 
             if name in registry:
                 skipped.append(McpToolSkip(name, "a tool with this name is already registered"))
+                continue
+
+            if config.tools and remote.name not in config.tools:
+                skipped.append(McpToolSkip(name, "not in the server's `tools` list"))
                 continue
 
             skip_reason = _screen_description(role, config.name, remote)
@@ -323,7 +348,11 @@ def load_mcp_tools(
 
         reports.append(
             McpServerLoadResult(
-                config.name, ok=True, registered=tuple(registered), skipped=tuple(skipped)
+                config.name,
+                ok=True,
+                kind=config.kind,
+                registered=tuple(registered),
+                skipped=tuple(skipped),
             )
         )
 

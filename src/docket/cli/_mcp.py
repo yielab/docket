@@ -294,12 +294,17 @@ _SERVERS_USAGE = """\
 Usage: docket mcp servers <list|add|remove> [args...]
 
   list                                        Show configured MCP tool servers
-  add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command> [args...]
+  add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
+      [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
                                                Configure a new server (stdio transport)
   remove <name>                               Remove a configured server
 
 Everything after "--" is passed to the server verbatim as its launch command
-and arguments; --env/--timeout must come before "--".
+and arguments; --env/--timeout/--kind/--tools must come before "--". --kind
+declares the server's trust level (default: write) -- a role that denies
+write never gets tools from a server left at the default, but does get tools
+from a server declared --kind read. --tools restricts registration to a
+comma-separated allow-list of the server's own tool names (default: all).
 
 Example — browser automation as configuration, not code (see
 specs/functional/mcp-client.spec.md's "Recipe" section):
@@ -327,18 +332,23 @@ def _servers_list() -> int:
             print(f"      env: {masked}")
         timeout_note = f"{cfg.timeout:.0f}s (pinned)" if cfg.timeout > 0 else "default"
         print(f"      timeout: {timeout_note}")
+        print(f"      kind: {cfg.kind}")
+        tools_note = ", ".join(cfg.tools) if cfg.tools else "all"
+        print(f"      tools: {tools_note}")
     print(f"\n  Config file: {_cfg.MCP_SERVERS_FILE}")
     return 0
 
 
-def _parse_server_add_flags(
-    flags: list[str],
-) -> tuple[dict[str, str], float] | None:
-    """Parse the ``--env KEY=VALUE`` / ``--timeout SECONDS`` flags that may
-    precede the ``--`` separator in ``docket mcp servers add``. Returns
-    ``None`` (after printing an error) on any malformed flag."""
+_ParsedAddFlags = tuple[dict[str, str], float, str, list[str]]
+
+
+def _parse_server_add_flags(flags: list[str]) -> _ParsedAddFlags | None:
+    """Parse the env/timeout/kind/tools flags preceding ``--`` in ``docket mcp servers add``.
+    Returns ``(env, timeout, kind, tools)``, or ``None`` (after printing an error) on a bad flag."""
     env: dict[str, str] = {}
     timeout = 0.0
+    kind = "write"
+    tools: list[str] = []
     i = 0
     while i < len(flags):
         tok = flags[i]
@@ -363,6 +373,22 @@ def _parse_server_add_flags(
                 return None
             i += 1
             continue
+        elif tok == "--kind" and i + 1 < len(flags):
+            kind = flags[i + 1]
+            i += 2
+            continue
+        elif tok.startswith("--kind="):
+            kind = tok[len("--kind=") :]
+            i += 1
+            continue
+        elif tok == "--tools" and i + 1 < len(flags):
+            tools = [t.strip() for t in flags[i + 1].split(",") if t.strip()]
+            i += 2
+            continue
+        elif tok.startswith("--tools="):
+            tools = [t.strip() for t in tok[len("--tools=") :].split(",") if t.strip()]
+            i += 1
+            continue
         else:
             _perror(f"Unknown flag '{tok}' before '--'. See: docket mcp servers")
             return None
@@ -375,7 +401,11 @@ def _parse_server_add_flags(
             _perror(f"--env expects KEY=VALUE, got '{raw}'")
             return None
         env[key] = value
-    return env, timeout
+
+    if kind not in ("read", "write"):
+        _perror(f"--kind must be 'read' or 'write', got '{kind}'")
+        return None
+    return env, timeout, kind, tools
 
 
 def _servers_add(rest: list[str]) -> int:
@@ -403,13 +433,19 @@ def _servers_add(rest: list[str]) -> int:
     parsed = _parse_server_add_flags(flags)
     if parsed is None:
         return 1
-    env, timeout = parsed
+    env, timeout, kind, tools = parsed
     command, command_args = command_parts[0], command_parts[1:]
 
     try:
         _mcp_tools.add_mcp_server(
             _mcp_tools.McpServerConfig(
-                name=name, command=command, args=command_args, env=env, timeout=timeout
+                name=name,
+                command=command,
+                args=command_args,
+                env=env,
+                timeout=timeout,
+                kind=kind,  # type: ignore[arg-type]  # validated above
+                tools=tools,
             )
         )
     except ValueError as exc:

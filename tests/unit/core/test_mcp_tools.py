@@ -1,9 +1,12 @@
 """MCP tools reachable in a live turn (`core/mcp_tools.py`).
 
 Covers `DocketDriver.run_turn` calling `load_mcp_tools` via its
-`mcp_loader` seam before per-turn role narrowing, and every MCP-adapted
-tool registering `kind="write"` unconditionally so `registry_for_role`
-excludes it by capability from a write-denied role. No real subprocess.
+`mcp_loader` seam before per-turn role narrowing, every MCP-adapted tool
+registering its server's declared `kind` (defaulting to `write`) so
+`registry_for_role` excludes it by capability from a write-denied role
+unless the server declares itself `kind: read`, and a server's `tools`
+allow-list narrowing which of its advertised tools get registered at
+all. No real subprocess.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import mcp_tools as _mt
+from docket.core.archetypes import registry_for_role
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.core.tools import ToolRegistry, builtin_registry
 from docket.edges import store as _store
@@ -310,3 +314,50 @@ class TestFailureIsolationThroughTheDriver:
         assert result.ok is True
         advertised = {spec.name for spec in backend.tools_seen[0]}
         assert not any(name.startswith("mcp__") for name in advertised)
+
+
+# ── a server declares its own kind, which becomes its adapted tools' kind ──
+
+
+class TestDeclaredKindDrivesRoleNarrowing:
+    """A declared `McpServerConfig.kind` becomes each adapted `Tool.kind`, so the existing
+    kind-based role exclusion can keep a `kind: read` server's tools from a write-denied role."""
+
+    def test_a_declared_read_kind_server_survives_reviewer_narrowing(self) -> None:
+        registry = builtin_registry()
+        config = _mt.McpServerConfig(name="search", command="stub", kind="read")
+
+        _mt.load_mcp_tools(
+            registry,
+            servers=[config],
+            list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=(_remote("lookup"),)),
+            call_tool=lambda *a: ToolOutcome(True, content="results"),
+            role="reviewer",
+        )
+        assert "mcp__search__lookup" in registry  # sanity: it was registered at all
+
+        narrowed = registry_for_role(registry, "reviewer")
+
+        assert "mcp__search__lookup" in narrowed
+
+    @pytest.mark.parametrize("kind_kwargs", [{}, {"kind": "write"}], ids=["undeclared", "write"])
+    def test_a_declared_write_kind_or_undeclared_still_loses_it(
+        self, kind_kwargs: dict[str, str]
+    ) -> None:
+        """The negative case: a server left at the default kind (undeclared, or explicitly
+        `kind="write"`) keeps today's fail-closed behavior -- a write-denying role still gets
+        none of its tools."""
+        registry = builtin_registry()
+        config = _mt.McpServerConfig(name="search", command="stub", **kind_kwargs)
+
+        _mt.load_mcp_tools(
+            registry,
+            servers=[config],
+            list_tools=lambda _c, _t: _mt.McpListResult(ok=True, tools=(_remote("lookup"),)),
+            call_tool=lambda *a: ToolOutcome(True, content="results"),
+            role="reviewer",
+        )
+
+        narrowed = registry_for_role(registry, "reviewer")
+
+        assert "mcp__search__lookup" not in narrowed
