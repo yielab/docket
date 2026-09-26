@@ -1465,6 +1465,17 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   override sees a byte-identical Lead hop message. See `role-archetypes.spec.md` v1.14.0 and
   `pipeline-format.spec.md` v2.6.0 for the registry- and format-side halves.
 
+### Version 6.16.0 (2026-09-26)
+
+- **P27-4: pod settings `mcpServers` and `deniedTools`, each with its live reader.** "Pod
+  dispatch settings" gains items 7-8: `mcpServers` selects this pod's servers from the shared
+  MCP catalog (`None` = every server, byte-identical to before; validated against the live
+  catalog at `set` and on every read, and a stale selection refuses the dispatch as a
+  `DispatchError` naming it through `edges/adapters/docket_runtime.py::_load_mcp_tools`), and
+  `deniedTools` names built-in tools every role in the pod additionally denies (unknown names
+  refused at write; `core.archetypes.registry_for_role` unions it with the role's own list).
+  See `mcp-client.spec.md` 1.6.0 and `role-archetypes.spec.md` 1.13.0.
+
 ### Version 6.15.0 (2026-09-26)
 
 - **P26-17: `PodSettings` gains `projectInstructions`.** New "Pod dispatch settings" item 6: a

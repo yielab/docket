@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pod chooses its MCP servers and denies tools for every role in it.** `docket pod <p> config
+  set mcpServers a,b` limits a pod to those catalog servers (unset means all; an unknown or stale
+  name is refused at write and refuses the dispatch naming it), and `set deniedTools fetch`
+  removes a built-in tool from every role of that pod on top of each role's own denials.
+- **The Lead's instruction is data.** The `lead` archetype carries a `hopInstruction` (shown by
+  `docket roles show lead`); a global or pod overlay of `lead`, or a pipeline step's own
+  `instructions`, now changes what the Lead is told. Research, content and ops pods' Leads plan
+  for their real next role instead of an Implementer they do not have.
 - **A pod has its own role overlay and its own policies.** `docket roles add|list|show --pod <p>`
   write and resolve `~/.docket/workspaces/pods/<p>/config/roles.json` above the global overlay for
   that pod alone, and `docket policies list|test|validate --pod <p>` fold that pod's
