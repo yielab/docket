@@ -1,12 +1,14 @@
-"""Pod composition model: the set of project-scoped agents making up one project. Pure logic
-only, no I/O — the CLI (`docket add`/`docket pod`) turns a `PodPlan` into registered agents;
-this module only decides what a pod contains and how members are named. Default pod is
+"""Pod composition model: the set of project-scoped agents making up one project. Composition
+logic — the CLI (`docket add`/`docket pod`) turns a `PodPlan` into registered agents; this
+module only decides what a pod contains and how members are named. Default pod is
 **lean** (Lead + Implementer); Reviewer, Tester, or extra Implementers are added later, and a
 duplicated role gets an indexed member id (``<project>-implementer``, ``...-implementer-2``).
 The set of valid pod roles is not a hardcoded 4-tuple: ``normalize_role``/``member_id``/
 ``pod_of``/``members_of`` all resolve against ``core/archetypes.py``'s registry (built-in
 four + starter library + any user-defined archetype), so a fifth role is data, never a new
-hardcoded string. ``_role_names()`` reads that registry fresh on every call."""
+hardcoded string. ``_role_names()`` reads that registry fresh on every call. ``pod_of`` is the
+one function here with I/O — it reads a member's recorded meta via `core/fleet.py`'s
+``meta_get`` before falling back to id-string parsing; see its own docstring."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from dataclasses import dataclass
 
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
+from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
@@ -81,9 +84,20 @@ def session_key(project: str, project_key: str = "default") -> str:
 
 
 def pod_of(member_id: str) -> str | None:
-    """Project a member id belongs to, or ``None`` if it isn't a pod member. Reverses
-    ``member_id``: ``demo-lead`` -> ``demo``, ``demo-implementer-2`` -> ``demo``,
-    ``my-shop-reviewer`` -> ``my-shop``; a plain id with no pod-role suffix -> ``None``."""
+    """Project a member id belongs to, or ``None`` if it isn't a pod member. Meta-first (see
+    below); reverses ``member_id`` in the fallback: ``demo-lead`` -> ``demo``,
+    ``demo-implementer-2`` -> ``demo``, ``my-shop-reviewer`` -> ``my-shop``."""
+    # The member's own recorded meta (written at provisioning, core/pod_provisioning.py) is
+    # authoritative -- read it before ever guessing from the id string. The string-parsing
+    # fallback below rpartitions on "-" and treats the last segment that matches a *registered
+    # role name* as the role, which mis-splits a custom role whose own name ends in another
+    # registered role's name (e.g. `security-reviewer`'s member id `proj-security-reviewer`
+    # would otherwise parse as role `reviewer` of project `proj-security`). A member with no
+    # meta, or whose meta carries no `pod` field (a plain legacy/non-pod agent), falls back to
+    # that string parsing unchanged.
+    recorded = _fleet.meta_get(member_id, "pod", "")
+    if recorded:
+        return recorded
     roles = _role_names()
     head, sep, tail = member_id.rpartition("-")
     if sep and tail.isdigit():  # …-<role>-<index>

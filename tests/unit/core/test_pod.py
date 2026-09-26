@@ -4,9 +4,22 @@ from __future__ import annotations
 
 import pytest
 
+import docket.config as _cfg
 from docket.core import pod
+from docket.edges import store as _store
 
 SUBJECT = "docket.core.pod"
+
+
+def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
+    """Seed just enough of `.docket-meta.json` for `pod_of`'s meta-first read."""
+    path = _cfg.meta_path(member_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(
+        path,
+        {"schemaVersion": 1, "kind": "project", "scope": "project", "role": role, "pod": pod_name},
+    )
+
 
 # A fixed role→model map so tests don't depend on the live registry.
 _MODELS = {
@@ -45,6 +58,26 @@ class TestPodOf:
         assert pod.pod_of("myshop") is None  # legacy single agent, no dash
         assert pod.pod_of("my-api") is None  # 'api' is not a pod role
         assert pod.pod_of("manager") is None  # org specialist
+
+    def test_meta_wins_when_a_custom_role_name_ends_in_a_registered_role(self) -> None:
+        # 'proj-security-reviewer' string-parses as role 'reviewer' of project
+        # 'proj-security' -- wrong. Recorded meta is authoritative.
+        _write_meta("proj-security-reviewer", "proj", role="security-reviewer")
+        assert pod.pod_of("proj-security-reviewer") == "proj"
+
+    def test_falls_back_to_string_parsing_with_no_meta(self) -> None:
+        # No .docket-meta.json on disk for this id -- unchanged legacy behavior.
+        assert pod.pod_of("demo-lead") == "demo"
+
+    def test_falls_back_to_string_parsing_when_meta_has_no_pod_field(self) -> None:
+        path = _cfg.meta_path("demo-lead")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(path, {"schemaVersion": 1, "kind": "project", "role": "lead"})
+        assert pod.pod_of("demo-lead") == "demo"
+
+    def test_alien_id_still_refused_even_with_unrelated_meta_present(self) -> None:
+        _write_meta("proj-security-reviewer", "proj", role="security-reviewer")
+        assert pod.pod_of("some-other-agent") is None
 
 
 class TestNormalizeRole:

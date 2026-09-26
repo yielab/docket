@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.6.1
+**Version**: 1.7.0
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
@@ -170,6 +170,14 @@ This specification does NOT cover:
    `members_of` **MUST** produce identical results for the four legacy roles as before this
    registry existed — same accepted role strings (including the `programmer` → `implementer`
    alias), same member-id shape (`<project>-<role>[-N]`), same sort order (Lead first).
+5. A user-defined role name **MAY** itself end in another registered role's name (e.g.
+   `security-reviewer`, ending in the built-in `reviewer`) — the registry imposes no disjointness
+   constraint between names. `pod_of` **MUST** still resolve such a member to its real pod: it
+   reads the member's own recorded `.docket-meta.json` `pod` field first (see
+   `pod-dispatch.spec.md`'s "Pipeline order and participation" requirement 3), falling back to
+   id-string parsing only when that meta is absent. `parse_member_id`, which always receives an
+   explicit project and therefore only ever needs to strip that project's own prefix, is
+   unaffected by this ambiguity — the fix is confined to the id-guessing `pod_of` path.
 
 ### Per-role tool sets (ROADMAP Phase 19 P19-12)
 
@@ -421,6 +429,16 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-25)
+
+- **P26-18: custom role names and pod membership.** Added "Built-in archetypes and legacy
+  fidelity" requirement 5: a user-defined role name may end in another registered role's name with
+  no disjointness constraint, and `core/pod.py::pod_of` must resolve such a member from its
+  recorded `.docket-meta.json` `pod` field rather than guessing from the id string, which
+  previously mis-split a member id like `<project>-security-reviewer` as role `reviewer` of a
+  truncated project. See `pod-dispatch.spec.md` v6.8.0 for the dispatch-side requirement this
+  closes.
 
 ### Version 1.6.1 (2026-09-19)
 

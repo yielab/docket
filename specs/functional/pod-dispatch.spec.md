@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.7.0
+**Version**: 6.8.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -358,7 +358,13 @@ was seeded once at binding time.)*
 3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod — each
    hop's member id is asserted against the pod before its turn runs, raising `DispatchError` on a
    mismatch. This applies identically to a `parallel` group's children (see "Parallel step
-   groups").
+   groups"). This check is `core.pod.pod_of`, which **MUST** resolve a member's pod from its own
+   recorded `.docket-meta.json` (`pod` field) first, falling back to id-string parsing only for a
+   member with no meta or no recorded `pod` — a member id ending in a registered role name that is
+   not its own role (e.g. a custom `security-reviewer` role's member id `<project>-security-
+   reviewer`, whose tail `reviewer` is itself a registered role) is not misread as belonging to a
+   truncated project name. A member id with no recorded pod and no id-string match is still
+   refused.
 4. A step **MAY** legitimately run more than once within one dispatch attempt: a verdict-gated
    step's rework-triggering marker re-runs its gate's declared `rework.to` target and then the
    gating step again (bounded — see "Reviewer verdict gate and bounded rework" and "Generalized
@@ -1158,6 +1164,18 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.8.0 (2026-09-25)
+
+- **P26-18: pod membership is read from recorded metadata, never guessed from the id string.**
+  "Pipeline order and participation" requirement 3 now states that the cross-pod dispatch check
+  (`core.pod.pod_of`) resolves a member's pod from its own `.docket-meta.json` first, falling
+  back to id-string parsing only for a member with no meta/no recorded `pod`. Fixes a live,
+  deterministic defect: a custom role registered with a name ending in a registered role's own
+  name (e.g. `security-reviewer`, ending in `reviewer`) was provisionable via `docket pod <p> add`
+  but not dispatchable — `pod_of` rpartitioned its member id and matched the trailing `reviewer`
+  as the role, answering a wrong, truncated project. A genuinely cross-pod or unregistered member
+  id is still refused.
 
 ### Version 6.7.0 (2026-09-21)
 
