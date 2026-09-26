@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.20.0
+**Version**: 1.21.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -196,7 +196,11 @@ This specification does NOT cover:
     `system` message.
 30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), its
     live persona (read fresh from `.docket-meta.json`, not trusted from whatever `SOUL.md` has
-    on disk), and one authoritative runtime projection of Docket's generated startup contract.
+    on disk), an optional operator-owned `INSTRUCTIONS.md` composed immediately after `SOUL.md`
+    and ahead of everything else, and one authoritative runtime projection of Docket's generated
+    startup contract. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
+    Docket at any point (provisioning, `sync`, `set-verify`, `doctor --fix`) — it is the durable
+    home for operator instructions precisely because nothing on this path ever overwrites it.
     The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
     to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
     manual/external reset path, while the live runtime has already read the state itself. Instead,
@@ -227,19 +231,25 @@ This specification does NOT cover:
     or non-positive window information (an unresolvable or unregistered model) **MUST** resolve to
     plain `config.CONTEXT_TOKEN_BUDGET_DEFAULT`, unchanged from before this budget became
     window-aware. The runtime contract is never truncated; `HEARTBEAT.md` and `TOOLS.md` **MUST NOT**
-    be crowded out in favor of `SOUL.md` — an oversized `SOUL.md` **MUST** itself be visibly,
-    middle-truncated (head and tail kept, a marker naming the omitted byte count in between) to a
-    bounded share of the budget *before* the private-workspace sections are fitted, so `SOUL.md`
-    alone can never exhaust the room the runtime contract and private-workspace sections need. When
-    fitting the private-workspace sections in the priority order above, a section that does not fit
-    in the room left by the sections ahead of it **MUST NOT** stop composition of the sections
-    behind it: that section, and every later one that also does not fit, each **MUST** still
-    receive their own one-line `[... <name> omitted: <n> bytes omitted ...]` marker (or a
-    truncation marker, for one that partially fits), so a crowded middle section never silently
-    erases what follows it. `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace
-    event per non-empty composition, listing every section actually attempted — `SOUL.md` plus
-    whichever of `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had content — with the bytes
-    included and a `full`/`truncated`/`omitted` status per section, plus the resolved
+    be crowded out in favor of `SOUL.md` or `INSTRUCTIONS.md` — an oversized `SOUL.md` **MUST**
+    itself be visibly, middle-truncated (head and tail kept, a marker naming the omitted byte count
+    in between) to a bounded share of the budget *before* the private-workspace sections are
+    fitted, so `SOUL.md` alone can never exhaust the room the runtime contract and
+    private-workspace sections need. `INSTRUCTIONS.md`, when present, **MUST** likewise be
+    middle-truncated to at most half of whatever budget remains after `SOUL.md`'s own cap, so
+    `SOUL.md` and `INSTRUCTIONS.md` together can never exhaust that room either, and reports its
+    own `full`/`truncated`/`omitted` `PromptSectionReport` exactly like every other section — never
+    a second composer, never merged into `SOUL.md`'s report. When fitting the private-workspace
+    sections in the priority order above, a section that does not fit in the room left by the
+    sections ahead of it **MUST NOT** stop composition of the sections behind it: that section, and
+    every later one that also does not fit, each **MUST** still receive their own one-line
+    `[... <name> omitted: <n> bytes omitted ...]` marker (or a truncation marker, for one that
+    partially fits), so a crowded middle section never silently erases what follows it.
+    `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace event per non-empty
+    composition, listing every section actually attempted — `SOUL.md`, optional
+    `INSTRUCTIONS.md`, plus whichever of `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had
+    content — with the bytes included and a `full`/`truncated`/`omitted` status per section, plus
+    the resolved
     `budgetTokens` and its `budgetSource` (`env`/`window`/`default`) for this composition. An agent
     with no identity/startup/private files still composes no system message and emits no
     `prompt_composed` event for that empty composition. This budget resolution is an estimate like
@@ -661,6 +671,18 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.21.0 (2026-09-26)
+
+- P26-10 adds an operator-owned `INSTRUCTIONS.md`, composed right after `SOUL.md` and inside the
+  same static-context budget requirement 30 already governs, so operator-written instructions
+  reach the live prompt and survive every regeneration path (`docket pod sync`, `set-verify`,
+  provisioning, `doctor --fix`) — none of which read, write, or diff it. It gets its own
+  `PromptSectionReport` and its own middle-truncation cap (bounded to at most half of whatever
+  `SOUL.md` left), so it cannot crowd out the runtime contract or the private-workspace sections
+  any more than an oversized `SOUL.md` already could not. No second composer: `core.identity.
+  compose_system_prompt` places it, and the existing `prompt_composed` trace event lists it like
+  any other section.
 
 ### Version 1.20.0 (2026-09-26)
 

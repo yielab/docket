@@ -487,6 +487,36 @@ def _check_template_version(ids: list[str]) -> int:
     return 0
 
 
+def _check_pod_sync(ids: list[str]) -> int:
+    """Flag pod members whose managed files drifted from the current archetype +
+    metadata -- the pod counterpart of ``_check_template_version``, which skips pod
+    members outright. Advisory; ``docket pod <project> sync`` re-renders."""
+    from docket.core import pod as _pod
+    from docket.core import pod_provisioning as _pp
+
+    member_ids = [aid for aid in ids if _pod.pod_of(aid) is not None]
+    if not member_ids:
+        return 0
+    ui.console.print()
+    ui.console.print("[bold]Pod member templates:[/bold]")
+    stale = 0
+    for aid in member_ids:
+        status = _pp.member_sync_status(aid)
+        if status is None:
+            continue
+        if status.stale:
+            stale += 1
+            ui.console.print(
+                f"[red]✗[/red]   {aid}: stale (v{status.stored_template_version or '?'}, "
+                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod <project> sync"
+            )
+        else:
+            ui.success(f"  {aid}: v{status.stored_template_version} (current)")
+    if stale == 0:
+        ui.success("  All pod members are in sync")
+    return 0
+
+
 def _check_metadata_backfill(ids: list[str]) -> int:
     """Backfill kind/role/modelSource taxonomy for specialists + project agents."""
     ui.console.print()
@@ -937,6 +967,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_policies()
     issues += _check_workspace_env_files(ids, do_fix)
     _check_template_version(ids)
+    _check_pod_sync(ids)
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
     _check_scaffolding(ids)

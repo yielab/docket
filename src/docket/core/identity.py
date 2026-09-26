@@ -57,6 +57,12 @@ PERSONA_END = "<!-- docket-persona:end -->"
 #: elsewhere) since no other module currently needs the bare filename.
 SOUL_FILE = "SOUL.md"
 
+#: An operator-owned free-text file composed right after ``SOUL.md``. Docket
+#: never writes, regenerates, or quarantines this file -- it is the durable
+#: home for instructions an operator wants every turn to see, so they survive
+#: a template/archetype re-render that would otherwise overwrite them.
+INSTRUCTIONS_FILE = "INSTRUCTIONS.md"
+
 _RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
 _RUNTIME_CONTEXT_NOTE = (
     "# Runtime-loaded Docket workspace state\n"
@@ -173,18 +179,22 @@ def compose_system_prompt(
     runtime_contract_text: str,
     persona: Persona | None,
     runtime_context: str = "",
+    instructions_text: str = "",
 ) -> str:
-    """Fold SOUL.md, the live persona, and a runtime contract into one system prompt.
-    Pure — no I/O (``system_prompt_for_agent`` below is the I/O entry point). *soul_text*
-    is passed through ``upsert_persona_block`` unconditionally (idempotent no-op if
-    already matching) so the persona reflects *persona* as given, not whatever
-    ``SOUL.md`` had on disk. Empty inputs degrade gracefully: no ``SOUL.md`` and no
-    runtime contract composes to ``""``, which ``core/agent_loop.py`` treats as "no
-    system message this turn" rather than sending the model an empty one."""
+    """Fold SOUL.md, the live persona, operator instructions, and a runtime contract
+    into one system prompt. Pure — no I/O (``system_prompt_for_agent`` below is the I/O
+    entry point). *soul_text* is passed through ``upsert_persona_block`` unconditionally
+    (idempotent no-op if already matching) so the persona reflects *persona* as given,
+    not whatever ``SOUL.md`` had on disk. *instructions_text* (already fit to budget by
+    the caller) is placed right after the SOUL section, ahead of the runtime contract.
+    Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract composes to
+    ``""``, which ``core/agent_loop.py`` treats as "no system message this turn" rather
+    than sending the model an empty one."""
     effective_soul = upsert_persona_block(soul_text, persona).strip()
+    instructions = instructions_text.strip()
     workflow = runtime_contract_text.strip()
     runtime = runtime_context.strip()
-    parts = [part for part in (effective_soul, workflow, runtime) if part]
+    parts = [part for part in (effective_soul, instructions, workflow, runtime) if part]
     return "\n\n---\n\n".join(parts)
 
 
@@ -314,18 +324,27 @@ def resolve_static_context_budget(
     return tokens, source
 
 
+def _cap_leading_section(
+    text: str, max_bytes: int, label: str
+) -> tuple[str, PromptSectionReport | None]:
+    """Truncate an oversized section composed ahead of the runtime contract to at
+    most half of *max_bytes*, so it alone can never exhaust the room sections
+    composed after it need."""
+    if not text.strip():
+        return text, None
+    original_bytes = len(text.encode("utf-8"))
+    ceiling = max(0, max_bytes - max_bytes // 2)
+    capped = _visible_truncate(text, ceiling, label)
+    if capped == text:
+        return capped, PromptSectionReport(label, original_bytes, "full")
+    status: PromptSectionStatus = "truncated" if capped else "omitted"
+    return capped, PromptSectionReport(label, len(capped.encode("utf-8")), status)
+
+
 def _cap_soul_text(soul_text: str, max_bytes: int) -> tuple[str, PromptSectionReport | None]:
     """Truncate an oversized SOUL to at most half of *max_bytes*, so it can never
     exhaust the room the runtime contract and private-workspace sections need."""
-    if not soul_text.strip():
-        return soul_text, None
-    original_bytes = len(soul_text.encode("utf-8"))
-    ceiling = max(0, max_bytes - max_bytes // 2)
-    capped = _visible_truncate(soul_text, ceiling, SOUL_FILE)
-    if capped == soul_text:
-        return capped, PromptSectionReport(SOUL_FILE, original_bytes, "full")
-    status: PromptSectionStatus = "truncated" if capped else "omitted"
-    return capped, PromptSectionReport(SOUL_FILE, len(capped.encode("utf-8")), status)
+    return _cap_leading_section(soul_text, max_bytes, SOUL_FILE)
 
 
 def _runtime_workspace_context(
@@ -441,11 +460,13 @@ def compose_agent_prompt(
         return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
     ws = _cfg.workspace_dir(agent_id)
     soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
+    instructions_raw = _read_workspace_text(ws / INSTRUCTIONS_FILE)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
     persona = load_agent_persona(agent_id)
     has_private_state = any((ws / name).is_file() for name in _RUNTIME_CONTEXT_FILES)
     has_prompt_material = bool(
         soul_text_raw.strip()
+        or instructions_raw.strip()
         or workflow_text.strip()
         or has_private_state
         or (persona is not None and persona.label())
@@ -454,11 +475,27 @@ def compose_agent_prompt(
         return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
     max_bytes = budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
     soul_text, soul_report = _cap_soul_text(soul_text_raw, max_bytes)
+    # Operator instructions are fit into whatever room SOUL left, not a fresh half of
+    # the whole budget -- so SOUL plus INSTRUCTIONS together can never exceed the
+    # bound one of them alone is already held to, protecting the runtime contract and
+    # private-workspace sections composed after both.
+    remaining_after_soul = max(0, max_bytes - len(soul_text.encode("utf-8")))
+    instructions_text, instructions_report = _cap_leading_section(
+        instructions_raw, remaining_after_soul, INSTRUCTIONS_FILE
+    )
     runtime_contract = _runtime_startup_contract(project_roots)
-    base_prompt = compose_system_prompt(soul_text, runtime_contract, persona)
+    base_prompt = compose_system_prompt(
+        soul_text, runtime_contract, persona, instructions_text=instructions_text
+    )
     runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt, max_bytes)
-    text = compose_system_prompt(soul_text, runtime_contract, persona, runtime_context)
-    sections = ((soul_report,) if soul_report is not None else ()) + context_reports
+    text = compose_system_prompt(
+        soul_text, runtime_contract, persona, runtime_context, instructions_text
+    )
+    sections = (
+        ((soul_report,) if soul_report is not None else ())
+        + ((instructions_report,) if instructions_report is not None else ())
+        + context_reports
+    )
     return PromptComposition(text, sections, budget_tokens, budget_source)
 
 

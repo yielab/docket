@@ -769,3 +769,46 @@ class TestDoctorSilentOnThreeFixtures:
         assert "shop" in out and "3x" in out
         assert "not-a-model-id" in out
         assert "broken-role" in out
+
+
+class TestPodSyncCheck:
+    """`_check_pod_sync` -- the pod-member counterpart of `_check_template_version`,
+    which explicitly skips pod members (they use their own template scheme)."""
+
+    def _build_pod(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from docket.cli import _pod
+
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_config_at(home, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        return home
+
+    def test_in_sync_pod_reports_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._build_pod(tmp_path, monkeypatch)
+        issues = _doctor._check_pod_sync(["demo-lead", "demo-implementer"])
+        out = capsys.readouterr().out
+        assert issues == 0
+        assert "✗" not in out
+        assert "in sync" in out
+
+    def test_stale_pod_member_is_flagged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = self._build_pod(tmp_path, monkeypatch)
+        (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(
+            "STALE-HAND-EDITED-SOUL\n"
+        )
+        issues = _doctor._check_pod_sync(["demo-lead", "demo-implementer"])
+        out = capsys.readouterr().out
+        assert "✗" in out
+        assert "demo-lead" in out
+        assert "docket pod <project> sync" in out
+        # Advisory only, same as `_check_template_version`.
+        assert issues == 0
+
+    def test_non_pod_agents_are_skipped(self) -> None:
+        assert _doctor._check_pod_sync([]) == 0

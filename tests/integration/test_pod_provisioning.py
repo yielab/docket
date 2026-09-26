@@ -12,6 +12,7 @@ from tests.conftest import repoint_docket_home
 from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import fleet as _fleet
+from docket.core import pod_provisioning as _pp
 
 SUBJECT = "docket"
 
@@ -437,3 +438,180 @@ class TestPodAddRemoveAudit:
         for e in _audit.read_audit():
             assert "sk-" not in str(e.get("detail", ""))
             assert "API_KEY" not in str(e.get("detail", ""))
+
+
+class TestMemberSync:
+    """`core.pod_provisioning.member_sync_status`/`resync_member` -- re-rendering an
+    existing pod member's managed files from the current archetype + metadata."""
+
+    def test_freshly_provisioned_member_is_not_stale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        status = _pp.member_sync_status("demo-lead")
+        assert status is not None
+        assert status.stale is False
+        assert status.diffs == {}
+
+    def test_stale_content_is_detected_and_diffed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
+        soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
+
+        status = _pp.member_sync_status("demo-lead")
+
+        assert status is not None
+        assert status.stale is True
+        assert "SOUL.md" in status.diffs
+        assert "STALE-HAND-EDITED-SOUL" in status.diffs["SOUL.md"]
+
+    def test_stale_template_version_alone_is_detected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        monkeypatch.setattr(_pp, "POD_TEMPLATE_VERSION", _pp.POD_TEMPLATE_VERSION + 1)
+
+        status = _pp.member_sync_status("demo-lead")
+
+        assert status is not None
+        assert status.stale is True
+
+    def test_resync_rewrites_stale_files_and_stamps_the_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
+        soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
+
+        written = _pp.resync_member("demo-lead")
+
+        assert written == ["SOUL.md"]
+        assert "STALE-HAND-EDITED-SOUL" not in soul_path.read_text()
+        assert _meta(home, "demo-lead")["templateVersion"] == str(_pp.POD_TEMPLATE_VERSION)
+
+    def test_resync_is_a_no_op_on_an_already_current_member(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
+        before = soul_path.read_text()
+
+        written = _pp.resync_member("demo-lead")
+
+        assert written == []
+        assert soul_path.read_text() == before
+
+    def test_resync_never_touches_instructions_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        ws = home / "workspaces" / "projects" / "demo-lead"
+        (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
+        (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
+
+        _pp.resync_member("demo-lead")
+
+        assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
+
+    def test_non_pod_member_has_no_sync_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        assert _pp.member_sync_status("nobody-here") is None
+
+
+class TestPodSync:
+    """`docket pod <project> sync [--dry-run]` -- the CLI surface over `member_sync_status`/
+    `resync_member`."""
+
+    def test_dry_run_reports_without_writing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
+        soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
+
+        _pod.dispatch("demo", "sync", ["--dry-run"])
+
+        assert soul_path.read_text() == "STALE-HAND-EDITED-SOUL\n"
+
+    def test_sync_applies_and_audits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
+        soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
+
+        _pod.dispatch("demo", "sync", [])
+
+        assert "STALE-HAND-EDITED-SOUL" not in soul_path.read_text()
+        entries = [e for e in _audit.read_audit() if e["action"] == "pod.sync"]
+        assert len(entries) == 1
+        assert "demo-lead" in entries[0]["detail"]
+
+    def test_untouched_pod_is_a_no_op(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        before = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
+
+        _pod.dispatch("demo", "sync", [])
+
+        assert (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text() == before
+        assert not [e for e in _audit.read_audit() if e["action"] == "pod.sync"]
+        assert "already in sync" in capsys.readouterr().out
+
+    def test_sync_never_touches_instructions_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        ws = home / "workspaces" / "projects" / "demo-lead"
+        (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
+        (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
+
+        _pod.dispatch("demo", "sync", [])
+
+        assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
+
+
+class TestSetVerifyPreservesOperatorInstructions:
+    """`set-verify` still rewrites TOOLS.md wholesale (a generated file) -- but an
+    operator's own notes belong in `INSTRUCTIONS.md`, which nothing in this path
+    reads, writes, or diffs, so they survive regardless of what TOOLS.md does."""
+
+    def test_set_verify_still_regenerates_tools_md_wholesale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TOOLS.md is generated and freely overwritten; a note pasted directly into
+        it does not survive set-verify -- that is exactly why INSTRUCTIONS.md exists
+        as the durable alternative."""
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
+        tools_path.write_text(tools_path.read_text() + "\nHAND-WRITTEN-NOTE\n")
+
+        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+
+        assert "HAND-WRITTEN-NOTE" not in tools_path.read_text()
+
+    def test_instructions_md_survives_set_verify(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        ws = home / "workspaces" / "projects" / "demo-implementer"
+        (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
+
+        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+
+        assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"

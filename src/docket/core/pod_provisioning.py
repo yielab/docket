@@ -13,6 +13,7 @@ specs/data/docket-meta.spec.md (attempt-owned resources).
 from __future__ import annotations
 
 import contextlib
+import difflib
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -742,3 +743,117 @@ def provision_pod(
             f"pod=({','.join(m.role for m in created)}) source={source}",
         )
         return PodProvisionResult(project=project, blueprint=blueprint.name, members=created)
+
+
+# ── re-rendering an existing member ─────────────────────────────────────────
+#
+# A pod member's SOUL.md/AGENTS.md/TOOLS.md are generated wholesale from its
+# archetype + stored metadata and may be freely overwritten -- an operator's
+# own notes belong in INSTRUCTIONS.md (core/identity.py), which nothing here
+# ever reads, writes, or diffs.
+
+
+def _member_from_meta(member_id: str, meta: dict[str, object]) -> pod.PodMember:
+    """A minimal ``PodMember`` reconstructed from stored metadata, sufficient for
+    ``_member_soul``/``_member_agents`` -- ``index``/``model`` are unused by either."""
+    return pod.PodMember(
+        project=str(meta.get("pod", "")),
+        role=str(meta.get("role", "")),
+        index=1,
+        member_id=member_id,
+        model=str(meta.get("model", "")),
+        session_key=str(meta.get("sessionKey", "")),
+    )
+
+
+def rendered_member_files(member_id: str) -> dict[str, str]:
+    """The SOUL.md/AGENTS.md/(TOOLS.md, when applicable) text the current archetype
+    and *member_id*'s stored metadata would produce -- read-only, writes nothing.
+    Empty when the id has no pod metadata."""
+    meta = _store.read_json(_cfg.meta_path(member_id))
+    project = str(meta.get("pod", ""))
+    role = str(meta.get("role", ""))
+    if not meta or not project or not role:
+        return {}
+    member = _member_from_meta(member_id, meta)
+    codebase = str(meta.get("worktreeDir") or meta.get("codebase", ""))
+    stack = str(meta.get("stack", ""))
+    description = str(meta.get("description", ""))
+    work_dir = str(meta.get("workDir", ""))
+    files = {
+        "SOUL.md": _member_soul(member, project, codebase, stack, description, work_dir=work_dir),
+        "AGENTS.md": _member_agents(member, project),
+    }
+    verify_cmd = str(meta.get("verifyCmd", ""))
+    port_start_s = str(meta.get("portRangeStart", ""))
+    scratch = str(meta.get("scratchDir", ""))
+    if role == "implementer" and ((port_start_s and scratch) or verify_cmd):
+        files["TOOLS.md"] = _member_tools(
+            project,
+            role,
+            codebase,
+            int(port_start_s) if port_start_s else 0,
+            int(meta.get("portRangeCount", "") or 0),
+            scratch,
+            verify_cmd,
+        )
+    return files
+
+
+@dataclass(frozen=True)
+class MemberSyncStatus:
+    """One pod member's re-render drift: whether its managed files still match the
+    current archetype + metadata, and the per-file unified diff when they do not."""
+
+    member_id: str
+    stale: bool
+    stored_template_version: str
+    diffs: dict[str, str] = field(default_factory=dict)
+
+
+def member_sync_status(member_id: str) -> MemberSyncStatus | None:
+    """Compare *member_id*'s on-disk managed files against what the current archetype
+    and its own stored metadata would render right now. ``None`` when *member_id* is
+    not a pod member with a workspace (nothing to compare)."""
+    rendered = rendered_member_files(member_id)
+    if not rendered:
+        return None
+    meta = _store.read_json(_cfg.meta_path(member_id))
+    ws = _cfg.PROJECTS_DIR / member_id
+    diffs: dict[str, str] = {}
+    for name, new_text in rendered.items():
+        path = ws / name
+        current = path.read_text(encoding="utf-8") if path.is_file() else ""
+        if current == new_text:
+            continue
+        diffs[name] = "".join(
+            difflib.unified_diff(
+                current.splitlines(keepends=True),
+                new_text.splitlines(keepends=True),
+                fromfile=f"{name} (current)",
+                tofile=f"{name} (rendered)",
+            )
+        )
+    stored_tv = str(meta.get("templateVersion", ""))
+    stale = bool(diffs) or stored_tv != str(POD_TEMPLATE_VERSION)
+    return MemberSyncStatus(member_id, stale, stored_tv, diffs)
+
+
+def resync_member(member_id: str) -> list[str]:
+    """Rewrite *member_id*'s stale files from the current archetype + metadata and
+    stamp ``POD_TEMPLATE_VERSION``; never touches ``INSTRUCTIONS.md`` (operator-owned).
+    Returns the files rewritten -- an already-current member writes nothing."""
+    status = member_sync_status(member_id)
+    if status is None or not status.stale:
+        return []
+    rendered = rendered_member_files(member_id)
+    ws = _cfg.PROJECTS_DIR / member_id
+    written: list[str] = []
+    for name in status.diffs:
+        path = ws / name
+        path.write_text(rendered[name], encoding="utf-8")
+        with contextlib.suppress(OSError):
+            path.chmod(0o600)
+        written.append(name)
+    _fleet.meta_set(member_id, "templateVersion", str(POD_TEMPLATE_VERSION))
+    return written
