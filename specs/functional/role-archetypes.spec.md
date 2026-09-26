@@ -1,7 +1,10 @@
 # Role Archetypes Specification
 
-**Version**: 1.7.0
-**Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
+**Version**: 1.8.0
+**Status**: Implemented. `hopInstruction` (P26-7) is an open, optional field: a gated custom
+role's hop message now carries an instruction even without one declared, generated from
+`gateContract` — see "Hop instructions" below and `pod-dispatch.spec.md`'s hop-message builder.
+`gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
 pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). ROADMAP Phase 17's C-1 (the context
@@ -16,7 +19,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -37,11 +40,16 @@ This specification covers:
 
 - The archetype schema: `name`, `version`, `scope`, `modelClass`, `soulTemplate`,
   `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`, `deniedTools`, and the optional
-  `policyRole`/`description` fields — which are closed typed enums and which are open prose
+  `policyRole`/`description`/`hopInstruction` fields — which are closed typed enums and which are
+  open prose
 - The `deniedTools` field and `registry_for_role`, the one function that turns it into an
   actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API (ROADMAP Phase 19
   P19-12) — this spec documents the data and that function's contract; `agent-loop.spec.md`
   documents that `core/agent_loop.py` calls it once per turn
+- `hopInstruction` and `resolve_hop_instruction`, the function a custom role's hop message
+  resolves its instruction text through when a pipeline step declares none of its own — see
+  "Hop instructions" below; `pod-dispatch.spec.md` documents that `core/dispatch.py`'s
+  hop-message builder is the one caller
 - The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identical-to-legacy
   guarantee
 - The starter library (researcher/analyst/writer/critic/operator/monitor)
@@ -81,12 +89,14 @@ This specification does NOT cover:
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
    `editRights`, `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
-   C-1; see "Context-compiler token budget" below). `policyRole`, `description`, and
-   `deniedTools` (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below) **MAY** be present
-   (empty/absent is valid for all three); `tokenBudget` **MAY** be absent from a wire document
-   (a pre-C-1 user overlay entry, or a hand-authored YAML file that predates this field) and
-   defaults to `6000` when omitted — never a parse error. `deniedTools` absent/empty defaults to
-   `()` — no narrower than whatever registry the caller hands in.
+   C-1; see "Context-compiler token budget" below). `policyRole`, `description`, `deniedTools`
+   (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below), and `hopInstruction` (P26-7; see
+   "Hop instructions" below) **MAY** be present (empty/absent is valid for all four); `tokenBudget`
+   **MAY** be absent from a wire document (a pre-C-1 user overlay entry, or a hand-authored YAML
+   file that predates this field) and defaults to `6000` when omitted — never a parse error.
+   `deniedTools` absent/empty defaults to `()` — no narrower than whatever registry the caller
+   hands in. `hopInstruction` absent/empty means "no declared instruction", not "no instruction at
+   all" — see "Hop instructions".
 2. `scope` **MUST** be one of exactly `"org"` | `"pod"` — a closed enum. Every built-in and
    starter-library archetype shipped today is `"pod"`-scoped (org-scoped archetypes are a valid,
    validated value in the type system, reserved for a future card; none ship yet).
@@ -218,6 +228,35 @@ This specification does NOT cover:
    mattering once a registry actually contains a non-built-in tool, which was impossible before
    this requirement's own card wired `load_mcp_tools` into a live turn.
 
+### Hop instructions (P26-7)
+
+Before this card, `core/dispatch.py`'s hop-message builder gave any role outside the four
+built-ins (`lead`/`implementer`/`reviewer`/`tester`) an empty instruction — a custom role
+depended entirely on its own SOUL template to know its marker convention or task framing.
+`hopInstruction` and the fallback below close that gap.
+
+1. `hopInstruction` **MUST** be open prose (like `toolProfile`/`description`), never validated
+   against a template or the live tool registry. Empty/absent (the default) means "no declared
+   instruction" — a gated role still gets one, per requirement 2.
+2. `core.archetypes.resolve_hop_instruction(archetype)` **MUST** return *archetype*'s own
+   `hopInstruction` when non-empty; otherwise it **MUST** generate one from `gate_contract.kind`:
+   a `verdict` role gets a "start exactly one output line with `<marker1>` or `<marker2>` (or
+   more, joined by `or`)" instruction naming its own `regexes`; a `mechanical` role gets a
+   generic "your work is verified mechanically before the pipeline advances" instruction; an
+   `approval` role gets a generic "a human must approve before the pipeline advances"
+   instruction; a `none`-kind gate (or any kind this closed enum does not otherwise recognize)
+   generates no instruction at all (`""`), matching the Lead's own gate-free hop.
+3. The four built-in archetypes' `hopInstruction` **MUST** remain unset — `core/dispatch.py`'s
+   hop-message builder never consults the registry for `lead`/`implementer`/`reviewer`/`tester`;
+   their hop messages are the pre-existing hardcoded text, byte-identical to base regardless of
+   this field (see "Built-in archetypes and legacy fidelity" above). `resolve_hop_instruction` is
+   reachable only for a role the builder does not special-case.
+4. A pipeline step's own `instructions` (see `pipeline-format.spec.md`'s "Steps") **MUST** take
+   precedence over both an archetype's declared `hopInstruction` and the generated fallback, for
+   any role the step targets — the step is more specific than the role. The Lead's hop message
+   has no separate instruction segment to override, so a step `instructions` targeting `role:
+   lead` has no effect on it; this is a deliberate scope boundary, not an oversight.
+
 ### Starter library
 
 1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `critic`, `operator`,
@@ -332,6 +371,7 @@ toolProfile: content-ops
 description: coordinates content production across writer/critic
 tokenBudget: 6000
 deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only role
+hopInstruction: ""   # optional; unset + a gated role -> generated from gateContract
 gateContract:
   kind: none
 soulTemplate: |
@@ -429,6 +469,19 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.8.0 (2026-09-26)
+
+- **P26-7: hop instructions for custom roles.** Added the optional `hopInstruction` field (see
+  "Archetype schema" and the new "Hop instructions" section) and
+  `core.archetypes.resolve_hop_instruction`, which a custom role's hop message now resolves
+  through: its own `hopInstruction` if declared, else one generated from `gateContract`
+  (verdict/mechanical/approval; `none` generates nothing). Before this, `core/dispatch.py` gave
+  any role outside the four built-ins an empty hop instruction — a custom verdict-gated role
+  depended entirely on its SOUL template to know its own marker convention. The four built-in
+  archetypes are unaffected: their hop messages stay the pre-existing hardcoded text, byte-
+  identical to base. See `pipeline-format.spec.md` v2.3.0 for the companion step-level
+  `instructions` override and `${var}` interpolation.
 
 ### Version 1.7.0 (2026-09-25)
 

@@ -592,6 +592,7 @@ def _hop_message(
     role: str,
     prior: list[HopResult],
     rework_hop: HopResult | None = None,
+    step_instructions: str = "",
 ) -> tuple[str, _HopComposition]:
     """Build one role's message via ``core/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
@@ -599,7 +600,14 @@ def _hop_message(
     ``summary``, which is only ever truncated with a marker, never silently dropped.
     *rework_hop* gets the implementer's full carryover budget in its own section, deliberately
     excluded from the generic per-hop loop (not left to recency ranking) since it addresses
-    what the rework hop exists for. Returns the message plus a ``_HopComposition``."""
+    what the rework hop exists for. Returns the message plus a ``_HopComposition``.
+
+    *step_instructions*, when non-empty, is this step's own already-interpolated
+    ``instructions`` (pipeline-format.spec.md) -- it replaces whatever instruction text the
+    target role would otherwise carry (a built-in's hardcoded text, or a custom role's own
+    ``hopInstruction``/generated fallback, see role-archetypes.spec.md). The Lead's hop
+    message has no separate instruction segment to override, so *step_instructions* is not
+    applied to it -- a deliberate scope boundary, not an oversight."""
     from docket.core import context as _ctx
 
     desc = str(task.get("description", "")).strip()
@@ -613,7 +621,9 @@ def _hop_message(
         )
         return message, comp
 
-    if role == "implementer":
+    if step_instructions:
+        instructions = step_instructions
+    elif role == "implementer":
         instructions = (
             "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
             "above, then implement the change in the workspace."
@@ -633,7 +643,13 @@ def _hop_message(
             "after that marker line."
         )
     else:
-        instructions = ""
+        # A custom role: its own archetype's `hopInstruction`, or one generated
+        # from its `gateContract` (e.g. a verdict role's marker convention) --
+        # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
+        # role name (absent from the registry) still gets no instruction,
+        # matching today's behavior.
+        archetype = _archetypes.load_registry().get(role)
+        instructions = _archetypes.resolve_hop_instruction(archetype) if archetype else ""
 
     # The role's total token budget, minus what the immutable task
     # description and this role's own fixed instruction footer already cost
@@ -975,6 +991,12 @@ class _UnitContext:
     do_sleep: Callable[[float], None]
     on_hop: Callable[[HopResult], None] | None
     on_retry: Callable[[], None] | None
+    # Each step id's own already-interpolated `instructions` override (see
+    # `_pipeline.step_instructions_by_id`/`interpolate_instructions`); a step
+    # absent here defers to its role's own hop instruction. Defaulted so
+    # every existing direct `_UnitContext(...)` construction (tests included)
+    # is unaffected.
+    step_instructions: dict[str, str] = field(default_factory=dict)
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -1059,7 +1081,10 @@ def _compose_hop(
     """Build this hop's prompt/environment and emit its ``context_composed``/``tool_call``
     trace pair. A downstream hop's message gets an extra checkout note naming the real
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
-    message, composition = _hop_message(ctx.task, role, prior_snapshot, rework_hop)
+    step_override = ctx.step_instructions.get(node.step_id, "")
+    message, composition = _hop_message(
+        ctx.task, role, prior_snapshot, rework_hop, step_instructions=step_override
+    )
     pipeline_worktree = ""
     if role not in {"lead", "implementer"}:
         pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
@@ -1619,17 +1644,20 @@ def _run_group_node(
 
 def _resolve_pipeline_steps(
     project: str, spec: _pipeline.PipelineSpec | None
-) -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int]]:
+) -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int], dict[str, str]]:
     """Resolve *spec* (or this pod's default pipeline) against the pod's live roster into
     this run's ordered, runnable steps. Assumes the caller already validated the pod/Lead
     exist; this only builds the plan, it does not itself raise for a missing pod."""
+    # The third element is each step id's own declared `instructions` text,
+    # not yet interpolated -- see `_pipeline.step_instructions_by_id`.
     effective_spec = effective_pipeline(project, spec)
     registry = _archetypes.load_registry()
     roster = pod_full_roster(project)
     plan = _orch.resolve_plan(effective_spec, roster, registry=registry)
     runtime_steps = plan.runnable_nodes()
     id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
-    return runtime_steps, id_to_index
+    raw_step_instructions = _pipeline.step_instructions_by_id(effective_spec)
+    return runtime_steps, id_to_index, raw_step_instructions
 
 
 def _resolve_resume_state(
@@ -1729,6 +1757,7 @@ def dispatch_task(
     on_retry: Callable[[], None] | None = None,
     sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
+    variables: dict[str, Any] | None = None,
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop. Full contract: pod-dispatch.spec.md
     ("Pipeline order and participation", "Per-hop incremental persistence and crash recovery",
@@ -1739,7 +1768,11 @@ def dispatch_task(
     zero-migration pipeline; *resume_from* seeds hops completed before a crash or a settled
     refusal (skipped, not re-invoked); *turn_timeout*/*verify_timeout* override the pod Lead's
     meta then ``DEFAULT_TIMEOUT``, unless a step declares its own. *on_retry* fires before each
-    retry so the caller can refresh the task's claim before it goes stale.
+    retry so the caller can refresh the task's claim before it goes stale. *variables* is this
+    run's already-resolved pipeline variable namespace (``dispatch_pod`` validates and resolves
+    it before calling here) -- used only to interpolate any step's own ``instructions`` text
+    (pipeline-format.spec.md); a direct caller that skips ``dispatch_pod`` gets no unresolved-
+    reference refusal, only best-effort interpolation.
 
     A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
     the top of ``_execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
@@ -1774,7 +1807,12 @@ def dispatch_task(
         resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
         resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
-        runtime_steps, id_to_index = _resolve_pipeline_steps(project, spec)
+        runtime_steps, id_to_index, raw_step_instructions = _resolve_pipeline_steps(project, spec)
+        resolved_vars: dict[str, Any] = variables or {}
+        step_instructions = {
+            sid: _pipeline.interpolate_instructions(text, resolved_vars)
+            for sid, text in raw_step_instructions.items()
+        }
         prior, pipeline_index, rework_counts, pending_rework_by_index = _resolve_resume_state(
             runtime_steps, resume_from
         )
@@ -1802,6 +1840,7 @@ def dispatch_task(
             do_sleep=do_sleep,
             on_hop=on_hop,
             on_retry=on_retry,
+            step_instructions=step_instructions,
         )
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
@@ -2164,14 +2203,30 @@ def dispatch_pod(
     resume: bool = False,
     sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
+    variables: dict[str, Any] | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
     ``dispatch_task`` over locked claims until none remain or *max_tasks* is hit --
     see ``dispatch_task`` and pod-dispatch.spec.md for the full claiming/crash-recovery/retry
     contract. A stale ``running`` claim is swept first; pass *resume* to also reclaim those
     and continue from the last persisted hop. Returns one TaskResult per task attempted.
-    Raises DispatchError if the pod has no Lead."""
+    Raises DispatchError if the pod has no Lead, or -- checked once, here, before any task is
+    claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
+    e.g. the serve webhook's resolved body, or ``docket pipeline run --var``) leaves any step's
+    own ``instructions`` with an unresolved ``${var}`` reference. See
+    specs/functional/pipeline-format.spec.md ("Variables")."""
     pod_pipeline(project)  # validates pod/lead up front
+    effective_spec = effective_pipeline(project, spec)
+    try:
+        resolved_vars = _pipeline.resolve_variables(effective_spec, variables)
+    except _pipeline.VariableError as exc:
+        raise DispatchError(str(exc)) from exc
+    missing = _pipeline.unresolved_step_variables(effective_spec, resolved_vars)
+    if missing:
+        raise DispatchError(
+            "refusing dispatch: step instructions reference unresolved pipeline "
+            "variable(s): " + ", ".join(missing)
+        )
     _sweep_stale_claims(project)
 
     results: list[TaskResult] = []
@@ -2199,6 +2254,7 @@ def dispatch_pod(
             on_retry=_touch,
             sleep=sleep,
             spec=spec,
+            variables=resolved_vars,
         )
         _finalize_task(project, task_id, res)
         results.append(res)

@@ -9,12 +9,18 @@ Four subcommands:
     pretty-printer. ``--file`` omitted resolves the pod's zero-migration
     default pipeline, identical to what ``run``/``docket pod <project>
     dispatch`` would actually execute.
-  * ``run <project> [--file <path>] [--resume] [--timeout <seconds>] [--follow]`` —
-    dispatch *project*'s pending tasks through the given (or default)
-    pipeline. This delegates straight to ``cli._pod._pod_dispatch`` (the
-    exact same rendering/run-registry logic ``docket pod <project>
-    dispatch`` uses) with the loaded spec forwarded — one shared
-    implementation, not a parallel copy. ``--follow``
+  * ``run <project> [--file <path>] [--resume] [--timeout <seconds>]
+    [--var key=value]... [--follow]`` — dispatch *project*'s pending tasks
+    through the given (or default) pipeline. This delegates straight to
+    ``cli._pod._pod_dispatch`` (the exact same rendering/run-registry logic
+    ``docket pod <project> dispatch`` uses) with the loaded spec forwarded —
+    one shared implementation, not a parallel copy. Repeatable ``--var
+    key=value`` supplies the pipeline's variable namespace (the same one a
+    webhook dispatch resolves from its JSON body — see
+    ``core.pipeline.resolve_variables``); a step's own ``instructions`` may
+    reference ``${key}``, and an unresolved reference, or a missing
+    ``required`` variable, refuses the run before any hop
+    (pipeline-format.spec.md). ``--follow``
     runs that same call on a background thread while tailing new trace
     events for *project* to stdout, so an operator watching the command sees
     hop-by-hop progress rather than only the final summary — see
@@ -53,6 +59,47 @@ def _flag(args: list[str], name: str) -> str | None:
     return None
 
 
+def _extract_repeated_flag(args: list[str], name: str) -> tuple[list[str], list[str]]:
+    """Every ``--name value``/``--name=value`` occurrence in *args* (repeatable), as
+    ``(values, remaining_args_with_them_removed)`` — mirrors ``_flag`` but for a flag
+    that may appear more than once (``--var``)."""
+    values: list[str] = []
+    remaining: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == name and i + 1 < len(args):
+            values.append(args[i + 1])
+            i += 2
+            continue
+        if a.startswith(name + "="):
+            values.append(a.split("=", 1)[1])
+            i += 1
+            continue
+        remaining.append(a)
+        i += 1
+    return values, remaining
+
+
+def _parse_var_flags(values: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Parse repeated ``--var key=value`` strings into a mapping; returns
+    ``(variables, errors)`` — an entry missing ``=`` or with an empty key is an error,
+    naming the offending value verbatim, rather than silently dropped."""
+    variables: dict[str, str] = {}
+    errors: list[str] = []
+    for raw in values:
+        if "=" not in raw:
+            errors.append(f"--var {raw!r} must be of the form key=value")
+            continue
+        key, _, value = raw.partition("=")
+        key = key.strip()
+        if not key:
+            errors.append(f"--var {raw!r} has an empty key")
+            continue
+        variables[key] = value
+    return variables, errors
+
+
 def run_pipeline(sub: str | None, args: list[str]) -> int:
     """Dispatch ``docket pipeline <sub> ...``. Returns a process exit code."""
     sub = (sub or "").lower()
@@ -65,7 +112,8 @@ def run_pipeline(sub: str | None, args: list[str]) -> int:
     ui.error(
         "Unknown subcommand "
         f"'{sub}'. Use: validate <file> | plan <project> [--file <path>] | "
-        "run <project> [--file <path>] [--resume] [--timeout <seconds>] [--follow]."
+        "run <project> [--file <path>] [--resume] [--timeout <seconds>] "
+        "[--var key=value]... [--follow]."
     )
     return 1
 
@@ -152,13 +200,18 @@ def _run(args: list[str]) -> int:
     if not args:
         ui.error(
             "Usage: docket pipeline run <project> [--file <path>] [--resume] "
-            "[--timeout <seconds>] [--follow]"
+            "[--timeout <seconds>] [--var key=value]... [--follow]"
         )
         return 1
     project = args[0]
     rest = args[1:]
     follow = "--follow" in rest
     rest = [a for a in rest if a != "--follow"]
+    var_values, rest = _extract_repeated_flag(rest, "--var")
+    variables, var_errors = _parse_var_flags(var_values)
+    if var_errors:
+        _print_errors("Invalid --var:", var_errors)
+        return 1
     spec, errors = _resolve_spec_arg(rest)
     if errors:
         _print_errors("Pipeline file is invalid:", errors)
@@ -170,8 +223,8 @@ def _run(args: list[str]) -> int:
     from docket.cli._pod import _pod_dispatch
 
     if follow:
-        return _run_and_follow(project, rest, spec)
-    _pod_dispatch(project, rest, spec=spec)
+        return _run_and_follow(project, rest, spec, variables)
+    _pod_dispatch(project, rest, spec=spec, variables=variables)
     return 0
 
 
@@ -183,7 +236,12 @@ def _utc_now_iso() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _run_and_follow(project: str, rest: list[str], spec: _pipeline.PipelineSpec | None) -> int:
+def _run_and_follow(
+    project: str,
+    rest: list[str],
+    spec: _pipeline.PipelineSpec | None,
+    variables: dict[str, str] | None = None,
+) -> int:
     """``--follow``: run the dispatch on a background thread while the
     foreground thread tails new trace events for *project*
     to stdout, so an operator watching the command sees hop-by-hop progress
@@ -209,7 +267,7 @@ def _run_and_follow(project: str, rest: list[str], spec: _pipeline.PipelineSpec 
 
     def _worker() -> None:
         try:
-            _pod_dispatch(project, rest, spec=spec)
+            _pod_dispatch(project, rest, spec=spec, variables=variables)
         except typer.Exit as exc:
             exit_code[0] = exc.exit_code or 0
         finally:

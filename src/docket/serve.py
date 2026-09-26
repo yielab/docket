@@ -1070,6 +1070,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
                     proj,
                     turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
                     verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                    variables=variables,
                 ),
             )
 
