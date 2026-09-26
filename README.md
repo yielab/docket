@@ -64,9 +64,9 @@ project can't bleed into another, and an agent's edit never lands on your checke
 ## How a tool call is gated
 
 Every action an agent takes flows through one fixed pipeline. There is no configuration that
-bypasses it — `docket gates enable/disable` record an approval-routing *posture* that `docket gates
-status` and `doctor` report and nothing on the live path reads; every `ask` verdict is answered the
-same way by the CLI, HTTP, MCP and Telegram channels regardless of it.
+bypasses it — the former `docket gates enable/disable` toggles are retired precisely because the
+flag they wrote was never read on the live path; every `ask` verdict is answered the same way by
+the CLI, HTTP, MCP and Telegram channels.
 
 ```mermaid
 flowchart LR

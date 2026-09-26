@@ -81,7 +81,7 @@ release source.
 
 **Opened 2026-09-25, immediately after Wave 37 closed (`3089a00`) removed the file-contention
 blocks (W37-C5 on `core/approval.py`, W37-C6 on `cli/_policies.py`/`cli/_keys.py`).** Twenty
-cards; Wave 38 starts with P26-1. Decision, verdict table and the
+cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); batch B (P26-4, P26-19) is next. Decision, verdict table and the
 six-property contract: [docs/adr/0008-configuration-contract.md](docs/adr/0008-configuration-contract.md).
 The user-facing map of every installed file is [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Each closing card deletes its own bullet from that guide's §5 "Sharp edges" in the same commit.
@@ -153,7 +153,7 @@ doctor check function, and the policy section of `security-gates.spec.md`.
 
 ### P26-2 — the system prompt never drops state silently
 
-**Status:** TODO · **Size:** S · **Wave:** 38 · **Spec:** `agent-loop.spec.md` req. 30
+**Status:** DONE (2026-09-25, merged 7b6544a) · **Size:** S · **Wave:** 38 · **Spec:** `agent-loop.spec.md` req. 30
 
 **Trigger:**
 - A `SOUL.md` of 21.9 KB → `MEMORY.md` truncated.
@@ -494,7 +494,7 @@ with the source that set it (meta/policy/pin, pod setting, env, default):
 
 ### P26-13 — secrets are stored once, where they are read
 
-**Status:** TODO · **Size:** S · **Wave:** 38 · **Spec:** `api-keys.spec.md`
+**Status:** DONE (2026-09-25, merged 7ea025a) · **Size:** S · **Wave:** 38 · **Spec:** `api-keys.spec.md`
 
 **Trigger:**
 - `cli/_keys.py:95-122` writes every stored key as plaintext into each project workspace's `.env`
@@ -582,7 +582,7 @@ the serve sweep call, the `ToolContext.project` value in the driver, and `dispat
 
 ### P26-16 — lifecycle hygiene, and the `gates enable/disable` decision
 
-**Status:** TODO · **Size:** S · **Wave:** 38 · **Spec:** `agent-lifecycle.spec.md`,
+**Status:** DONE (2026-09-25, merged 38f6764) · **Size:** S · **Wave:** 38 · **Spec:** `agent-lifecycle.spec.md`,
 `security-gates.spec.md`
 
 **Trigger:**
@@ -646,7 +646,7 @@ req. 30
 
 ### P26-18 — pod membership is read from recorded metadata, never guessed from the id string
 
-**Status:** TODO · **Size:** S · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`,
+**Status:** DONE (2026-09-25, merged c326796) · **Size:** S · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`,
 `role-archetypes.spec.md`
 
 **Trigger (deterministic, live 2026-09-25):** a custom role `security-reviewer` passes

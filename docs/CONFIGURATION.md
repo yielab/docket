@@ -73,7 +73,6 @@ noted.
     │   ├── WORKFLOW_AUTO.md            startup contract (versioned, regenerated)
     │   ├── memory/YYYY-MM-DD.md        daily logs
     │   ├── TASK_LIST.json              Lead only, after the first `delegate`: the pod's queue
-    │   ├── .env                        after `keys add`: synced provider keys
     │   └── worktree/                   implementers in a git repo: a git worktree
     └── pods/<pod>/.scratch/            first pod   the pod's isolated scratch directory
 ```
@@ -89,8 +88,8 @@ The Implementer edits that worktree, never your checked-out branch. Dispatch nev
 the agent ran `git commit` itself, its changes stay **uncommitted** in the worktree, so you see them with
 `git -C ~/.docket/workspaces/projects/<pod>-implementer/worktree diff`, then commit on its branch
 and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
-there too. `docket delete` removes the worktree but **leaves the branch**; delete it
-yourself with `git branch -D` when you are done. Reviewer and Tester run with the codebase root as
+there too. `docket delete` also deletes that branch when it is merged into your
+current branch; an unmerged branch is kept, with the removal command printed. Reviewer and Tester run with the codebase root as
 their working directory, so a test run can leave caches in your checkout. Outside the repo,
 `docket init` also creates `~/Sites` (`SITES_DIR`) and `/tmp/docket` (`DOCKET_LOG_DIR`) if they
 are missing.
@@ -108,8 +107,8 @@ Nothing is cached, so an edit takes effect on the next turn with nothing to rest
 
 The system prompt is, in this order:
 
-1. **`SOUL.md`**, the whole file, with the persona block re-rendered from `.docket-meta.json`.
-   It is never truncated.
+1. **`SOUL.md`**, with the persona block re-rendered from `.docket-meta.json`. An oversized
+   `SOUL.md` is visibly middle-truncated rather than starving the sections below.
 2. **A fixed runtime contract** written by docket (not a file). It lists the directories the
    agent's tools may touch and tells it that its private workspace files are read-only.
 3. **Workspace state**, in this order: `HEARTBEAT.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md`.
@@ -118,10 +117,12 @@ The system prompt is, in this order:
    - `TOOLS.md` and `MEMORY.md` are included verbatim.
 
 Section 3 shares one budget: `CONTEXT_TOKEN_BUDGET` (default 6000) × `CONTEXT_BYTES_PER_TOKEN`
-(default 4), so about 24 KB, **minus** what `SOUL.md` and the contract already used. When a file
-does not fit, its middle is cut and replaced with a visible marker, and **every file after it is
-dropped**. A long `SOUL.md` or `HEARTBEAT.md` therefore silently crowds out `MEMORY.md`.
-`docket maintain <id> check` warns when the static context passes the budget.
+(default 4), so about 24 KB. An oversized `SOUL.md` is capped (middle-truncated with a visible
+marker) so it cannot crowd out the contract or the state sections; a state file that does not fit
+is truncated or omitted **with a one-line marker in the prompt naming it**, and every composition
+emits a `prompt_composed` trace event listing each section as full, truncated or omitted
+(`docket trace`). Nothing is dropped silently. `docket maintain <id> check` warns when the static
+context passes the budget.
 
 **Not sent to the model**, despite what the file names suggest:
 
@@ -130,7 +131,6 @@ dropped**. A long `SOUL.md` or `HEARTBEAT.md` therefore silently crowds out `MEM
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
 | `memory/YYYY-MM-DD.md` | Input to `docket maintain distill` (and to `clean`/`reset`, which distill first). Not in the prompt. Distill to move its content into `MEMORY.md`, which is. |
 | `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--file` (see §3.5). |
-| `.env` | Written by `docket keys add`. No live consumer; the model client reads keys from `secrets.json` and the environment. |
 
 ### Who decides what: the ownership map
 
@@ -305,11 +305,6 @@ Template variables: `project`, `role`, `memberId`, `sessionKey`, `objective`, `c
 `codebaseOrConfigured`, `codebaseOrIt`, `stack`, `workDir`, `requiredStartupFile`. An unknown
 `${var}` fails `validate`.
 
-> **Do not name a custom role so it ends in a registered role name** (`security-reviewer`,
-> `api-tester`, …). Provisioning and `pipeline plan` accept it, but **dispatch refuses the
-> member** as cross-pod: membership is guessed from the member id's last hyphen segment, so
-> `proj-security-reviewer` parses as pod `proj-security`. Use a single word (`vetter`,
-> `securityreviewer`) until P26-18 lands. Verified live 2026-09-25.
 
 What is read **when**:
 
@@ -477,8 +472,8 @@ path, not the only one; `bash` can still reach the network through allowlisted i
 
 **Isolation.** `docket gates isolate on` runs tools inside Docker or bwrap, and refuses the turn
 when neither is usable. The image is `DOCKET_SANDBOX_IMAGE`. This sets `isolationEnabled` in
-`fleet.json`, the only `security` flag the live path enforces. `docket gates enable|disable` records
-an approval-routing flag that **nothing on the live path reads**.
+`fleet.json`, the only `security` flag the live path enforces. (`docket gates enable|disable` is
+retired: the flag it wrote was never read on the live path.)
 
 ### 3.7 Give agents external tools (MCP)
 
@@ -610,13 +605,8 @@ for most of them.
   `docket-models.json` `default` and each agent's own `model` are.
 - **The provider display name is cosmetic.** `models provider add` without `--name` stores a fixed
   label. Only `id`, `contextWindow` and `maxTokens` are read.
-- **Keys are copied into workspaces.** `docket keys add` writes a plaintext `.env` into every
-  project agent's workspace, in addition to `secrets.json`. With `DOCKET_SECRETS_BACKEND=keyring`,
-  lookups use the keyring, but `keys add` still writes `secrets.json`.
 - **The registries grow forever.** `docket-runs.json`, `approvals/` and
   `docket-conversations.json` are never pruned. Only traces have retention.
-- **A custom role name ending in a built-in role name breaks dispatch** (§3.4): provisionable,
-  plannable, not dispatchable. Use single-word role names for now.
 - **A dispatch refusal can orphan a task as `running`.** A configuration error mid-pipeline (for
   example the role-name defect above) leaves the claimed task `running` with no process, and the
   CLI then refuses to dispatch at all ("No pending tasks"), which also blocks the sweep that would
@@ -625,5 +615,6 @@ for most of them.
   orphan and `--resume` reclaims it from its persisted hops. Verified live 2026-09-25.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action
   `tool.warn`), not in traces — so `docket trace`/`metrics` won't show it.
-- **`docket delete` leaves a branch in your repo.** It removes the Implementer's worktree but
-  leaves `docket/<pod>/<member>` behind.
+- **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it
+  is merged into your current branch; an unmerged one is kept and the command to remove it is
+  printed.
