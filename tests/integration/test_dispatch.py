@@ -32,7 +32,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import resources as _res
 from docket.core import runtime_driver as _rd
 from docket.core import session as _session
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, assistant
+from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 
@@ -203,6 +203,67 @@ class TestPipeline:
                 "one distinct recognized verdict marker at the start of a complete line" in message
             )
             assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
+
+    def test_default_approval_mode_leaves_every_hop_env_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pin: with no `approvalMode` configured, DOCKET_APPROVAL_MODE never reaches a hop's
+        env -- today's "wait" behavior is byte-identical."""
+        _seed_pod(tmp_path, monkeypatch)
+        calls: list[tuple[str, dict[str, str] | None]] = []
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            calls.append((agent_id, env))
+            return _rd.TurnResult(True, "done", 0.0, {})
+
+        task: dict[str, Any] = {"id": "am1", "description": "work", "status": "pending"}
+        result = _dispatch.dispatch_task("demo", task, runner=runner)
+
+        assert result.status == "done", result.reason
+        assert len(calls) == 2
+        assert all(env is None or _rd.DOCKET_APPROVAL_MODE not in env for _agent_id, env in calls)
+
+    def test_refuse_approval_mode_threads_into_every_hop_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The pod's `approvalMode: refuse` setting reaches every hop's tool env the same
+        internal-coordinate way PIPELINE_WORKTREE_ENV does -- popped by DocketDriver before
+        ToolContext ever sees it."""
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "approvalMode", "refuse")
+        calls: list[tuple[str, dict[str, str] | None]] = []
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            calls.append((agent_id, env))
+            return _rd.TurnResult(True, "done", 0.0, {})
+
+        task: dict[str, Any] = {"id": "am2", "description": "work", "status": "pending"}
+        result = _dispatch.dispatch_task("demo", task, runner=runner)
+
+        assert result.status == "done", result.reason
+        assert len(calls) == 2
+        for agent_id, env in calls:
+            assert env is not None
+            assert env[_rd.DOCKET_APPROVAL_MODE] == "refuse"
+            if agent_id.endswith("-lead"):
+                assert env == {_rd.DOCKET_APPROVAL_MODE: "refuse"}
+            else:
+                # The Implementer's port-range env (real DOCKET_PORT_*/
+                # DOCKET_SCRATCH_DIR vars from provisioning) is merged with,
+                # not replaced by, the approval-mode coordinate.
+                assert "DOCKET_PORT_BASE" in env
 
     def test_task_persisted_with_status_and_hops(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -439,6 +500,55 @@ class TestEndToEnd:
         tasks = _dispatch.read_tasks("demo")
         assert tasks[0]["status"] == "done"
         assert (oc_dir / "traces" / "demo").is_dir()
+
+    def test_refuse_approval_mode_fails_a_gated_hop_immediately_instead_of_waiting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The measured trigger this card closes: a real policy-gated `bash` call, through the
+        real `DocketDriver`, ends the hop well under `TOOL_APPROVAL_TIMEOUT` and fails the task
+        with the `approval_unavailable` reason recorded, instead of blocking on nobody."""
+        from docket.core.policy import install_policies
+
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
+        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        install_policies()
+        _fleet.meta_set("demo-lead", "approvalMode", "refuse")
+
+        # "lead" denies the `bash` tool outright (core/archetypes.py); the gated call has
+        # to be the Implementer's, so the Lead's turn gets an ordinary final response first.
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                _final_response("lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "clean the build dir")
+        started = time.monotonic()
+        results = _dispatch.dispatch_pod("demo")
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 1.0, f"took {elapsed:.2f}s -- refuse mode should not wait"
+        assert results[0].status == "failed"
+        assert "approval_unavailable" in results[0].reason
+        tasks = _dispatch.read_tasks("demo")
+        assert tasks[0]["status"] == "failed"
+        assert "approval_unavailable" in tasks[0]["reason"]
+        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+        assert trace_files
+        trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+        assert any(
+            ev["event_type"] == "error" and "approval_unavailable" in ev["payload"].get("text", "")
+            for ev in trace_events
+        )
 
     def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

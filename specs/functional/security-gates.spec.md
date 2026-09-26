@@ -1,16 +1,17 @@
 # Security Gates Specification
 
-**Version**: 0.22.0
+**Version**: 0.23.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
 MCP, and Telegram producers, all answering identically; isolation is opt-in and fails closed when
 enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
-in-turn tool-call gate section below. The approval-routing posture flag `docket gates
+in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
+P26-5, a pod's own `approvalMode` setting). The approval-routing posture flag `docket gates
 enable`/`disable` used to write is retired -- see Enablement requirement 2. Cancellation reaches
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers.
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -496,6 +497,15 @@ tool call to take.**
     required arguments). This mode is fixed and non-interactive by design — it answers "can this
     caller wait for a human," not "let a human answer from somewhere else" — see the ADR decision
     for why that is deliberately a separate, unbuilt feature.
+    - **Two producers set `DOCKET_APPROVAL_MODE=refuse` on `RuntimeDriver.run_turn`'s
+      `env`** (`core.runtime_driver.DOCKET_APPROVAL_MODE`), the internal coordinate
+      `DocketDriver` maps onto this field: `cli/_harness.py` (one non-interactive turn with
+      no caller-supplied posture), and, since ROADMAP P26-5, a pod's own
+      `approvalMode: "refuse"` setting (`core.pod.PodSettings`, threaded in by
+      `core/dispatch.py::_compose_hop` for every hop of that pod — see
+      `pod-dispatch.spec.md`, "Unattended approval posture"). Both reach the exact same
+      `ToolContext.approval_mode`/`dispatch_tool` behavior this requirement describes;
+      neither is a second implementation of it.
 
 12. **Cancellation reaches an in-flight `bash` command (W30-C1, D-35 decision 9 amends D-30 for
     this handler only).** The `bash` tool's `handler=` registration in
@@ -1155,6 +1165,15 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.23.0 (2026-09-26)
+
+- In-turn tool-call gate requirement 11 gains a second, named producer: a pod's own
+  `approvalMode: "refuse"` setting (`core.pod.PodSettings`, ROADMAP P26-5) sets
+  `DOCKET_APPROVAL_MODE=refuse` on every hop of that pod the same way `cli/_harness.py` already
+  did for one non-interactive turn — both map onto the same `ToolContext.approval_mode` this
+  requirement already describes; no new tool-context field or `dispatch_tool` behavior. See
+  `pod-dispatch.spec.md`, "Unattended approval posture".
 
 ### Version 0.22.0 (2026-09-25)
 

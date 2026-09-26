@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.10.0
+**Version**: 6.11.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -41,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -555,6 +555,42 @@ was seeded once at binding time.)*
    `AgentMeta`'s typed fields), falling back to the field's default. Every write is
    audit-logged as `pod.config`. `docket profile <lead-id> --budget <usd>` persists `budgetUsd`
    as this same validated number, not the raw CLI argument string.
+3. `approvalMode` (`"wait"` | `"refuse"`, default `"wait"`) is a fifth key on the same model
+   (`core.pod.PodSettings.approval_mode`), writable through the same `config get`/`set`/`unset`
+   surface. A present-but-invalid stored value (anything other than the two literals) raises
+   exactly like a malformed numeric setting — naming the key — and refuses dispatch rather than
+   defaulting to `"wait"`.
+
+### Unattended approval posture (`approvalMode`, ROADMAP P26-5)
+
+1. **Trigger.** A pod-dispatch hop that hits an `ask` policy verdict with nobody able to answer
+   (no operator watching a headless `docket serve`/schedule/webhook run) previously blocked the
+   whole hop for `TOOL_APPROVAL_TIMEOUT` (120s, see `security-gates.spec.md`) per gated call, with
+   no way to shorten that for a pod that is known to run unattended. Only harness mode
+   (`cli/_harness.py`) could opt out, by setting `DOCKET_APPROVAL_MODE=refuse` on its own `run_turn`
+   call — a path pod dispatch never took.
+2. `_compose_hop` (`core/dispatch.py`) reads `pod_approval_mode(project)` for every hop and, when
+   it is `"refuse"`, sets `DOCKET_APPROVAL_MODE=refuse` in that hop's tool env — merged into
+   whatever env the hop already carries (e.g. an Implementer's `DOCKET_PORT_*`/
+   `DOCKET_SCRATCH_DIR` vars, or a downstream hop's `PIPELINE_WORKTREE_ENV`), never replacing it.
+   This is the same internal caller-to-driver coordinate `PIPELINE_WORKTREE_ENV` already travels:
+   `DocketDriver.run_turn` pops it out of the tool env before building `ToolContext`, so it is
+   never a real tool-visible environment variable, and maps it onto
+   `ToolContext.approval_mode` (`security-gates.spec.md` requirement 11).
+3. Under `"wait"` (the default), a hop's env is byte-identical to every dispatch before this
+   setting existed — no key is added, no existing key is touched.
+4. Under `"refuse"`, a gated call inside that hop ends immediately with the existing
+   `approval_unavailable` denial (no approval record created, no wait), the agent loop stops on
+   `stop_reason="approval_unavailable"`, and the hop's `TurnResult` comes back `ok=False` with
+   `error` naming the tool, call id and policy (`core.agent_loop.approval_unavailable_error`).
+   `core/dispatch.py`'s ordinary hop-failure path (`_persist_hop_and_trace`) then fails the task
+   with reason `"<role> hop failed: approval_unavailable: ..."`, traces it as an `error` event, and
+   never retries — `"invalid_output"` (the failure kind this stop reason maps to) is not in
+   `_RETRYABLE_FAILURE_KINDS`. No new task status, trace event type, or failure-kind vocabulary is
+   introduced; this only changes which hop-failure reason a stuck-on-approval hop now produces.
+5. Non-goals (deliberately out of scope): detecting whether an approval channel is actually live
+   before choosing `"wait"` vs `"refuse"`, and changing the default. A pod that never sets
+   `approvalMode` sees no behavior change at all.
 
 ### Budget gate and auto-pause
 
@@ -1245,6 +1281,18 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.11.0 (2026-09-26)
+
+- **P26-5: unattended turns can refuse instead of waiting on nobody.** New "Pod dispatch settings"
+  requirement 3 and new subsection "Unattended approval posture (`approvalMode`, ROADMAP P26-5)":
+  a fifth `PodSettings` key, `approvalMode` (`wait`|`refuse`, default `wait`), threads
+  `DOCKET_APPROVAL_MODE=refuse` into a hop's tool env the same internal-coordinate way
+  `PIPELINE_WORKTREE_ENV` already travels, closing the gap where only harness mode
+  (`cli/_harness.py`) could opt an unattended turn out of the 120s `TOOL_APPROVAL_TIMEOUT` wait.
+  `wait` (the default) is byte-identical to every prior dispatch. No new task status, trace event
+  type, or failure-kind vocabulary — a refused hop fails through the existing
+  `approval_unavailable`/`_persist_hop_and_trace` path.
 
 ### Version 6.10.0 (2026-09-25)
 

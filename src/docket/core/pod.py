@@ -13,7 +13,7 @@ one function here with I/O — it reads a member's recorded meta via `core/fleet
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import ClassVar, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as _PydanticValidationError
@@ -277,6 +277,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "maxReworkCycles": "max_rework_cycles",
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
+    "approvalMode": "approval_mode",
 }
 
 
@@ -298,6 +299,11 @@ class PodSettings(BaseModel):
     max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
+    # Whether an unattended hop waits on an `ask` verdict (today's behavior,
+    # byte-identical) or refuses it at once -- threaded into the hop's tool
+    # env as DOCKET_APPROVAL_MODE (see core/dispatch.py's `_compose_hop`
+    # and core/tools.py's `ToolContext.approval_mode`).
+    approval_mode: Literal["wait", "refuse"] = Field("wait", alias="approvalMode")
 
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
@@ -306,6 +312,7 @@ class PodSettings(BaseModel):
         "maxReworkCycles",
         "turnTimeoutS",
         "verifyTimeoutS",
+        "approvalMode",
     )
 
     @classmethod
@@ -328,17 +335,17 @@ class PodSettings(BaseModel):
         return cls._validated(present)
 
     @classmethod
-    def coerce(cls, key: str, value: str) -> float | int:
-        """Validate *value* for *key* and return the number a caller should
+    def coerce(cls, key: str, value: str) -> float | int | str:
+        """Validate *value* for *key* and return the value a caller should
         persist via ``core.fleet.meta_set``; never writes anything itself."""
         if key not in cls.KEYS:
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
         settings = cls._validated({key: value})
-        return cast("float | int", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
+        return cast("float | int | str", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
 
-    def value_and_source(self, key: str, project: str) -> tuple[float | int | None, str]:
+    def value_and_source(self, key: str, project: str) -> tuple[float | int | str | None, str]:
         """This setting's value plus whether it is "set" (Lead meta) or
         "default" (this model's own default)."""
         lead_id = member_id(project, "lead")
