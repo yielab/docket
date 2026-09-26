@@ -412,3 +412,146 @@ list gains `step_skipped` and `command_step`); `cli-interface.spec.md` -> 1.37.0
   task with no `FakeDriver` call for that step and a `command_step` event; `when: {changed:
   "src/**"}` on a tree whose only change is under `docs/` skips the step (`step_skipped` event)
   and the next step runs. No other new tests.
+
+---
+
+## Wave 46 — the two extension points and the published shape (written 2026-09-26 after the Wave 45 rollup `79bb669`)
+
+Base commit for Wave 46: the commit that appended this section. P28-7 and P28-8 run in parallel;
+they share `core/pod_apply.py` (P28-7 adds `_plan_plugins`/`_export_plugins` and the `plugin`
+`ApplyItem.kind`; P28-8 rewrites `_export_roles`/`_export_policies`/`_export_manifest` and the
+comparison in `_plan_policies`) and nothing else. P28-7 alone touches `core/policy.py`,
+`core/plugins.py`, `docket/plugins.py`, `cli/_plugins.py`, `cli/__init__.py`, `cli/_help.py`;
+P28-8 alone touches `core/config_docs.py`, `scripts/gen_config_schemas.py`,
+`docs/contracts/config-v1/`, `docs/CONFIGURATION.md`, the recipe READMEs and recipe files.
+Spec versions: security-gates 0.27.0 and cli-interface 1.38.0 (P28-7); config-format 1.1.0,
+pod-blueprints **1.10.0**, cli-interface **1.39.0** (P28-8; the two cli-interface entries are
+merged newest first by the integrator).
+
+## P28-7 — a policy can call a Python predicate the operator applied, never one the agent wrote
+
+Branch `p28-7-predicate-plugins`. Specs: `security-gates.spec.md` -> 0.27.0 (new `### Predicate
+plugins` subsection after "Policy format v1"); `cli-interface.spec.md` -> 1.38.0 (`docket plugins
+list [--pod <p>]` under "Security and Gates").
+
+- **Public API.** New `src/docket/plugins.py` (the module operator code imports; it imports
+  nothing from `core/`): `PLUGIN_API_VERSION = "1.0.0"`, frozen dataclasses `ToolCall(tool: str,
+  args: dict[str, Any], rendered: str)` and `PolicyContext(role: str, project: str, branch: str,
+  worktree_root: str)`, and `predicate(name: str)` -- a decorator that records `(name, fn)` on the
+  module-level `REGISTRY` list a loader drains after executing a plugin file. A predicate is
+  `fn(call: ToolCall, ctx: PolicyContext, **with_) -> bool`.
+- **Loader.** New `src/docket/core/plugins.py`: `PLUGINS_DIR = DOCKET_HOME / "plugins"` (add
+  the constant to `config.py` beside `POLICIES_DIR`, env override `PLUGINS_DIR`) and
+  `pod_config_dir(project) / "plugins"`; `LoadedPredicate(name, scope: "global"|"pod:<p>",
+  file: Path, sha256: str, fn)`; `discover(project: str = "") -> dict[str, LoadedPredicate]`
+  imports every `*.py` in those two directories with `importlib.util.spec_from_file_location`
+  (module name `docket_plugin_<sha256[:12]>`), drains `docket.plugins.REGISTRY` after each, and
+  raises `PluginError` on a duplicate name across files or a file that fails to import (naming
+  the file). A module-level cache keyed by `(file, mtime_ns, size)` avoids re-importing per tool
+  call; a changed file re-imports. **Nothing is ever imported from a codebase**; the two
+  directories are the whole search path, and the spec says so as a MUST NOT.
+  `evaluate(pred, call, ctx, with_, *, budget_ms=250) -> tuple[bool, str]` returns
+  `(verdict, reason)`: a raise -> `(False, "raised <ExcType>: <msg>")`, a non-bool return ->
+  `(False, "returned <type>")`, wall clock over budget (measured with `perf_counter` around the
+  call; Python cannot pre-empt, so the budget denies after the fact and the spec says so) ->
+  `(False, "exceeded <budget> ms")`. Every call writes one audit entry `policy.plugin` with
+  `name=<n> scope=<s> sha256=<h> verdict=<allow|deny> reason=<r>` through `core.audit.audit_log`.
+- **Policy hook.** `core/policy.py`: `_validate_when` accepts `plugin: str` (non-empty) with an
+  optional `with: dict`; `_predicate_matches` handles the `plugin` key: `discover(project)` (the
+  evaluator passes `project` through), an unknown name or a `PluginError` -> the policy fires as
+  `block` with message `plugin '<name>' is not applied in scope global or pod:<p>` (fail closed:
+  a policy that names a plugin nobody applied denies, it never silently allows); otherwise
+  `evaluate(...)` and a `False` verdict means the predicate did not match (the policy does not
+  fire), a deny-by-failure means the policy fires as `block` naming the reason. `ToolCall` is
+  built from `ToolCallFacts` (`tool`, `args`, rendered = *text*) and `PolicyContext` from the
+  evaluator's `role`/`project`, the lazy branch getter and `call.args.get("cwd", "")`-free root:
+  add `worktree_root: str = ""` to `ToolCallFacts` and set it in `core/tools.py::
+  evaluate_tool_call` from `ctx.roots[0]` (the only line you touch there). Text-only hooks pass
+  `ToolCall("", {}, text)`.
+- **`apply`/`export`.** `core/pod_apply.py`: `_plan_plugins(directory, project)` plans
+  `plugins/*.py` into `pod_config_dir(project)/plugins/` with sha256 comparison (skip when the
+  installed copy has the same hash, replace otherwise) as `ApplyItem(kind="plugin", ...)`;
+  `apply` writes them 0600; `_export_plugins` copies the pod's `plugins/*.py` back. Add
+  `"plugin"` to the `ApplyItem.kind` Literal. Nothing else in that file.
+- **CLI.** New `src/docket/cli/_plugins.py::run_plugins(args) -> int`: `docket plugins list
+  [--pod <p>]` prints a table `NAME  SCOPE  FILE  SHA256` (global then pod), "No plugins
+  applied." when empty; a `PluginError` prints the message and exits 1. Register
+  `@app.command("plugins")` in `cli/__init__.py` next to `validate`; add its line to
+  `cli/_help.py` under the security group; regenerate `docs/commands.md`. `docket policies test`
+  needs no change: it calls the same evaluator.
+- **Goldens.** `help.golden` (+1 line), `completions_bash.golden` (`commands=` gains `plugins`),
+  `completions_zsh.golden` (+1 line). List each.
+- **Do not touch:** `core/config_docs.py`, `docs/CONFIGURATION.md`, `docs/contracts/`,
+  `_export_roles`/`_export_policies`/`_export_manifest`, the recipes.
+- **RED:** new `tests/unit/core/test_plugins.py` (`SUBJECT = "docket.core.plugins"`): `from
+  docket.core import plugins` fails on the base. The phase's two negative cases live here: (1) a
+  plugin file present only under `<codebase>/.docket/plugins/` is absent from `discover()` and a
+  policy `when: {plugin: touches_migrations}` evaluates to `block` naming it; (2) a plugin that
+  raises yields `block` naming it and one `policy.plugin` audit entry with `verdict=deny`. Plus
+  the positive path in the same file: a global plugin returning `True` for `write
+  path=app/migrations/0002.py` makes `then: ask` fire as `require_approval`. Three tests, no
+  more; no golden case for `plugins list`.
+
+## P28-8 — schemas editors can use, export in the short form, and docs that show only v1
+
+Branch `p28-8-schemas-and-export`. Specs: `config-format.spec.md` -> 1.1.0 (new `### Published
+schemas` and `### Short-form export` subsections); `pod-blueprints.spec.md` -> **1.10.0** (the
+export section: short form, `.md` beside each role, `# yaml-language-server` header, the apply
+round trip); `cli-interface.spec.md` -> **1.39.0** (`pod <p> export` writes the short form).
+
+- **Short-form models.** `core/config_docs.py` gains four Pydantic models with `extra="forbid"`
+  that describe exactly the short forms Wave 44 and 45 accept: `RoleDocument` (`kind: Literal
+  ["role"]`, `name`, `description`, `model: Literal["cheap","strong"]`, `cannot: list[str]`,
+  `verdict: list[str] | None`, `verify: bool | None`, `approval: bool | None`, `instructions:
+  str | None`, `scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction`, `policyRole`
+  optional), `PipelineDocument` (`kind`, `name`, `description`, `variables`, `steps` as a list of
+  the short step mapping: one id key plus `verify`, `verdict`, `approval`, `instructions`,
+  `timeout`, `retries`, `on`, `when`, `until`, `max`, or a mapping with `run`), `PolicyDocument`
+  (`kind`, `name`, `description`, `appliesTo`, `on: Literal["input","toolCall","output"]`,
+  `when` with `tool`, `path`, `matches`, `branch`, `anyOf`, `plugin`, `with`, `then: Literal[
+  "allow","warn","ask","block","redact"]`, `message`), `PodDocument` (`kind`, `name`, `members`,
+  `settings`, `pipeline`). They are used for two things only: schema generation, and
+  `load_document`'s error text -- when a short-form document fails its kind's parser,
+  `model_validate` runs first so the `ConfigDocError` names the field and its valid values (the
+  normalisers stay the loaders; do not route loading through the models).
+- **Schemas.** New `scripts/gen_config_schemas.py` (copy `scripts/harness_schema.py`'s shape:
+  regenerate, `--check`), writing `docs/contracts/config-v1/{role,pipeline,policy,pod}.schema.json`
+  from `model_json_schema()` with hoisted `$defs`, `$id` `https://docket.dev/schemas/config-v1/
+  <kind>.schema.json` and `title`. Pin: one test in `tests/unit/core/test_config_docs.py` that
+  imports the script's render function and asserts each file on disk equals the render
+  byte-for-byte (the RED: the directory does not exist on the base). The same test then
+  validates every shipped recipe file against its kind's schema with `jsonschema` (already a
+  dev dependency, `pyproject.toml` `jsonschema>=4.18`, used by `tests/integration/
+  test_harness_contract.py`) and asserts a policy with `then: bogus` is rejected at path
+  `then`. One test, three assertions; no new dependency.
+- **Export.** `core/pod_apply.py`: `_export_roles` writes each pod-overlay role as the short form
+  (`kind: role` first, then `name`, `description`, `model`, `cannot`, one gate key derived from
+  `gateContract`, `instructions: <name>.md`) plus `<name>.md` holding `soulTemplate`, then `##
+  AGENTS` and `agentsTemplate` (inverse of `normalize_role`; add `to_short_role(arch) ->
+  tuple[dict, str]` in `core/archetypes.py` beside `normalize_role` -- the one function you add
+  there); `_export_policies` writes every pod policy as short-form YAML `<stem>.yaml` via a new
+  `core.policy.to_short_policy(canonical) -> dict` (inverse of `normalize_policy`; the one
+  function you add there); `_export_pipeline` copies the bound file verbatim (a bound file is
+  whatever the operator applied; converting canonical to short is not this card); `_export_manifest`
+  writes `kind: pod`, `name: <project>` first. Every exported YAML starts with
+  `# yaml-language-server: $schema=./.schemas/<kind>.schema.json` and `export_pod` copies the four
+  schema files into `<dir>/.schemas/` (read from the installed package: ship them by adding
+  `src/docket/templates/schemas/` as the generator's second output, byte-identical to
+  `docs/contracts/config-v1/`, and pin that too). `apply` and `discover_config_paths` ignore
+  `.schemas/`. `_plan_policies` compares `read_policy(src) == read_policy(dest)` instead of text
+  so an export applies as `skip`.
+- **Round trip.** Extend P27-7's export round-trip test (find it in `tests/unit/core/
+  test_pod_apply.py` or `tests/integration/test_recipes.py`) by one assertion: `plan_apply` of
+  the export plans every item `skip`. That plus the pin test are the card's two tests.
+- **Docs and recipes.** `docs/CONFIGURATION.md` §3.4, §3.5, §3.6 show only the short form (the
+  canonical form moves to the specs' "canonical form" sections; link them); §3.6 gains one
+  paragraph "Extending with a predicate plugin" written from ADR 0010 §4 and the P28-7 card
+  (`~/.docket/plugins/`, pod `config/plugins/`, `when: {plugin, with}`, `docket plugins list`,
+  fail closed) -- the integrator reconciles it with P28-7's shipped names. The three recipe
+  READMEs show short-form files; `templates/recipes/*/policies/*.json` become short-form
+  `*.yaml` (`git mv`), and each recipe `pod.yaml` gains `kind: pod` and `name`. `docket validate`
+  on each recipe must print no deprecation note afterwards.
+- **Do not touch:** `core/plugins.py`, `cli/`, `_plan_plugins`, `core/policy.py` beyond
+  `to_short_policy`, `core/archetypes.py` beyond `to_short_role`.
+- **RED:** the schema pin test in `tests/unit/core/test_config_docs.py` fails on the base because
+  `docs/contracts/config-v1/` does not exist. Second test: the round-trip assertion above.

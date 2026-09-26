@@ -11,12 +11,13 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 45 (opened 2026-09-26): Phase 28, control flow as bounded data (D-44)
+> ## ▶ ACTIVE BOARD — WAVE 46 (opened 2026-09-26): Phase 28, the two extension points (D-44)
 >
-> Wave 44 (P28-1..P28-4) merged 2026-09-26 with rollup `ea9e354`. Wave 45 runs P28-5 and P28-6 in
-> parallel with function-level ownership of `core/dispatch.py`; packets (Wave 45 section) in
+> Waves 44 and 45 (P28-1..P28-6) merged 2026-09-26 (rollups `ea9e354`, Wave 45 rollup after
+> `5622d13`). Wave 46 runs P28-7 (predicate plugins) and P28-8 (schemas, short-form export, docs)
+> in parallel; packets (Wave 46 section) in
 > [.agents/handoffs/wave-44-worker-packets.md](.agents/handoffs/wave-44-worker-packets.md).
-> Wave 46 opens only after the Wave 45 rollup merges green.
+> Phase 28 closes when the Wave 46 rollup merges green.
 >
 > **☑ Phase 27 complete (2026-09-26).**
 >
@@ -117,9 +118,9 @@ release source.
 ---
 
 
-## ▶ WAVE 45 — ACTIVE (opened 2026-09-26): Phase 28, configuration format v1 and the two extension points (D-44)
+## ▶ WAVE 46 — ACTIVE (opened 2026-09-26): Phase 28, configuration format v1 and the two extension points (D-44)
 
-**Opened 2026-09-26 (Wave 45 active; Wave 44 done, Wave 46 queued in this section).** Eight cards in three waves. Decision, the format, the control-flow rule,
+**Opened 2026-09-26 (Wave 46 active; Waves 44–45 done).** Eight cards in three waves. Decision, the format, the control-flow rule,
 the plugin trust boundary and the verdict table are in
 [docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
 **Activation gate met:** Phase 27 closed 2026-09-26 (`e7dffbb`); packets in
@@ -290,7 +291,7 @@ are long block scalars a non-expert edits badly.
 
 ### P28-5 — outcomes route the pipeline, and every loop has a bound
 
-**Status:** IN-PROGRESS (@sonnet-p28-5) · **Size:** M · **Wave:** 45 (after P28-3) · **Spec:** `pipeline-format.spec.md` → 2.8.0 (control flow), `pod-dispatch.spec.md` → 6.19.0
+**Status:** DONE (2026-09-26) · **Size:** M · **Wave:** 45 (after P28-3) · **Spec:** `pipeline-format.spec.md` → 2.8.0 (control flow), `pod-dispatch.spec.md` → 6.19.0
 
 **Trigger:** `core/orchestrator.py` routes only through a `VerdictGate.rework` edge to an earlier
 step; a verdict cannot send the task to a later step, escalate to an approval step, or stop; a
@@ -329,7 +330,7 @@ sequential step on the base.
 
 ### P28-6 — a step can be skipped on a closed predicate, and a step can be a command
 
-**Status:** IN-PROGRESS (@sonnet-p28-6) · **Size:** S · **Wave:** 45 · **Spec:** `pipeline-format.spec.md` → 2.9.0, `pod-dispatch.spec.md` → 6.20.0, `cli-interface.spec.md` → 1.37.0 (only if help text changes)
+**Status:** DONE (2026-09-26) · **Size:** S · **Wave:** 45 · **Spec:** `pipeline-format.spec.md` → 2.9.0, `pod-dispatch.spec.md` → 6.20.0, `cli-interface.spec.md` → 1.37.0 (only if help text changes)
 
 **Trigger:** a Tester step cannot be skipped when nothing under `src/` changed; a lint or report
 step needs an agent turn even when a command would do; the only code escape for a pipeline is a
@@ -367,7 +368,7 @@ the base.
 
 ### P28-7 — a policy can call a Python predicate the operator applied, never one the agent wrote
 
-**Status:** TODO · **Size:** M · **Wave:** 46 (after Phase 27's `apply`) · **Spec:** `security-gates.spec.md` → 0.27.0 (predicate plugins), `cli-interface.spec.md` → 1.38.0
+**Status:** IN-PROGRESS (@sonnet-p28-7) · **Size:** M · **Wave:** 46 (after Phase 27's `apply`) · **Spec:** `security-gates.spec.md` → 0.27.0 (predicate plugins), `cli-interface.spec.md` → 1.38.0
 
 **Trigger:** the predicate vocabulary is closed by design; a team with a genuinely complex rule
 ("ask when a migration file is touched outside the migrations/ tree of the app that owns it") has
@@ -410,7 +411,7 @@ fails on the base.
 
 ### P28-8 — schemas editors can use, export in the short form, and docs that show only v1
 
-**Status:** TODO · **Size:** S · **Wave:** 46 · **Spec:** `config-format.spec.md` → 1.1.0, `pod-blueprints.spec.md` → 1.8.0 (export), `cli-interface.spec.md` → 1.39.0
+**Status:** IN-PROGRESS (@sonnet-p28-8) · **Size:** S · **Wave:** 46 · **Spec:** `config-format.spec.md` → 1.1.0, `pod-blueprints.spec.md` → 1.10.0 (export; 1.8.0 was consumed by Phase 27), `cli-interface.spec.md` → 1.39.0
 
 **Trigger:** contract property 5 and the request's "easy to interpret for a non-expert": a file
 format without a schema has no autocomplete and no inline errors in an editor; `export` (P27-7)
