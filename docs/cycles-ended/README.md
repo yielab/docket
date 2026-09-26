@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (43 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (44 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-09-26 | ◆ PHASE 27 — COMPLETE (opened 2026-09-26, closed 2026-09-26): per-pod configuration and portable teams (D-43) | `todo-waves.md` | 27,664 |
 | 2026-09-25 | ◇ WAVE 37 CLOSED (2026-09-25) — defects found by running the product (D-41) | `todo-waves.md` | 10,940 |
 | 2026-09-25 | ◆ PHASE 26 — COMPLETE (opened 2026-09-25, closed 2026-09-26): the configuration contract (D-42) | `todo-waves.md` | 36,055 |
 | 2026-09-21 | ◇ WAVE 36 CLOSED (2026-09-21) — eleven defects the documentation audit found in code | `todo-waves.md` | 19,222 |

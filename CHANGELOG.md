@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pod exports its own scope, and the round trip is the proof.** `docket pod <p> export <dir>
+  [--force]` writes the pod's role overlay, its policies, its bound pipeline and a `pod.yaml` of
+  members and non-default settings, never anything global; applying that directory to a fresh pod
+  in a fresh home reproduces the same `config explain --json`. `apply` also carries a recipe's
+  `policies/*.json` into the pod, so the shipped recipes need no manual copy.
 - **A recipe applies to any pod in one command.** `docket pod <p> apply [<dir>] [--dry-run]
   [--json]` (default `<codebase>/.docket/`) reads `roles/*.yaml`, `policies/*.json`,
   `pipeline.yaml` and a three-key `pod.yaml` (`members`, `settings`, `pipeline`), validates

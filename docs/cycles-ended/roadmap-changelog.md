@@ -10,6 +10,15 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-26 (Phase 27 complete, D-43) — per-pod configuration and portable teams.** Ten
+  cards over Waves 41–43, one Sonnet worker per card in isolated worktrees under one
+  integrator. Shipped: pod role overlays and pod policies (`--pod`), MCP servers declaring
+  `kind`/`tools`, pod `mcpServers`/`deniedTools` with live readers, the Lead's instruction as
+  archetype data, `docket pod <p> apply|export` with the round trip as the proof, scope labels
+  in `config explain`/`doctor`. Two integrator-added cards fixed defects the workers found:
+  `core/pod.py` resolved role names globally so a pod-overlay role vanished from the roster
+  (P27-9), and `apply` never carried a recipe's policies (P27-10). Board section archived to
+  `docs/cycles-ended/todo-waves.md`; packets in `.agents/handoffs/wave-41-worker-packets.md`.
 - **2026-09-26 (Phase 28 planned, D-44) — configuration format v1 and the two extension
   points.** Gated on Phase 27. Eight cards in three waves: a `kind` envelope with one
   `load_document` and `docket validate`; short forms for roles, pipelines and policies over the

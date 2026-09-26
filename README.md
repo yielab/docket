@@ -164,8 +164,9 @@ The guarantees above are the governance surface. Beside them docket ships:
   schedule, webhook, MCP); steps carry their own `instructions` with `${var}` interpolation from
   `docket pipeline run --var key=value`, and `pipeline plan` names which pipeline would run.
 - **Shipped recipes** (`templates/recipes/`) — `secure-build`, `research-review` and
-  `ops-approval` bundle a role, a pipeline and a policy pack with the exact commands to apply
-  them; each is CI-validated and `secure-build` is proven by an end-to-end dispatch.
+  `ops-approval` bundle a role, a pipeline and a policy pack that `docket pod <p> apply <dir>`
+  writes into that pod's own scope in one command; each is CI-validated and `secure-build` is
+  proven by an end-to-end dispatch.
 - **Unattended runs that fail fast instead of hanging** — `approvalMode refuse` turns a would-be
   120-second approval wait into an immediate, named failure, and `allowCommands` lets one pod run
   its own test binaries without a human in the loop (high-risk commands stay refused).
@@ -291,7 +292,7 @@ configuration with working defaults, and every layer answers one question:
 | What is forbidden or needs a human, everywhere | Policies | drop a JSON file in `~/.docket/policies/` — live on the next call, `docket policies test`/`validate` to check it |
 | What one pod may run unattended | Pod settings | `pod config set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
 | Which model each role uses | Model policy | `docket models set <role> <provider/model>`; pin one agent with `docket profile` |
-| A proven starting point instead of a blank page | Recipes | copy `templates/recipes/secure-build` (or `research-review`, `ops-approval`) and apply its README's commands |
+| A proven starting point instead of a blank page | Recipes | `docket pod <p> apply templates/recipes/secure-build` (or `research-review`, `ops-approval`); `docket pod <p> export <dir>` writes a pod back into that shape |
 
 One rule keeps the map honest: **a guarantee is a CLI-managed JSON registry under `~/.docket/`,
 evaluated by code and audited when it fires.** A file the agent merely reads for context is

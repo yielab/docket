@@ -20,13 +20,15 @@ measured and deferred. **Waves 33 and 34 closed 2026-09-13**: an audit of the Wa
 2026-09-07, and the card that would have published a newer beta was removed from the board.
 **`v0.2.0-beta.3` was published 2026-09-18** as a maintainer action, the first with harness mode,
 after CI on `main` went green again on the dependency floor and on macOS. The next release is
-likewise a maintainer action, not a card. **Phase 27 (per-pod configuration and portable teams, D-43) was planned 2026-09-26**: eight
-cards in three waves make roles, policies and MCP selection resolve per pod above a global
-structural base, let an MCP server declare a read kind, make the Lead's instruction data, and
-turn the recipe directory into a manifest with `docket pod <p> apply|export`; reasoning in
+likewise a maintainer action, not a card. **Phase 27 (per-pod configuration and portable teams, D-43) shipped 2026-09-26**, ten cards
+over Waves 41–43 (eight planned plus two defects found inside the phase: pod-overlay roles
+dropped from the roster, `apply` skipping policies): roles, policies and MCP selection resolve
+per pod above a global structural base, an MCP server declares its kind and tools, the Lead's
+instruction is data, and the recipe directory is a manifest with `docket pod <p> apply|export`
+proven by a round trip; reasoning in
 [docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md).
 **Phase 28 (configuration format v1 and the two extension points, D-44) was planned the same day**,
-gated on Phase 27 closing: a `kind` envelope and one `docket validate`, short forms for roles,
+now unblocked by Phase 27 closing: a `kind` envelope and one `docket validate`, short forms for roles,
 pipelines and policies over the unchanged canonical form, control flow as bounded data (`on`,
 `until`, closed `when` predicates, command steps), and hashed, operator-applied Python predicate
 plugins for policies; reasoning in
