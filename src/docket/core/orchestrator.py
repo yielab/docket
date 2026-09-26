@@ -58,6 +58,9 @@ class PlannedUnit:
     # specs/functional/pipeline-format.spec.md ("Conditional steps and command steps").
     when: dict[str, Any] | None = None
     run: str | None = None
+    # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
+    # See specs/functional/pipeline-format.spec.md ("Outcome routing").
+    on: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +162,7 @@ def _resolve_unit(
         skipped=skipped,
         when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
         run=step.run,
+        on=step.on,
     )
 
 
@@ -206,6 +210,7 @@ def _render_unit(unit: PlannedUnit) -> str:
         who = unit.member_id or "(unresolved)"
         gate_label = _gate_label(unit.gate)
         base = f"{target} -> {who} [gate: {gate_label}]"
+    base += _render_on_suffix(unit.on)
     if unit.when:
         base += f" when {_render_when(unit.when)}"
     return base
@@ -220,6 +225,16 @@ def _render_when(when: dict[str, Any]) -> str:
     if "memberPresent" in when:
         parts.append(f"memberPresent={when['memberPresent']}")
     return " ".join(parts)
+
+
+def _render_on_suffix(on: dict[str, Any] | None) -> str:
+    if not on:
+        return ""
+    parts = []
+    for label, route in on.items():
+        target = route.get("goto", "?") if isinstance(route, dict) else route
+        parts.append(f"{str(label).upper()}->{target}")
+    return " on " + ", ".join(parts)
 
 
 def _gate_label(gate: _pipeline.Gate | None) -> str:

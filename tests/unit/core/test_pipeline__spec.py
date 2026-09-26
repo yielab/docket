@@ -827,3 +827,61 @@ class TestCommandSteps:
         spec = PipelineSpec(name="p", steps=[Step(id="check", run="false")])
         plan = _orch.resolve_plan(spec, {})
         assert "run 'false' [gate: exit code]" in _orch.render_plan(plan)
+
+
+# ── TestOutcomeRouting ────────────────────────────────────────────────────────
+#
+# `on:` is a real canonical `Step.on` field the executor (core/dispatch.py) reads
+# directly -- not only the single bounded backward rework edge the short form's
+# `on:` sugar could otherwise produce. `until: verify` + `max` is sugar for a
+# bounded self-retry, and the format validates every route's target and a
+# document's overall reachability.
+
+
+class TestOutcomeRouting:
+    def test_until_verify_sugar_normalises_to_bounded_fail_route_and_loads(self) -> None:
+        # On the base this rejects outright: `until`/`max` were not yet
+        # recognized short-form sugar keys, so the step entry was left as an
+        # invalid canonical mapping ("build"/"until"/"max" all read as
+        # unknown `Step` fields alongside a missing `id`).
+        text = """\
+name: p
+steps:
+  - id: plan
+    role: lead
+  - build: implementer
+    verify: true
+    until: verify
+    max: 2
+"""
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+        assert result.spec is not None
+        build = result.spec.steps[1]
+        assert build.on == {"fail": {"goto": "build", "max": 2}}
+        assert build.gate == MechanicalGate()
+
+    def test_unreachable_step_is_a_load_error_naming_it(self) -> None:
+        # On the base this also rejects, but for an unrelated reason: `Step`
+        # had no `on` field at all yet, and PyYAML's bare `on:` key resolves
+        # to the boolean `True`, which pydantic refuses outright ("Keys
+        # should be strings") long before any notion of reachability exists.
+        text = """\
+name: p
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    gate:
+      type: mechanical
+    on:
+      pass: stop
+      fail: stop
+  - id: dead
+    role: implementer
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "dead" in result.errors[0]

@@ -88,6 +88,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verdict_unparseable",
         "step_skipped",  # a `when` predicate was false; the step advanced with no hop
         "command_step",  # a `run` (command) step executed, with its exit code
+        "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
         "error",
         "session_end",
     ]

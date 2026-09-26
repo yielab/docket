@@ -4,7 +4,11 @@
 **Status**: Complete. **P28-6** adds a new "Conditional steps and command steps" section: a
 `when`-gated step is evaluated and, on a false predicate, skipped with a `step_skipped` trace
 event and no hop; a `run` step executes its command directly (`command_step` trace event), with
-no agent turn, gated on `core.security.classify_command` before it runs. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
+no agent turn, gated on `core.security.classify_command` before it runs. **P28-5** generalizes "Generalized gate execution": a step's own `on` map
+(`pipeline-format.spec.md`'s "Outcome routing") now routes a mechanical `pass`/`fail` or a verdict
+gate's matched marker to `fail`, `stop`, or any other step — forward, backward or self, bounded by
+`max` — instead of that outcome's ordinary advance/rework/fail handling, tracing one `route_taken`
+event per decision. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
 instruction data instead of a process-wide hardcoded string: `_hop_message`'s `role == "lead"`
 branch now resolves its instruction text through `core/archetypes.py`'s `resolve_hop_instruction`
 (the `lead` archetype's own `hopInstruction`, defaulting to the pre-existing hardcoded text) and
@@ -948,24 +952,29 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
      verification gate" documents) via `core/pod.py`'s `resolve_member_cwd` — worktree-aware cwd
      resolution now applies to **any** mechanically-gated step, not only one hardcoded to
      "implementer". A nonzero exit **MUST** fail the step and emit a `verification_failed` trace
-     event; a pass **MUST** emit a `tool_result` event and advance. An unset command (both
+     event; a pass **MUST** emit a `tool_result` event and advance — **unless** the step's own
+     `on` map (`pipeline-format.spec.md`'s "Outcome routing") names the resulting `"pass"`/`"fail"`
+     label, in which case that outcome **MUST** be routed instead (see item 5 below) and the
+     ordinary trace event above **MUST NOT** fire. An unset command (both
      `gate.command` and the member's `verifyCmd`) **MUST** produce the same honesty-rule signal
      "Implementer verification gate" documents (a `tool_result` "skipped" trace event plus the
      hop's own `verification_skipped` flag), generalized to name the actual member id — for any
-     mechanically-gated role, not only "implementer".
+     mechanically-gated role, not only "implementer"; routing never applies to a skipped check.
    - A `VerdictGate` **MUST** parse the hop's reply via `core.orchestrator.parse_verdict` —
      generalizing "Reviewer verdict gate"/"Tester PASS/FAIL gate"'s marker parsing to the gate's
      own `pattern`/`passValues`/`caseSensitive`/`rework` instead of two separate hardcoded
      Reviewer/Tester regexes and parsers (both removed from `core/dispatch.py` once this shipped).
-     A matched value in `passValues` **MUST** advance the pipeline; a matched value in a
-     configured `rework.when` **MUST** trigger a bounded rework cycle to `rework.to` (any earlier
+     A matched value in `passValues` **MUST** advance the pipeline; otherwise, when the step's own
+     `on` map names the matched value, that outcome **MUST** be routed instead (item 5 below,
+     beating the rework/fail handling that follows); otherwise a matched value in a configured
+     `rework.when` **MUST** trigger a bounded rework cycle to `rework.to` (any earlier
      top-level step id, not hardcoded to "implementer") while that gate's own rework-cycle count
      (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework configured,
      the value matches neither list, or no match at all) **MUST** fail the step.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
      waiting_approval") — by the time a hop's turn has actually run, an `ApprovalGate` gate simply
      advances (the gate already did its job before the turn, or a granted single-use override
-     already let it through).
+     already let it through). Outcome routing (item 5) does not apply to an approval gate.
 3. **Byte-identical behavior for the four built-in roles is a hard requirement, not a best
    effort.** For the built-in `default_pipeline()`, every step already declares its own explicit
    gate (Lead: none; Implementer: `MechanicalGate(command=None)`; Reviewer/Tester:
@@ -984,6 +993,17 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    Omitting either **MUST** fall back to the pre-W-8 pod-wide resolution ("Timeout configuration",
    "Retries and the failure-kind taxonomy") — the built-in pipeline's steps never set either, so
    this is never a behavior change for it.
+5. **Outcome routing (P28-5).** When a mechanical or verdict gate's outcome is named in the
+   step's own `on` map (`pipeline-format.spec.md`'s "Outcome routing"), dispatch **MUST** resolve
+   it against that map instead of the outcome's ordinary handling: `fail` **MUST** fail the task
+   naming the step and outcome; `stop` **MUST** end the task `done`; a step id **MUST** continue
+   the pipeline there, a backward or self target counted against its own `max` in a per-`(step
+   id, outcome label)` budget analogous to `rework.maxCycles`, exhausted **MUST** fail the task
+   naming the step, outcome and budget. Every routing decision **MUST** emit one `route_taken`
+   trace event naming the step, outcome and target; an outcome the map does not name is never
+   routed at all and keeps emitting whatever trace event it always has. A routed hop's persisted
+   record **MUST** carry the resolved target, so a resumed task (`_replay_pipeline_position`)
+   follows the same decision rather than re-deriving it.
 
 ### Conditional steps and command steps
 
@@ -1330,6 +1350,7 @@ reviewer_verdict_unparseable # the Reviewer's reply had no single unambiguous ma
 verdict_rework_started       # W-8: a non-built-in verdict gate's rework-triggering marker fired
 verdict_rejected              # W-8: a non-built-in verdict gate's reply matched but wasn't pass/rework
 verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
+route_taken                  # a step's own `on` map resolved a gate outcome (naming step/outcome/target)
 stale_claim                  # the crash sweep failed a running task whose claim went stale
 dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed
 paused_refused                # a claim attempt was refused because the pod's Lead is paused
@@ -1512,6 +1533,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   limitation: a `parallel` group's children do not yet support `when`/`run` (see the new
   section's requirement 4). No change to any existing pipeline's execution — a step declaring
   neither `when` nor `run` is unaffected.
+### Version 6.19.0 (2026-09-26)
+
+- **P28-5: a step's own `on` map routes a gate outcome beyond built-in rework/fail.**
+  "Generalized gate execution" item 2's mechanical and verdict bullets gain the routing rule
+  (`on:` beats the ordinary pass/fail/rework handling for a named outcome), and new item 5 states
+  the routing contract itself: `fail`/`stop`/a step id, a backward or self target bounded by its
+  own `max`, one `route_taken` trace event per decision, and persistence of the resolved target so
+  a resumed task follows the same decision. "Trace events this pipeline emits" gains
+  `route_taken`. See `pipeline-format.spec.md` v2.8.0 for the format-side `on`/`until` fields this
+  reads. No behavior change for the built-in `default_pipeline()`, whose steps declare no `on`.
 
 ### Version 6.18.0 (2026-09-26)
 
