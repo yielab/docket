@@ -537,6 +537,46 @@ class TestSystemPromptForAgent:
     def test_empty_agent_id_composes_to_empty(self) -> None:
         assert _identity.system_prompt_for_agent("") == ""
 
+    def test_instructions_md_reaches_the_prompt_right_after_soul(self) -> None:
+        ws = _write_meta("operator-instructions-agent")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
+
+        composition = _identity.compose_agent_prompt("operator-instructions-agent")
+
+        assert "OPERATOR-OWNED-LINE" in composition.text
+        assert composition.text.index("identity") < composition.text.index("OPERATOR-OWNED-LINE")
+        assert composition.text.index("OPERATOR-OWNED-LINE") < composition.text.index(
+            "Docket live runtime contract"
+        )
+        report = next(s for s in composition.sections if s.name == "INSTRUCTIONS.md")
+        assert report.status == "full"
+
+    def test_instructions_md_absent_adds_no_section(self) -> None:
+        ws = _write_meta("no-instructions-agent")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("no-instructions-agent")
+
+        assert all(s.name != "INSTRUCTIONS.md" for s in composition.sections)
+
+    def test_oversized_instructions_md_is_truncated_without_erasing_soul(self) -> None:
+        ws = _write_meta("bloated-instructions-agent")
+        (ws / "SOUL.md").write_text("SOUL-MARKER\n")
+        (ws / "INSTRUCTIONS.md").write_text(
+            "INSTR-HEAD-MARKER\n" + ("i" * 30_000) + "\nINSTR-TAIL-MARKER\n"
+        )
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+
+        composition = _identity.compose_agent_prompt("bloated-instructions-agent")
+
+        assert "SOUL-MARKER" in composition.text
+        assert "[... INSTRUCTIONS.md truncated:" in composition.text
+        assert "INSTR-HEAD-MARKER" in composition.text
+        assert "INSTR-TAIL-MARKER" in composition.text
+        assert "ACTIVE-LEDGER-LINE" in composition.text
+
 
 class TestRunAgentTurnComposesTheSystemPrompt:
     """Wired into the loop: `run_agent_turn` prepends a `system` message built

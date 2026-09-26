@@ -1569,7 +1569,8 @@ def cmd_pod(
         None,
         help=(
             "list | add <role> [--verify CMD] | remove <member-id> | "
-            "set-verify <member-id> CMD | config [get|set <key> <value>|unset <key>]"
+            "set-verify <member-id> CMD | config [get|set <key> <value>|unset <key>] | "
+            "sync [--dry-run]"
         ),
     ),
 ) -> None:
@@ -1654,6 +1655,16 @@ def cmd_pod(
                         verifyCmd timeout for this run only (otherwise each
                         falls back to the pod's own configured timeouts,
                         then a 300s default).
+      sync             [--dry-run]. Re-render SOUL.md/AGENTS.md/TOOLS.md for
+                        every member whose managed files have drifted from
+                        the current archetype and stored metadata (a
+                        template bump, or a role's own archetype content
+                        changing). `--dry-run` prints the diff without
+                        writing; without it, each stale member is rewritten
+                        and its metadata restamped (audit-logged as
+                        `pod.sync`). `INSTRUCTIONS.md` is operator-owned and
+                        is never read, written, or diffed by this command --
+                        an already-current pod changes nothing.
 
     Dispatch guarantees: budget-gated with real auto-pause (checked before
     each hop against the Lead's cap; over budget leaves the task blocked and

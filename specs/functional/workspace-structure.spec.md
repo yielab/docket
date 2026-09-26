@@ -1,10 +1,11 @@
 # Workspace Structure Specification
 
-**Version**: 1.10.0
+**Version**: 1.12.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
-requirement and role-archetypes.spec.md.
+requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
+`docket pod <p> sync` — see the same requirement and pod-dispatch.spec.md.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -84,6 +85,23 @@ covers the resulting file set for either workspace kind, not blueprint selection
 5. Self-authoring scaffolding (`IDENTITY.md`, `BOOTSTRAP.md`) **MUST NOT** remain
    live in a managed workspace: provisioning and `docket doctor` quarantine it to
    `.docket-archive/` (identity is docket-owned — role + optional persona from metadata).
+6. `INSTRUCTIONS.md` **MAY** exist in any project-agent workspace, pod member or not.
+   Unlike every other file above it is **operator-owned**: docket **MUST NOT** create,
+   write, regenerate, or quarantine it at any point — not at provisioning, not by
+   `docket pod <p> sync`, not by `set-verify`'s TOOLS.md rewrite, not by `docket maintain
+   rebuild`, and not by `docket doctor --fix`. When present, its content is composed into
+   the live prompt immediately after `SOUL.md` (agent-loop.spec.md requirement 30) so an
+   operator's own instructions survive every regeneration path that would otherwise
+   overwrite a generated file. A pod member's `SOUL.md`/`AGENTS.md`/`TOOLS.md` remain
+   fully regeneratable — `docket pod <p> sync [--dry-run]` re-renders whichever of them
+   have drifted from the member's current role archetype and stored metadata (a
+   `POD_TEMPLATE_VERSION` bump, or the archetype's own content changing), applying the
+   new text and restamping `templateVersion` in `.docket-meta.json`; `--dry-run` prints
+   the same comparison as a diff without writing. A member with nothing stale is a no-op:
+   `sync` writes nothing and leaves `templateVersion` alone. `docket doctor` **MUST**
+   flag a stale pod member (advisory, same severity as the existing non-pod
+   `_check_template_version`) rather than silently skipping every pod member the way it
+   did before this requirement.
 
 ### Org specialists
 
@@ -137,6 +155,7 @@ docket init [<project>] [location] [--blueprint <name>]  # Provision a pod (see 
 docket add <role> [--project <pod>]       # Add a member workspace to an existing pod
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
+docket pod <project> sync [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
 docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md, project or specialist
 ```
 
@@ -212,8 +231,23 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 - A pod Lead's `HEARTBEAT.md` dispatch region (see requirement 1) **MUST NOT** be the only thing
   a mechanical sync ever rewrites in that file — every other byte, including an agent's own
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
+- `INSTRUCTIONS.md` (requirement 6) is never written by docket under any command name —
+  provisioning, `sync`, `set-verify`, `maintain rebuild`, and `doctor --fix` alike leave an
+  existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.12.0 (2026-09-26)
+
+- **P26-10: operator instructions survive regeneration, and pod-member roles can be re-rendered.**
+  Added the operator-owned `INSTRUCTIONS.md` (requirement 6): unlike every other workspace file,
+  docket never creates, writes, or quarantines it, and it composes into the live prompt right
+  after `SOUL.md` (agent-loop.spec.md requirement 30). Closed the gap where a pod member's
+  `SOUL.md`/`AGENTS.md`/`TOOLS.md` rendered once at provisioning and never again reflected a
+  later archetype or `POD_TEMPLATE_VERSION` change, and where `docket doctor` explicitly skipped
+  every pod member's template-drift check: `docket pod <p> sync [--dry-run]` now re-renders a
+  stale member's managed files from its current archetype and metadata, and doctor flags one that
+  needs it. Added `docket pod <p> sync` to the Interface Contracts block.
 
 ### Version 1.10.0 (2026-09-26)
 

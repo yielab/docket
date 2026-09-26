@@ -234,10 +234,12 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_dispatch(project, extra)
     elif action == "config":
         _pod_config(project, extra)
+    elif action == "sync":
+        _pod_sync(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. "
-            "Use: list | add | remove | set-verify | delegate | queue | dispatch | config."
+            "Use: list | add | remove | set-verify | delegate | queue | dispatch | config | sync."
         )
         raise typer.Exit(1)
 
@@ -729,6 +731,38 @@ def _pod_config(project: str, extra: list[str]) -> None:
 
     ui.error(f"Unknown pod config action {action!r}. Use: get | set <key> <value> | unset <key>.")
     raise typer.Exit(1)
+
+
+def _pod_sync(project: str, extra: list[str]) -> None:
+    """``docket pod <project> sync [--dry-run]`` -- re-render stale SOUL/AGENTS/TOOLS
+    from the current archetype + metadata; ``--dry-run`` diffs without writing.
+    Never touches ``INSTRUCTIONS.md`` (operator-owned); an in-sync pod is a no-op."""
+    dry_run = "--dry-run" in extra
+    member_ids = pod_member_ids(project)
+    if not member_ids:
+        ui.warn(f"No pod found for '{project}'. Create one with: docket init {project}")
+        return
+    stale_ids = []
+    for member_id in member_ids:
+        status = _pp.member_sync_status(member_id)
+        if status is None or not status.stale:
+            continue
+        stale_ids.append(member_id)
+        if dry_run:
+            ui.console.print(
+                f"[bold]{member_id}[/bold] — stale "
+                f"(v{status.stored_template_version or '?'} -> v{_pp.POD_TEMPLATE_VERSION})"
+            )
+            for name, diff in status.diffs.items():
+                ui.console.print(escape(diff) if diff else f"  {name}: no content change")
+        else:
+            written = _pp.resync_member(member_id)
+            audit_log("pod.sync", f"member={member_id} files=({','.join(written)})")
+            ui.success(f"  {member_id}: re-rendered {', '.join(written) or '(version stamp only)'}")
+    if not stale_ids:
+        ui.success(f"Pod '{project}' is already in sync.")
+    elif dry_run:
+        ui.dim(f"  {len(stale_ids)} member(s) stale — rerun without --dry-run to apply.")
 
 
 # Checked only at ``pod config set pipeline``: a pipeline already bound to a pod is
