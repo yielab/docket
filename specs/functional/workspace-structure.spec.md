@@ -1,9 +1,11 @@
 # Workspace Structure Specification
 
-**Version**: 1.9.1
+**Version**: 1.10.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
-`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`.
-**Last Updated**: 2026-09-18
+`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
+`WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
+requirement and role-archetypes.spec.md.
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -52,7 +54,12 @@ covers the resulting file set for either workspace kind, not blueprint selection
      resume/durability contract (`docket-contract` marker; regenerated, never hand-edited).
      Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
      (ROADMAP Phase 16 W-7 — see pod-blueprints.spec.md), the shared **working directory**
-     (`## Your working directory`) — never both
+     (`## Your working directory`) — never both. As of contract v4 (P26-9; see
+     role-archetypes.spec.md "Generated instructions agree with the runtime contract"), it opens
+     with a **"Manual-path contract"** header stating that its own `cd`/write-`HEARTBEAT.md`
+     instructions apply only to an agent reading this file directly, outside Docket's turn loop —
+     the live turn loop never sends this raw file to the model, composing a small read-only
+     projection instead (`core/identity.py`)
    - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
@@ -207,6 +214,17 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.10.0 (2026-09-26)
+
+- **P26-9: `WORKFLOW_AUTO.md` gets a manual-path header (contract v4).** Its `cd`/write-`HEARTBEAT.md`
+  instructions were real but misleading in context: Docket's own turn loop never sends this raw
+  file to the model, projecting a small read-only summary instead (`core/identity.py`), while
+  the model's own AGENTS.md (pod-member templates) separately and wrongly told it to write
+  `HEARTBEAT.md` directly — a live contradiction fixed on the archetype side by
+  role-archetypes.spec.md v1.9.0. This file's own instructions stay accurate for the case they
+  actually serve (an agent reading the workspace directly, outside Docket's turn loop), now named
+  by a "Manual-path contract" header. Updated the "Project-agent workspace" requirement.
 
 ### Version 1.9.1 (2026-09-18)
 

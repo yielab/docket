@@ -560,3 +560,26 @@ class TestSyncDispatchTasks:
         records = ["not a dict", {"status": "running"}, {"id": "", "status": "running"}]
         _mem.sync_dispatch_tasks(ws, records)  # type: ignore[arg-type]
         assert _mem.read_dispatch_task_ids(ws) == []
+
+
+# ── WORKFLOW_AUTO.md's manual-path header ───────────────────────────────────
+
+
+class TestWorkflowAutoManualPathHeader:
+    """Both flavors must name their `cd`/write-HEARTBEAT instructions as the
+    manual-path contract, right after the file's own intro -- Docket's live turn
+    loop never sends this raw file, projecting a read-only summary instead."""
+
+    def test_codebase_flavor_names_the_manual_path(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", codebase="/src/demo", stack="Python")
+        text = (ws / _mem.REQUIRED_STARTUP_FILE).read_text(encoding="utf-8")
+        assert "Manual-path contract" in text
+        assert text.index("Manual-path contract") < text.index("## Your codebase")
+
+    def test_workdir_flavor_names_the_manual_path(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", work_dir="/tmp/demo")
+        text = (ws / _mem.REQUIRED_STARTUP_FILE).read_text(encoding="utf-8")
+        assert "Manual-path contract" in text
+        assert text.index("Manual-path contract") < text.index("## Your working directory")

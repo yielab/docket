@@ -34,7 +34,10 @@ from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 
 # Bump when the pod-member templates change (doctor flags older members).
-POD_TEMPLATE_VERSION = 2
+# v3: built-in/starter AGENTS.md templates no longer instruct a private
+# HEARTBEAT.md write -- it contradicted the live runtime contract (see
+# core/archetypes.py's Red Lines templates).
+POD_TEMPLATE_VERSION = 3
 
 # A verify command is stored and later run with shell=True (system.py's
 # run_verify_cmd) because real verify pipelines legitimately use `&&`/pipes/

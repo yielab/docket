@@ -1,16 +1,20 @@
 """``core/archetypes.py``'s pure, non-registry pieces: ``hop_instruction``'s wire
-round-trip and ``resolve_hop_instruction``'s gateContract-derived fallback. See
-specs/functional/role-archetypes.spec.md ("Hop instructions").
+round-trip, ``resolve_hop_instruction``'s gateContract-derived fallback, and that
+every built-in/starter role's generated prose agrees with the live runtime contract.
 """
 
 from __future__ import annotations
 
 from docket.core.archetypes import (
+    BUILTIN_ARCHETYPES,
+    STARTER_ARCHETYPES,
     GateContract,
     RoleArchetype,
     from_wire,
+    render,
     resolve_hop_instruction,
 )
+from docket.core.memory import HEARTBEAT_FILE
 
 SUBJECT = "docket.core.archetypes"
 
@@ -100,3 +104,52 @@ class TestHopInstructionWireFormat:
         }
         arch = from_wire("custom-role", doc)
         assert arch.hop_instruction == ""
+
+
+#: Sample render() variables covering every placeholder any built-in/starter
+#: template references (role-archetypes.spec.md "Template rendering").
+_SAMPLE_VARIABLES = {
+    "project": "demo",
+    "role": "sample-role",
+    "memberId": "demo-sample-role",
+    "sessionKey": "agent:demo:default",
+    "objective": "Demo project",
+    "codebase": "/src/demo",
+    "codebaseOrConfigured": "/src/demo",
+    "codebaseOrIt": "/src/demo",
+    "stack": "Python",
+    "workDir": "/src/demo",
+    "requiredStartupFile": "WORKFLOW_AUTO.md",
+}
+
+
+def _instructs_a_private_write(prompt: str) -> str:
+    """Offending line if *prompt* asks the model to write HEARTBEAT.md/memory/
+    itself, else ``""`` -- a check over the rendered prompt, not a source grep."""
+    for line in prompt.lower().splitlines():
+        if "write" not in line:
+            continue
+        if HEARTBEAT_FILE.lower() in line or "memory/" in line:
+            return line
+    return ""
+
+
+class TestGeneratedInstructionsAgreeWithRuntimeContract:
+    """No built-in/starter archetype's rendered SOUL.md + AGENTS.md may instruct the
+    model to write HEARTBEAT.md or memory/ itself -- that contradicts
+    `core/identity.py`'s live runtime contract, composed into the same turn."""
+
+    def test_no_archetype_instructs_a_private_write(self) -> None:
+        offenders: dict[str, str] = {}
+        for name, arch in {**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES}.items():
+            variables = {**_SAMPLE_VARIABLES, "role": name, "memberId": f"demo-{name}"}
+            prompt = "\n".join(
+                (
+                    render(arch.soul_template, variables),
+                    render(arch.agents_template, variables),
+                )
+            )
+            offense = _instructs_a_private_write(prompt)
+            if offense:
+                offenders[name] = offense
+        assert offenders == {}
