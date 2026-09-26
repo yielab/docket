@@ -618,8 +618,8 @@ every project. Pod dispatch never uses them. Customize them the same way (§3.2)
 ## 5. Sharp edges
 
 These are true of the current code. Each one is a reason to check a setting's effect instead of
-assuming it. Phase 26 in `TODO.md` ([ADR 0008](adr/0008-configuration-contract.md)) schedules a fix
-for most of them.
+assuming it. Phase 26 ([ADR 0008](adr/0008-configuration-contract.md), closed 2026-09-26) fixed the
+rest of the original list; what remains below is the honest boundary, not a backlog.
 
 - **`WORKFLOW_AUTO.md` and `memory/` are not in the prompt** (§2). Edit `SOUL.md`/`MEMORY.md`.
 - **Your prompt text belongs in `INSTRUCTIONS.md`.** It is operator-owned (docket never writes

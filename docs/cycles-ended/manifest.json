@@ -526,5 +526,13 @@
     "heading": "◇ WAVE 37 CLOSED (2026-09-25) — defects found by running the product (D-41)",
     "bytes": 10940,
     "sha256": "37539e90559a08c28273dd5c67944ed786729798ca397b47863e5b0651264d18"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 26 — COMPLETE (opened 2026-09-25, closed 2026-09-26): the configuration contract (D-42)",
+    "bytes": 36055,
+    "sha256": "dc2244d95371b7f235aef701a6de4c0e6c2a6a63aeffdf904c68f06cf6fdeaa4"
   }
 ]
