@@ -605,18 +605,21 @@ def _hop_message(
 
     *step_instructions*, when non-empty, is this step's own already-interpolated
     ``instructions`` (pipeline-format.spec.md) -- it replaces whatever instruction text the
-    target role would otherwise carry (a built-in's hardcoded text, or a custom role's own
-    ``hopInstruction``/generated fallback, see role-archetypes.spec.md). The Lead's hop
-    message has no separate instruction segment to override, so *step_instructions* is not
-    applied to it -- a deliberate scope boundary, not an oversight."""
+    target role would otherwise carry, for every role including the Lead (a built-in's own
+    instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
+    role-archetypes.spec.md)."""
     from docket.core import context as _ctx
 
     desc = str(task.get("description", "")).strip()
     if role == "lead":
-        message = (
-            f"You are the pod Lead. Decompose this task into a concrete plan for "
-            f"the Implementer (you never edit code yourself):\n\n{desc}"
-        )
+        if step_instructions:
+            lead_instruction = step_instructions
+        else:
+            lead_archetype = _archetypes.load_registry(project).get("lead")
+            lead_instruction = (
+                _archetypes.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
+            )
+        message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         comp = _HopComposition(
             description_bytes=len(desc.encode("utf-8")), total_bytes=len(message.encode("utf-8"))
         )

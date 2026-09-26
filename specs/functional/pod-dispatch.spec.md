@@ -1,7 +1,13 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.15.0
-**Status**: Complete. The public CLI reconstructs the full delegated task from every task
+**Version**: 6.17.0
+**Status**: Complete. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
+instruction data instead of a process-wide hardcoded string: `_hop_message`'s `role == "lead"`
+branch now resolves its instruction text through `core/archetypes.py`'s `resolve_hop_instruction`
+(the `lead` archetype's own `hopInstruction`, defaulting to the pre-existing hardcoded text) and
+honors a step's own `instructions` override, the same as every other role — see
+`role-archetypes.spec.md`'s "Hop instructions" and `pipeline-format.spec.md`'s "Steps"
+Requirement 8. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
 `edges.adapters.docket_runtime.DocketDriver`, docket's own gated turn loop
@@ -1176,6 +1182,18 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    (default 4, the same ratio `cli/_agents.py`'s `maintain check`/`maintain sessions` already use),
    not a second, independently-tunable one. This is an honest approximation, not an exact count
    from any real model tokenizer, and is never used to bill against.
+8. The Lead's hop message (`role == "lead"`) **MUST NOT** be a process-wide hardcoded string
+   (P27-5): `_hop_message` **MUST** resolve its instruction segment through
+   `core.archetypes.resolve_hop_instruction` against the `lead` archetype, exactly as it already
+   does for any custom role reaching the `else` branch below — the built-in `lead` archetype
+   carries a `hopInstruction` equal to the pre-existing hardcoded text, so a pod with no `lead`
+   overlay sees a byte-identical message. A step's own `instructions` (see
+   `pipeline-format.spec.md`'s "Steps" Requirement 8) **MUST** override that resolved text for a
+   step targeting `role: lead`, the same as it already does for every other role — the prior scope
+   boundary excluding the Lead from `step_instructions` is removed. The Lead's hop message
+   **MUST** still return before any token-budgeting in requirements 1-2 above (it carries no prior-
+   hop carryover) — this requirement changes only which instruction text is prepended to the task
+   description, not the Lead's budget-free composition path.
 
 ### Task status vocabulary
 
@@ -1406,6 +1424,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.17.0 (2026-09-26)
+
+- **P27-5: the Lead's instruction is data.** "Bounded hop prompts" gains requirement 8:
+  `_hop_message`'s `role == "lead"` branch now resolves its instruction text through
+  `core.archetypes.resolve_hop_instruction` against the `lead` archetype instead of a hardcoded
+  string, and a step's own `instructions` now overrides it too. The built-in `lead` archetype's
+  `hopInstruction` is the pre-existing hardcoded text, so a pod with no `lead` overlay and no step
+  override sees a byte-identical Lead hop message. See `role-archetypes.spec.md` v1.14.0 and
+  `pipeline-format.spec.md` v2.6.0 for the registry- and format-side halves.
 
 ### Version 6.15.0 (2026-09-26)
 

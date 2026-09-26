@@ -1,8 +1,11 @@
 # Pipeline Format Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
-interpolation. The executor (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
+interpolation. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
+`instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
+Requirement 8 below and `role-archetypes.spec.md`'s "Hop instructions". The executor
+(`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
 `PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan|run`
 CLI surface, now exist — see `pod-dispatch.spec.md` for execution semantics and
 `cli-interface.spec.md` for the CLI contract. `core.pipeline.resolve_variables` (W-4) resolves a
@@ -177,9 +180,9 @@ This specification does NOT cover:
    role's own `hopInstruction`/generated fallback; see `role-archetypes.spec.md`'s "Hop
    instructions"). Omitting it (`None`, the default) means "defer to the role" — not "no
    instruction at all". It **MAY** reference `${name}`-style variables, interpolated per
-   "Variables" Requirement 5. A step whose target is `role: lead` **MAY** still declare
-   `instructions`, but it has no effect — the Lead's hop message has no separate instruction
-   segment to override.
+   "Variables" Requirement 5. A step whose target is `role: lead` **MUST** have its `instructions`
+   applied like any other role (P27-5): it replaces the Lead's own instruction text (the built-in
+   hardcoded line, or an overlaid `lead` archetype's `hopInstruction`) instead of being ignored.
 
 ### Gates
 
@@ -459,6 +462,15 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.6.0 (2026-09-26)
+
+- **P27-5: step `instructions` now reach `role: lead`.** Steps Requirement 8 rewritten: a step
+  targeting `role: lead` no longer has its `instructions` silently ignored — it overrides the
+  Lead's own instruction text exactly like any other role. No schema change (the field already
+  existed); the Lead-specific exemption was in behavior only, closed on the `core/dispatch.py`
+  side by the same card — see `role-archetypes.spec.md` v1.14.0 and `pod-dispatch.spec.md`
+  v6.17.0.
 
 ### Version 2.5.0 (2026-09-26)
 

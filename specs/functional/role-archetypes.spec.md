@@ -1,7 +1,11 @@
 # Role Archetypes Specification
 
-**Version**: 1.12.0
-**Status**: Implemented. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
+**Version**: 1.14.0
+**Status**: Implemented. **P27-5** closes the one remaining built-in exemption in "Hop
+instructions": the `lead` archetype now carries a real `hopInstruction` (the pre-existing
+hardcoded text, unchanged), served through `resolve_hop_instruction` like any custom role, and a
+pipeline step's own `instructions` now overrides the Lead's hop message too — see "Hop
+instructions" below. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
 policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
 existing `docket roles`/`docket pod`/`docket policies` CLI surface; a recipe's own role YAML is
 data validated exactly like a hand-authored one, and none of the roles the shipped recipes
@@ -291,16 +295,26 @@ depended entirely on its own SOUL template to know its marker convention or task
    `approval` role gets a generic "a human must approve before the pipeline advances"
    instruction; a `none`-kind gate (or any kind this closed enum does not otherwise recognize)
    generates no instruction at all (`""`), matching the Lead's own gate-free hop.
-3. The four built-in archetypes' `hopInstruction` **MUST** remain unset — `core/dispatch.py`'s
-   hop-message builder never consults the registry for `lead`/`implementer`/`reviewer`/`tester`;
+3. The `implementer`/`reviewer`/`tester` built-in archetypes' `hopInstruction` **MUST** remain
+   unset — `core/dispatch.py`'s hop-message builder never consults the registry for those three;
    their hop messages are the pre-existing hardcoded text, byte-identical to base regardless of
-   this field (see "Built-in archetypes and legacy fidelity" above). `resolve_hop_instruction` is
-   reachable only for a role the builder does not special-case.
+   this field (see "Built-in archetypes and legacy fidelity" above). The `lead` archetype is
+   different (P27-5): it **MUST** carry a `hopInstruction` equal to the pre-existing hardcoded
+   Lead text ("You are the pod Lead. Decompose this task into a concrete plan for the
+   Implementer (you never edit code yourself):"), and the hop-message builder's Lead branch
+   **MUST** resolve it through `resolve_hop_instruction` exactly like a custom role, so a global
+   or pod overlay of `lead` (see "User registry overlay") changes the Lead's hop message. A pod
+   with no `lead` overlay **MUST** see a byte-identical Lead hop message to before this
+   requirement. `resolve_hop_instruction` is reachable for `lead` and for any role the builder
+   does not otherwise special-case; it is never reachable for `implementer`/`reviewer`/`tester`.
 4. A pipeline step's own `instructions` (see `pipeline-format.spec.md`'s "Steps") **MUST** take
    precedence over both an archetype's declared `hopInstruction` and the generated fallback, for
-   any role the step targets — the step is more specific than the role. The Lead's hop message
-   has no separate instruction segment to override, so a step `instructions` targeting `role:
-   lead` has no effect on it; this is a deliberate scope boundary, not an oversight.
+   any role the step targets — the step is more specific than the role. This now includes
+   `role: lead` (P27-5): a step `{role: lead, instructions: "..."}` **MUST** replace the Lead's
+   own instruction text (the built-in hardcoded line, or an overlaid `lead` archetype's
+   `hopInstruction`) with the step's interpolated text, the same override mechanism every other
+   role already has. Before P27-5, a step `instructions` targeting `role: lead` had no effect;
+   that scope boundary is removed.
 
 ### Starter library
 
@@ -572,6 +586,17 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.14.0 (2026-09-26)
+
+- **P27-5: the Lead's instruction is data.** "Hop instructions" requirements 3-4 rewritten: the
+  built-in `lead` archetype now carries `hopInstruction` equal to the pre-existing hardcoded Lead
+  text, resolved through `resolve_hop_instruction` like a custom role — so a global or pod `lead`
+  overlay changes the Lead's hop message, and `docket roles show lead` prints it. A pipeline
+  step's own `instructions` now overrides the Lead's hop message too; the prior "the Lead's hop
+  message has no separate instruction segment to override" scope boundary is removed. The
+  `implementer`/`reviewer`/`tester` built-ins are unaffected — their hop messages stay hardcoded.
+  A software or agentic-product pod with no `lead` overlay sees a byte-identical Lead hop message.
 
 ### Version 1.12.0 (2026-09-26)
 
