@@ -669,12 +669,16 @@ counts and per-file detail)
 **Purpose**: Manage declarative guardrail policies
 **Syntax**: `docket policies <subcommand> [args]`
 **Subcommands**:
-- `list`: List installed policies in `$POLICIES_DIR`
+- `list [--pod <p>]`: List installed policies in `$POLICIES_DIR`, plus that pod's own policy
+  directory when `--pod` is given (a pod's policies only ever add to the global set; ROADMAP
+  P27-2); omitted, output is unchanged
 - `show <name>`: Print one policy's JSON
 - `init`: Copy the six baseline policies (block-destructive, prompt-injection,
   secret-pii-redact, high-risk-payment, high-risk-deploy, high-risk-credentials)
-- `validate [name]`: Schema-check one installed policy, or every one
-- `test <hook> <role> <text>`: Dry-run the evaluator (no traces emitted)
+- `validate [name] [--pod <p>]`: Schema-check one installed policy, or every one; `--pod` also
+  checks that pod's own directory
+- `test <hook> <role> <text> [--tool <name>] [--pod <p>]`: Dry-run the evaluator (no traces
+  emitted); `--pod` scopes the evaluation to that pod's own policies too
 **Output**: Policy listing, JSON, or evaluation result
 **Return**: 0 on success, 1 on invalid subcommand
 
@@ -947,6 +951,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - `docket mcp` entry: `servers add` gains `--kind read|write` (default `write`) and `--tools
   NAME,...` (default: all); `servers list` shows both. A bad `--kind` value exits 1 naming the
   field. Full contract in `mcp-client.spec.md` 1.5.0 (Requirements 32-33).
+
+### Version 1.31.0 (2026-09-26)
+
+- `docket policies list|validate|test` accept `--pod <p>`, folding that pod's own policy
+  directory into the files considered — a pod's policies only ever add to the global set
+  (security-gates.spec.md 0.25.0, P27-2). Omitted, `docket policies list`'s output is
+  byte-identical to before.
 
 ### Version 1.29.0 (2026-09-25)
 

@@ -231,7 +231,7 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
             command_reason = cmd_verdict.reason
 
     rendered = render_tool_call(tool.name, args)
-    hit = _policy.policy_eval_detail(ctx.role, "pre_tool_call", rendered)
+    hit = _policy.policy_eval_detail(ctx.role, "pre_tool_call", rendered, project=ctx.project)
     policy_decision = _POLICY_ACTION_TO_DECISION.get(hit.action, "allow")
     policy_reason = f"policy {hit.policy_id!r}: {hit.message}" if hit.policy_id else ""
 

@@ -13,6 +13,9 @@ docket-owned artefacts read/written directly.
 evaluates an exec-kind tool (``--tool``, default ``bash``) through the live gate's own
 ``evaluate_tool_call``; a non-exec ``--tool`` evaluates the declarative hook alone, because the
 live gate classifies exec commands only.
+
+``list``/``test``/``validate`` accept ``--pod <p>``: fold that pod's own policy directory into
+the files considered, on top of the global set -- a pod's policies only ever add.
 """
 
 from __future__ import annotations
@@ -54,11 +57,25 @@ def _help() -> int:
     return 0
 
 
-def _list() -> int:
+def _extract_pod(args: list[str]) -> tuple[list[str], str, str]:
+    """Pull ``--pod <p>`` out of *args* if present. Returns ``(remaining, pod, error)``; *pod* is
+    ``""`` (the global-only set) when absent."""
+    rest = list(args)
+    if "--pod" in rest:
+        idx = rest.index("--pod")
+        if idx + 1 >= len(rest):
+            return rest, "", "--pod requires a pod name"
+        pod = rest[idx + 1]
+        del rest[idx : idx + 2]
+        return rest, pod, ""
+    return rest, "", ""
+
+
+def _list(pod: str = "") -> int:
     ui.header("Guardrail Policies")
     ui.console.print()
 
-    files = _policy.policy_files()
+    files = _policy.policy_files(pod)
     if not files:
         ui.warn("No policies installed.")
         ui.info("Run: docket policies init")
@@ -147,11 +164,15 @@ def _test(args: list[str]) -> int:
             return 1
         tool_name = rest[idx + 1]
         del rest[idx : idx + 2]
+    rest, pod, pod_err = _extract_pod(rest)
+    if pod_err:
+        ui.error(pod_err)
+        return 1
     hook = rest[0] if len(rest) > 0 else ""
     role = rest[1] if len(rest) > 1 else ""
     text = rest[2] if len(rest) > 2 else ""
     if not hook or not role or not text:
-        ui.error('Usage: docket policies test <hook> <role> "<text>" [--tool <name>]')
+        ui.error('Usage: docket policies test <hook> <role> "<text>" [--tool <name>] [--pod <p>]')
         return 1
     if hook not in _VALID_HOOKS:
         ui.error(f"Unknown hook '{hook}'. Valid: {' '.join(_VALID_HOOKS)}")
@@ -182,7 +203,7 @@ def _test(args: list[str]) -> int:
                 kind="exec",
             ),
             {"command": text},
-            _tools.ToolContext(role=role),
+            _tools.ToolContext(role=role, project=pod),
         )
         action = verdict.decision
         reason = verdict.reason
@@ -192,13 +213,13 @@ def _test(args: list[str]) -> int:
         # The live gate runs the command classifier for exec tools only
         # (security-gates.spec.md, policy engine requirement 8), so a
         # write/edit render is judged by the declarative hook alone here.
-        hit = _policy.policy_eval_detail(role, hook, text)
+        hit = _policy.policy_eval_detail(role, hook, text, project=pod)
         action = {"block": "deny", "require_approval": "ask"}.get(hit.action, "allow")
         reason = f"command classifier skipped: '{tool_name}' is kind={builtin[tool_name].kind}"
         policy_id = hit.policy_id
         policy_action = hit.action
     else:
-        action = _policy.policy_test(hook, role, text)
+        action = _policy.policy_test(hook, role, text, project=pod)
 
     ui.console.print()
     ui.console.print(f"  Hook:   {hook}")
@@ -230,14 +251,16 @@ def _test(args: list[str]) -> int:
     return 0
 
 
-def _validate(args: list[str]) -> int:
-    """``docket policies validate [id|file.json]`` — wires ``core/policy.py``'s validate_policy.
+def _validate(args: list[str], pod: str = "") -> int:
+    """``docket policies validate [id|file.json] [--pod <p>]`` — wires ``core/policy.py``'s
+    validate_policy.
 
-    No argument: schema-check every file in ``$POLICIES_DIR`` (the live, installed set).
-    An argument that resolves to an existing path validates that file directly (a candidate not
-    yet installed); otherwise it is looked up by policy ``id`` among the installed files, mirroring
-    ``show``'s lookup. Exit code is 1 if any checked file is invalid, matching ``docket roles
-    validate``'s convention.
+    No argument: schema-check every file in ``$POLICIES_DIR`` (the live, installed set), plus
+    *pod*'s own policy directory when ``--pod`` is given. An argument that resolves to an
+    existing path validates that file directly (a candidate not yet installed); otherwise it is
+    looked up by policy ``id`` among the installed files (global + *pod*'s), mirroring ``show``'s
+    lookup. Exit code is 1 if any checked file is invalid, matching ``docket roles validate``'s
+    convention.
     """
     target = args[0] if args and args[0] else ""
 
@@ -252,7 +275,7 @@ def _validate(args: list[str]) -> int:
             return 0
 
         found = None
-        for f in _policy.policy_files():
+        for f in _policy.policy_files(pod):
             try:
                 fid = json.loads(f.read_text(encoding="utf-8")).get("id", "")
             except Exception:
@@ -270,8 +293,8 @@ def _validate(args: list[str]) -> int:
         ui.success(f"'{target}' is valid.")
         return 0
 
-    # No argument: validate every installed file.
-    files = _policy.policy_files()
+    # No argument: validate every installed file (global + pod's, when given).
+    files = _policy.policy_files(pod)
     if not files:
         ui.warn("No policies installed.")
         ui.info("Run: docket policies init")
@@ -298,16 +321,26 @@ def run_policies(sub: str | None = None, *, args: list[str] | None = None) -> in
     subcmd = sub or "list"
     if subcmd == "test":
         return _test(rest)
-    bad = find_unknown_flag(rest, frozenset())
+    # list/validate document --pod; show/init document no flags at all.
+    documented = frozenset({"--pod"}) if subcmd in ("list", "validate") else frozenset()
+    bad = find_unknown_flag(rest, documented)
     if bad is not None:
         ui.error(f"docket policies: unrecognized flag '{bad}'")
         return 2
     if subcmd == "list":
-        return _list()
+        rest, pod, pod_err = _extract_pod(rest)
+        if pod_err:
+            ui.error(pod_err)
+            return 1
+        return _list(pod)
     if subcmd == "show":
         return _show(rest)
     if subcmd == "init":
         return _init()
     if subcmd == "validate":
-        return _validate(rest)
+        rest, pod, pod_err = _extract_pod(rest)
+        if pod_err:
+            ui.error(pod_err)
+            return 1
+        return _validate(rest, pod)
     return _help()

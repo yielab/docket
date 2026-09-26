@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.24.0
+**Version**: 0.25.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -13,7 +13,10 @@ enable`/`disable` used to write is retired -- see Enablement requirement 2. Canc
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers. A pod may
 also extend the curated allowlist for its own turns only, via `PodSettings.allowCommands` and
 `ToolContext.allow_commands` — see Tool-approval gates requirement 1 and In-turn tool-call gate
-item 13.
+item 13. Since ROADMAP P27-2, a pod may also install its own `pre_tool_call`/`pre_input`/
+`pre_output` policy files, which join the global set in the same most-restrictive-wins evaluation
+and can only ever add a restriction, never override a global `block`/`require_approval` — see
+"Policy engine on the live path" requirement 9 and In-turn tool-call gate requirement 4.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -396,6 +399,20 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    alone on the given text, reporting that the command classifier does not apply — because the
    live gate classifies `exec` tools only, and running the classifier on a `write`/`edit` render
    misreports the live verdict.
+9. **A pod has its own policies, and they only add (ROADMAP P27-2).** `core.policy.policy_files`,
+   `policy_eval`, `policy_eval_detail`, and `policy_test` **MUST** accept a `project` parameter
+   (default `""`, byte-identical to before). When set, the files under that pod's own policy
+   directory (`$PODS_DIR/<project>/config/policies/*.json`) **MUST** join the global
+   `$POLICIES_DIR` set in the same most-restrictive-wins evaluation `_RANK` already performs
+   across files — concatenation is the whole mechanism, since the winner is decided by rank, not
+   by which file was read first. A pod file **MUST NOT** be able to override a global `block` or
+   `require_approval`: it can only add a *more* restrictive verdict on top of the global set, or
+   agree with it. `project=""` (no pod, or a bare `--pod`-less CLI call) **MUST** see the global
+   set only, unchanged from before this requirement. A pod policy file that fails validation
+   **MUST** fail closed via the exact same path requirement 7 already describes, attributed to
+   that file. `docket policies list|test|validate` **MUST** accept `--pod <p>` to fold that pod's
+   directory into the files considered; omitting `--pod` **MUST** leave `docket policies list`'s
+   output byte-identical to before this requirement.
 
 ### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
 
@@ -441,7 +458,14 @@ tool call to take.**
 4. `ToolContext` **MUST** carry `role`/`project` (both default `""`), feeding
    `policy_eval_detail`'s `applies_to` matching and `approval_create`'s record. Every shipped
    template uses `applies_to: ["*"]`, which **MUST** match an empty role — a bare `ToolContext()`
-   is not exempt from any installed policy.
+   is not exempt from any installed policy. Since ROADMAP P27-2, `project` also selects which
+   pod's own policy directory `policy_eval_detail` folds into that call's evaluation (Policy
+   engine requirement 9) — `evaluate_tool_call`'s one call site **MUST** pass
+   `project=ctx.project`. `edges/adapters/docket_runtime.py::run_turn` **MUST** resolve `project`
+   as `trace_project or core.pod.pod_of(agent_id) or agent_id`: a dispatch hop's own
+   `trace_project` still wins, a standalone pod-member turn now resolves to its pod (so it still
+   sees that pod's own policies, not just the global set), and a non-pod agent (an org specialist,
+   the harness) falls back to `agent_id` exactly as before.
 5. An `ask` verdict **MUST** block the call synchronously on the real approval store rather than
    merely reporting the requirement: `dispatch_tool` calls `core.approval.approval_create` (falling
    back to `"operator"`/`"tool"` when `project`/`role` are unset) and then
@@ -809,15 +833,21 @@ POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (beare
 ### `docket policies` command (implemented, ROADMAP Phase 15 G-2)
 
 ```bash
-docket policies list                        # MUST list installed policies (id/hook/action/description)
+docket policies list [--pod <p>]            # MUST list installed policies (id/hook/action/description);
+                                             #   --pod folds that pod's own policy directory in too
+                                             #   (ROADMAP P27-2); omitted, output is unchanged
 docket policies show <id>                   # MUST print one installed policy's raw JSON
 docket policies init                        # MUST seed $POLICIES_DIR from the shipped templates
                                              #   (idempotent; same producer first init uses)
-docket policies test <hook> <role> "<text>" [--tool <name>]
+docket policies test <hook> <role> "<text>" [--tool <name>] [--pod <p>]
                                              # MUST dry-run the evaluator (no trace emitted);
                                              #   --tool picks the built-in tool whose kind decides
-                                             #   whether the command classifier applies (default bash)
-docket policies validate [id|file.json]     # MUST schema-check installed policies, one, or a file
+                                             #   whether the command classifier applies (default bash);
+                                             #   --pod scopes the evaluation to that pod's own
+                                             #   policies too (ROADMAP P27-2)
+docket policies validate [id|file.json] [--pod <p>]
+                                             # MUST schema-check installed policies, one, or a file;
+                                             #   --pod also checks that pod's own directory
 ```
 
 ## Examples
@@ -1199,6 +1229,19 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.25.0 (2026-09-26)
+
+- Policy engine requirement 9 (new) and In-turn tool-call gate requirement 4: a pod has its own
+  policies, and they only add. `core.policy.policy_files`/`policy_eval`/`policy_eval_detail`/
+  `policy_test` gain a `project` parameter (default `""`, unchanged) that folds
+  `$PODS_DIR/<project>/config/policies/*.json` into the same most-restrictive-wins evaluation as
+  the global set — concatenation, not override, since `_RANK` decides the winner regardless of
+  file order. `core/tools.py::evaluate_tool_call`'s one `policy_eval_detail` call site now passes
+  `project=ctx.project`; `edges/adapters/docket_runtime.py::run_turn` resolves `project` via
+  `trace_project or core.pod.pod_of(agent_id) or agent_id` so a standalone pod-member turn is
+  scoped to its own pod, not just the global set. `docket policies list|test|validate` accept
+  `--pod <p>`; omitted, `docket policies list`'s output is byte-identical to before (P27-2).
 
 ### Version 0.24.0 (2026-09-26)
 
