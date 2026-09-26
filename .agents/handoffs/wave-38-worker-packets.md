@@ -286,3 +286,19 @@ plus two learned this phase:
   (claim **1.11.0** — P26-9 takes 1.10.0).
 - Report the `docs/CONFIGURATION.md` §3 pointer text in your handoff; the integrator adds it.
 - Do NOT touch: any CLI surface (applying a recipe uses existing commands only).
+
+## P26-10 — operator instructions survive regeneration; roles can be re-rendered
+- Starts after P26-9's merge. Base: the commit your dispatch prompt names.
+- Card: `TODO.md` §P26-10.
+- Owns: the `INSTRUCTIONS.md` overlay read + composition slot in `core/identity.py`
+  (right after SOUL, inside the P26-2/P26-3 budget/fit machinery — a new
+  PromptSectionReport entry, never a second composer), a re-render function in
+  `core/pod_provisioning.py` (compares `POD_TEMPLATE_VERSION` + archetype content),
+  `cli/_pod.py` `sync [--dry-run]`, your own doctor check function + wiring line,
+  `specs/functional/workspace-structure.spec.md` (claim **1.12.0** — P26-20 holds 1.11.0)
+  and `specs/functional/agent-loop.spec.md` req. 30 (claim **1.21.0**), tests,
+  `docs/commands.md` regeneration (`uv run --extra mcp`).
+- Do NOT touch: template STRINGS in `core/archetypes.py` (P26-9 just changed them),
+  `core/memory.py`, `core/dispatch.py`, recipes/provider/prune surfaces (sibling cards).
+- `INSTRUCTIONS.md` is operator-owned: docket NEVER writes it, `sync` never touches it,
+  doctor never quarantines it.
