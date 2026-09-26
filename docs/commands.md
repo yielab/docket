@@ -928,6 +928,35 @@ haven't backed up.
 
 ---
 
+### config
+
+**Usage:** `docket config`
+
+Read-only inspection of an agent's effective configuration.
+
+Subcommands:
+  explain <agent-id> \[--json\]  The configuration a real dispatch turn would
+                    actually use for this agent, with the source that set
+                    each value: resolved model + endpoint (policy/pinned);
+                    the composed system prompt's sections with their bytes
+                    and fit status (full/truncated/omitted); tools after
+                    role denial, plus configured MCP servers; the
+                    guardrail policies that apply to this role; the
+                    effective pipeline and its source (bound
+                    pipeline/blueprint/built-in default); and, for a pod
+                    member, the pod's dispatch settings (budgetUsd,
+                    maxReworkCycles, turnTimeoutS, verifyTimeoutS,
+                    approvalMode, allowCommands) with each key's
+                    set/default source. Composes existing resolvers only
+                    -- writes nothing, adds no new configuration surface.
+                    See specs/data/cli-json-shapes.spec.md.
+
+
+**Aliases:** None
+
+
+---
+
 ### serve
 
 **Usage:** `docket serve`
@@ -1438,7 +1467,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `auth`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `help` have no alias.
+`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `help` have no alias.
 
 
 ---

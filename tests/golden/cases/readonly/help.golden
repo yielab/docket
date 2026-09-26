@@ -56,6 +56,7 @@ MONITORING
   doctor             Global fleet health: registry, isolation, budget, runaway
   gates              Tool-call gate status (always on); approval routing / isolation
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
+  config explain <id> Effective configuration for one agent, with provenance
 
 OBSERVABILITY
   trace    <session>  Render one agent-action trace human-readable

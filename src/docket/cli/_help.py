@@ -107,6 +107,7 @@ def run_help(topic: str | None = None) -> int:
   {G}doctor{R}             Global fleet health: registry, isolation, budget, runaway
   {G}gates{R}              Tool-call gate status (always on); approval routing / isolation
   {G}audit{R}    [N]       Recent mutating operations (keys, gates, profile, agents)
+  {G}config explain{R} <id> Effective configuration for one agent, with provenance
 
 {B}OBSERVABILITY{R}
   {G}trace{R}    <session>  Render one agent-action trace human-readable

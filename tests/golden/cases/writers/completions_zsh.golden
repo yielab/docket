@@ -26,6 +26,7 @@ _docket() {
     'logs:View an agent'\''s latest memory log'
     'edit:Open agent workspace files in $EDITOR'
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
+    'config:Read-only inspection of an agent'\''s effective configuration'
     'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
     'gates:Manage docket'\''s approval-routing and workspace-isolation posture'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set)'
