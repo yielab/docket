@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.32.0
+**Version**: 1.34.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -537,6 +537,9 @@ visibility, not shared workspace or session state.
 - Model config/registry drift
 - Workspace permissions and template drift
 - Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture
+- Global guardrail policy files, plus every provisioned pod's own `config/` overlay
+  (role archetypes and policy files) — a malformed pod-scoped entry is named with the
+  pod, not silently skipped
 **Return**: 0 if healthy, 1 when any issue is flagged
 
 #### docket cost
@@ -948,6 +951,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.34.0 (2026-09-26)
+
+- `docket doctor`'s Checks list documents the per-pod `config/` overlay check
+  (role archetypes and policy files, alongside the existing global-only checks) —
+  see `cli-json-shapes.spec.md` 1.11.0 for the matching `config explain --json`
+  `scope` labeling this wave also ships (P27-8). Version 1.33.0 is reserved for the
+  sibling P27-6 card (`docket pod <p> apply <dir>`) landing the same wave.
 
 ### Version 1.32.0 (2026-09-26)
 

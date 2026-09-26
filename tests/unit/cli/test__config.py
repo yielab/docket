@@ -41,6 +41,24 @@ class TestRootsFor:
         assert roots == (_cfg.workspace_dir("agent-1"),)
 
 
+class TestScopeLabel:
+    """`_scope_label` maps `ArchetypeRegistry.source_of`'s result onto the report's
+    built-in/global/pod provenance model."""
+
+    def test_built_in_and_starter_collapse_to_built_in(self) -> None:
+        assert _config._scope_label("built-in") == "built-in"
+        assert _config._scope_label("starter") == "built-in"
+
+    def test_user_overlay_is_global(self) -> None:
+        assert _config._scope_label("user") == "global"
+
+    def test_pod_overlay_is_pod(self) -> None:
+        assert _config._scope_label("pod:demo") == "pod"
+
+    def test_unknown_source_is_empty(self) -> None:
+        assert _config._scope_label("") == ""
+
+
 class TestDispatchUsage:
     def test_unknown_action_refuses(self, capsys: pytest.CaptureFixture[str]) -> None:
         with pytest.raises(typer.Exit) as exc:

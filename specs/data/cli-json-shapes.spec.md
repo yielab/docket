@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -261,12 +261,22 @@ A bare object: the effective configuration a real dispatch turn would use for
 `PodSettings`, and the pipeline resolver) — it writes nothing and adds no new
 configuration surface.
 
+Three resolved values — the role archetype, each applicable policy, each loaded MCP
+server, and each denied tool — additionally carry a `scope`: `"built-in"` (a shipped
+archetype/starter role), `"global"` (the operator's `~/.docket` overlay), or `"pod"`
+(this pod's own `config/` overlay or `.docket-meta.json` setting). A tool denied by
+both this pod's `deniedTools` setting and its role's own archetype reports `"pod"`
+(the more specific override). `tools.mcpServers`/`tools.denied` list only the
+servers/names a live turn would actually see — a pod's own `mcpServers` selection
+excludes every other configured server, never merely relabels it.
+
 ```json
 {
-  "id":     "string",
-  "role":   "string (pod role or specialist role; may be empty)",
-  "pod":    "string (project this agent belongs to; empty for a non-pod agent)",
-  "model":  { "value": "string (provider/model-id)", "source": "policy | pinned" },
+  "id":        "string",
+  "role":      "string (pod role or specialist role; may be empty)",
+  "roleScope": "built-in | global | pod | \"\" (role not found in the live registry)",
+  "pod":       "string (project this agent belongs to; empty for a non-pod agent)",
+  "model":     { "value": "string (provider/model-id)", "source": "policy | pinned" },
   "endpoint": {
     "baseUrl":            "string (may be empty if unresolved)",
     "ready":              "boolean",
@@ -282,12 +292,17 @@ configuration surface.
     ]
   },
   "tools": {
-    "allowed":    "array of built-in tool names, after role denial",
-    "denied":     "array of built-in tool names denied to this role",
-    "mcpServers": "array of configured MCP server names (not connected; a live turn enumerates their tools)"
+    "allowed": "array of built-in tool names, after role and pod denial",
+    "denied":  [ { "name": "string", "scope": "built-in | global | pod" } ],
+    "mcpServers": [
+      { "name": "string", "kind": "read | write", "scope": "global | pod" }
+    ]
   },
   "policies": [
-    { "id": "string", "hook": "pre_input | pre_tool_call | pre_output", "action": "string" }
+    {
+      "id": "string", "hook": "pre_input | pre_tool_call | pre_output", "action": "string",
+      "scope": "global | pod"
+    }
   ],
   "pipeline":    "{ source: string } | null (null for a non-pod agent)",
   "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)"
@@ -299,6 +314,9 @@ A pod member with an invalid stored `PodSettings` value (e.g. a hand-edited
 `.docket-meta.json`) refuses the same way `docket pod <p> config get` does — an
 error naming the offending key, exit 1, nothing on stdout — rather than reporting a
 guessed default.
+
+The human-readable (non-`--json`) rendering is unchanged: `scope` is JSON-only, and
+`tools`/`policies` print the same names/columns as before, in the same order.
 
 ### `docket snapshot` (full output)
 
@@ -410,6 +428,18 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.11.0 (2026-09-26)
+
+- `docket config explain <agent> --json` gains a `roleScope` field and a `scope`
+  (`built-in | global | pod`) per policy, per denied tool and per MCP server, naming
+  which of the three layers (a shipped archetype, the operator's global overlay, or
+  this pod's own `config/`) resolved that value. `tools.denied`/`tools.mcpServers`
+  change shape from a bare array of names to an array of objects carrying `scope`
+  (and, for `mcpServers`, the server's declared `kind`); `tools.mcpServers` now lists
+  only the servers a live turn would actually load for this pod, not every configured
+  server, when the pod's own `mcpServers` setting narrows the shared catalog. The
+  human-readable rendering is unchanged (P27-8).
 
 ### Version 1.10.0 (2026-09-26)
 

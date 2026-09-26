@@ -433,6 +433,47 @@ def _check_policies() -> int:
     return 0
 
 
+def _check_pod_config_overlays() -> int:
+    """Every pod's own config overlay (``<pod>/config/``) -- the layer
+    ``_check_archetype_overlay``/``_check_policies`` never look at. Names the pod plus
+    the role/file and reason for a malformed role overlay or invalid policy file."""
+    from docket.core import archetypes as _arch
+    from docket.core import dispatch as _dispatch
+
+    ui.console.print()
+    ui.console.print("[bold]Pod config overlays (<pod>/config/):[/bold]")
+    pods = _dispatch.dispatchable_pods()
+    if not pods:
+        ui.dim("  No pods provisioned")
+        return 0
+
+    # Subtract the global-file problems so a pre-existing global overlay/policy
+    # problem (already reported above) is never re-counted once per pod.
+    global_role_problems = set(_arch.find_overlay_problems())
+    global_policy_files = set(_pol.policy_files())
+
+    broken = 0
+    for project in pods:
+        pod_role_problems = [
+            p for p in _arch.find_overlay_problems(project) if p not in global_role_problems
+        ]
+        for role, reason in pod_role_problems:
+            broken += 1
+            ui.console.print(f"[red]✗[/red]   {project}: role {role}: {reason}")
+
+        for f in _pol.policy_files(project):
+            if f in global_policy_files:
+                continue
+            err = _pol.validate_policy(f)
+            if err:
+                broken += 1
+                ui.console.print(f"[red]✗[/red]   {project}: policy {f.name}: {err}")
+
+    if broken == 0:
+        ui.success("  All pod overlay entries and policy files are well-formed")
+    return broken
+
+
 def _check_workspace_env_files(ids: list[str], do_fix: bool) -> int:
     """Flag leftover per-agent `.env` files from the retired key-sync path -- nothing on the
     live turn path reads them; the model client resolves credentials through
@@ -965,6 +1006,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_provider_coverage(ids)
     issues += _check_security_gates()
     issues += _check_policies()
+    issues += _check_pod_config_overlays()
     issues += _check_workspace_env_files(ids, do_fix)
     _check_template_version(ids)
     _check_pod_sync(ids)
