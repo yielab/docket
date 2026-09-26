@@ -89,7 +89,7 @@ _docket_complete() {
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs|run)        words="list show cancel prune" ;;
@@ -143,7 +143,7 @@ __ZSH_COMMANDS__
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs|run)        compadd list show cancel prune ;;

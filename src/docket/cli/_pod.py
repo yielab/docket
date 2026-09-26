@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import hashlib as _hashlib
 import json as _json
+from dataclasses import asdict
 from pathlib import Path
 
 import typer
@@ -31,6 +32,7 @@ from docket.core import models_policy as _mp
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
+from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
@@ -237,10 +239,12 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_config(project, extra)
     elif action == "sync":
         _pod_sync(project, extra)
+    elif action == "apply":
+        _pod_apply_cmd(project, extra)
     else:
         ui.error(
-            f"Unknown pod action {action!r}. "
-            "Use: list | add | remove | set-verify | delegate | queue | dispatch | config | sync."
+            f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
+            "delegate | queue | dispatch | config | sync | apply."
         )
         raise typer.Exit(1)
 
@@ -775,23 +779,54 @@ def _pod_sync(project: str, extra: list[str]) -> None:
         ui.dim(f"  {len(stale_ids)} member(s) stale — rerun without --dry-run to apply.")
 
 
-# Checked only at ``pod config set pipeline``: a pipeline already bound to a pod is
-# otherwise free to skip an absent role at run time, same as any other pipeline (see
-# pod-dispatch.spec.md, "Pipeline order and participation").
-def _unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list[str]:
-    """Every unit step (top-level or inside a ``parallel`` group) this pod's current
-    roster cannot run -- empty when the plan is fully resolvable."""
-    problems: list[str] = []
-    for node in plan.nodes:
-        units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
-        for unit in units:
-            if unit.role is not None and unit.skipped:
-                problems.append(f"step '{unit.step_id}': role '{unit.role}' not in pod '{project}'")
-            elif unit.agent is not None and pod.pod_of(unit.agent) != project:
-                problems.append(
-                    f"step '{unit.step_id}': agent '{unit.agent}' is not a member of pod '{project}'"
-                )
-    return problems
+def _pod_apply_default_dir(project: str) -> Path:
+    """``<codebase>/.docket`` from the Lead's own recorded meta -- the default
+    ``apply`` reads when no directory is given."""
+    lead_id = pod.member_id(project, "lead")
+    codebase = _fleet.meta_get(lead_id, "codebase", "")
+    return Path(codebase) / ".docket"
+
+
+def _pod_apply_cmd(project: str, extra: list[str]) -> None:
+    """``docket pod <project> apply [<dir>] [--dry-run] [--json]`` -- plan (`core.pod_apply`)
+    and, unless ``--dry-run``, write a recipe/manifest directory onto this pod. An invalid
+    manifest exits 1 naming the problem, with nothing written."""
+    dry_run = "--dry-run" in extra
+    json_out = "--json" in extra
+    rest = [a for a in extra if a not in ("--dry-run", "--json")]
+    if len(rest) > 1:
+        ui.error("Usage: docket pod <project> apply [<dir>] [--dry-run] [--json]")
+        raise typer.Exit(1)
+    directory = Path(rest[0]) if rest else _pod_apply_default_dir(project)
+
+    try:
+        plan = _pod_apply.plan_apply(project, directory)
+    except _pod_apply.PodApplyError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+
+    if json_out:
+        print(
+            _json.dumps(
+                {"items": [asdict(item) for item in plan.items]},
+                indent=2,
+            )
+        )
+    else:
+        ui.header(f"Apply plan — {project} <- {directory}")
+        for item in plan.items:
+            ui.console.print(f"  [{item.action}] {item.kind}: {item.name}")
+
+    if dry_run:
+        return
+
+    result = _pod_apply.apply(plan)
+    if not json_out:
+        changed = [item for item in result.items if item.action != "skip"]
+        if changed:
+            ui.success(f"Applied {len(changed)} change(s) to pod '{project}' from {directory}.")
+        else:
+            ui.success(f"Pod '{project}' already matches {directory}.")
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
@@ -815,7 +850,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     roster = _dispatch.pod_full_roster(project)
     registry = _arch.load_registry(project)
     plan = _orch.resolve_plan(result.spec, roster, registry=registry)
-    problems = _unresolvable_pipeline_steps(plan, project)
+    problems = _pod_apply.unresolvable_pipeline_steps(plan, project)
     if problems:
         ui.error(f"Pipeline '{path_str}' targets a role/agent this pod does not have:")
         for p in problems:

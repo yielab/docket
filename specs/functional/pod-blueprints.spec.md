@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -174,6 +174,51 @@ This specification does NOT cover:
    custom pod shape means adding roles to an existing pod with `docket pod <project> add <role>`
    after provisioning from the closest built-in blueprint.
 
+### Pod manifests: apply
+
+A blueprint shapes a pod at `docket init` time; this section covers the complementary case — a
+team shape applied to a pod that already exists (ADR 0009). Before this section, applying a
+shipped recipe to an existing pod meant a per-recipe sequence of `docket roles add`/`docket pod
+<p> add <role>`/`docket pod <p> config set pipeline <file>` commands; `docket pod <p> apply
+<dir>` composes the same writers into one command, once a directory shape becomes common enough
+(a pod reproduced on a second machine) to be worth automating.
+
+1. `docket pod <project> apply [<dir>] [--dry-run] [--json]` **MUST** read *dir* (default
+   `<codebase>/.docket/`, from the pod Lead's own `codebase` meta) as: an optional `roles/*.yaml`
+   directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
+   optional `pipeline.yaml` (or the file named by `pod.yaml`'s `pipeline` key), and an optional
+   `pod.yaml` manifest carrying exactly three top-level keys — `members` (a list of role names to
+   add if absent), `settings` (a mapping of any `docket pod <p> config set <key> <value>` key),
+   and `pipeline` (a filename inside *dir*, default `pipeline.yaml` when that file exists). An
+   unrecognized top-level `pod.yaml` key, or a `members`/`settings` value of the wrong type,
+   **MUST** be rejected before anything else is read.
+2. A role in `roles/*.yaml` **MUST** be written into the *global* user role overlay
+   (`~/.docket/docket-roles.json`), the same target `docket roles add <file.yaml>` (without
+   `--pod`) already writes to — never a pod-scoped overlay. `core/pod.py`'s own role-name
+   validity (the id-parsing `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of`
+   depend on to resolve a pipeline's roster) reads only that global registry, so a role written
+   only into a pod-scoped overlay could be provisioned as a member but could never be resolved
+   back out of the roster a pipeline dispatches against.
+3. `apply` **MUST** validate everything before writing anything: each `roles/*.yaml` definition
+   (`role-archetypes.spec.md`'s schema), every `members` entry against the role registry *as it
+   would be after* the recipe's own `roles/*.yaml` are added, the resolved `pipeline.yaml` against
+   the roster *as it would be after* `members` join (no skipped step,
+   `core.orchestrator.resolve_plan`), and every `settings` entry through the same
+   `core.pod.PodSettings` validators `config set` uses. A validation failure **MUST** exit 1
+   naming the offending item and **MUST NOT** write any role, member, pipeline binding, or
+   setting — including one that validated cleanly earlier in the same run.
+4. `apply` **MUST** be additive and idempotent: an item whose target state already matches disk
+   plans and reports as `skip`; a member is only ever added, never replaced or removed; a role,
+   pipeline binding, or setting already present with different content plans as `replace`.
+   Applying the same directory twice in a row **MUST** plan every item `skip` the second time and
+   write nothing. `--dry-run` **MUST** print the plan and write nothing.
+5. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
+   entry naming every planned item and its action; an all-`skip` plan **MUST NOT** write a new
+   audit entry.
+6. Removing a role, member, pipeline binding, or setting stays out of this command's scope —
+   `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion remain the
+   explicit way to undo what a recipe added.
+
 ## Interface Contracts
 
 ### CLI Command Signatures
@@ -271,6 +316,16 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-26)
+
+- **P27-6: `docket pod <p> apply <dir>`.** New "Pod manifests: apply" section (ADR 0009):
+  a recipe/manifest directory (`roles/*.yaml`, `pipeline.yaml`, a small `pod.yaml` naming
+  `members`/`settings`/`pipeline`) applies to an existing pod in one command, composing the
+  pre-existing `add_user_archetype`/member-provisioning/pipeline-bind/`PodSettings` writers
+  (`core/pod_apply.py`) rather than the prior per-recipe manual command sequence. Roles land in
+  the global user overlay, not a pod-scoped one — see the section for why. Additive and
+  idempotent; validates fully before writing; `--dry-run` prints the plan only.
 
 ### Version 1.5.0 (2026-09-26)
 

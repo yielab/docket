@@ -376,6 +376,13 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 - `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
+- `apply [<dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
+  `pipeline.yaml`, a small `pod.yaml` naming `members`/`settings`/`pipeline`) to this pod in one
+  command, composing the same `roles add`/`add <role>`/`config set` writers rather than a new
+  write path; `<dir>` defaults to `<codebase>/.docket`. Validates every role, the roster the
+  pipeline would resolve against once `members` join, and every setting before writing anything;
+  idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
+  See `pod-blueprints.spec.md`, "Pod manifests: apply"
 - `remove <member-id>`: Remove a pod member
 - `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
   own list whether it arrives as one quoted argv item or several ordinary positional words
@@ -957,8 +964,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - `docket doctor`'s Checks list documents the per-pod `config/` overlay check
   (role archetypes and policy files, alongside the existing global-only checks) —
   see `cli-json-shapes.spec.md` 1.11.0 for the matching `config explain --json`
-  `scope` labeling this wave also ships (P27-8). Version 1.33.0 is reserved for the
-  sibling P27-6 card (`docket pod <p> apply <dir>`) landing the same wave.
+  `scope` labeling this wave also ships (P27-8).
+
+### Version 1.33.0 (2026-09-26)
+
+- `docket pod <project> apply [<dir>] [--dry-run] [--json]`: new action composing a recipe's
+  existing writers into one command (`core/pod_apply.py`, P27-6). See `pod-blueprints.spec.md`,
+  "Pod manifests: apply", for the manifest shape and validation contract.
 
 ### Version 1.32.0 (2026-09-26)
 

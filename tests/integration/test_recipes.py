@@ -1,11 +1,11 @@
 """Shipped recipe bundles (``templates/recipes/<name>/``) are real, tested and configurable.
 
-Each recipe is data only: role YAML(s), a pipeline YAML, and an optional policy pack, applied
-with existing `docket roles`/`docket pod`/`docket policies` commands (no new CLI surface). The
-tests below read exactly what the wheel ships (`docket.config.recipes_dir()`), so a recipe that
-fails to validate, resolve against a real roster, or actually dispatch fails here first, never
-only in an operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
-workspace-structure.spec.md ("shipped recipes").
+Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
+policy pack, applied in one command (`docket pod <p> apply`, `core.pod_apply`). The tests below
+read exactly what the wheel ships (`docket.config.recipes_dir()`), so a recipe that fails to
+validate, resolve against a real roster, or actually dispatch fails here first, never only in an
+operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
+pod-blueprints.spec.md ("Pod manifests: apply").
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
+from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
@@ -111,34 +112,43 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)
-def test_recipe_pipeline_plans_cleanly_against_a_fixture_pod(
+def test_recipe_applies_cleanly_to_a_fixture_pod(
     recipe_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Applying each recipe with only its own documented commands leaves every step
-    resolvable -- the same check ``docket pipeline plan``/``pod config set pipeline`` run."""
+    """``docket pod <p> apply <recipe_dir>`` leaves every pipeline step resolvable."""
     project = "fixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
-    for role_file in _role_yaml_files(recipe_dir):
-        _arch.add_user_archetype(_arch.parse_yaml_file(str(role_file)))
+
+    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
 
     result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
     assert result.spec is not None, result.errors
-    spec = result.spec
-
-    for role in _pipeline_roles(spec):
-        if role in pod.DEFAULT_POD_ROLES:
-            continue
-        _pod.dispatch(project, "add", [role])
 
     roster = _dispatch.pod_full_roster(project)
-    registry = _arch.load_registry()
-    plan = _orch.resolve_plan(spec, roster, registry=registry)
+    registry = _arch.load_registry(project)
+    plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
     skipped: list[str] = []
     for node in plan.nodes:
         units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
         skipped.extend(u.step_id for u in units if u.skipped)
     assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
+
+
+def test_apply_with_an_invalid_setting_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bad ``pod.yaml`` setting refuses before any pod-scoped file is written."""
+    project = "guarded"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    bad_dir = tmp_path / "bad-recipe"
+    bad_dir.mkdir()
+    (bad_dir / "pod.yaml").write_text("settings:\n  mcpServers: [zzz]\n", encoding="utf-8")
+
+    with pytest.raises(_pod_apply.PodApplyError, match="zzz"):
+        _pod_apply.plan_apply(project, bad_dir)
+
+    assert not _cfg.pod_config_dir(project).exists()
 
 
 # ── secure-build: one full dispatch on the fake driver ──────────────────────────
@@ -200,9 +210,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
     _seed_fixture_pod(tmp_path, monkeypatch, project)
     recipe_dir = RECIPES_DIR / "secure-build"
 
-    role_doc = _arch.parse_yaml_file(str(recipe_dir / "roles" / "security-vetter.yaml"))
-    _arch.add_user_archetype(role_doc)
-    _pod.dispatch(project, "add", ["security-vetter"])
+    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
     assert pod.pod_of(f"{project}-security-vetter") == project
 
     result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
