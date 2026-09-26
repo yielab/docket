@@ -225,9 +225,12 @@ class DocketDriver:
             env=tool_env,
             role=meta.role,
             # trace_project (the pod, when a dispatch hop supplies one) is what an
-            # in-turn approval gate's trace event must file under -- falling back to
-            # agent_id keeps every non-dispatch caller (e.g. the harness) unchanged.
-            project=trace_project or agent_id,
+            # in-turn approval gate's trace event must file under. Absent that, resolve
+            # the calling agent's own pod, so a standalone pod-member turn still sees
+            # that pod's own policy files, not just the global set -- falling back to
+            # agent_id only for a non-pod agent (e.g. an org specialist, or the
+            # harness), which keeps that caller's behavior unchanged.
+            project=trace_project or _pod.pod_of(agent_id) or agent_id,
             sandbox="auto" if want_sandbox else "off",
             cancellation_check=(
                 cancellation_signal.observe if cancellation_signal is not None else None

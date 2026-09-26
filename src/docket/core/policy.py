@@ -77,11 +77,26 @@ def validate_policy(path: Path) -> str:
     return _validate_doc(p, str(path))
 
 
-def policy_files() -> list[Path]:
-    """Return the installed policy JSON files in sorted order."""
-    if not _cfg.POLICIES_DIR.is_dir():
-        return []
-    return sorted(_cfg.POLICIES_DIR.glob("*.json"))
+def _pod_policies_dir(project: str) -> Path | None:
+    """This pod's own policy directory, or ``None`` for no pod (kept local to this module,
+    independent of any sibling per-pod config-path helper elsewhere)."""
+    if not project:
+        return None
+    return _cfg.PODS_DIR / project / "config" / "policies"
+
+
+def policy_files(project: str = "") -> list[Path]:
+    """Installed policy JSON files: the global set, then *project*'s own pod directory when
+    given, each sorted -- a pod file only ever adds to the combined evaluation."""
+    files: list[Path] = []
+    # Each directory is checked independently -- an operator with no fleet-wide policies
+    # installed must still get their pod's own.
+    if _cfg.POLICIES_DIR.is_dir():
+        files.extend(sorted(_cfg.POLICIES_DIR.glob("*.json")))
+    pod_dir = _pod_policies_dir(project)
+    if pod_dir is not None and pod_dir.is_dir():
+        files.extend(sorted(pod_dir.glob("*.json")))
+    return files
 
 
 @dataclass
@@ -96,15 +111,17 @@ class PolicyHit:
     message: str = ""
 
 
-def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False) -> PolicyHit:
+def policy_eval_detail(
+    role: str, hook: str, text: str, *, trusted: bool = False, project: str = ""
+) -> PolicyHit:
     """Return the winning :class:`PolicyHit` for (role, hook, text); most restrictive wins.
 
-    trusted: skip injection/untrusted-input policies (source=operator). Trace side-effects are
-    intentionally omitted here -- this is the pure evaluator; a live-path caller or the CLI's
-    dry-run (``policy_test``) decides what to do with the result."""
-    if not _cfg.POLICIES_DIR.is_dir():
-        return PolicyHit()
-
+    project: this call's pod, when it has one -- folds that pod's own policy files
+    (``policy_files(project)``) into the same most-restrictive-wins evaluation as the global set;
+    empty for a non-pod caller, which sees the global set only. trusted: skip injection/untrusted-
+    input policies (source=operator). Trace side-effects are intentionally omitted here -- this is
+    the pure evaluator; a live-path caller or the CLI's dry-run (``policy_test``) decides what to
+    do with the result."""
     best = PolicyHit()
     best_rank = 0
 
@@ -115,7 +132,7 @@ def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False
             best_rank = rank
             best = PolicyHit(action=action, policy_id=policy_id, message=message)
 
-    for path in policy_files():
+    for path in policy_files(project):
         try:
             with path.open(encoding="utf-8") as f:
                 p: dict[str, Any] | None = json.load(f)
@@ -163,17 +180,19 @@ def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False
     return best
 
 
-def policy_eval(role: str, hook: str, text: str, *, trusted: bool = False) -> str:
+def policy_eval(
+    role: str, hook: str, text: str, *, trusted: bool = False, project: str = ""
+) -> str:
     """Return the winning action for (role, hook, text); most restrictive wins.
 
     Thin wrapper over :func:`policy_eval_detail` for callers that only need the action, kept so
     every existing caller/test is unaffected."""
-    return policy_eval_detail(role, hook, text, trusted=trusted).action
+    return policy_eval_detail(role, hook, text, trusted=trusted, project=project).action
 
 
-def policy_test(hook: str, role: str, text: str) -> str:
+def policy_test(hook: str, role: str, text: str, *, project: str = "") -> str:
     """Dry-run the evaluator (no trace emission)."""
-    return policy_eval(role, hook, text)
+    return policy_eval(role, hook, text, project=project)
 
 
 @dataclass

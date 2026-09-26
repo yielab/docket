@@ -310,3 +310,64 @@ class TestValidateCompilesRegex:
         err = _policy.validate_policy(f)
         assert err != ""
         assert "pattern" in err
+
+
+# ── pod policies ───────────────────────────────────────────────────────────────
+
+
+class TestPodPolicies:
+    """A pod's own policy directory joins the global set and can only add."""
+
+    def test_pod_only_block_denies_only_that_pod(self, policies_dir: Path) -> None:
+        pod_dir = _cfg.PODS_DIR / "p" / "config" / "policies"
+        pod_dir.mkdir(parents=True)
+        _write_policy(
+            pod_dir,
+            "deploy-block.json",
+            {
+                "id": "p-deploy-block",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "make deploy"},
+                "action": "block",
+            },
+        )
+        assert (
+            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="p")
+            == "block"
+        )
+        assert (
+            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="q")
+            == "allow"
+        )
+
+    def test_pod_file_cannot_override_a_global_block(self, policies_dir: Path) -> None:
+        """Most-restrictive-wins: an `allow`-shaped pod file never downgrades a global block."""
+        _write_policy(
+            policies_dir,
+            "global-block.json",
+            {
+                "id": "global-deploy-block",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "make deploy"},
+                "action": "block",
+            },
+        )
+        pod_dir = _cfg.PODS_DIR / "p" / "config" / "policies"
+        pod_dir.mkdir(parents=True)
+        _write_policy(
+            pod_dir,
+            "deploy-allow.json",
+            {
+                "id": "p-deploy-allow",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "make deploy"},
+                "action": "allow",
+            },
+        )
+        assert (
+            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="p")
+            == "block"
+        )
