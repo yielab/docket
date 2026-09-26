@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -221,6 +221,41 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion remain the
    explicit way to undo what a recipe added.
 
+### Pod manifests: export
+
+The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
+directory *onto* a pod; `export` writes one back out, in the same shape, so a pod already
+configured by hand — or evolved past whatever recipe seeded it — can be reproduced on a second
+machine, the trigger `docket pod <p> apply` itself named as deferred.
+
+1. `docket pod <project> export <dir>` **MUST** write exactly this pod's own scope, in the same
+   directory shape `apply` reads: `roles/*.yaml` (this pod's own role overlay entries only —
+   `core.archetypes.load_registry(project).source_of(name) == "pod:<project>"` — each serialized
+   through `RoleArchetype.to_wire()`, the same wire format `docket roles show` prints and
+   `role-archetypes.spec.md` defines), `policies/*.json` (files already present in this pod's own
+   policy directory, `core.config.pod_config_dir(project)/policies/`, copied byte-for-byte), a
+   `pipeline.yaml` holding the pod's bound pipeline copy (`core.pod.bound_pipeline_path(project)`)
+   when `PodSettings.pipeline` is set, and a `pod.yaml` manifest with `members` (every non-Lead
+   role this pod's roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every
+   `PodSettings` key whose stored value differs from that model's own default — a key at its
+   default is never written, so a fresh pod exports an empty `settings` mapping). `export`
+   **MUST NOT** write a `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename
+   `apply` already resolves makes one redundant, matching every shipped recipe's own `pod.yaml`.
+2. Global scope is never exported — it is the operator's, not the team's. The global role overlay
+   (`~/.docket/docket-roles.json`), fleet-wide policies (`~/.docket/policies/`), other pods, and
+   this pod's own secrets, sessions, traces, and task queue are all out of scope; only what
+   `pod_config_dir(project)` and the bound-pipeline copy hold is written.
+3. `docket pod <project> export <dir>` **MUST** refuse a non-empty *dir* unless `--force` is
+   given, so a stray argument cannot silently overwrite an operator's existing directory; an empty
+   or not-yet-existing *dir* always succeeds. `--force` **MUST** proceed and write over any
+   same-named file already there. A successful export **MUST** write one `pod.export` audit entry
+   naming *project* and *dir*, matching every other pod-scope writer in this module.
+4. Round trip is this pair's own proof, not a separate contract: exporting a pod, applying the
+   result to a second pod in a fresh `DOCKET_HOME`, and comparing `docket config explain --json`
+   for the matching members **MUST** agree once ids and paths specific to each pod are normalized
+   away — the same guarantee `apply`'s validation (requirement 3 above) already gives a directory
+   `export` produced.
+
 ## Interface Contracts
 
 ### CLI Command Signatures
@@ -318,6 +353,18 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.8.0 (2026-09-26)
+
+- **P27-7: `docket pod <p> export <dir>`, the write direction of "Pod manifests: apply".** New
+  "Pod manifests: export" section: `core/pod_apply.py::export_pod` writes this pod's own scope
+  only — `roles/*.yaml` (pod-overlay entries via `RoleArchetype.to_wire()`), `policies/*.json`
+  (this pod's own policy directory, copied as-is), a bound `pipeline.yaml` copy when one is set,
+  and a `pod.yaml` naming non-Lead `members` and every non-default `setting` — into the same
+  directory shape `apply` already reads, so a pod can be reproduced on a second machine. Global
+  scope (the operator's own role overlay, fleet-wide policies, other pods) is never exported. The
+  round trip (export → apply into a fresh pod → matching `config explain --json`) is the phase's
+  integration proof.
 
 ### Version 1.7.0 (2026-09-26)
 

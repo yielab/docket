@@ -241,10 +241,12 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_sync(project, extra)
     elif action == "apply":
         _pod_apply_cmd(project, extra)
+    elif action == "export":
+        _pod_export_cmd(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "delegate | queue | dispatch | config | sync | apply."
+            "delegate | queue | dispatch | config | sync | apply | export."
         )
         raise typer.Exit(1)
 
@@ -827,6 +829,31 @@ def _pod_apply_cmd(project: str, extra: list[str]) -> None:
             ui.success(f"Applied {len(changed)} change(s) to pod '{project}' from {directory}.")
         else:
             ui.success(f"Pod '{project}' already matches {directory}.")
+
+
+def _pod_export_cmd(project: str, extra: list[str]) -> None:
+    """``docket pod <project> export <dir> [--force]`` -- write this pod's own scope
+    (`core.pod_apply.export_pod`) into ``<dir>``. Refuses a non-empty ``<dir>`` unless
+    ``--force``; a missing pod exits 1 naming it, with nothing written."""
+    force = "--force" in extra
+    rest = [a for a in extra if a != "--force"]
+    if len(rest) != 1:
+        ui.error("Usage: docket pod <project> export <dir> [--force]")
+        raise typer.Exit(1)
+    directory = Path(rest[0])
+
+    if directory.exists() and any(directory.iterdir()) and not force:
+        ui.error(f"'{directory}' is not empty. Use --force to overwrite.")
+        raise typer.Exit(1)
+
+    try:
+        _pod_apply.export_pod(project, directory)
+    except _pod_apply.PodApplyError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+
+    audit_log("pod.export", f"project={project} dir={directory}")
+    ui.success(f"Exported pod '{project}' to {directory}.")
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the

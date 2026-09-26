@@ -14,11 +14,12 @@ import json
 from pathlib import Path
 
 import pytest
+import typer
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
 import docket.config as _cfg
-from docket.cli import _pod
+from docket.cli import _config, _pod
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import orchestrator as _orch
@@ -246,3 +247,120 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
         and "APPROVE" in (e.get("payload") or {}).get("text", "")  # type: ignore[union-attr]
     ]
     assert approvals, "the vetter's APPROVE verdict was not traced"
+
+
+# ── export_pod: the round trip is the proof ──────────────────────────────────
+
+
+def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    capsys.readouterr()
+    _config.dispatch("explain", [agent_id, "--json"])
+    return json.loads(capsys.readouterr().out)  # type: ignore[no-any-return]
+
+
+def _normalized(report: dict[str, object], project: str) -> dict[str, object]:
+    """Drop *project*'s own name -- an equal-length pod's report should then match exactly."""
+    text = json.dumps(report).replace(project, "PROJECT")
+    return json.loads(text)  # type: ignore[no-any-return]
+
+
+def test_export_then_apply_round_trip_matches_config_explain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Export -> apply into a fresh pod -> `config explain --json` agrees once normalized;
+    also covers the CLI's non-empty-directory refusal and its `--force` override."""
+    source_project = "podsrc"
+    target_project = "poddst"  # same length as source_project -- see `_normalized`
+    _seed_fixture_pod(tmp_path / "source", monkeypatch, source_project)
+
+    recipe_dir = RECIPES_DIR / "secure-build"
+    _pod_apply.apply(_pod_apply.plan_apply(source_project, recipe_dir))
+    _pod.dispatch(source_project, "config", ["set", "approvalMode", "refuse"])
+
+    export_dir = tmp_path / "exported"
+    _pod.dispatch(source_project, "export", [str(export_dir)])
+    assert (export_dir / "roles" / "security-vetter.yaml").is_file()
+    assert (export_dir / "pipeline.yaml").is_file()
+    assert (export_dir / "pod.yaml").is_file()
+    assert not (export_dir / "policies").exists()  # apply never wrote a pod policy file
+
+    with pytest.raises(typer.Exit) as exc:
+        _pod.dispatch(source_project, "export", [str(export_dir)])
+    assert exc.value.exit_code == 1
+    _pod.dispatch(source_project, "export", [str(export_dir), "--force"])  # overwrites cleanly
+
+    source_report = _explain_json(f"{source_project}-security-vetter", capsys)
+
+    _seed_fixture_pod(tmp_path / "target", monkeypatch, target_project)
+    _pod_apply.apply(_pod_apply.plan_apply(target_project, export_dir))
+
+    target_report = _explain_json(f"{target_project}-security-vetter", capsys)
+
+    assert _normalized(source_report, source_project) == _normalized(target_report, target_project)
+
+
+def test_export_writes_only_this_pods_own_scope_never_global(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A global role and a fleet-wide policy, installed alongside this pod's own pod-scoped
+    role/policy, must never appear in an export."""
+    project = "guardedexp"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+
+    _arch.add_user_archetype(
+        {
+            "name": "global-role",
+            "scope": "org",
+            "modelClass": "cheap",
+            "editRights": "write",
+            "toolProfile": "full",
+            "tokenBudget": 4000,
+            "soulTemplate": "# SOUL\n",
+            "agentsTemplate": "# AGENTS\n",
+            "gateContract": {"kind": "none"},
+        }
+    )  # global overlay -- no `project` given
+    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    (_cfg.POLICIES_DIR / "global-policy.json").write_text(
+        json.dumps(
+            {
+                "id": "global-policy",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "x"},
+                "action": "require_approval",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "secure-build"))
+    pod_policies_dir = _cfg.pod_config_dir(project) / "policies"
+    pod_policies_dir.mkdir(parents=True, exist_ok=True)
+    policy_text = (
+        RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.json"
+    ).read_text(encoding="utf-8")
+    (pod_policies_dir / "require-approval-secret-writes.json").write_text(
+        policy_text, encoding="utf-8"
+    )
+    _pod.dispatch(project, "config", ["set", "approvalMode", "refuse"])
+
+    export_dir = tmp_path / "export-out"
+    _pod_apply.export_pod(project, export_dir)
+
+    assert sorted(p.name for p in (export_dir / "roles").iterdir()) == ["security-vetter.yaml"]
+    assert sorted(p.name for p in (export_dir / "policies").iterdir()) == [
+        "require-approval-secret-writes.json"
+    ]
+    assert (export_dir / "policies" / "require-approval-secret-writes.json").read_text(
+        encoding="utf-8"
+    ) == policy_text
+    assert (export_dir / "pipeline.yaml").is_file()
+
+    import yaml as _yaml
+
+    manifest = _yaml.safe_load((export_dir / "pod.yaml").read_text(encoding="utf-8"))
+    assert manifest == {
+        "members": ["implementer", "security-vetter"],
+        "settings": {"approvalMode": "refuse"},
+    }
