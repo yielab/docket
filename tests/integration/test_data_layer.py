@@ -408,6 +408,45 @@ class TestFleet:
         _fleet.set_default_model("anthropic/claude-haiku-4-5")
         assert _fleet.get_default_model() == "anthropic/claude-haiku-4-5"
 
+    def test_set_default_model_writes_the_models_registry(self, oc_env: Path) -> None:
+        """`set_default_model` must land in docket-models.json, not fleet.json --
+        that registry is the one place a default model lives."""
+        from docket.core import fleet as _fleet
+        from docket.core import models_policy as _mp
+
+        _fleet.set_default_model("openai/gpt-4.1-mini")
+        _, _, default_model = _mp.load_registry()
+        assert default_model == "openai/gpt-4.1-mini"
+        raw = json.loads((oc_env / "fleet.json").read_text())
+        assert raw.get("defaults", {}).get("model", "") == ""
+
+    def test_default_model_reflects_a_direct_registry_write(self, oc_env: Path) -> None:
+        """A write straight to docket-models.json (what `models set default`/
+        `models preset` do) must be visible to `get_default_model` without a
+        separate fleet.json write -- there is only one default of record."""
+        from docket.core import fleet as _fleet
+        from docket.core import models_policy as _mp
+
+        _mp.write_registry({"default": "openai/gpt-4.1"})
+        assert _fleet.get_default_model() == "openai/gpt-4.1"
+
+    def test_legacy_fleet_default_migrates_into_registry_once(self, oc_env: Path) -> None:
+        """An old fleet.json `defaults.model` (pre-migration) is ported into the
+        registry on first read, then cleared so it never diverges again."""
+        from docket.core import fleet as _fleet
+
+        raw = json.loads((oc_env / "fleet.json").read_text())
+        raw.setdefault("defaults", {})["model"] = "openai/gpt-4.1-nano"
+        (oc_env / "fleet.json").write_text(json.dumps(raw))
+        assert not (oc_env / "docket-models.json").exists()
+
+        assert _fleet.get_default_model() == "openai/gpt-4.1-nano"
+
+        reg = json.loads((oc_env / "docket-models.json").read_text())
+        assert reg["default"] == "openai/gpt-4.1-nano"
+        after = json.loads((oc_env / "fleet.json").read_text())
+        assert after["defaults"]["model"] == ""
+
     def test_meta_get_set(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 
@@ -503,3 +542,25 @@ class TestJsonBridge:
         rc, _, err = self._run("nonexistent-verb")
         assert rc == 2
         assert "unknown verb" in err
+
+    def test_default_model_get(self) -> None:
+        rc, out, _ = self._run("default-model-get")
+        assert rc == 0
+        assert out == "anthropic/claude-sonnet-4-6"
+
+    def test_default_model_set_and_get_round_trip(self) -> None:
+        rc, _, _ = self._run("default-model-set", "anthropic/claude-haiku-4-5")
+        assert rc == 0
+        rc2, out, _ = self._run("default-model-get")
+        assert rc2 == 0
+        assert out == "anthropic/claude-haiku-4-5"
+
+    def test_default_model_get_reflects_a_direct_registry_write(self) -> None:
+        """`models set default`/`models preset` write docket-models.json directly
+        -- `default-model-get` must see that value, not a stale fleet.json copy."""
+        from docket.core import models_policy as _mp
+
+        _mp.write_registry({"default": "openai/gpt-4.1"})
+        rc, out, _ = self._run("default-model-get")
+        assert rc == 0
+        assert out == "openai/gpt-4.1"

@@ -19,12 +19,16 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 from docket.cli import _provider as _cliprov
+from docket.cli import app as _app
 from docket.core import fleet as _fleet
 from docket.core import provider as _prov
 
 SUBJECT = "docket.core"
+
+_runner = CliRunner()
 
 # Minimal fleet.json seed (no providers yet).
 _FLEET_CONFIG: dict[str, Any] = {
@@ -208,3 +212,63 @@ def test_run_provider_add_output_order_matches_pre_split_flow(
     wired_idx = out.index("Local provider wired")
     role_split_idx = out.index("Next — select the reachable local provider")
     assert checking_idx < registering_idx < wired_idx < role_split_idx
+
+
+# ── cli arg parsing: the label derives from --model, not a hardcoded string ────
+
+
+class TestProviderLabelDerivesFromModel:
+    """`docket models provider add` without `--name` must label the entry after
+    `--model`, not the shipped local-default caption (which belongs only to
+    the shipped default model id)."""
+
+    def test_label_derives_from_model_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        result = _runner.invoke(
+            _app,
+            [
+                "models",
+                "provider",
+                "add",
+                "lab",
+                "http://10.0.0.5:1234/v1",
+                "--model",
+                "llama-3.3-70b",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout
+        entry = _providers(home)["lab"]
+        assert entry["models"][0]["name"] == "llama-3.3-70b"
+
+    def test_explicit_name_still_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        result = _runner.invoke(
+            _app,
+            [
+                "models",
+                "provider",
+                "add",
+                "lab",
+                "http://10.0.0.5:1234/v1",
+                "--model",
+                "llama-3.3-70b",
+                "--name",
+                "Llama 3.3 70B",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout
+        entry = _providers(home)["lab"]
+        assert entry["models"][0]["name"] == "Llama 3.3 70B"
+
+    def test_bare_default_add_keeps_the_shipped_label(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        result = _runner.invoke(_app, ["models", "provider", "add"])
+        assert result.exit_code == 0, result.stdout
+        entry = _providers(home)["local"]
+        assert entry["models"][0]["name"] == _prov.DEFAULT_MODEL_NAME

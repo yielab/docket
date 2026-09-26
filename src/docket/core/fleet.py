@@ -25,6 +25,7 @@ for fleet and agent-metadata state. These are docket-owned formats read through
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,7 +57,9 @@ class FleetBinding(BaseModel):
 
 
 class FleetDefaults(BaseModel):
-    """Org-wide defaults. Today: the default model new agents provision with."""
+    """Read-only remnant. ``model`` is ported into docket-models.json's ``default``
+    on first read, then cleared -- ``get_default_model``/``set_default_model``
+    never write it again."""
 
     model_config = _LENIENT
 
@@ -163,16 +166,48 @@ def agent_count() -> int:
     return len(load_fleet().agents)
 
 
-def get_default_model(cfg: FleetConfig | None = None) -> str:
-    """Return the fleet's org-wide default model id."""
-    return (cfg or load_fleet()).defaults.model
+def get_default_model() -> str:
+    """Return docket's one default model id: docket-models.json's ``default``.
+    Ports a legacy fleet.json value forward first via
+    ``_migrate_legacy_default_model``, which is never read live otherwise."""
+    _migrate_legacy_default_model()
+    from docket.core import models_policy as _mp
+
+    _, _, default_model = _mp.load_registry()
+    return default_model
 
 
 def set_default_model(model: str) -> None:
-    """Write the fleet's org-wide default model id."""
-    cfg = load_fleet()
-    cfg.defaults.model = model
-    _save_fleet(cfg)
+    """Write docket's one default model id to the models registry.
+
+    fleet.json's own ``defaults.model`` field is not written again."""
+    _migrate_legacy_default_model()
+    from docket.core import models_policy as _mp
+
+    _mp.write_registry({"default": model})
+
+
+def _migrate_legacy_default_model() -> None:
+    """Port a non-empty fleet.json ``defaults.model`` into the models registry.
+    Skips a registry that already has its own ``default``; always clears the
+    fleet field after, so a later call is a no-op."""
+    fleet_cfg = load_fleet()
+    legacy = fleet_cfg.defaults.model
+    if not legacy:
+        return
+    from docket.core import models_policy as _mp
+
+    registry_has_default = False
+    try:
+        if _cfg.MODEL_REGISTRY_FILE.exists():
+            raw = json.loads(_cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8"))
+            registry_has_default = bool(raw.get("default"))
+    except Exception:
+        registry_has_default = False
+    if not registry_has_default:
+        _mp.write_registry({"default": legacy})
+    fleet_cfg.defaults.model = ""
+    _save_fleet(fleet_cfg)
 
 
 def add_agent(
