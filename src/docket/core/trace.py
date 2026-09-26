@@ -53,6 +53,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "tool_call",
         "tool_result",
         "context_composed",
+        "prompt_composed",
         "session_compaction",
         "request_fit",
         "guardrail_check",

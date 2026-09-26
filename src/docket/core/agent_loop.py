@@ -123,13 +123,13 @@ budget/estimate evidence only, never messages or model/tool content.
   SOUL.md instruction. This function never branches on a role's name; the
   denylist is data on the role's archetype (see ``core/archetypes.py``).
 - **The system prompt is composed fresh every turn.**
-  ``core.identity.system_prompt_for_agent`` reads this agent's ``SOUL.md``,
+  ``core.identity.compose_agent_prompt`` reads this agent's ``SOUL.md``,
   live persona, the driver's resolved project roots, and bounded private
-  workspace state. It projects one live-safe startup contract instead of
-  replaying ``WORKFLOW_AUTO.md``'s manual private-file instructions, then
+  workspace state, and reports its own fit accounting (traced as
+  ``prompt_composed``). It projects one live-safe startup contract instead
+  of replaying ``WORKFLOW_AUTO.md``'s manual private-file instructions, then
   prepends the result as a ``system`` message. It is never persisted to
-  session history, so refreshed persona/state is visible on the next turn
-  rather than frozen into a stored message.
+  session history, so refreshed persona/state is visible on the next turn.
 """
 
 from __future__ import annotations
@@ -504,15 +504,32 @@ def _resolve_trace_coordinates(
     return project, trace_key
 
 
+def _trace_prompt_composed(
+    project: str,
+    session_key: str,
+    role: str,
+    sections: tuple[_identity.PromptSectionReport, ...],
+) -> None:
+    trace_event(
+        project,
+        session_key,
+        role,
+        "prompt_composed",
+        json.dumps(
+            {"sections": [{"name": s.name, "bytes": s.bytes, "status": s.status} for s in sections]}
+        ),
+    )
+
+
 # Resolved once per turn, not per iteration -- neither the role's toolset nor
 # this agent's identity files change mid-turn.
 def _resolve_role_registry_and_prompt(
     registry: ToolRegistry, ctx: ToolContext
-) -> tuple[ToolRegistry, str, list[ToolSpec]]:
+) -> tuple[ToolRegistry, str, list[ToolSpec], tuple[_identity.PromptSectionReport, ...]]:
     """Narrow the tool registry to this role and compose today's system prompt."""
     registry = _archetypes.registry_for_role(registry, ctx.role)
-    system_prompt = _identity.system_prompt_for_agent(ctx.agent_id, project_roots=ctx.roots)
-    return registry, system_prompt, registry.specs()
+    composition = _identity.compose_agent_prompt(ctx.agent_id, project_roots=ctx.roots)
+    return registry, composition.text, registry.specs(), composition.sections
 
 
 def _selected_estimate(selected: list[ChatMessage]) -> int:
@@ -648,7 +665,11 @@ class _TurnState:
         project, trace_key = _resolve_trace_coordinates(
             ctx, session_key, trace_project, trace_session_key
         )
-        registry, system_prompt, tool_specs = _resolve_role_registry_and_prompt(registry, ctx)
+        registry, system_prompt, tool_specs, prompt_sections = _resolve_role_registry_and_prompt(
+            registry, ctx
+        )
+        if prompt_sections:
+            _trace_prompt_composed(project, trace_key, ctx.role, prompt_sections)
         return cls(
             backend=backend,
             ctx=ctx,
