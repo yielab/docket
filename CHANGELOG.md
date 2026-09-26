@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A pod's dispatch settings are a typed, validated, writable configuration surface.**
+  `docket pod <p> config [get|set|unset] <key> [<value>]` (with `--json` on `get`) covers nine
+  keys — `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`,
+  `allowCommands`, `pipeline`, `schedule` and `projectInstructions` — validated at write and
+  audited as `pod.config`. An invalid stored value now refuses dispatch naming the key, instead of
+  silently falling back to a default, and `docket profile --budget` writes `budgetUsd` as a
+  number, not a string.
+- **An unattended dispatch can refuse instead of waiting on nobody.** Setting a pod's
+  `approvalMode` to `refuse` makes a hop that would otherwise block on a human approval fail the
+  task at once, naming the tool and policy, instead of sitting on the approval timeout under an
+  unwatched schedule or serve sweep. The default (`wait`) is unchanged.
+- **A pod can allow its own tool binaries.** `allowCommands` names extra bash binaries that pod's
+  agents may run without an approval prompt, scoped to that pod and validated at write: a path, a
+  shell metacharacter, an opaque name (`eval`, `source`, ...) or a high-risk-class binary
+  (`git`, `npm`) is refused, and a redirected call still asks.
+- **A pipeline file can be a pod's default for every trigger.** `docket pod <p> config set
+  pipeline <file>` validates the file, plans it against the pod's roster, and stores a
+  docket-owned copy with its hash; that pipeline then runs for a manual dispatch, a
+  `serve --dispatch` sweep, a schedule, and a webhook or MCP dispatch alike, not only a
+  manually-passed `--file`. `unset pipeline` restores the blueprint default, and
+  `docket pipeline plan` prints a `Source:` line naming which one would run.
+- **Custom roles can carry their own hop instructions, and pipeline steps can be parameterized.**
+  A role archetype's `hopInstruction` (or one generated from its gate contract when unset) now
+  reaches a custom role's hop, and a pipeline step's own `instructions` field overrides it. Step
+  instructions may reference `${name}` variables, resolved from repeatable `docket pipeline run
+  --var key=value` flags as well as from a webhook payload; an unresolved variable refuses the
+  run instead of sending the literal placeholder.
+- **`docket config explain <agent>` shows the effective configuration with provenance.** One
+  read-only command (with `--json`) reports the resolved model and endpoint, each prompt
+  section's size and fit status, the agent's tools after role denials plus the configured MCP
+  servers, the policies that apply to the role, the effective pipeline and its source, and
+  budgets, timeouts, `approvalMode` and `allowCommands` — each value tagged with what set it
+  (meta, policy, pin, pod setting, env or default).
+- **An operator-owned `INSTRUCTIONS.md` composes into every agent's prompt and survives
+  regeneration.** docket never writes it. `docket pod <p> sync [--dry-run]` re-renders `SOUL.md`,
+  `AGENTS.md` and `TOOLS.md` from the current role archetype and metadata for any pod member whose
+  template or archetype has gone stale, showing a diff first with `--dry-run`; `docket doctor`
+  flags pod members that are out of date.
+- **A pod can opt an agent into reading its own codebase's project instructions.** Setting
+  `projectInstructions` to one or more relative paths (for example `AGENTS.md`) composes those
+  files into the prompt right after `INSTRUCTIONS.md`; each one is screened as untrusted input by
+  the `pre_input` policy hook, a missing file shows a visible marker instead of failing silently,
+  and a path that would escape the codebase root is refused when the setting is written. Unset
+  (the default), nothing changes.
+- **Old runs, resolved approvals and closed conversations are pruned automatically and on
+  demand.** The trace-retention window now also bounds `docket-runs.json`, the approval store and
+  `docket-conversations.json`; only terminal records are removed, and live or pending ones are
+  never touched. `docket runs prune [--days N] [--dry-run]` and `docket conversations prune
+  [--days N] [--dry-run]` run it on demand.
+- **Three shipped recipes** — `secure-build` (implementer plus a security-vetter verdict gate),
+  `research-review` and `ops-approval` — ship in `templates/recipes/`: role, pipeline, an
+  optional policy pack and a README with the exact commands to apply them. Each is validated in
+  CI, and `secure-build` is proven end to end by a dispatch to `done` on the fake driver.
+
 ### Changed
 
 - **Non-software pods run their blueprint pipeline.** `docket pod <p> dispatch`, `docket pipeline
@@ -19,6 +75,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the flag is still accepted so existing scripts do not start exiting 2, but it is gone from
   `docket --help` and `docket help`. `docket models` no longer claims prices can be overridden in
   `docket-models.json`; no pricing overlay is read.
+
+- **A prompt's context budget follows the resolved model's context window instead of a fixed
+  ~24 KB for every model.** A 200k-window endpoint now fits a full identity/memory/task-ledger
+  prompt that a fixed budget used to truncate; a 16k-window endpoint keeps today's behaviour.
+  `CONTEXT_TOKEN_BUDGET` and an archetype's `tokenBudget` still work as explicit overrides, and
+  `docket maintain check` plus each turn's `prompt_composed` trace event report the effective
+  budget and what set it.
+- **A truncated or omitted prompt section is always marked, never silent.** An oversized
+  `SOUL.md` used to be able to push `HEARTBEAT.md`, `AGENTS.md`, `TOOLS.md` and `MEMORY.md` out of
+  the prompt with nothing to say so; the runtime contract and task-ledger state are now protected
+  ahead of `SOUL.md`, an oversized section is truncated with a visible marker, and every
+  composition's `prompt_composed` trace event lists each section's size and whether it was full,
+  truncated or omitted.
+- **There is one default model of record.** `docket-models.json`'s `default` is now the only
+  source; the separate, sometimes-diverging `fleet.json` default is migrated in and dropped. A
+  provider's display name derives from `--model` unless `--name` is given, instead of every entry
+  showing the shipped local model's caption.
+- **Built-in role templates no longer instruct an agent to do something the runtime forbids.**
+  The generated `AGENTS.md` text stops telling agents to write `HEARTBEAT.md` directly (private
+  state is read-only on the live path); `WORKFLOW_AUTO.md` is now labelled as the manual-path
+  contract it actually is.
 
 ### Fixed
 
@@ -77,6 +154,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded spend, which `DocketDriver` always reports as 0.0, so neither ever triggered. They now
   read the same recorded-or-estimated figure the dispatch budget gate uses, labelled as an
   estimate when it is one.
+- **A broken policy file now fails closed.** An unloadable policy JSON, an uncompilable regex
+  pattern, or an unknown `action` used to make every call on that hook evaluate to `allow`; each
+  now makes every call in that file's readable scope (or, if the JSON itself cannot be parsed,
+  all hooks) resolve to a block naming the file — across the live gate and `docket policies
+  test`. `docket policies validate` now compiles every regex instead of accepting a pattern it
+  never checks, `docket policies test pre_tool_call` takes `--tool <name>` so a non-`bash` tool
+  is not misclassified against the command allowlist, and `docket doctor` reports a broken policy
+  file as an error.
+- **`docket doctor` reports a broken schedule, model-policy entry or overlay role by name instead
+  of silently skipping it**, and `serve` logs a skipped schedule once per sweep.
+  `docket pod <p> config set schedule "<spec>"` validates and writes a schedule (previously
+  writable only by hand-editing the file), and `unset` removes it.
+- **`docket delete` removes a pod member's merged branch and its provisioning lock directory.** A
+  merged `docket/<pod>/<member>` branch and stale lock entries used to survive teardown; an
+  unmerged branch is still kept, with the command to remove it printed. Newly created workspace
+  and pod directories are now `0700`, and `docket init --no-gates` no longer prints "recorded as
+  off" while writing nothing.
+- **A deterministic dispatch refusal now fails the task instead of orphaning it.** A refusal
+  raised inside a claimed task — an unknown pod member, an invalid stored setting, a membership
+  mismatch — used to leave the task `running` with no process behind it and no way to resume; it
+  now ends that task `failed` with the refusal as its reason, and `--resume` picks it up from its
+  last persisted hop. A pod's membership is now read from each agent's own recorded metadata
+  rather than guessed from its id string, which is what could raise that refusal for a hyphenated
+  custom role name in the first place.
+- **An approval's trace event is now filed under its pod, not the individual agent id** —
+  matching where `docket trace <project>` and `docket metrics` already look for one.
+
+### Removed
+
+- **docket no longer writes an API key into every workspace's `.env` file.** Stored keys are
+  resolved only where they are read; `keys add` under the `keyring` backend either stores through
+  `secret-tool` or refuses with an honest message instead of silently doing nothing.
+- **`docket gates enable`/`docket gates disable` are retired.** They wrote an approval-routing
+  flag nothing on the live turn path read. Both now print a removed-command notice pointing at
+  `docket pod <p> config set approvalMode`.
+
 ## [0.2.0-beta.3] - 2026-09-18
 
 The first beta with harness mode: `docket harness run` executes one governed agent turn for an
