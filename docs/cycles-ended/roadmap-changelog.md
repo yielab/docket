@@ -10,6 +10,25 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-26 (Phase 28 planned, D-44) — configuration format v1 and the two extension
+  points.** Gated on Phase 27. Eight cards in three waves: a `kind` envelope with one
+  `load_document` and `docket validate`; short forms for roles, pipelines and policies over the
+  unchanged canonical form, each normaliser proven by a round trip; structured policy predicates
+  (`tool`, `path`, `matches`, `branch`, `anyOf`); control flow as bounded data (`on` outcome
+  maps with `goto`/`max`, `until`, closed `when` predicates, command steps); Python predicate
+  plugins for policies loaded only from operator scope with a hash, fail-closed and audited;
+  generated JSON Schemas and short-form export. Cut: expressions, unbounded loops, includes,
+  inheritance, hook frameworks. Reasoning: `docs/adr/0010-config-format-v1-and-extension-points.md`.
+- **2026-09-26 (Phase 27 planned, D-43) — per-pod configuration and portable teams.**
+  Eight cards in three waves on the board: pod-scoped role overlay and policies resolving
+  above a global structural base (shape nearest-wins, governance only adds), declared MCP
+  server kinds and tool allowlists so read-only roles can reach read-declared servers, pod
+  settings `mcpServers`/`deniedTools` shipped with their readers, the Lead's instruction as
+  archetype data reachable by step `instructions`, and `docket pod <p> apply|export` turning
+  the recipe directory (plus a three-key `pod.yaml`) into a manifest whose round trip is the
+  proof. Deferred with triggers: pod-local MCP catalog, model per step, relative `agent:`
+  refs, per-agent overrides, `blueprints add`. Cut: reconciliation, auto-apply, any loader
+  framework. Reasoning: `docs/adr/0009-per-pod-configuration-and-portable-teams.md`.
 - **2026-09-21 (Wave 36 closed, D-40) — the documentation audit's code-side defects fixed.**
   Eleven cards in three batches, one Sonnet worker per card in an isolated worktree, one
   integrator owning every rollup: project ids validated at `provision_pod` (a `POST /pods` path
