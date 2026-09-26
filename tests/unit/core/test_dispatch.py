@@ -484,6 +484,88 @@ class TestExecuteUnitDirectly:
             )
 
 
+class TestDeterministicRefusalFailsOnlyThatTask:
+    """A claimed-task ``DispatchError`` (pod-dispatch.spec.md, "Deterministic refusal inside a
+    claimed task") must settle as ``"failed"``, never propagate out of ``dispatch_pod``."""
+
+    def test_dispatch_task_settles_a_cross_pod_refusal_as_failed(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        spec = _pipeline.PipelineSpec(
+            name="alien-step",
+            steps=[
+                _pipeline.Step(id="lead", role="lead"),
+                _pipeline.Step(id="alien", agent="ghost-lead"),
+            ],
+        )
+        calls: list[str] = []
+
+        def _runner(
+            agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None
+        ) -> _rd.TurnResult:
+            calls.append(agent_id)
+            return _rd.TurnResult(True, "done", 0.0, {})
+
+        task = {"id": "task-1", "description": "x", "status": "running"}
+
+        result = _dispatch.dispatch_task("myapp", task, runner=_runner, spec=spec)
+
+        assert result.status == "failed"
+        assert "refusing cross-pod dispatch" in result.reason
+        assert result.failure_kind == "dispatch_refused"
+        # The lead step ran and its hop is preserved; the alien step never got a turn.
+        assert [h.role for h in result.hops] == ["lead"]
+        assert calls == ["myapp-lead"]
+
+    def test_a_crash_is_not_caught_and_still_leaves_no_result(self, pod_home: Path) -> None:
+        """A real crash (any exception other than DispatchError) must still propagate --
+        catching it too would wrongly settle an orphaned claim as 'failed' instead of leaving
+        it 'running' for the stale-claim sweep."""
+        _seed_lean_pod("myapp")
+
+        def _crasher(
+            agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None
+        ) -> _rd.TurnResult:
+            raise RuntimeError("simulated crash")
+
+        task = {"id": "task-1", "description": "x", "status": "running"}
+
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            _dispatch.dispatch_task("myapp", task, runner=_crasher)
+
+
+class TestResumableFailureKinds:
+    """``_eligible_for_claim``/``_apply_result`` treat ``dispatch_refused`` the same way they
+    already treat ``stale_claim`` -- resumable, immediately, with no staleness math -- while an
+    ordinary graded hop failure (no ``failureKind`` at all) stays non-resumable."""
+
+    def test_dispatch_refused_is_eligible_only_with_resume(self) -> None:
+        task = {"status": "failed", "failureKind": "dispatch_refused"}
+        assert _dispatch._eligible_for_claim(task, resume=True) is True
+        assert _dispatch._eligible_for_claim(task, resume=False) is False
+
+    def test_a_plain_failed_task_is_never_eligible(self) -> None:
+        task = {"status": "failed", "failureKind": ""}
+        assert _dispatch._eligible_for_claim(task, resume=True) is False
+
+    def test_apply_result_persists_a_failure_kind_when_the_result_carries_one(self) -> None:
+        task: dict[str, Any] = {"status": "running", "failureKind": "stale_claim"}
+        res = _dispatch.TaskResult(
+            task_id="t1", status="failed", reason="boom", failure_kind="dispatch_refused"
+        )
+
+        _dispatch._apply_result(task, res)
+
+        assert task["failureKind"] == "dispatch_refused"
+
+    def test_apply_result_clears_a_stale_failure_kind_on_an_ordinary_result(self) -> None:
+        task: dict[str, Any] = {"status": "running", "failureKind": "stale_claim"}
+        res = _dispatch.TaskResult(task_id="t1", status="done", reason="")
+
+        _dispatch._apply_result(task, res)
+
+        assert "failureKind" not in task
+
+
 class TestEffectivePipelineBlueprint:
     """``effective_pipeline(project, None)`` resolves the Lead's ``blueprint`` meta through
     ``core/blueprints.py::get_blueprint`` before falling back to the built-in default -- see

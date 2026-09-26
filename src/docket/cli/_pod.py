@@ -544,16 +544,32 @@ def _pod_dispatch(
     tasks = _dispatch.read_tasks(project)
     pending = [t for t in tasks if t.get("status") == "pending"]
     resumable = (
-        [t for t in tasks if t.get("status") == "failed" and t.get("failureKind") == "stale_claim"]
+        [
+            t
+            for t in tasks
+            if t.get("status") == "failed"
+            and t.get("failureKind") in _dispatch.RESUMABLE_FAILURE_KINDS
+        ]
         if resume
         else []
     )
-    if not pending and not resumable:
+    # A crashed dispatcher leaves a task `running`, not `failed` -- it only becomes
+    # resumable once `dispatch_pod`'s own stale-claim sweep judges its claim too old
+    # (pod-dispatch.spec.md, "Claiming"/"Per-hop incremental persistence and crash
+    # recovery"). Re-checking that staleness here would duplicate the sweep's own
+    # CLAIM_STALE_TIMEOUT math; instead, under --resume, a `running` task is enough
+    # to let this call proceed into dispatch_pod at all, so its sweep can settle a
+    # genuinely stale one in the same call -- no decoy pending task, no timeout
+    # override needed just to unblock recovery.
+    running = [t for t in tasks if t.get("status") == "running"] if resume else []
+    if not pending and not resumable and not running:
         ui.warn(f"No pending tasks for pod '{project}'. Queue one: docket pod {project} delegate")
         return
     count_label = f"{len(pending)} pending"
     if resume:
         count_label += f", {len(resumable)} resumable"
+        if running:
+            count_label += f", {len(running)} running (reclaimed only if the claim is stale)"
     if spec is not None:
         ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
     else:

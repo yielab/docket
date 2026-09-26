@@ -63,6 +63,15 @@ _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"}
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 
+# `failed` task ``failureKind`` values ``--resume`` is allowed to reclaim (see
+# ``_eligible_for_claim`` and pod-dispatch.spec.md "Claiming"): a swept crash
+# (``stale_claim``) and a settled deterministic refusal (``dispatch_refused``,
+# see ``dispatch_task``'s ``DispatchError`` handling). Neither is a graded
+# hop/gate outcome, so neither is a "real gate/hop failure" in the sense
+# "blocked and terminal-failure re-entry" uses that phrase for. Shared by
+# ``cli/_pod.py``'s "anything to do?" gate so the two never drift apart.
+RESUMABLE_FAILURE_KINDS: frozenset[str] = frozenset({"stale_claim", "dispatch_refused"})
+
 
 def step_session_key(member_id: str, project: str, task_id: str, step_id: str) -> str:
     """Collision-free durable-history key (member + globally-unique step id) so repeated
@@ -148,6 +157,10 @@ class TaskResult:
     # (``_apply_result``) can persist enough to resume correctly on a grant.
     approval_token: str = ""
     pending_approval_index: int | None = None
+    # Only meaningful when status == "failed" -- see RESUMABLE_FAILURE_KINDS.
+    # Empty for an ordinary graded hop/gate failure (``_apply_result`` then
+    # clears any stale persisted ``failureKind`` instead of writing this).
+    failure_kind: str = ""
 
     @property
     def cost_usd(self) -> float:
@@ -756,8 +769,9 @@ def _replay_pipeline_position(
     resume once rework reruns a role; "Parallel step groups" item 6 for the known group-resume
     limit this function's trailing loop implements). Matches a verdict gate's ``rework`` edge
     by step id, not a hardcoded role. Only replays *non-terminal* history -- a terminal outcome
-    is decided/persisted synchronously in the same ``dispatch_task`` call, and a plain-``failed``
-    task is never reclaimed for resume (only ``stale_claim``-tagged)."""
+    is decided/persisted synchronously in the same ``dispatch_task`` call, and an ordinary
+    graded-failure ``failed`` task is never reclaimed for resume (only one tagged with a
+    RESUMABLE_FAILURE_KINDS reason)."""
     id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
     pi = 0
     rework_counts: dict[str, int] = {}
@@ -1661,13 +1675,21 @@ def dispatch_task(
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop. Full contract: pod-dispatch.spec.md
     ("Pipeline order and participation", "Per-hop incremental persistence and crash recovery",
-    "Retries and the failure-kind taxonomy", "Generalized gate execution", "Parallel step
-    groups"). Budget is checked before each hop; a failed hop stops the pipeline except for a
-    bounded rework loop re-running a verdict gate's declared target up to its own cycle budget.
-    *spec* ``None`` resolves the pod's zero-migration pipeline; *resume_from* seeds hops
-    completed before a crash (skipped, not re-invoked); *turn_timeout*/*verify_timeout* override
-    the pod Lead's meta then ``DEFAULT_TIMEOUT``, unless a step declares its own. *on_retry*
-    fires before each retry so the caller can refresh the task's claim before it goes stale."""
+    "Deterministic refusal inside a claimed task", "Retries and the failure-kind taxonomy",
+    "Generalized gate execution", "Parallel step groups"). Budget is checked before each hop; a
+    failed hop stops the pipeline except for a bounded rework loop re-running a verdict gate's
+    declared target up to its own cycle budget. *spec* ``None`` resolves the pod's
+    zero-migration pipeline; *resume_from* seeds hops completed before a crash or a settled
+    refusal (skipped, not re-invoked); *turn_timeout*/*verify_timeout* override the pod Lead's
+    meta then ``DEFAULT_TIMEOUT``, unless a step declares its own. *on_retry* fires before each
+    retry so the caller can refresh the task's claim before it goes stale.
+
+    A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
+    the top of ``_execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
+    is caught here and folded into a ``"failed"`` result tagged ``failure_kind="dispatch_refused"``
+    instead of propagating -- the caller (``dispatch_pod``) always finalizes and settles the
+    claim, and a crash (any *other* exception) still propagates unchanged, leaving the task
+    ``running`` for the stale-claim sweep exactly as before."""
     run = runner or _dr.default_driver().run_turn
     # pid tracking (for `docket runs cancel`) only makes sense for a real
     # OS process, i.e. the production driver — never an injected test
@@ -1679,52 +1701,62 @@ def dispatch_task(
     do_sleep = sleep or _time.sleep
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
-    pod_pipeline(project)  # validates pod/lead up front (raises DispatchError otherwise)
-    cap = pod_budget(project)
-    resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
-    resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
-
-    runtime_steps, id_to_index = _resolve_pipeline_steps(project, spec)
-    prior, pipeline_index, rework_counts, pending_rework_by_index = _resolve_resume_state(
-        runtime_steps, resume_from
-    )
-
-    # A granted approval hands the exact pipeline position it stopped at
-    # back to this one claim as a single-use override (see
-    # `_claim_next_task`'s claim-time handoff) — consumed the first time this
-    # run reaches that position, so a later hop at the same position (a
-    # rework cycle revisiting it) still gates normally.
-    override_index = _resolve_gate_override(task)
-
-    ctx = _UnitContext(
-        project=project,
-        task=task,
-        task_id=task_id,
-        session_id=session_id,
-        cap=cap,
-        resolved_turn_timeout=resolved_turn_timeout,
-        resolved_verify_timeout=resolved_verify_timeout,
-        id_to_index=id_to_index,
-        rework_counts=rework_counts,
-        override_index=override_index,
-        track_pid=track_pid,
-        run=run,
-        do_sleep=do_sleep,
-        on_hop=on_hop,
-        on_retry=on_retry,
-    )
 
     _trace.trace_event(
         project,
         session_id,
         "lead",
         "session_start",
-        _json.dumps({"source": "dispatch", "task": task_id, "resumed": bool(prior)}),
+        _json.dumps({"source": "dispatch", "task": task_id, "resumed": bool(resume_from)}),
     )
 
-    result = TaskResult(task_id=task_id, status="done", hops=list(prior))
+    result = TaskResult(task_id=task_id, status="done", hops=list(resume_from or []))
+    try:
+        pod_pipeline(project)  # validates pod/lead up front (raises DispatchError otherwise)
+        cap = pod_budget(project)
+        resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
+        resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
-    _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
+        runtime_steps, id_to_index = _resolve_pipeline_steps(project, spec)
+        prior, pipeline_index, rework_counts, pending_rework_by_index = _resolve_resume_state(
+            runtime_steps, resume_from
+        )
+
+        # A granted approval hands the exact pipeline position it stopped at
+        # back to this one claim as a single-use override (see
+        # `_claim_next_task`'s claim-time handoff) — consumed the first time this
+        # run reaches that position, so a later hop at the same position (a
+        # rework cycle revisiting it) still gates normally.
+        override_index = _resolve_gate_override(task)
+
+        ctx = _UnitContext(
+            project=project,
+            task=task,
+            task_id=task_id,
+            session_id=session_id,
+            cap=cap,
+            resolved_turn_timeout=resolved_turn_timeout,
+            resolved_verify_timeout=resolved_verify_timeout,
+            id_to_index=id_to_index,
+            rework_counts=rework_counts,
+            override_index=override_index,
+            track_pid=track_pid,
+            run=run,
+            do_sleep=do_sleep,
+            on_hop=on_hop,
+            on_retry=on_retry,
+        )
+
+        result = TaskResult(task_id=task_id, status="done", hops=list(prior))
+
+        _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
+    except DispatchError as exc:
+        result.status = "failed"
+        result.reason = str(exc)
+        result.failure_kind = "dispatch_refused"
+        _trace.trace_event(
+            project, session_id, "lead", "dispatch_refused", _json.dumps({"reason": str(exc)})
+        )
 
     _trace.trace_event(
         project,
@@ -1753,17 +1785,25 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
         task["pendingApprovalIndex"] = res.pending_approval_index
     else:
         task["completedAt"] = _now()
-        task.pop("failureKind", None)  # a fresh terminal result supersedes any stale-claim marker
+        if res.failure_kind:
+            task["failureKind"] = res.failure_kind
+        else:
+            # A fresh ordinary terminal result supersedes any stale-claim
+            # (or settled-refusal) marker left by an earlier attempt at
+            # this same task.
+            task.pop("failureKind", None)
 
 
 def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     """Whether *t* can be claimed by this dispatch run. See pod-dispatch.spec.md ("Claiming"):
-    ``pending`` always is; a ``stale_claim``-tagged ``failed`` only when *resume* is set;
+    ``pending`` always is; a ``failed`` task tagged with a RESUMABLE_FAILURE_KINDS reason only
+    when *resume* is set (a swept crash, or a settled deterministic refusal -- neither waited
+    out for staleness here, since a refusal's claim was already cleanly settled, not crashed);
     ``waiting_approval`` never."""
     status = t.get("status")
     if status == "pending":
         return True
-    return bool(resume and status == "failed" and t.get("failureKind") == "stale_claim")
+    return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
 
 
 def _claim_next_task(
