@@ -26,6 +26,11 @@ It exists because four things go wrong when you leave autonomous agents alone wi
 - **The team's output is only as good as the model's self-report.** Advancement is gated on exit
   codes and explicit verdicts — a verify command, a Reviewer's `APPROVE`, a Tester's `PASS` — not
   on how confident the prose sounds.
+- **The tool's defaults fit someone else's project, and changing them means forking it.** In
+  docket every layer of the orchestration is data you edit or a command you run — roles,
+  pipelines, instructions, policies, models, budgets, schedules — with working defaults, so a
+  custom setup is configuration, never a fork. See [Configuration is the product](#configuration-is-the-product-what-you-can-change)
+  below.
 
 The gate half is the part most agentic tooling leaves unfinished. Whatever owns an agent's turn
 loop is the only thing positioned to intercept a tool call before it executes — so frameworks
@@ -272,19 +277,30 @@ policy would still route the Lead and Implementer to a hosted model you have no 
 pipeline for research, content, ops or agentic-product work instead. For the full walkthrough and
 hosted-provider variants, see the [ten-minute quick start](docs/QUICK-START-DOCKET.md).
 
-## Configuration: roles and policies as data
+## Configuration is the product: what you can change
 
-Nothing that matters is hardcoded to a model's judgment. The rule: **a guarantee is a CLI-managed
-JSON registry under `~/.docket/`, evaluated by code and audited when it fires.** A file the agent
-merely reads for context is advisory, not a guarantee — both are real customization, only one is
-governance. Company guardrails live in `~/.docket/policies/*.json`, checked with `docket
-policies test` and `docket policies validate`; a role's callable tools live in
-`docket-roles.json`, sandboxing in `fleet.json`, role-to-model routing in `docket-models.json`,
-and each pod's own knobs behind `docket pod <p> config`. Workspace files (`SOUL.md`, `AGENTS.md`,
-`TOOLS.md`) carry prose the agent reads once; the operator-owned `INSTRUCTIONS.md` and opt-in
-`projectInstructions` are the durable way to put your own words in front of an agent. The
-file-by-file map of everything an install creates — and how each file reaches (or never reaches)
-the model — is [Configuration](docs/CONFIGURATION.md); the team-level reference is
+Customization is not an advanced topic in docket — the whole orchestration is layered
+configuration with working defaults, and every layer answers one question:
+
+| You want to change… | Layer | How |
+| --- | --- | --- |
+| The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
+| Who works a task, in what order, behind which gates, with how much rework | Pipeline | write a YAML, `docket pipeline validate/plan` it, run it once with `--file` or **bind it as the pod's default for every trigger** with `docket pod <p> config set pipeline <file>` |
+| What a kind of agent is, what it is told each hop, and which tools it is structurally denied | Role archetype | `docket roles add` (`deniedTools`, `hopInstruction`, gate contract, token budget) |
+| Your own words in front of an agent | Instructions | edit the operator-owned `INSTRUCTIONS.md` (docket never touches it), or opt in your repo's own `AGENTS.md` with `pod config set projectInstructions` |
+| What is forbidden or needs a human, everywhere | Policies | drop a JSON file in `~/.docket/policies/` — live on the next call, `docket policies test`/`validate` to check it |
+| What one pod may run unattended | Pod settings | `pod config set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
+| Which model each role uses | Model policy | `docket models set <role> <provider/model>`; pin one agent with `docket profile` |
+| A proven starting point instead of a blank page | Recipes | copy `templates/recipes/secure-build` (or `research-review`, `ops-approval`) and apply its README's commands |
+
+One rule keeps the map honest: **a guarantee is a CLI-managed JSON registry under `~/.docket/`,
+evaluated by code and audited when it fires.** A file the agent merely reads for context is
+advisory, not a guarantee — both are real customization, only one is governance. Every setting
+has one writer, is validated when written, and is refused loudly when broken; `docket config
+explain <agent>` shows the effective result of all eight layers with the source of each value,
+and `docket doctor` names any file that would be skipped. The file-by-file map of everything an
+install creates — and how each file reaches (or never reaches) the model — is
+[Configuration](docs/CONFIGURATION.md); the team-level reference is
 [Agent teams](docs/AGENT-TEAMS.md).
 
 ## Best practices
