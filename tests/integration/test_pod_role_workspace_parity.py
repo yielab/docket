@@ -86,8 +86,9 @@ def _legacy_member_soul(
 
 
 def _legacy_member_agents(member: pod.PodMember, project: str) -> str:
-    """Frozen copy of the original `cli/_pod.py::_member_agents` (before the
-    archetype registry existed)."""
+    """Frozen copy of `cli/_pod.py::_member_agents`'s original generator, minus the
+    Red Lines' HEARTBEAT-write bullet: that line contradicted the live runtime
+    contract's "no private logging is required" (see role-archetypes.spec.md)."""
     return (
         f"# AGENTS.md — {project} · {member.role}\n\n"
         "## Session Startup\n"
@@ -103,8 +104,6 @@ def _legacy_member_agents(member: pod.PodMember, project: str) -> str:
         f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"
         "  routes work between members). No cross-project access.\n"
         "- Never push to main/master or delete files without HITL approval.\n"
-        "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
-        "  task does not survive a context reset.\n"
     )
 
 

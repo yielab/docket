@@ -1,7 +1,11 @@
 # Role Archetypes Specification
 
-**Version**: 1.8.0
-**Status**: Implemented. `hopInstruction` (P26-7) is an open, optional field: a gated custom
+**Version**: 1.9.0
+**Status**: Implemented. **P26-9** removed a live contradiction from the four built-in and six
+starter AGENTS.md templates: their Red Lines section instructed the model to write in-flight work
+to `HEARTBEAT.md`, directly opposite `core/identity.py`'s live runtime contract ("private state is
+read-only ... no private logging is required") composed into the same turn — see "Generated
+instructions agree with the runtime contract" below. `hopInstruction` (P26-7) is an open, optional field: a gated custom
 role's hop message now carries an instruction even without one declared, generated from
 `gateContract` — see "Hop instructions" below and `pod-dispatch.spec.md`'s hop-message builder.
 `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
@@ -188,6 +192,37 @@ This specification does NOT cover:
    id-string parsing only when that meta is absent. `parse_member_id`, which always receives an
    explicit project and therefore only ever needs to strip that project's own prefix, is
    unaffected by this ambiguity — the fix is confined to the id-guessing `pod_of` path.
+
+### Generated instructions agree with the runtime contract (P26-9)
+
+1. A built-in or starter archetype's `soulTemplate`/`agentsTemplate` **MUST NOT** instruct the
+   model to perform a private write it cannot actually make — specifically, telling it to write
+   to `HEARTBEAT.md` or a `memory/` log itself. `core/identity.py`'s live runtime contract (see
+   `agent-loop.spec.md` req. 30) tells the model every turn that private workspace state is
+   read-only and that "Docket owns turn durability and no private logging is required"; an
+   archetype's own generated prose telling the model to write that same state directly
+   contradicts the contract it is composed alongside in the same turn.
+2. This does not forbid an archetype from telling the model to *read* `HEARTBEAT.md`/`memory/`
+   (reading is consistent with "read-only"), nor does it apply to `WORKFLOW_AUTO.md`
+   (`core/memory.py`'s `seed_contract`): that file's own `cd`/write-HEARTBEAT instructions are its
+   documented **manual-path contract**, for an agent reading the file directly outside Docket's
+   turn loop — the live turn loop never sends this raw file to the model (`_runtime_startup_contract`
+   projects a small read-only summary instead), and the file itself says so under a "Manual-path
+   contract" header, immediately after its intro paragraph.
+3. `tests/unit/core/test_archetypes.py`'s `TestGeneratedInstructionsAgreeWithRuntimeContract`
+   renders every `BUILTIN_ARCHETYPES`/`STARTER_ARCHETYPES` entry's SOUL/AGENTS templates and
+   fails if any composed line both asks to "write" and names `HEARTBEAT.md` or `memory/` — a
+   structural check over the actual rendered prompt, not a grep over template source.
+4. `core/pod_provisioning.py`'s `POD_TEMPLATE_VERSION` **MUST** be bumped whenever a built-in or
+   starter template's generated text changes (as this requirement's own fix did, v2 → v3), so
+   `docket doctor` can in principle detect a pod member provisioned from a stale template — see
+   workspace-structure.spec.md for what currently consumes that marker.
+5. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent and
+   org-specialist AGENTS.md generators (`cli/_agents.py`, `cli/_install.py`) carry their own,
+   separately hand-written copy of the same instruction this requirement removes from
+   `core/archetypes.py`'s pod-member templates. They are a different code path (not archetype-
+   driven) and CLI-layer, so a card scoped to `core/archetypes.py`/`core/memory.py` does not touch
+   them; they still contradict the same runtime contract until a future card unifies or fixes them.
 
 ### Per-role tool sets (ROADMAP Phase 19 P19-12)
 
@@ -469,6 +504,22 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.9.0 (2026-09-26)
+
+- **P26-9: generated instructions agree with the runtime contract.** The trigger: the AGENTS red
+  line "Before starting multi-step work, write it to HEARTBEAT.md" reached the model in every
+  built-in/starter role's Red Lines section, while `core/identity.py`'s live runtime contract
+  composed into the same turn says private state is read-only and "no private logging is
+  required" — a direct contradiction the model had to silently resolve every turn. Dropped that
+  bullet from `_LEGACY_AGENTS_TEMPLATE` and `_STARTER_AGENTS_TEMPLATE` (`core/archetypes.py`);
+  no other template content changed (see new "Generated instructions agree with the runtime
+  contract" section for the full requirement, its `WORKFLOW_AUTO.md` manual-path carve-out, and
+  the known gap in the non-pod/org-specialist AGENTS.md generators this card does not touch).
+  Bumped `core/pod_provisioning.py`'s `POD_TEMPLATE_VERSION` (2 → 3) since the generated text
+  changed. `tests/integration/test_pod_role_workspace_parity.py`'s frozen legacy-fidelity baseline
+  was updated to match (the point of that test — catching *unintended* drift — does not apply to
+  a deliberate, spec'd, test-covered removal like this one).
 
 ### Version 1.8.0 (2026-09-26)
 

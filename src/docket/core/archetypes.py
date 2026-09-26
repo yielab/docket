@@ -358,8 +358,6 @@ _LEGACY_AGENTS_TEMPLATE = (
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never push to main/master or delete files without HITL approval.\n"
-    f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an unwritten\n"
-    "  task does not survive a context reset.\n"
 )
 
 BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
@@ -480,8 +478,6 @@ _STARTER_AGENTS_TEMPLATE = (
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never take an irreversible action outside your stated role without HITL approval.\n"
-    f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an unwritten\n"
-    "  task does not survive a context reset.\n"
 )
 
 _RESEARCHER_BODY = (

@@ -44,8 +44,25 @@ HEARTBEAT_FILE = "HEARTBEAT.md"
 #: so ``docket doctor`` can detect and re-seed *stale* content, not just absence.
 #: v3 adds the resume/durability contract (write in-flight tasks to HEARTBEAT.md
 #: before starting; resume unchecked tasks on reset instead of greeting idle).
-CONTRACT_VERSION = 3
+#: v4 adds a manual-path header: this file's `cd`/write-HEARTBEAT instructions
+#: are for an agent reading it directly, outside Docket's own turn loop, which
+#: never sends this raw text and applies its own read-only runtime contract
+#: instead (`core/identity.py`).
+CONTRACT_VERSION = 4
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
+
+#: Shared by both `_workflow_auto_text` and `_workflow_auto_text_workdir`: this
+#: file's own `cd`/write-HEARTBEAT instructions below are the manual-path
+#: contract for an agent reading this file directly -- Docket's own turn loop
+#: never sends this raw text and applies the live runtime contract instead.
+_MANUAL_PATH_HEADER = (
+    "**Manual-path contract.** Docket's own turn loop already applies this "
+    "durability contract for you every turn and never sends you this raw file -- "
+    "if you are running under Docket, you do not need to act on the "
+    "instructions below yourself. They apply when this workspace is read "
+    "directly, outside Docket's turn loop (a human-attached session, or another "
+    "harness).\n\n"
+)
 
 
 # --- date + path canon (UTC everywhere) ---------------------------------------
@@ -108,6 +125,7 @@ def _workflow_auto_text(
         f"# WORKFLOW_AUTO.md — {project} startup protocol\n\n"
         "_The runtime makes you re-read this file after every context reset. "
         "Read it top to bottom before doing anything else._\n\n"
+        f"{_MANUAL_PATH_HEADER}"
         "## Your codebase\n"
         f"`{cb}`\n\n"
         "All real work happens **here**, not in this agent workspace. Before any "
@@ -165,6 +183,7 @@ def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, orig
         f"# WORKFLOW_AUTO.md — {project} startup protocol\n\n"
         "_The runtime makes you re-read this file after every context reset. "
         "Read it top to bottom before doing anything else._\n\n"
+        f"{_MANUAL_PATH_HEADER}"
         "## Your working directory\n"
         f"`{wd}`\n\n"
         "All real work happens **here** — a plain working directory, not a "
