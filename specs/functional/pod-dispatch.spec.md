@@ -626,6 +626,36 @@ was seeded once at binding time.)*
    shapes that could ever resolve outside the codebase root once `core.identity` joins them
    against it; the check is purely syntactic (no filesystem access), so it fires at `set` even
    before this pod has a resolved codebase root to check the path against.
+7. `PodSettings` also carries `mcpServers` (`tuple[str, ...] | None`, `None` by default): this
+   pod's selection from the shared MCP server catalog (`core.mcp_tools.load_mcp_servers()`).
+   `None` (unset, and every pod before this key existed) means "every configured server" —
+   byte-for-byte identical to dispatch before this key existed. Written through the same
+   generic `coerce`-then-`meta_set` path every scalar/tuple key uses (no dedicated CLI code
+   path). Unlike `allowCommands`/`projectInstructions`, its `coerce` validator (`core.pod
+   .PodSettings._parse_mcp_servers`) is **not** purely syntactic — it checks every comma-
+   separated name against the *live* catalog, at `set` time and on every subsequent
+   `load_for`/`config get` alike, raising `PodSettingsError` naming the first unrecognized
+   name. Because this re-check runs on every read, not only at `set`, a selection that was
+   valid when written but has since been renamed or removed from the catalog surfaces on
+   its own the next time this pod's settings are read — see `mcp-client.spec.md`'s
+   "Pod-scoped server selection" requirements for how
+   `edges/adapters/docket_runtime.py::_load_mcp_tools` turns that `PodSettingsError` into a
+   `DispatchError` naming the stale selection, refusing the dispatch rather than silently
+   loading a subset or none of the configured servers.
+8. `PodSettings` also carries `deniedTools` (`tuple[str, ...]`, comma-joined in storage like
+   `allowCommands`, empty by default): built-in tool names (the same universe
+   `core.archetypes.BUILTIN_TOOL_KINDS` keys off) this pod's *every* role additionally denies,
+   on top of each role's own archetype-declared `denied_tools`. Written through the same
+   generic `coerce`-then-`meta_set` path; its own `coerce` validator refuses a name outside
+   that known universe, naming it, exactly as `allowCommands` refuses an unrecognized/unsafe
+   binary name. See `role-archetypes.spec.md`'s "Per-role tool sets" requirement 7 for how
+   `core.archetypes.registry_for_role` unions this setting with the role's own denylist
+   before narrowing — a pod-level denial reaches every role in it, not only the ones whose
+   own archetype already names that tool. Unlike `mcpServers`, an unreadable/malformed
+   stored value here degrades to "no additional pod-level denial" rather than raising,
+   because `BUILTIN_TOOL_KINDS` is a fixed, compile-time set (nothing here can drift the
+   way an externally-mutable MCP catalog can) and `registry_for_role` runs on every turn's
+   live agent-loop path, which must never crash over a hand-edited meta file.
 
 ### Schedule configuration and doctor visibility (ROADMAP P26-12)
 

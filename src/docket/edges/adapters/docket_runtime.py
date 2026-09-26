@@ -50,11 +50,51 @@ from docket.edges.adapters import system as _system
 __all__ = ["DocketDriver"]
 
 
-def _load_mcp_tools(registry: ToolRegistry, role: str) -> list[Any]:
-    """Fold MCP servers' tools into *registry* in the 2-positional shape ``mcp_loader`` needs.
-    Never raises; zero configured servers spawns nothing. See specs/functional/mcp-client.spec.md
-    (Failure isolation; zero-server fast path)."""
-    return _mcp.load_mcp_tools(registry, role=role)
+# Reads and validates *only* the mcpServers meta key, through `PodSettings.coerce` --
+# not `PodSettings.load_for`, which validates every stored key at once the way
+# `_resolve_allow_commands` above deliberately avoids for `allowCommands`. This
+# turn's live path must not refuse over an unrelated stored key (e.g. a hand-edited
+# `turnTimeoutS`); only a bad `mcpServers` value itself is this function's concern.
+# Unlike `allowCommands`'s fail-open pattern, a bad value here *is* re-raised as
+# `DispatchError`, never swallowed: `coerce`'s validator checks every stored name
+# against the live MCP catalog on every read, not only at `config set` time, so a
+# selection valid when written but since renamed/removed surfaces here as this
+# pod's own stale configuration -- not an ordinary turn failure like an
+# unreachable/hung/malformed remote server (which `load_mcp_tools` already
+# degrades to "unavailable" for, never raising). Deferred import of
+# `core.dispatch.DispatchError`: `core.dispatch` imports this module at module
+# scope, so importing it back here would be circular -- by the time any real turn
+# calls this function both modules are already fully loaded.
+def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
+    """*project*'s own `mcpServers` pod setting, or ``None`` (load every configured
+    server) for a non-pod caller or an unset setting."""
+    if not project:
+        return None
+    lead_id = _pod.member_id(project, "lead")
+    raw = _fleet.meta_get(lead_id, "mcpServers", "")
+    if not raw:
+        return None
+    try:
+        coerced = _pod.PodSettings.coerce("mcpServers", raw)
+    except _pod.PodSettingsError as exc:
+        from docket.core.dispatch import DispatchError
+
+        raise DispatchError(str(exc)) from exc
+    return tuple(str(coerced).split(","))
+
+
+# Filters the shared catalog by *project*'s pod `mcpServers` selection (see
+# `_pod_mcp_selection`, which is what actually raises `DispatchError` for a stale
+# selection) before handing the rest to `load_mcp_tools`. ``None`` (no selection
+# stored, or *project* names no pod) loads every configured server -- byte-for-byte
+# the pre-selection behavior, including the zero-server fast path.
+def _load_mcp_tools(registry: ToolRegistry, role: str, project: str = "") -> list[Any]:
+    """Fold MCP servers' tools into *registry* in the 3-positional shape ``mcp_loader`` needs."""
+    servers = _mcp.load_mcp_servers()
+    selection = _pod_mcp_selection(project)
+    if selection is not None:
+        servers = [s for s in servers if s.name in selection]
+    return _mcp.load_mcp_tools(registry, servers=servers, role=role)
 
 
 def _load_agent_meta(agent_id: str) -> tuple[AgentMeta | None, str]:
@@ -157,7 +197,7 @@ class DocketDriver:
 
     backend_factory: Callable[[str], ChatBackend | None] = _llm.client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
-    mcp_loader: Callable[[ToolRegistry, str], list[Any]] = _load_mcp_tools
+    mcp_loader: Callable[[ToolRegistry, str, str], list[Any]] = _load_mcp_tools
 
     def run_turn(
         self,
@@ -171,9 +211,16 @@ class DocketDriver:
         trace_project: str | None = None,
         trace_session_key: str | None = None,
     ) -> TurnResult:
-        """Run one turn through ``core/agent_loop.py``. Never raises. ``on_spawn`` is ignored:
-        this driver backs onto no OS process to track -- the loop makes HTTP calls in-process --
-        and the Protocol allows a process-less driver to ignore it. ``timeout`` overrides
+        """Run one turn through ``core/agent_loop.py``. Never raises, with one deliberate
+        exception: ``self.mcp_loader`` raises ``DispatchError`` when this turn's pod
+        selects an ``mcpServers`` name absent from the live catalog (see
+        ``_load_mcp_tools``'s own docstring) -- a caller misconfiguration, not an
+        ordinary turn failure, and every production call site (``core/dispatch.py``'s
+        pipeline runner, ``cli/_harness.py``) already lets a raised ``DispatchError``
+        propagate to its own settle/fail path rather than treating this driver as
+        exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to
+        track -- the loop makes HTTP calls in-process -- and the Protocol allows a
+        process-less driver to ignore it. ``timeout`` overrides
         ``LoopConfig.wall_clock_timeout_s`` directly, the same per-hop figure ``core/dispatch.py``
         already resolves, not a second independently-tuned number."""
         meta, worktree_dir = _load_agent_meta(agent_id)
@@ -243,9 +290,11 @@ class DocketDriver:
         # run_agent_turn) -- narrowing has to see whatever a configured MCP
         # server contributed, or a write-denying role would keep a
         # write-capable MCP tool. See core/archetypes.py's registry_for_role
-        # docstring for the kind-based rule that makes this safe.
+        # docstring for the kind-based rule that makes this safe. ``ctx.project``
+        # (already resolved above) is also this turn's pod for `mcpServers`
+        # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role)
+        self.mcp_loader(registry, meta.role, ctx.project)
         context_window = getattr(backend, "context_window_tokens", None)
         max_output_tokens = getattr(backend, "max_output_tokens", None)
         loop_config = _loop.LoopConfig(

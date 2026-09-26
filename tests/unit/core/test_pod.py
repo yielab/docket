@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import docket.config as _cfg
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod
 from docket.edges import store as _store
 
@@ -349,3 +350,58 @@ class TestPodSettingsProjectInstructions:
         _write_lead_meta("shop", {"projectInstructions": "AGENTS.md"})
         settings = pod.PodSettings.load_for("shop")
         assert settings.value_and_source("projectInstructions", "shop") == ("AGENTS.md", "set")
+
+
+class TestPodSettingsMcpServers:
+    """`PodSettings.mcpServers`: a pod's selection from the shared MCP server
+    catalog. `None` (the default) means "every configured server"."""
+
+    def test_defaults_to_none(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").mcp_servers is None
+
+    def test_coerce_accepts_names_in_the_live_catalog(self) -> None:
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="b", command="stub"))
+        assert pod.PodSettings.coerce("mcpServers", "a, b") == "a,b"
+
+    def test_coerce_rejects_a_name_absent_from_the_catalog(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="mcpServers"):
+            pod.PodSettings.coerce("mcpServers", "zzz")
+
+    def test_load_for_rejects_a_stored_name_no_longer_in_the_catalog(self) -> None:
+        _write_lead_meta("shop", {"mcpServers": "gone"})
+        with pytest.raises(pod.PodSettingsError, match="mcpServers"):
+            pod.PodSettings.load_for("shop")
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _mcp_tools.add_mcp_server(_mcp_tools.McpServerConfig(name="a", command="stub"))
+        _write_lead_meta("shop", {"mcpServers": "a"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("mcpServers", "shop") == ("a", "set")
+
+
+class TestPodSettingsDeniedTools:
+    """`PodSettings.deniedTools`: built-in tool names every role in this pod
+    additionally denies, unioned by `core.archetypes.registry_for_role` -- see
+    `tests/unit/core/test_archetypes.py::TestPodDeniedTools` for the union itself."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").denied_tools == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"deniedTools": "fetch, bash, fetch"})
+        assert pod.PodSettings.load_for("shop").denied_tools == ("fetch", "bash")
+
+    def test_coerce_accepts_a_known_tool_name(self) -> None:
+        assert pod.PodSettings.coerce("deniedTools", "fetch") == "fetch"
+
+    def test_coerce_rejects_an_unknown_tool_name(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="deniedTools"):
+            pod.PodSettings.coerce("deniedTools", "zzz")
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"deniedTools": "fetch"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("deniedTools", "shop") == ("fetch", "set")

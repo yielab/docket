@@ -21,7 +21,9 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.core import mcp_tools as _mt
 from docket.core.archetypes import registry_for_role
+from docket.core.dispatch import DispatchError
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
+from docket.core.pod import member_id as _pod_member_id
 from docket.core.tools import ToolRegistry, builtin_registry
 from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
@@ -95,7 +97,9 @@ def _fake_mcp_loader(
     whatever registry it's handed, like `load_mcp_tools` for a server that
     answered instantly -- no subprocess, no `mcp` SDK involved."""
 
-    def _loader(registry: ToolRegistry, role: str) -> list[_mt.McpServerLoadResult]:
+    def _loader(
+        registry: ToolRegistry, role: str, project: str = ""
+    ) -> list[_mt.McpServerLoadResult]:
         config = _mt.McpServerConfig(name=server_name, command="stub")
         return _mt.load_mcp_tools(
             registry,
@@ -109,7 +113,9 @@ def _fake_mcp_loader(
 
 
 def _unreachable_mcp_loader() -> Any:
-    def _loader(registry: ToolRegistry, role: str) -> list[_mt.McpServerLoadResult]:
+    def _loader(
+        registry: ToolRegistry, role: str, project: str = ""
+    ) -> list[_mt.McpServerLoadResult]:
         config = _mt.McpServerConfig(name="down", command="stub")
         return _mt.load_mcp_tools(
             registry,
@@ -127,7 +133,9 @@ def _malformed_mcp_loader() -> Any:
     (and therefore the wired driver) degrades the same way the raw SDK
     boundary does when the injected `list_tools` itself misbehaves."""
 
-    def _loader(registry: ToolRegistry, role: str) -> list[_mt.McpServerLoadResult]:
+    def _loader(
+        registry: ToolRegistry, role: str, project: str = ""
+    ) -> list[_mt.McpServerLoadResult]:
         def _boom(_c: _mt.McpServerConfig, _t: float) -> _mt.McpListResult:
             raise ValueError("malformed tool listing: not valid JSON-RPC")
 
@@ -164,6 +172,57 @@ class TestDocketDriverCallsLoadMcpTools:
     def test_default_mcp_loader_is_the_real_load_mcp_tools_wrapper(self) -> None:
         """Wiring sanity: the production default is not a test-only stub."""
         assert DocketDriver().mcp_loader is _load_mcp_tools
+
+
+# ── a pod's own mcpServers selection narrows the catalog _load_mcp_tools reads ──
+
+
+class TestPodScopedMcpServerSelection:
+    """`_load_mcp_tools(registry, role, project)` filters the catalog by *project*'s
+    pod `mcpServers` setting before folding servers into a turn's registry."""
+
+    def _capture_servers(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[str, ...]]:
+        captured: dict[str, tuple[str, ...]] = {}
+
+        def _fake_load_mcp_tools(
+            registry: ToolRegistry,
+            *,
+            servers: Any = None,
+            list_tools: Any = None,
+            call_tool: Any = None,
+            role: str = "",
+        ) -> list[Any]:
+            captured["names"] = tuple(s.name for s in (servers or []))
+            return []
+
+        monkeypatch.setattr(_mt, "load_mcp_tools", _fake_load_mcp_tools)
+        return captured
+
+    def test_a_selected_name_narrows_the_catalog(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
+        _mt.add_mcp_server(_mt.McpServerConfig(name="b", command="stub"))
+        _write_meta(_pod_member_id("shop", "lead"), role="lead", pod="shop", mcpServers="a")
+        captured = self._capture_servers(monkeypatch)
+
+        _load_mcp_tools(ToolRegistry(), "implementer", "shop")
+
+        assert captured["names"] == ("a",)
+
+    def test_no_pod_setting_loads_every_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
+        _mt.add_mcp_server(_mt.McpServerConfig(name="b", command="stub"))
+        captured = self._capture_servers(monkeypatch)
+
+        _load_mcp_tools(ToolRegistry(), "implementer", "")
+
+        assert captured["names"] == ("a", "b")
+
+    def test_a_stale_selection_refuses_the_dispatch_naming_it(self) -> None:
+        _mt.add_mcp_server(_mt.McpServerConfig(name="a", command="stub"))
+        _write_meta(_pod_member_id("shop", "lead"), role="lead", pod="shop", mcpServers="zzz")
+
+        with pytest.raises(DispatchError, match="zzz"):
+            _load_mcp_tools(ToolRegistry(), "implementer", "shop")
 
 
 # ── THE load-bearing test: role narrowing survives MCP tools ───────────────
