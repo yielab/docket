@@ -813,7 +813,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
         raise typer.Exit(1)
 
     roster = _dispatch.pod_full_roster(project)
-    registry = _arch.load_registry()
+    registry = _arch.load_registry(project)
     plan = _orch.resolve_plan(result.spec, roster, registry=registry)
     problems = _unresolvable_pipeline_steps(plan, project)
     if problems:

@@ -593,6 +593,7 @@ def _hop_message(
     prior: list[HopResult],
     rework_hop: HopResult | None = None,
     step_instructions: str = "",
+    project: str = "",
 ) -> tuple[str, _HopComposition]:
     """Build one role's message via ``core/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
@@ -648,7 +649,7 @@ def _hop_message(
         # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
         # role name (absent from the registry) still gets no instruction,
         # matching today's behavior.
-        archetype = _archetypes.load_registry().get(role)
+        archetype = _archetypes.load_registry(project).get(role)
         instructions = _archetypes.resolve_hop_instruction(archetype) if archetype else ""
 
     # The role's total token budget, minus what the immutable task
@@ -1083,7 +1084,12 @@ def _compose_hop(
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
     message, composition = _hop_message(
-        ctx.task, role, prior_snapshot, rework_hop, step_instructions=step_override
+        ctx.task,
+        role,
+        prior_snapshot,
+        rework_hop,
+        step_instructions=step_override,
+        project=ctx.project,
     )
     pipeline_worktree = ""
     if role not in {"lead", "implementer"}:

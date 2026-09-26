@@ -1,18 +1,24 @@
 """docket roles — inspect and manage declarative role archetypes.
 
-  docket roles list                 List every registered archetype (built-in,
-                                     starter library, user-defined)
-  docket roles show <name>          Show one archetype's full definition
-  docket roles add <file.yaml>      Validate a YAML archetype definition and
-                                     merge it into the user overlay
-  docket roles validate [file.yaml] Validate the live registry, or a candidate
-                                     file without persisting it
+  docket roles list [--pod <p>]                 List every registered archetype
+                                                 (built-in, starter library, user-
+                                                 defined, and <p>'s own overlay)
+  docket roles show <name> [--pod <p>]          Show one archetype's full definition
+  docket roles add <file.yaml> [--pod <p>]      Validate a YAML archetype definition
+                                                 and merge it into the user overlay,
+                                                 or pod <p>'s own overlay
+  docket roles validate [file.yaml]             Validate the live registry, or a
+                                                 candidate file without persisting it
 
 ``run_roles(sub, args)`` returns the process exit code. The registry itself
-(built-ins + starter library + user overlay) lives in `core/archetypes.py`;
-this module is the presentation layer only — it never touches
-`~/.docket/docket-roles.json` directly (that's `core/archetypes.py`'s
-`add_user_archetype`, which goes through `edges/store.py`).
+(built-ins + starter library + global user overlay + a pod's own overlay) lives in
+`core/archetypes.py`; this module is the presentation layer only — it never touches
+`~/.docket/docket-roles.json` or a pod's `roles.json` directly (that's
+`core/archetypes.py`'s `add_user_archetype`, which goes through `edges/store.py`).
+`--pod <p>` (list/show/add only) resolves and, for `add`, writes against pod `<p>`'s
+own overlay, which `core/archetypes.py::load_registry` resolves nearest-wins above
+the global overlay -- `docket roles validate` has no pod-specific overlay concept,
+so it does not take the flag.
 """
 
 from __future__ import annotations
@@ -22,21 +28,44 @@ from docket import ui
 from docket.cli._flags import find_unknown_flag
 from docket.core import archetypes as _arch
 
-_DOCUMENTED_FLAGS: frozenset[str] = frozenset()
+_DOCUMENTED_FLAGS: frozenset[str] = frozenset({"--pod"})
+
+
+def _parse_pod_flag(args: list[str]) -> tuple[str, list[str]]:
+    """Extract `--pod <p>`/`--pod=<p>` from *args*, returning ``(pod, remaining)``."""
+    pod = ""
+    rest: list[str] = []
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--pod" and i + 1 < len(args):
+            pod = args[i + 1]
+            i += 2
+            continue
+        if tok.startswith("--pod="):
+            pod = tok[len("--pod=") :]
+            i += 1
+            continue
+        rest.append(tok)
+        i += 1
+    return pod, rest
 
 
 def _help() -> int:
     ui.header("docket roles")
     ui.console.print()
-    ui.console.print("  docket roles list                 List every registered archetype")
-    ui.console.print("  docket roles show <name>           Show one archetype's full definition")
+    ui.console.print("  docket roles list [--pod <p>]              List every registered archetype")
     ui.console.print(
-        "  docket roles add <file.yaml>       Add/override an archetype from a YAML file"
+        "  docket roles show <name> [--pod <p>]       Show one archetype's full definition"
     )
     ui.console.print(
-        "  docket roles validate [file.yaml]  Validate the registry, or a candidate file"
+        "  docket roles add <file.yaml> [--pod <p>]   Add/override an archetype from a YAML file"
+    )
+    ui.console.print(
+        "  docket roles validate [file.yaml]          Validate the registry, or a candidate file"
     )
     ui.console.print()
+    ui.console.print("  --pod <p>: resolve/write against pod <p>'s own overlay (nearest-wins)")
     ui.console.print("  Scopes: org | pod   Model classes: cheap | strong")
     ui.console.print("  Gate contracts: none | verdict | mechanical | approval")
     ui.console.print("  Edit rights: none | read-only | write")
@@ -46,11 +75,11 @@ def _help() -> int:
     return 0
 
 
-def _list() -> int:
+def _list(pod: str = "") -> int:
     ui.header("Role Archetypes")
     ui.console.print()
 
-    registry = _arch.load_registry()
+    registry = _arch.load_registry(pod)
     if not registry.role_names():
         ui.warn("No archetypes registered.")
         return 0
@@ -74,12 +103,12 @@ def _list() -> int:
     return 0
 
 
-def _show(args: list[str]) -> int:
+def _show(args: list[str], pod: str = "") -> int:
     if not args or not args[0]:
-        ui.error("Usage: docket roles show <name>")
+        ui.error("Usage: docket roles show <name> [--pod <p>]")
         return 1
     name = args[0]
-    registry = _arch.load_registry()
+    registry = _arch.load_registry(pod)
     found = registry.get(name)
     if found is None:
         ui.fail(f"Archetype not found: {name}")
@@ -101,14 +130,14 @@ def _show(args: list[str]) -> int:
     return 0
 
 
-def _add(args: list[str]) -> int:
+def _add(args: list[str], pod: str = "") -> int:
     if not args or not args[0]:
-        ui.error("Usage: docket roles add <file.yaml>")
+        ui.error("Usage: docket roles add <file.yaml> [--pod <p>]")
         return 1
     path = args[0]
     try:
         doc = _arch.parse_yaml_file(path)
-        arch = _arch.add_user_archetype(doc)
+        arch = _arch.add_user_archetype(doc, pod)
     except _arch.ArchetypeError as exc:
         ui.fail(f"Invalid archetype: {exc}")
         return 1
@@ -116,7 +145,8 @@ def _add(args: list[str]) -> int:
     ui.success(
         f"Added archetype '{arch.name}' (scope={arch.scope}, modelClass={arch.model_class})."
     )
-    ui.info(f"Registered at: {_cfg.ARCHETYPE_REGISTRY_FILE}")
+    dest = _cfg.pod_config_dir(pod) / "roles.json" if pod else _cfg.ARCHETYPE_REGISTRY_FILE
+    ui.info(f"Registered at: {dest}")
     return 0
 
 
@@ -167,12 +197,13 @@ def run_roles(sub: str | None = None, *, args: list[str] | None = None) -> int:
         ui.error(f"docket roles: unrecognized flag '{bad}'")
         return 2
     subcmd = sub or "list"
+    pod, rest = _parse_pod_flag(rest)
     if subcmd == "list":
-        return _list()
+        return _list(pod)
     if subcmd == "show":
-        return _show(rest)
+        return _show(rest, pod)
     if subcmd == "add":
-        return _add(rest)
+        return _add(rest, pod)
     if subcmd == "validate":
         return _validate(rest)
     return _help()
