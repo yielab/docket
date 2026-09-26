@@ -19,6 +19,16 @@ Release notes for users stay in the root `CHANGELOG.md`.
   `core/pod.py` resolved role names globally so a pod-overlay role vanished from the roster
   (P27-9), and `apply` never carried a recipe's policies (P27-10). Board section archived to
   `docs/cycles-ended/todo-waves.md`; packets in `.agents/handoffs/wave-41-worker-packets.md`.
+- **2026-09-26 (Phase 29 planned, D-45) — the provider catalog.** Independent of Phases 27/28
+  in files. Seven cards in three waves: `kind: provider` documents in built-in and global scopes
+  with a one-shot migration of `fleet.json → providers` (P29-1); built-in documents for fourteen
+  providers and every provider table derived from the catalog (P29-2); registration that probes
+  `/models` with the credential and classifies the answer, plus `provider add <file>|list|show|
+  remove|export` (P29-3); `auth: header` and static `headers` on the wire (P29-4); `Retry-After`
+  with a ceiling (P29-5); `config explain`/doctor/docs (P29-6); `docket auth` retired and `keys
+  setup` over the catalog (P29-7). Trigger: an explicit request plus a reproduced regression — the
+  direct `anthropic`/`openai`/`google` presets cannot be activated through the CLI. Reasoning:
+  [docs/adr/0011-provider-catalog.md](../adr/0011-provider-catalog.md).
 - **2026-09-26 (Phase 28 planned, D-44) — configuration format v1 and the two extension
   points.** Gated on Phase 27. Eight cards in three waves: a `kind` envelope with one
   `load_document` and `docket validate`; short forms for roles, pipelines and policies over the

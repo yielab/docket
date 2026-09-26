@@ -40,8 +40,10 @@ pipelines, a hashed Python predicate for policies — never an expression langua
 
 Every configuration file is YAML (JSON stays valid YAML, so nothing existing stops loading),
 camelCase, and starts with `kind:` and `name:`. Four kinds: `role`, `pipeline`, `policy`, `pod`
-(the Phase 27 manifest). One entry point, `load_document(path)`, dispatches on `kind` with a
-`match` over four values; a file without `kind` loads through today's parser with a deprecation
+(the Phase 27 manifest) — *amended 2026-09-26 by [ADR 0011](0011-provider-catalog.md): a fifth
+kind, `provider`, whose parser is `core/provider.py::load_provider_document`; `load_document` gains
+one `case` for it.* One entry point, `load_document(path)`, dispatches on `kind` with a
+`match` over those values; a file without `kind` loads through today's parser with a deprecation
 line, for one release. `docket validate [dir]` validates every kind and the manifest with errors
 that name file, line, field, the valid values and a suggestion.
 
