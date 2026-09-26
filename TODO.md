@@ -106,7 +106,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P26-1 — a broken policy fails closed, never open
 
-**Status:** IN-PROGRESS (@claude) · **Size:** S · **Wave:** 38 · **Spec:** `security-gates.spec.md`
+**Status:** DONE (2026-09-25, `ed965e5`) · **Size:** S · **Wave:** 38 · **Spec:** `security-gates.spec.md`
 
 **Trigger:**
 - Base: a `pre_tool_call` policy with `match.pattern: "make\\s+deploy"` and `action: block` makes
