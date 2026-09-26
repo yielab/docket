@@ -377,8 +377,8 @@ and its single use in `core/tools.py::evaluate_tool_call`, and the driver plumbi
 
 ### P26-9 — generated instructions agree with the runtime contract
 
-**Status:** TODO · **Size:** S · **Wave:** 40 · **Spec:** `workspace-structure.spec.md`,
-`role-archetypes.spec.md`
+**Status:** DONE (merged, worker commit `17c41c9`; known gap recorded in the spec: `cli/_agents.py`/`cli/_install.py` carry their own copy of the same HEARTBEAT-write contradiction for standalone agents and org specialists — small follow-up card) · **Size:** S · **Wave:** 40 · **Spec:** `workspace-structure.spec.md` 1.10.0,
+`role-archetypes.spec.md` 1.9.0
 
 **Trigger:**
 - The AGENTS red line "Before starting multi-step work, write it to HEARTBEAT.md"
