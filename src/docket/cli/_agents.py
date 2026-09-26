@@ -24,6 +24,7 @@ from docket import ui
 from docket.cli._flags import find_unknown_flag
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
+from docket.core import identity as _identity
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod_provisioning as _pp
@@ -34,6 +35,7 @@ from docket.core.models import AgentMeta
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
 from docket.edges.adapters import docket_runtime as _dr
+from docket.edges.adapters import llm as _llm
 
 # Flags that consume the following token as their value (skipped when scanning
 # for bare positionals). --with/--pod are handled by parse_pod_roles.
@@ -1036,16 +1038,26 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
             with contextlib.suppress(OSError):
                 ctx_bytes += fp.stat().st_size
     est_tokens = ctx_bytes // _cfg.CONTEXT_BYTES_PER_TOKEN
-    if est_tokens > _cfg.CONTEXT_TOKEN_BUDGET:
+    # The budget this agent's turn actually resolves to: an explicit override,
+    # else a documented share of its registered model window (see
+    # core/identity.py's resolve_static_context_budget), else today's plain
+    # constant when the model has no registered window at all.
+    model = str(store.read_json(_cfg.meta_path(agent_id)).get("model", _cfg.DEFAULT_MODEL))
+    endpoint = _llm.resolve_endpoint(model)
+    budget_tokens, budget_source = _identity.resolve_static_context_budget(
+        endpoint.context_window_tokens if endpoint else None,
+        endpoint.max_output_tokens if endpoint else None,
+    )
+    budget_note = f"budget {budget_tokens:,} via {budget_source}"
+    if est_tokens > budget_tokens:
         ui.console.print(
             f"  [yellow]⚠[/yellow] Context footprint: ~{est_tokens:,} tok re-sent each turn"
-            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,}) — trim MEMORY.md/{_mem.HEARTBEAT_FILE}"
+            f" ({budget_note}) — trim MEMORY.md/{_mem.HEARTBEAT_FILE}"
         )
         issues.append("oversized per-turn context")
     else:
         ui.console.print(
-            f"  [green]✓[/green] Context footprint: ~{est_tokens:,} tok/turn"
-            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,})"
+            f"  [green]✓[/green] Context footprint: ~{est_tokens:,} tok/turn ({budget_note})"
         )
 
     ui.console.print()

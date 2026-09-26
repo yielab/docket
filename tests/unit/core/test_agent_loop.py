@@ -136,7 +136,7 @@ class TestResolveRoleRegistryAndPrompt:
         reviewer_ctx = ToolContext(
             agent_id=ctx.agent_id, role="reviewer", project=ctx.project, roots=ctx.roots, timeout=10
         )
-        narrowed, _prompt, specs, _sections = _loop._resolve_role_registry_and_prompt(
+        narrowed, _composition, specs = _loop._resolve_role_registry_and_prompt(
             registry, reviewer_ctx
         )
         names = {spec.name for spec in specs}
@@ -148,15 +148,13 @@ class TestResolveRoleRegistryAndPrompt:
         self, registry: ToolRegistry, ctx: ToolContext
     ) -> None:
         """implementer denies nothing, so both registered tools survive."""
-        _narrowed, _prompt, specs, _sections = _loop._resolve_role_registry_and_prompt(
-            registry, ctx
-        )
+        _narrowed, _composition, specs = _loop._resolve_role_registry_and_prompt(registry, ctx)
         assert {spec.name for spec in specs} == {"echo", "write"}
 
     def test_prompt_is_empty_for_an_unprovisioned_agent(
         self, registry: ToolRegistry, ctx: ToolContext
     ) -> None:
         """No workspace/identity files means a fail-open empty prompt, not an error."""
-        _narrowed, prompt, _specs, sections = _loop._resolve_role_registry_and_prompt(registry, ctx)
-        assert prompt == ""
-        assert sections == ()
+        _narrowed, composition, _specs = _loop._resolve_role_registry_and_prompt(registry, ctx)
+        assert composition.text == ""
+        assert composition.sections == ()

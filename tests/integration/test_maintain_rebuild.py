@@ -106,3 +106,42 @@ class TestMaintainRebuildPodMember:
         assert rc == 1
         assert soul.read_bytes() == before
         assert not list(ws.glob(".backup-*"))
+
+
+class TestMaintainCheckContextBudget:
+    """`docket maintain <id> check`'s context-footprint line names the resolved
+    static-context budget and its source."""
+
+    def test_unregistered_model_reports_the_plain_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ws = _make_flat_ws(tmp_path, monkeypatch)
+        (ws / "TOOLS.md").write_text("# TOOLS.md\n", encoding="utf-8")
+
+        rc = _agents.run_maintain("demo", "check")
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert f"budget {_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT:,} via default" in out
+
+    def test_a_registered_large_window_reports_a_window_share(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import fleet as _fleet
+
+        ws = _make_flat_ws(tmp_path, monkeypatch, agent_id="demo-hosted")
+        (ws / "TOOLS.md").write_text("# TOOLS.md\n", encoding="utf-8")
+        meta_path = ws / ".docket-meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["model"] = "hosted-test/big-model"
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        _fleet.add_local_provider(
+            "hosted-test", "http://127.0.0.1:9/v1", "big-model", "Big Model", 200_000, 8_192
+        )
+
+        rc = _agents.run_maintain("demo-hosted", "check")
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "via window" in out
+        assert f"budget {_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT:,}" not in out

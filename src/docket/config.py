@@ -112,9 +112,18 @@ TRACE_RETENTION_S = TRACE_RETENTION_DAYS * 86400
 # runaway context, not a billing figure (see core/session.py's real measured
 # counts for the turn loop's own message history, a separate concern).
 CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "4")))
+# CONTEXT_TOKEN_BUDGET_DEFAULT: the floor `core/identity.py` resolves to when
+# no explicit CONTEXT_TOKEN_BUDGET override is set and the resolved model
+# window is absent/unregistered -- named separately from CONTEXT_TOKEN_BUDGET
+# itself so identity.py can tell "explicitly set to this value" apart from
+# "never set" (see core/identity.py's window-aware static budget resolver).
+CONTEXT_TOKEN_BUDGET_DEFAULT = 6000
 # CONTEXT_TOKEN_BUDGET: soft cap on the static context re-sent every turn
 # (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md). `maintain check` warns past this.
-CONTEXT_TOKEN_BUDGET = int(os.environ.get("CONTEXT_TOKEN_BUDGET", "6000"))
+# An explicit override here always wins over the window-aware default above.
+CONTEXT_TOKEN_BUDGET = int(
+    os.environ.get("CONTEXT_TOKEN_BUDGET", str(CONTEXT_TOKEN_BUDGET_DEFAULT))
+)
 
 
 # DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: bound `docket maintain

@@ -638,6 +638,103 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         for section in events[0]["sections"]:
             assert section["status"] in {"full", "truncated", "omitted"}
             assert isinstance(section["bytes"], int)
+        assert events[0]["budgetTokens"] == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert events[0]["budgetSource"] == "default"
+
+    def test_prompt_composed_names_a_window_share_budget_end_to_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A large registered window resolves a bigger budget end to end, and the
+        trace event names it, without any explicit override."""
+        ws = _write_meta("windowed-traced-agent")
+        (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        roots = tmp_path / "code4b"
+        roots.mkdir()
+        ctx = ToolContext(
+            agent_id="windowed-traced-agent", role="implementer", project="demo", roots=(roots,)
+        )
+        backend = _ScriptedBackend([_final("hi")])
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "prompt_composed":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+
+        _loop.run_agent_turn(
+            backend,
+            builtin_registry(),
+            ctx,
+            "agent:windowed-traced-agent:default",
+            "go",
+            config=_loop.LoopConfig(context_window_tokens=200_000, max_tokens=8_192),
+        )
+
+        assert len(events) == 1
+        assert events[0]["budgetSource"] == "window"
+        assert events[0]["budgetTokens"] > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        soul_section = next(s for s in events[0]["sections"] if s["name"] == "SOUL.md")
+        assert soul_section["status"] == "full"
+
+    def test_a_registered_16k_window_pins_todays_behaviour(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The only window docket has ever run against live must not change: a
+        registered 16k/8k local endpoint resolves the exact same budget as no window
+        at all, so an oversized SOUL is still truncated identically."""
+        ws = _write_meta("local16k-traced-agent")
+        (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        roots = tmp_path / "code4c"
+        roots.mkdir()
+        ctx = ToolContext(
+            agent_id="local16k-traced-agent", role="implementer", project="demo", roots=(roots,)
+        )
+        backend = _ScriptedBackend([_final("hi")])
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "prompt_composed":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+
+        _loop.run_agent_turn(
+            backend,
+            builtin_registry(),
+            ctx,
+            "agent:local16k-traced-agent:default",
+            "go",
+            config=_loop.LoopConfig(context_window_tokens=16_384, max_tokens=8_192),
+        )
+
+        assert len(events) == 1
+        assert events[0]["budgetSource"] == "default"
+        assert events[0]["budgetTokens"] == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        soul_section = next(s for s in events[0]["sections"] if s["name"] == "SOUL.md")
+        assert soul_section["status"] == "truncated"
 
     def test_no_identity_files_means_no_prompt_composed_event(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

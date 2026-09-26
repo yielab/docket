@@ -1,13 +1,13 @@
 # Session History Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
 pipeline step its own history key while preserving the task-wide trace identity. Wave 25 adds a
 bounded range mode so per-request fit can preserve the current task verbatim while compacting only
 older history or completed same-turn tool units.
-**Last Updated**: 2026-08-22
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -96,6 +96,12 @@ This specification does NOT cover:
 
 14. A session's compaction budget **MUST** be resolved via the same per-role token-budget
     mechanism the hop-to-hop context compiler uses, not a second, independently-tunable table.
+    `core.context.budget_for_role` **MAY** additionally accept a resolved model context window to
+    compute a documented window-share default for a role with no positive archetype `token_budget`
+    (`core.context.resolve_window_share_tokens`, see `agent-loop.spec.md`'s requirement 30); neither
+    `compact_session` nor its `core/agent_loop.py` caller passes that window, so a session's
+    resolved compaction budget **MUST** remain exactly `context.budget_for_role(role)` with no
+    window argument, byte-for-byte unchanged by this option existing.
 15. Token counts used to decide whether to compact **MUST** be computed via the existing
     bytes/divisor approximation and **MUST NOT** be described as an exact count.
 16. Measured usage (real counts from the completion endpoint) and estimated size (the
@@ -323,6 +329,14 @@ result = sess.compact_session(
 - A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-26)
+
+- P26-3 clarifies requirement 14: `core.context.budget_for_role` gained an optional window-share
+  resolution for its unregistered-role fallback (`agent-loop.spec.md`'s requirement 30 owns the
+  formula), but neither `compact_session` nor `core/agent_loop.py`'s call to it passes a window, so
+  a session's resolved compaction budget is unaffected — still exactly
+  `context.budget_for_role(role)` with no window argument. No compaction behaviour changed.
 
 ### Version 1.4.0 (2026-08-22)
 
