@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -15,9 +15,9 @@ against that code.
 
 Covers every command that supports `--json` output: `list`, `status`, `info`, `cost` (and
 `cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3),
-`pod <p> config get`, and the `serve` HTTP endpoints. `docket audit --json` is a raw
-JSONL passthrough, owned by audit.spec.md. It does **not** cover human-readable (Rich) output or
-third-party protocol payloads.
+`pod <p> config get`, `config explain <agent>`, and the `serve` HTTP endpoints. `docket
+audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover
+human-readable (Rich) output or third-party protocol payloads.
 
 ## Structure
 
@@ -253,6 +253,53 @@ A stored value that fails validation (e.g. a hand-edited `.docket-meta.json`) pr
 stderr naming the offending key and exits 1, with nothing on stdout, instead of showing that
 key's default.
 
+### `docket config explain <agent> --json`
+
+A bare object: the effective configuration a real dispatch turn would use for
+*agent*, with the source that set each value. Composes existing resolvers only
+(model policy, the prompt composer, role/tool denial, the guardrail policy engine,
+`PodSettings`, and the pipeline resolver) — it writes nothing and adds no new
+configuration surface.
+
+```json
+{
+  "id":     "string",
+  "role":   "string (pod role or specialist role; may be empty)",
+  "pod":    "string (project this agent belongs to; empty for a non-pod agent)",
+  "model":  { "value": "string (provider/model-id)", "source": "policy | pinned" },
+  "endpoint": {
+    "baseUrl":            "string (may be empty if unresolved)",
+    "ready":              "boolean",
+    "contextWindowTokens": "number | null",
+    "maxOutputTokens":    "number | null",
+    "issue":              "string (empty when ready)"
+  },
+  "prompt": {
+    "budgetTokens": "number",
+    "budgetSource": "env | window | default",
+    "sections": [
+      { "name": "string", "bytes": "number", "status": "full | truncated | omitted" }
+    ]
+  },
+  "tools": {
+    "allowed":    "array of built-in tool names, after role denial",
+    "denied":     "array of built-in tool names denied to this role",
+    "mcpServers": "array of configured MCP server names (not connected; a live turn enumerates their tools)"
+  },
+  "policies": [
+    { "id": "string", "hook": "pre_input | pre_tool_call | pre_output", "action": "string" }
+  ],
+  "pipeline":    "{ source: string } | null (null for a non-pod agent)",
+  "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)"
+}
+```
+
+An unknown agent id prints an error to stderr and exits 1, with nothing on stdout.
+A pod member with an invalid stored `PodSettings` value (e.g. a hand-edited
+`.docket-meta.json`) refuses the same way `docket pod <p> config get` does — an
+error naming the offending key, exit 1, nothing on stdout — rather than reporting a
+guessed default.
+
 ### `docket snapshot` (full output)
 
 The snapshot command writes to a file (or stdout). The outer shape:
@@ -363,6 +410,19 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.10.0 (2026-09-26)
+
+- New `docket config explain <agent> --json` shape (P26-11): a bare object reporting the
+  configuration a real dispatch turn actually uses for one agent, with the source that
+  set each value — resolved model (`policy`/`pinned`) and endpoint readiness; the
+  composed system prompt's per-section byte/fit accounting and static-context budget
+  source; built-in tools after role denial plus configured MCP server names; the
+  guardrail policies whose `applies_to` covers this role; the effective pipeline and its
+  source; and, for a pod member, the same `podSettings` object as `pod <p> config get
+  --json` (`null` for a non-pod agent). Read-only — composes existing resolvers, adds no
+  configuration surface. An unknown agent id or an invalid stored `PodSettings` value
+  refuses (stderr + exit 1) the same way `pod <p> config get` does.
 
 ### Version 1.9.0 (2026-09-25)
 

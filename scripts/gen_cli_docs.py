@@ -110,6 +110,7 @@ GROUPS: list[tuple[str, list[str]]] = [
             "models",
             "cost",
             "doctor",
+            "config",
             "serve",
             "completions",
             "snapshot",
