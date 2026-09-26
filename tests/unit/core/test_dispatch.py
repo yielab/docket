@@ -657,3 +657,23 @@ class TestEffectivePipelineBlueprint:
         assert len(results) == 1
         assert results[0].status == "waiting_approval"
         assert results[0].approval_token
+
+
+class TestPodSettingReaders:
+    """Each Lead-meta setting reader routes through ``core.pod.PodSettings`` --
+    a valid override reads through, and an invalid stored value refuses
+    dispatch instead of silently substituting the field's default."""
+
+    def test_pod_budget_reads_through(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"budgetUsd": "12.5"})
+        assert _dispatch.pod_budget("myapp") == 12.5
+
+    def test_pod_budget_invalid_value_refuses(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"budgetUsd": "not-a-number"})
+        with pytest.raises(_dispatch.DispatchError, match="budgetUsd"):
+            _dispatch.pod_budget("myapp")
+
+    def test_pod_verify_timeout_invalid_value_refuses(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"verifyTimeoutS": "0"})
+        with pytest.raises(_dispatch.DispatchError, match="verifyTimeoutS"):
+            _dispatch.pod_verify_timeout("myapp")

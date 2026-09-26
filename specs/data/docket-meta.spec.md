@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.0.2
+**Version**: 3.1.0
 **Status**: Complete
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -76,12 +76,12 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `created` | string | ISO-8601 | local | Yes | `add` | Creation timestamp |
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
-| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD. Persisted on disk as a numeric string (e.g. `"5"`); `docket list --json` / `docket info --json` emit it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
+| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget`, `pod config set/unset` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket list --json` / `docket info --json` emit it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
 | `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
-| `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS` |
-| `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention and fallback chain as `turnTimeoutS` |
-| `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. **Not yet a field on the `AgentMeta` Pydantic model** (unlike `turnTimeoutS`/`verifyTimeoutS`) — it round-trips only because `AgentMeta` allows extra keys (see "Validation" below); it has no dedicated CLI setter, only the internal `meta-set` debug path, matching this version's shipped scope |
+| `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS`. A stored value that fails validation (non-integer, ≤ 0) refuses dispatch naming the key, rather than falling back |
+| `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention, fallback chain, and invalid-value refusal as `turnTimeoutS` |
+| `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. Still not a field on the `AgentMeta` Pydantic model — it round-trips because `AgentMeta` allows extra keys (see "Validation" below) — but `core.pod.PodSettings` now validates it on every read and write regardless, and `docket pod <project> config` is its dedicated CLI setter |
 | `requireApprovalRoles` | string | comma-separated pod role list | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | ROADMAP Phase 15 G-1: pod-level require_approval gate source — a comma-separated, case-insensitive list of pod roles (e.g. `"implementer,reviewer"`) whose hop must wait for a granted approval before it runs (`core/dispatch.py`'s `_pod_requires_approval`, read the same Lead-only way as `maxReworkCycles`/`budgetUsd`). Blank or missing = no pod-level gate for any role. **Not yet a field on the `AgentMeta` Pydantic model** — same `extra="allow"` round-trip as `maxReworkCycles`; no dedicated CLI setter yet, only the internal `meta-set` debug path. See `pod-dispatch.spec.md` for the full gate/`waiting_approval` state-machine contract this field feeds, including the two other (currently inert seam) gate sources |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. A shared locked allocation transition gives concurrently successful pods distinct ranges; a failed attempt may remove this field's range only when it created that ownership. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the same attempt-owned allocation as `portRangeStart`. Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
@@ -215,7 +215,7 @@ paused:
   "created": "2026-03-05T12:08:17-03:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
-  "budgetUsd": "5",
+  "budgetUsd": 5,
   "paused": true,
   "pausedReason": "budget",
   "blueprint": "software",
@@ -249,6 +249,17 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.1.0 (2026-09-25)
+
+- **P26-4: pod settings are typed, validated and writable.** `budgetUsd`/`turnTimeoutS`/
+  `verifyTimeoutS`/`maxReworkCycles` gain a dedicated CLI setter, `docket pod <project> config`,
+  replacing the "no dedicated CLI setter, `meta_set` only" note on all four rows; reads and
+  writes now go through `core.pod.PodSettings`, which refuses a present-but-invalid stored
+  value instead of silently substituting its default. `profile --budget` is fixed to persist
+  `budgetUsd` as a real JSON number rather than the raw CLI argument string — the paused-agent
+  example's `"budgetUsd": "5"` (corrected to a string in 3.0.2) is corrected back to the number
+  `5`, since that string was the bug, not the contract.
 
 ### Version 3.0.2 (2026-09-21)
 

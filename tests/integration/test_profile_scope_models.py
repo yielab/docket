@@ -143,7 +143,9 @@ class TestCmdProfile:
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
         )
-        assert meta["budgetUsd"] == "5.00"
+        # Persisted as a real number, not the raw CLI string -- a hand-edited
+        # or older-install "5.00" string is still read back fine on its own.
+        assert meta["budgetUsd"] == 5.0
 
     def test_profile_budget_zero_removes_cap(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

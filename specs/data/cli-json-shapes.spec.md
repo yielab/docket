@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete
 **Last Updated**: 2026-09-25
 
@@ -14,8 +14,10 @@ against that code.
 ## Scope
 
 Covers every command that supports `--json` output: `list`, `status`, `info`, `cost` (and
-`cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3), and the `serve` HTTP
-endpoints. `docket audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover human-readable (Rich) output or third-party protocol payloads.
+`cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3),
+`pod <p> config get`, and the `serve` HTTP endpoints. `docket audit --json` is a raw
+JSONL passthrough, owned by audit.spec.md. It does **not** cover human-readable (Rich) output or
+third-party protocol payloads.
 
 ## Structure
 
@@ -233,6 +235,24 @@ Same shape as one element of `runs list`'s array, unwrapped (a bare object, not 
 }
 ```
 
+### `docket pod <p> config get --json`
+
+A bare object keyed by setting name (`core.pod.PodSettings.KEYS`), each with its effective value
+and whether that value came from the Lead's stored meta or the field's own default:
+
+```json
+{
+  "budgetUsd":        { "value": "number",       "source": "\"set\" | \"default\"" },
+  "maxReworkCycles":  { "value": "number",        "source": "\"set\" | \"default\"" },
+  "turnTimeoutS":     { "value": "number | null", "source": "\"set\" | \"default\"" },
+  "verifyTimeoutS":   { "value": "number | null", "source": "\"set\" | \"default\"" }
+}
+```
+
+A stored value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to
+stderr naming the offending key and exits 1, with nothing on stdout, instead of showing that
+key's default.
+
 ### `docket snapshot` (full output)
 
 The snapshot command writes to a file (or stdout). The outer shape:
@@ -343,6 +363,13 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.9.0 (2026-09-25)
+
+- New `docket pod <p> config get --json` shape: a bare object keyed by the four pod settings
+  (`budgetUsd`/`maxReworkCycles`/`turnTimeoutS`/`verifyTimeoutS`), each an object with its
+  effective `value` and `source` (`set` or `default`). An invalid stored value refuses instead
+  of showing a default (P26-4).
 
 ### Version 1.8.0 (2026-09-25)
 

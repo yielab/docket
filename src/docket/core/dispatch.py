@@ -434,28 +434,26 @@ def pod_recorded_cost(project: str) -> float:
     return round(total, 6)
 
 
+def _pod_settings(project: str) -> _pod.PodSettings:
+    """Load this pod's validated Lead-meta settings, or raise ``DispatchError``
+    naming the offending key -- never a silently substituted default (see
+    ``core.pod.PodSettings``)."""
+    try:
+        return _pod.PodSettings.load_for(project)
+    except _pod.PodSettingsError as exc:
+        raise DispatchError(str(exc)) from exc
+
+
 def pod_budget(project: str) -> float:
     """The pod's USD budget cap (Lead's ``budgetUsd``), 0.0 = unlimited."""
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, "budgetUsd", "")
-    try:
-        return float(raw) if raw else 0.0
-    except ValueError:
-        return 0.0
+    return _pod_settings(project).budget_usd
 
 
 def pod_max_rework_cycles(project: str) -> int:
     """Bounded rework budget for a REQUEST-CHANGES review: Lead's ``maxReworkCycles`` meta
     (default ``1``; ``0`` disables rework -- a hard gate, no retry). See pod-dispatch.spec.md
     ("Reviewer verdict gate and bounded rework")."""
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, "maxReworkCycles", "")
-    if not raw:
-        return 1
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return 1
+    return _pod_settings(project).max_rework_cycles
 
 
 def _retries_for_role(role: str) -> int:
@@ -464,16 +462,9 @@ def _retries_for_role(role: str) -> int:
 
 
 def _lead_meta_timeout(project: str, field_name: str) -> int | None:
-    """Read a positive-int timeout field from the pod's Lead meta, if set validly."""
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, field_name, "")
-    if not raw:
-        return None
-    try:
-        value = int(raw)
-    except ValueError:
-        return None
-    return value if value > 0 else None
+    """Read one already-validated timeout field off this pod's ``PodSettings``."""
+    settings = _pod_settings(project)
+    return settings.turn_timeout_s if field_name == "turnTimeoutS" else settings.verify_timeout_s
 
 
 def pod_turn_timeout(project: str) -> int | None:

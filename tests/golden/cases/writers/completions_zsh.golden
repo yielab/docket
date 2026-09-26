@@ -62,7 +62,7 @@ _docket() {
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs|run)        compadd list show cancel ;;

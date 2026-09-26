@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.9.0
+**Version**: 6.10.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -536,6 +536,25 @@ was seeded once at binding time.)*
    layered beneath it. A CLI-triggered `docket pod <project> dispatch` (no `--timeout`) is
    unaffected by the serve-wide env vars; it resolves straight to Lead-meta, then
    `DEFAULT_TIMEOUT`.
+
+### Pod dispatch settings (`core.pod.PodSettings`)
+
+1. `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` **MUST** be read through one
+   typed, validated model (`core.pod.PodSettings.load_for`), not four independent ad hoc
+   parsers. A missing/blank meta key resolves to that field's declared default (`0.0`, `1`,
+   `None`, `None` respectively); a *present but malformed* stored value (e.g. a hand-edited
+   `.docket-meta.json` with `"turnTimeoutS": "abc"`) **MUST** raise, naming the key and the
+   reason, and **MUST NOT** be silently replaced by the default. Every dispatch entry point that
+   reads a pod setting (`pod_budget`, `pod_max_rework_cycles`, `pod_turn_timeout`,
+   `pod_verify_timeout`) lets that refusal propagate rather than catching it.
+2. `docket pod <project> config [get|set <key> <value>|unset <key>] [--json]` is the dedicated
+   CLI surface for these four keys — see `cli-json-shapes.spec.md` for the `get --json` shape.
+   `set` validates before writing and persists through the same meta writer every other
+   pod-meta setter uses (`core.fleet.meta_set`); an invalid value exits 1 with the meta record
+   untouched. `unset` clears an override by writing `null` (round-trips as absent through
+   `AgentMeta`'s typed fields), falling back to the field's default. Every write is
+   audit-logged as `pod.config`. `docket profile <lead-id> --budget <usd>` persists `budgetUsd`
+   as this same validated number, not the raw CLI argument string.
 
 ### Budget gate and auto-pause
 
@@ -1226,6 +1245,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.10.0 (2026-09-25)
+
+- **P26-4: pod settings are typed, validated and writable.** New "Pod dispatch settings
+  (`core.pod.PodSettings`)" section: `budgetUsd`/`maxReworkCycles`/`turnTimeoutS`/`verifyTimeoutS`
+  are read through one validated model instead of four ad hoc parsers, and a present-but-invalid
+  stored value now refuses dispatch naming the key instead of silently substituting its default
+  — the opposite of the fallback this spec previously documented. Adds the dedicated
+  `docket pod <project> config` CLI surface (get/set/unset, audited as `pod.config`) and fixes
+  `docket profile --budget` to persist `budgetUsd` as a number.
 
 ### Version 6.9.0 (2026-09-25)
 

@@ -396,6 +396,20 @@ Subcommands:
                     time in the Implementer's git worktree when one
                     exists, falling back to the pod's shared codebase
                     root, then the member's own workspace dir.
+  config           \[get|set <key> <value>|unset <key>\] \[--json\]. Typed,
+                    validated dispatch settings on the pod's Lead
+                    (`core.pod.PodSettings`): `budgetUsd`, `maxReworkCycles`,
+                    `turnTimeoutS`, `verifyTimeoutS`. `get` (default) shows
+                    each key's effective value and whether it is `set` or
+                    `default`; `--json` emits the same as a bare object --
+                    see cli-json-shapes.spec.md. `set` validates before
+                    writing (an invalid value exits 1, nothing persisted)
+                    and audit-logs `pod.config`; `unset` removes an
+                    override, falling back to the built-in default. A
+                    stored value that fails validation (e.g. a hand-edited
+                    `.docket-meta.json`) refuses `config get` and
+                    `dispatch` alike, naming the key, instead of silently
+                    substituting the default.
   delegate <task>  \[--priority high|normal|low\]. Queue a task on the
                     pod's task queue (in the Lead's workspace). Priority
                     defaults to normal. The description is capped at 500
