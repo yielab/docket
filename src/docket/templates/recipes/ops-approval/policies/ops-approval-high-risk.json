@@ -1,0 +1,12 @@
+{
+  "id": "ops-approval-high-risk-exec",
+  "description": "Any deploy/production-shaped command from the operator role requires approval, independent of the pipeline's own approval gate",
+  "applies_to": ["operator"],
+  "hook": "pre_tool_call",
+  "match": {
+    "type": "regex",
+    "pattern": "kubectl\\s+(apply|delete|replace|rollout)|helm\\s+upgrade|terraform\\s+apply|git\\s+push\\s+.*\\b(main|master|production|prod)\\b|npm\\s+publish|docker\\s+push|fly\\s+deploy|vercel\\s+--prod|heroku\\s+promote"
+  },
+  "action": "require_approval",
+  "message": "Production-shaped operator action requires approval, regardless of which pipeline step it reached."
+}

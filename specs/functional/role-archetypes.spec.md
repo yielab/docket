@@ -1,7 +1,12 @@
 # Role Archetypes Specification
 
-**Version**: 1.8.0
-**Status**: Implemented. `hopInstruction` (P26-7) is an open, optional field: a gated custom
+**Version**: 1.11.0
+**Status**: Implemented. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
+policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
+existing `docket roles`/`docket pod`/`docket policies` CLI surface; a recipe's own role YAML is
+data validated exactly like a hand-authored one, and none of the roles the shipped recipes
+target (`operator`, `researcher`, `analyst`, `writer`, `critic`) needed a new archetype field to
+support this. `hopInstruction` (P26-7) is an open, optional field: a gated custom
 role's hop message now carries an instruction even without one declared, generated from
 `gateContract` — see "Hop instructions" below and `pod-dispatch.spec.md`'s hop-message builder.
 `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
@@ -60,6 +65,11 @@ This specification covers:
 - How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`/`policy_role_for`
   resolve against this registry instead of a hardcoded list
 - The `docket roles list/show/add/validate` CLI surface
+- Shipped recipe bundles (`templates/recipes/<name>/`, P26-20): pre-authored role YAML(s) for a
+  bundle's own custom role, validated by the same `docket roles validate`/`add` this spec already
+  documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
+  `pipeline-format.spec.md`'s document shape, not this spec's, and an optional policy pack is
+  plain policy data (see `docket policies validate`), owned by neither spec
 
 This specification does NOT cover:
 
@@ -271,6 +281,41 @@ depended entirely on its own SOUL template to know its marker convention or task
    `pod-blueprints.spec.md` (ROADMAP Phase 16 W-7), which this spec's registry is a building block
    for but does not itself define.
 
+### Shipped recipes (P26-20)
+
+Before this card, the wheel shipped baseline policy templates (`templates/policies/*.json`,
+installed by `docket init`) but no shipped pipeline or role — the 2026-09-25 E2E connection
+audit's first hand-rolled attempt at a governed pipeline tripped `core/pod.py::pod_of`'s
+id-string guessing (fixed by P26-18) before it ever reached a working dispatch. A recipe closes
+that gap by shipping a known-good, CI-validated starting point instead of leaving every operator
+to rediscover the same pitfalls.
+
+1. Each recipe **MUST** live at `templates/recipes/<name>/` (`docket.config.recipes_dir()`),
+   shipped in the wheel by the same git-tracked-file inclusion `templates/policies/` already
+   relies on — no separate packaging include list.
+2. A recipe **MUST** carry a `pipeline.yaml` (this registry's roles referenced by name) and a
+   `README.md` naming its purpose and the exact `docket roles`/`docket pod`/`docket policies`
+   commands that apply it. A `roles/*.yaml` directory and a `policies/*.json` directory are both
+   **optional** — a recipe whose roster is entirely built-in/starter archetypes (e.g. `operator`,
+   `critic`) ships no role YAML at all, since one would just restate data this registry already
+   has.
+3. A recipe's own role YAML **MUST** pass `docket roles validate` unmodified — a recipe is not a
+   second archetype format; it is data consumed by the same `add_user_archetype`/`from_wire`
+   this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pipeline validate`
+   (`pipeline-format.spec.md`) and, once the roster its README describes is provisioned, **MUST**
+   resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
+   its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
+4. Applying a recipe introduces **no new CLI command** — `docket roles add`, `docket pod <p> add
+   <role>`, `docket pod <p> config set pipeline <file>`, and (for an optional policy pack) copying
+   a file into `POLICIES_DIR` are the whole surface. A `docket recipes` command is an explicit
+   non-goal unless three real applications show the manual steps are the actual friction.
+5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
+   read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
+   archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
+   human `approval` gate (`ops-approval`). Each **MUST** carry an integration or unit test that
+   loads it from `recipes_dir()` (not a hand-copied re-transcription) and validates it the same
+   way `docket roles validate`/`docket pipeline validate`/`docket policies validate` would.
+
 ### Role→model policy integration
 
 1. An archetype's `modelClass` **MUST** slot into the *existing* role→model policy
@@ -467,8 +512,21 @@ docket roles validate   # validates the whole live registry
   archetype that would fail its own `__post_init__` validation
 - A malformed user-overlay entry never prevents the rest of the registry (built-ins, starter
   library, other user entries) from loading
+- A shipped recipe's role YAML carries no exemption from `from_wire`/`__post_init__`: a recipe
+  that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.11.0 (2026-09-26)
+
+- **P26-20: shipped recipes.** Added the "Shipped recipes" section: `templates/recipes/<name>/`
+  bundles a role YAML (only where the roster needs one beyond the built-in/starter library), a
+  pipeline YAML, and an optional policy pack behind the existing `docket roles`/`docket pod`/
+  `docket policies` commands — no new CLI surface. Three ship: `secure-build` (a custom
+  `security-vetter` role, verdict-gated with one rework cycle), `research-review` (the research
+  archetypes, critic-vetoed), and `ops-approval` (`operator` gated on a human `approval` step).
+  Closes the gap the 2026-09-25 E2E audit found: nothing shipped demonstrated a working custom
+  role end to end, so the first real attempt tripped the `pod_of` id-guessing P26-18 later fixed.
 
 ### Version 1.8.0 (2026-09-26)
 

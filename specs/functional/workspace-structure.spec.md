@@ -1,9 +1,11 @@
 # Workspace Structure Specification
 
-**Version**: 1.9.1
+**Version**: 1.11.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
-`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`.
-**Last Updated**: 2026-09-18
+`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-20 added
+"Shipped-data templates" below: `templates/recipes/<name>/` ships alongside this spec's own
+`templates/policies/` as read-only package data, neither of which is itself a workspace.
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -17,6 +19,9 @@ This specification covers:
 - The directory and files that make up a project-agent (and pod-member) workspace
 - The org-specialist layout
 - Permission invariants and scaffolding quarantine
+- The boundary between a provisioned *workspace* (covered above) and shipped, read-only
+  *package data* under `src/docket/templates/` (`templates/policies/`, and P26-20's
+  `templates/recipes/<name>/`) — see "Shipped-data templates" below
 
 This specification does NOT cover the `.docket-meta.json` field schema (owned by
 ../data/docket-meta.spec.md), the
@@ -121,6 +126,29 @@ covers the resulting file set for either workspace kind, not blueprint selection
    executable bits and repository-owned permissions remain intact. Provisioning and maintenance
    enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
 
+### Shipped-data templates (package, not workspace)
+
+`src/docket/templates/` (`docket.config.templates_dir()`) is package data shipped in the wheel —
+read-only source material a command *copies from* or *reads*, never a workspace this spec's
+permission/provisioning rules apply to.
+
+1. `templates/policies/*.json` (baseline guardrail policies, installed by `docket init`) and
+   `templates/recipes/<name>/` (P26-20's role/pipeline/policy bundles, applied by hand through
+   `docket roles`/`docket pod`/`docket policies` — never auto-applied) **MUST** both resolve
+   through a `docket.config` accessor (`policy_templates_dir()`, `recipes_dir()`) rather than a
+   hardcoded relative path, so a template's real location can never drift from where the
+   installed package actually put it.
+2. A role a recipe provisions (e.g. `docket pod <p> add security-vetter` after `docket roles add
+   templates/recipes/secure-build/roles/security-vetter.yaml`) **MUST** produce a workspace
+   satisfying every requirement above — the same `700`/`600` permissions, the same required core
+   files, the same contract marker. A recipe is a source of *archetype data*
+   (`role-archetypes.spec.md`); it creates no new provisioning path and is invisible to this
+   spec's own requirements once the workspace exists.
+3. Nothing under `templates/` is itself writable by a provisioned agent, and no workspace file is
+   ever a symlink into it — copying (policies) or reading-then-validating (recipes) is always by
+   value, so editing a shipped template after installation never mutates an already-provisioned
+   workspace or an already-copied policy.
+
 ## Interface Contracts
 
 Workspaces are created and repaired through commands, not edited by hand:
@@ -207,6 +235,13 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.11.0 (2026-09-26)
+
+- **P26-20: shipped-data templates section.** Added "Shipped-data templates (package, not
+  workspace)": `templates/recipes/<name>/` joins `templates/policies/` as read-only package data
+  resolved through a `docket.config` accessor, and a recipe-provisioned role's workspace is held
+  to this spec's existing requirements with no exception carved out for it.
 
 ### Version 1.9.1 (2026-09-18)
 

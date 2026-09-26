@@ -1,0 +1,26 @@
+name: research-review
+description: >-
+  Lead scopes the question, Researcher gathers sources, Analyst draws conclusions, Writer
+  drafts the deliverable, and a Critic vetoes with an APPROVE/REJECT verdict (bounded rework
+  back to the Writer). Same shape as the built-in `research` blueprint's own default
+  pipeline, packaged so it can be bound to a pod that was not created with `--blueprint
+  research`.
+steps:
+  - id: lead
+    role: lead
+  - id: researcher
+    role: researcher
+  - id: analyst
+    role: analyst
+  - id: writer
+    role: writer
+  - id: critic
+    role: critic
+    gate:
+      type: verdict
+      pattern: '^\s*(APPROVE|REJECT)\b'
+      passValues: [approve]
+      rework:
+        to: writer
+        when: [reject]
+        maxCycles: 1
