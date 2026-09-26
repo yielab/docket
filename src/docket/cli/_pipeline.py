@@ -38,6 +38,7 @@ import typer
 
 from docket import ui
 from docket.core import archetypes as _archetypes
+from docket.core import config_docs as _config_docs
 from docket.core import dispatch as _dispatch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
@@ -123,6 +124,10 @@ def _load_spec_file(path_str: str) -> tuple[_pipeline.PipelineSpec | None, list[
     path = Path(path_str)
     if not path.is_file():
         return None, [f"file not found: {path_str}"]
+    try:
+        _config_docs.load_document(path, kind="pipeline")
+    except _config_docs.ConfigDocError as exc:
+        return None, [str(exc)]
     result = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
     return result.spec, result.errors
 

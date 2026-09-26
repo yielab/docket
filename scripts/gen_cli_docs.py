@@ -113,6 +113,7 @@ GROUPS: list[tuple[str, list[str]]] = [
             "config",
             "serve",
             "completions",
+            "validate",
             "snapshot",
             "mcp",
         ],

@@ -97,6 +97,7 @@ def run_help(topic: str | None = None) -> int:
   {G}scope{R}    [id] [a]  Manage session scopes for multi-project isolation
   {G}auth{R}     <action>  Show which provider credentials are stored (no login flow yet)
   {G}keys{R}     <action>  Manage model credentials and workspace secrets
+  {G}validate{R} [dir]     Validate role/pipeline/policy/pod configuration documents
 
 {B}CONTEXT & MEMORY  (docket context [id] <subcommand>){R}
   {G}show{R}               Recent activity, active tasks, stats (default)

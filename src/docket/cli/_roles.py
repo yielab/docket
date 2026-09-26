@@ -27,6 +27,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.cli._flags import find_unknown_flag
 from docket.core import archetypes as _arch
+from docket.core import config_docs as _config_docs
 
 _DOCUMENTED_FLAGS: frozenset[str] = frozenset({"--pod"})
 
@@ -136,9 +137,9 @@ def _add(args: list[str], pod: str = "") -> int:
         return 1
     path = args[0]
     try:
-        doc = _arch.load_role_file(path)
+        doc = _config_docs.load_document(path, kind="role").doc
         arch = _arch.add_user_archetype(doc, pod)
-    except _arch.ArchetypeError as exc:
+    except (_arch.ArchetypeError, _config_docs.ConfigDocError) as exc:
         ui.fail(f"Invalid archetype: {exc}")
         return 1
 
@@ -153,8 +154,8 @@ def _add(args: list[str], pod: str = "") -> int:
 def _validate(args: list[str]) -> int:
     if args and args[0]:
         try:
-            doc = _arch.load_role_file(args[0])
-        except _arch.ArchetypeError as exc:
+            doc = _config_docs.load_document(args[0], kind="role").doc
+        except (_arch.ArchetypeError, _config_docs.ConfigDocError) as exc:
             ui.fail(f"Invalid archetype file: {exc}")
             return 1
         name = str(doc.get("name", "")).strip()

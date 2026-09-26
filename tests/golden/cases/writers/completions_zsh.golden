@@ -37,6 +37,7 @@ _docket() {
     'snapshot:Export system state snapshot as JSON'
     'serve:Local HTTP endpoints: /status.json /metrics /health'
     'completions:Shell completion helpers'
+    'validate:Validate role, pipeline, policy, and pod configuration documents'
     'trace:View agent execution traces'
     'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'

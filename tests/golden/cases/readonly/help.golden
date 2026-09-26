@@ -46,6 +46,7 @@ CONFIGURATION
   scope    [id] [a]  Manage session scopes for multi-project isolation
   auth     <action>  Show which provider credentials are stored (no login flow yet)
   keys     <action>  Manage model credentials and workspace secrets
+  validate [dir]     Validate role/pipeline/policy/pod configuration documents
 
 CONTEXT & MEMORY  (docket context [id] <subcommand>)
   show               Recent activity, active tasks, stats (default)

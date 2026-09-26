@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.35.0
+**Version**: 1.36.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -314,6 +314,18 @@ subscription/OAuth-style auth flow, and this command says so plainly rather than
 **Options**: `--provider <name>` — which provider's env-var name to report/name in the message; defaults to `anthropic` when omitted.
 **Output**: For `status`, the list of stored provider keys (or a warning that none are stored). For `login`/`key`/`setup`, the honest-gone error message.
 **Return**: 0 for `status`; 1 for `login`/`key`/`setup` (always — there is nothing for them to succeed at)
+
+#### docket validate
+**Purpose**: Validate role, pipeline, policy, and pod configuration documents (see
+`config-format.spec.md`) — one command for every kind, rather than a separate `validate`
+subcommand per kind
+**Syntax**: `docket validate [dir|file]`
+**Arguments**:
+- `dir|file` (optional): A directory to validate every document under (default `<cwd>/.docket`
+  when it exists, else the current directory), or a single file to validate alone
+**Output**: One line per file — `ok <file> (<kind> <name>)` or its error — invalid files
+printed first, plus one `note:` line per file loaded without a `kind:` key
+**Return**: 0 if every file is valid, 1 if any file is invalid or the target does not exist
 
 ### Pipeline Commands
 
@@ -964,6 +976,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.36.0 (2026-09-26)
+
+- New `docket validate [dir|file]` (`cli/_validate.py`, `core/config_docs.py`): validates a
+  role, pipeline, policy, or pod document by resolving its `kind:` and dispatching to the
+  parser that already owns that kind, printing `ok <file> (<kind> <name>)` or the error for
+  every file under a directory, invalid ones first. See `config-format.spec.md` for the
+  envelope, the deprecation path for a document with no `kind:`, and the `ConfigDocError`
+  format.
 
 ### Version 1.35.0 (2026-09-26)
 
