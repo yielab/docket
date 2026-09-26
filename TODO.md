@@ -343,7 +343,7 @@ key.
 
 ### P26-8 — a pod can allow its own tool binaries, scoped and audited
 
-**Status:** TODO · **Size:** S · **Wave:** 39 (after P26-4) · **Spec:** `security-gates.spec.md`
+**Status:** DONE (merged `1184eb8`, worker commit `1fe5428`) · **Size:** S · **Wave:** 39 (after P26-4) · **Spec:** `security-gates.spec.md` 0.24.0 (re-versioned from the worker's 0.23.0 — collided with P26-5)
 
 **Trigger:**
 - `classify_command('pytest -q')`, `('uv run pytest')` and `('python -m pytest')` → `ask`.
