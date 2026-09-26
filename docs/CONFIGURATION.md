@@ -622,8 +622,10 @@ assuming it. Phase 26 in `TODO.md` ([ADR 0008](adr/0008-configuration-contract.m
 for most of them.
 
 - **`WORKFLOW_AUTO.md` and `memory/` are not in the prompt** (§2). Edit `SOUL.md`/`MEMORY.md`.
-- **Existing members keep their provisioned `SOUL.md`.** Changing a role template does not
-  re-render them.
+- **Your prompt text belongs in `INSTRUCTIONS.md`.** It is operator-owned (docket never writes
+  it), composes right after `SOUL.md`, and survives `set-verify` and `pod sync`; generated files
+  are re-rendered wholesale by `docket pod <p> sync` when a template or archetype changes
+  (`--dry-run` shows the diff, doctor flags stale members).
 - **Tool denials are per role only.** Nothing allows or denies tools per agent or per pod.
 - **A skipped file is silent on the live path, but doctor names it.** An invalid schedule spec,
   model-policy entry or overlay role never crashes a fleet — the loader skips it — and

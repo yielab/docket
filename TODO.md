@@ -407,7 +407,7 @@ text, and the pod template version.
 
 ### P26-10 — operator instructions survive regeneration, and roles can be re-rendered
 
-**Status:** TODO · **Size:** M · **Wave:** 40 (after P26-9) · **Spec:** `workspace-structure.spec.md`,
+**Status:** DONE (merged `678c469`, worker commit `5c80be7`; set-verify still owns TOOLS.md wholesale by design — operator text lives in INSTRUCTIONS.md; JSON-doctor parity and pod-subcommand completions noted as small follow-ups) · **Size:** M · **Wave:** 40 (after P26-9) · **Spec:** `workspace-structure.spec.md`,
 `agent-loop.spec.md` req. 30
 
 **Trigger:**
