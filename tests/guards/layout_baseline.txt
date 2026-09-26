@@ -27,7 +27,6 @@ docket.core.conversations
 docket.core.fleet
 docket.core.llm
 docket.core.models
-docket.core.models_policy
 docket.core.pod_provisioning
 docket.core.provider
 docket.core.runtime_driver

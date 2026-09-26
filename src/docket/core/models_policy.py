@@ -287,6 +287,49 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     return role_models, tiers, default_model
 
 
+def find_registry_problems() -> list[tuple[str, str]]:
+    """Return ``(key, reason)`` pairs for a malformed ``docket-models.json`` entry that
+    ``load_registry`` silently ignores -- for ``docket doctor``. *key* is the file path
+    itself for an unreadable file, else a dotted ``rankAnchors.<x>``/``roles.<x>``/``default``."""
+    path = cfg.MODEL_REGISTRY_FILE
+    if not path.exists():
+        return []
+    try:
+        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [(str(path), f"unreadable/malformed JSON: {exc}")]
+    if not isinstance(reg, dict):
+        return [(str(path), "not a JSON object")]
+
+    problems: list[tuple[str, str]] = []
+
+    rank_anchors = reg.get("rankAnchors", {})
+    if isinstance(rank_anchors, dict):
+        for anchor, m in rank_anchors.items():
+            if anchor not in _RANK_ANCHORS:
+                problems.append((f"rankAnchors.{anchor}", "unknown rank anchor"))
+            elif not (isinstance(m, str) and _MODEL_ID_RE.match(m)):
+                problems.append((f"rankAnchors.{anchor}", f"not a valid model id: {m!r}"))
+    else:
+        problems.append(("rankAnchors", "'rankAnchors' is not an object"))
+
+    default = reg.get("default")
+    if default is not None and not (isinstance(default, str) and _MODEL_ID_RE.match(default)):
+        problems.append(("default", f"not a valid model id: {default!r}"))
+
+    roles = reg.get("roles", {})
+    if isinstance(roles, dict):
+        for role, m in roles.items():
+            if role not in ROLE_CLASS:
+                problems.append((f"roles.{role}", "unknown role"))
+            elif not (isinstance(m, str) and _MODEL_ID_RE.match(m)):
+                problems.append((f"roles.{role}", f"not a valid model id: {m!r}"))
+    else:
+        problems.append(("roles", "'roles' is not an object"))
+
+    return problems
+
+
 def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> str:
     """Return the effective model for a role (loads registry if not supplied).
 

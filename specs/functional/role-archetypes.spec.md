@@ -398,6 +398,12 @@ to rediscover the same pitfalls.
    `docket-models.json` uses: a top-level `roles:` map keyed by archetype name, read fresh on
    every access (not cached), silently skipping a malformed entry (never crashing a live fleet)
    rather than raising.
+5. Requirement 1's silent skip describes `load_registry` itself, which **MUST** keep resolving
+   without raising or warning. Read-only and separate from that path, `docket doctor` **MUST**
+   run `core.archetypes.find_overlay_problems` and report every overlay entry `load_registry`
+   skipped — the role name and the specific `ArchetypeError` reason `from_wire` raised — or an
+   unreadable/malformed overlay file itself, naming the file. It never edits the overlay
+   (ROADMAP P26-12).
 2. A user archetype **MUST** be able to both add a brand-new role name and override an existing
    built-in/starter archetype by reusing its name — "user wins" by name, exactly as
    `docket-models.json`'s per-role model overrides work. Overriding a legacy archetype
@@ -578,6 +584,17 @@ docket roles validate   # validates the whole live registry
   changed. `tests/integration/test_pod_role_workspace_parity.py`'s frozen legacy-fidelity baseline
   was updated to match (the point of that test — catching *unintended* drift — does not apply to
   a deliberate, spec'd, test-covered removal like this one).
+
+### Version 1.10.0 (2026-09-26)
+
+- **P26-12: configuration errors are loud.** "User registry overlay" gains requirement 5:
+  `load_registry` itself keeps silently skipping a malformed `docket-roles.json` entry
+  (requirement 1 is unchanged), but `docket doctor` now runs a separate, read-only check
+  (`core.archetypes.find_overlay_problems`) naming the offending role and the specific
+  `ArchetypeError` reason, or an unreadable overlay file itself. See `pod-dispatch.spec.md`
+  v6.13.0 for the companion `docket-schedules.json` writer and `model-profiles.spec.md`
+  v2.9.0 for the matching `docket-models.json` check this same card added. Version 1.9.0 is
+  reserved for a neighboring card's hop-instruction/template work landing separately.
 
 ### Version 1.8.0 (2026-09-26)
 

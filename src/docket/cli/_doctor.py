@@ -184,6 +184,58 @@ def _check_legacy_model_registry() -> int:
     return 0
 
 
+def _check_model_registry_entries() -> int:
+    """Flag every malformed ``docket-models.json`` entry (unknown rank anchor/role, or a
+    bad model id) that ``load_registry`` silently ignores at read time -- naming the file,
+    key, and reason. Read-only: never edits the registry."""
+    ui.console.print()
+    ui.console.print("[bold]Model registry entries (docket-models.json):[/bold]")
+    problems = _mp.find_registry_problems()
+    if not problems:
+        ui.success("  All registry entries are well-formed")
+        return 0
+    ui.console.print("[red]✗[/red]   Found malformed docket-models.json entries:")
+    for key, reason in problems:
+        ui.console.print(f"    {key}: {reason}")
+    return len(problems)
+
+
+def _check_archetype_overlay() -> int:
+    """Flag every malformed ``docket-roles.json`` overlay entry that ``load_registry``
+    silently skips at read time -- naming the role and the ``ArchetypeError`` reason.
+    Read-only: never edits the overlay."""
+    from docket.core import archetypes as _arch
+
+    ui.console.print()
+    ui.console.print("[bold]Role archetype overlay (docket-roles.json):[/bold]")
+    problems = _arch.find_overlay_problems()
+    if not problems:
+        ui.success("  All overlay entries are well-formed")
+        return 0
+    ui.console.print("[red]✗[/red]   Found malformed docket-roles.json entries:")
+    for role, reason in problems:
+        ui.console.print(f"    {role}: {reason}")
+    return len(problems)
+
+
+def _check_schedule_config() -> int:
+    """Flag every ``docket-schedules.json`` entry ``is_schedule_due`` would silently treat
+    as never-due -- naming the file, project key, and reason. Read-only:
+    never edits the schedules file (use ``docket pod <p> config set/unset schedule``)."""
+    from docket.core import schedule as _sched
+
+    ui.console.print()
+    ui.console.print("[bold]Schedules (docket-schedules.json):[/bold]")
+    problems = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
+    if not problems:
+        ui.success("  All schedules are well-formed")
+        return 0
+    ui.console.print("[red]✗[/red]   Found schedule(s) that will never fire:")
+    for key, reason in problems:
+        ui.console.print(f"    {key}: {reason}")
+    return len(problems)
+
+
 def _check_dispatch_ledger(do_fix: bool) -> int:
     """TASK_LIST.json (``status: "running"``) vs. the pod Lead's HEARTBEAT.md dispatch ledger —
     must agree.
@@ -873,6 +925,9 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_project_agents(ids)
     issues += _check_models()
     _check_legacy_model_registry()
+    issues += _check_model_registry_entries()
+    issues += _check_archetype_overlay()
+    issues += _check_schedule_config()
     issues += _check_dispatch_ledger(do_fix)
     issues += _check_budget(ids, _batch_gating_cost(ids))
     issues += _check_runaway(ids, cost)

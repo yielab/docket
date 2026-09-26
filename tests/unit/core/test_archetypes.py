@@ -5,11 +5,19 @@ every built-in/starter role's generated prose agrees with the live runtime contr
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+from tests.conftest import repoint_docket_home
+
+import docket.config as _cfg
 from docket.core.archetypes import (
     BUILTIN_ARCHETYPES,
     STARTER_ARCHETYPES,
     GateContract,
     RoleArchetype,
+    find_overlay_problems,
     from_wire,
     render,
     resolve_hop_instruction,
@@ -153,3 +161,63 @@ class TestGeneratedInstructionsAgreeWithRuntimeContract:
             if offense:
                 offenders[name] = offense
         assert offenders == {}
+
+
+class TestFindOverlayProblems:
+    """`find_overlay_problems`: what `docket doctor` surfaces for a malformed
+    `docket-roles.json` entry that `load_registry` silently skips."""
+
+    def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        assert find_overlay_problems() == []
+
+    def test_well_formed_overlay_has_no_problems(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        repoint_docket_home(monkeypatch, home)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps(
+                {
+                    "roles": {
+                        "custom-role": {
+                            "name": "custom-role",
+                            "version": 1,
+                            "scope": "pod",
+                            "modelClass": "cheap",
+                            "soulTemplate": "x",
+                            "agentsTemplate": "y",
+                            "gateContract": {"kind": "none"},
+                            "editRights": "read-only",
+                            "toolProfile": "read-only",
+                        }
+                    }
+                }
+            )
+        )
+        assert find_overlay_problems() == []
+
+    def test_malformed_entry_is_named_by_role(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        repoint_docket_home(monkeypatch, home)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
+        )
+        problems = find_overlay_problems()
+        assert len(problems) == 1
+        assert problems[0][0] == "broken-role"
+
+    def test_malformed_json_is_reported_by_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        repoint_docket_home(monkeypatch, home)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text("{not json")
+        problems = find_overlay_problems()
+        assert len(problems) == 1
+        assert problems[0][0] == str(_cfg.ARCHETYPE_REGISTRY_FILE)

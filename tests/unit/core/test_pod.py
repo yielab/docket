@@ -233,6 +233,39 @@ class TestPodSettings:
         assert settings.value_and_source("approvalMode", "shop") == ("refuse", "set")
 
 
+class TestPodSettingsSchedule:
+    """`PodSettings.schedule`: validated through the same `coerce` path as every other
+    setting; the CLI's dedicated write path is covered in
+    tests/integration/test_pod_config_settings.py."""
+
+    def test_defaults_to_none(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.schedule is None
+
+    def test_recognized_spec_round_trips(self) -> None:
+        _write_lead_meta("shop", {"schedule": "@every 30m"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.schedule == "@every 30m"
+
+    def test_invalid_spec_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"schedule": "@every 3x"})
+        with pytest.raises(pod.PodSettingsError, match="schedule"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_accepts_a_recognized_spec(self) -> None:
+        assert pod.PodSettings.coerce("schedule", "@every 30m") == "@every 30m"
+
+    def test_coerce_rejects_an_unrecognized_spec(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="schedule"):
+            pod.PodSettings.coerce("schedule", "@every 3x")
+
+    def test_value_and_source_reports_set_schedule(self) -> None:
+        _write_lead_meta("shop", {"schedule": "09:00"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("schedule", "shop") == ("09:00", "set")
+
+
 class TestPodSettingsAllowCommands:
     """`PodSettings.allowCommands`: a pod's own extra unattended binaries."""
 

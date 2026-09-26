@@ -253,6 +253,34 @@ class TestCheckSchedules:
         time.sleep(0.1)
         assert dispatched == []
 
+    def test_unrecognized_spec_logs_once_per_sweep_and_is_skipped(
+        self,
+        schedule_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A silently never-due bad spec now prints one skip line per sweep naming the
+        project and reason, instead of firing nothing forever with no operator-visible
+        trace."""
+        schedule_file.write_text(
+            json.dumps({"schedules": {"projC": "@every 3x"}}),
+            encoding="utf-8",
+        )
+        dispatched: list[str] = []
+
+        def _record_and_return(proj: str, **kw: object) -> list[object]:
+            dispatched.append(proj)
+            return []
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
+        _serve._check_schedules(time.time())
+        time.sleep(0.1)
+        out = capsys.readouterr().out
+        assert dispatched == []
+        lines = [line for line in out.splitlines() if "projC" in line]
+        assert len(lines) == 1
+        assert "3x" in lines[0]
+
     def test_last_run_recorded_durably_after_dispatch(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

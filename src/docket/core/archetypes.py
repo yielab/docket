@@ -693,6 +693,29 @@ def load_registry() -> ArchetypeRegistry:
     return ArchetypeRegistry(archetypes)
 
 
+def find_overlay_problems() -> list[tuple[str, str]]:
+    """Return ``(role, reason)`` pairs for a malformed ``docket-roles.json`` overlay entry
+    that ``load_registry`` silently skips -- for ``docket doctor``. Read-only: never edits
+    the overlay. *role* is the file path itself for an unreadable/malformed file."""
+    path = cfg.ARCHETYPE_REGISTRY_FILE
+    if not path.exists():
+        return []
+    try:
+        raw = _store.read_json(path)
+    except Exception as exc:
+        return [(str(path), f"unreadable/malformed: {exc}")]
+    roles = raw.get("roles", {})
+    if not isinstance(roles, dict):
+        return [(str(path), "'roles' is not an object")]
+    problems: list[tuple[str, str]] = []
+    for name, doc in roles.items():
+        try:
+            from_wire(str(name), doc)
+        except ArchetypeError as exc:
+            problems.append((str(name), str(exc)))
+    return problems
+
+
 # The capability each built-in tool name represents. `registry_for_role` maps a
 # role's `denied_tools` through this to decide which *kinds* that role may not
 # hold, so a capability denial survives arriving under an unfamiliar name (an

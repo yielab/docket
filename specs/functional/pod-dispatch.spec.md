@@ -596,6 +596,46 @@ was seeded once at binding time.)*
    reads *file*, validates and plans it, writes the docket-owned copy, and only then persists
    its digest through `coerce`/`meta_set` like any other key. See "Pipeline order and
    participation" requirement 6 for the full validate-plan-store-verify contract.
+5. `PodSettings` also carries `schedule` (`str | None`): an `@every`/`HH:MM`/cron spec (see
+   "Schedule configuration and doctor visibility" below), validated through the same
+   `coerce` path every scalar key uses — an unrecognized spec raises `PodSettingsError`
+   naming the key and the reason `core.schedule.describe_spec_error` gives, refusing the
+   write rather than storing or silently ignoring it. Unlike the scalar keys, `set schedule
+   <spec>` is a dedicated CLI code path (`cli/_pod.py::_pod_config_set_schedule`) that, after
+   validating, persists *spec* into `docket-schedules.json`'s `schedules[project]` through
+   `core.schedule.set_schedule` (this is the schedule's real source of truth for the serve
+   sweep, not the Lead's meta) and mirrors the same string into the Lead's meta via
+   `meta_set` purely so `config get`/`list` can display it through the same generic
+   `value_and_source` path every other setting uses. `unset schedule` clears both.
+
+### Schedule configuration and doctor visibility (ROADMAP P26-12)
+
+1. **Trigger.** `docket-schedules.json` had no writer of its own — a schedule could only be
+   added by hand-editing the file — and three related silent-skip patterns left a bad
+   configuration invisible: `core.schedule.load_schedules`/`load_last_run` return `{}` on any
+   read/parse error, `is_schedule_due` treats an unrecognized spec as simply never due, and
+   `core.models_policy.load_registry` (see `model-profiles.spec.md`) and
+   `core.archetypes.load_registry` (see `role-archetypes.spec.md`) each silently ignore or
+   skip a malformed registry/overlay entry. None of these crash the sweep or a live fleet —
+   that tolerance is intentional and unchanged — but nothing ever told an operator why a
+   schedule never fired or an override never took effect.
+2. `docket pod <project> config set schedule "<spec>"` **MUST** validate *spec* (rejecting an
+   unrecognized `@every`/`HH:MM`/cron string with exit 1 and the meta record untouched, same
+   as every other setting) and, on success, persist it into `docket-schedules.json` via
+   `core.schedule.set_schedule` — the writer that file lacked. `unset schedule` **MUST**
+   remove the project's entry via `core.schedule.unset_schedule`, leaving `lastRun` as-is.
+   Both go through `edges/store.py`'s locked read-modify-write, never a direct file write.
+3. `docket doctor` **MUST** run a read-only check over `docket-schedules.json`
+   (`core.schedule.find_schedule_problems`) and report every entry that `is_schedule_due`
+   would silently treat as never-due, or an unreadable/malformed file itself — naming the
+   file, the project key, and the reason. It never edits the file.
+4. `serve.py`'s sweep (`_check_schedules`) **MUST** print one line naming the project and
+   reason for each schedule entry `core.schedule.describe_spec_error` rejects, once per sweep
+   pass, before it would otherwise fall through to `is_schedule_due`'s silent skip. This is
+   diagnostic output only — the schedule is still not fired, and no new failure kind, trace
+   event, or task status is introduced.
+5. Non-goal: no new schedule spec format. The `@every`/`HH:MM`/5-field-cron vocabulary is
+   unchanged; this only makes an already-unrecognized spec loud instead of silent.
 
 ### Unattended approval posture (`approvalMode`, ROADMAP P26-5)
 
@@ -1368,6 +1408,23 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   terminal — a live record is never touched regardless of age. `docket serve`'s periodic sweep
   runs all three prunes independently best-effort; `docket runs prune` / `docket conversations
   prune` (`[--dry-run] [--days N]`) expose the same functions on demand.
+
+### Version 6.13.0 (2026-09-26)
+
+- **P26-12: configuration errors are loud; schedules get a writer.** `docket-schedules.json`
+  gains its first writer: `docket pod <project> config set/unset schedule "<spec>"`
+  (`core.schedule.set_schedule`/`unset_schedule`, both through `edges/store.py`'s locked
+  read-modify-write). "Pod dispatch settings" gains requirement 5 for the new `schedule` key
+  on `PodSettings` — validated through the same `coerce` path as every scalar key, but
+  persisted through a dedicated CLI code path like `pipeline`, because its real source of
+  truth for the serve sweep is `docket-schedules.json`, not the Lead's meta (meta carries a
+  display-only mirror). New "Schedule configuration and doctor visibility" section:
+  `docket doctor` gains a read-only check (`core.schedule.find_schedule_problems`) naming
+  the file, project key, and reason for a schedule `is_schedule_due` would otherwise silently
+  treat as never-due, and `serve.py`'s sweep now prints one skip line per invalid schedule
+  per sweep pass instead of dropping it with no trace. See `model-profiles.spec.md` v2.9.0
+  and `role-archetypes.spec.md` v1.10.0 for the companion doctor checks over
+  `docket-models.json`/`docket-roles.json` malformed entries this same card added.
 
 ### Version 6.12.0 (2026-09-26)
 

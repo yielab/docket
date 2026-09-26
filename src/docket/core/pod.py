@@ -24,6 +24,7 @@ import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.core import schedule as _schedule
 from docket.core import security as _security
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
@@ -283,6 +284,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "approvalMode": "approval_mode",
     "allowCommands": "allow_commands",
     "pipeline": "pipeline",
+    "schedule": "schedule",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -325,6 +327,11 @@ class PodSettings(BaseModel):
     # writes the copy before this ever gets written (see core/dispatch.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
+    # An `@every`/`HH:MM`/cron spec (core/schedule.py). Mirrors the value the dedicated
+    # `set schedule <spec>` CLI path (`cli/_pod.py::_pod_config_set_schedule`) persists as
+    # this pod's actual source of truth in `docket-schedules.json` -- see that function's
+    # docstring for why this field exists alongside a second, non-meta store.
+    schedule: str | None = Field(None, alias="schedule")
 
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
@@ -336,6 +343,7 @@ class PodSettings(BaseModel):
         "approvalMode",
         "allowCommands",
         "pipeline",
+        "schedule",
     )
 
     @field_validator("allow_commands", mode="before")
@@ -363,6 +371,20 @@ class PodSettings(BaseModel):
                 continue  # already unattended-safe -- redundant, silently dropped
             kept.setdefault(name, None)
         return tuple(kept.keys())
+
+    @field_validator("schedule", mode="before")
+    @classmethod
+    def _parse_schedule(cls, value: Any) -> str | None:
+        """A recognized ``@every``/``HH:MM``/cron spec, or None. Rejects (naming the
+        reason) exactly the specs ``core.schedule.is_schedule_due`` would otherwise treat
+        as silently never-due."""
+        if value in (None, ""):
+            return None
+        text = str(value)
+        reason = _schedule.describe_spec_error(text)
+        if reason:
+            raise ValueError(reason)
+        return text
 
     @classmethod
     def _validated(cls, present: dict[str, str]) -> PodSettings:

@@ -212,3 +212,78 @@ class TestConfigSetPipeline:
             "reviewer",
             "tester",
         ]
+
+
+class TestConfigSetSchedule:
+    """``pod config set/unset schedule`` -- docket-schedules.json's own writer.
+    See ``test_serve__scheduled_and_webhook_dispatch.py`` for the sweep firing on a spec set
+    this way."""
+
+    def test_set_validates_and_writes_the_schedules_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        _pod.dispatch("proj", "config", ["set", "schedule", "@every 30m"])
+        capsys.readouterr()
+
+        from docket.core import schedule as _sched
+
+        schedules = _sched.load_schedules(_cfg.SCHEDULE_FILE)
+        assert schedules["proj"] == "@every 30m"
+        assert _lead_meta("proj")["schedule"] == "@every 30m"
+
+    def test_set_rejects_an_unrecognized_spec_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        before = _lead_meta("proj")
+
+        with pytest.raises(typer.Exit) as exc:
+            _pod.dispatch("proj", "config", ["set", "schedule", "@every 3x"])
+        assert exc.value.exit_code == 1
+        assert "schedule" in capsys.readouterr().err
+        assert _lead_meta("proj") == before
+
+        from docket.core import schedule as _sched
+
+        assert _sched.load_schedules(_cfg.SCHEDULE_FILE) == {}
+
+    def test_unset_removes_it_from_the_schedules_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        _pod.dispatch("proj", "config", ["set", "schedule", "@every 30m"])
+        capsys.readouterr()
+
+        _pod.dispatch("proj", "config", ["unset", "schedule"])
+        capsys.readouterr()
+
+        from docket.core import schedule as _sched
+
+        assert _sched.load_schedules(_cfg.SCHEDULE_FILE) == {}
+        assert pod.PodSettings.load_for("proj").schedule is None
+
+    def test_a_schedule_set_by_the_command_fires_under_the_serve_sweep(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Acceptance oracle: `config set schedule` writes exactly what
+        `serve.py::_check_schedules` reads -- no separate wiring needed for the sweep to
+        pick it up."""
+        import time as _time
+
+        import docket.serve as _serve
+
+        _build(tmp_path, monkeypatch)
+        _pod.dispatch("proj", "config", ["set", "schedule", "@every 1s"])
+        capsys.readouterr()
+
+        dispatched: list[str] = []
+        monkeypatch.setattr(
+            "docket.core.dispatch.dispatch_pod",
+            lambda proj, **kw: dispatched.append(proj) or [],
+        )
+        _serve._check_schedules(_time.time())
+        deadline = _time.time() + 2
+        while not dispatched and _time.time() < deadline:
+            _time.sleep(0.05)
+        assert dispatched == ["proj"]
