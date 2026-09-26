@@ -1645,7 +1645,10 @@ def cmd_pod(
                         never double-run the same task, and each hop is
                         persisted as it completes so a crash loses at most
                         the in-flight hop. `--resume` also reclaims any task
-                        a prior dispatcher left failed with a stale claim,
+                        a prior dispatcher left failed with a stale claim
+                        or as `dispatch_refused` (a deterministic refusal
+                        settled mid-task), and counts a still-`running`
+                        task as work so the stale-claim sweep can judge it,
                         continuing from its last persisted hop. `--timeout`
                         overrides both the agent-turn timeout and the
                         verifyCmd timeout for this run only (otherwise each
