@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A recipe applies to any pod in one command.** `docket pod <p> apply [<dir>] [--dry-run]
+  [--json]` (default `<codebase>/.docket/`) reads `roles/*.yaml`, `policies/*.json`,
+  `pipeline.yaml` and a three-key `pod.yaml` (`members`, `settings`, `pipeline`), validates
+  everything before writing anything, is idempotent, and audits once as `pod.apply`. The three
+  shipped recipes carry a `pod.yaml` and their README's "Apply it" is that one command.
+- **Every resolved value says which scope it came from.** `docket config explain <agent> --json`
+  labels the role, each policy file, each loaded MCP server and each denied tool with `scope:
+  built-in | global | pod`, and `docket doctor` names a malformed pod role overlay entry or an
+  invalid pod policy file by pod, item and reason.
 - **A pod chooses its MCP servers and denies tools for every role in it.** `docket pod <p> config
   set mcpServers a,b` limits a pod to those catalog servers (unset means all; an unknown or stale
   name is refused at write and refuses the dispatch naming it), and `set deniedTools fetch`

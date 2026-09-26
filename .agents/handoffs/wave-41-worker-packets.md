@@ -12,7 +12,7 @@ contract; this file is the map. Read §0 and your own packet only.
 | --- | --- | --- |
 | 41 | P27-1, P27-2, P27-3 | P27-3, P27-2, P27-1 |
 | 42 | P27-4, P27-5 | P27-5, P27-4 |
-| 43 | P27-6 ∥ P27-8, then P27-7 | P27-8, P27-6, P27-7 |
+| 43 | P27-6 ∥ P27-8, then P27-9, then P27-7 | P27-8, P27-6, P27-9, P27-7 |
 
 ## 0. Rules for every worker
 
@@ -205,6 +205,27 @@ recipes" ~L319), `cli-interface.spec.md` -> 1.33.0.
 - **Goldens:** `completions_bash`/`completions_zsh` gain the subcommand; regenerate those two
   and `docs/commands.md`, listing the lines.
 - **RED:** `from docket.core import pod_apply` fails on the base.
+
+## P27-9 — pod-scoped custom roles resolve in the roster, and `apply` writes pod scope
+
+Branch `p27-9-pod-roster`. Wave 43, serially after P27-6 merged, before P27-7. Specs:
+`pod-dispatch.spec.md` -> 6.18.0 (the membership/roster section), `pod-blueprints.spec.md`
+-> 1.7.0 ("Pod manifests: apply": remove the global-overlay workaround), `role-archetypes.spec.md`
+-> 1.16.0 ("Shipped recipes").
+
+- **Where.** `src/docket/core/pod.py`: `_role_names` (L41), `normalize_role` (L64),
+  `members_of` (L122), `parse_member_id` (L152), `resolve_member` (L172). Callers:
+  `cli/_pod.py` L123 and L315 (`normalize_role`), `cli/_status.py` L31, `core/dispatch.py`
+  L367/384/486/561/2295 (`members_of`, already pass `project`), `edges/adapters/docket_runtime.py`
+  L136 and `core/telegram.py` L169 (`parse_member_id`, already pass `project`).
+  `src/docket/core/pod_apply.py`: `_plan_roles` (~L143, the `already_global` check) and the
+  `add_user_archetype(role_write.doc)` call (~L360) become pod-scoped; fix the module docstring.
+- **Do not touch:** `core/dispatch.py` beyond passing `project` where a signature changes (its
+  `members_of` calls already do); `cli/_config.py`, `cli/_doctor.py`, `core/archetypes.py`.
+- **RED:** `tests/unit/core/test_pod.py` — `vetter` only in pod `acme`'s overlay
+  (`pod_config_dir("acme")/roles.json`, wire shape as in `tests/unit/core/test_archetypes.py::
+  _write_vetter_overlay`): `parse_member_id("acme-vetter", "acme")` is `None` on the base.
+- **Goldens:** none expected.
 
 ## P27-7 — `docket pod <p> export <dir>`
 
