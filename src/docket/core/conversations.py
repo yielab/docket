@@ -17,6 +17,7 @@ ops stay testable; the ``cli`` layer stamps ``datetime.now(UTC)``.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 from collections.abc import Callable
 from enum import StrEnum
@@ -27,6 +28,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import docket.config as _cfg
 from docket.edges import store as _store
+
+
+def _epoch_from_iso(ts: str) -> float | None:
+    """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
+    try:
+        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+    except (ValueError, IndexError):
+        return None
+    return dt.replace(tzinfo=_dt.UTC).timestamp()
 
 
 class ConversationStatus(StrEnum):
@@ -194,6 +204,26 @@ def touch_for_hop(
     return reg
 
 
+def prune_closed(
+    reg: ConversationRegistry, *, cutoff_epoch: float
+) -> tuple[int, ConversationRegistry]:
+    """Drop ``done`` conversations whose ``updated`` predates *cutoff_epoch*. Pure."""
+    # active/in_progress/waiting conversations are never touched regardless of age --
+    # only a conversation already marked done is eligible.
+    kept: list[Conversation] = []
+    removed = 0
+    for c in reg.conversations:
+        if c.status == ConversationStatus.done:
+            epoch = _epoch_from_iso(c.updated)
+            if epoch is not None and epoch < cutoff_epoch:
+                removed += 1
+                continue
+        kept.append(c)
+    if removed == 0:
+        return 0, reg
+    return removed, reg.model_copy(update={"conversations": kept})
+
+
 def remove_agent(reg: ConversationRegistry, agent_id: str) -> ConversationRegistry:
     """Drop all conversations for *agent_id* (used on agent/pod teardown)."""
     kept = [c for c in reg.conversations if c.agent_id != agent_id]
@@ -314,6 +344,28 @@ def remove_agent_durable(agent_id: str, path: Path | None = None) -> bool:
         return updated is not reg, updated
 
     return mutate(_remove, path)
+
+
+def prune_closed_durable(
+    retention_s: int | None = None,
+    *,
+    dry_run: bool = False,
+    now: float | None = None,
+    path: Path | None = None,
+) -> int:
+    """Remove ``done`` conversations past the retention window (default
+    ``config.TRACE_RETENTION_S``). Returns the count removed (or, under *dry_run*,
+    that would be)."""
+    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    cutoff_epoch = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    if dry_run:
+        removed, _ = prune_closed(load(path), cutoff_epoch=cutoff_epoch)
+        return removed
+
+    def _prune(reg: ConversationRegistry) -> tuple[int, ConversationRegistry]:
+        return prune_closed(reg, cutoff_epoch=cutoff_epoch)
+
+    return mutate(_prune, path)
 
 
 def touch_for_hop_durable(

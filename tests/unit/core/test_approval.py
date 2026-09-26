@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os as _os
 import threading
 import urllib.error
 import urllib.request
@@ -442,3 +443,46 @@ class TestExpiryStillFailCloses:
         swept = _approval.approval_sweep_expired()
         assert swept == 0
         assert _approval.approval_get(apr_token)["state"] == "pending"
+
+
+class TestPruneResolved:
+    def _age_by(self, path: Path, seconds: float) -> None:
+        old = path.stat().st_mtime - seconds
+        _os.utime(path, (old, old))
+
+    def test_prune_removes_old_resolved_keeps_recent_and_pending(self, approvals_dir: Path) -> None:
+        old_granted = _approval.approval_create("proj", "implementer", "x")
+        _approval.approval_grant(old_granted, channel="cli")
+        self._age_by(_approval_path(old_granted), _cfg.TRACE_RETENTION_S + 3600)
+
+        recent_denied = _approval.approval_create("proj", "implementer", "x")
+        _approval.approval_deny(recent_denied, channel="cli")
+
+        still_pending = _approval.approval_create("proj", "implementer", "x")
+        self._age_by(_approval_path(still_pending), _cfg.TRACE_RETENTION_S + 3600)
+
+        removed = _approval.prune_resolved()
+
+        assert removed == 1
+        assert not _approval_path(old_granted).exists()
+        assert _approval.approval_get(recent_denied)["state"] == "denied"
+        assert _approval.approval_get(still_pending)["state"] == "pending"
+
+    def test_prune_dry_run_reports_without_deleting(self, approvals_dir: Path) -> None:
+        token = _approval.approval_create("proj", "implementer", "x")
+        _approval.approval_grant(token, channel="cli")
+        self._age_by(_approval_path(token), _cfg.TRACE_RETENTION_S + 3600)
+
+        removed = _approval.prune_resolved(dry_run=True)
+
+        assert removed == 1
+        assert _approval_path(token).exists()
+
+    def test_prune_respects_custom_retention_window(self, approvals_dir: Path) -> None:
+        token = _approval.approval_create("proj", "implementer", "x")
+        _approval.approval_grant(token, channel="cli")
+
+        removed = _approval.prune_resolved(retention_s=0)
+
+        assert removed == 1
+        assert not _approval_path(token).exists()

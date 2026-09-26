@@ -13,6 +13,7 @@ from threading import Barrier, Thread
 
 import pytest
 
+import docket.config as _cfg
 from docket.cli import _conversations as cli
 from docket.core import conversations as C
 
@@ -74,6 +75,31 @@ class TestPureOps:
         r = _reg(C.Conversation(id="a", agent_id="x"), C.Conversation(id="b", agent_id="y"))
         r = C.remove_agent(r, "x")
         assert [c.id for c in r.conversations] == ["b"]
+
+    def test_prune_closed_drops_old_done_keeps_active_and_recent(self) -> None:
+        old_done = C.Conversation(
+            id="a", agent_id="x", status=C.ConversationStatus.done, updated="2020-01-01T00:00:00"
+        )
+        recent_done = C.Conversation(
+            id="b", agent_id="y", status=C.ConversationStatus.done, updated="2026-07-19T00:00:00"
+        )
+        old_active = C.Conversation(
+            id="c", agent_id="z", status=C.ConversationStatus.active, updated="2020-01-01T00:00:00"
+        )
+        r = _reg(old_done, recent_done, old_active)
+        cutoff = C._epoch_from_iso("2025-01-01T00:00:00")
+        assert cutoff is not None
+
+        removed, r2 = C.prune_closed(r, cutoff_epoch=cutoff)
+
+        assert removed == 1
+        assert [c.id for c in r2.conversations] == ["b", "c"]
+
+    def test_prune_closed_noop_returns_same_registry(self) -> None:
+        r = _reg(C.Conversation(id="a", agent_id="x", status=C.ConversationStatus.active))
+        removed, r2 = C.prune_closed(r, cutoff_epoch=0.0)
+        assert removed == 0
+        assert r2 is r
 
 
 class TestLoadSave:
@@ -213,6 +239,50 @@ class TestLockedMutations:
         assert a.topic == "topic" and a.last_message == "preview"
         assert b.topic == "other"
 
+    def test_prune_closed_durable_removes_old_done_keeps_active(self, tmp_path: Path) -> None:
+        p = tmp_path / "conversations.json"
+        C.save(
+            _reg(
+                C.Conversation(
+                    id="a",
+                    agent_id="x",
+                    status=C.ConversationStatus.done,
+                    updated="2020-01-01T00:00:00",
+                ),
+                C.Conversation(
+                    id="b",
+                    agent_id="y",
+                    status=C.ConversationStatus.active,
+                    updated="2020-01-01T00:00:00",
+                ),
+            ),
+            p,
+        )
+
+        removed = C.prune_closed_durable(retention_s=30 * 86400, path=p)
+
+        assert removed == 1
+        assert [c.id for c in C.load(p).conversations] == ["b"]
+
+    def test_prune_closed_durable_dry_run_reports_without_deleting(self, tmp_path: Path) -> None:
+        p = tmp_path / "conversations.json"
+        C.save(
+            _reg(
+                C.Conversation(
+                    id="a",
+                    agent_id="x",
+                    status=C.ConversationStatus.done,
+                    updated="2020-01-01T00:00:00",
+                )
+            ),
+            p,
+        )
+
+        removed = C.prune_closed_durable(retention_s=30 * 86400, dry_run=True, path=p)
+
+        assert removed == 1
+        assert len(C.load(p).conversations) == 1
+
 
 class TestCliHelpers:
     def test_flag_space_and_equals(self) -> None:
@@ -228,3 +298,49 @@ class TestCliHelpers:
         assert cli._find(r, "telegram:a:-1").id == "telegram:a:-1"  # exact id
         assert cli._find(r, "a").id == "telegram:a:-2"  # bare agent → most recent
         assert cli._find(r, "missing") is None
+
+
+class TestPruneCli:
+    """``docket conversations prune`` -- the manual counterpart to ``docket serve``'s sweep."""
+
+    def test_prune_removes_old_done_conversations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        p = tmp_path / "conversations.json"
+        monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
+        C.save(
+            _reg(
+                C.Conversation(
+                    id="a",
+                    agent_id="x",
+                    status=C.ConversationStatus.done,
+                    updated="2020-01-01T00:00:00",
+                )
+            ),
+            p,
+        )
+
+        assert cli.run_conversations("prune", ["--days", "0"]) == 0
+
+        assert C.load(p).conversations == []
+
+    def test_prune_dry_run_does_not_delete(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        p = tmp_path / "conversations.json"
+        monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
+        C.save(
+            _reg(
+                C.Conversation(
+                    id="a",
+                    agent_id="x",
+                    status=C.ConversationStatus.done,
+                    updated="2020-01-01T00:00:00",
+                )
+            ),
+            p,
+        )
+
+        assert cli.run_conversations("prune", ["--dry-run", "--days", "0"]) == 0
+
+        assert len(C.load(p).conversations) == 1

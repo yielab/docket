@@ -11,6 +11,8 @@ calls never clobbering each other (locked read-modify-write).
 
 from __future__ import annotations
 
+import datetime as _dt
+import json
 import threading
 from pathlib import Path
 
@@ -194,3 +196,73 @@ class TestConcurrentCreate:
             t.join(timeout=10)
 
         assert len(_runs.list_runs()) == n
+
+
+def _bare_run(run_id: str, state: str, finished_at: str | None) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "source": "sweep",
+        "project": "proj",
+        "state": state,
+        "taskIds": [],
+        "error": "",
+        "created": finished_at or "2020-01-01T00:00:00+00:00",
+        "startedAt": finished_at,
+        "finishedAt": finished_at,
+        "pids": [],
+        "variables": {},
+    }
+
+
+class TestPruneTerminal:
+    def test_prune_removes_old_terminal_keeps_running_and_recent(self, runs_file: Path) -> None:
+        """Acceptance oracle: 10,000 old terminal runs plus 1 running run — after the
+        sweep only the running run and the recent ones remain."""
+        old = "2020-01-01T00:00:00+00:00"
+        recent = _dt.datetime.now(_dt.UTC).isoformat()
+        runs = [_bare_run(f"run-old-{i}", "succeeded", old) for i in range(10_000)]
+        runs.append(_bare_run("run-running", "running", None))
+        runs.append(_bare_run("run-recent", "failed", recent))
+        runs_file.write_text(json.dumps({"runs": runs}), encoding="utf-8")
+
+        removed = _runs.prune_terminal()
+
+        assert removed == 10_000
+        remaining_ids = {r["id"] for r in _runs.list_runs()}
+        assert remaining_ids == {"run-running", "run-recent"}
+
+    def test_prune_dry_run_reports_without_deleting(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs_file.write_text(
+            json.dumps({"runs": [_bare_run("run-old", "succeeded", old)]}), encoding="utf-8"
+        )
+
+        removed = _runs.prune_terminal(dry_run=True)
+
+        assert removed == 1
+        assert len(_runs.list_runs()) == 1
+
+    def test_prune_never_touches_queued_or_running_regardless_of_age(self, runs_file: Path) -> None:
+        old = "2020-01-01T00:00:00+00:00"
+        runs_file.write_text(
+            json.dumps(
+                {"runs": [_bare_run("run-queued", "queued", None), _bare_run("r2", "running", old)]}
+            ),
+            encoding="utf-8",
+        )
+
+        removed = _runs.prune_terminal()
+
+        assert removed == 0
+        assert {r["id"] for r in _runs.list_runs()} == {"run-queued", "r2"}
+
+    def test_prune_respects_custom_retention_window(self, runs_file: Path) -> None:
+        recent = _dt.datetime.now(_dt.UTC).isoformat()
+        runs_file.write_text(
+            json.dumps({"runs": [_bare_run("run-recent", "succeeded", recent)]}), encoding="utf-8"
+        )
+
+        # A window of 0 seconds makes even a just-finished run eligible.
+        removed = _runs.prune_terminal(retention_s=0)
+
+        assert removed == 1

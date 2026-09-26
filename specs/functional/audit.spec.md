@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.9.2
+**Version**: 2.10.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -261,6 +261,13 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    current chain makes a claim on it, the command **MUST** say so explicitly
    (rather than silently ignoring it or claiming full-history coverage it
    cannot provide).
+5. This size-triggered rotation is `audit.log`'s **only** retention mechanism, and it is
+   untouched by the age-based `TRACE_RETENTION_S` sweep that bounds `core/trace.py`'s trace
+   files and (as of ROADMAP P26-15) `core/runs.py`'s run registry, `core/approval.py`'s
+   resolved-approval store, and `core/conversations.py`'s closed-conversation registry.
+   `audit.log`/`audit.log.1` **MUST NEVER** be pruned by age, by that sweep, or by any command
+   introduced for those other stores — the audit trail is an intentionally separate, non-lossy
+   record (see Requirement 2), and remains bounded only by the single-generation rotation above.
 
 ### Viewing and verifying (docket audit)
 
@@ -409,6 +416,18 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.10.0 (2026-09-26)
+
+- **P26-15: audit retention stays untouched by the new cross-store sweep.** New Rotation
+  requirement 5 states explicitly that `audit.log`'s size-triggered rotation is its only
+  retention mechanism, and is never touched by the age-based `TRACE_RETENTION_S` sweep that
+  P26-15 extends from `core/trace.py`'s trace files to the run registry, the approval store, and
+  the conversation registry (`pod-dispatch.spec.md` v6.14.0's "Registry retention" section) — no
+  behavior change to `audit.log` itself, just closing a gap where a reader could otherwise assume
+  the new sweep's scope was universal. Also fixes the stale `config.py` comment this requirement
+  restates in code: it previously claimed rotation "starts a fresh hash chain", contradicting
+  Requirement 2/W18-1's actual carry-forward behavior.
 
 ### Version 2.9.2 (2026-09-18)
 

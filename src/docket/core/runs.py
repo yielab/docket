@@ -174,6 +174,15 @@ def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
 
 
+def _epoch_from_iso(ts: str) -> float | None:
+    """Parse the leading 'YYYY-MM-DDTHH:MM:SS' of *ts* as a UTC epoch."""
+    try:
+        dt = _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+    except (ValueError, IndexError):
+        return None
+    return dt.replace(tzinfo=_dt.UTC).timestamp()
+
+
 def _valid_timestamp(value: object) -> bool:
     if value is None:
         return True
@@ -413,6 +422,43 @@ def list_runs(project: str | None = None) -> list[dict[str, Any]]:
     if project:
         runs = [r for r in runs if r.get("project") == project]
     return sorted(runs, key=lambda r: str(r.get("created", "")), reverse=True)
+
+
+def prune_terminal(
+    retention_s: int | None = None,
+    *,
+    dry_run: bool = False,
+    now: float | None = None,
+) -> int:
+    """Remove terminal run records (succeeded/failed/cancelled) whose ``finishedAt``
+    is older than the retention window (default ``config.TRACE_RETENTION_S``).
+    Returns the count removed (or, under *dry_run*, that would be)."""
+    # queued/running records are never touched regardless of age -- this must never
+    # delete evidence of live work. A record with no parseable finishedAt (malformed)
+    # is kept, never guessed at. Sharing TRACE_RETENTION_S with core/trace.py's own
+    # expiry keeps every docket-owned store bounded by one operator-facing knob.
+    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    cutoff = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    removed = 0
+
+    def _eligible(rec: dict[str, Any]) -> bool:
+        if str(rec.get("state", "")) not in _TERMINAL_STATES:
+            return False
+        epoch = _epoch_from_iso(str(rec.get("finishedAt") or ""))
+        return epoch is not None and epoch < cutoff
+
+    if dry_run:
+        return sum(1 for r in _runs_list(_store.read_json(runs_path())) if _eligible(r))
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal removed
+        runs = _runs_list(doc)
+        kept = [r for r in runs if not _eligible(r)]
+        removed = len(runs) - len(kept)
+        return {"runs": kept} if removed else None
+
+    _store.read_modify_write(runs_path(), _fn)
+    return removed
 
 
 def current_run_id() -> str | None:

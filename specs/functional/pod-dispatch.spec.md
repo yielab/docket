@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.12.0
+**Version**: 6.14.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -101,7 +101,10 @@ This specification covers:
 - The require_approval gate's two wired sources for this version (a pod-level Lead-meta role
   list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
   (grant resumes at the exact hop, deny fails the task immediately, an expiry fail-closes to
-  denied), and why a `waiting_approval` task is never claimable by a plain dispatch run
+  denied), and why a `waiting_approval` task is never claimable by a plain dispatch run; and
+  which pod a dispatch hop's approval trace events must file under
+- **Registry retention**: the shared trigger and liveness rule that bounds `docket-runs.json`,
+  the approval store, and the conversation registry, without owning any one store's own shape
 - **Structured handoff artifacts** (W-5): the `HandoffArtifact` model's fields and field-priority
   drop order, how a hop's artifact is built and rendered into the next hop's prompt, and its
   persistence/backward-compatibility contract for `--resume`
@@ -708,6 +711,42 @@ was seeded once at binding time.)*
 6. The require_approval gate **MUST NOT** bypass, or be bypassed by, the budget gate — budget is
    always checked first (affordability before permission); a hop blocked on budget **MUST**
    transition to `blocked`, not `waiting_approval`, and no approval record is created for it.
+7. Every trace event this pipeline's approval mechanics produce — including an **in-turn**
+   `core/tools.py` tool-call gate reached from inside a dispatch hop's agent turn, not only the
+   pod-level/pipeline-defined gates above — **MUST** file under the pod's own trace directory
+   (`traces/<project>/`), never under the hop's agent id. `edges/adapters/docket_runtime.py`'s
+   `DocketDriver.run_turn` builds the `ToolContext` a hop's turn runs under; its `project` field
+   **MUST** resolve to the caller-supplied `trace_project` (the pod, threaded in from
+   `core/dispatch.py`'s `_run_hop_turn`) when one is given, falling back to the agent id only for
+   a non-dispatch caller (e.g. `docket harness run`, which has no pod to file under). This is what
+   `core/approval.py`'s `approval_create`/`approval_grant`/`approval_deny` — called with
+   `ctx.project` — actually file their `approval_requested`/`approval_granted`/`approval_denied`
+   events against; before this requirement, an in-turn gate's approval trace landed under
+   `traces/<agent-id>/`, invisible to an operator looking at the pod's own trace directory for
+   everything else that hop did.
+
+### Registry retention (runs, approvals, conversations)
+
+1. `core/runs.py`'s `docket-runs.json`, `core/approval.py`'s per-token files under
+   `$APPROVALS_DIR`, and `core/conversations.py`'s `docket-conversations.json` **MUST** each be
+   bounded by a retention sweep sharing `config.TRACE_RETENTION_S` — the same knob
+   `core/trace.py`'s `expire_old_traces` already uses — rather than growing forever. This spec
+   covers only that these three stores share the trigger and the liveness rule below; each
+   store's own record shape and CLI surface are documented where the rest of that store is (see
+   "does NOT cover" above for the run registry and `security-gates.spec.md` for the approval
+   record).
+2. A **live** record **MUST NEVER** be removed regardless of age: a `queued`/`running` run, a
+   `pending` approval, or a conversation not in `done` status. Only a record already terminal
+   (a run in `succeeded`/`failed`/`cancelled`; an approval in `granted`/`denied`/`expired`; a
+   conversation `done`) is eligible, and only once it has sat terminal past the retention window.
+3. Eligibility is measured from when a record **became** terminal, not from when it was created:
+   a run's `finishedAt`, an approval file's own mtime (its state transition is its only write
+   after creation), and a conversation's `updated` timestamp.
+4. `docket serve`'s periodic sweep (`_run_sweeps`) **MUST** run all three prunes, each
+   independently best-effort like the existing trace/approval-expiry sweeps — one store's prune
+   failing **MUST NOT** block the others or the server. `docket runs prune` and `docket
+   conversations prune` (both `[--dry-run] [--days N]`) **MUST** expose the same underlying
+   functions for on-demand use between sweeps.
 
 ### Implementer verification gate (`verifyCmd`)
 
@@ -1314,6 +1353,21 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.14.0 (2026-09-26)
+
+- **P26-15: registries stay bounded; approval traces are filed where an operator looks.** New
+  "require_approval gate" requirement 7: every approval-related trace event a dispatch hop
+  produces, including the **in-turn** `core/tools.py` tool-call gate, must file under the pod's
+  trace directory (`traces/<project>/`), never the hop's agent id — fixed by having
+  `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` resolve `ToolContext.project` from
+  the caller-supplied `trace_project` (falling back to the agent id only when none is given, e.g.
+  `docket harness run`). New "Registry retention (runs, approvals, conversations)" section: the
+  run registry, the approval store, and the conversation registry now share one retention sweep
+  (`config.TRACE_RETENTION_S`, the same knob trace expiry uses) that removes only records already
+  terminal — a live record is never touched regardless of age. `docket serve`'s periodic sweep
+  runs all three prunes independently best-effort; `docket runs prune` / `docket conversations
+  prune` (`[--dry-run] [--days N]`) expose the same functions on demand.
 
 ### Version 6.12.0 (2026-09-26)
 

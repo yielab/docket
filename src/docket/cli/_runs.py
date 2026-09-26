@@ -44,7 +44,9 @@ def run_runs(sub: str | None, args: list[str]) -> int:
         return _show(args)
     if sub == "cancel":
         return _cancel(args)
-    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id> | cancel <id>.")
+    if sub == "prune":
+        return _prune(args)
+    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id> | cancel <id> | prune.")
     return 1
 
 
@@ -152,6 +154,17 @@ def _show(args: list[str]) -> int:
         ui.console.print()
         ui.error(error)
     ui.console.print()
+    return 0
+
+
+def _prune(args: list[str]) -> int:
+    """Delete terminal run records past retention; ``docket serve``'s sweep does this too."""
+    dry_run = "--dry-run" in args
+    days = _flag(args, "--days")
+    retention_s = int(days) * 86400 if days is not None else None
+    removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run)
+    verb = "Would remove" if dry_run else "Removed"
+    ui.success(f"{verb} {removed} terminal run record(s).")
     return 0
 
 

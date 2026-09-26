@@ -224,7 +224,10 @@ class DocketDriver:
             timeout=timeout,
             env=tool_env,
             role=meta.role,
-            project=agent_id,
+            # trace_project (the pod, when a dispatch hop supplies one) is what an
+            # in-turn approval gate's trace event must file under -- falling back to
+            # agent_id keeps every non-dispatch caller (e.g. the harness) unchanged.
+            project=trace_project or agent_id,
             sandbox="auto" if want_sandbox else "off",
             cancellation_check=(
                 cancellation_signal.observe if cancellation_signal is not None else None
