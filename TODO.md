@@ -185,8 +185,8 @@ spec req. 30.
 
 ### P26-3 — context budgets follow the resolved model window
 
-**Status:** TODO · **Size:** M · **Wave:** 39 (after P26-2) · **Spec:** `agent-loop.spec.md`,
-`session-history.spec.md`
+**Status:** DONE (merged, worker commit `9f3926f`; dispatch hop-carryover and compaction budgets deliberately left on the fixed default — wiring them is a measured follow-up, not scheduled) · **Size:** M · **Wave:** 39 (after P26-2) · **Spec:** `agent-loop.spec.md` 1.20.0,
+`session-history.spec.md` 1.5.0
 
 **Trigger:**
 - `identity.py:263` budgets state as `CONTEXT_TOKEN_BUDGET` × 4 bytes ≈ 24 KB for every model,
