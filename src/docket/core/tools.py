@@ -236,6 +236,7 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
         tool=tool.name,
         args=args,
         branch_of=lambda: _sys.git_current_branch(str(ctx.roots[0])) if ctx.roots else "",
+        worktree_root=str(ctx.roots[0]) if ctx.roots else "",
     )
     hit = _policy.policy_eval_detail(
         ctx.role, "pre_tool_call", rendered, project=ctx.project, call=call

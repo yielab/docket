@@ -2590,6 +2590,23 @@ def cmd_validate(target: str | None = typer.Argument(None)) -> None:
 
 
 @app.command(
+    "plugins",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_plugins(ctx: typer.Context) -> None:
+    """List predicate plugins an operator has applied.
+
+    Subcommand: `list [--pod <p>]` prints every predicate a policy's `when:
+    {plugin: ...}` can reach -- global (`~/.docket/plugins/`) then that
+    pod's own `config/plugins/`, each with its scope, file and sha256.
+    Docket never loads a plugin from a codebase; `docket pod <p> apply` is
+    what copies a recipe's `plugins/*.py` into pod scope."""
+    from docket.cli._plugins import run_plugins
+
+    raise typer.Exit(run_plugins(list(ctx.args)))
+
+
+@app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

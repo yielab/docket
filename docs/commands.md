@@ -1304,6 +1304,24 @@ file) until it is fixed or removed, and `docket doctor` reports it.
 
 ---
 
+### plugins
+
+**Usage:** `docket plugins`
+
+List predicate plugins an operator has applied.
+
+Subcommand: `list \[--pod <p>\]` prints every predicate a policy's `when:
+{plugin: ...}` can reach -- global (`~/.docket/plugins/`) then that
+pod's own `config/plugins/`, each with its scope, file and sha256.
+Docket never loads a plugin from a codebase; `docket pod <p> apply` is
+what copies a recipe's `plugins/*.py` into pod scope.
+
+
+**Aliases:** None
+
+
+---
+
 ### approve
 
 **Usage:** `docket approve`
@@ -1538,7 +1556,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---
@@ -1588,6 +1606,7 @@ No command emits any other exit code today.
 | `DOCKET_LOG_DIR` | Directory for docket-owned log files | `/tmp/docket` |
 | `TRACES_DIR` | Root of per-session trace JSONL files (`docket trace`) | `$DOCKET_HOME/traces` |
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket gates`) | `$DOCKET_HOME/policies` |
+| `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `SCHEDULE_FILE` | The persisted `docket schedule` registry | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |

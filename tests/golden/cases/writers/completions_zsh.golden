@@ -38,6 +38,7 @@ _docket() {
     'serve:Local HTTP endpoints: /status.json /metrics /health'
     'completions:Shell completion helpers'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
+    'plugins:List predicate plugins an operator has applied'
     'trace:View agent execution traces'
     'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'

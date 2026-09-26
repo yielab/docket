@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.36.0
+**Version**: 1.38.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -713,6 +713,17 @@ counts and per-file detail)
 **Output**: Policy listing, JSON, or evaluation result
 **Return**: 0 on success, 1 on invalid subcommand
 
+#### docket plugins
+**Purpose**: List operator-applied predicate plugins a policy's `when.plugin` can reach
+**Syntax**: `docket plugins <subcommand> [args]`
+**Subcommands**:
+- `list [--pod <p>]`: Table (name, scope, file, sha256) of every predicate `core.plugins.discover`
+  finds -- global (`$PLUGINS_DIR`) first, then that pod's own `config/plugins/` when `--pod` is
+  given; `"No plugins applied."` when empty. Never lists a codebase's own `.docket/plugins/` --
+  only the two applied scopes are ever searched
+**Output**: Plugin listing, or an error naming an unknown/duplicate predicate
+**Return**: 0 on success, 1 on invalid subcommand or a `PluginError`
+
 #### docket approve
 **Purpose**: Grant a pending HITL approval token
 **Syntax**: `docket approve <token>`
@@ -976,6 +987,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.38.0 (2026-09-26)
+
+- New `docket plugins list [--pod <p>]` (`cli/_plugins.py`, `core/plugins.py`): lists every
+  predicate a policy's `when: {plugin: ...}` can reach -- global (`$PLUGINS_DIR`) then a pod's
+  own `config/plugins/`, by name, scope, file, and sha256. See `security-gates.spec.md`'s
+  "Predicate plugins" section for the discovery scope, the fail-closed evaluation, and the
+  `docket pod <p> apply` copy step.
 
 ### Version 1.36.0 (2026-09-26)
 

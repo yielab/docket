@@ -19,6 +19,7 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 _RUNTIME_FILES = (
     "__init__.py",
     "config.py",
+    "plugins.py",
     "core/__init__.py",
     "core/agent_loop.py",
     "core/approval.py",
@@ -31,6 +32,7 @@ _RUNTIME_FILES = (
     "core/llm.py",
     "core/memory.py",
     "core/models.py",
+    "core/plugins.py",
     "core/policy.py",
     "core/runtime_driver.py",
     "core/security.py",

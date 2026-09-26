@@ -119,6 +119,7 @@ def run_help(topic: str | None = None) -> int:
   {G}policies list{R}      List installed guardrail policies
   {G}policies init{R}      Install baseline policies (block-destructive, injection, redact)
   {G}policies test{R}      Dry-run policy evaluator on any text
+  {G}plugins list{R}       List operator-applied predicate plugins (global + pod)
   {G}approve{R}  <token>   Grant a pending HITL approval
   {G}deny{R}     <token>   Deny a pending HITL approval
 
