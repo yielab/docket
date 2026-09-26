@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.17.0
+**Version**: 6.18.0
 **Status**: Complete. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
 instruction data instead of a process-wide hardcoded string: `_hop_message`'s `role == "lead"`
 branch now resolves its instruction text through `core/archetypes.py`'s `resolve_hop_instruction`
@@ -449,9 +449,13 @@ was seeded once at binding time.)*
    *gated step id*, not one pod-wide counter, since a custom pipeline may declare more than one
    independent rework-capable gate (the built-in pipeline only ever has one — the Reviewer's).
 5. A custom `PipelineSpec` **MAY** target a role `docket pod`'s legacy four-role
-   `PIPELINE_ORDER` doesn't know about (e.g. a starter-library `researcher`/`critic`) —
-   `pod_full_roster` resolves *every* role the pod's members actually carry (first member per
-   role), not just the four legacy ones `pod_pipeline` considers.
+   `PIPELINE_ORDER` doesn't know about (e.g. a starter-library `researcher`/`critic`, or a role
+   defined only in this pod's own overlay) — `pod_full_roster` resolves *every* role the pod's
+   members actually carry (first member per role), not just the four legacy ones `pod_pipeline`
+   considers. `core.pod`'s roster helpers (`_role_names`, `parse_member_id`, `members_of`)
+   **MUST** resolve that role against the pod's own overlay (`core.archetypes.load_registry
+   (project)`) as well as the global one, so a pod-only custom role is a real roster member, not
+   only visible to `docket roles --pod`.
 6. `docket pod <project> config set pipeline <file>` **MUST** validate *file*
    (`core.pipeline.load_pipeline`) and plan it against the pod's *current* roster
    (`core.orchestrator.resolve_plan`) before accepting it: a role-targeted step whose role the
@@ -1454,6 +1458,15 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.18.0 (2026-09-26)
+
+- **P27-9: a pod-scoped custom role is a real roster member.** "Pipeline order and
+  participation" requirement 5 corrects a gap `_role_names()` (no `project`) left in
+  `core/pod.py`: `parse_member_id`/`members_of`/`normalize_role`/`resolve_member` now resolve a
+  pod's own role overlay too, so `pod_full_roster` no longer silently drops a member whose role
+  exists only in that overlay. See `pod-blueprints.spec.md` v1.7.0 and `role-archetypes.spec.md`
+  v1.16.0 for the companion `apply`/recipe correction.
 
 ### Version 6.17.0 (2026-09-26)
 

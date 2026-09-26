@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -192,13 +192,15 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    and `pipeline` (a filename inside *dir*, default `pipeline.yaml` when that file exists). An
    unrecognized top-level `pod.yaml` key, or a `members`/`settings` value of the wrong type,
    **MUST** be rejected before anything else is read.
-2. A role in `roles/*.yaml` **MUST** be written into the *global* user role overlay
-   (`~/.docket/docket-roles.json`), the same target `docket roles add <file.yaml>` (without
-   `--pod`) already writes to — never a pod-scoped overlay. `core/pod.py`'s own role-name
-   validity (the id-parsing `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of`
-   depend on to resolve a pipeline's roster) reads only that global registry, so a role written
-   only into a pod-scoped overlay could be provisioned as a member but could never be resolved
-   back out of the roster a pipeline dispatches against.
+2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
+   (`core.config.pod_config_dir(project)/roles.json`), the same target `docket roles add
+   --pod <project> <file.yaml>` already writes to — never the global user overlay
+   (`~/.docket/docket-roles.json`). `core/pod.py`'s roster helpers (the id-parsing
+   `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of` depend on to resolve a
+   pipeline's roster) resolve that pod's own overlay too (`core.archetypes.load_registry
+   (project)`), so a role written into the pod-scoped overlay is both provisionable as a member
+   and resolvable back out of the roster a pipeline dispatches against — and stays invisible to
+   every other pod, matching this command's `<project>`-scoped surface.
 3. `apply` **MUST** validate everything before writing anything: each `roles/*.yaml` definition
    (`role-archetypes.spec.md`'s schema), every `members` entry against the role registry *as it
    would be after* the recipe's own `roles/*.yaml` are added, the resolved `pipeline.yaml` against
@@ -316,6 +318,19 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-26)
+
+- **P27-9: `apply` writes to the pod's own role overlay, not the global one.** "Pod manifests:
+  apply" requirement 2 corrects the workaround Version 1.6.0 recorded: `core/pod.py`'s roster
+  helpers (`_role_names`, `parse_member_id`, `normalize_role`, `members_of`, `resolve_member`)
+  now resolve a pod's own role overlay (`core.archetypes.load_registry(project)`), which they
+  did not when P27-6 shipped, so a role `apply` wrote pod-scoped could be provisioned as a
+  member but never resolved back out of `pod_full_roster`. `apply` now writes each recipe role
+  into `core.config.pod_config_dir(project)/roles.json` (`core/pod_apply.py`'s `_plan_roles`
+  treats `source_of(name) == f"pod:{project}"` as "already applied"), matching `docket roles add
+  --pod <project>` and this command's own `<project>`-scoped surface; a role a recipe ships no
+  longer leaks into the global overlay or into any other pod.
 
 ### Version 1.6.0 (2026-09-26)
 

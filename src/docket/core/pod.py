@@ -38,11 +38,10 @@ FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 _SINGLETON_POD_ROLES: frozenset[str] = frozenset({"lead"})
 
 
-def _role_names() -> tuple[str, ...]:
-    """Live set of valid pod role names: built-ins + starter library + user overlay. Not cached
-    — re-reads the archetype registry every call (mirrors ``models_policy.load_registry``'s
-    no-caching pattern), so a freshly added archetype is always picked up without a reload."""
-    return _archetypes.load_registry().role_names()
+def _role_names(project: str = "") -> tuple[str, ...]:
+    """Live set of valid pod role names: built-ins + starter library + user overlay +,
+    when *project* is given, that pod's own overlay too. Not cached — always current."""
+    return _archetypes.load_registry(project).role_names()
 
 
 class PodError(ValueError):
@@ -61,14 +60,14 @@ class PodMember:
     session_key: str
 
 
-def normalize_role(role: str) -> str:
+def normalize_role(role: str, project: str = "") -> str:
     """Map user input to a canonical pod role (accepts the ``programmer`` alias). Validates
-    against the live archetype registry (``core/archetypes.py``), not a hardcoded list, so any
-    built-in, starter-library, or user-defined archetype name is accepted."""
+    against the live archetype registry, including *project*'s own overlay when given —
+    not a hardcoded list, so any registered archetype name is accepted."""
     r = role.strip().lower()
     if r == "programmer":
         r = "implementer"
-    valid = _role_names()
+    valid = _role_names(project)
     if r not in valid:
         raise PodError(f"unknown pod role {role!r}; valid roles: {', '.join(valid)}")
     return r
@@ -128,7 +127,7 @@ def members_of(all_agent_ids: list[str], project: str) -> list[tuple[str, str, i
         parsed = parse_member_id(mid, project)
         if parsed is not None:
             found.append((mid, parsed[0], parsed[1]))
-    roles = _role_names()
+    roles = _role_names(project)
     role_rank = {role: i for i, role in enumerate(roles)}
     found.sort(key=lambda t: (role_rank.get(t[1], len(roles)), t[2]))
     return found
@@ -164,7 +163,7 @@ def parse_member_id(member_id_str: str, project: str) -> tuple[str, int] | None:
         role, index = head, int(tail)
     else:
         role, index = rest, 1
-    if role not in _role_names() or index < 1:
+    if role not in _role_names(project) or index < 1:
         return None
     return role, index
 
@@ -178,8 +177,8 @@ def resolve_member(
     role_models: dict[str, str] | None = None,
 ) -> PodMember:
     """Resolve one pod member: canonical role, id, policy model, session key."""
-    canon = normalize_role(role)
-    arch = _archetypes.load_registry().get(canon)
+    canon = normalize_role(role, project)
+    arch = _archetypes.load_registry(project).get(canon)
     assert arch is not None  # normalize_role() already validated membership
     model = _mp.resolve_role_model(arch.resolved_policy_role, role_models)
     return PodMember(
@@ -205,7 +204,7 @@ def plan_pod(
     members: list[PodMember] = []
     counts: dict[str, int] = {}
     for role in roles:
-        canon = normalize_role(role)
+        canon = normalize_role(role, project)
         counts[canon] = counts.get(canon, 0) + 1
         if canon in _SINGLETON_POD_ROLES and counts[canon] > 1:
             raise PodError(f"a pod may have only one {canon}")
@@ -231,7 +230,7 @@ def plan_added_member(
 ) -> PodMember:
     """Resolve a member being added to an existing pod (handles duplicates); rejects adding a
     second Lead."""
-    canon = normalize_role(role)
+    canon = normalize_role(role, project)
     if canon in _SINGLETON_POD_ROLES:
         already = any(
             (p := parse_member_id(mid, project)) is not None and p[0] == canon

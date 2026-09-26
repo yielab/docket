@@ -312,7 +312,7 @@ def _pod_add(project: str, extra: list[str]) -> None:
     blueprint_name = _fleet.meta_get(base_id, "blueprint", "")
     role_models, _, _ = _mp.load_registry()
 
-    canon_role = pod.normalize_role(role)
+    canon_role = pod.normalize_role(role, project)
     if canon_role == "implementer":
         port_start, port_count, scratch = _pp.allocate_pod_resources(project)
     else:
