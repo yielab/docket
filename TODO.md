@@ -283,8 +283,8 @@ config, and the `profile --budget` write.
 
 ### P26-6 — a pipeline file can be a pod's default for every trigger
 
-**Status:** TODO · **Size:** M · **Wave:** 39 (after P26-4) · **Spec:** `pipeline-format.spec.md`,
-`pod-dispatch.spec.md`
+**Status:** DONE (merged `c12dae5`, worker commit `e06a401`; follow-up noted: serve.py webhook calls `effective_pipeline` without catching the new bound-pipeline `DispatchError`) · **Size:** M · **Wave:** 39 (after P26-4) · **Spec:** `pipeline-format.spec.md` 2.3.0,
+`pod-dispatch.spec.md` 6.12.0 (re-versioned from the worker's 6.11.0 — collided with P26-5)
 
 **Trigger:** only `cli/_pod.py:575` and `cli/_pipeline.py:167,205` pass `spec=`. `serve.py:453,503,1064`
 (sweep, schedule, webhook) and `cli/_mcp.py:127` always run the blueprint default, so a declared
