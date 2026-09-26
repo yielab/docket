@@ -167,6 +167,24 @@ class TestPodSettings:
         assert settings.max_rework_cycles == 1
         assert settings.turn_timeout_s is None
         assert settings.verify_timeout_s is None
+        assert settings.approval_mode == "wait"
+
+    def test_approval_mode_refuse_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "refuse"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_mode == "refuse"
+
+    def test_invalid_approval_mode_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "sometimes"})
+        with pytest.raises(pod.PodSettingsError, match="approvalMode"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_accepts_approval_mode(self) -> None:
+        assert pod.PodSettings.coerce("approvalMode", "refuse") == "refuse"
+
+    def test_coerce_rejects_invalid_approval_mode(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="approvalMode"):
+            pod.PodSettings.coerce("approvalMode", "sometimes")
 
     def test_accepts_numeric_strings_from_existing_installs(self) -> None:
         _write_lead_meta(
@@ -201,10 +219,15 @@ class TestPodSettings:
 
     def test_coerce_rejects_unknown_key(self) -> None:
         with pytest.raises(pod.PodSettingsError, match="unknown"):
-            pod.PodSettings.coerce("approvalMode", "x")
+            pod.PodSettings.coerce("definitelyNotARealSetting", "x")
 
     def test_value_and_source_reports_set_vs_default(self) -> None:
         _write_lead_meta("shop", {"maxReworkCycles": "3"})
         settings = pod.PodSettings.load_for("shop")
         assert settings.value_and_source("maxReworkCycles", "shop") == (3, "set")
         assert settings.value_and_source("budgetUsd", "shop") == (0.0, "default")
+
+    def test_value_and_source_reports_approval_mode(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "refuse"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("approvalMode", "shop") == ("refuse", "set")

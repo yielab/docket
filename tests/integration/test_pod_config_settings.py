@@ -80,6 +80,15 @@ class TestConfigSet:
         assert _dispatch.pod_max_rework_cycles("proj") == 2
         capsys.readouterr()
 
+    def test_set_approval_mode_refuse_persists_and_dispatch_reads_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        assert _dispatch.pod_approval_mode("proj") == "wait"
+        _pod.dispatch("proj", "config", ["set", "approvalMode", "refuse"])
+        assert _dispatch.pod_approval_mode("proj") == "refuse"
+        capsys.readouterr()
+
     def test_set_invalid_value_exits_1_and_leaves_meta_unchanged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -97,8 +106,20 @@ class TestConfigSet:
     ) -> None:
         _build(tmp_path, monkeypatch)
         with pytest.raises(typer.Exit) as exc:
+            _pod.dispatch("proj", "config", ["set", "definitelyNotARealSetting", "x"])
+        assert exc.value.exit_code == 1
+
+    def test_set_invalid_approval_mode_exits_1_and_leaves_meta_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        before = _lead_meta("proj")
+
+        with pytest.raises(typer.Exit) as exc:
             _pod.dispatch("proj", "config", ["set", "approvalMode", "x"])
         assert exc.value.exit_code == 1
+        assert "approvalMode" in capsys.readouterr().err
+        assert _lead_meta("proj") == before
 
 
 class TestConfigUnset:

@@ -677,3 +677,16 @@ class TestPodSettingReaders:
         _write_meta("myapp-lead", {"verifyTimeoutS": "0"})
         with pytest.raises(_dispatch.DispatchError, match="verifyTimeoutS"):
             _dispatch.pod_verify_timeout("myapp")
+
+    def test_pod_approval_mode_defaults_to_wait(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead")
+        assert _dispatch.pod_approval_mode("myapp") == "wait"
+
+    def test_pod_approval_mode_reads_through(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"approvalMode": "refuse"})
+        assert _dispatch.pod_approval_mode("myapp") == "refuse"
+
+    def test_pod_approval_mode_invalid_value_refuses(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"approvalMode": "sometimes"})
+        with pytest.raises(_dispatch.DispatchError, match="approvalMode"):
+            _dispatch.pod_approval_mode("myapp")

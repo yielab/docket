@@ -20,7 +20,7 @@ import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote as _url_quote
 
 import docket.config as _cfg
@@ -475,6 +475,12 @@ def pod_turn_timeout(project: str) -> int | None:
 def pod_verify_timeout(project: str) -> int | None:
     """The pod's configured verifyCmd timeout (Lead's ``verifyTimeoutS``), if set."""
     return _lead_meta_timeout(project, "verifyTimeoutS")
+
+
+def pod_approval_mode(project: str) -> Literal["wait", "refuse"]:
+    """The pod's configured unattended-approval posture (Lead's ``approvalMode``,
+    default ``"wait"`` -- see ``_compose_hop``)."""
+    return _pod_settings(project).approval_mode
 
 
 def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
@@ -1044,6 +1050,12 @@ def _compose_hop(
     if pipeline_worktree:
         env = dict(env or {})
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
+    if pod_approval_mode(ctx.project) == "refuse":
+        # Same internal-env route as PIPELINE_WORKTREE_ENV/harness mode
+        # (cli/_harness.py): DocketDriver pops this before the tool env
+        # reaches ToolContext, so it is never a real tool-visible variable.
+        env = dict(env or {})
+        env[_rd.DOCKET_APPROVAL_MODE] = "refuse"
     return message, env
 
 
