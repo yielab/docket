@@ -21,6 +21,7 @@ from tests.fakes import FakeDriver
 import docket.config as _cfg
 from docket.cli import _config, _pod
 from docket.core import archetypes as _arch
+from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
@@ -150,6 +151,63 @@ def test_apply_with_an_invalid_setting_writes_nothing(
         _pod_apply.plan_apply(project, bad_dir)
 
     assert not _cfg.pod_config_dir(project).exists()
+
+
+def test_apply_with_an_invalid_policy_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A policy file that fails ``validate_policy`` (an uncompilable regex) refuses before any
+    pod-scoped file is written, naming the offending file."""
+    project = "badpolicy"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    bad_dir = tmp_path / "bad-recipe"
+    (bad_dir / "policies").mkdir(parents=True)
+    (bad_dir / "policies" / "broken.json").write_text(
+        json.dumps(
+            {
+                "id": "broken",
+                "applies_to": ["implementer"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "(unclosed"},
+                "action": "block",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(_pod_apply.PodApplyError, match=r"broken\.json"):
+        _pod_apply.plan_apply(project, bad_dir)
+
+    assert not _cfg.pod_config_dir(project).exists()
+
+
+def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``secure-build``'s policy pack lands in the pod's own directory, never the fleet-wide
+    one; a second apply plans it ``skip`` and writes no second audit entry."""
+    project = "policied"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    recipe_dir = RECIPES_DIR / "secure-build"
+    src = recipe_dir / "policies" / "require-approval-secret-writes.json"
+
+    plan = _pod_apply.plan_apply(project, recipe_dir)
+    policy_items = [i for i in plan.items if i.kind == "policy"]
+    assert [(i.name, i.action) for i in policy_items] == [(src.name, "add")]
+    _pod_apply.apply(plan)
+
+    dest = _cfg.pod_config_dir(project) / "policies" / src.name
+    assert dest.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
+    assert not (_cfg.POLICIES_DIR / src.name).exists()
+    assert dest in _policy.policy_files(project)
+
+    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    second_plan = _pod_apply.plan_apply(project, recipe_dir)
+    second_policy_items = [i for i in second_plan.items if i.kind == "policy"]
+    assert [(i.name, i.action) for i in second_policy_items] == [(src.name, "skip")]
+    _pod_apply.apply(second_plan)
+    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    assert entries_after == entries_before
 
 
 # ── secure-build: one full dispatch on the fake driver ──────────────────────────
@@ -282,7 +340,11 @@ def test_export_then_apply_round_trip_matches_config_explain(
     assert (export_dir / "roles" / "security-vetter.yaml").is_file()
     assert (export_dir / "pipeline.yaml").is_file()
     assert (export_dir / "pod.yaml").is_file()
-    assert not (export_dir / "policies").exists()  # apply never wrote a pod policy file
+    assert (export_dir / "policies" / "require-approval-secret-writes.json").read_text(
+        encoding="utf-8"
+    ) == (recipe_dir / "policies" / "require-approval-secret-writes.json").read_text(
+        encoding="utf-8"
+    )
 
     with pytest.raises(typer.Exit) as exc:
         _pod.dispatch(source_project, "export", [str(export_dir)])

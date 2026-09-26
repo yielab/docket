@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -186,12 +186,13 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
 1. `docket pod <project> apply [<dir>] [--dry-run] [--json]` **MUST** read *dir* (default
    `<codebase>/.docket/`, from the pod Lead's own `codebase` meta) as: an optional `roles/*.yaml`
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
-   optional `pipeline.yaml` (or the file named by `pod.yaml`'s `pipeline` key), and an optional
-   `pod.yaml` manifest carrying exactly three top-level keys — `members` (a list of role names to
-   add if absent), `settings` (a mapping of any `docket pod <p> config set <key> <value>` key),
-   and `pipeline` (a filename inside *dir*, default `pipeline.yaml` when that file exists). An
-   unrecognized top-level `pod.yaml` key, or a `members`/`settings` value of the wrong type,
-   **MUST** be rejected before anything else is read.
+   optional `policies/*.json` directory (guardrail policies, the same schema
+   `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
+   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly three
+   top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
+   any `docket pod <p> config set <key> <value>` key), and `pipeline` (a filename inside *dir*,
+   default `pipeline.yaml` when that file exists). An unrecognized top-level `pod.yaml` key, or a
+   `members`/`settings` value of the wrong type, **MUST** be rejected before anything else is read.
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
    (`core.config.pod_config_dir(project)/roles.json`), the same target `docket roles add
    --pod <project> <file.yaml>` already writes to — never the global user overlay
@@ -201,25 +202,34 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    (project)`), so a role written into the pod-scoped overlay is both provisionable as a member
    and resolvable back out of the roster a pipeline dispatches against — and stays invisible to
    every other pod, matching this command's `<project>`-scoped surface.
-3. `apply` **MUST** validate everything before writing anything: each `roles/*.yaml` definition
-   (`role-archetypes.spec.md`'s schema), every `members` entry against the role registry *as it
-   would be after* the recipe's own `roles/*.yaml` are added, the resolved `pipeline.yaml` against
-   the roster *as it would be after* `members` join (no skipped step,
+3. A file in `policies/*.json` **MUST** be validated with `core.policy.validate_policy` and, once
+   valid, written byte-for-byte into *that pod's own* policy directory
+   (`core.config.pod_config_dir(project)/policies/<name>`) — the same directory
+   `core.policy.policy_files(project)` reads at evaluation time and `export_pod` already copies
+   from — never the fleet-wide `$POLICIES_DIR`. A policy file whose bytes already match the pod's
+   copy plans as `skip`; a different one already present plans as `replace`; an invalid policy
+   file (a non-empty `validate_policy` result) **MUST** be rejected before anything else is
+   written, naming the offending file.
+4. `apply` **MUST** validate everything before writing anything: each `roles/*.yaml` definition
+   (`role-archetypes.spec.md`'s schema), every `policies/*.json` file
+   (`core.policy.validate_policy`), every `members` entry against the role registry *as it would
+   be after* the recipe's own `roles/*.yaml` are added, the resolved `pipeline.yaml` against the
+   roster *as it would be after* `members` join (no skipped step,
    `core.orchestrator.resolve_plan`), and every `settings` entry through the same
    `core.pod.PodSettings` validators `config set` uses. A validation failure **MUST** exit 1
-   naming the offending item and **MUST NOT** write any role, member, pipeline binding, or
+   naming the offending item and **MUST NOT** write any role, policy, member, pipeline binding, or
    setting — including one that validated cleanly earlier in the same run.
-4. `apply` **MUST** be additive and idempotent: an item whose target state already matches disk
+5. `apply` **MUST** be additive and idempotent: an item whose target state already matches disk
    plans and reports as `skip`; a member is only ever added, never replaced or removed; a role,
-   pipeline binding, or setting already present with different content plans as `replace`.
+   policy, pipeline binding, or setting already present with different content plans as `replace`.
    Applying the same directory twice in a row **MUST** plan every item `skip` the second time and
    write nothing. `--dry-run` **MUST** print the plan and write nothing.
-5. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
+6. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
    entry naming every planned item and its action; an all-`skip` plan **MUST NOT** write a new
    audit entry.
-6. Removing a role, member, pipeline binding, or setting stays out of this command's scope —
-   `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion remain the
-   explicit way to undo what a recipe added.
+7. Removing a role, policy, member, pipeline binding, or setting stays out of this command's
+   scope — `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion
+   remain the explicit way to undo what a recipe added.
 
 ### Pod manifests: export
 
@@ -353,6 +363,16 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.9.0 (2026-09-26)
+
+- **P27-10: `apply` writes a recipe's `policies/*.json` into the pod's own policy directory.**
+  "Pod manifests: apply" requirement 1 adds `policies/*.json` to what is read; new requirement 3
+  validates each file with `core.policy.validate_policy` (a bad file aborts the plan naming it,
+  before any write) and writes it into `core.config.pod_config_dir(project)/policies/` — the same
+  directory `core.policy.policy_files` reads and `export_pod` already copies from. Closes the
+  round trip a P27-7 worker found broken: a recipe's optional policy pack previously had to be
+  copied by hand into the fleet-wide `$POLICIES_DIR`, which `export` never wrote back out.
 
 ### Version 1.8.0 (2026-09-26)
 

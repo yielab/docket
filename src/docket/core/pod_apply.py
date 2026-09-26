@@ -13,6 +13,7 @@ an item already matching what is on disk plans as ``skip``; nothing is ever remo
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,7 @@ from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_provisioning as _pp
+from docket.core import policy as _policy
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
@@ -43,10 +45,10 @@ class PodApplyError(ValueError):
 
 @dataclass(frozen=True)
 class ApplyItem:
-    """One planned change: ``kind`` (role/member/pipeline/setting), the thing named, and
+    """One planned change: ``kind`` (role/policy/member/pipeline/setting), the thing named, and
     whether applying it would add, replace, or skip (already matches disk)."""
 
-    kind: Literal["role", "member", "pipeline", "setting"]
+    kind: Literal["role", "policy", "member", "pipeline", "setting"]
     name: str
     action: ApplyAction
 
@@ -54,6 +56,12 @@ class ApplyItem:
 @dataclass(frozen=True)
 class _RoleWrite:
     doc: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _PolicyWrite:
+    name: str
+    text: str
 
 
 @dataclass(frozen=True)
@@ -88,6 +96,7 @@ class ApplyPlan:
     directory: Path
     items: tuple[ApplyItem, ...]
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
+    _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
@@ -180,6 +189,31 @@ def _plan_roles(
         merged[name] = arch
         items.append(ApplyItem(kind="role", name=name, action=action))
     return items, writes, merged
+
+
+def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PolicyWrite]]:
+    """Plan ``policies/*.json`` into *project*'s own policy directory -- the same one
+    ``core.policy.policy_files`` reads and ``_export_policies`` copies, never the fleet-wide
+    ``$POLICIES_DIR``. Each file must pass ``core.policy.validate_policy`` first."""
+    items: list[ApplyItem] = []
+    writes: list[_PolicyWrite] = []
+    policies_dir = directory / "policies"
+    if not policies_dir.is_dir():
+        return items, writes
+    dest_dir = _cfg.pod_config_dir(project) / "policies"
+    for policy_file in sorted(policies_dir.glob("*.json")):
+        error = _policy.validate_policy(policy_file)
+        if error:
+            raise PodApplyError(f"{policy_file}: {error}")
+        text = policy_file.read_text(encoding="utf-8")
+        dest = dest_dir / policy_file.name
+        if dest.is_file() and dest.read_text(encoding="utf-8") == text:
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if dest.is_file() else "add"
+            writes.append(_PolicyWrite(name=policy_file.name, text=text))
+        items.append(ApplyItem(kind="policy", name=policy_file.name, action=action))
+    return items, writes
 
 
 def _plan_members(
@@ -338,6 +372,8 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry, project)
     augmented = _arch.ArchetypeRegistry(merged_archetypes, project=project)
 
+    policy_items, policy_writes = _plan_policies(directory, project)
+
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
 
     pipeline_item, pipeline_write = _plan_pipeline(
@@ -346,7 +382,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     setting_items, setting_writes = _plan_settings(project, raw_settings)
 
-    items = [*role_items, *member_items]
+    items = [*role_items, *policy_items, *member_items]
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(setting_items)
@@ -356,6 +392,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         directory=directory,
         items=tuple(items),
         _role_writes=tuple(role_writes),
+        _policy_writes=tuple(policy_writes),
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),
@@ -363,13 +400,26 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
 
 def apply(plan: ApplyPlan) -> ApplyResult:
-    """Write every non-``skip`` item in *plan*, in role -> member -> pipeline -> setting
-    order (a member's role must exist before it is provisioned). Audits once as
+    """Write every non-``skip`` item in *plan*, in role -> policy -> member -> pipeline ->
+    setting order (a member's role must exist before it is provisioned). Audits once as
     ``pod.apply``, only when at least one item actually changed something."""
     lead_id = pod.member_id(plan.project, "lead")
 
     for role_write in plan._role_writes:
         _arch.add_user_archetype(role_write.doc, plan.project)
+
+    if plan._policy_writes:
+        policies_dir = _cfg.pod_config_dir(plan.project) / "policies"
+        policies_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            _cfg.PODS_DIR.chmod(0o700)
+            policies_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
+            policies_dir.parent.chmod(0o700)  # pod_config_dir(project)
+            policies_dir.chmod(0o700)
+        for policy_write in plan._policy_writes:
+            dest = policies_dir / policy_write.name
+            dest.write_text(policy_write.text, encoding="utf-8")
+            dest.chmod(0o600)
 
     for member_write in plan._member_writes:
         ok, msg, _fallback = _pp.provision_member(
