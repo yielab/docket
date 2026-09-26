@@ -1,16 +1,20 @@
 # Pipeline Format Specification
 
-**Version**: 2.2.1
-**Status**: Implemented — format, executor, and variable resolution. The executor
-(`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch
-state machine, and the `docket pipeline validate|plan|run` CLI surface, now exist — see
-`pod-dispatch.spec.md` for execution semantics and `cli-interface.spec.md` for the CLI contract.
-`core.pipeline.resolve_variables` (W-4) closes this format's last "not yet built" gap — a
-caller-supplied `{name: value}` mapping (the serve webhook's JSON body, today) is now resolved
-against a spec's declared `variables` before dispatch. This spec still owns only the format
-itself plus that resolution function — interpolating a resolved value into a hop's prompt or
-environment remains unbuilt (see Requirement 4 below).
-**Last Updated**: 2026-09-19
+**Version**: 2.3.0
+**Status**: Implemented — format, executor, variable resolution, and step-instruction
+interpolation. The executor (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
+`PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan|run`
+CLI surface, now exist — see `pod-dispatch.spec.md` for execution semantics and
+`cli-interface.spec.md` for the CLI contract. `core.pipeline.resolve_variables` (W-4) resolves a
+caller-supplied `{name: value}` mapping (the serve webhook's JSON body, or `docket pipeline run
+--var`) against a spec's declared `variables` before dispatch. **P26-7** closes this format's last
+"not yet built" gap: a step's own `instructions` (see "Steps" below) may reference `${var}`-style
+placeholders, interpolated from that resolved namespace by `core/dispatch.py`'s hop-message
+builder; an unresolved reference anywhere refuses the whole run before any hop
+(`core.pipeline.unresolved_step_variables`, called once by `dispatch_pod`). See
+`role-archetypes.spec.md`'s "Hop instructions" for how a step's `instructions` interacts with a
+target role's own declared or generated instruction.
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -34,12 +38,16 @@ This specification covers:
 - Step targeting: a step names exactly one of a `role` or a specific `agent`, plus an optional
   `archetype` reference
 - Per-step `retries` and `timeout` overrides
+- Per-step `instructions` (P26-7) — an optional hop-instruction override, and its `${var}`
+  interpolation from the run's resolved variable namespace
 - The three gate kinds a step may declare: `mechanical` (a command), `verdict` (regex-matched
   marker output), and `approval`
 - Bounded rework edges on a `verdict` gate (generalizing `core/dispatch.py`'s R-4 Reviewer →
   Implementer rework loop to an arbitrary earlier step and an arbitrary verdict vocabulary)
 - `parallel` step groups — the data shape for concurrently-run child steps
-- Pipeline-level `variables` (declared defaults / required placeholders — no interpolation engine)
+- Pipeline-level `variables` (declared defaults / required placeholders) and their resolution
+  (`resolve_variables`) and step-instruction interpolation (`interpolate_instructions`/
+  `unresolved_step_variables`)
 - Loading a pipeline from YAML text, including the **zero-migration** built-in pipeline returned
   when no file exists
 - Structural validation (`validate_pipeline`) and its error contract
@@ -98,10 +106,12 @@ This specification does NOT cover:
 2. A variable **MUST NOT** declare both `required: true` and a non-null `default` — a required
    variable has no default by definition; a value **MUST** come from whatever invokes the
    pipeline (e.g. a webhook parameter — see Requirement 4).
-3. A variable's key **MUST** be a valid identifier (`^[A-Za-z_][A-Za-z0-9_]*$`). No interpolation
-   syntax or engine is defined by this spec — declaring a variable does not by itself cause any
-   text substitution anywhere (e.g. into a hop's prompt or environment); that remains an executor
-   concern nothing in this codebase implements yet.
+3. A variable's key **MUST** be a valid identifier (`^[A-Za-z_][A-Za-z0-9_]*$`). Declaring a
+   variable does not by itself cause any text substitution — that is a step's own choice, made by
+   referencing `${name}` inside its `instructions` (see "Steps" Requirement 8 and "Step
+   instruction interpolation" below); a variable this format's `variables` map never even
+   declares may still be referenced this way, as long as the run's resolved namespace supplies it
+   (Requirement 4's own "undeclared key passes through" rule).
 4. **Variable resolution (ROADMAP Phase 16 W-4).** `core.pipeline.resolve_variables(spec,
    provided)` **MUST** produce the pipeline's final `{name: value}` namespace from a caller-supplied
    *provided* mapping (e.g. the serve webhook's JSON body — see `serve-read-api.spec.md`):
@@ -114,9 +124,22 @@ This specification does NOT cover:
    - a key present in *provided* but not declared in `variables` **MUST** pass through unchanged —
      this function validates *presence* of required values, not a closed key set (unlike the
      document shape itself, which is `extra="forbid"` throughout).
-   This function does not interpolate a resolved value anywhere (Requirement 3 still holds) — it
-   only produces the namespace a future interpolation engine, or a caller inspecting what a
-   dispatch ran with, would read from.
+   This function itself does not interpolate anywhere — it only produces the *namespace* that
+   "Step instruction interpolation" below, and a caller inspecting what a dispatch ran with, read
+   from. `docket pipeline run --var key=value` (repeatable; see `cli-interface.spec.md`) is the
+   CLI's own *provided* source, the same role a webhook's JSON body plays.
+5. **Step instruction interpolation (P26-7).** A step's own `instructions` (see "Steps"
+   Requirement 8) may reference `${name}`-style placeholders — the exact `${name}` spelling only;
+   a bare `$name` or a literal `$` (e.g. a dollar amount) is never treated as one. Before any hop
+   of a dispatch runs, the executor **MUST** compute the run's resolved namespace (Requirement 4,
+   above) and check every step's `instructions` (including `parallel` children) for a `${name}`
+   reference *variables* does not resolve; if any exist, the whole run **MUST** be refused (no
+   task claimed, no hop run) naming every unresolved name at once
+   (`core.pipeline.unresolved_step_variables`). Once resolved, `core.pipeline.
+   interpolate_instructions(text, variables)` substitutes each reference with the resolved
+   value's string form before the hop-message builder ever sees the text — see
+   `role-archetypes.spec.md`'s "Hop instructions" for how that interpolated text interacts with a
+   target role's own instruction.
 
 ### Steps
 
@@ -142,6 +165,14 @@ This specification does NOT cover:
    budget (see `pod-dispatch.spec.md`).
 7. A step **MAY** declare a `gate` (see "Gates" below) or omit one entirely (no gate — the step
    always advances once its turn completes, matching today's Lead hop).
+8. A unit step **MAY** declare `instructions` (`str`) — its own hop instruction, overriding
+   whatever the target role would otherwise carry (a built-in role's hardcoded text, or a custom
+   role's own `hopInstruction`/generated fallback; see `role-archetypes.spec.md`'s "Hop
+   instructions"). Omitting it (`None`, the default) means "defer to the role" — not "no
+   instruction at all". It **MAY** reference `${name}`-style variables, interpolated per
+   "Variables" Requirement 5. A step whose target is `role: lead` **MAY** still declare
+   `instructions`, but it has no effect — the Lead's hop message has no separate instruction
+   segment to override.
 
 ### Gates
 
@@ -199,9 +230,9 @@ This specification does NOT cover:
    non-empty list of unit steps that the executor runs concurrently on a bounded worker pool
    (`pod-dispatch.spec.md`'s "Parallel step groups") — e.g. one per `--count N` duplicate role
    member of a pod.
-2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, or
-   `timeout` at the group level — only its children carry those; declaring any of them on the
-   group itself **MUST** be a validation error.
+2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, `timeout`,
+   or `instructions` at the group level — only its children carry those; declaring any of them on
+   the group itself **MUST** be a validation error.
 3. Nesting **MUST** be limited to exactly one level: a child of a `parallel` group **MUST NOT**
    itself declare `parallel`. A nested `parallel` **MUST** be a validation error naming the
    offending child.
@@ -282,6 +313,27 @@ values = resolve_variables(spec, provided)   # provided: dict[str, Any] | None
 # Raises VariableError naming every missing `required` variable at once.
 ```
 
+Step instruction interpolation (Requirement 5, P26-7):
+
+```python
+from docket.core.pipeline import (
+    interpolate_instructions,
+    step_instructions_by_id,
+    unresolved_step_variables,
+)
+
+step_instructions_by_id(spec)              # -> dict[str, str]: step id -> its own declared
+                                            #    `instructions`, not yet interpolated (a step
+                                            #    with none is simply absent)
+unresolved_step_variables(spec, values)    # -> list[str]: every `${name}` no step's
+                                            #    `instructions` can resolve from `values`,
+                                            #    sorted; [] means the run may proceed
+interpolate_instructions(text, values)     # -> str: `${name}` substituted from `values`
+                                            #    (stringified); an unresolved reference is
+                                            #    left literal -- callers check with
+                                            #    unresolved_step_variables first
+```
+
 ## Examples
 
 ### A minimal pipeline (lean pod: no rework, no parallel)
@@ -322,6 +374,7 @@ steps:
     parallel:
       - id: impl-a
         agent: myapp-implementer
+        instructions: "Focus on ${TARGET}."
       - id: impl-b
         agent: myapp-implementer-2
 
@@ -394,6 +447,19 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.3.0 (2026-09-26)
+
+- **P26-7: step `instructions` and `${var}` interpolation.** Added the optional per-step
+  `instructions` field (Steps Requirement 8) and closed this format's last "not yet built" gap
+  from v2.0.0/W-4: a step's `instructions` may reference `${name}`-style placeholders, resolved
+  from `resolve_variables`'s own output and substituted by the new `interpolate_instructions`
+  before the hop-message builder sees the text. The new `unresolved_step_variables` is the
+  preflight the dispatch executor runs once, up front — an unresolved reference anywhere refuses
+  the whole run before any hop, no task claimed. `docket pipeline run` gained repeatable `--var
+  key=value` as this CLI surface's own *provided* source (`cli-interface.spec.md`). See
+  `role-archetypes.spec.md` v1.8.0's companion `hopInstruction`/`resolve_hop_instruction` for how
+  a step's `instructions` interacts with the target role's own instruction.
 
 ### Version 2.2.1 (2026-09-19)
 

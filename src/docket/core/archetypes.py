@@ -127,6 +127,12 @@ class RoleArchetype:
     # whatever registry the caller hands in" — today's behavior, preserved
     # for any archetype that does not opt in.
     denied_tools: tuple[str, ...] = ()
+    # This role's own hop-message instruction footer (see
+    # `resolve_hop_instruction` below and `core/dispatch.py`'s hop-message
+    # builder). Open prose, like `tool_profile`/`description` — "" (the
+    # default) means "no declared instruction", not "no instruction at all":
+    # a gated role still gets one generated from `gate_contract`.
+    hop_instruction: str = ""
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -186,6 +192,8 @@ class RoleArchetype:
             doc["description"] = self.description
         if self.denied_tools:
             doc["deniedTools"] = list(self.denied_tools)
+        if self.hop_instruction:
+            doc["hopInstruction"] = self.hop_instruction
         return doc
 
 
@@ -237,7 +245,30 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         description=str(doc.get("description", "")),
         token_budget=token_budget,
         denied_tools=tuple(str(t) for t in doc.get("deniedTools", [])),
+        hop_instruction=str(doc.get("hopInstruction", "")),
     )
+
+
+def resolve_hop_instruction(archetype: RoleArchetype) -> str:
+    """*archetype*'s own `hop_instruction` if declared, else one generated from its
+    `gate_contract` (verdict/mechanical/approval); a `none`-kind gate generates none. See
+    specs/functional/role-archetypes.spec.md ("Hop instructions")."""
+    # The four built-in roles never reach this: `core/dispatch.py`'s hop-message
+    # builder keeps their pre-existing hardcoded text unconditionally.
+    if archetype.hop_instruction:
+        return archetype.hop_instruction
+    gc = archetype.gate_contract
+    if gc.kind == "verdict" and gc.regexes:
+        markers = " or ".join(gc.regexes)
+        return (
+            f"Start exactly one output line with {markers} (case-insensitive); "
+            "reasons may come before or after that marker line."
+        )
+    if gc.kind == "mechanical":
+        return "Complete the task; your work is verified mechanically before the pipeline advances."
+    if gc.kind == "approval":
+        return "Complete the task; a human must approve before the pipeline advances."
+    return ""
 
 
 def render(template: str, variables: dict[str, str]) -> str:

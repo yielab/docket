@@ -523,7 +523,11 @@ def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
 
 
 def _pod_dispatch(
-    project: str, extra: list[str], *, spec: _pipeline.PipelineSpec | None = None
+    project: str,
+    extra: list[str],
+    *,
+    spec: _pipeline.PipelineSpec | None = None,
+    variables: dict[str, str] | None = None,
 ) -> None:
     """Drive the pod's pending tasks through the pipeline (one real turn per hop).
     ``--resume``/``--timeout`` crash-recovery and override semantics: see
@@ -532,7 +536,10 @@ def _pod_dispatch(
     when given (by ``docket pipeline run``), is forwarded unchanged; ``None`` resolves
     through ``effective_pipeline`` — the pod's blueprint pipeline, or the built-in
     default — the one shared resolver both CLI surfaces drive, so the prologue names
-    the same roles the executor actually runs."""
+    the same roles the executor actually runs. *variables* (``docket pipeline run
+    --var``) is forwarded to ``dispatch_pod`` unchanged; it validates/resolves them and
+    refuses up front if any step's own ``instructions`` is left with an unresolved
+    ``${var}`` reference (pipeline-format.spec.md)."""
     from docket.core import runs as _runs
 
     try:
@@ -601,6 +608,7 @@ def _pod_dispatch(
             turn_timeout=timeout_override,
             verify_timeout=timeout_override,
             spec=spec,
+            variables=variables,
         ),
     )
     if results is None:

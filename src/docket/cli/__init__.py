@@ -1699,27 +1699,35 @@ def cmd_pipeline(ctx: typer.Context) -> None:
                          (lead -> implementer -> reviewer -> tester,
                          whichever roles the pod has).
       run <project>     [--file <path>] [--resume] [--timeout <seconds>]
-                         [--follow]. Dispatches a project's pod through the
-                         given (or default) pipeline -- delegates to the
-                         exact same executor as `docket pod <project>
-                         dispatch`, so it is equally budget-gated, verify/
-                         Reviewer/Tester-gated, traced, and recorded in
-                         `docket runs`. --resume/--timeout behave identically
-                         to pod dispatch. --follow tails the run's trace
-                         events live in the foreground (Ctrl-C stops
-                         watching, not the dispatch itself, which keeps
-                         running).
+                         [--var key=value]... [--follow]. Dispatches a
+                         project's pod through the given (or default)
+                         pipeline -- delegates to the exact same executor as
+                         `docket pod <project> dispatch`, so it is equally
+                         budget-gated, verify/Reviewer/Tester-gated, traced,
+                         and recorded in `docket runs`. --resume/--timeout
+                         behave identically to pod dispatch. Repeatable --var
+                         key=value supplies the pipeline's variable
+                         namespace (the same one a webhook dispatch resolves
+                         from its JSON body); a step's own `instructions` may
+                         reference `${key}`, and a missing `required`
+                         variable or an unresolved `${key}` reference
+                         refuses the run before any hop. --follow tails the
+                         run's trace events live in the foreground (Ctrl-C
+                         stops watching, not the dispatch itself, which
+                         keeps running).
 
     Pipeline file schema (YAML or JSON; unknown keys rejected): `name`
     (required), `description`, `variables` (a name->{default, description,
-    required} map -- declared but not yet interpolated into any hop's
-    prompt/environment); `steps`: each has `id` (unique), exactly one of
-    `role` (a role-archetype slug) or `agent` (a specific member id),
-    optional `retries`, `timeout` (seconds), optional `gate`, or a `parallel`
-    list of child steps (one nesting level). `gate.type`: `mechanical` (a
-    `command`, or null to defer to the target's own verifyCmd), `verdict` (a
-    `pattern` regex, `passValues`, optional `rework: {to, when, maxCycles}`
-    edge back to an earlier step), or `approval` (a human sign-off message).
+    required} map, resolved at dispatch time against --var/a webhook body);
+    `steps`: each has `id` (unique), exactly one of `role` (a role-archetype
+    slug) or `agent` (a specific member id), optional `retries`, `timeout`
+    (seconds), optional `instructions` (overrides the target role's own hop
+    instruction for this step; may reference `${var}`), optional `gate`, or
+    a `parallel` list of child steps (one nesting level). `gate.type`:
+    `mechanical` (a `command`, or null to defer to the target's own
+    verifyCmd), `verdict` (a `pattern` regex, `passValues`, optional
+    `rework: {to, when, maxCycles}` edge back to an earlier step), or
+    `approval` (a human sign-off message).
 
     A pod with no pipeline file runs the built-in default order -- declaring
     a pipeline is opt-in. `archetype` references inside a step are
@@ -1755,7 +1763,9 @@ def cmd_roles(ctx: typer.Context) -> None:
                         agentsTemplate, gateContract
                         (none|verdict|mechanical|approval), editRights
                         (none|read-only|write, descriptive only -- not
-                        enforced), toolProfile, tokenBudget
+                        enforced), toolProfile, tokenBudget, hopInstruction
+                        (this role's hop-message instruction; unset means
+                        "generate one from gateContract" for a gated role)
       add <file.yaml>  registers a new archetype from a standalone YAML file
                         into the user overlay (`~/.docket/docket-roles.json`)
                         -- built-ins are never edited, only shadowed by name

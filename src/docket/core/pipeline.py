@@ -129,6 +129,13 @@ class Step(BaseModel):
     retries: int | None = Field(None, ge=0)
     timeout: int | None = Field(None, gt=0)
     gate: Gate | None = None
+    # Overrides the target role's own hop instruction for this step only (its
+    # archetype's `hopInstruction`/generated fallback, or a built-in role's
+    # hardcoded text -- see role-archetypes.spec.md "Hop instructions"). May
+    # reference `${var}`-style pipeline variables, resolved at dispatch time
+    # (see "Variables" below); `None` means "defer to the role", not "no
+    # instruction at all".
+    instructions: str | None = None
     parallel: list[Step] | None = None
 
     @model_validator(mode="after")
@@ -150,6 +157,10 @@ class Step(BaseModel):
             if self.retries is not None or self.timeout is not None:
                 raise ValueError(
                     f"step {self.id!r}: a 'parallel' group carries no retries/timeout of its own"
+                )
+            if self.instructions is not None:
+                raise ValueError(
+                    f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
                 )
             if not self.parallel:
                 raise ValueError(f"step {self.id!r}: 'parallel' must list at least one step")
@@ -218,6 +229,63 @@ def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None
         if name not in values:
             values[name] = var.default
     return values
+
+
+# ── Step instruction interpolation ──────────────────────────────────────────
+#
+# A step's own `instructions` (see the Step docstring) may reference
+# `${var}`-style placeholders resolved from the run's variable namespace
+# (`resolve_variables`'s own output, not this format's declared `variables`
+# alone -- a caller-supplied name absent from `variables` still resolves).
+# This is deliberately its own regex, not `string.Template`, so a literal `$`
+# in prose (e.g. a dollar amount) is never mistaken for a placeholder --
+# only the exact `${name}` spelling is ever substituted.
+
+_STEP_VAR_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _iter_step_instructions(steps: list[Step]) -> list[tuple[str, str]]:
+    """(step_id, instructions) for every step (including parallel children)
+    that declares one; a step with none is simply absent."""
+    out: list[tuple[str, str]] = []
+    for s in steps:
+        if s.parallel:
+            out.extend(_iter_step_instructions(s.parallel))
+        elif s.instructions:
+            out.append((s.id, s.instructions))
+    return out
+
+
+def step_instructions_by_id(spec: PipelineSpec) -> dict[str, str]:
+    """Every step id (including parallel children) mapped to its own declared,
+    not-yet-interpolated ``instructions`` text."""
+    return dict(_iter_step_instructions(spec.steps))
+
+
+def unresolved_step_variables(spec: PipelineSpec, variables: dict[str, Any]) -> list[str]:
+    """Every ``${name}`` referenced in any step's ``instructions`` that *variables* does
+    not resolve, deduplicated and sorted -- see specs/functional/pipeline-format.spec.md."""
+    # The dispatch executor calls this once, up front, against the run's fully
+    # resolved variable namespace, refusing the whole run before any hop when
+    # the result is non-empty.
+    missing: set[str] = set()
+    for _step_id, text in _iter_step_instructions(spec.steps):
+        for name in _STEP_VAR_REF_RE.findall(text):
+            if name not in variables:
+                missing.add(name)
+    return sorted(missing)
+
+
+def interpolate_instructions(text: str, variables: dict[str, Any]) -> str:
+    """Substitute every ``${name}`` reference in *text* from *variables* (stringified).
+    A reference *variables* does not resolve is left literal -- callers refuse the run up
+    front via :func:`unresolved_step_variables` instead of relying on this to raise."""
+
+    def _sub(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return str(variables[name]) if name in variables else match.group(0)
+
+    return _STEP_VAR_REF_RE.sub(_sub, text)
 
 
 # ── Pipeline ───────────────────────────────────────────────────────────────────

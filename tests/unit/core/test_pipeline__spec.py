@@ -30,7 +30,10 @@ from docket.core.pipeline import (
     Variable,
     VerdictGate,
     default_pipeline,
+    interpolate_instructions,
     load_pipeline,
+    step_instructions_by_id,
+    unresolved_step_variables,
     validate_pipeline,
 )
 
@@ -561,6 +564,69 @@ class TestStepTargeting:
     def test_timeout_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
             Step(id="s1", role="implementer", timeout=0)
+
+
+# ── TestStepInstructions ─────────────────────────────────────────────────────
+
+
+class TestStepInstructions:
+    def test_step_instructions_defaults_to_none(self) -> None:
+        step = Step(id="s1", role="implementer")
+        assert step.instructions is None
+
+    def test_step_instructions_accepted(self) -> None:
+        step = Step(id="s1", role="security-reviewer", instructions="Focus on ${area}")
+        assert step.instructions == "Focus on ${area}"
+
+    def test_parallel_group_cannot_declare_instructions(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(
+                id="fanout",
+                instructions="not allowed on a group",
+                parallel=[Step(id="a", role="implementer")],
+            )
+
+    def test_step_instructions_by_id_collects_top_level_and_parallel_children(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[
+                Step(id="lead", role="lead"),
+                Step(id="review", role="security-reviewer", instructions="Focus on ${area}"),
+                Step(
+                    id="fanout",
+                    parallel=[
+                        Step(id="a", role="implementer", instructions="A note"),
+                        Step(id="b", role="implementer"),
+                    ],
+                ),
+            ],
+        )
+        assert step_instructions_by_id(spec) == {"review": "Focus on ${area}", "a": "A note"}
+
+    def test_unresolved_step_variables_names_missing_reference(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
+        )
+        assert unresolved_step_variables(spec, {}) == ["area"]
+
+    def test_unresolved_step_variables_empty_when_resolved(self) -> None:
+        spec = PipelineSpec(
+            name="p",
+            steps=[Step(id="review", role="security-reviewer", instructions="Focus on ${area}")],
+        )
+        assert unresolved_step_variables(spec, {"area": "auth"}) == []
+
+    def test_interpolate_instructions_substitutes_var(self) -> None:
+        assert interpolate_instructions("Focus on ${area}", {"area": "auth"}) == "Focus on auth"
+
+    def test_interpolate_instructions_leaves_unresolved_reference_literal(self) -> None:
+        assert interpolate_instructions("Focus on ${area}", {}) == "Focus on ${area}"
+
+    def test_interpolate_instructions_ignores_bare_dollar_sign(self) -> None:
+        # Only the exact ${name} spelling is a placeholder -- a literal dollar
+        # amount in prose is never mistaken for one.
+        assert interpolate_instructions("Costs $5 total", {}) == "Costs $5 total"
 
 
 # ── TestZeroMigration ────────────────────────────────────────────────────────
