@@ -14,12 +14,13 @@ policy at every role. ``pod_gating_cost``'s token estimate is gating-only, never
 from __future__ import annotations
 
 import datetime as _dt
+import fnmatch as _fnmatch
 import hashlib as _hashlib
 import json as _json
 import time as _time
 import uuid as _uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote as _url_quote
@@ -1001,6 +1002,10 @@ class _UnitContext:
     # every existing direct `_UnitContext(...)` construction (tests included)
     # is unaffected.
     step_instructions: dict[str, str] = field(default_factory=dict)
+    # This run's resolved pipeline variables, stringified -- the `var`/`is` half of a
+    # step's `when` predicate compares against these. Defaulted for the same reason
+    # as `step_instructions` above.
+    variables: dict[str, str] = field(default_factory=dict)
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -1696,6 +1701,114 @@ def _resolve_gate_override(task: dict[str, Any]) -> int | None:
     return override_index if isinstance(override_index, int) else None
 
 
+def _when_cwd(ctx: _UnitContext, prior: list[HopResult]) -> str:
+    """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
+    both run against: the latest successful Implementer's worktree, falling back to the
+    pod Lead's own codebase (no Implementer has run yet, or the pod has none at all)."""
+    worktree = _prior_implementer_worktree(prior)
+    if worktree:
+        return worktree
+    lead_id = _pod.member_id(ctx.project, "lead")
+    return str(_fleet.meta_get(lead_id, "codebase", "") or "")
+
+
+def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopResult]) -> bool:
+    """Evaluate *node*'s ``when`` (every set predicate ANDed); a false predicate emits
+    ``step_skipped`` so the caller advances with no hop. See pod-dispatch.spec.md
+    ("Conditional steps and command steps")."""
+    when = node.when
+    if not when:
+        return False
+    matched = True
+    if "changed" in when:
+        cwd = _when_cwd(ctx, prior)
+        changed_files = _sys.git_changed_files(cwd) if cwd else []
+        pattern = str(when["changed"])
+        matched = matched and any(_fnmatch.fnmatch(path, pattern) for path in changed_files)
+    if "var" in when:
+        actual = ctx.variables.get(str(when["var"]))
+        matched = matched and actual is not None and actual == str(when.get("is", ""))
+    if "memberPresent" in when:
+        matched = matched and str(when["memberPresent"]) in pod_full_roster(ctx.project)
+    if matched:
+        return False
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        node.step_id,
+        "step_skipped",
+        _json.dumps({"step": node.step_id, "when": when}),
+    )
+    return True
+
+
+def _run_command_step(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    prior: list[HopResult],
+    index_for_context: int,
+) -> _UnitOutcome:
+    """Run *node*'s ``run`` command directly -- no agent turn, no session. Classified like
+    any shell-out first: ``allow`` runs it, anything else gates like an ``approval`` step
+    (or fails outright under ``approvalMode: refuse``). See pod-dispatch.spec.md."""
+    assert node.run is not None
+    role = node.step_id
+    cmd = node.run
+    settings = _pod_settings(ctx.project)
+    verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
+    if verdict.action != "allow":
+        if pod_approval_mode(ctx.project) == "refuse":
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "command_step",
+                _json.dumps({"step": node.step_id, "cmd": cmd, "exit": None}),
+            )
+            hop = HopResult(
+                role=role,
+                member_id="",
+                ok=False,
+                output="",
+                error=f"command step refused: {verdict.reason}",
+                step_id=node.step_id,
+            )
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=f"command step {node.step_id!r} refused: {verdict.reason}",
+            )
+        # "wait" (the default): gate exactly like a pipeline `approval` step, keyed on
+        # this exact pipeline position -- a granted single-use override lets a resumed
+        # run fall through here without asking again.
+        approval_node = replace(node, gate=_pipeline.ApprovalGate(message=verdict.reason))
+        approval_outcome = _gate_pre_hop_approval(
+            ctx, role, approval_node, check_approval=True, index_for_context=index_for_context
+        )
+        if approval_outcome is not None:
+            return approval_outcome
+
+    cwd = _when_cwd(ctx, prior)
+    timeout = node.timeout or ctx.resolved_verify_timeout
+    passed, raw_output = _sys.run_verify_cmd(cmd, cwd, timeout)
+    redacted = _trace.redact(raw_output)
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "command_step",
+        _json.dumps({"step": node.step_id, "cmd": cmd, "exit": 0 if passed else 1}),
+    )
+    hop = HopResult(role=role, member_id="", ok=passed, output=redacted, step_id=node.step_id)
+    if ctx.on_hop is not None:
+        ctx.on_hop(hop)
+    if not passed:
+        return _UnitOutcome(
+            kind="failed", hops=[hop], reason=f"command step {node.step_id!r} failed: {cmd!r}"
+        )
+    return _UnitOutcome(kind="advance", hops=[hop])
+
+
 def _run_pipeline(
     ctx: _UnitContext,
     runtime_steps: tuple[_orch.PlannedNode, ...],
@@ -1713,6 +1826,11 @@ def _run_pipeline(
 
         if isinstance(node, _orch.PlannedGroup):
             outcome = _run_group_node(ctx, node, prior, pipeline_index)
+        elif _step_skipped(ctx, node, prior):
+            pipeline_index += 1
+            continue
+        elif node.run is not None:
+            outcome = _run_command_step(ctx, node, prior, pipeline_index)
         else:
             rework_hop = pending_rework_by_index.pop(pipeline_index, None)
             outcome = _execute_unit(
@@ -1850,6 +1968,7 @@ def dispatch_task(
             on_hop=on_hop,
             on_retry=on_retry,
             step_instructions=step_instructions,
+            variables={k: str(v) for k, v in resolved_vars.items()},
         )
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))

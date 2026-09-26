@@ -115,8 +115,31 @@ Gate = Annotated[
 # ── Steps ──────────────────────────────────────────────────────────────────────
 
 
+class When(BaseModel):
+    """A step's closed conditional-skip predicate vocabulary: ``changed``, ``var``/``is``,
+    ``memberPresent``, ANDed together -- see specs/functional/pipeline-format.spec.md
+    ("Conditional steps and command steps")."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    changed: str | None = None
+    var: str | None = None
+    is_: str | None = Field(None, alias="is")
+    member_present: str | None = Field(None, alias="memberPresent")
+
+    @model_validator(mode="after")
+    def _check(self) -> When:
+        if (self.var is None) != (self.is_ is None):
+            raise ValueError("'when.var' and 'when.is' must be set together")
+        if self.changed is None and self.var is None and self.member_present is None:
+            raise ValueError(
+                "'when' must set at least one of 'changed', 'var'+'is', 'memberPresent'"
+            )
+        return self
+
+
 class Step(BaseModel):
-    """One node in the pipeline: a unit step (``role`` xor ``agent``, plus optional
+    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run``, plus optional
     gate/retries/timeout) or a parallel group (``parallel``: unit-step children only, one
     level deep). See specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups")."""
 
@@ -136,6 +159,12 @@ class Step(BaseModel):
     # (see "Variables" below); `None` means "defer to the role", not "no
     # instruction at all".
     instructions: str | None = None
+    # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
+    # step kind, including a `run` command step. `None` means "always run".
+    when: When | None = None
+    # A command step's shell command, run directly with no agent turn, exclusive of
+    # `role`/`agent` -- see the class docstring and "Conditional steps and command steps".
+    run: str | None = None
     parallel: list[Step] | None = None
 
     @model_validator(mode="after")
@@ -169,6 +198,26 @@ class Step(BaseModel):
                     raise ValueError(
                         f"step {self.id!r}: nested 'parallel' groups are not supported "
                         f"(child {child.id!r} declares its own 'parallel')"
+                    )
+            return self
+
+        if self.run is not None:
+            if not self.run.strip():
+                raise ValueError(f"step {self.id!r}: 'run' must not be empty")
+            if self.role is not None or self.agent is not None:
+                raise ValueError(
+                    f"step {self.id!r}: 'run' is exclusive of 'role'/'agent' "
+                    "(a command step targets no member)"
+                )
+            for field_name, value in (
+                ("gate", self.gate),
+                ("instructions", self.instructions),
+                ("retries", self.retries),
+                ("archetype", self.archetype),
+            ):
+                if value is not None:
+                    raise ValueError(
+                        f"step {self.id!r}: a 'run' (command) step carries no {field_name!r}"
                     )
             return self
 
@@ -506,13 +555,29 @@ def _build_gate(step_id: str, entry: dict[Any, Any], seen_ids: list[str]) -> dic
     return None
 
 
+def _normalize_command_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- lint: {run: "ruff check ."}` -- a one-key mapping whose value is itself a
+    # mapping carrying `run`. Its own `timeout`/`when` sugar lives inside *target*,
+    # not alongside `step_id` at the entry level (unlike a role/agent short step).
+    step: dict[str, Any] = {"id": step_id, "run": target["run"]}
+    for key in ("timeout", "when"):
+        if key in target:
+            step[key] = target[key]
+    return step
+
+
 def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
     id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
-    if len(id_keys) != 1 or not isinstance(entry[id_keys[0]], str):
+    if len(id_keys) != 1:
         return entry
     step_id: str = id_keys[0]
+    target = entry[step_id]
+    if isinstance(target, dict) and "run" in target:
+        return _normalize_command_short_step(step_id, target)
+    if not isinstance(target, str):
+        return entry
     step: dict[str, Any] = {"id": step_id}
-    _assign_target(step, entry[step_id])
+    _assign_target(step, target)
     for key in ("instructions", "timeout", "retries"):
         if key in entry:
             step[key] = entry[key]

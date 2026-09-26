@@ -86,6 +86,8 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
+        "step_skipped",  # a `when` predicate was false; the step advanced with no hop
+        "command_step",  # a `run` (command) step executed, with its exit code
         "error",
         "session_end",
     ]

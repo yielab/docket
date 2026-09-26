@@ -3,12 +3,11 @@
 `core/dispatch.py`'s gate execution reads a step's resolved gate -- its own declared `gate`,
 or (only when omitted) its archetype's `gateContract` -- instead of branching on a hardcoded
 role name. Covers, via `dispatch_task`/`dispatch_pod` with a custom `PipelineSpec` (the
-built-in default is covered elsewhere): a `mechanical` gate on a non-"implementer" role gets
-the same worktree-aware cwd resolution the implementer always has; a `verdict` gate on a
-non-built-in archetype gates exactly like reviewer/tester always have, with generic trace
-event names; a pipeline-declared `approval` step genuinely gates pre-hop and a grant resumes
-it the same way `requireApprovalRoles` always has; and a `parallel` group runs its children
-concurrently and joins on all successes or fails on any child failure before the task advances.
+built-in default is covered elsewhere): a `mechanical` gate generalized beyond "implementer";
+a `verdict` gate on a non-built-in archetype, with generic trace event names; a pipeline
+`approval` step gating pre-hop with a grant that resumes it; a `parallel` group joining all
+children before advancing; a `when`-gated step skipping with no hop on a false predicate; and
+a `run` step executing with no agent turn, gated on its own exit code.
 """
 
 from __future__ import annotations
@@ -27,6 +26,7 @@ from docket.core import fleet as _fleet
 from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.edges.adapters import system as _sys
 
 SUBJECT = "docket.core"
 
@@ -378,3 +378,52 @@ class TestParallelGroupThroughDispatch:
         res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "not supported inside a parallel group" in res.reason
+
+
+# ── conditional (`when`) and command (`run`) steps ───────────────────────────
+
+
+class TestCommandSteps:
+    def test_failing_command_fails_the_task_with_no_agent_call(self) -> None:
+        _write_meta("myapp-lead")
+        spec = _pipeline.PipelineSpec(
+            name="checks",
+            steps=[
+                _pipeline.Step(id="plan", role="lead"),
+                _pipeline.Step(id="check", run="false"),
+            ],
+        )
+        task: dict[str, Any] = {"id": "c1", "description": "work", "status": "pending"}
+        runner = _RoleRunner({})
+        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+        assert res.status == "failed"
+        # Only the lead's agent turn ran -- the command step never calls the driver.
+        assert [c[0].rsplit("-", 1)[-1] for c in runner.calls] == ["lead"]
+        events = _trace_events("myapp")
+        assert any(e["event_type"] == "command_step" for e in events)
+
+
+class TestConditionalSteps:
+    def test_false_predicate_skips_the_step_and_the_next_step_runs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-operator")
+        _write_meta("myapp-analyst")
+        monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: ["docs/readme.md"])
+        spec = _pipeline.PipelineSpec(
+            name="cond",
+            steps=[
+                _pipeline.Step(id="plan", role="lead"),
+                _pipeline.Step(id="maybe", role="operator", when=_pipeline.When(changed="src/**")),
+                _pipeline.Step(id="finish", role="analyst"),
+            ],
+        )
+        task: dict[str, Any] = {"id": "c2", "description": "work", "status": "pending"}
+        runner = _RoleRunner({})
+        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+        assert res.status == "done"
+        # The gated "operator" step never ran -- the pipeline skipped straight to "analyst".
+        assert [c[0].rsplit("-", 1)[-1] for c in runner.calls] == ["lead", "analyst"]
+        events = _trace_events("myapp")
+        assert any(e["event_type"] == "step_skipped" for e in events)
