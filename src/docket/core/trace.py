@@ -86,6 +86,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
+        "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
         "error",
         "session_end",
     ]

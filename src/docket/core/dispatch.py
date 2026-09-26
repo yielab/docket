@@ -134,6 +134,12 @@ class HopResult:
     # flag is this run's own in-memory signal only (not persisted — see
     # ``_hop_record``) for ``cli/``'s dispatch renderer to print the notice.
     verification_skipped: bool = False
+    # Set only on a hop whose gate outcome was routed via the step's own
+    # ``on`` map (see ``_route_outcome``): the resolved target -- an earlier
+    # or later step id, or the literal ``"fail"``/``"stop"``. ``None`` for an
+    # ordinary hop. Persisted so ``_replay_pipeline_position`` can follow the
+    # same routing decision on resume instead of re-deriving it.
+    next_step: str | None = None
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -785,6 +791,7 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         # Falls back to `role` when unset — see HopResult.step_id.
         "stepId": h.step_id or h.role,
         "artifact": h.artifact.model_dump() if h.artifact is not None else None,
+        "nextStep": h.next_step,
     }
 
 
@@ -802,6 +809,7 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
             artifact = None
     if artifact is None:
         artifact = _handoff.HandoffArtifact.from_legacy_output(output)
+    next_step_raw = rec.get("nextStep")
     return HopResult(
         role=str(rec.get("role", "")),
         member_id=str(rec.get("member", "")),
@@ -812,17 +820,19 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         attempts=int(rec.get("attempts", 1) or 1),
         step_id=str(rec.get("stepId", "") or rec.get("role", "")),
         artifact=artifact,
+        next_step=next_step_raw if isinstance(next_step_raw, str) else None,
     )
 
 
 @dataclass
 class _ResumePosition:
     """Where a (possibly resumed) run should continue: ``pipeline_index`` into
-    ``runtime_steps``; ``rework_counts`` (cycles consumed, keyed by gated step id);
-    ``rework_hop`` (set only when resuming into a rework target)."""
+    ``runtime_steps``; ``rework_counts``/``route_counts`` (cycles consumed, keyed by
+    gated step id, or by ``(step_id, outcome_label)`` for a route)."""
 
     pipeline_index: int
     rework_counts: dict[str, int]
+    route_counts: dict[tuple[str, str], int] = field(default_factory=dict)
     rework_hop: HopResult | None = None
 
 
@@ -846,6 +856,7 @@ def _replay_pipeline_position(
     id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
     pi = 0
     rework_counts: dict[str, int] = {}
+    route_counts: dict[tuple[str, str], int] = {}
     rework_hop: HopResult | None = None
     for hop in prior:
         step_id = hop.step_id or hop.role
@@ -853,6 +864,24 @@ def _replay_pipeline_position(
         if idx is None:
             continue  # a parallel-group child's hop — handled by the trailing check below
         node = runtime_steps[idx]
+        if hop.next_step:
+            # This hop's gate outcome was routed via its step's own `on` map
+            # (see `_route_outcome`) — follow that exact decision instead of
+            # re-deriving it, the same "don't re-decide, replay" contract the
+            # rework branch below already follows for the older mechanism.
+            target_index = id_to_index.get(hop.next_step)
+            if target_index is not None:
+                if target_index <= idx:
+                    label = (
+                        hop.artifact.verdict
+                        if hop.artifact is not None and hop.artifact.verdict is not None
+                        else "fail"
+                    )
+                    key = (step_id, label)
+                    route_counts[key] = route_counts.get(key, 0) + 1
+                rework_hop = None
+                pi = target_index
+                continue
         gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
         if isinstance(gate, _pipeline.VerdictGate) and gate.rework is not None:
             verdict = hop.artifact.verdict if hop.artifact is not None else None
@@ -883,7 +912,12 @@ def _replay_pipeline_position(
     ):
         pi += 1
         rework_hop = None
-    return _ResumePosition(pipeline_index=pi, rework_counts=rework_counts, rework_hop=rework_hop)
+    return _ResumePosition(
+        pipeline_index=pi,
+        rework_counts=rework_counts,
+        route_counts=route_counts,
+        rework_hop=rework_hop,
+    )
 
 
 def _pod_requires_approval(project: str, role: str) -> bool:
@@ -960,9 +994,8 @@ def _verdict_event_names(role: str) -> tuple[str, str, str]:
 
 @dataclass
 class _UnitOutcome:
-    """What happened running one ``PlannedUnit``'s hop. ``kind`` is one of ``"advance" |
-    "rework" | "blocked" | "waiting_approval" | "failed" | "cancelled"``; ``hops`` is empty
-    for ``blocked``/``waiting_approval`` (the gate stopped before any turn ran)."""
+    """What happened running one ``PlannedUnit``'s hop. ``kind`` adds ``"routed"`` to the
+    existing set; its resolved gate outcome (for ``_route_outcome``) is ``label``."""
 
     kind: str
     hops: list[HopResult] = field(default_factory=list)
@@ -970,6 +1003,7 @@ class _UnitOutcome:
     rework_target_index: int | None = None
     approval_token: str = ""
     pending_approval_index: int | None = None
+    label: str = ""
 
 
 @dataclass
@@ -1001,6 +1035,10 @@ class _UnitContext:
     # every existing direct `_UnitContext(...)` construction (tests included)
     # is unaffected.
     step_instructions: dict[str, str] = field(default_factory=dict)
+    # Cycles consumed by an `on:` backward/self route, keyed by (step_id,
+    # outcome_label) -- alongside `rework_counts`, mutated in place by
+    # `_route_outcome`. Defaulted for the same reason as `step_instructions`.
+    route_counts: dict[tuple[str, str], int] = field(default_factory=dict)
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -1381,16 +1419,30 @@ def _persist_hop_and_trace(
     return None
 
 
+def _match_on_route(on: dict[str, Any] | None, label: str) -> Any:
+    """The raw ``Route`` value in *on* whose key matches *label* case-insensitively
+    (outcome labels always compare case-insensitively -- see pipeline-format.spec.md
+    "Outcome routing"), or ``None`` when *on* has no entry for it."""
+    if not on:
+        return None
+    norm = label.lower()
+    for key, route in on.items():
+        if str(key).lower() == norm:
+            return route
+    return None
+
+
 def _evaluate_mechanical_gate(
     ctx: _UnitContext,
     gate: _pipeline.MechanicalGate,
+    node: _orch.PlannedUnit,
     role: str,
     member_id: str,
     hop: HopResult,
 ) -> _UnitOutcome:
     """A ``MechanicalGate``: run ``verifyCmd`` (or the gate's own command) and gate on its
     exit, in the dir from ``core.pod.resolve_member_cwd`` (shared with cli/_pod.py so the two
-    never disagree). See pod-dispatch.spec.md ("Implementer verification gate")."""
+    never disagree); a ``"pass"``/``"fail"`` named in the step's own ``on`` map routes instead."""
     verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
     if not verify_cmd:
         # Honesty rule: never silently skip — a missing verifyCmd is
@@ -1417,6 +1469,9 @@ def _evaluate_mechanical_gate(
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
     passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
     redacted = _trace.redact(raw_output)
+    label = "pass" if passed else "fail"
+    if _match_on_route(node.on, label) is not None:
+        return _UnitOutcome(kind="routed", hops=[hop], label=label)
     if not passed:
         _trace_locked(
             ctx.project,
@@ -1437,7 +1492,7 @@ def _evaluate_mechanical_gate(
         "tool_result",
         _json.dumps({"verification": "passed", "cmd": verify_cmd}),
     )
-    return _UnitOutcome(kind="advance", hops=[hop])
+    return _UnitOutcome(kind="advance", hops=[hop], label=label)
 
 
 def _evaluate_verdict_gate(
@@ -1448,14 +1503,17 @@ def _evaluate_verdict_gate(
     hop: HopResult,
 ) -> _UnitOutcome:
     """A ``VerdictGate``: pass/rework/fail on the hop's already-parsed verdict (reused from
-    the hop's own artifact, never reparsed from ``run_res.output`` -- single source of truth).
-    """
+    the hop's own artifact, never reparsed from ``run_res.output``); a verdict named in the
+    step's own ``on`` map routes instead, beating the rework/fail handling below."""
     assert hop.artifact is not None
     verdict = hop.artifact.verdict
     hop_output = hop.output
     pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
     if verdict is not None and verdict in pass_set:
-        return _UnitOutcome(kind="advance", hops=[hop])
+        return _UnitOutcome(kind="advance", hops=[hop], label=verdict)
+
+    if verdict is not None and _match_on_route(node.on, verdict) is not None:
+        return _UnitOutcome(kind="routed", hops=[hop], label=verdict)
 
     rework = gate.rework
     if rework is not None and verdict is not None:
@@ -1542,7 +1600,7 @@ def _evaluate_post_hop_gate(
         return _UnitOutcome(kind="advance", hops=[hop])
 
     if isinstance(gate, _pipeline.MechanicalGate):
-        return _evaluate_mechanical_gate(ctx, gate, role, member_id, hop)
+        return _evaluate_mechanical_gate(ctx, gate, node, role, member_id, hop)
 
     if isinstance(gate, _pipeline.VerdictGate):
         return _evaluate_verdict_gate(ctx, gate, node, role, hop)
@@ -1671,7 +1729,7 @@ def _resolve_pipeline_steps(
 
 def _resolve_resume_state(
     runtime_steps: tuple[_orch.PlannedNode, ...], resume_from: list[HopResult] | None
-) -> tuple[list[HopResult], int, dict[str, int], dict[int, HopResult]]:
+) -> tuple[list[HopResult], int, dict[str, int], dict[tuple[str, str], int], dict[int, HopResult]]:
     """Compute the pipeline position (and rework state) a run should continue from.
     *resume_from* seeds hops already completed before a crash, which can legitimately
     include the same step more than once mid-rework -- see ``_replay_pipeline_position``."""
@@ -1685,7 +1743,13 @@ def _resolve_resume_state(
     pending_rework_by_index: dict[int, HopResult] = {}
     if resume_pos.rework_hop is not None:
         pending_rework_by_index[resume_pos.pipeline_index] = resume_pos.rework_hop
-    return prior, resume_pos.pipeline_index, dict(resume_pos.rework_counts), pending_rework_by_index
+    return (
+        prior,
+        resume_pos.pipeline_index,
+        dict(resume_pos.rework_counts),
+        dict(resume_pos.route_counts),
+        pending_rework_by_index,
+    )
 
 
 def _resolve_gate_override(task: dict[str, Any]) -> int | None:
@@ -1694,6 +1758,68 @@ def _resolve_gate_override(task: dict[str, Any]) -> int | None:
     so a later hop at the same position (a rework cycle) still gates normally."""
     override_index = task.get("gateOverridePipelineIndex")
     return override_index if isinstance(override_index, int) else None
+
+
+def _route_outcome(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    outcome: _UnitOutcome,
+    pipeline_index: int,
+) -> tuple[int | None, str]:
+    """Resolve a ``"routed"`` outcome's target (``fail``/``stop``/a step id, bounded by
+    ``max`` when backward) into a next index (``None`` for ``stop``, negative for a
+    terminal failure) and reason; traces one ``route_taken`` event either way."""
+    route = _match_on_route(node.on, outcome.label)
+    label_upper = outcome.label.upper()
+    if isinstance(route, dict):
+        target: Any = route.get("goto")
+        max_cycles = route.get("max")
+    else:
+        target = route
+        max_cycles = None
+    target_str = target if isinstance(target, str) else "stop"
+    trace_role = node.role or node.agent or node.step_id
+
+    def _trace_route(resolved_target: str) -> None:
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            trace_role,
+            "route_taken",
+            _json.dumps(
+                {"step": node.step_id, "outcome": outcome.label, "target": resolved_target}
+            ),
+        )
+
+    if outcome.hops:
+        outcome.hops[0].next_step = target_str
+
+    if target_str == "fail":
+        _trace_route("fail")
+        return -1, f"step {node.step_id!r} outcome {label_upper} routed to fail"
+    if target_str == "stop":
+        _trace_route("stop")
+        return None, f"step {node.step_id!r} outcome {label_upper} routed to stop"
+
+    target_index = ctx.id_to_index.get(target_str)
+    if target_index is None:
+        _trace_route(target_str)
+        return -1, f"step {node.step_id!r}: 'on' target {target_str!r} is not a known step id"
+
+    if target_index <= pipeline_index:
+        key = (node.step_id, outcome.label)
+        cycles_so_far = ctx.route_counts.get(key, 0)
+        cap = max_cycles if isinstance(max_cycles, int) else 1
+        if cycles_so_far >= cap:
+            _trace_route(target_str)
+            return -1, (
+                f"step {node.step_id!r} outcome {label_upper} exhausted its routing budget "
+                f"({cycles_so_far} of {cap}) toward {target_str!r}"
+            )
+        ctx.route_counts[key] = cycles_so_far + 1
+
+    _trace_route(target_str)
+    return target_index, f"step {node.step_id!r} outcome {label_upper} routed to {target_str!r}"
 
 
 def _run_pipeline(
@@ -1706,8 +1832,8 @@ def _run_pipeline(
 ) -> None:
     """Advance one task through its resolved pipeline until a terminal outcome. Mutates
     *result*/*prior* in place per step (each hop is also observed via *on_hop* -- see
-    ``_persist_hop_and_trace``). The only backward move is a bounded rework cycle, jumping
-    back to the gate's declared target."""
+    ``_persist_hop_and_trace``). The only backward moves are a bounded rework cycle and a
+    step's own ``on:`` route, each jumping to a declared target."""
     while pipeline_index < len(runtime_steps):
         node = runtime_steps[pipeline_index]
 
@@ -1750,6 +1876,19 @@ def _run_pipeline(
             assert outcome.rework_target_index is not None
             pending_rework_by_index[outcome.rework_target_index] = outcome.hops[0]
             pipeline_index = outcome.rework_target_index
+            continue
+        if outcome.kind == "routed":
+            assert isinstance(node, _orch.PlannedUnit)
+            next_index, reason = _route_outcome(ctx, node, outcome, pipeline_index)
+            if next_index is None:
+                result.status = "done"
+                result.reason = reason
+                break
+            if next_index < 0:
+                result.status = "failed"
+                result.reason = reason
+                break
+            pipeline_index = next_index
             continue
         pipeline_index += 1
 
@@ -1822,8 +1961,8 @@ def dispatch_task(
             sid: _pipeline.interpolate_instructions(text, resolved_vars)
             for sid, text in raw_step_instructions.items()
         }
-        prior, pipeline_index, rework_counts, pending_rework_by_index = _resolve_resume_state(
-            runtime_steps, resume_from
+        prior, pipeline_index, rework_counts, route_counts, pending_rework_by_index = (
+            _resolve_resume_state(runtime_steps, resume_from)
         )
 
         # A granted approval hands the exact pipeline position it stopped at
@@ -1850,6 +1989,7 @@ def dispatch_task(
             on_hop=on_hop,
             on_retry=on_retry,
             step_instructions=step_instructions,
+            route_counts=route_counts,
         )
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))

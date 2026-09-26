@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
 `instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
@@ -22,8 +22,14 @@ already fully defines; see `role-archetypes.spec.md`'s "Shipped recipes" for the
 contract this spec does not itself own. **P28-3** adds a short form
 (`core.pipeline.normalize_pipeline`): a step written as `<id>: <role-or-agent>` plus
 `verify`/`verdict`/`approval`/`on` sugar, expanded into the exact canonical shape above before
-validation — see "Short form" below. The canonical form itself, and everything this format's
-executor and CLI surface read, is unchanged.
+validation — see "Short form" below. **P28-5** generalizes `on:` from a load-time refusal into a
+real field: a step may now declare `on` (a mapping from an outcome label to a later or earlier
+step, or to `fail`/`stop`) that the executor reads directly, and `until: verify` + `max` is
+short-form sugar for a bounded self-retry — see "Outcome routing" below. The one bounded backward
+edge the short form could already express keeps normalizing to the canonical `rework:` edge,
+byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
+now loads. The canonical form itself, and everything this format's executor and CLI surface read
+beyond the new field, is unchanged.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -241,6 +247,9 @@ This specification does NOT cover:
 5. A step nested inside a `parallel` group **MUST NOT** declare a `rework` edge on its own gate —
    join semantics for a rework inside a fan-out are an executor concern this format does not
    define; the validation error names the offending child step.
+6. `rework` **MUST** remain the canonical spelling of the one bounded backward verdict edge to an
+   earlier step; the more general `on:` field (see "Outcome routing" below) generalizes it to a
+   later step, a `fail`/`stop` terminal, or more than one outcome label, without replacing it.
 
 ### Parallel groups
 
@@ -335,26 +344,50 @@ This specification does NOT cover:
    - `instructions`, `timeout`, `retries` carry straight through to the same-named canonical
      field.
    - `on: {<label>: {goto: <earlier step id>, max: <n>}}` **MUST**, when the step also carries a
-     `verdict` sugar key, become that gate's `rework: {to: <goto>, when: [<label, lowercased>],
-     maxCycles: <n>}`. Because PyYAML's default resolver reads an unquoted `on:` key as the
-     boolean `True` (the same implicit-boolean pitfall `rework`'s own `when` field name was
-     chosen to avoid — see "Rework edges" above), this format **MUST** accept the sugar key
-     spelled either as the literal string `"on"` or as the boolean `True` a bare `on:` actually
-     parses to.
+     `verdict` sugar key **and** this is the single bounded backward edge described above, become
+     that gate's `rework: {to: <goto>, when: [<label, lowercased>], maxCycles: <n>}`. Because
+     PyYAML's default resolver reads an unquoted `on:` key as the boolean `True` (the same
+     implicit-boolean pitfall `rework`'s own `when` field name was chosen to avoid — see "Rework
+     edges" above), this format **MUST** accept the sugar key spelled either as the literal string
+     `"on"` or as the boolean `True` a bare `on:` actually parses to — including on a step that is
+     already written in canonical (`id`-bearing) form, since that same key survives YAML parsing
+     unchanged either way. Every other `on:` shape **MUST** instead become the step's own
+     canonical `on` field verbatim (see "Outcome routing" below), never a load error.
+   - `until: "verify"` with a `max` sugar key **MUST**, on a step that also carries (or resolves
+     to) a `mechanical` gate, become that step's `on: {fail: {goto: <this step's own id>, max:
+     <n>}}` — a bounded self-retry. `until`/`max` are short-form-only: the canonical form never
+     carries `until`, and `max` alone (without `until`) or `until` on a non-mechanical step **MUST**
+     each be a load error naming the step. `until`/`max` **MUST NOT** be combined with an explicit
+     `on:` sugar key on the same step.
    - A step carrying no sugar key beyond `instructions`/`timeout`/`retries` **MUST** get no `gate`
      at all — the target role's own contract applies, exactly as an `id`/`role` step with no
      `gate` does today.
-5. `on:` **MUST** be rejected as a load error, naming the step, for any shape beyond the single
-   bounded backward edge above: a forward or same-step `goto` (one that does not name a step
-   already seen earlier in the document's top-level `steps`), `fail`, `stop`, a bare step name, a
-   mapping with more than one label, or `on:` without an accompanying `verdict` sugar key on the
-   same step — `step '<id>': outcome routing beyond one bounded rework edge is not available
-   yet`. A backward `goto` missing `max` **MUST** instead be rejected with a message naming both
-   the step and that `max` is required — this is this format's one recognized case of "nearly
-   right", so it gets its own actionable message rather than the generic refusal above; neither
-   case builds a `PipelineSpec` at all, so this format's own extension points (an outcome map, a
-   forward edge, a terminal `fail`/`stop`) stay reserved for whichever later version actually
-   implements them.
+
+### Outcome routing
+
+1. A step **MAY** declare `on` (`dict[str, Route] | None`), a canonical field alongside `gate`: a
+   mapping from an outcome label — a verdict gate's matched marker, or `"pass"`/`"fail"` for a
+   mechanical gate, each compared case-insensitively — to a `Route`. A `Route` is either a mapping
+   `{goto: <step id>, max: <int >= 1>}` (`max` **MUST** be present when `goto` names a step at or
+   before this one) or one of the literal strings `"fail"`, `"stop"`, or a bare step id (a forward
+   target equivalent to `{goto: <that id>}` with no bound).
+2. At execution time (`pod-dispatch.spec.md`'s "Generalized gate execution"), a gate outcome named
+   in the step's own `on` map **MUST** be routed — to `fail` (the task fails), `stop` (the task
+   ends `done`), or the named step (the pipeline continues there, a backward or self target
+   counted against its own `max`) — instead of that outcome's ordinary handling. This is a real
+   override: an outcome that would otherwise plainly advance, rework, or fail can be redirected;
+   an outcome the map does not name behaves exactly as it always has, including a built-in role's
+   legacy trace event names.
+3. `PipelineSpec` **MUST** validate every `on` entry: a `goto`/bare-step-id target **MUST** name an
+   existing step id in the document (forward or backward now both valid) or be `fail`/`stop`; a
+   backward or self target without `max` **MUST** be a validation error naming the step; and a
+   step that no execution path reaches — walking from the first step through its default
+   successor and every `on` target, never continuing past a `fail`/`stop` terminal — **MUST** be a
+   validation error naming the unreachable step. `plan`/`validate` render every step's routes
+   alongside its gate.
+4. The one recognized single-bounded-backward-edge shorthand (see "Short form" above) **MUST**
+   keep normalizing to the canonical `rework:` edge, never to `on`, so every existing rework-based
+   document and the three shipped recipes stay byte-identical.
 
 ## Interface Contracts
 
@@ -538,6 +571,23 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.8.0 (2026-09-26)
+
+- **P28-5: outcome routing generalizes `on:` beyond one bounded rework edge.** New "Outcome
+  routing" requirements subsection: a step may now declare a canonical `on` field mapping an
+  outcome label (a verdict marker, or `pass`/`fail` for a mechanical gate) to `fail`, `stop`, or a
+  forward or backward step id (a backward or self target requires `max`); the executor
+  (`pod-dispatch.spec.md` v6.19.0) routes a named outcome instead of its ordinary handling.
+  `until: "verify"` + `max` short-form sugar rewrites to a bounded self-retry (`on: {fail: {goto:
+  <self>, max}}`); both are short-form-only, so the canonical form never carries `until`.
+  `PipelineSpec` gains two new validators: every `on` target must resolve, and a backward/self
+  target without `max` or a step no execution path reaches is a load error naming it. "Rework
+  edges" gains one sentence: `rework` stays the canonical spelling of the one bounded backward
+  verdict edge, which `on:` generalizes rather than replaces — the short form's own single
+  bounded-backward-edge sugar keeps normalizing to `rework:`, never to `on`, so every existing
+  rework-based document and the three shipped recipes stay byte-identical. Every other `on:` shape
+  that "Short form" Requirement 5 used to refuse as "not available yet" now loads.
 
 ### Version 2.7.0 (2026-09-26)
 

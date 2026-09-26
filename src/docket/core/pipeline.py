@@ -137,6 +137,13 @@ class Step(BaseModel):
     # instruction at all".
     instructions: str | None = None
     parallel: list[Step] | None = None
+    # Outcome routing: each key is a gate outcome label (a verdict marker, or
+    # "pass"/"fail" for a mechanical gate), compared case-insensitively at
+    # execution time. A value is either a mapping {"goto": <step id>, "max":
+    # <int>=1} (mandatory "max" when the target is at or before this step) or
+    # one of the literal strings "fail" | "stop" | "<step id>" (a bare forward
+    # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
+    on: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _check_shape(self) -> Step:
@@ -161,6 +168,10 @@ class Step(BaseModel):
             if self.instructions is not None:
                 raise ValueError(
                     f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
+                )
+            if self.on is not None:
+                raise ValueError(
+                    f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
                 )
             if not self.parallel:
                 raise ValueError(f"step {self.id!r}: 'parallel' must list at least one step")
@@ -288,6 +299,35 @@ def interpolate_instructions(text: str, variables: dict[str, Any]) -> str:
     return _STEP_VAR_REF_RE.sub(_sub, text)
 
 
+def _default_edge_reachable(step: Step) -> bool:
+    """Whether *step*'s plain default-advance edge can still fire, i.e. its ``on`` map
+    (if any) does not already name every one of its gate's own passing outcomes."""
+    if not step.on:
+        return True
+    on_labels = {str(k).lower() for k in step.on}
+    gate = step.gate
+    if isinstance(gate, MechanicalGate):
+        return not {"pass", "fail"} <= on_labels
+    if isinstance(gate, VerdictGate):
+        pass_labels = {v.lower() for v in gate.pass_values}
+        return not pass_labels <= on_labels
+    return True
+
+
+def _route_shape(step_id: str, label: str, route: Any) -> tuple[str, Any, bool]:
+    """(target, max, has_max) for one ``on:`` entry -- *target* is ``"fail"``/``"stop"``/a
+    step id; *route* is a bare target string or a ``{"goto": ..., "max": ...}`` mapping."""
+    if isinstance(route, str):
+        return route, None, False
+    if (
+        isinstance(route, dict)
+        and isinstance(route.get("goto"), str)
+        and not (set(route) - {"goto", "max"})
+    ):
+        return route["goto"], route.get("max"), "max" in route
+    raise ValueError(f"step {step_id!r}: 'on' entry {label!r} is malformed")
+
+
 # ── Pipeline ───────────────────────────────────────────────────────────────────
 
 
@@ -346,6 +386,43 @@ class PipelineSpec(BaseModel):
                 raise ValueError(
                     f"step {s.id!r}: rework target {rework.to!r} must be an earlier step"
                 )
+
+        for i, s in enumerate(self.steps):
+            if s.parallel or not s.on:
+                continue
+            for label, route in s.on.items():
+                target, max_value, has_max = _route_shape(s.id, label, route)
+                if target in ("fail", "stop"):
+                    continue
+                if target not in top_index:
+                    raise ValueError(f"step {s.id!r}: 'on' target {target!r} is not a step id")
+                if top_index[target] <= i and (
+                    not has_max or not isinstance(max_value, int) or max_value < 1
+                ):
+                    raise ValueError(
+                        f"step {s.id!r}: backward or self route to {target!r} requires 'max' >= 1"
+                    )
+
+        reachable = {0}
+        frontier = [0]
+        while frontier:
+            i = frontier.pop()
+            targets: set[int] = set()
+            step = self.steps[i]
+            if i + 1 < len(self.steps) and _default_edge_reachable(step):
+                targets.add(i + 1)
+            if not step.parallel and step.on:
+                for label, route in step.on.items():
+                    target, _max_value, _has_max = _route_shape(step.id, label, route)
+                    if target in top_index:
+                        targets.add(top_index[target])
+            for t in targets:
+                if t not in reachable:
+                    reachable.add(t)
+                    frontier.append(t)
+        for i, s in enumerate(self.steps):
+            if i not in reachable:
+                raise ValueError(f"step {s.id!r} is not reachable")
         return self
 
 
@@ -396,14 +473,14 @@ def _format_validation_error(exc: ValidationError) -> list[str]:
 # ── Short form ─────────────────────────────────────────────────────────────────
 #
 # Sugar over the canonical shape above: a step written as `<id>: <role-or-agent>`
-# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`on`
-# keys. See specs/functional/pipeline-format.spec.md ("Short form").
+# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`on`/
+# `until`/`max` keys. See specs/functional/pipeline-format.spec.md ("Short form",
+# "Outcome routing").
 
 _STEP_SUGAR_KEYS = frozenset(
-    {"verify", "verdict", "approval", "instructions", "timeout", "retries", "on"}
+    {"verify", "verdict", "approval", "instructions", "timeout", "retries", "on", "until", "max"}
 )
 _BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
-_OUTCOME_ROUTING_UNAVAILABLE = "outcome routing beyond one bounded rework edge is not available yet"
 _NO_ON = object()
 
 
@@ -474,36 +551,58 @@ def _build_approval_gate(approval: Any) -> dict[str, Any]:
     )
 
 
-def _build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any]:
+def _try_build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any] | None:
+    """The canonical ``rework:`` mapping for the one recognized single-bounded-backward
+    shorthand, else ``None`` (meaning *on* becomes the step's own canonical ``on`` field
+    instead). A backward goto missing ``max`` keeps its own actionable error."""
     if not isinstance(on, dict) or len(on) != 1:
-        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+        return None
     label, action = next(iter(on.items()))
     if not isinstance(action, dict) or "goto" not in action or set(action) - {"goto", "max"}:
-        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+        return None
     goto = action["goto"]
     if not isinstance(goto, str) or goto not in seen_ids:
-        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+        return None
     if "max" not in action:
         raise _ShortFormError(f"step {step_id!r}: rework to {goto!r} requires 'max'")
     return {"to": goto, "when": [str(label).lower()], "maxCycles": action["max"]}
 
 
-def _build_gate(step_id: str, entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any] | None:
+def _build_gate(
+    step_id: str, entry: dict[Any, Any], seen_ids: list[str]
+) -> tuple[dict[str, Any] | None, Any]:
     on = _get_on(entry)
     if "verdict" in entry:
         gate = _build_verdict_gate(entry["verdict"])
         if on is not _NO_ON:
-            gate["rework"] = _build_rework(step_id, on, seen_ids)
-        return gate
-    if "verify" in entry or "approval" in entry:
-        if on is not _NO_ON:
-            raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
-        if "verify" in entry:
-            return _build_mechanical_gate(entry["verify"])
-        return _build_approval_gate(entry["approval"])
-    if on is not _NO_ON:
-        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
-    return None
+            rework = _try_build_rework(step_id, on, seen_ids)
+            if rework is not None:
+                gate["rework"] = rework
+                on = _NO_ON
+        return gate, on
+    if "verify" in entry:
+        return _build_mechanical_gate(entry["verify"]), on
+    if "approval" in entry:
+        return _build_approval_gate(entry["approval"]), on
+    return None, on
+
+
+def _build_until_route(
+    step_id: str, entry: dict[Any, Any], gate: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """``until: verify`` + ``max`` sugar, rewritten to ``on: {fail: {goto: <self>,
+    max}}`` -- this format's short-form-only repeat-until-mechanical-pass shorthand;
+    the canonical form never carries ``until``. See "Outcome routing"."""
+    if "until" not in entry:
+        return None
+    until = entry["until"]
+    if until != "verify":
+        raise _ShortFormError(f"step {step_id!r}: 'until' must be 'verify' (got {until!r})")
+    if gate is None or gate.get("type") != "mechanical":
+        raise _ShortFormError(f"step {step_id!r}: 'until: verify' requires a mechanical gate")
+    if "max" not in entry:
+        raise _ShortFormError(f"step {step_id!r}: 'until: verify' requires 'max'")
+    return {"fail": {"goto": step_id, "max": entry["max"]}}
 
 
 def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
@@ -516,10 +615,28 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     for key in ("instructions", "timeout", "retries"):
         if key in entry:
             step[key] = entry[key]
-    gate = _build_gate(step_id, entry, seen_ids)
+    gate, on = _build_gate(step_id, entry, seen_ids)
     if gate is not None:
         step["gate"] = gate
+    if "max" in entry and "until" not in entry:
+        raise _ShortFormError(f"step {step_id!r}: 'max' requires 'until'")
+    until_on = _build_until_route(step_id, entry, gate)
+    if until_on is not None:
+        if on is not _NO_ON:
+            raise _ShortFormError(f"step {step_id!r}: 'until' cannot combine with 'on'")
+        on = until_on
+    if on is not _NO_ON:
+        step["on"] = on
     return step
+
+
+def _fix_on_key(entry: dict[Any, Any]) -> dict[Any, Any]:
+    """A canonical step's bare ``on:`` key parses as the boolean ``True`` (the same
+    quirk short-form ``on:`` sugar already works around); restore it to ``"on"``."""
+    if True in entry and "on" not in entry:
+        entry = dict(entry)
+        entry["on"] = entry.pop(True)
+    return entry
 
 
 def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
@@ -528,7 +645,7 @@ def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
     if "id" in entry:
         if isinstance(entry["id"], str):
             seen_ids.append(entry["id"])
-        return entry
+        return _fix_on_key(entry)
     normalized = _normalize_short_step(entry, seen_ids)
     if isinstance(normalized.get("id"), str):
         seen_ids.append(normalized["id"])

@@ -28,7 +28,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from docket.core import archetypes as _archetypes
 from docket.core import pipeline as _pipeline
@@ -53,6 +53,9 @@ class PlannedUnit:
     retries: int | None
     timeout: int | None
     skipped: bool = False
+    # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
+    # See specs/functional/pipeline-format.spec.md ("Outcome routing").
+    on: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +151,7 @@ def _resolve_unit(
         retries=step.retries,
         timeout=step.timeout,
         skipped=skipped,
+        on=step.on,
     )
 
 
@@ -191,7 +195,17 @@ def _render_unit(unit: PlannedUnit) -> str:
     target = unit.agent if unit.agent is not None else f"role={unit.role}"
     who = unit.member_id or "(unresolved)"
     gate_label = _gate_label(unit.gate)
-    return f"{target} -> {who} [gate: {gate_label}]"
+    return f"{target} -> {who} [gate: {gate_label}]{_render_on_suffix(unit.on)}"
+
+
+def _render_on_suffix(on: dict[str, Any] | None) -> str:
+    if not on:
+        return ""
+    parts = []
+    for label, route in on.items():
+        target = route.get("goto", "?") if isinstance(route, dict) else route
+        parts.append(f"{str(label).upper()}->{target}")
+    return " on " + ", ".join(parts)
 
 
 def _gate_label(gate: _pipeline.Gate | None) -> str:

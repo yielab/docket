@@ -378,3 +378,52 @@ class TestParallelGroupThroughDispatch:
         res = _dispatch.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "not supported inside a parallel group" in res.reason
+
+
+# ── a verdict gate's own `on:` map routes beyond built-in rework/fail ────────
+
+
+class TestOutcomeRoutingThroughDispatch:
+    def test_fail_verdict_routes_forward_to_a_later_approval_step(self) -> None:
+        """A verdict step's `on: {FAIL: escalate}` beats the built-in fail handling:
+        instead of failing the task, the pipeline jumps forward to `escalate`, a later
+        approval step, which then gates pre-hop exactly as it always does."""
+        _write_meta("myapp-lead")
+        _write_meta("myapp-critic")
+        _write_meta("myapp-implementer")
+        spec = _pipeline.PipelineSpec(
+            name="escalation",
+            steps=[
+                _pipeline.Step(id="plan", role="lead"),
+                _pipeline.Step(
+                    id="review",
+                    role="critic",
+                    gate=_pipeline.VerdictGate(
+                        pattern=r"^\s*(APPROVE|FAIL)\b", pass_values=["approve"]
+                    ),
+                    on={"FAIL": "escalate"},
+                ),
+                _pipeline.Step(
+                    id="escalate",
+                    role="implementer",
+                    gate=_pipeline.ApprovalGate(message="Ship anyway?"),
+                ),
+            ],
+        )
+        runner = _RoleRunner({"critic": "FAIL\nneeds a human look"})
+        task: dict[str, Any] = {"id": "r1", "description": "work", "status": "pending"}
+        res = _dispatch.dispatch_task("myapp", task, runner=runner, spec=spec)
+
+        assert res.status == "waiting_approval"
+        assert [h.role for h in res.hops] == ["lead", "critic"]
+
+        events = _trace_events("myapp")
+        route_events = [e for e in events if e["event_type"] == "route_taken"]
+        assert len(route_events) == 1
+        assert route_events[0]["payload"] == {
+            "step": "review",
+            "outcome": "fail",
+            "target": "escalate",
+        }
+        # The built-in fail handling never fired.
+        assert not any(e["event_type"] == "verdict_rejected" for e in events)
