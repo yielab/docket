@@ -434,9 +434,12 @@ class TestReviewerReworkLoop:
         _write_meta("myapp-lead", {"maxReworkCycles": "3"})
         assert _dispatch.pod_max_rework_cycles("myapp") == 3
 
-    def test_max_rework_cycles_invalid_value_falls_back_to_default(self, tmp_path: Path) -> None:
+    def test_max_rework_cycles_invalid_value_refuses_instead_of_defaulting(
+        self, tmp_path: Path
+    ) -> None:
         _write_meta("myapp-lead", {"maxReworkCycles": "not-a-number"})
-        assert _dispatch.pod_max_rework_cycles("myapp") == 1
+        with pytest.raises(_dispatch.DispatchError, match="maxReworkCycles"):
+            _dispatch.pod_max_rework_cycles("myapp")
 
 
 # ── resume mid-rework: the integration point that matters most ─────────────────

@@ -933,7 +933,7 @@ def cmd_profile(
         except ValueError:
             ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
             raise typer.Exit(1) from None
-        _fleet.meta_set(aid, "budgetUsd", budget)
+        _fleet.meta_set(aid, "budgetUsd", bval)
         audit_log("profile.budget", f"{aid}=${budget}")
         # A pod-wide budget change is one of the two sanctioned ways a
         # budget-`blocked` task re-enters `pending` (the other is an explicit
@@ -1567,7 +1567,10 @@ def cmd_pod(
     project: str = typer.Argument(..., help="Project (pod) id"),
     sub: str | None = typer.Argument(
         None,
-        help="list | add <role> [--verify CMD] | remove <member-id> | set-verify <member-id> CMD",
+        help=(
+            "list | add <role> [--verify CMD] | remove <member-id> | "
+            "set-verify <member-id> CMD | config [get|set <key> <value>|unset <key>]"
+        ),
     ),
 ) -> None:
     """Manage a project's pod: list members, add/remove a role, set an
@@ -1607,6 +1610,20 @@ def cmd_pod(
                         time in the Implementer's git worktree when one
                         exists, falling back to the pod's shared codebase
                         root, then the member's own workspace dir.
+      config           [get|set <key> <value>|unset <key>] [--json]. Typed,
+                        validated dispatch settings on the pod's Lead
+                        (`core.pod.PodSettings`): `budgetUsd`, `maxReworkCycles`,
+                        `turnTimeoutS`, `verifyTimeoutS`. `get` (default) shows
+                        each key's effective value and whether it is `set` or
+                        `default`; `--json` emits the same as a bare object --
+                        see cli-json-shapes.spec.md. `set` validates before
+                        writing (an invalid value exits 1, nothing persisted)
+                        and audit-logs `pod.config`; `unset` removes an
+                        override, falling back to the built-in default. A
+                        stored value that fails validation (e.g. a hand-edited
+                        `.docket-meta.json`) refuses `config get` and
+                        `dispatch` alike, naming the key, instead of silently
+                        substituting the default.
       delegate <task>  [--priority high|normal|low]. Queue a task on the
                         pod's task queue (in the Lead's workspace). Priority
                         defaults to normal. The description is capped at 500

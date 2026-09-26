@@ -147,3 +147,64 @@ class TestAddMember:
     def test_next_index_ignores_other_projects(self) -> None:
         existing = ["shop-implementer", "other-implementer", "other-implementer-2"]
         assert pod.next_index(existing, "shop", "implementer") == 2
+
+
+def _write_lead_meta(project: str, fields: dict[str, object] | None = None) -> None:
+    """Seed just the pod Lead's meta keys ``PodSettings`` reads."""
+    path = _cfg.meta_path(pod.member_id(project, "lead"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict[str, object] = {"schemaVersion": 1, "kind": "project", "scope": "project"}
+    if fields:
+        data.update(fields)
+    _store.write_json(path, data)
+
+
+class TestPodSettings:
+    def test_defaults_when_nothing_stored(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.budget_usd == 0.0
+        assert settings.max_rework_cycles == 1
+        assert settings.turn_timeout_s is None
+        assert settings.verify_timeout_s is None
+
+    def test_accepts_numeric_strings_from_existing_installs(self) -> None:
+        _write_lead_meta(
+            "shop",
+            {
+                "budgetUsd": "5",
+                "maxReworkCycles": "2",
+                "turnTimeoutS": "45",
+                "verifyTimeoutS": "600",
+            },
+        )
+        settings = pod.PodSettings.load_for("shop")
+        assert (settings.budget_usd, settings.max_rework_cycles) == (5.0, 2)
+        assert (settings.turn_timeout_s, settings.verify_timeout_s) == (45, 600)
+
+    def test_invalid_stored_value_names_the_key(self) -> None:
+        _write_lead_meta("shop", {"turnTimeoutS": "not-a-number"})
+        with pytest.raises(pod.PodSettingsError, match="turnTimeoutS"):
+            pod.PodSettings.load_for("shop")
+
+    def test_negative_max_rework_cycles_is_invalid(self) -> None:
+        _write_lead_meta("shop", {"maxReworkCycles": "-1"})
+        with pytest.raises(pod.PodSettingsError, match="maxReworkCycles"):
+            pod.PodSettings.load_for("shop")
+
+    def test_coerce_accepts_a_valid_value(self) -> None:
+        assert pod.PodSettings.coerce("turnTimeoutS", "90") == 90
+
+    def test_coerce_rejects_non_positive_timeout(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="turnTimeoutS"):
+            pod.PodSettings.coerce("turnTimeoutS", "0")
+
+    def test_coerce_rejects_unknown_key(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="unknown"):
+            pod.PodSettings.coerce("approvalMode", "x")
+
+    def test_value_and_source_reports_set_vs_default(self) -> None:
+        _write_lead_meta("shop", {"maxReworkCycles": "3"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("maxReworkCycles", "shop") == (3, "set")
+        assert settings.value_and_source("budgetUsd", "shop") == (0.0, "default")

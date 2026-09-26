@@ -13,6 +13,8 @@ the two surfaces cannot drift apart.
 
 from __future__ import annotations
 
+import json as _json
+
 import typer
 from rich.markup import escape
 from rich.table import Table
@@ -226,10 +228,12 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_queue(project, extra)
     elif action == "dispatch":
         _pod_dispatch(project, extra)
+    elif action == "config":
+        _pod_config(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. "
-            "Use: list | add | remove | set-verify | delegate | queue | dispatch."
+            "Use: list | add | remove | set-verify | delegate | queue | dispatch | config."
         )
         raise typer.Exit(1)
 
@@ -554,15 +558,21 @@ def _pod_dispatch(
     count_label = f"{len(pending)} pending"
     if resume:
         count_label += f", {len(resumable)} resumable"
-    if spec is not None:
-        ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
-    else:
-        roles = " → ".join(
-            step.role or step.agent or step.id
-            for step in _dispatch.effective_pipeline(project, None).steps
-        )
-        ui.info(f"Dispatching {count_label} task(s) through: {roles}")
-    cap = _dispatch.pod_budget(project)
+    try:
+        if spec is not None:
+            ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
+        else:
+            roles = " → ".join(
+                step.role or step.agent or step.id
+                for step in _dispatch.effective_pipeline(project, None).steps
+            )
+            ui.info(f"Dispatching {count_label} task(s) through: {roles}")
+        cap = _dispatch.pod_budget(project)
+    except _dispatch.DispatchError as ex:
+        # An invalid stored setting (see core.pod.PodSettings) refuses here,
+        # before any task is claimed, rather than defaulting it away.
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
 
@@ -611,6 +621,77 @@ def _pod_dispatch(
     if final is not None and final.get("state") == "failed":
         ui.dim(f"  Details: docket runs show {record['id']}")
         raise typer.Exit(1)
+
+
+def _pod_config(project: str, extra: list[str]) -> None:
+    """``docket pod <project> config [get|set <key> <value>|unset <key>] [--json]``.
+    Reads/writes the Lead's typed dispatch settings (``core.pod.PodSettings``)
+    through the existing meta writer; every write is audited as ``pod.config``."""
+    json_out = "--json" in extra
+    rest = [a for a in extra if a != "--json"]
+    action = rest[0] if rest else "get"
+
+    try:
+        _dispatch.pod_pipeline(project)  # validates the pod exists and has a Lead
+    except _dispatch.DispatchError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    lead_id = pod.member_id(project, "lead")
+
+    if action == "get":
+        if len(rest) > 1:
+            ui.error("Usage: docket pod <project> config [get] [--json]")
+            raise typer.Exit(1)
+        try:
+            settings = pod.PodSettings.load_for(project)
+        except pod.PodSettingsError as ex:
+            ui.error(str(ex))
+            raise typer.Exit(1) from ex
+        rows = [(k, *settings.value_and_source(k, project)) for k in pod.PodSettings.KEYS]
+        if json_out:
+            print(_json.dumps({k: {"value": v, "source": s} for k, v, s in rows}, indent=2))
+        else:
+            table = Table(title=f"Pod config — {project}")
+            table.add_column("KEY", style="bold")
+            table.add_column("VALUE")
+            table.add_column("SOURCE", style="dim")
+            for k, v, s in rows:
+                table.add_row(k, str(v), s)
+            ui.console.print(table)
+        return
+
+    if action == "set":
+        if len(rest) != 3:
+            ui.error("Usage: docket pod <project> config set <key> <value>")
+            raise typer.Exit(1)
+        _, key, value = rest
+        try:
+            coerced = pod.PodSettings.coerce(key, value)
+        except pod.PodSettingsError as ex:
+            ui.error(str(ex))
+            raise typer.Exit(1) from ex
+        _fleet.meta_set(lead_id, key, coerced)
+        audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
+        ui.success(f"Set {key}={coerced} for pod '{project}'.")
+        return
+
+    if action == "unset":
+        if len(rest) != 2:
+            ui.error("Usage: docket pod <project> config unset <key>")
+            raise typer.Exit(1)
+        _, key = rest
+        if key not in pod.PodSettings.KEYS:
+            ui.error(f"unknown pod setting {key!r}; valid keys: {', '.join(pod.PodSettings.KEYS)}")
+            raise typer.Exit(1)
+        # None round-trips through AgentMeta's typed fields and reads back
+        # exactly like an absent key -- the writer's only way to clear one.
+        _fleet.meta_set(lead_id, key, None)
+        audit_log("pod.config", f"project={project} action=unset key={key}")
+        ui.success(f"Unset {key} for pod '{project}' — falls back to its default.")
+        return
+
+    ui.error(f"Unknown pod config action {action!r}. Use: get | set <key> <value> | unset <key>.")
+    raise typer.Exit(1)
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:

@@ -340,9 +340,10 @@ class TestTimeoutResolution:
         _write_meta("myapp-lead", {"turnTimeoutS": 45})
         assert _dispatch._resolve_timeout(90, _dispatch.pod_turn_timeout("myapp")) == 90
 
-    def test_invalid_lead_meta_value_is_ignored(self) -> None:
+    def test_invalid_lead_meta_value_refuses_instead_of_defaulting(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": "not-a-number"})
-        assert _dispatch.pod_turn_timeout("myapp") is None
+        with pytest.raises(_dispatch.DispatchError, match="turnTimeoutS"):
+            _dispatch.pod_turn_timeout("myapp")
 
     def test_turn_and_verify_timeouts_independently_applied_to_calls(self, tmp_path: Path) -> None:
         """End-to-end through dispatch_task: the agent-turn call gets

@@ -13,6 +13,10 @@ one function here with I/O — it reads a member's recorded meta via `core/fleet
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar, cast
+
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as _PydanticValidationError
 
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
@@ -260,3 +264,83 @@ def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "
     if codebase:
         return codebase
     return str(_cfg.workspace_dir(member_id))
+
+
+class PodSettingsError(ValueError):
+    """A pod setting's value is invalid: bad type, out of range, or unknown key."""
+
+
+# alias -> attribute, so the CLI and dispatch never hardcode a second copy of
+# this mapping next to PodSettings.KEYS.
+_SETTING_FIELD_BY_ALIAS: dict[str, str] = {
+    "budgetUsd": "budget_usd",
+    "maxReworkCycles": "max_rework_cycles",
+    "turnTimeoutS": "turn_timeout_s",
+    "verifyTimeoutS": "verify_timeout_s",
+}
+
+
+# Typed, validated view over the pod Lead's dispatch-configuration meta keys
+# (budgetUsd/maxReworkCycles/turnTimeoutS/verifyTimeoutS -- see
+# specs/data/docket-meta.spec.md). A missing/blank meta key uses the field
+# default below, but a *present, malformed* stored value is never silently
+# replaced by it: ``load_for``/``coerce`` raise ``PodSettingsError`` naming the
+# key instead, and core/dispatch.py's readers let that propagate, so a bad
+# stored value refuses dispatch rather than guessing at one. A later pod
+# setting (approvalMode, pipeline, allowCommands) adds a field plus a
+# ``KEYS``/alias entry here, never a second reader.
+class PodSettings(BaseModel):
+    """One pod's dispatch-config settings, validated from the Lead's meta."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    budget_usd: float = Field(0.0, alias="budgetUsd", ge=0)
+    max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
+    turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
+    verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
+
+    # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
+    # ``coerce`` all iterate, instead of a second hardcoded key list.
+    KEYS: ClassVar[tuple[str, ...]] = (
+        "budgetUsd",
+        "maxReworkCycles",
+        "turnTimeoutS",
+        "verifyTimeoutS",
+    )
+
+    @classmethod
+    def _validated(cls, present: dict[str, str]) -> PodSettings:
+        try:
+            return cls.model_validate(present)
+        except _PydanticValidationError as exc:
+            first = exc.errors()[0]
+            key = str(first["loc"][0]) if first["loc"] else "?"
+            raise PodSettingsError(
+                f"{key}: invalid stored value {present.get(key)!r} ({first['msg']})"
+            ) from exc
+
+    @classmethod
+    def load_for(cls, project: str) -> PodSettings:
+        """Read and validate one pod Lead's stored settings (see class docs:
+        never catch the raised error to substitute a default)."""
+        lead_id = member_id(project, "lead")
+        present = {k: v for k in cls.KEYS if (v := _fleet.meta_get(lead_id, k, ""))}
+        return cls._validated(present)
+
+    @classmethod
+    def coerce(cls, key: str, value: str) -> float | int:
+        """Validate *value* for *key* and return the number a caller should
+        persist via ``core.fleet.meta_set``; never writes anything itself."""
+        if key not in cls.KEYS:
+            raise PodSettingsError(
+                f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
+            )
+        settings = cls._validated({key: value})
+        return cast("float | int", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
+
+    def value_and_source(self, key: str, project: str) -> tuple[float | int | None, str]:
+        """This setting's value plus whether it is "set" (Lead meta) or
+        "default" (this model's own default)."""
+        lead_id = member_id(project, "lead")
+        source = "set" if _fleet.meta_get(lead_id, key, "") else "default"
+        return getattr(self, _SETTING_FIELD_BY_ALIAS[key]), source
