@@ -255,8 +255,8 @@ config, and the `profile --budget` write.
 
 ### P26-5 — unattended turns can refuse instead of waiting on nobody
 
-**Status:** TODO · **Size:** S · **Wave:** 39 (after P26-4) · **Spec:** `pod-dispatch.spec.md`,
-`security-gates.spec.md`
+**Status:** DONE (merged `971cb4c`, worker commit `25186d3`) · **Size:** S · **Wave:** 39 (after P26-4) · **Spec:** `pod-dispatch.spec.md` 6.11.0,
+`security-gates.spec.md` 0.23.0
 
 **Trigger:**
 - On the 2026-09-25 real dispatch, the tester hop failed on 3 × `approval_timeout`, having waited
