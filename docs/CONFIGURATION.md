@@ -51,7 +51,7 @@ noted.
 ├── docket-models.json                  init/preset  role -> model policy
 ├── port-allocations.json               first pod    per-pod port range bases
 ├── audit.log                           first change hash-chained record of every mutation
-├── policies/*.json                     init         6 baseline guardrail policies
+├── policies/*.yaml                     init         6 baseline guardrail policies (JSON also loads)
 ├── docket-roles.json                   roles add    your custom role archetypes
 ├── docket-mcp-servers.json             mcp servers  external MCP tool servers
 ├── docket-schedules.json               you          dispatch schedules (no CLI writer)
@@ -152,10 +152,10 @@ global) — the same three `docket config explain <agent> --json` labels per val
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket roles [--pod <p>]`, `docket pod <p> add <role>` |
 | What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); opt-in codebase files via `projectInstructions` | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions AGENTS.md` |
-| What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.json` + this pod's own `config/policies/*.json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
+| What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
 
-**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket doctor` flags a malformed entry in either file, naming the pod.
+**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket doctor` flags a malformed entry in either file, naming the pod.
 
 Two boundaries worth stating because they are easy to get backwards:
 
@@ -443,9 +443,11 @@ Three ways to avoid it:
   Implementer), so relative paths work.
 
 
-**Policies** (`~/.docket/policies/*.json`, relocatable with `POLICIES_DIR`). Every `*.json` file
+**Policies** (`~/.docket/policies/*.yaml|yml|json`, relocatable with `POLICIES_DIR`). Every file
 in the directory is loaded, and all of them are re-read on every call, so a new file is live
-immediately:
+immediately. The short form is `kind: policy`, `name`, `appliesTo`, `on: input|toolCall|output`,
+`when: {tool, path, matches, branch, anyOf}` and `then: allow|warn|ask|block|redact` (the
+shipped templates under `policies/` are examples); the canonical form it normalises to is:
 
 ```json
 {
@@ -585,7 +587,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}`, `providers{<name>{baseUrl,apiKey,models[{id,contextWindow,maxTokens,…}]}}` | init, `models provider add`, `wire`, `gates` | endpoint resolution (`baseUrl`, `apiKey`, `models[].id/contextWindow/maxTokens`), isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
-| `policies/*.json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
+| `policies/*.yaml\|json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout}]` | `mcp servers add/remove` | every turn | via command |
 | `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | you, serve (`lastRun`) | `serve --dispatch` sweep | **yes, the only interface** |
 | `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `keys add/rotate/remove` | endpoint key lookup (after env) | no |

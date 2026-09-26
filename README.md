@@ -289,7 +289,7 @@ configuration with working defaults, and every layer answers one question:
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | write a YAML, `docket pipeline validate/plan` it, run it once with `--file` or **bind it as the pod's default for every trigger** with `docket pod <p> config set pipeline <file>` |
 | What a kind of agent is, what it is told each hop, and which tools it is structurally denied | Role archetype | `docket roles add` (`deniedTools`, `hopInstruction`, gate contract, token budget) |
 | Your own words in front of an agent | Instructions | edit the operator-owned `INSTRUCTIONS.md` (docket never touches it), or opt in your repo's own `AGENTS.md` with `pod config set projectInstructions` |
-| What is forbidden or needs a human, everywhere | Policies | drop a JSON file in `~/.docket/policies/` — live on the next call, `docket policies test`/`validate` to check it |
+| What is forbidden or needs a human, everywhere | Policies | drop a `kind: policy` YAML (`when`/`then`) or a JSON file in `~/.docket/policies/` — live on the next call, `docket policies test`/`validate` to check it |
 | What one pod may run unattended | Pod settings | `pod config set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
 | Which model each role uses | Model policy | `docket models set <role> <provider/model>`; pin one agent with `docket profile` |
 | A proven starting point instead of a blank page | Recipes | `docket pod <p> apply templates/recipes/secure-build` (or `research-review`, `ops-approval`); `docket pod <p> export <dir>` writes a pod back into that shape |

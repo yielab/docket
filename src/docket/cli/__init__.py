@@ -1688,7 +1688,7 @@ def cmd_pod(
                         writing. Audit-logged once as `pod.apply`, only when
                         something actually changed.
       export <dir>     [--force]. Write this pod's own scope -- pod-overlay
-                        `roles/*.yaml`, this pod's own `policies/*.json`, a
+                        `roles/*.yaml`, this pod's own `policies/*`, a
                         bound `pipeline.yaml` copy (if any), and a `pod.yaml`
                         naming non-Lead `members` and every non-default
                         `setting` -- into `<dir>`, the same shape `apply`

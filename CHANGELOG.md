@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every configuration file can say what it is, and one command validates them all.** A
+  role, pipeline, policy or `pod.yaml` may start with `kind:` and `name:`; `docket validate
+  [dir|file]` checks every document under a directory (default `.docket/`) and prints
+  `file:line field: message (valid: a, b, c; did you mean "b"?)`, exit 1 on any invalid file.
+  A file without `kind:` still loads, with one deprecation note per command.
+- **Policies read as "when this, then that".** A policy may be short-form YAML (`kind: policy`,
+  `appliesTo`, `on: input|toolCall|output`, `when`, `then: allow|warn|ask|block|redact`) with
+  structured predicates over the call itself -- `tool`, `path` (glob over the path argument),
+  `matches` (regex over the rendered text), `branch` (glob over the worktree branch), `anyOf`
+  for OR -- evaluated inside the same chokepoint. The six shipped templates are now short-form
+  YAML; every existing JSON policy keeps loading unchanged. `docket policies test` takes
+  `--arg key=value`.
+- **A pipeline step reads as "who, what is checked, where it goes".** `- build: implementer`
+  plus `verify: true`, `verdict: [APPROVE, REQUEST-CHANGES]`, `approval: <message>` or
+  `on: {REQUEST-CHANGES: {goto: build, max: 1}}`; the canonical form is unchanged and still
+  what `plan` prints. The three shipped recipes are written in the short form.
+- **A role file carries only what is enforced.** `cannot: [write, edit, bash]`, one of
+  `verdict`/`verify`/`approval`, `model: cheap|strong`, and `instructions: <file.md>` whose
+  Markdown becomes the role's prose (an optional `## AGENTS` section supplies the red lines);
+  `editRights` is derived from `cannot`, never authored.
 - **A pod exports its own scope, and the round trip is the proof.** `docket pod <p> export <dir>
   [--force]` writes the pod's role overlay, its policies, its bound pipeline and a `pod.yaml` of
   members and non-default settings, never anything global; applying that directory to a fresh pod
