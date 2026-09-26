@@ -1,3 +1,4 @@
+kind: pipeline
 name: ops-approval
 description: >-
   Lead assesses the requested operational change, then the Operator's action requires an
@@ -5,10 +6,6 @@ description: >-
   Operator's own turn, not after it). `operator` is a built-in starter archetype — no role
   YAML to add.
 steps:
-  - id: assess
-    role: lead
-  - id: act
-    role: operator
-    gate:
-      type: approval
-      message: Review the Operator's proposed action before it runs.
+  - assess: lead
+  - act: operator
+    approval: Review the Operator's proposed action before it runs.

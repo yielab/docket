@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
 `instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
@@ -19,7 +19,11 @@ builder; an unresolved reference anywhere refuses the whole run before any hop
 target role's own declared or generated instruction. **P26-20** ships pre-authored
 `pipeline.yaml` files as part of `templates/recipes/<name>/` — plain documents this format
 already fully defines; see `role-archetypes.spec.md`'s "Shipped recipes" for the bundle
-contract this spec does not itself own.
+contract this spec does not itself own. **P28-3** adds a short form
+(`core.pipeline.normalize_pipeline`): a step written as `<id>: <role-or-agent>` plus
+`verify`/`verdict`/`approval`/`on` sugar, expanded into the exact canonical shape above before
+validation — see "Short form" below. The canonical form itself, and everything this format's
+executor and CLI surface read, is unchanged.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -107,6 +111,10 @@ This specification does NOT cover:
    (ROADMAP D-16).
 2. A pipeline document **MUST** declare a non-empty `name` (`str`) and a non-empty `steps` list.
    `description` (`str`, default `""`) and `variables` (a mapping, default `{}`) are optional.
+3. A pipeline document **MAY** declare a top-level `kind: pipeline`; `load_pipeline` strips it
+   before validation, and any other `kind` value is a load error naming `pipeline` as the
+   expected value. A document with no `kind` at all loads exactly as before — see "Short form"
+   below for the sibling `kind`-bearing sugar this same load path expands.
 
 ### Variables
 
@@ -291,6 +299,63 @@ This specification does NOT cover:
    defensive-import convention `cli/_agents.py` already follows, even though PyYAML is a declared
    runtime dependency (`pyproject.toml`).
 
+### Short form
+
+1. `core.pipeline.normalize_pipeline(doc: dict) -> dict` **MUST** be a pure function: given a
+   parsed YAML document, it returns the canonical mapping this format's Requirements above
+   already define, without touching the filesystem or mutating its argument. `load_pipeline`
+   **MUST** call it on every document (after stripping a `kind: pipeline` key, if present) before
+   `PipelineSpec` validation; a document already written in canonical form **MUST** pass through
+   unchanged. The canonical form remains fully valid on its own and is what the executor, `plan`,
+   and every other reader see — nothing downstream of `load_pipeline` is aware the short form
+   exists.
+2. A `steps` entry **MUST** be read as short form when it is a mapping with exactly one key whose
+   value is a string and is not one of the sugar keys below (a one-key mapping `{<id>: <target>}`,
+   or that same key alongside sugar keys); that key becomes the step's `id` and its string value
+   the step's target. A mapping that already carries an `id` key, or that does not resolve to
+   exactly one such key, **MUST** be left unchanged (read as canonical form, including a `id`-less
+   `parallel` group, which this version of the short form does not cover).
+3. The target string **MUST** become `role:` when it is one of `lead`/`implementer`/`reviewer`/
+   `tester`, or when it is not shaped like a pod member id; it **MUST** become `agent:` when it is
+   shaped like one — a `pod.parse_member_id`-style id (`<prefix>-<role>` or
+   `<prefix>-<role>-<index>` where `<role>` is one of the four base roles above), recognized by
+   shape alone, the same way this format's `archetype` field validates a slug's *shape* without
+   checking it against any registry (see "Scope"). `security-vetter` is therefore a `role:` (its
+   last hyphen-separated segment, `vetter`, is not a base role); `myshop-implementer` and
+   `myshop-implementer-2` are `agent:`.
+4. The recognized sugar keys, each optional, **MUST** be mapped as follows:
+   - `verify: true` → `gate: {type: mechanical}`; `verify: "<command>"` → `gate: {type:
+     mechanical, command: "<command>"}`.
+   - `verdict: [<marker>, ...]` (at least one marker) → `gate: {type: verdict, pattern:
+     '^\s*(<marker>|...)\b', passValues: [<first marker, lowercased>]}`, each marker escaped for
+     regex safety; the first marker is the passing value, the rest are outcomes a step's `on:`
+     (below) or an unparsed non-match may still fail on, exactly as the canonical `verdict` gate
+     already does.
+   - `approval: "<message>"` → `gate: {type: approval, message: "<message>"}`.
+   - `instructions`, `timeout`, `retries` carry straight through to the same-named canonical
+     field.
+   - `on: {<label>: {goto: <earlier step id>, max: <n>}}` **MUST**, when the step also carries a
+     `verdict` sugar key, become that gate's `rework: {to: <goto>, when: [<label, lowercased>],
+     maxCycles: <n>}`. Because PyYAML's default resolver reads an unquoted `on:` key as the
+     boolean `True` (the same implicit-boolean pitfall `rework`'s own `when` field name was
+     chosen to avoid — see "Rework edges" above), this format **MUST** accept the sugar key
+     spelled either as the literal string `"on"` or as the boolean `True` a bare `on:` actually
+     parses to.
+   - A step carrying no sugar key beyond `instructions`/`timeout`/`retries` **MUST** get no `gate`
+     at all — the target role's own contract applies, exactly as an `id`/`role` step with no
+     `gate` does today.
+5. `on:` **MUST** be rejected as a load error, naming the step, for any shape beyond the single
+   bounded backward edge above: a forward or same-step `goto` (one that does not name a step
+   already seen earlier in the document's top-level `steps`), `fail`, `stop`, a bare step name, a
+   mapping with more than one label, or `on:` without an accompanying `verdict` sugar key on the
+   same step — `step '<id>': outcome routing beyond one bounded rework edge is not available
+   yet`. A backward `goto` missing `max` **MUST** instead be rejected with a message naming both
+   the step and that `max` is required — this is this format's one recognized case of "nearly
+   right", so it gets its own actionable message rather than the generic refusal above; neither
+   case builds a `PipelineSpec` at all, so this format's own extension points (an outcome map, a
+   forward edge, a terminal `fail`/`stop`) stay reserved for whichever later version actually
+   implements them.
+
 ## Interface Contracts
 
 This spec defines a Python data model and pure functions in `core/pipeline.py`. The CLI surface
@@ -315,6 +380,17 @@ result.source     # "file" | "builtin"
 errors = validate_pipeline(text)   # == load_pipeline(text).errors
 
 builtin = default_pipeline()       # the zero-migration PipelineSpec, unconditionally
+```
+
+Short form (Requirement, "Short form"):
+
+```python
+from docket.core.pipeline import normalize_pipeline
+
+normalize_pipeline(doc)   # dict -> dict: short-form sugar expanded into the canonical
+                           # mapping above; a canonical document passes through unchanged.
+                           # load_pipeline calls this before PipelineSpec.model_validate;
+                           # callers of load_pipeline never need to call it themselves.
 ```
 
 Variable resolution (Requirement 4, ROADMAP Phase 16 W-4):
@@ -462,6 +538,24 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.7.0 (2026-09-26)
+
+- **P28-3: a short form for steps.** New "Short form" requirements subsection and one new
+  Document shape requirement (`kind: pipeline`, optional, stripped before validation). Adds
+  `core.pipeline.normalize_pipeline(doc: dict) -> dict`, called by `load_pipeline` before
+  `PipelineSpec.model_validate`: a step written as `<id>: <role-or-agent>` plus `verify`/
+  `verdict`/`approval`/`instructions`/`timeout`/`retries`/`on` sugar expands into the exact
+  canonical mapping this format already validated. No schema change — the canonical
+  `PipelineSpec`/`Step`/`Gate`/`ReworkEdge` models are unchanged, and every existing document
+  keeps loading unmodified. `on:`'s only implemented shape is the single bounded backward edge
+  (`{goto, max}` on a verdict step); every other shape (`fail`, `stop`, a forward edge, more than
+  one label) is a load error naming the step, and a backward `goto` missing `max` gets its own
+  message saying so, since outcome-map execution and reachability checks are a later format
+  version's job, not this card's. The three shipped recipes
+  (`templates/recipes/{ops-approval,research-review,secure-build}/pipeline.yaml`) are rewritten
+  in short form; each still resolves to the byte-identical `PipelineSpec` (and therefore the same
+  `docket pipeline plan` rendering) it did before this version.
 
 ### Version 2.6.0 (2026-09-26)
 

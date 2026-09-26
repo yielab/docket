@@ -393,6 +393,160 @@ def _format_validation_error(exc: ValidationError) -> list[str]:
     return out
 
 
+# ── Short form ─────────────────────────────────────────────────────────────────
+#
+# Sugar over the canonical shape above: a step written as `<id>: <role-or-agent>`
+# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`on`
+# keys. See specs/functional/pipeline-format.spec.md ("Short form").
+
+_STEP_SUGAR_KEYS = frozenset(
+    {"verify", "verdict", "approval", "instructions", "timeout", "retries", "on"}
+)
+_BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
+_OUTCOME_ROUTING_UNAVAILABLE = "outcome routing beyond one bounded rework edge is not available yet"
+_NO_ON = object()
+
+
+class _ShortFormError(ValueError):
+    """Raised for an ``on:`` shape the executor cannot run yet; ``load_pipeline`` turns
+    this into an ordinary entry in its ``errors`` list, same as any other load error."""
+
+
+def _get_on(entry: dict[Any, Any]) -> Any:
+    # PyYAML's default resolver reads an unquoted `on:` key as the boolean `True`
+    # (the same implicit-boolean "Norway problem" `rework.when`'s own name avoids) --
+    # a quoted `"on":` key stays the string "on", so both are accepted here.
+    if "on" in entry:
+        return entry["on"]
+    if True in entry:
+        return entry[True]
+    return _NO_ON
+
+
+def _looks_like_member_id(value: str) -> bool:
+    # Shape check for a `pod.parse_member_id`-style id (e.g. "myshop-implementer" or
+    # "myshop-implementer-2") without importing `pod`, mirroring the slug-shape check
+    # this module already applies to `archetype`.
+    parts = value.split("-")
+    if len(parts) < 2:
+        return False
+    tail = parts[-1]
+    if tail.isdigit():
+        return len(parts) >= 3 and parts[-2] in _BASE_ROLES
+    return tail in _BASE_ROLES
+
+
+def _assign_target(step: dict[str, Any], value: str) -> None:
+    if value in _BASE_ROLES or not _looks_like_member_id(value):
+        step["role"] = value
+    else:
+        step["agent"] = value
+
+
+def _escape_marker(value: str) -> str:
+    # re.escape is deliberately over-cautious outside character classes (it escapes
+    # "-", which is never special there); undo that so a plain marker list round-trips
+    # to the exact hand-written pattern text an author would otherwise type.
+    return re.escape(value).replace("\\-", "-")
+
+
+def _build_verdict_gate(markers: Any) -> dict[str, Any]:
+    if not isinstance(markers, list) or not markers:
+        return {"type": "verdict", "pattern": "", "passValues": []}
+    values = [str(m) for m in markers]
+    pattern = r"^\s*(" + "|".join(_escape_marker(v) for v in values) + r")\b"
+    return {"type": "verdict", "pattern": pattern, "passValues": [values[0].lower()]}
+
+
+def _build_mechanical_gate(verify: Any) -> dict[str, Any]:
+    return (
+        {"type": "mechanical", "command": verify}
+        if isinstance(verify, str)
+        else {"type": "mechanical"}
+    )
+
+
+def _build_approval_gate(approval: Any) -> dict[str, Any]:
+    return (
+        {"type": "approval", "message": approval}
+        if isinstance(approval, str)
+        else {"type": "approval"}
+    )
+
+
+def _build_rework(step_id: str, on: Any, seen_ids: list[str]) -> dict[str, Any]:
+    if not isinstance(on, dict) or len(on) != 1:
+        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+    label, action = next(iter(on.items()))
+    if not isinstance(action, dict) or "goto" not in action or set(action) - {"goto", "max"}:
+        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+    goto = action["goto"]
+    if not isinstance(goto, str) or goto not in seen_ids:
+        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+    if "max" not in action:
+        raise _ShortFormError(f"step {step_id!r}: rework to {goto!r} requires 'max'")
+    return {"to": goto, "when": [str(label).lower()], "maxCycles": action["max"]}
+
+
+def _build_gate(step_id: str, entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any] | None:
+    on = _get_on(entry)
+    if "verdict" in entry:
+        gate = _build_verdict_gate(entry["verdict"])
+        if on is not _NO_ON:
+            gate["rework"] = _build_rework(step_id, on, seen_ids)
+        return gate
+    if "verify" in entry or "approval" in entry:
+        if on is not _NO_ON:
+            raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+        if "verify" in entry:
+            return _build_mechanical_gate(entry["verify"])
+        return _build_approval_gate(entry["approval"])
+    if on is not _NO_ON:
+        raise _ShortFormError(f"step {step_id!r}: {_OUTCOME_ROUTING_UNAVAILABLE}")
+    return None
+
+
+def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
+    id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
+    if len(id_keys) != 1 or not isinstance(entry[id_keys[0]], str):
+        return entry
+    step_id: str = id_keys[0]
+    step: dict[str, Any] = {"id": step_id}
+    _assign_target(step, entry[step_id])
+    for key in ("instructions", "timeout", "retries"):
+        if key in entry:
+            step[key] = entry[key]
+    gate = _build_gate(step_id, entry, seen_ids)
+    if gate is not None:
+        step["gate"] = gate
+    return step
+
+
+def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
+    if not isinstance(entry, dict):
+        return entry
+    if "id" in entry:
+        if isinstance(entry["id"], str):
+            seen_ids.append(entry["id"])
+        return entry
+    normalized = _normalize_short_step(entry, seen_ids)
+    if isinstance(normalized.get("id"), str):
+        seen_ids.append(normalized["id"])
+    return normalized
+
+
+def normalize_pipeline(doc: dict[str, Any]) -> dict[str, Any]:
+    """Expand the short-form sugar in *doc* into the canonical mapping
+    :class:`PipelineSpec` already validates; a document with none is returned
+    unchanged. Pure -- never mutates *doc*, never touches the filesystem."""
+    doc = dict(doc)
+    steps = doc.get("steps")
+    if isinstance(steps, list):
+        seen_ids: list[str] = []
+        doc["steps"] = [_normalize_top_step(s, seen_ids) for s in steps]
+    return doc
+
+
 def load_pipeline(text: str | None) -> PipelineLoadResult:
     """Load a pipeline spec from YAML text. ``text is None`` is zero-migration (returns
     :func:`default_pipeline`); ``""`` is a real validation error, not zero-migration. See
@@ -404,6 +558,19 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
     if err:
         return PipelineLoadResult(spec=None, errors=[err], source="file")
     assert doc is not None
+    if "kind" in doc:
+        kind = doc["kind"]
+        if kind != "pipeline":
+            return PipelineLoadResult(
+                spec=None,
+                errors=[f"pipeline document: 'kind' must be 'pipeline' (got {kind!r})"],
+                source="file",
+            )
+        doc = {k: v for k, v in doc.items() if k != "kind"}
+    try:
+        doc = normalize_pipeline(doc)
+    except _ShortFormError as exc:
+        return PipelineLoadResult(spec=None, errors=[str(exc)], source="file")
     try:
         spec = PipelineSpec.model_validate(doc)
     except ValidationError as exc:

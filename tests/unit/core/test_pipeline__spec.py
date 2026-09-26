@@ -16,6 +16,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from docket.core import archetypes as _archetypes
@@ -32,6 +33,7 @@ from docket.core.pipeline import (
     default_pipeline,
     interpolate_instructions,
     load_pipeline,
+    normalize_pipeline,
     step_instructions_by_id,
     unresolved_step_variables,
     validate_pipeline,
@@ -747,3 +749,74 @@ class TestLoadPipeline:
         result = load_pipeline("name: p\nsteps:\n  - id: s1\n    role: lead\n")
         assert not result.ok
         assert any("pyyaml" in e.lower() for e in result.errors)
+
+
+# ── TestShortForm ────────────────────────────────────────────────────────────
+
+_SECURE_BUILD_LONG = """\
+name: secure-build
+description: >-
+  Lead plans the change, Implementer builds it (gated on its own verify command), then a
+  read-only Security Vetter reviews the diff and must APPROVE before the task is done. A
+  REQUEST-CHANGES verdict sends it back to the Implementer once.
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    timeout: 900
+    gate:
+      type: mechanical
+  - id: vet
+    role: security-vetter
+    gate:
+      type: verdict
+      pattern: '^\\s*(APPROVE|REQUEST-CHANGES)\\b'
+      passValues: [approve]
+      rework:
+        to: build
+        when: [request-changes]
+        maxCycles: 1
+"""
+
+_SECURE_BUILD_SHORT = """\
+kind: pipeline
+name: secure-build
+description: >-
+  Lead plans the change, Implementer builds it (gated on its own verify command), then a
+  read-only Security Vetter reviews the diff and must APPROVE before the task is done. A
+  REQUEST-CHANGES verdict sends it back to the Implementer once.
+steps:
+  - plan: lead
+  - build: implementer
+    timeout: 900
+    verify: true
+  - vet: security-vetter
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
+"""
+
+
+class TestShortForm:
+    def test_secure_build_short_form_round_trips_to_the_canonical_spec(self) -> None:
+        long_result = load_pipeline(_SECURE_BUILD_LONG)
+        assert long_result.ok, long_result.errors
+
+        short_doc = yaml.safe_load(_SECURE_BUILD_SHORT)
+        short_doc.pop("kind")
+        normalized = normalize_pipeline(short_doc)
+        assert PipelineSpec.model_validate(normalized) == long_result.spec
+
+        # load_pipeline itself accepts the short form end to end, `kind` included.
+        assert load_pipeline(_SECURE_BUILD_SHORT).spec == long_result.spec
+
+    def test_backward_goto_without_max_names_the_step(self) -> None:
+        text = _SECURE_BUILD_SHORT.replace(
+            "on: {REQUEST-CHANGES: {goto: build, max: 1}}",
+            "on: {REQUEST-CHANGES: {goto: build}}",
+        )
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "vet" in result.errors[0]
+        assert "max" in result.errors[0]
