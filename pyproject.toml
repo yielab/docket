@@ -76,6 +76,11 @@ docket = "docket.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket"]
+# No separate include list: hatchling ships every git-tracked, non-ignored file under
+# src/docket/ by default, which is how templates/policies/*.json and templates/recipes/*
+# both reach the wheel -- a hardcoded file list here would be one more place those could
+# silently drift apart. Pinned by tests/agent/release/test_recipe_artifacts.py, which
+# unzips a real build.
 
 # ── ruff ──────────────────────────────────────────────────────────────────────
 [tool.ruff]

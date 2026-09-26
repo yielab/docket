@@ -1,0 +1,14 @@
+name: ops-approval
+description: >-
+  Lead assesses the requested operational change, then the Operator's action requires an
+  explicit human sign-off before it runs at all (the approval gate stops the run before the
+  Operator's own turn, not after it). `operator` is a built-in starter archetype — no role
+  YAML to add.
+steps:
+  - id: assess
+    role: lead
+  - id: act
+    role: operator
+    gate:
+      type: approval
+      message: Review the Operator's proposed action before it runs.

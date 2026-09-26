@@ -1,0 +1,23 @@
+name: secure-build
+description: >-
+  Lead plans the change, Implementer builds it (gated on its own verify command), then a
+  read-only Security Vetter reviews the diff and must APPROVE before the task is done. A
+  REQUEST-CHANGES verdict sends it back to the Implementer once.
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    timeout: 900
+    gate:
+      type: mechanical
+  - id: vet
+    role: security-vetter
+    gate:
+      type: verdict
+      pattern: '^\s*(APPROVE|REQUEST-CHANGES)\b'
+      passValues: [approve]
+      rework:
+        to: build
+        when: [request-changes]
+        maxCycles: 1

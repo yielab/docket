@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. The executor (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
 `PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan|run`
@@ -13,7 +13,10 @@ placeholders, interpolated from that resolved namespace by `core/dispatch.py`'s 
 builder; an unresolved reference anywhere refuses the whole run before any hop
 (`core.pipeline.unresolved_step_variables`, called once by `dispatch_pod`). See
 `role-archetypes.spec.md`'s "Hop instructions" for how a step's `instructions` interacts with a
-target role's own declared or generated instruction.
+target role's own declared or generated instruction. **P26-20** ships pre-authored
+`pipeline.yaml` files as part of `templates/recipes/<name>/` — plain documents this format
+already fully defines; see `role-archetypes.spec.md`'s "Shipped recipes" for the bundle
+contract this spec does not itself own.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -84,6 +87,10 @@ This specification does NOT cover:
   CLI/HTTP grant/deny surface) — see `security-gates.spec.md` and ROADMAP Phase 15 card G-1. This
   spec only defines the `approval` gate's on-disk shape; the pipeline-defined `approval` step is
   now a real, wired require_approval source — see `pod-dispatch.spec.md`.
+- **Shipped recipe bundles** (`templates/recipes/<name>/`, P26-20) — a recipe's `pipeline.yaml` is
+  an ordinary document this format validates the same way as any hand-authored file; the bundle
+  contract (what else a recipe carries, how it names roles that need no YAML of their own, the
+  "no new CLI surface" rule) is `role-archetypes.spec.md`'s "Shipped recipes".
 
 ## Requirements
 
@@ -452,6 +459,13 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.5.0 (2026-09-26)
+
+- **P26-20: shipped recipes reference this format's own validators.** No schema change. Added
+  the "Does NOT cover" note pointing at `role-archetypes.spec.md`'s "Shipped recipes" for
+  `templates/recipes/<name>/`'s `pipeline.yaml` files, and pinned by test that each one passes
+  `validate_pipeline` and resolves against a fixture pod with no skipped step.
 
 ### Version 2.4.0 (2026-09-26)
 

@@ -276,6 +276,11 @@ def policy_templates_dir() -> Path:
     return templates_dir() / "policies"
 
 
+def recipes_dir() -> Path:
+    """Shipped role/pipeline/policy recipe bundles (``templates/recipes/<name>/``)."""
+    return templates_dir() / "recipes"
+
+
 PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 
 # docket-owned registry of channel conversations (Telegram threads etc.). No
