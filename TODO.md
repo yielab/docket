@@ -11,12 +11,13 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 41 (opened 2026-09-26): Phase 27, per-pod configuration (D-43)
+> ## ▶ ACTIVE BOARD — WAVE 42 (opened 2026-09-26): Phase 27, per-pod configuration (D-43)
 >
-> Wave 41 runs P27-1, P27-2 and P27-3 in parallel, one Sonnet worker per card in an isolated
-> worktree under one integrator; packets in
+> Wave 41 (P27-1, P27-2, P27-3) merged green into `main` with rollup `40d6b78` on 2026-09-26.
+> Wave 42 runs P27-4 and P27-5 in parallel, one Sonnet worker per card in an isolated worktree
+> under one integrator; packets in
 > [.agents/handoffs/wave-41-worker-packets.md](.agents/handoffs/wave-41-worker-packets.md).
-> Waves 42 and 43 open only after the previous wave's rollup merges green.
+> Wave 43 opens only after this wave's rollup merges green.
 >
 > **◇ WAVE 37 CLOSED (2026-09-25) — no card claimed.**
 >
@@ -104,9 +105,9 @@ release source.
 ---
 
 
-## ▶ WAVE 41 — ACTIVE (opened 2026-09-26): Phase 27, per-pod configuration and portable teams (D-43)
+## ▶ WAVE 42 — ACTIVE (opened 2026-09-26): Phase 27, per-pod configuration and portable teams (D-43)
 
-**Opened 2026-09-26 (Wave 41 active; Waves 42–43 queued in this section).** Eight cards in three waves. Decision, the three
+**Opened 2026-09-26 (Wave 41 done; Wave 42 active; Wave 43 queued in this section).** Eight cards in three waves. Decision, the three
 scopes, the resolution rule, the verdict table and the pre-assigned spec versions are in
 [docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md);
 this section holds only the executable cards. **Activation gate:** the integrator confirms the
@@ -135,7 +136,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P27-1 — a pod has its own role overlay, resolved nearest-wins
 
-**Status:** IN-PROGRESS (@sonnet-p27-1) · **Size:** M · **Wave:** 41 · **Spec:** `role-archetypes.spec.md` → 1.12.0 ("User registry overlay"), `cli-interface.spec.md` → 1.30.0
+**Status:** DONE (2026-09-26, e12b567, merged in Wave 41) · **Size:** M · **Wave:** 41 · **Spec:** `role-archetypes.spec.md` → 1.12.0 ("User registry overlay"), `cli-interface.spec.md` → 1.30.0
 
 **Trigger:**
 - `core/archetypes.py::load_registry` reads one overlay, `ARCHETYPE_REGISTRY_FILE`; two pods
@@ -174,7 +175,7 @@ the four lookup sites (read-only edits: add the argument, nothing else).
 
 ### P27-2 — a pod has its own policies, and they only add
 
-**Status:** IN-PROGRESS (@sonnet-p27-2) · **Size:** S · **Wave:** 41 · **Spec:** `security-gates.spec.md` → 0.25.0 (policy store section), `cli-interface.spec.md` → 1.31.0
+**Status:** DONE (2026-09-26, ae8c3ac, merged in Wave 41) · **Size:** S · **Wave:** 41 · **Spec:** `security-gates.spec.md` → 0.25.0 (policy store section), `cli-interface.spec.md` → 1.31.0
 
 **Trigger:**
 - `core/policy.py::policy_files` globs `POLICIES_DIR` only; `policy_eval_detail(role, hook, text)`
@@ -213,7 +214,7 @@ the four lookup sites (read-only edits: add the argument, nothing else).
 
 ### P27-3 — an MCP server declares its kind and its exposed tools
 
-**Status:** IN-PROGRESS (@sonnet-p27-3) · **Size:** S · **Wave:** 41 · **Spec:** `mcp-client.spec.md` → 1.5.0 ("Configuration", "Enumeration and adaptation"), `cli-interface.spec.md` → 1.32.0
+**Status:** DONE (2026-09-26, f775166, merged in Wave 41) · **Size:** S · **Wave:** 41 · **Spec:** `mcp-client.spec.md` → 1.5.0 ("Configuration", "Enumeration and adaptation"), `cli-interface.spec.md` → 1.32.0
 
 **Trigger:**
 - `core/mcp_tools.py::_build_tool` registers every remote tool `kind="write"`; README limit 1
@@ -250,7 +251,7 @@ function), `cli/_mcp.py`, the mcp-client spec sections named.
 
 ### P27-4 — pod settings `mcpServers` and `deniedTools`, each with its live reader
 
-**Status:** TODO · **Size:** M · **Wave:** 42 (after P27-1 and P27-3) · **Spec:** `pod-dispatch.spec.md` → 6.16.0 (pod settings), `mcp-client.spec.md` → 1.6.0 (live-turn wiring), `role-archetypes.spec.md` → 1.13.0 (per-role tool sets)
+**Status:** IN-PROGRESS (@sonnet-p27-4) · **Size:** M · **Wave:** 42 (after P27-1 and P27-3) · **Spec:** `pod-dispatch.spec.md` → 6.16.0 (pod settings), `mcp-client.spec.md` → 1.6.0 (live-turn wiring), `role-archetypes.spec.md` → 1.13.0 (per-role tool sets)
 
 **Trigger:**
 - `DocketDriver._load_mcp_tools` loads every catalog server into every pod's turns; a pod cannot
@@ -293,7 +294,7 @@ key on the base.
 
 ### P27-5 — the Lead's instruction is data, and step instructions reach it
 
-**Status:** TODO · **Size:** S · **Wave:** 42 · **Spec:** `pod-dispatch.spec.md` → 6.17.0 (hop message), `pipeline-format.spec.md` → 2.6.0 (step `instructions`), `pod-blueprints.spec.md` → 1.5.0, `role-archetypes.spec.md` → 1.14.0 (hop instructions)
+**Status:** IN-PROGRESS (@sonnet-p27-5) · **Size:** S · **Wave:** 42 · **Spec:** `pod-dispatch.spec.md` → 6.17.0 (hop message), `pipeline-format.spec.md` → 2.6.0 (step `instructions`), `pod-blueprints.spec.md` → 1.5.0, `role-archetypes.spec.md` → 1.14.0 (hop instructions)
 
 **Trigger:**
 - `core/dispatch.py` hop-message builder, `role == "lead"` branch: "Decompose this task into a
