@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.11.0
+**Version**: 6.12.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -397,23 +397,29 @@ was seeded once at binding time.)*
 ### Pipeline order and participation
 
 1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` (W-1) —
-   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, and `docket pod <project>
-   dispatch` today) resolves `effective_pipeline(project, None)`. The resolution order is:
-   a caller-supplied `spec` always wins outright (returned unpatched); otherwise the Lead's
-   `blueprint` meta is looked up (`core.blueprints.get_blueprint`) and, when it names a known
-   blueprint, that blueprint's `defaultPipeline` is the base pipeline; when the meta is absent,
-   empty, or names an unknown blueprint, the base pipeline is `core/pipeline.py`'s
-   `default_pipeline()` — Lead → Implementer → Reviewer → Tester, byte-identical to the pre-W-2
-   hardcoded `PIPELINE_ORDER` walk. Either way the resolved base pipeline is then patched only so
-   every `VerdictGate` step with a rework edge reflects this pod's own `maxReworkCycles` (see
-   "Reviewer verdict gate and bounded rework") — for a blueprint pipeline this reaches whichever
-   step declares the rework edge (e.g. the `research`/`content` blueprints' Critic step), not only
-   a step named `reviewer`. A role-targeted step whose role the pod does not have is skipped and
-   consumes no pipeline position (`core.orchestrator.resolve_plan`'s `skipped` flag), the same
-   behavior `PIPELINE_ORDER`-filtering always had. A lean `software` pod (Lead + Implementer only)
-   running the default pipeline still runs exactly two hops per pass; a full pod runs up to four,
-   plus any rework cycles (see below); a `research`, `content`, or `ops` pod now runs its
-   blueprint's full roster and gates on dispatch, not only its Lead step.
+   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, `docket pod <project>
+   dispatch`, the serve sweep/schedule/webhook, and `cli/_mcp.py`'s dispatch tool) resolves
+   `effective_pipeline(project, None)`. The resolution order is: a caller-supplied `spec`
+   always wins outright (returned unpatched); otherwise this pod's **bound pipeline**
+   (`core.pod.PodSettings.pipeline`, see "Pod dispatch settings" below) wins next, also
+   unpatched; otherwise the Lead's `blueprint` meta is looked up
+   (`core.blueprints.get_blueprint`) and, when it names a known blueprint, that blueprint's
+   `defaultPipeline` is the base pipeline; when the meta is absent, empty, or names an unknown
+   blueprint, the base pipeline is `core/pipeline.py`'s `default_pipeline()` — Lead →
+   Implementer → Reviewer → Tester, byte-identical to the pre-W-2 hardcoded `PIPELINE_ORDER`
+   walk. Only the blueprint/built-in base pipeline is then patched so every `VerdictGate` step
+   with a rework edge reflects this pod's own `maxReworkCycles` (see "Reviewer verdict gate and
+   bounded rework") — for a blueprint pipeline this reaches whichever step declares the rework
+   edge (e.g. the `research`/`content` blueprints' Critic step), not only a step named
+   `reviewer`. A bound pipeline is caller-supplied-like and is **never** patched this way — an
+   operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
+   override it, matching the pre-existing `--file` precedent. A role-targeted step whose role
+   the pod does not have is skipped and consumes no pipeline position
+   (`core.orchestrator.resolve_plan`'s `skipped` flag), the same behavior `PIPELINE_ORDER`-
+   filtering always had, for a bound pipeline exactly as for any other. A lean `software` pod
+   (Lead + Implementer only) running the default pipeline still runs exactly two hops per pass;
+   a full pod runs up to four, plus any rework cycles (see below); a `research`, `content`, or
+   `ops` pod now runs its blueprint's full roster and gates on dispatch, not only its Lead step.
 2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a
    pod with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
 3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod — each
@@ -437,6 +443,25 @@ was seeded once at binding time.)*
    `PIPELINE_ORDER` doesn't know about (e.g. a starter-library `researcher`/`critic`) —
    `pod_full_roster` resolves *every* role the pod's members actually carry (first member per
    role), not just the four legacy ones `pod_pipeline` considers.
+6. `docket pod <project> config set pipeline <file>` **MUST** validate *file*
+   (`core.pipeline.load_pipeline`) and plan it against the pod's *current* roster
+   (`core.orchestrator.resolve_plan`) before accepting it: a role-targeted step whose role the
+   roster lacks, or an agent-targeted step naming a member outside this pod, **MUST** refuse at
+   `set` (exit 1, meta untouched) rather than silently binding a pipeline that can never fully
+   run — this is stricter than requirement 1's ordinary skip-on-run behavior, which still
+   applies once a pipeline is bound and a role is later removed from the pod. On success, `set`
+   **MUST** write a docket-owned copy of *file*'s contents into the Lead's own workspace
+   (`core.pod.bound_pipeline_path`) and persist only that copy's sha256 hex digest as the
+   Lead's `pipeline` meta — never the operator's original path, which can drift or disappear.
+   `effective_pipeline` **MUST** re-read that copy and verify it still hashes to the stored
+   digest on every resolution; a missing/unreadable copy, a hash mismatch, or a copy that no
+   longer validates **MUST** raise `DispatchError` naming the reason and the rebind command —
+   fail loud, never a silent fall back to the blueprint/built-in pipeline. `unset pipeline`
+   **MUST** clear the stored digest (falling back to requirement 1's blueprint/built-in
+   resolution) and **SHOULD** best-effort remove the stored copy, never failing the unset if
+   that removal fails. `docket pipeline plan <project>` **MUST** name its resolved source: an
+   explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
+   default".
 
 ### Per-hop execution
 
@@ -560,6 +585,14 @@ was seeded once at binding time.)*
    surface. A present-but-invalid stored value (anything other than the two literals) raises
    exactly like a malformed numeric setting — naming the key — and refuses dispatch rather than
    defaulting to `"wait"`.
+4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256
+   digest): the hash of this pod's bound pipeline copy (`core.pod.bound_pipeline_path`), or
+   unset. Unlike the scalar keys, `set pipeline <value>` does not accept an arbitrary
+   string through the same `coerce`-then-`meta_set` path — `docket pod <project> config set
+   pipeline <file>` is a dedicated CLI code path (`cli/_pod.py::_pod_config_set_pipeline`) that
+   reads *file*, validates and plans it, writes the docket-owned copy, and only then persists
+   its digest through `coerce`/`meta_set` like any other key. See "Pipeline order and
+   participation" requirement 6 for the full validate-plan-store-verify contract.
 
 ### Unattended approval posture (`approvalMode`, ROADMAP P26-5)
 
@@ -1281,6 +1314,28 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.12.0 (2026-09-26)
+
+- **P26-6: a pipeline file can be a pod's default for every trigger.** "Pipeline order and
+  participation" requirement 1 adds a **bound pipeline** step to the resolution order (caller
+  `spec` -> bound pipeline -> blueprint -> built-in), unpatched by `maxReworkCycles` exactly
+  like a caller-supplied `spec` — an operator's own rework config wins over the pod setting.
+  New requirement 6 specifies `docket pod <project> config set pipeline <file>`'s
+  validate-plan-store-verify contract: refuse at `set` when a step's role/agent isn't in the
+  pod's current roster (rather than skipping it at run time), persist a docket-owned copy plus
+  its sha256 hash in the Lead's workspace (never the operator's path), and have
+  `effective_pipeline` re-verify that copy's hash on every resolution, raising `DispatchError`
+  on a mismatch/missing copy/re-validation failure instead of silently falling back. Fixes the
+  measured defect where only `cli/_pod.py`'s dispatch and `cli/_pipeline.py`'s run/plan passed
+  `spec=`, so a declared pipeline could never run from the serve sweep, a due schedule, the
+  webhook, or `cli/_mcp.py`'s dispatch tool — all five now converge on the same
+  `effective_pipeline(project, None)` resolution with no change to any of those callers. "Pod
+  dispatch settings" gains requirement 4 documenting `PodSettings.pipeline`'s dedicated
+  validate-then-store CLI path (distinct from the scalar keys' plain
+  `coerce`-then-`meta_set`). `docket pipeline plan` now prints a `Source:` line naming an
+  explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
+  default".
 
 ### Version 6.11.0 (2026-09-26)
 

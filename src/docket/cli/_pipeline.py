@@ -121,17 +121,24 @@ def _plan(args: list[str]) -> int:
         _print_errors("Pipeline file is invalid:", errors)
         return 1
 
+    file_path = _flag(args[1:], "--file")
     try:
         _dispatch.pod_pipeline(project)  # validates the project has a pod/lead
         roster = _dispatch.pod_full_roster(project)
+        effective = spec if spec is not None else _dispatch.effective_pipeline(project, None)
+        source_label = (
+            f"file '{file_path}'"
+            if spec is not None
+            else _dispatch.effective_pipeline_source(project)
+        )
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         return 1
 
-    effective = spec if spec is not None else _dispatch.effective_pipeline(project, None)
     registry = _archetypes.load_registry()
     plan = _orch.resolve_plan(effective, roster, registry=registry)
     ui.header(f"Pipeline plan — {project}")
+    ui.console.print(f"Source: {source_label}")
     ui.console.print()
     # render_plan's own `[step-id]` bracket style is plain text, not Rich
     # markup -- markup=False keeps a literal "[" from being parsed as a

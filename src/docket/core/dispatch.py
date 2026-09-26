@@ -14,6 +14,7 @@ policy at every role. ``pod_gating_cost``'s token estimate is gating-only, never
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib as _hashlib
 import json as _json
 import time as _time
 import uuid as _uuid
@@ -385,29 +386,82 @@ def pod_full_roster(project: str) -> dict[str, str]:
     return by_role
 
 
-def _blueprint_pipeline(project: str) -> _pipeline.PipelineSpec:
-    """The resolved base pipeline for a caller-supplied-spec-free dispatch: the Lead's
-    ``blueprint`` meta's ``default_pipeline`` when that meta names a known blueprint, else the
-    built-in default (see pod-dispatch.spec.md, "Pipeline order and participation")."""
+_BOUND_PIPELINE_SOURCE_PREFIX = "bound pipeline"
+
+
+# Fails loud on a missing/unreadable copy, a hash mismatch (the copy changed on disk since
+# it was bound), or a copy that no longer validates -- never a silent fall back to the
+# blueprint/built-in pipeline (see pod-dispatch.spec.md, "Pipeline order and participation").
+def _bound_pipeline(project: str, pipeline_hash: str) -> _pipeline.PipelineSpec:
+    """Load this pod's bound pipeline copy, verified against *pipeline_hash*
+    (the Lead's stored ``PodSettings.pipeline`` digest)."""
+    path = _pod.bound_pipeline_path(project)
+    rebind_hint = f"rebind with 'docket pod {project} config set pipeline <file>'"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise DispatchError(
+            f"pod '{project}' has a bound pipeline (hash {pipeline_hash[:12]}...) but its "
+            f"stored copy at {path} is unreadable ({exc}) -- {rebind_hint}"
+        ) from exc
+    actual_hash = _hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if actual_hash != pipeline_hash:
+        raise DispatchError(
+            f"pod '{project}'s bound pipeline copy at {path} no longer matches its recorded "
+            f"hash (expected {pipeline_hash[:12]}..., found {actual_hash[:12]}...) -- {rebind_hint}"
+        )
+    result = _pipeline.load_pipeline(text)
+    if result.spec is None:
+        raise DispatchError(
+            f"pod '{project}'s bound pipeline copy at {path} no longer validates: "
+            f"{'; '.join(result.errors)} -- {rebind_hint}"
+        )
+    return result.spec
+
+
+# Resolution order: this pod's bound pipeline (PodSettings.pipeline) -> the Lead's
+# ``blueprint`` meta's default_pipeline -> the built-in default. *source* is the
+# human-readable label ``docket pipeline plan`` names ("bound pipeline (hash ...)",
+# "blueprint '<name>'", or "built-in default" -- see pod-dispatch.spec.md, "Pipeline order
+# and participation").
+def _blueprint_pipeline(project: str) -> tuple[_pipeline.PipelineSpec, str]:
+    """The resolved (spec, source) base pipeline for a caller-supplied-spec-free
+    dispatch -- see the comment above for the resolution order."""
+    settings = _pod_settings(project)
+    if settings.pipeline:
+        spec = _bound_pipeline(project, settings.pipeline)
+        return spec, f"{_BOUND_PIPELINE_SOURCE_PREFIX} (hash {settings.pipeline[:12]}...)"
     lead_id = _pod.member_id(project, "lead")
     name = _fleet.meta_get(lead_id, "blueprint", "")
     if name:
         try:
-            return _blueprints.get_blueprint(name).default_pipeline
+            return _blueprints.get_blueprint(name).default_pipeline, f"blueprint '{name}'"
         except _blueprints.BlueprintError:
             pass  # absent/unknown blueprint -- fall through to the built-in default
     builtin = _pipeline.load_pipeline(None).spec
     assert builtin is not None  # load_pipeline(None) always succeeds
-    return builtin
+    return builtin, "built-in default"
 
 
+def effective_pipeline_source(project: str) -> str:
+    """The source label ``effective_pipeline(project, None)`` would resolve to
+    -- see ``_blueprint_pipeline``; a caller-supplied ``--file`` never reaches this."""
+    return _blueprint_pipeline(project)[1]
+
+
+# A caller-supplied *spec* is never patched. A pod's bound pipeline is caller-supplied-like
+# and is also never patched -- its own rework config wins, matching today's ``--file``
+# semantics, since an operator who hand-wrote a custom rework edge did not ask for the pod's
+# ``maxReworkCycles`` to override it. Only the blueprint/built-in default gets the patch.
 def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
-    """The PipelineSpec this dispatch actually runs (see pod-dispatch.spec.md, "Pipeline order
-    and participation"). A caller-supplied *spec* is never patched -- only the ``None`` default
-    gets the rework-budget patch. Public so ``cli/_pipeline.py`` renders this same resolved spec."""
+    """The PipelineSpec this dispatch actually runs (see pod-dispatch.spec.md,
+    "Pipeline order and participation"). Public so ``cli/_pipeline.py`` renders
+    this same resolved spec."""
     if spec is not None:
         return spec
-    builtin = _blueprint_pipeline(project)
+    builtin, source = _blueprint_pipeline(project)
+    if source.startswith(_BOUND_PIPELINE_SOURCE_PREFIX):
+        return builtin
     configured = pod_max_rework_cycles(project)
     new_steps = []
     changed = False
