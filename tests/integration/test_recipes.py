@@ -46,9 +46,9 @@ def _role_yaml_files(recipe_dir: Path) -> list[Path]:
     return sorted(roles_dir.glob("*.yaml")) if roles_dir.is_dir() else []
 
 
-def _policy_json_files(recipe_dir: Path) -> list[Path]:
+def _policy_yaml_files(recipe_dir: Path) -> list[Path]:
     policies_dir = recipe_dir / "policies"
-    return sorted(policies_dir.glob("*.json")) if policies_dir.is_dir() else []
+    return sorted(policies_dir.glob("*.yaml")) if policies_dir.is_dir() else []
 
 
 def _pipeline_roles(spec: _pipeline.PipelineSpec) -> list[str]:
@@ -92,7 +92,7 @@ def test_recipe_role_validates(role_file: Path) -> None:
 
 @pytest.mark.parametrize(
     "policy_file",
-    [f for d in _recipe_dirs() for f in _policy_json_files(d)],
+    [f for d in _recipe_dirs() for f in _policy_yaml_files(d)],
     ids=lambda p: f"{p.parent.parent.name}/{p.name}",
 )
 def test_recipe_policy_validates(policy_file: Path) -> None:
@@ -189,7 +189,7 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
     project = "policied"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
     recipe_dir = RECIPES_DIR / "secure-build"
-    src = recipe_dir / "policies" / "require-approval-secret-writes.json"
+    src = recipe_dir / "policies" / "require-approval-secret-writes.yaml"
 
     plan = _pod_apply.plan_apply(project, recipe_dir)
     policy_items = [i for i in plan.items if i.kind == "policy"]
@@ -338,18 +338,24 @@ def test_export_then_apply_round_trip_matches_config_explain(
     export_dir = tmp_path / "exported"
     _pod.dispatch(source_project, "export", [str(export_dir)])
     assert (export_dir / "roles" / "security-vetter.yaml").is_file()
+    assert (export_dir / "roles" / "security-vetter.md").is_file()
     assert (export_dir / "pipeline.yaml").is_file()
     assert (export_dir / "pod.yaml").is_file()
-    assert (export_dir / "policies" / "require-approval-secret-writes.json").read_text(
-        encoding="utf-8"
-    ) == (recipe_dir / "policies" / "require-approval-secret-writes.json").read_text(
-        encoding="utf-8"
-    )
+    # The export regenerates the policy as short-form YAML (not a byte copy of the recipe's
+    # own file), so the two are compared by parsed content, not bytes.
+    assert _policy.read_policy(
+        export_dir / "policies" / "require-approval-secret-writes.yaml"
+    ) == _policy.read_policy(recipe_dir / "policies" / "require-approval-secret-writes.yaml")
 
     with pytest.raises(typer.Exit) as exc:
         _pod.dispatch(source_project, "export", [str(export_dir)])
     assert exc.value.exit_code == 1
     _pod.dispatch(source_project, "export", [str(export_dir), "--force"])  # overwrites cleanly
+
+    # Round trip: re-planning this pod's own export against itself plans every item `skip` --
+    # the schema-header/regenerated-short-form export is still recognized as unchanged.
+    reapply_plan = _pod_apply.plan_apply(source_project, export_dir)
+    assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
 
     source_report = _explain_json(f"{source_project}-security-vetter", capsys)
 
@@ -400,9 +406,9 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     pod_policies_dir = _cfg.pod_config_dir(project) / "policies"
     pod_policies_dir.mkdir(parents=True, exist_ok=True)
     policy_text = (
-        RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.json"
+        RECIPES_DIR / "secure-build" / "policies" / "require-approval-secret-writes.yaml"
     ).read_text(encoding="utf-8")
-    (pod_policies_dir / "require-approval-secret-writes.json").write_text(
+    (pod_policies_dir / "require-approval-secret-writes.yaml").write_text(
         policy_text, encoding="utf-8"
     )
     _pod.dispatch(project, "config", ["set", "approvalMode", "refuse"])
@@ -410,19 +416,26 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     export_dir = tmp_path / "export-out"
     _pod_apply.export_pod(project, export_dir)
 
-    assert sorted(p.name for p in (export_dir / "roles").iterdir()) == ["security-vetter.yaml"]
-    assert sorted(p.name for p in (export_dir / "policies").iterdir()) == [
-        "require-approval-secret-writes.json"
+    assert sorted(p.name for p in (export_dir / "roles").iterdir()) == [
+        "security-vetter.md",
+        "security-vetter.yaml",
     ]
-    assert (export_dir / "policies" / "require-approval-secret-writes.json").read_text(
-        encoding="utf-8"
-    ) == policy_text
+    assert sorted(p.name for p in (export_dir / "policies").iterdir()) == [
+        "require-approval-secret-writes.yaml"
+    ]
+    # The export regenerates the policy as short-form YAML, so it is compared by parsed
+    # content, not bytes.
+    assert _policy.read_policy(
+        export_dir / "policies" / "require-approval-secret-writes.yaml"
+    ) == _policy.read_policy(Path(pod_policies_dir / "require-approval-secret-writes.yaml"))
     assert (export_dir / "pipeline.yaml").is_file()
 
     import yaml as _yaml
 
     manifest = _yaml.safe_load((export_dir / "pod.yaml").read_text(encoding="utf-8"))
     assert manifest == {
+        "kind": "pod",
+        "name": project,
         "members": ["implementer", "security-vetter"],
         "settings": {"approvalMode": "refuse"},
     }

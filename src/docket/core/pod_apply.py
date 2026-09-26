@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -113,14 +114,25 @@ class ApplyResult:
     items: tuple[ApplyItem, ...]
 
 
-def _dump_yaml_file(path: Path, doc: dict[str, Any]) -> None:
-    """Write *doc* to *path* as YAML, key order preserved (``export_pod``'s writer side of the
-    manifest ``plan_apply`` reads back through ``core.config_docs.load_document``)."""
+def _dump_yaml_file(path: Path, doc: dict[str, Any], *, schema_header: str = "") -> None:
+    """Write *doc* to *path* as YAML, key order preserved. *schema_header* -- when given -- is
+    written first, an editor-autocomplete comment pointing at the copied schema copy."""
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
     except ImportError:
         raise PodApplyError("PyYAML not installed -- run: pip install pyyaml") from None
-    path.write_text(_yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    body = _yaml.safe_dump(doc, sort_keys=False)
+    path.write_text(f"{schema_header}{body}" if schema_header else body, encoding="utf-8")
+
+
+def _schema_header(directory: Path, dest_path: Path, kind: str) -> str:
+    """The `# yaml-language-server:` comment line for a file ``export_pod`` writes at
+    *dest_path*, pointing at *kind*'s schema copied into ``<directory>/.schemas/``."""
+    schema_path = directory / ".schemas" / f"{kind}.schema.json"
+    rel = os.path.relpath(schema_path, start=dest_path.parent).replace(os.sep, "/")
+    if not rel.startswith("."):
+        rel = f"./{rel}"
+    return f"# yaml-language-server: $schema={rel}\n"
 
 
 def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list[str]:
@@ -198,7 +210,10 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
             raise PodApplyError(f"{policy_file}: {error}")
         text = policy_file.read_text(encoding="utf-8")
         dest = dest_dir / policy_file.name
-        if dest.is_file() and dest.read_text(encoding="utf-8") == text:
+        # Compared by parsed (canonical) content, not raw text: an export's regenerated
+        # short-form YAML -- reordered keys, an added `# yaml-language-server` header --
+        # otherwise never plans `skip` even when it is the exact same policy already applied.
+        if dest.is_file() and _policy.read_policy(dest) == _policy.read_policy(policy_file):
             action: ApplyAction = "skip"
         else:
             action = "replace" if dest.is_file() else "add"
@@ -455,8 +470,8 @@ def apply(plan: ApplyPlan) -> ApplyResult:
 
 def _export_roles(project: str, directory: Path) -> None:
     """Write *project*'s own pod-overlay role entries -- never a built-in, starter, or
-    global-``user`` one -- as ``roles/<name>.yaml``, via the same ``to_wire()`` format
-    ``docket roles show``/``roles/*.yaml`` already share."""
+    global-``user`` one -- as short-form ``roles/<name>.yaml`` (``to_short_role``, the inverse
+    of ``normalize_role``) plus its paired ``roles/<name>.md`` instructions file."""
     registry = _arch.load_registry(project)
     names = sorted(n for n in registry.role_names() if registry.source_of(n) == f"pod:{project}")
     if not names:
@@ -466,20 +481,32 @@ def _export_roles(project: str, directory: Path) -> None:
     for name in names:
         arch = registry.get(name)
         assert arch is not None  # name came from this same registry's role_names()
-        _dump_yaml_file(roles_dir / f"{name}.yaml", arch.to_wire())
+        doc, markdown = _arch.to_short_role(arch)
+        role_path = roles_dir / f"{name}.yaml"
+        _dump_yaml_file(role_path, doc, schema_header=_schema_header(directory, role_path, "role"))
+        (roles_dir / f"{name}.md").write_text(markdown, encoding="utf-8")
 
 
 def _export_policies(project: str, directory: Path) -> None:
-    """Copy *project*'s own policy directory's files byte-for-byte as ``policies/<name>.json``
-    -- never a file from the fleet-wide ``$POLICIES_DIR``."""
+    """Write *project*'s own policy directory's files as short-form YAML ``policies/<stem>.yaml``
+    (``core.policy.to_short_policy``, the inverse of ``normalize_policy``) -- never a file from
+    the fleet-wide ``$POLICIES_DIR``."""
     src_dir = _cfg.pod_config_dir(project) / "policies"
-    files = sorted(src_dir.glob("*.json")) if src_dir.is_dir() else []
+    files = (
+        sorted(p for pattern in ("*.json", "*.yaml", "*.yml") for p in src_dir.glob(pattern))
+        if src_dir.is_dir()
+        else []
+    )
     if not files:
         return
     dest_dir = directory / "policies"
     dest_dir.mkdir(parents=True, exist_ok=True)
     for f in files:
-        (dest_dir / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        short = _policy.to_short_policy(_policy.read_policy(f))
+        policy_path = dest_dir / f"{f.stem}.yaml"
+        _dump_yaml_file(
+            policy_path, short, schema_header=_schema_header(directory, policy_path, "policy")
+        )
 
 
 def _export_pipeline(project: str, directory: Path) -> None:
@@ -509,16 +536,29 @@ def _export_manifest(project: str, directory: Path) -> None:
         if source == "set" and value is not None:
             settings_out[key] = value
 
-    manifest: dict[str, Any] = {"members": members}
+    manifest: dict[str, Any] = {"kind": "pod", "name": project, "members": members}
     if settings_out:
         manifest["settings"] = settings_out
-    _dump_yaml_file(directory / "pod.yaml", manifest)
+    pod_path = directory / "pod.yaml"
+    _dump_yaml_file(pod_path, manifest, schema_header=_schema_header(directory, pod_path, "pod"))
+
+
+def _export_schemas(directory: Path) -> None:
+    """Copy the four published config-v1 JSON Schemas into ``<directory>/.schemas/`` so every
+    exported YAML's `# yaml-language-server:` header resolves without reaching outside the
+    export -- ``apply``/``discover_config_paths`` never look under ``.schemas/``."""
+    src_dir = _cfg.config_schemas_dir()
+    dest_dir = directory / ".schemas"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for kind in ("role", "pipeline", "policy", "pod"):
+        src = src_dir / f"{kind}.schema.json"
+        if src.is_file():
+            (dest_dir / src.name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def export_pod(project: str, directory: Path) -> None:
-    """Write *project*'s own scope (roles, policies, pipeline, manifest) into *directory*,
-    the same shape ``plan_apply``/``apply`` read back. Global scope is never written; the
-    non-empty-*directory*/``--force`` refusal is the CLI's job (``cli/_pod.py``), not this one's."""
+    """Write *project*'s own scope into *directory*, the same shape ``apply`` reads back.
+    Global scope is never written; the non-empty-*directory* refusal is the CLI's job."""
     if not _pp.pod_member_ids(project):
         raise PodApplyError(f"no pod found for '{project}'")
     directory.mkdir(parents=True, exist_ok=True)
@@ -526,3 +566,4 @@ def export_pod(project: str, directory: Path) -> None:
     _export_policies(project, directory)
     _export_pipeline(project, directory)
     _export_manifest(project, directory)
+    _export_schemas(directory)

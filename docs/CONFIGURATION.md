@@ -284,31 +284,34 @@ resolves to, the tools it is denied, its gate contract and its context budget. B
 dump one as a starting point with `docket roles show reviewer`.
 
 ```yaml
-# security-reviewer.yaml
+# security-reviewer.yaml — the short form; `docket roles show reviewer` dumps the canonical
+# form this normalizes to (role-archetypes.spec.md, "Wire format")
+kind: role
 name: security-reviewer
-scope: pod                    # pod | org
-modelClass: strong            # cheap | strong -> resolved through docket-models.json rankAnchors
-editRights: read-only         # descriptive only; deniedTools is what enforces it
 description: read-only security pass over the implementer's change
-tokenBudget: 6000             # context budget for this role's hop message
-deniedTools: [write, edit, bash]
-gateContract:
-  kind: verdict               # none | verdict | mechanical | approval
-  regexes: [APPROVE, REQUEST-CHANGES]
-soulTemplate: |
-  # SOUL.md — ${project} · ${role}
+model: strong                        # cheap | strong -> resolved through docket-models.json
+cannot: [write, edit, bash]          # the only enforcement field
+verdict: [APPROVE, REQUEST-CHANGES]  # or verify: true | approval: <message> | nothing
+instructions: security-reviewer.md   # default: <name>.md next to this file
+```
 
-  You are the **${role}** of the **${project}** pod (agent id `${memberId}`).
-  Codebase: ${codebaseOrConfigured} (stack: ${stack}).
+```markdown
+# security-reviewer.md
+# SOUL.md — ${project} · ${role}
 
-  ## Role — Security reviewer
-  - Review the change for injection, secrets in code, unsafe deserialization and authz gaps.
-  - You are read-only. Start exactly one line with `APPROVE` or `REQUEST-CHANGES`.
-agentsTemplate: |
-  # AGENTS.md — ${project} · ${role}
+You are the **${role}** of the **${project}** pod (agent id `${memberId}`).
+Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 
-  ## Red Lines
-  - Stay within the `${project}` pod. No cross-project access.
+## Role — Security reviewer
+- Review the change for injection, secrets in code, unsafe deserialization and authz gaps.
+- You are read-only. Start exactly one line with `APPROVE` or `REQUEST-CHANGES`.
+
+## AGENTS
+
+# AGENTS.md — ${project} · ${role}
+
+## Red Lines
+- Stay within the `${project}` pod. No cross-project access.
 ```
 
 ```bash
@@ -324,12 +327,13 @@ Template variables: `project`, `role`, `memberId`, `sessionKey`, `objective`, `c
 
 What is read **when**:
 
-- `soulTemplate`, `agentsTemplate` and `modelClass` are used **once**, when a member is
-  provisioned. Changing the overlay later does not touch existing members.
-- `deniedTools`, `tokenBudget` and `gateContract` are read **live** on every hop, from the merged
-  registry.
+- The instructions file (`soulTemplate`/`agentsTemplate` in the canonical form) and `model` are
+  used **once**, when a member is provisioned. Changing the overlay later does not touch
+  existing members.
+- `cannot`, `tokenBudget` and the gate (`verdict`/`verify`/`approval`) are read **live** on every
+  hop, from the merged registry.
 - A custom role gets **no built-in per-hop instruction line**, so everything it must do belongs in
-  its `soulTemplate`.
+  its instructions file.
 - The default pipeline only runs `lead → implementer → reviewer → tester`. A custom role joins a
   dispatch **only through a pipeline file** (§3.5).
 
@@ -340,26 +344,22 @@ software|research|content|ops|agentic-product`. Only these five exist, and the c
 `blueprint` in the Lead's meta. Dispatch uses the blueprint's built-in pipeline.
 
 **Pipeline files** declare your own hop order, gates and rework edges. This one runs the custom role
-from §3.4:
+from §3.4, in the short form — `docket pipeline validate` normalizes it to the canonical form
+`pipeline-format.spec.md` defines, which is what `plan`/`run` actually execute:
 
 ```yaml
 # pipeline.yaml
+kind: pipeline
 name: build-then-security
 description: Lead plans, Implementer builds (verify-gated), security reviewer vets with rework
 steps:
-  - id: plan
-    role: lead
-  - id: build
-    role: implementer
+  - plan: lead
+  - build: implementer
     timeout: 900
-    gate: {type: mechanical}          # command omitted -> use the member's own verifyCmd
-  - id: vet
-    role: security-reviewer
-    gate:
-      type: verdict
-      pattern: '^\s*(APPROVE|REQUEST-CHANGES)\b'
-      passValues: [approve]
-      rework: {to: build, when: [request-changes], maxCycles: 2}
+    verify: true                        # -> gate: {type: mechanical} (member's own verifyCmd)
+  - vet: security-reviewer
+    verdict: [APPROVE, REQUEST-CHANGES] # first marker passes; the rest can trigger `on:`
+    on: {REQUEST-CHANGES: {goto: build, max: 2}}
 ```
 
 ```bash
@@ -368,17 +368,22 @@ docket pipeline plan myapp --file pipeline.yaml # resolves against the real rost
 docket pipeline run myapp --file pipeline.yaml  # executes; same budget/gates/traces/runs as dispatch
 ```
 
-Schema (unknown keys are rejected at every level):
+Short form (unknown keys are rejected at every level; `pipeline-format.spec.md`, "Short form",
+"Outcome routing", "Conditional steps and command steps" define the full mapping and canonical
+form):
 
-- **Top level:** `name` (required), `description`, `variables`, `steps`.
-- **Each step:** `id`, exactly one of `role` or `agent` (a specific member id), plus optional
-  `retries`, `timeout`, `gate`, and `parallel` (one level of child steps).
-- **Gate types:**
-  - `mechanical`: `command` (or null for the member's `verifyCmd`), and `timeout`.
-  - `verdict`: `pattern`, `passValues`, `caseSensitive`, and `rework: {to, when, maxCycles}`.
-  - `approval`: `message`. This is a human sign-off; the task waits in `waiting_approval`.
-- **Defaults:** a step with no `gate` falls back to its role's `gateContract`, without a rework
-  edge. A step whose role is not in the pod is skipped.
+- **Top level:** `kind: pipeline`, `name` (required), `description`, `variables`, `steps`.
+- **Each step:** one `<id>: <role-or-agent>` key, plus optional `timeout`, `retries`,
+  `instructions`, and at most one of `verify`/`verdict`/`approval` (the gate) or `until`+`max`
+  (a bounded mechanical self-retry).
+- **Gate sugar:** `verify: true` (or a command string) for a mechanical gate; `verdict: [...]`
+  for a verdict gate, first marker passing; `approval: "<message>"` for a human sign-off (the
+  task waits in `waiting_approval`). No sugar key at all falls back to the role's own gate.
+- **`on: {<label>: {goto: <step>, max: <n>}}`** routes any named outcome — not only a verdict's
+  rework — to an earlier or later step, `fail`, or `stop`; a backward or self target requires
+  `max`. **`when:`** (`changed`, `var`+`is`, `memberPresent`) skips a step; a **command step**
+  (`- lint: {run: "ruff check ."}`) runs no agent turn at all, its exit code and last stdout
+  line becoming its outcome.
 
 One rule to plan around: a **bound** pipeline (`pod config set pipeline`) is treated like a
 caller-supplied `--file` — the pod's `maxReworkCycles` setting never patches it, so the file's own
@@ -445,40 +450,49 @@ Three ways to avoid it:
 
 **Policies** (`~/.docket/policies/*.yaml|yml|json`, relocatable with `POLICIES_DIR`). Every file
 in the directory is loaded, and all of them are re-read on every call, so a new file is live
-immediately. The short form is `kind: policy`, `name`, `appliesTo`, `on: input|toolCall|output`,
-`when: {tool, path, matches, branch, anyOf}` and `then: allow|warn|ask|block|redact` (the
-shipped templates under `policies/` are examples); the canonical form it normalises to is:
+immediately. Write the short form (the shipped templates under `policies/` are examples);
+`core.policy.normalize_policy` turns it into the canonical shape the evaluator actually reads —
+see `security-gates.spec.md`, "Policy format v1" for that mapping and the canonical field names:
 
-```json
-{
-  "id": "no-curl",
-  "applies_to": ["implementer"],
-  "hook": "pre_tool_call",
-  "match": {"type": "regex", "pattern": "\\bcurl\\b"},
-  "action": "require_approval",
-  "message": "curl needs approval"
-}
+```yaml
+kind: policy
+name: no-curl
+appliesTo: [implementer]
+when: {matches: '\bcurl\b'}
+then: ask
+message: curl needs approval
 ```
 
 | Field | Values |
 |---|---|
-| `applies_to` | Role names as dispatch sees them (`implementer`, `reviewer`, … or a custom role), or `"*"`. |
-| `hook` | `pre_input` (a task entering the queue; always evaluated as role `lead`), `pre_tool_call` (tool name and arguments), `pre_output` (a hop's output). |
-| `match` | `{"type": "regex", "pattern": …}`, matched case-insensitive and multiline. |
-| `action` | `allow`, `warn` (record only), `redact`, `require_approval` (ask a human), `block` (deny). There is no `deny` action; use `block`. |
+| `appliesTo` | Role names as dispatch sees them (`implementer`, `reviewer`, … or a custom role), or `"*"`. |
+| `on` | `input` (a task entering the queue; always evaluated as role `lead`), `toolCall` (tool name and arguments, the default), `output` (a hop's output). |
+| `when` | `tool`, `path` (glob over a path/file argument), `matches` (regex over the rendered call, case-insensitive), `branch` (glob over the worktree branch), `anyOf` (OR over a list of the above); sibling keys AND. |
+| `then` | `allow`, `warn` (record only), `redact`, `ask` (require approval), `block` (deny). There is no `deny` action; use `block`. |
 
 How policies combine and what they ignore:
 
-- **Precedence.** The most restrictive matching action wins: `block` > `require_approval` >
-  `redact` > `warn` > `allow`.
-- **A broken policy is skipped silently, and that fails open.** A file with bad JSON or an
+- **Precedence.** The most restrictive matching action wins: `block` > `ask` > `redact` >
+  `warn` > `allow`.
+- **A broken policy is skipped silently, and that fails open.** A file with bad JSON/YAML or an
   uncompilable regex is skipped, so a `block` policy with a typo **allows** the call.
-  `docket policies validate` catches bad JSON but **not** a bad regex. After every edit, run
+  `docket policies validate` catches a parse error but **not** a bad regex. After every edit, run
   `docket policies test` with a string the policy must match, for example
   `docket policies test pre_tool_call implementer "make deploy"`, and confirm the expected result.
   P26-1 in `TODO.md` makes a broken policy deny instead.
 - **`redact`** uses docket's generic secret redactor, not your pattern.
-- **Ignored fields.** `class` and `description` are documentation only.
+- **Ignored fields.** `description` is documentation only.
+
+**Extending with a predicate plugin.** The closed `when` vocabulary above covers most policies;
+for a check no built-in predicate expresses, `~/.docket/plugins/` (operator scope) or a pod's own
+`config/plugins/` (copied there by `docket pod <p> apply`, never read live from a codebase) can
+hold a small Python file registering a named predicate, referenced as `when: {plugin: <name>,
+with: {...}}` — `then:` still decides the action. Every predicate plugin is loaded only from
+operator/pod scope (never the agent's own workspace), audited by name and file hash, and a
+plugin that raises, times out, or returns a non-`bool` fails **closed** (`deny`), never open.
+`docket plugins list` shows each one's name, scope, file and hash. See
+[ADR 0010](adr/0010-config-format-v1-and-extension-points.md) §4 for the trust boundary this is
+built around.
 
 **Approvals.** A `require_approval` hit, or a high-risk command such as `git push origin main`,
 creates `approvals/<id>.json`.
@@ -572,6 +586,15 @@ change without writing anything; re-running it is idempotent (a recipe already a
 With no `<dir>` argument it defaults to `<codebase>/.docket/` — an operator-maintained recipe
 checked into the project itself, not one of the shipped ones above. There is no `docket recipes`
 command; a recipe is data, not a new surface.
+
+`docket pod <p> export <dir>` writes the reverse: this pod's own scope, in the same directory
+shape, so a pod configured by hand (or evolved past the recipe that seeded it) can be checked in
+or applied to a second pod. Every file it writes is in the short form with a
+`# yaml-language-server:` header, resolved against the four `config-v1` JSON Schemas it copies
+into `<dir>/.schemas/` — the same schemas `scripts/gen_config_schemas.py` publishes under
+`docs/contracts/config-v1/`, so an editor gets autocomplete and inline errors on a checked-in
+recipe without installing anything. `docket validate <dir>` checks the whole directory in one
+pass, kind by kind.
 
 ## 4. File reference
 

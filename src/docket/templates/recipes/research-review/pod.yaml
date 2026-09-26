@@ -1,1 +1,3 @@
+kind: pod
+name: research-review
 members: [researcher, analyst, writer, critic]

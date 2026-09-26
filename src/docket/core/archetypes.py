@@ -997,6 +997,45 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     return canonical
 
 
+def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
+    """Inverse of `normalize_role`: the short-form document and its paired instructions
+    Markdown text, the shape `core.pod_apply._export_roles` writes as `<name>.yaml`/
+    `<name>.md`."""
+    doc: dict[str, Any] = {"kind": "role", "name": arch.name}
+    if arch.description:
+        doc["description"] = arch.description
+    doc["model"] = arch.model_class
+    if arch.denied_tools:
+        doc["cannot"] = list(arch.denied_tools)
+    gate = arch.gate_contract
+    if gate.kind == "verdict":
+        doc["verdict"] = list(gate.regexes)
+    elif gate.kind == "mechanical":
+        doc["verify"] = True
+    elif gate.kind == "approval":
+        doc["approval"] = True
+    doc["instructions"] = f"{arch.name}.md"
+    if arch.scope != "pod":
+        doc["scope"] = arch.scope
+    if arch.version != 1:
+        doc["version"] = arch.version
+    if arch.token_budget != 6000:
+        doc["tokenBudget"] = arch.token_budget
+    if arch.tool_profile:
+        doc["toolProfile"] = arch.tool_profile
+    if arch.hop_instruction:
+        doc["hopInstruction"] = arch.hop_instruction
+    if arch.policy_role:
+        doc["policyRole"] = arch.policy_role
+
+    soul = arch.soul_template.rstrip("\n") + "\n"
+    if arch.agents_template == _STARTER_AGENTS_TEMPLATE:
+        markdown = soul
+    else:
+        markdown = f"{soul}\n## AGENTS\n\n{arch.agents_template}"
+    return doc, markdown
+
+
 def load_role_file(path: str) -> dict[str, Any]:
     """Parse a role YAML file, normalizing the short form into the canonical wire dict
     `from_wire` accepts; an already-canonical document passes through unchanged (its

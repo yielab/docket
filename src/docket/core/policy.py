@@ -173,6 +173,46 @@ def normalize_policy(short: dict[str, Any]) -> dict[str, Any]:
     return canonical
 
 
+_HOOK_TO_ON: dict[str, str] = {v: k for k, v in _ON_TO_HOOK.items()}
+_ACTION_TO_THEN: dict[str, str] = {v: k for k, v in _THEN_TO_ACTION.items()}
+
+
+def to_short_policy(canonical: dict[str, Any]) -> dict[str, Any]:
+    """Inverse of :func:`normalize_policy`: the short-form document for one already-canonical
+    policy dict. ``hook`` collapses back to ``on`` only when it differs from the
+    ``pre_tool_call`` default. Pure: no I/O."""
+    doc = dict(canonical)
+    short: dict[str, Any] = {"kind": "policy"}
+    if "id" in doc:
+        short["name"] = doc.pop("id")
+    if "description" in doc:
+        short["description"] = doc.pop("description")
+    if "applies_to" in doc:
+        short["appliesTo"] = doc.pop("applies_to")
+
+    hook = doc.pop("hook", "pre_tool_call")
+    if hook != "pre_tool_call":
+        short["on"] = _HOOK_TO_ON.get(hook, hook)
+
+    match = doc.pop("match", None)
+    when = doc.pop("when", None)
+    if isinstance(match, dict) and match.get("type") == "regex":
+        merged = dict(when) if isinstance(when, dict) else {}
+        merged["matches"] = match.get("pattern")
+        short["when"] = merged
+    elif when is not None:
+        short["when"] = when
+
+    action = doc.pop("action", None)
+    short["then"] = _ACTION_TO_THEN.get(action, action)
+
+    if "message" in doc:
+        short["message"] = doc.pop("message")
+
+    short.update(doc)
+    return short
+
+
 def read_policy(path: Path) -> dict[str, Any]:
     """Parse one policy file -- JSON or YAML, short or canonical -- into the canonical dict
     every caller evaluates. The single reader ``validate_policy``, the evaluator's per-file

@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -239,18 +239,28 @@ configured by hand — or evolved past whatever recipe seeded it — can be repr
 machine, the trigger `docket pod <p> apply` itself named as deferred.
 
 1. `docket pod <project> export <dir>` **MUST** write exactly this pod's own scope, in the same
-   directory shape `apply` reads: `roles/*.yaml` (this pod's own role overlay entries only —
-   `core.archetypes.load_registry(project).source_of(name) == "pod:<project>"` — each serialized
-   through `RoleArchetype.to_wire()`, the same wire format `docket roles show` prints and
-   `role-archetypes.spec.md` defines), `policies/*.json` (files already present in this pod's own
-   policy directory, `core.config.pod_config_dir(project)/policies/`, copied byte-for-byte), a
-   `pipeline.yaml` holding the pod's bound pipeline copy (`core.pod.bound_pipeline_path(project)`)
-   when `PodSettings.pipeline` is set, and a `pod.yaml` manifest with `members` (every non-Lead
-   role this pod's roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every
-   `PodSettings` key whose stored value differs from that model's own default — a key at its
-   default is never written, so a fresh pod exports an empty `settings` mapping). `export`
-   **MUST NOT** write a `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename
-   `apply` already resolves makes one redundant, matching every shipped recipe's own `pod.yaml`.
+   directory shape `apply` reads, every YAML file in the **short form** (config-format.spec.md,
+   "Short-form export") with a leading `# yaml-language-server:` header: `roles/<name>.yaml`
+   (this pod's own role overlay entries only —
+   `core.archetypes.load_registry(project).source_of(name) == "pod:<project>"` — each rendered
+   through `core.archetypes.to_short_role()`, the inverse of `normalize_role`) plus a paired
+   `roles/<name>.md` holding that role's instructions (`soulTemplate`, and — when it is not the
+   generated starter template — a `## AGENTS` section with `agentsTemplate`); `policies/
+   <stem>.yaml` (every file already present in this pod's own policy directory,
+   `core.config.pod_config_dir(project)/policies/`, rendered through
+   `core.policy.to_short_policy()`, the inverse of `normalize_policy`, never a byte copy); a
+   `pipeline.yaml` holding the pod's bound pipeline copy verbatim
+   (`core.pod.bound_pipeline_path(project)`, carrying no schema header of its own since it is
+   not regenerated) when `PodSettings.pipeline` is set; and a `pod.yaml` manifest with `kind:
+   pod` and `name: <project>` written first, then `members` (every non-Lead role this pod's
+   roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every `PodSettings` key
+   whose stored value differs from that model's own default — a key at its default is never
+   written, so a fresh pod exports an empty `settings` mapping). `export` **MUST NOT** write a
+   `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
+   resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. `export`
+   **MUST** also copy the four published config-v1 JSON Schemas into `<dir>/.schemas/`
+   (config-format.spec.md, "Published schemas") so every header resolves without reaching
+   outside the export; `apply`/`discover_config_paths` never look under `.schemas/`.
 2. Global scope is never exported — it is the operator's, not the team's. The global role overlay
    (`~/.docket/docket-roles.json`), fleet-wide policies (`~/.docket/policies/`), other pods, and
    this pod's own secrets, sessions, traces, and task queue are all out of scope; only what
@@ -264,7 +274,10 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    result to a second pod in a fresh `DOCKET_HOME`, and comparing `docket config explain --json`
    for the matching members **MUST** agree once ids and paths specific to each pod are normalized
    away — the same guarantee `apply`'s validation (requirement 3 above) already gives a directory
-   `export` produced.
+   `export` produced. Because a role or policy is regenerated (never byte-copied), `plan_apply`
+   **MUST** compare a role by its normalized `RoleArchetype.to_wire()` and a policy by its
+   parsed (`core.policy.read_policy`) content, not by raw text, so re-planning a pod's own
+   export against itself plans every item `skip`.
 
 ## Interface Contracts
 
@@ -363,6 +376,18 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.10.0 (2026-09-26)
+
+- **P28-8: export writes the short form, with a schema an editor can use.** "Pod manifests:
+  export" requirement 1 now writes every role/policy/pod-manifest file in the short form
+  (`core.archetypes.to_short_role`, `core.policy.to_short_policy`, the inverses of
+  `normalize_role`/`normalize_policy`), each starting with a `# yaml-language-server:` header
+  resolving against the four config-v1 JSON Schemas `export` now copies into the export's own
+  `.schemas/`; a role's instructions move to a paired `<name>.md`; `pod.yaml` gains `kind: pod`
+  and `name: <project>`. Requirement 4's round trip now compares a role/policy by parsed
+  content, not raw text, since regenerating the short form no longer produces the same bytes a
+  hand-authored or previously-applied file had.
 
 ### Version 1.9.0 (2026-09-26)
 

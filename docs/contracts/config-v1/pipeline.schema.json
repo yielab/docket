@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/pipeline.schema.json",
+  "title": "PipelineDocument",
+  "additionalProperties": false,
+  "description": "The short-form pipeline document -- see pipeline-format.spec.md (\"Short form\"). Each\n`steps` entry's own sugar keys are validated by `core.pipeline.normalize_pipeline`, not\nhere.",
+  "properties": {
+    "kind": {
+      "const": "pipeline",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "variables": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Variables"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Steps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "steps"
+  ],
+  "type": "object"
+}
