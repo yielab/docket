@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.29.0
+**Version**: 1.32.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -457,8 +457,11 @@ run id is unknown or already terminal
   optional `mcp` extra (`pip install 'docket[mcp]'`); prints an actionable hint and exits 1 if
   it isn't installed, rather than a bare traceback
 - `servers list|add|remove`: Configure external stdio MCP tool servers whose tools reach a live
-  turn through the same `dispatch_tool` chokepoint — `add <name> [--env K=V ...] [--timeout S] --
-  <command> [args]`; full contract in `mcp-client.spec.md`
+  turn through the same `dispatch_tool` chokepoint — `add <name> [--env K=V ...] [--timeout S]
+  [--kind read|write] [--tools NAME,...] -- <command> [args]`; `--kind` declares the server's
+  trust level (default `write`) and `list` shows it alongside each server's `tools` allow-list
+  (empty = all); a bad `--kind` value exits 1 naming the field; full contract in
+  `mcp-client.spec.md`
 **Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
 startup naming the registered tools
 **Return**: `0` on clean shutdown or bare `docket mcp` (prints usage), `1` if the SDK is missing or
@@ -938,6 +941,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.32.0 (2026-09-26)
+
+- `docket mcp` entry: `servers add` gains `--kind read|write` (default `write`) and `--tools
+  NAME,...` (default: all); `servers list` shows both. A bad `--kind` value exits 1 naming the
+  field. Full contract in `mcp-client.spec.md` 1.5.0 (Requirements 32-33).
 
 ### Version 1.29.0 (2026-09-25)
 

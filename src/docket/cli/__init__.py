@@ -2282,10 +2282,18 @@ def cmd_mcp(ctx: typer.Context) -> None:
                   by the same pre_tool_call policy and dispatch_tool
                   chokepoint as any built-in -- a remote server can never
                   shadow bash/read/write/edit/glob/grep. `add <name>
-                  [--env K=V ...] [--timeout S] -- <command> [args...]`:
+                  [--env K=V ...] [--timeout S] [--kind read|write]
+                  [--tools NAME,NAME,...] -- <command> [args...]`:
                   everything after `--` is passed to the server verbatim as
-                  its launch command and arguments; --env/--timeout must
-                  come before `--`. Tools register as `mcp__<name>__<tool>`.
+                  its launch command and arguments; --env/--timeout/--kind/
+                  --tools must come before `--`. Tools register as
+                  `mcp__<name>__<tool>`. `--kind` declares the server's
+                  trust level (default: write) -- a role that denies write
+                  gets no tools from a server left at the default, but does
+                  get tools from one declared `--kind read`, since docket's
+                  role narrowing excludes by tool kind, not by name.
+                  `--tools` restricts registration to a comma-separated
+                  allow-list of that server's own tool names (default: all).
 
     Its tools are reachable from a live turn: the client namespaces them
     `mcp__<server>__<tool>`, and the turn loop folds them into the registry
