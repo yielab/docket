@@ -302,3 +302,14 @@ plus two learned this phase:
   `core/memory.py`, `core/dispatch.py`, recipes/provider/prune surfaces (sibling cards).
 - `INSTRUCTIONS.md` is operator-owned: docket NEVER writes it, `sync` never touches it,
   doctor never quarantines it.
+
+## P26-17 — opt-in project instructions from the codebase (AGENTS.md convention)
+- Starts after P26-10's merge. Base: the commit your dispatch prompt names.
+- Card: `TODO.md` §P26-17.
+- Owns: the opt-in read + composition slot in `core/identity.py` (a budgeted section with
+  its own PromptSectionReport, like INSTRUCTIONS.md which P26-10 just added — read that
+  pattern first), whatever setting gates the opt-in per the card text,
+  `specs/functional/agent-loop.spec.md` req. 30 (claim **1.22.0**), tests,
+  `docs/commands.md` regeneration if help text changes.
+- Do NOT touch: template strings in `core/archetypes.py`, `core/memory.py`,
+  `core/pod_provisioning.py`'s render/sync functions (P26-10 just landed them).
