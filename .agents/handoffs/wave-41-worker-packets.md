@@ -12,7 +12,7 @@ contract; this file is the map. Read §0 and your own packet only.
 | --- | --- | --- |
 | 41 | P27-1, P27-2, P27-3 | P27-3, P27-2, P27-1 |
 | 42 | P27-4, P27-5 | P27-5, P27-4 |
-| 43 | P27-6 ∥ P27-8, then P27-9, then P27-7 | P27-8, P27-6, P27-9, P27-7 |
+| 43 | P27-6 ∥ P27-8, then P27-9, P27-7, P27-10 | P27-8, P27-6, P27-9, P27-7, P27-10 |
 
 ## 0. Rules for every worker
 
@@ -254,3 +254,21 @@ Branch `p27-8-scope-labels`. Wave 43, parallel with P27-6. Spec `cli-interface.s
 - **Oracle.** No pod scope -> explain output byte-identical to the base (capture it).
 - **Do not touch:** `core/pod_apply.py`, `cli/_pod.py` (P27-6/P27-7 own them).
 - **RED:** `tests/unit/cli/test__config.py` — the JSON has no `scope` key on the base.
+
+## P27-10 — `apply` carries a recipe's policies into the pod
+
+Branch `p27-10-apply-policies`. Wave 43, serially after P27-7 merged. Specs:
+`pod-blueprints.spec.md` -> 1.9.0 ("Pod manifests: apply" gains the policy item),
+`role-archetypes.spec.md` -> 1.17.0 ("Shipped recipes": the policy is applied, not copied by hand).
+
+- **Where.** `src/docket/core/pod_apply.py`: `plan_apply`, `apply`, the `_plan_*` helpers (add
+  `_plan_policies`); the policy validator is `core/policy.py::validate_policy(path) -> str`
+  (empty string = valid); the pod policy directory is `config.pod_config_dir(project) / "policies"`
+  (what `core/policy.py::policy_files(project)` reads and `_export_policies` copies). Recipe
+  READMEs: `src/docket/templates/recipes/secure-build/README.md` (the `cp ... ~/.docket/policies/`
+  lines and the undo `rm`), `src/docket/templates/recipes/ops-approval/README.md`.
+- **Do not touch:** `core/policy.py`, `cli/_pod.py`, `cli/_policies.py`, `export_pod` and its
+  helpers, `core/pod.py`.
+- **RED:** `tests/integration/test_recipes.py` — after `apply(plan_apply(p, secure-build))`,
+  `pod_config_dir(p)/policies/require-approval-secret-writes.json` does not exist on the base.
+- **Goldens:** none.

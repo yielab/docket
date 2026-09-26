@@ -15,7 +15,8 @@
 >
 > Wave 41 (P27-1, P27-2, P27-3; rollup `40d6b78`) and Wave 42 (P27-4, P27-5; rollup `d607ef1`)
 > merged green into `main` on 2026-09-26. Wave 43 ran P27-6 and P27-8 in parallel (merged); P27-9 (integrator-added
-> fix for pod-scoped roster resolution) runs next, then P27-7; one Sonnet worker per card in an isolated worktree under one
+> fix for pod-scoped roster resolution) and P27-7 merged; P27-10 (integrator-added: `apply` carries
+> policies) is the last card; one Sonnet worker per card in an isolated worktree under one
 > integrator; packets in
 > [.agents/handoffs/wave-41-worker-packets.md](.agents/handoffs/wave-41-worker-packets.md).
 > Phase 27 closes when P27-7's round trip is green.
@@ -131,7 +132,7 @@ the existing suite, goldens and specs are the no-change oracle; no agent-lane te
 | --- | --- | --- |
 | 41 | P27-1, P27-2, P27-3 | `core/archetypes.py` → P27-1 only; `core/policy.py` → P27-2 only; `core/tools.py` → P27-2 owns only the `policy_eval_detail` call inside `evaluate_tool_call`; `core/mcp_tools.py` + `cli/_mcp.py` → P27-3 only; `edges/adapters/docket_runtime.py`: P27-1 the project plumbing into `run_agent_turn`, P27-2 the `ToolContext(...)` construction |
 | 42 | P27-4, P27-5 | `core/pod.py` + `cli/_pod.py` config key table → P27-4; `core/archetypes.py`: P27-4 owns `registry_for_role`, P27-5 owns the built-in `lead` literal + `resolve_hop_instruction`; `core/dispatch.py` hop-message builder + `core/blueprints.py` → P27-5; `docket_runtime.py::_load_mcp_tools` → P27-4 |
-| 43 | P27-6 ∥ P27-8, then P27-9, then P27-7 | new `core/pod_apply.py` + `cli/_pod.py` `apply` → P27-6; `export` in the same module → P27-7 after P27-6 merges; `cli/_config.py`, `cli/_doctor.py` (own check function), `docs/CONFIGURATION.md` → P27-8 |
+| 43 | P27-6 ∥ P27-8, then P27-9, P27-7, P27-10 | new `core/pod_apply.py` + `cli/_pod.py` `apply` → P27-6; `export` in the same module → P27-7 after P27-6 merges; `cli/_config.py`, `cli/_doctor.py` (own check function), `docs/CONFIGURATION.md` → P27-8 |
 
 Every card follows the §"How to use this board" definition of done.
 
@@ -424,7 +425,7 @@ the three spec sections named, `tests/unit/core/test_pod.py`,
 
 ### P27-7 — `docket pod <p> export <dir>`, and the round trip is the proof
 
-**Status:** IN-PROGRESS (@sonnet-p27-7) · **Size:** S · **Wave:** 43 (serially after P27-6) · **Spec:** `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: export"), `cli-interface.spec.md` → 1.34.0
+**Status:** DONE (2026-09-26, e4ea782, merged in Wave 43) · **Size:** S · **Wave:** 43 (serially after P27-6) · **Spec:** `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: export"), `cli-interface.spec.md` → 1.34.0
 
 **Trigger:** the deferred manifest's own trigger, "a pod reproduced on a second machine", needs
 the write direction; `roles show` already emits the YAML wire format, the bound pipeline copy and
@@ -488,6 +489,45 @@ global overlay entries and policies but not pod ones.
 
 **RED:** `tests/unit/cli/test_config.py` (the file that declares `SUBJECT` for `cli/_config.py`):
 the JSON has no `scope` key on the base.
+
+### P27-10 — `apply` carries a recipe's policies into the pod
+
+**Status:** IN-PROGRESS (@sonnet-p27-10) · **Size:** S · **Wave:** 43 (serially after P27-7) · **Spec:** `pod-blueprints.spec.md` → 1.9.0 ("Pod manifests: apply"), `role-archetypes.spec.md` → 1.17.0 ("Shipped recipes")
+
+**Trigger (found by the P27-7 worker on 2026-09-26):** `core/pod_apply.py::plan_apply` plans
+roles, members, the pipeline and settings but never `policies/*.json`, so a recipe's policy
+(`secure-build`, `ops-approval`) is not written into `pod_config_dir(p)/policies/`, and the
+`secure-build` README still tells the operator to `cp` it into the **global** `~/.docket/policies/`.
+`export` (P27-7) reads that directory, so the round trip silently drops what `apply` never wrote.
+ADR 0009 defines a recipe as role + pipeline + policy applied at pod scope.
+
+**Goal:**
+- `plan_apply` gains a `policy` item per `policies/*.json`: validated with
+  `core/policy.py::validate_policy` (any error aborts the plan before any write, naming the
+  file); `add` when absent, `replace` when the pod copy differs byte-for-byte, `skip` when equal.
+- `apply` writes the file into `pod_config_dir(project)/policies/<name>` (0700 dir, 0600 file)
+  through the existing writer discipline; the item is listed in the single `pod.apply` audit
+  entry like the others.
+- The `secure-build` and `ops-approval` READMEs drop the manual `cp`; "Apply it" is the one
+  command, and the "undo" section removes the pod copy, not a global file.
+
+**Non-goals:** policy schema changes; applying to global scope; `export` changes.
+
+**Owns:** `core/pod_apply.py` (`plan_apply`, `apply`, one new `_plan_policies` helper),
+`src/docket/templates/recipes/{secure-build,ops-approval}/README.md`, the two spec sections
+named, `tests/integration/test_recipes.py`.
+
+**Acceptance / oracle:**
+
+| Case | Result |
+| --- | --- |
+| fresh pod, `apply templates/recipes/secure-build` | `pod_config_dir(p)/policies/require-approval-secret-writes.json` exists byte-identical to the recipe file; `policy_eval("implementer","pre_tool_call", <matching text>, project=p)` is the policy's action; `~/.docket/policies/` untouched |
+| second `apply` | the policy item is `skip`; no second audit entry |
+| recipe policy with a bad regex | exit 1 naming the file, nothing written (roles dir and policies dir absent) |
+| export after apply into a fresh dir | `policies/` holds the same file (round trip now carries it) |
+
+**RED:** `tests/integration/test_recipes.py`: the first row's pod policy file does not exist on
+the base.
 
 ## ◆ PHASE 28 — PLANNED (2026-09-26): configuration format v1 and the two extension points (D-44)
 
