@@ -707,7 +707,7 @@ tasks".
 
 ### P26-20 — shipped recipes: role + pipeline + policy bundles that are tested, real and configurable
 
-**Status:** TODO · **Size:** M · **Wave:** 40 (after P26-6, P26-7, P26-18) · **Spec:**
+**Status:** DONE (merged, worker commit `2236624`; secure-build dispatches end to end on the fake driver with both verdicts in the trace) · **Size:** M · **Wave:** 40 (after P26-6, P26-7, P26-18) · **Spec:**
 `pipeline-format.spec.md`, `role-archetypes.spec.md`, `workspace-structure.spec.md` (shipped-data
 section)
 

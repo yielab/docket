@@ -542,6 +542,22 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 
 ---
 
+### 3.10 Start from a shipped recipe
+
+`templates/recipes/<name>/` (inside the installed package; `docket.config.recipes_dir()`) ships
+ready-to-apply role/pipeline/policy bundles for common shapes. Each carries its own `README.md`
+with the exact commands:
+
+| Recipe | Adds | Use it for |
+|---|---|---|
+| `secure-build` | a custom `security-vetter` role, verdict-gated with one rework cycle | a read-only security pass before an Implementer's change ships |
+| `research-review` | the `researcher`/`analyst`/`writer`/`critic` starter roles | Critic-vetoed research, on a pod you did not create with `--blueprint research` |
+| `ops-approval` | the `operator` starter role, approval-gated | a human sign-off before an operational action runs at all |
+
+Applying one is always: add any role it needs (§3.4), `docket pipeline validate`/`plan` its
+`pipeline.yaml`, then `docket pod <p> config set pipeline <file>` (§3.5) — and optionally copy its
+policy pack (§3.6). There is no `docket recipes` command; a recipe is data, not a new surface.
+
 ## 4. File reference
 
 **Hand-editing.** Docket writes its JSON atomically: a file lock, a `.bak` of the previous
