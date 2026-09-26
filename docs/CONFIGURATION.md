@@ -148,9 +148,9 @@ where a change belongs, find the question first:
 | Which team shape does a new pod get? | **Blueprint** | Lead meta `blueprint` (creation-time only) | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-ins + `~/.docket/docket-roles.json` | `docket roles`, `docket pod <p> add <role>` |
-| What does *this* agent know about *this* project? | **Workspace instructions** | `SOUL.md`, `TOOLS.md`, `MEMORY.md` | `docket edit` |
+| What does *this* agent know about *this* project? | **Workspace instructions** | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); opt-in codebase files via `projectInstructions` | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions AGENTS.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | `~/.docket/policies/*.json` (+ fixed `SAFE_BINS`) | `docket policies` |
-| What budget, timeouts, approval posture, extra allowed commands and verify gate bound this pod? | **Pod settings** | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`); `set-verify` |
+| What budget, timeouts, approval posture, extra allowed commands and verify gate bound this pod? | **Pod settings** | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`); `set-verify` |
 
 Two boundaries worth stating because they are easy to get backwards:
 

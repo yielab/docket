@@ -81,7 +81,7 @@ release source.
 
 **Opened 2026-09-25, immediately after Wave 37 closed (`3089a00`) removed the file-contention
 blocks (W37-C5 on `core/approval.py`, W37-C6 on `cli/_policies.py`/`cli/_keys.py`).** Twenty
-cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); **Batch B closed 2026-09-26** (P26-4 `acf471f`, P26-19 `1781c73`; both Sonnet workers, integrator-resolved conflicts). **Wave 39 closed 2026-09-26**: P26-3, P26-5 (`971cb4c`), P26-6 (`c12dae5`), P26-7 (`3d63caa`), P26-8 (`1184eb8`) — five Sonnet workers in parallel from base `2087e0b`; the integrator re-versioned two silent same-day spec collisions (security-gates 0.24.0, pod-dispatch 6.12.0, pipeline-format 2.4.0). **Wave 40 open**: P26-9→P26-10→P26-17 serial, plus P26-11, P26-12, P26-14, P26-15, P26-20. Decision, verdict table and the
+cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); **Batch B closed 2026-09-26** (P26-4 `acf471f`, P26-19 `1781c73`; both Sonnet workers, integrator-resolved conflicts). **Wave 39 closed 2026-09-26**: P26-3, P26-5 (`971cb4c`), P26-6 (`c12dae5`), P26-7 (`3d63caa`), P26-8 (`1184eb8`) — five Sonnet workers in parallel from base `2087e0b`; the integrator re-versioned two silent same-day spec collisions (security-gates 0.24.0, pod-dispatch 6.12.0, pipeline-format 2.4.0). **Wave 40 closed 2026-09-26 — Phase 26 complete, 20/20 cards DONE**: P26-9 `17c41c9`, P26-10 `5c80be7`, P26-11, P26-12 `bb5598f`, P26-14 `6db711d`, P26-15 `8b5a1c8`, P26-17 `680c793`, P26-20 `2236624`; eight Sonnet workers, pre-assigned spec versions eliminated the silent same-version collisions (the two remaining collisions were cross-wave and re-versioned at merge). Decision, verdict table and the
 six-property contract: [docs/adr/0008-configuration-contract.md](docs/adr/0008-configuration-contract.md).
 The user-facing map of every installed file is [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Each closing card deletes its own bullet from that guide's §5 "Sharp edges" in the same commit.
@@ -617,7 +617,7 @@ the serve sweep call, the `ToolContext.project` value in the driver, and `dispat
 
 ### P26-17 — opt-in project instructions from the codebase (the AGENTS.md convention)
 
-**Status:** TODO · **Size:** S · **Wave:** 40 (after P26-10) · **Spec:** `agent-loop.spec.md`
+**Status:** DONE (merged, worker commit `680c793`; PodSettingsError is deliberately swallowed on the prompt path — an unrelated bad setting must not break composition; noted for maintainer glance) · **Size:** S · **Wave:** 40 (after P26-10) · **Spec:** `agent-loop.spec.md`
 req. 30
 
 **Trigger:**
