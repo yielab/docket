@@ -729,6 +729,143 @@ class TestCrashRecovery:
         assert any(e["event_type"] == "stale_claim" for e in events)
 
 
+# ── a deterministic refusal (e.g. cross-pod) fails only that task ────────────
+
+
+def _alien_step_spec() -> _pipeline.PipelineSpec:
+    """Lead, then a step targeting a member id that belongs to no real pod -- deterministically
+    trips the cross-pod refusal in ``_execute_unit`` mid-task, after the lead hop persists."""
+    return _pipeline.PipelineSpec(
+        name="alien-step",
+        steps=[
+            _pipeline.Step(id="lead", role="lead"),
+            _pipeline.Step(id="alien", agent="ghost-lead"),
+        ],
+    )
+
+
+class TestDeterministicRefusalSettlesTheClaim:
+    """A DispatchError reached mid-task (after an earlier hop already persisted) fails that one
+    task and settles its claim instead of raising out of ``dispatch_pod`` -- see
+    pod-dispatch.spec.md, "Deterministic refusal inside a claimed task"."""
+
+    def test_refusal_fails_the_task_not_the_whole_dispatch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "task one")
+        _dispatch.enqueue_task("demo", "task two")
+
+        results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
+
+        # Both queued tasks are attempted — the first task's deterministic refusal does not
+        # abort the dispatch_pod loop before the second is even claimed.
+        assert len(results) == 2
+        assert [r.status for r in results] == ["failed", "failed"]
+        assert all("refusing cross-pod dispatch" in r.reason for r in results)
+
+        tasks = _dispatch.read_tasks("demo")
+        assert [t["status"] for t in tasks] == ["failed", "failed"]
+        assert all(t["claimId"] is None for t in tasks)  # settled, not orphaned
+        assert all(t["failureKind"] == "dispatch_refused" for t in tasks)
+        assert [h["role"] for h in tasks[0]["hops"]] == ["lead"]
+
+    def test_resume_reclaims_a_dispatch_refused_task_once_the_pipeline_is_fixed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No CLAIM_STALE_TIMEOUT override and no decoy task needed — unlike a swept crash, a
+        settled deterministic refusal is immediately resumable once its cause is fixed."""
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "fix me")
+
+        first = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
+        assert first[0].status == "failed"
+        assert _dispatch.read_tasks("demo")[0]["failureKind"] == "dispatch_refused"
+
+        fixed_spec = _pipeline.PipelineSpec(
+            name="fixed",
+            steps=[
+                _pipeline.Step(id="lead", role="lead"),
+                _pipeline.Step(id="implementer", role="implementer"),
+            ],
+        )
+        resumer = FakeDriver()
+
+        second = _dispatch.dispatch_pod("demo", runner=resumer, resume=True, spec=fixed_spec)
+
+        assert len(second) == 1
+        assert second[0].status == "done"
+        # The lead hop persisted before the refusal is not re-run.
+        assert [c[0].rsplit("-", 1)[-1] for c in resumer.calls] == ["implementer"]
+        final = _dispatch.read_tasks("demo")[0]
+        assert final["status"] == "done"
+        assert [h["role"] for h in final["hops"]] == ["lead", "implementer"]
+        assert "failureKind" not in final
+
+    def test_a_crash_mid_hop_still_leaves_the_task_running_for_the_stale_sweep(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pin the non-goal: only a deterministic DispatchError is caught. An actual crash (any
+        other exception) is unaffected — the task stays 'running', recoverable only through the
+        existing stale-claim sweep, never settled outright."""
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "crash me")
+        crasher = _CrashOnRoleRunner(crash_role="implementer")
+
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            _dispatch.dispatch_pod("demo", runner=crasher)
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "running"
+        assert task["claimId"] is not None
+
+
+class TestResumeGateCountsRunningTasksTowardRecovery:
+    """``docket pod <p> dispatch --resume``'s "anything to do?" gate must not require a decoy
+    pending task just to let ``dispatch_pod``'s own stale-claim sweep run over an orphaned
+    `running` task — see pod-dispatch.spec.md, "Claiming"."""
+
+    def test_resume_recovers_a_crashed_task_with_no_pending_task_queued(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "crash me")
+        crasher = _CrashOnRoleRunner(crash_role="implementer")
+        with pytest.raises(RuntimeError):
+            _dispatch.dispatch_pod("demo", runner=crasher)
+
+        # Orphaned: `running`, no decoy `pending` task exists, and it hasn't been swept yet
+        # (the sweep only runs at the top of a `dispatch_pod` call).
+        tasks_before = _dispatch.read_tasks("demo")
+        assert tasks_before[0]["status"] == "running"
+        assert not any(t.get("status") == "pending" for t in tasks_before)
+
+        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
+
+        result = CliRunner().invoke(app, ["pod", "demo", "dispatch", "--resume"])
+
+        assert "No pending tasks" not in result.output
+        assert _dispatch.read_tasks("demo")[0]["status"] == "done"
+
+    def test_resume_still_warns_with_nothing_pending_resumable_or_running(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        _seed_pod(tmp_path, monkeypatch)
+
+        result = CliRunner().invoke(app, ["pod", "demo", "dispatch", "--resume"])
+
+        assert "No pending tasks" in result.output
+
+
 # ── a budget-blocked task is never silently rewritten back to pending ────────
 
 

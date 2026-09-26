@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.8.0
+**Version**: 6.9.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -198,11 +198,16 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    thread, the sweep loop, and a manual CLI dispatch all safe to run concurrently against one
    pod.
 3. Eligible-for-claim rules: a `pending` task is always eligible. A `failed` task whose
-   `failureKind` is `"stale_claim"` (see "Crash recovery" below) is eligible **only** when the
-   caller passed `resume=True` (`docket pod <project> dispatch --resume`) — crash recovery is
-   opt-in, never automatic. No other status is ever claimable (in particular, `blocked` and a
-   plain `failed` — one whose failure was a real gate/hop failure, not a swept stale claim — are
-   never reclaimed by a dispatch run; see "blocked and terminal-failure re-entry" below).
+   `failureKind` is one of `RESUMABLE_FAILURE_KINDS` — `"stale_claim"` (see "Crash recovery"
+   below) or `"dispatch_refused"` (see "Deterministic refusal inside a claimed task" below) — is
+   eligible **only** when the caller passed `resume=True` (`docket pod <project> dispatch
+   --resume`); crash/refusal recovery is opt-in, never automatic, and neither tag waits out a
+   staleness timer at claim time (a swept `stale_claim` already waited for
+   `CLAIM_STALE_TIMEOUT` to be tagged in the first place; a `dispatch_refused` task's claim was
+   never left dangling, so it needs no wait at all). No other status is ever claimable (in
+   particular, `blocked` and a plain `failed` task — one whose failure was a real graded
+   hop/gate outcome, not a settled crash or refusal — are never reclaimed by a dispatch run; see
+   "blocked and terminal-failure re-entry" below).
 4. Among eligible tasks, the highest-priority one is claimed first (`high` < `normal` < `low`
    rank); ties are broken by queue order (a stable sort preserves each task's original enqueue
    position).
@@ -212,6 +217,16 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    locked claim operation (pause changes are rare, operator-driven events, not something
    concurrent claims race over), so a paused pod costs nothing further to not dispatch: no claim
    write, no wasted agent turn.
+6. The CLI's pre-flight "is there anything to do?" gate (`cli/_pod.py::_pod_dispatch`, shared by
+   `docket pod <project> dispatch` and `docket pipeline run`) **MUST NOT** require a `pending` or
+   already-tagged-resumable task to exist before it will even attempt a dispatch when `--resume`
+   is passed and some task is `running`. A `running` task's claim may or may not actually be
+   stale — the CLI does not duplicate that judgment — so it only needs to let the call *proceed*
+   into `dispatch_pod`, whose own stale-claim sweep (see "Per-hop incremental persistence and
+   crash recovery") decides and reclaims within that same call. Without this, an operator facing
+   an orphaned `running` task (from a crash, or from the pre-fix `dispatch_refused` defect this
+   version closes) could not trigger the sweep at all short of queueing an unrelated task just to
+   satisfy the gate.
 
 ### Per-hop incremental persistence and crash recovery
 
@@ -242,6 +257,51 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    pipeline position, rework-cycle count, and (if resuming mid-rework) which Reviewer hop's text
    still needs to reach the Implementer — the same decision a live run makes — so a task resumed
    mid-rework re-enters the rework Implementer hop, never a stale position past the Reviewer.
+
+### Deterministic refusal inside a claimed task
+
+*(Before this version, a `DispatchError` reached anywhere on a claimed task's path — most
+concretely the cross-pod membership check near the top of `_execute_unit` — propagated all the
+way out of `dispatch_pod`. The task's claim was never settled: it stayed `running` with no
+process attached, indistinguishable from a genuine crash except that no crash actually happened.
+Because "Claiming" only ever let `--resume` reclaim a `stale_claim`-tagged `failed` task, and the
+CLI's own pre-flight gate required a `pending` or already-tagged-resumable task to exist before it
+would even call `dispatch_pod`, the stale-claim sweep that would eventually fail the orphan out
+could never run without an operator queueing an unrelated task first. This section, and "Claiming"
+requirement 6, close that gap.)*
+
+1. `dispatch_task` **MUST** catch a `DispatchError` raised anywhere on the path it drives for one
+   already-claimed task — the cross-pod membership check (`_execute_unit`, "Pipeline order and
+   participation" requirement 3) and its own up-front `pod_pipeline` revalidation are the two
+   sites reachable there today — and fold it into a normal return: a `TaskResult` with
+   `status="failed"`, `reason` set to the `DispatchError`'s message verbatim, and
+   `failure_kind="dispatch_refused"`. It **MUST NOT** let the exception propagate to
+   `dispatch_pod`.
+2. `dispatch_pod` therefore always finalizes this task exactly as it does any other terminal
+   result: `_finalize_task`/`_apply_result` persist `status: "failed"`, the refusal `reason`,
+   `failureKind: "dispatch_refused"`, and clear `claimId` — the claim is settled, not orphaned —
+   and the loop **MUST** continue to the pod's next eligible task rather than aborting the whole
+   dispatch run. Any hop that completed before the refusal (e.g. the Lead's) was already
+   persisted incrementally (see above) and **MUST** remain in the task's `hops[]`.
+3. A `dispatch_refused`-tagged `failed` task **MUST** be reclaimable by `docket pod <project>
+   dispatch --resume` (per "Claiming" requirement 3) once its underlying cause is fixed — a
+   corrected pipeline file naming a real pod member, for instance — and **MUST** then continue
+   from its last persisted hop exactly as a resumed `stale_claim` task does (requirements 4-5
+   above apply identically; `dispatch_refused` is not a fifth pipeline-position bookkeeping
+   scheme). Unlike `stale_claim`, this reclaim needs no `CLAIM_STALE_TIMEOUT` wait and no decoy
+   task queued first (see "Claiming" requirement 6) — the claim was already cleanly settled, not
+   crashed.
+4. This is scoped to `DispatchError` specifically, never any other exception. A real crash (the
+   agent-turn process dying, a network failure, an unhandled bug) **MUST** still propagate out of
+   `dispatch_pod` unchanged, leaving the task `running` for the stale-claim sweep exactly as
+   before this version — catching a broader exception class here would wrongly settle a genuinely
+   orphaned claim as a clean `"failed"` outcome instead of leaving it for crash recovery.
+5. `dispatch_task` **MUST** emit a `dispatch_refused` trace event (payload: the refusal reason)
+   at the point it catches the error, in addition to the `session_end` event every `dispatch_task`
+   call already emits with the final status. The run registry (`core/runs.py::execute`) requires
+   no change to record this: a `TaskResult` returned with `status="failed"` already finishes that
+   CLI/HTTP run as `"failed"` with an error summary and its own `error` trace event, the same as
+   any other failed task.
 
 ### Mechanical HEARTBEAT ledger (ROADMAP Phase 17 C-3)
 
@@ -327,11 +387,12 @@ was seeded once at binding time.)*
    - A pod-wide budget change on the Lead (`docket profile <lead-id> --budget <n>` with `n > 0`,
      or `docket profile <lead-id> --resume`) — `unblock_pod` flips **every** `blocked` task in
      that pod's queue back to `pending` (see `cost-tracking.spec.md`).
-2. A plain `failed` task (a real gate/hop failure — not a swept stale claim) is terminal for
-   that dispatch attempt and **MUST NOT** be automatically retried by a later `dispatch_pod`
-   call, with or without `--resume` (`--resume` only reclaims `stale_claim`-tagged failures).
-   There is no CLI action that moves a plain `failed` task back to `pending` today — queuing a
-   fresh task is the only path forward for a real failure.
+2. A plain `failed` task (a real graded gate/hop outcome — not a `RESUMABLE_FAILURE_KINDS`-tagged
+   settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by
+   a later `dispatch_pod` call, with or without `--resume` (`--resume` only reclaims a task tagged
+   `stale_claim` or `dispatch_refused` — see "Claiming" requirement 3 and "Deterministic refusal
+   inside a claimed task"). There is no CLI action that moves a plain `failed` task back to
+   `pending` today — queuing a fresh task is the only path forward for a real failure.
 
 ### Pipeline order and participation
 
@@ -999,6 +1060,7 @@ verdict_rework_started       # W-8: a non-built-in verdict gate's rework-trigger
 verdict_rejected              # W-8: a non-built-in verdict gate's reply matched but wasn't pass/rework
 verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
 stale_claim                  # the crash sweep failed a running task whose claim went stale
+dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed
 paused_refused                # a claim attempt was refused because the pod's Lead is paused
 approval_required              # a require_approval gate fired (task -> waiting_approval)
 approval_resumed                # a granted approval flipped the task back to pending (G-1)
@@ -1164,6 +1226,28 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.9.0 (2026-09-25)
+
+- **P26-19: a deterministic dispatch refusal settles the claim; the settled task is
+  recoverable.** New subsection "Deterministic refusal inside a claimed task" (after "Per-hop
+  incremental persistence and crash recovery"): `dispatch_task` now catches a `DispatchError`
+  raised on the claimed-task path (the cross-pod membership check, or its own up-front
+  `pod_pipeline` revalidation) and folds it into a `"failed"` result tagged
+  `failureKind: "dispatch_refused"` instead of letting it propagate out of `dispatch_pod` —
+  fixes a live defect where such a refusal left the task `running` with no process, and the CLI's
+  "anything to do?" gate could never even start a dispatch to let the stale-claim sweep find it,
+  short of queueing an unrelated decoy task. "Claiming" requirement 3 and "blocked and
+  terminal-failure re-entry" requirement 2 now name `RESUMABLE_FAILURE_KINDS`
+  (`stale_claim`, `dispatch_refused`) as the two `failed` tags `--resume` reclaims — a settled
+  refusal needs no `CLAIM_STALE_TIMEOUT` wait, unlike a swept crash, since its claim was never
+  left dangling. "Claiming" gains requirement 6: under `--resume`, the CLI's "is there anything
+  to do" gate also counts a `running` task as work to attempt, deferring the actual staleness
+  judgment to `dispatch_pod`'s own sweep in the same call — this is what removes the decoy-task
+  requirement for a genuinely crashed (not merely refused) task too. `dispatch_refused` added to
+  "Trace events this pipeline emits". Non-goal, pinned by test: an actual crash (any exception
+  other than `DispatchError`) is untouched and still leaves the task `running` for the stale
+  sweep.
 
 ### Version 6.8.0 (2026-09-25)
 
