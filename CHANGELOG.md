@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Outcomes route the pipeline, and every loop has a bound.** A step's `on:` map sends any
+  gate outcome -- a verdict marker, `pass`/`fail` of a verify command -- to `fail`, `stop`, a
+  later step or an earlier one; a backward edge needs `max`, and `validate`/`plan` refuse a
+  missing bound or an unreachable step. `until: verify` with `max` retries a step until its
+  verify command passes. Every routing decision is a `route_taken` trace event; the shipped
+  recipes and the one-rework-edge form are byte-identical.
+- **A step can be skipped, and a step can be a command.** `when: {changed: "src/**"}`,
+  `when: {var: name, is: value}` or `when: {memberPresent: role}` skips a step (`step_skipped`
+  trace event, no hop). `- lint: {run: "ruff check ."}` runs a command in the pod's worktree
+  with no agent turn and no model tokens, classified like any shell-out (an unlisted command
+  asks, or fails under `approvalMode refuse`); its exit code, or a single upper-case last
+  output line, is the outcome its `on:` map reads. `plan` prints both.
 - **Every configuration file can say what it is, and one command validates them all.** A
   role, pipeline, policy or `pod.yaml` may start with `kind:` and `name:`; `docket validate
   [dir|file]` checks every document under a directory (default `.docket/`) and prints
