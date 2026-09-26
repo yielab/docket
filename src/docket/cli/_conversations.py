@@ -44,7 +44,9 @@ def run_conversations(sub: str | None, args: list[str]) -> int:
         return _resume(args)
     if sub == "set":
         return _set(args)
-    ui.error(f"Unknown subcommand '{sub}'. Use: list | show | resume | set.")
+    if sub == "prune":
+        return _prune(args)
+    ui.error(f"Unknown subcommand '{sub}'. Use: list | show | resume | set | prune.")
     return 1
 
 
@@ -172,4 +174,15 @@ def _set(args: list[str]) -> int:
         task_ref=_flag(args, "--task"),
     )
     ui.success(f"Recorded conversation '{conv.id}' (status {conv.status.value}).")
+    return 0
+
+
+def _prune(args: list[str]) -> int:
+    """Delete 'done' conversations past retention; ``docket serve``'s sweep does this too."""
+    dry_run = "--dry-run" in args
+    days = _flag(args, "--days")
+    retention_s = int(days) * 86400 if days is not None else None
+    removed = _conv.prune_closed_durable(retention_s=retention_s, dry_run=dry_run)
+    verb = "Would remove" if dry_run else "Removed"
+    ui.success(f"{verb} {removed} closed conversation(s).")
     return 0

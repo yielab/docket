@@ -36,6 +36,10 @@ from docket.edges import store as _store
 # passing an arbitrary string through to ``approval_grant``/``approval_deny``.
 APPROVAL_CHANNELS: frozenset[str] = frozenset({"cli", "http", "mcp", "telegram", "timeout", "tack"})
 
+# Every state a resolved approval record can end in. Only "pending" is live; the sweep
+# below must never touch a pending record regardless of age.
+_TERMINAL_APPROVAL_STATES: frozenset[str] = frozenset({"granted", "denied", "expired"})
+
 
 class ApprovalError(Exception):
     """Raised for invalid approval transitions or missing tokens."""
@@ -223,6 +227,51 @@ def list_pending() -> list[dict[str, Any]]:
         if data.get("state") == "pending":
             out.append(data)
     return out
+
+
+def prune_resolved(
+    retention_s: int | None = None,
+    *,
+    dry_run: bool = False,
+    now: float | None = None,
+) -> int:
+    """Delete resolved approval records (granted/denied/expired) whose file mtime is
+    past the retention window (default ``config.TRACE_RETENTION_S``). Returns the
+    count removed (or, under *dry_run*, that would be)."""
+    # A state transition is a record's only write after creation, so mtime is a
+    # faithful "resolved at" proxy without a schema change. A pending record is never
+    # touched regardless of age -- see approval_sweep_expired for that separate,
+    # timeout-driven path. Each candidate is deleted under its own file lock so a
+    # concurrent grant/deny can never race the removal.
+    if not _cfg.APPROVALS_DIR.is_dir():
+        return 0
+    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    cutoff = (now if now is not None else _dt.datetime.now(_dt.UTC).timestamp()) - window
+    removed = 0
+    for path in sorted(_cfg.APPROVALS_DIR.glob("*.json")):
+        with _store.with_lock(path):
+            try:
+                with path.open(encoding="utf-8") as f:
+                    data: dict[str, Any] = json.load(f)
+            except Exception:
+                continue
+            if data.get("state") not in _TERMINAL_APPROVAL_STATES:
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime >= cutoff:
+                continue
+            if dry_run:
+                removed += 1
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            removed += 1
+    return removed
 
 
 def _resolve_timeout_as_denied(token: str) -> bool:

@@ -28,8 +28,8 @@ _docket() {
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
     'gates:Manage docket'\''s approval-routing and workspace-isolation posture'
-    'conversations:Inspect and resume the conversation registry (list/show/resume/set)'
-    'runs:Inspect the dispatch run registry (list/show) -- one record per dispatch invocation'
+    'conversations:Inspect and resume the conversation registry (list/show/resume/set/prune)'
+    'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
     'mcp:Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)'
     'audit:Show the audit log, or verify its tamper-evidence chain'
@@ -65,8 +65,8 @@ _docket() {
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
-    runs|run)        compadd list show cancel ;;
-    conversations|conv) compadd list show resume set ;;
+    runs|run)        compadd list show cancel prune ;;
+    conversations|conv) compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
     gates|security)  compadd status enable disable isolate classes ;;

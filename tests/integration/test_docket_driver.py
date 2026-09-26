@@ -1290,6 +1290,20 @@ class TestRunTurn:
             if json.loads(line)["event_type"] == "tool_result"
         ]
         assert denial_kinds == ["approval_denied", "approval_denied", "approval_denied"]
+        # The approval record's own approval_requested/approval_denied trace events
+        # (core/approval.py's _emit_trace) must land under the pod (trace_project),
+        # not under the agent id -- a separate file from the tool_result trace above.
+        assert not (_cfg.TRACES_DIR / "denial-agent").exists()
+        approval_trace_files = list((_cfg.TRACES_DIR / "denial-project").glob("*-approval*.jsonl"))
+        assert approval_trace_files, "expected an approval trace file filed under the pod"
+        approval_event_types: list[str] = []
+        for f in approval_trace_files:
+            approval_event_types += [
+                json.loads(line)["event_type"]
+                for line in f.read_text(encoding="utf-8").splitlines()
+            ]
+        assert approval_event_types.count("approval_requested") == 3
+        assert approval_event_types.count("approval_denied") == 3
 
     def test_env_flows_into_the_tool_context(self) -> None:
         # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,

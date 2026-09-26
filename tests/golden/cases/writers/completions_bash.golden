@@ -37,8 +37,8 @@ _docket_complete() {
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
-    runs|run)        words="list show cancel" ;;
-    conversations|conv) words="list show resume set" ;;
+    runs|run)        words="list show cancel prune" ;;
+    conversations|conv) words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
     gates|security)  words="status enable disable isolate classes" ;;

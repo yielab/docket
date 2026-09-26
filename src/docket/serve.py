@@ -473,12 +473,17 @@ def _run_sweeps(dispatch: bool = False) -> None:
     looking for it. ``audit.log`` is never swept: telemetry is lossy by design, an audit log must
     not be.
 
+    Also prunes terminal run records, resolved approval records and closed conversations past
+    the same ``TRACE_RETENTION_S`` window -- live/pending/active records are never touched
+    regardless of age, matching the trace sweep's own liveness rule.
+
     When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
     monitor), also drains every dispatchable pod's queue (one run record per pod, source
     ``"sweep"``) and checks due schedules."""
     import time
 
-    from docket.core import approval, trace
+    from docket.core import approval, conversations, trace
+    from docket.core import runs as _runs
 
     with contextlib.suppress(Exception):
         trace.sweep_all()
@@ -486,9 +491,14 @@ def _run_sweeps(dispatch: bool = False) -> None:
         trace.expire_old_traces()
     with contextlib.suppress(Exception):
         approval.approval_sweep_expired()
+    with contextlib.suppress(Exception):
+        _runs.prune_terminal()
+    with contextlib.suppress(Exception):
+        approval.prune_resolved()
+    with contextlib.suppress(Exception):
+        conversations.prune_closed_durable()
     if dispatch:
         from docket.core import dispatch as _dispatch
-        from docket.core import runs as _runs
 
         try:
             pods_to_dispatch = _dispatch.dispatchable_pods()

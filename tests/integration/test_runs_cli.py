@@ -174,6 +174,22 @@ class TestRunsCancelAuditEntry:
         assert result.chained >= 1
 
 
+class TestRunsPruneCli:
+    """`docket runs prune` -- the manual counterpart to ``docket serve``'s sweep."""
+
+    def test_prune_removes_old_terminal_runs(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
+        assert run_runs("prune", ["--days", "0"]) == 0
+        assert _runs.get_run(rec["id"]) is None
+
+    def test_prune_dry_run_does_not_delete(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
+        assert run_runs("prune", ["--dry-run", "--days", "0"]) == 0
+        assert _runs.get_run(rec["id"]) is not None
+
+
 class TestRunsUnknownSubcommand:
     def test_unknown_subcommand_errors(self, runs_file: Path) -> None:
         assert run_runs("bogus", []) == 1

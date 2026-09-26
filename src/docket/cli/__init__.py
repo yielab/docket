@@ -2081,7 +2081,7 @@ def cmd_gates(ctx: typer.Context) -> None:
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def cmd_conversations(ctx: typer.Context) -> None:
-    """Inspect and resume the conversation registry (list/show/resume/set).
+    """Inspect and resume the conversation registry (list/show/resume/set/prune).
 
     docket's durable index of channel threads: docket's own turn loop keeps
     no durable transcript of its own, so this registry tracks which agent
@@ -2090,7 +2090,10 @@ def cmd_conversations(ctx: typer.Context) -> None:
     Subcommands: `list` (default) all tracked conversations; `show <id|
     agent-id>` full detail for one; `resume <id|agent-id>` marks it
     in_progress and prints a resume brief; `set <agent-id> <peer-id>
-    [--topic] [--status] [--last] [--task]` edits an entry directly.
+    [--topic] [--status] [--last] [--task]` edits an entry directly;
+    `prune [--dry-run] [--days N]` deletes `done` conversations past the
+    retention window (default `TRACE_RETENTION_DAYS`) -- the same pruning
+    `docket serve`'s periodic sweep already does.
 
     Auto-seeded when you `docket wire` an agent to a channel; cleaned up on
     `docket delete`. `status` is one of active | in_progress | waiting |
@@ -2109,7 +2112,7 @@ def cmd_conversations(ctx: typer.Context) -> None:
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def cmd_runs(ctx: typer.Context) -> None:
-    """Inspect the dispatch run registry (list/show) -- one record per dispatch invocation.
+    """Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation.
 
     One persisted record per pod-dispatch invocation, whatever triggered it
     (the CLI, the `docket serve` webhook, a due schedule, or the sweep loop).
@@ -2123,7 +2126,11 @@ def cmd_runs(ctx: typer.Context) -> None:
     the executor observes the request and fully stops, then the task and run
     become cancelled; writes one audit entry; in-process backend work
     already executing returns to a safe checkpoint, where its late response
-    is discarded before any tool or later pipeline hop can start.
+    is discarded before any tool or later pipeline hop can start. `prune
+    [--dry-run] [--days N]` deletes terminal (succeeded/failed/cancelled)
+    records past the retention window (default `TRACE_RETENTION_DAYS`) --
+    the same pruning `docket serve`'s periodic sweep already does; queued
+    and running records are never touched.
 
     A run record's `source` is one of cli|webhook|schedule|sweep|mcp;
     `state` is one of queued|running|succeeded|failed|cancelled. A failed
