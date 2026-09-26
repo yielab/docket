@@ -309,6 +309,13 @@ def pod_scratch_dir(project: str) -> Path:
     return PODS_DIR / project / ".scratch"
 
 
+def pod_config_dir(project: str) -> Path:
+    """Per-pod configuration overlay directory (roles, and future policies), resolved
+    above the global overlay for that pod alone -- see `core/archetypes.py::load_registry`.
+    Created 0700 on first write, mirroring `pod_scratch_dir`'s hardening."""
+    return PODS_DIR / project / "config"
+
+
 def pod_work_dir(project: str) -> Path:
     """Default working directory for a `workdir`-kind pod blueprint
     (research/content/ops pods, which have no codebase).

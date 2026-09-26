@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.11.0
+**Version**: 1.12.0
 **Status**: Implemented. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
 policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
 existing `docket roles`/`docket pod`/`docket policies` CLI surface; a recipe's own role YAML is
@@ -419,6 +419,17 @@ to rediscover the same pitfalls.
    files — they are Python literals in `core/archetypes.py`, matching this project's standing
    convention that workspace prose is generated inline in Python (see `CLAUDE.md`'s `templates/`
    note). Only a user-authored archetype's *source* is a YAML file on disk.
+6. A pod **MUST** be able to hold its own role overlay, layered above the global overlay for
+   that pod alone: `core.config.pod_config_dir(project)/roles.json`, the same wire shape as
+   `docket-roles.json`. `core.archetypes.load_registry(project)` **MUST** resolve nearest-wins —
+   the pod overlay above the global overlay, above the starter library, above built-ins — by
+   name; `load_registry()` with no project (or `project=""`) **MUST** stay byte-identical to a
+   fleet with no pod ever customizing a role. `registry_for_role`, and every workspace-prose
+   lookup (`core/pod_provisioning.py`'s SOUL.md/AGENTS.md rendering, the pipeline-plan role
+   check in `cli/_pod.py`, and the custom-role hop-instruction lookup in `core/dispatch.py`)
+   **MUST** resolve through the calling turn's or member's own project, so a pod-scoped override
+   is genuinely enforced end to end, not only visible to `docket roles`. `find_overlay_problems`
+   **MUST** accept the same `project` and cover the pod file too, for `docket doctor`.
 
 ### CLI surface
 
@@ -429,7 +440,11 @@ to rediscover the same pitfalls.
    is available, JSON otherwise) or fail with a non-zero exit if `<name>` is not registered.
 3. `docket roles add <file.yaml>` **MUST** validate the file's archetype definition and, on
    success, merge it into the user overlay; on failure it **MUST** report the specific invalid
-   field(s) and make no change to the overlay file.
+   field(s) and make no change to the overlay file. `list`, `show`, and `add` **MUST** accept
+   `--pod <p>`, resolving (and, for `add`, writing) against pod `<p>`'s own overlay instead of —
+   layered above — the global one; `list`/`show` **MUST** report a pod-overlay-defined role's
+   source as `pod:<p>`, distinct from `user`. `validate` takes no `--pod`: it has no pod-specific
+   overlay concept.
 4. `docket roles validate [file.yaml]` **MUST**, with no argument, validate every archetype in
    the live merged registry (reporting per-archetype pass/fail); with a file argument, it
    **MUST** validate that file's definition without persisting it (a dry run ahead of `add`).
@@ -557,6 +572,21 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.12.0 (2026-09-26)
+
+- **P27-1: a pod has its own role overlay.** "User registry overlay" gains requirement 6:
+  `core.config.pod_config_dir(project)/roles.json` resolves nearest-wins above the global
+  overlay, above the starter library, above built-ins, for that pod alone —
+  `core.archetypes.load_registry(project)`/`registry_for_role(base, role, project)` are the new
+  entry points; `project=""` stays byte-identical to before this requirement. Every workspace-
+  prose/hop-instruction lookup that already knew its own project
+  (`core/pod_provisioning.py`'s SOUL.md/AGENTS.md rendering, `cli/_pod.py`'s pipeline-plan role
+  check, `core/dispatch.py`'s custom-role hop-instruction lookup, and
+  `core/agent_loop.py`'s per-turn tool-registry narrowing) now passes it through, so the
+  override is enforced on the live turn path, not only visible to `docket roles`.
+  "CLI surface" gains `--pod <p>` on `list`/`show`/`add` (not `validate`) and the `pod:<p>`
+  source label. See `cli-interface.spec.md` v1.30.0 for the CLI-surface half.
 
 ### Version 1.11.0 (2026-09-26)
 

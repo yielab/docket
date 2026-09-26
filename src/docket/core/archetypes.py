@@ -45,8 +45,10 @@ open fields), the built-in/starter tables, and the user-overlay contract.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from string import Template
 from typing import Any
 
@@ -635,9 +637,12 @@ STARTER_ROLE_ORDER: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class ArchetypeRegistry:
-    """Built-ins + starter library + user overlay, merged (user wins by name)."""
+    """Built-ins + starter library + user overlay, merged (user wins by name).
+    ``project`` records which pod's overlay this was resolved with, so ``source_of``
+    can report ``pod:<project>`` distinctly from the global ``user`` overlay."""
 
     archetypes: dict[str, RoleArchetype] = field(default_factory=dict)
+    project: str = ""
 
     def get(self, name: str) -> RoleArchetype | None:
         return self.archetypes.get(name)
@@ -652,9 +657,15 @@ class ArchetypeRegistry:
         return list(self.archetypes.items())
 
     def source_of(self, name: str) -> str:
-        """'built-in' | 'starter' | 'user' | '' (unknown) — for `docket roles list`."""
+        """'built-in' | 'starter' | 'user' | 'pod:<project>' | '' (unknown) — for
+        `docket roles list`. A role the pod overlay defines is reported distinctly from
+        the global 'user' overlay, even when both define the same name (pod wins)."""
         if name not in self.archetypes:
             return ""
+        if self.project:
+            raw_pod = _read_overlay_raw(_pod_roles_file(self.project))
+            if name in raw_pod.get("roles", {}):
+                return f"pod:{self.project}"
         path = cfg.ARCHETYPE_REGISTRY_FILE
         if path.exists():
             raw = _store.read_json(path)
@@ -667,8 +678,14 @@ class ArchetypeRegistry:
         return "user"
 
 
-def _read_overlay_raw() -> dict[str, Any]:
-    path = cfg.ARCHETYPE_REGISTRY_FILE
+def _pod_roles_file(project: str) -> Path:
+    """The pod-scoped role overlay this ``project``'s pod resolves above the global
+    overlay -- ``pod_config_dir(project)/roles.json``, same wire shape as
+    ``docket-roles.json``."""
+    return cfg.pod_config_dir(project) / "roles.json"
+
+
+def _read_overlay_raw(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
@@ -677,27 +694,10 @@ def _read_overlay_raw() -> dict[str, Any]:
         return {}
 
 
-def load_registry() -> ArchetypeRegistry:
-    """Built-ins + starter library, overlaid by `~/.docket/docket-roles.json`. Not cached
-    -- read fresh every call, so a live file edit or mid-session monkeypatch is always
-    seen. A malformed overlay entry is silently skipped, never crashing a live fleet."""
-    archetypes: dict[str, RoleArchetype] = dict(BUILTIN_ARCHETYPES)
-    archetypes.update(STARTER_ARCHETYPES)
-
-    raw = _read_overlay_raw()
-    for name, doc in raw.get("roles", {}).items():
-        try:
-            archetypes[name] = from_wire(name, doc)
-        except ArchetypeError:
-            continue
-    return ArchetypeRegistry(archetypes)
-
-
-def find_overlay_problems() -> list[tuple[str, str]]:
-    """Return ``(role, reason)`` pairs for a malformed ``docket-roles.json`` overlay entry
-    that ``load_registry`` silently skips -- for ``docket doctor``. Read-only: never edits
-    the overlay. *role* is the file path itself for an unreadable/malformed file."""
-    path = cfg.ARCHETYPE_REGISTRY_FILE
+def _overlay_problems(path: Path) -> list[tuple[str, str]]:
+    """Return ``(role, reason)`` pairs for a malformed overlay entry at ``path`` (the
+    file path itself for an unreadable file) -- shared by ``find_overlay_problems``
+    across both the global overlay and, when given, a pod's own overlay."""
     if not path.exists():
         return []
     try:
@@ -713,6 +713,39 @@ def find_overlay_problems() -> list[tuple[str, str]]:
             from_wire(str(name), doc)
         except ArchetypeError as exc:
             problems.append((str(name), str(exc)))
+    return problems
+
+
+def load_registry(project: str = "") -> ArchetypeRegistry:
+    """Built-ins + starter library, overlaid by ``docket-roles.json``, then -- when
+    *project* is given -- by that pod's own overlay too (nearest wins: pod > global >
+    starter > built-in). Not cached; a malformed entry in either file is skipped."""
+    archetypes: dict[str, RoleArchetype] = dict(BUILTIN_ARCHETYPES)
+    archetypes.update(STARTER_ARCHETYPES)
+
+    for name, doc in _read_overlay_raw(cfg.ARCHETYPE_REGISTRY_FILE).get("roles", {}).items():
+        try:
+            archetypes[name] = from_wire(name, doc)
+        except ArchetypeError:
+            continue
+
+    if project:
+        for name, doc in _read_overlay_raw(_pod_roles_file(project)).get("roles", {}).items():
+            try:
+                archetypes[name] = from_wire(name, doc)
+            except ArchetypeError:
+                continue
+
+    return ArchetypeRegistry(archetypes, project=project)
+
+
+def find_overlay_problems(project: str = "") -> list[tuple[str, str]]:
+    """Return ``(role, reason)`` pairs for a malformed overlay entry ``load_registry``
+    silently skips -- for ``docket doctor``. Read-only. When *project* is given, also
+    covers that pod's own overlay file, not only the global one."""
+    problems = _overlay_problems(cfg.ARCHETYPE_REGISTRY_FILE)
+    if project:
+        problems += _overlay_problems(_pod_roles_file(project))
     return problems
 
 
@@ -743,12 +776,14 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
 }
 
 
-def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
+def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolRegistry:
     """Narrow *base* to exactly what *role* may call.
 
-    Looks *role* up in the live archetype registry and removes every name in its
-    `denied_tools` via the public `ToolRegistry.without()` API -- data-driven, not a
-    per-role branch (`core/agent_loop.py` is the one caller, once per turn). A
+    Looks *role* up in the live archetype registry (*project*'s pod overlay, when
+    given, resolving nearest-wins above the global overlay -- see `load_registry`) and
+    removes every name in its `denied_tools` via the public `ToolRegistry.without()`
+    API -- data-driven, not a per-role branch (`core/agent_loop.py` is the one caller,
+    once per turn, passing the turn's `ToolContext.project`). A
     Reviewer's registry genuinely lacks `write`/`edit`, so a call to either is
     refused by `dispatch_tool` as an *unknown tool* -- stronger than a SOUL.md
     instruction telling it not to use them. An unrecognized *role* or one with an
@@ -768,7 +803,7 @@ def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
     cannot reach, so a role denied `write` can never regain a write-capable tool
     just because it arrived through MCP instead of `core.tools.builtin_registry()`.
     """
-    archetype = load_registry().get(role)
+    archetype = load_registry(project).get(role)
     if archetype is None or not archetype.denied_tools:
         return base
     narrowed = base.without(*archetype.denied_tools)
@@ -834,21 +869,29 @@ def parse_yaml_file(path: str) -> dict[str, Any]:
     return doc
 
 
-def add_user_archetype(doc: dict[str, Any]) -> RoleArchetype:
-    """Validate `doc` and merge it into the user overlay (`docket-roles.json`). `doc`
-    must carry a top-level `name`. Overlays (and may override) a built-in or starter
-    archetype by name -- the same "user wins" contract `docket-models.json` uses."""
+def add_user_archetype(doc: dict[str, Any], project: str = "") -> RoleArchetype:
+    """Validate `doc` and merge it into the user overlay, or -- when *project* is given
+    -- into that pod's own overlay, which resolves above the global one for that pod
+    alone. `doc` must carry a top-level `name`; naming an existing archetype overrides it."""
     name = str(doc.get("name", "")).strip()
     if not name:
         raise ArchetypeError("archetype definition must have a top-level 'name'")
     arch = from_wire(name, doc)  # raises ArchetypeError on any invalid field
 
-    path = cfg.ARCHETYPE_REGISTRY_FILE
+    path = _pod_roles_file(project) if project else cfg.ARCHETYPE_REGISTRY_FILE
 
     def _fn(current: dict[str, Any]) -> dict[str, Any]:
         current.setdefault("roles", {})[name] = arch.to_wire()
         return current
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    if project:
+        # path.parent is pod_config_dir(project); its parent is PODS_DIR/project.
+        # Both may be freshly created by the mkdir above and inherit umask -- harden
+        # them the same way pod_provisioning.py's scratch dir does.
+        with contextlib.suppress(OSError):
+            cfg.PODS_DIR.chmod(0o700)
+            path.parent.parent.chmod(0o700)
+            path.parent.chmod(0o700)
     _store.read_modify_write(path, _fn)
     return arch

@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.29.0
+**Version**: 1.30.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -408,18 +408,21 @@ exits `0`
 
 #### docket roles
 **Purpose**: Inspect and manage declarative role archetypes — built-in, starter-library, and
-user-defined (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
-**Syntax**: `docket roles <list|show|add|validate> [args]`
+user-defined (see role-archetypes.spec.md)
+**Syntax**: `docket roles <list|show|add|validate> [args] [--pod <p>]`
 **Actions**:
-- `list`: Show every registered archetype (name, scope, model class, gate contract, edit
-  rights, description)
-- `show <name>`: Print one archetype's full definition (YAML, or JSON if PyYAML is unavailable)
-- `add <file.yaml>`: Validate a standalone archetype YAML file and merge it into the user
-  overlay (`~/.docket/docket-roles.json`); overrides a built-in/starter archetype by reusing
-  its name
+- `list [--pod <p>]`: Show every registered archetype (name, scope, model class, gate contract,
+  edit rights, description); with `--pod <p>`, also resolves pod `<p>`'s own role overlay on top
+- `show <name> [--pod <p>]`: Print one archetype's full definition (YAML, or JSON if PyYAML is
+  unavailable), resolved the same way as `list`
+- `add <file.yaml> [--pod <p>]`: Validate a standalone archetype YAML file and merge it into the
+  user overlay (`~/.docket/docket-roles.json`), or — with `--pod <p>` — into pod `<p>`'s own
+  overlay instead; either overrides a built-in/starter/global-overlay archetype by reusing its
+  name
 - `validate [file.yaml]`: With no argument, validate every archetype in the live registry; with
-  a file argument, validate that candidate definition without persisting it
-**Output**: Archetype listing, one archetype's definition, or a per-archetype pass/fail report
+  a file argument, validate that candidate definition without persisting it. Takes no `--pod`
+**Output**: Archetype listing, one archetype's definition, or a per-archetype pass/fail report.
+`list`/`show` report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`
 **Return**: `0` on success, `1` on an unknown subcommand, an unknown `show` target, or an invalid
 archetype definition
 
@@ -938,6 +941,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.30.0 (2026-09-26)
+
+- **P27-1: a pod has its own role overlay.** `docket roles list/show/add` gain `--pod <p>`,
+  resolving (and, for `add`, writing) against that pod's own role overlay, which resolves
+  nearest-wins above the global user overlay — see role-archetypes.spec.md's "User registry
+  overlay". `docket roles validate` is unchanged; it has no pod-specific overlay concept.
 
 ### Version 1.29.0 (2026-09-25)
 

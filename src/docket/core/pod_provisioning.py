@@ -194,7 +194,7 @@ def _member_soul(
     """Render a pod member's SOUL.md from its archetype's `soulTemplate`.
 
     Byte-identical to legacy output (role-archetypes.spec.md); no role-specific branching."""
-    arch = _arch.load_registry().get(member.role)
+    arch = _arch.load_registry(project).get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
     variables = _render_context(member, project, codebase, stack, description, work_dir=work_dir)
@@ -253,7 +253,7 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
     """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`.
 
     Byte-identical (role-archetypes.spec.md); section-projection rule: agent-loop.spec.md req 30."""
-    arch = _arch.load_registry().get(member.role)
+    arch = _arch.load_registry(project).get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
     variables = _render_context(member, project, "", "", "")

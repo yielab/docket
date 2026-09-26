@@ -19,10 +19,12 @@ from docket.core.archetypes import (
     RoleArchetype,
     find_overlay_problems,
     from_wire,
+    registry_for_role,
     render,
     resolve_hop_instruction,
 )
 from docket.core.memory import HEARTBEAT_FILE
+from docket.core.tools import builtin_registry
 
 SUBJECT = "docket.core.archetypes"
 
@@ -221,3 +223,58 @@ class TestFindOverlayProblems:
         problems = find_overlay_problems()
         assert len(problems) == 1
         assert problems[0][0] == str(_cfg.ARCHETYPE_REGISTRY_FILE)
+
+
+def _write_vetter_overlay(path: Path, denied_tools: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "roles": {
+                    "vetter": {
+                        "name": "vetter",
+                        "version": 1,
+                        "scope": "pod",
+                        "modelClass": "cheap",
+                        "soulTemplate": "x",
+                        "agentsTemplate": "y",
+                        "gateContract": {"kind": "none"},
+                        "editRights": "read-only",
+                        "toolProfile": "read-only",
+                        "deniedTools": denied_tools,
+                    }
+                }
+            }
+        )
+    )
+
+
+class TestPodRoleOverlay:
+    """A pod's own role overlay (`pod_config_dir(project)/roles.json`) resolves above
+    the global overlay, exercised via `registry_for_role`'s `project` parameter."""
+
+    def test_pod_overlay_wins_over_global_overlay_by_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        repoint_docket_home(monkeypatch, home)
+        home.mkdir(parents=True, exist_ok=True)
+        _write_vetter_overlay(_cfg.ARCHETYPE_REGISTRY_FILE, [])
+        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json", ["write"])
+
+        narrowed = registry_for_role(builtin_registry(), "vetter", project="acme")
+
+        assert "write" not in narrowed.names()
+
+    def test_no_project_keeps_the_global_overlay_definition(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        repoint_docket_home(monkeypatch, home)
+        home.mkdir(parents=True, exist_ok=True)
+        _write_vetter_overlay(_cfg.ARCHETYPE_REGISTRY_FILE, [])
+        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json", ["write"])
+
+        narrowed = registry_for_role(builtin_registry(), "vetter", project="")
+
+        assert "write" in narrowed.names()

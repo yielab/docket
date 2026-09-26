@@ -543,7 +543,7 @@ def _resolve_role_registry_and_prompt(
     output_reserve_tokens: int | None = None,
 ) -> tuple[ToolRegistry, _identity.PromptComposition, list[ToolSpec]]:
     """Narrow the tool registry to this role and compose today's system prompt."""
-    registry = _archetypes.registry_for_role(registry, ctx.role)
+    registry = _archetypes.registry_for_role(registry, ctx.role, ctx.project)
     composition = _identity.compose_agent_prompt(
         ctx.agent_id,
         project_roots=ctx.roots,
