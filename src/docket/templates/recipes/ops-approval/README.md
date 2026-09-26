@@ -13,12 +13,12 @@ recipe when you want the same human-in-the-loop discipline on a pod that already
 Against an existing pod `<project>`:
 
 ```bash
-docket pod <project> add operator
-
-docket pipeline validate pipeline.yaml
-docket pipeline plan <project> --file pipeline.yaml   # confirm nothing is skipped
-docket pod <project> config set pipeline pipeline.yaml
+docket pod <project> apply templates/recipes/ops-approval
 ```
+
+`pod.yaml` names the one member this recipe adds (`operator`); `apply` validates the
+resulting roster and `pipeline.yaml` before writing anything, and is safe to run again (a
+second run plans every item `skip`). `--dry-run` prints the plan without writing.
 
 Answer the resulting approval with `docket approve <token>` / `docket deny <token>` (also
 reachable over HTTP, MCP or Telegram `/approve` — every channel is audited). Unanswered
@@ -34,9 +34,10 @@ cp policies/ops-approval-high-risk.json ~/.docket/policies/
 
 ## Files
 
+- `pod.yaml` — what `apply` reads: `members: [operator]`.
 - `pipeline.yaml` — `lead (assess) -> operator (act, approval gate)`.
-- `policies/ops-approval-high-risk.json` — optional; requires approval for deploy/production
-  shaped commands from the operator role.
+- `policies/ops-approval-high-risk.json` — optional, not applied automatically; requires
+  approval for deploy/production shaped commands from the operator role.
 
 ## Undo
 

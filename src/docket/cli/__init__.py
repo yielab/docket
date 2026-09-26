@@ -1575,7 +1575,7 @@ def cmd_pod(
         help=(
             "list | add <role> [--verify CMD] | remove <member-id> | "
             "set-verify <member-id> CMD | config [get|set <key> <value>|unset <key>] | "
-            "sync [--dry-run]"
+            "sync [--dry-run] | apply [<dir>] [--dry-run] [--json]"
         ),
     ),
 ) -> None:
@@ -1670,6 +1670,22 @@ def cmd_pod(
                         `pod.sync`). `INSTRUCTIONS.md` is operator-owned and
                         is never read, written, or diffed by this command --
                         an already-current pod changes nothing.
+      apply [<dir>]    [--dry-run] [--json]. Apply a recipe/manifest
+                        directory (role YAML, `pipeline.yaml`, and a small
+                        `pod.yaml` naming `members`/`settings`/`pipeline`) to
+                        this pod in one command, composing the same writers
+                        `roles add`/`add <role>`/`config set pipeline`/
+                        `config set <key> <value>` already use. `<dir>`
+                        defaults to `<codebase>/.docket`. Validates
+                        everything -- roles, the roster the pipeline would
+                        resolve against once `members` join, and every
+                        setting -- before writing anything; an invalid
+                        manifest exits 1 naming the problem with nothing
+                        written. Idempotent: applying the same directory
+                        twice plans every item `skip` the second time and
+                        writes nothing. `--dry-run` prints the plan without
+                        writing. Audit-logged once as `pod.apply`, only when
+                        something actually changed.
 
     Dispatch guarantees: budget-gated with real auto-pause (checked before
     each hop against the Lead's cap; over budget leaves the task blocked and

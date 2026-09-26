@@ -1,7 +1,10 @@
 # Role Archetypes Specification
 
-**Version**: 1.14.0
-**Status**: Implemented. **P27-5** closes the one remaining built-in exemption in "Hop
+**Version**: 1.15.0
+**Status**: Implemented. **P27-6** gives a recipe's own role YAML a second consumer,
+`docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
+see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
+remaining built-in exemption in "Hop
 instructions": the `lead` archetype now carries a real `hopInstruction` (the pre-existing
 hardcoded text, unchanged), served through `resolve_hop_instruction` like any custom role, and a
 pipeline step's own `instructions` now overrides the Lead's hop message too — see "Hop
@@ -356,22 +359,25 @@ to rediscover the same pitfalls.
 1. Each recipe **MUST** live at `templates/recipes/<name>/` (`docket.config.recipes_dir()`),
    shipped in the wheel by the same git-tracked-file inclusion `templates/policies/` already
    relies on — no separate packaging include list.
-2. A recipe **MUST** carry a `pipeline.yaml` (this registry's roles referenced by name) and a
-   `README.md` naming its purpose and the exact `docket roles`/`docket pod`/`docket policies`
-   commands that apply it. A `roles/*.yaml` directory and a `policies/*.json` directory are both
-   **optional** — a recipe whose roster is entirely built-in/starter archetypes (e.g. `operator`,
-   `critic`) ships no role YAML at all, since one would just restate data this registry already
-   has.
+2. A recipe **MUST** carry a `pipeline.yaml` (this registry's roles referenced by name), a
+   `README.md` naming its purpose and the one command that applies it, and a small `pod.yaml`
+   (`pod-blueprints.spec.md`'s "Pod manifests: apply") naming the roles `apply` should add as
+   members. A `roles/*.yaml` directory and a `policies/*.json` directory are both **optional** —
+   a recipe whose roster is entirely built-in/starter archetypes (e.g. `operator`, `critic`)
+   ships no role YAML at all, since one would just restate data this registry already has; an
+   optional policy pack is not read by `apply` and stays a manually-copied, README-named file.
 3. A recipe's own role YAML **MUST** pass `docket roles validate` unmodified — a recipe is not a
    second archetype format; it is data consumed by the same `add_user_archetype`/`from_wire`
    this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pipeline validate`
    (`pipeline-format.spec.md`) and, once the roster its README describes is provisioned, **MUST**
    resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
    its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
-4. Applying a recipe introduces **no new CLI command** — `docket roles add`, `docket pod <p> add
-   <role>`, `docket pod <p> config set pipeline <file>`, and (for an optional policy pack) copying
-   a file into `POLICIES_DIR` are the whole surface. A `docket recipes` command is an explicit
-   non-goal unless three real applications show the manual steps are the actual friction.
+4. Applying a shipped recipe **MUST** be one command, `docket pod <p> apply <dir>`
+   (`pod-blueprints.spec.md`, P27-6), which composes the pre-existing `docket roles add`/`docket
+   pod <p> add <role>`/`docket pod <p> config set pipeline <file>` writers rather than replacing
+   them — that manual sequence remains valid for a partial or hand-tuned application, and (for an
+   optional policy pack) copying a file into `POLICIES_DIR` is still manual. A separate `docket
+   recipes` command remains an explicit non-goal.
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
    read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
    archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
@@ -600,6 +606,14 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.15.0 (2026-09-26)
+
+- **P27-6: shipped recipes gain `apply`.** "Shipped recipes" requirement 2 adds a `pod.yaml`
+  (`members`) to each recipe and clarifies an optional policy pack is not read by `apply`.
+  Requirement 4 replaces "no new CLI command" — now false — with `docket pod <p> apply <dir>`
+  (`pod-blueprints.spec.md`, "Pod manifests: apply") as the one-command surface, composing rather
+  than replacing the pre-existing manual writers.
 
 ### Version 1.14.0 (2026-09-26)
 
