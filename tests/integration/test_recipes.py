@@ -212,6 +212,8 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
 
     _pod_apply.apply(_pod_apply.plan_apply(project, recipe_dir))
     assert pod.pod_of(f"{project}-security-vetter") == project
+    assert _arch.load_registry(project).source_of("security-vetter") == f"pod:{project}"
+    assert "security-vetter" not in _arch.load_registry().archetypes
 
     result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
     assert result.spec is not None, result.errors

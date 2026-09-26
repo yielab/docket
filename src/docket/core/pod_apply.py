@@ -2,9 +2,11 @@
 add_user_archetype``, member provisioning, the pipeline bind, and ``core.pod.PodSettings``)
 into one operation, driven by a small ``pod.yaml`` manifest (``members``, ``settings``,
 ``pipeline``) alongside the same ``roles/*.yaml``/``pipeline.yaml`` shape the shipped recipes
-already ship. A role goes into the *global* user overlay, not a pod-scoped one: ``core/pod.py``'s
-own role-name validity reads only that global registry (see ``_plan_roles``), matching what
-``docket roles add roles/<file>.yaml`` without ``--pod`` already did by hand. ``plan_apply`` is
+already ship. A role goes into *project*'s own pod-scoped overlay (``core.config.
+pod_config_dir(project)/roles.json``), never the global one: ``core/pod.py``'s roster helpers
+(``_role_names``/``parse_member_id``, which ``pod_full_roster``/``members_of`` depend on to
+resolve a pipeline's roster) resolve that pod overlay too (see ``_plan_roles``), matching what
+``docket roles add --pod <p> roles/<file>.yaml`` already did by hand. ``plan_apply`` is
 pure (reads only) and validates everything -- roles, the roster the pipeline would resolve
 against *after* ``members``, and every setting -- before ``apply`` writes anything. Idempotent:
 an item already matching what is on disk plans as ``skip``; nothing is ever removed."""
@@ -138,11 +140,11 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
 
 
 def _plan_roles(
-    directory: Path, base_registry: _arch.ArchetypeRegistry
+    directory: Path, base_registry: _arch.ArchetypeRegistry, project: str
 ) -> tuple[list[ApplyItem], list[_RoleWrite], dict[str, _arch.RoleArchetype]]:
-    """Plan ``roles/*.yaml`` into the global user overlay, the same target ``docket roles
-    add`` (no ``--pod``) writes to -- never a pod-scoped one, since ``core/pod.py``'s own
-    role-name validity reads only the global registry (see module docstring)."""
+    """Plan ``roles/*.yaml`` into *project*'s own pod-scoped role overlay, the same target
+    ``docket roles add --pod <project>`` writes to -- never the global overlay
+    (see module docstring)."""
     items: list[ApplyItem] = []
     writes: list[_RoleWrite] = []
     merged = dict(base_registry.archetypes)
@@ -159,11 +161,11 @@ def _plan_roles(
         except _arch.ArchetypeError as exc:
             raise PodApplyError(f"{role_file}: {exc}") from exc
         existing = base_registry.get(name)
-        already_global = base_registry.source_of(name) == "user"
-        if already_global and existing is not None and existing.to_wire() == arch.to_wire():
+        already_pod = base_registry.source_of(name) == f"pod:{project}"
+        if already_pod and existing is not None and existing.to_wire() == arch.to_wire():
             action: ApplyAction = "skip"
         else:
-            action = "replace" if already_global else "add"
+            action = "replace" if already_pod else "add"
             writes.append(_RoleWrite(doc=doc))
         merged[name] = arch
         items.append(ApplyItem(kind="role", name=name, action=action))
@@ -323,7 +325,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     pipeline_name = manifest.get("pipeline")
 
     base_registry = _arch.load_registry(project)
-    role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry)
+    role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry, project)
     augmented = _arch.ArchetypeRegistry(merged_archetypes, project=project)
 
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
@@ -357,7 +359,7 @@ def apply(plan: ApplyPlan) -> ApplyResult:
     lead_id = pod.member_id(plan.project, "lead")
 
     for role_write in plan._role_writes:
-        _arch.add_user_archetype(role_write.doc)
+        _arch.add_user_archetype(role_write.doc, plan.project)
 
     for member_write in plan._member_writes:
         ok, msg, _fallback = _pp.provision_member(

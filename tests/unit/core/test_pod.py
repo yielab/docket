@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import docket.config as _cfg
@@ -89,6 +91,50 @@ class TestNormalizeRole:
     def test_unknown_role_raises(self) -> None:
         with pytest.raises(pod.PodError):
             pod.normalize_role("wizard")
+
+
+def _write_vetter_overlay(path: Path, denied_tools: list[str] | None = None) -> None:
+    """Same wire shape as ``tests/unit/core/test_archetypes.py::_write_vetter_overlay``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(
+        path,
+        {
+            "roles": {
+                "vetter": {
+                    "name": "vetter",
+                    "version": 1,
+                    "scope": "pod",
+                    "modelClass": "cheap",
+                    "soulTemplate": "x",
+                    "agentsTemplate": "y",
+                    "gateContract": {"kind": "none"},
+                    "editRights": "read-only",
+                    "toolProfile": "read-only",
+                    "deniedTools": denied_tools or [],
+                }
+            }
+        },
+    )
+
+
+class TestPodScopedRoleInRoster:
+    """A role defined only in a pod's own overlay (`pod_config_dir(project)/roles.json`)
+    must be recognized by the roster helpers a pipeline dispatch depends on, not only by
+    `docket roles`."""
+
+    def test_pod_scoped_role_resolves_in_the_roster(self) -> None:
+        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json")
+
+        assert pod.parse_member_id("acme-vetter", "acme") == ("vetter", 1)
+        found = pod.members_of(["acme-lead", "acme-vetter"], "acme")
+        assert ("acme-vetter", "vetter", 1) in found
+
+    def test_pod_scoped_role_does_not_leak_to_a_different_pod(self) -> None:
+        # Fail-closed / most-restrictive case: pod "acme"'s overlay must not authorize a
+        # same-named member id under an unrelated pod "beta".
+        _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json")
+
+        assert pod.parse_member_id("beta-vetter", "beta") is None
 
 
 class TestDefaultPod:

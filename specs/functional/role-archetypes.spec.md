@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Implemented. **P27-6** gives a recipe's own role YAML a second consumer,
 `docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
@@ -373,11 +373,12 @@ to rediscover the same pitfalls.
    resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
    its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
 4. Applying a shipped recipe **MUST** be one command, `docket pod <p> apply <dir>`
-   (`pod-blueprints.spec.md`, P27-6), which composes the pre-existing `docket roles add`/`docket
-   pod <p> add <role>`/`docket pod <p> config set pipeline <file>` writers rather than replacing
-   them — that manual sequence remains valid for a partial or hand-tuned application, and (for an
-   optional policy pack) copying a file into `POLICIES_DIR` is still manual. A separate `docket
-   recipes` command remains an explicit non-goal.
+   (`pod-blueprints.spec.md`, P27-6/P27-9), which composes the pre-existing `docket roles add
+   --pod <p>`/`docket pod <p> add <role>`/`docket pod <p> config set pipeline <file>` writers
+   (a recipe's own roles land in `<p>`'s pod-scoped overlay, never the global one) rather than
+   replacing them — that manual sequence remains valid for a partial or hand-tuned application,
+   and (for an optional policy pack) copying a file into `POLICIES_DIR` is still manual. A
+   separate `docket recipes` command remains an explicit non-goal.
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
    read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
    archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
@@ -606,6 +607,13 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.16.0 (2026-09-26)
+
+- **P27-9: a recipe's roles apply into the pod's own overlay, not the global one.** "Shipped
+  recipes" requirement 4 corrects the P27-6 workaround: `apply` writes each role into `<p>`'s
+  pod-scoped overlay (`docket roles add --pod <p>`'s target), now that `core/pod.py`'s roster
+  helpers resolve it too — see `pod-blueprints.spec.md` v1.7.0.
 
 ### Version 1.15.0 (2026-09-26)
 
