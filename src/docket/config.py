@@ -286,6 +286,13 @@ def recipes_dir() -> Path:
     return templates_dir() / "recipes"
 
 
+def config_schemas_dir() -> Path:
+    """The published config-v1 JSON Schemas shipped with the package (``docs/contracts/
+    config-v1/`` byte-for-byte). ``core.pod_apply.export_pod`` copies these into an export's
+    own ``.schemas/`` so its `# yaml-language-server:` header resolves offline."""
+    return templates_dir() / "schemas"
+
+
 PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 
 # docket-owned registry of channel conversations (Telegram threads etc.). No

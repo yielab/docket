@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented
 **Last Updated**: 2026-09-26
 
@@ -35,12 +35,20 @@ This specification covers:
 - The four existing parsers this dispatches to unchanged: `core.archetypes.from_wire`,
   `core.pipeline.load_pipeline`, `core.policy.validate_policy`, and `core.pod_apply`'s pod
   manifest key set
+- The published `docs/contracts/config-v1/{role,pipeline,policy,pod}.schema.json` JSON
+  Schemas, generated from the same short-form Pydantic models that refine a short-form
+  document's `ConfigDocError`, and the `# yaml-language-server:`/`.schemas/` convention
+  `core.pod_apply.export_pod` writes its short-form output with (see "Published schemas",
+  "Short-form export")
 
 This specification does NOT cover:
 
 - Short forms / sugar for any of the four kinds (role, pipeline, policy, pod short-hand
-  normalizers) — a separate, later card per kind
-- Schema-level (JSON Schema) validation of a document's body — a separate, later card
+  normalizers) — a separate, later card per kind; this spec only describes the short-form
+  *models* used for schema generation and error refinement, not the normalizers themselves
+- Wiring JSON Schema validation into `docket validate`'s live path — the published schemas are
+  a generated, pinned artifact for external editors/validators, never consulted by
+  `load_document` itself
 - The `provider` kind: [ADR 0010](../../docs/adr/0010-config-format-v1-and-extension-points.md)
   amended by [ADR 0011](../../docs/adr/0011-provider-catalog.md) reserves a fifth kind,
   `provider`, dispatching to `core.provider.load_provider_document` — that parser does not
@@ -136,6 +144,43 @@ This specification does NOT cover:
    exit `1` if any file was invalid, `0` otherwise (matching `docket roles validate`'s and
    `docket pipeline validate`'s existing exit-code convention).
 
+### Published schemas
+
+1. `core.config_docs.RoleDocument`, `PipelineDocument`, `PolicyDocument`, `PodDocument`
+   **MUST** be `pydantic.BaseModel` subclasses (`extra="forbid"`) describing exactly the
+   short-form fields `core.archetypes.normalize_role`/`core.pipeline.normalize_pipeline`/
+   `core.policy.normalize_policy` accept, plus `kind`/`name`. They are used for two things
+   only — schema generation and the error refinement in Requirement 3 below — and are never a
+   second loader; the normalizers remain the only place a document is actually parsed.
+2. `scripts/gen_config_schemas.py` **MUST** render `docs/contracts/config-v1/
+   {role,pipeline,policy,pod}.schema.json` from each model's `model_json_schema()`, with a
+   `$schema`, `$id` (`https://docket.dev/schemas/config-v1/<kind>.schema.json`) and `title`,
+   and write a byte-identical copy of each to `src/docket/templates/schemas/`, shipped inside
+   the installed package. `--check` **MUST** exit `1` when any of the eight files is stale.
+3. When a short-form document fails its kind's real parser (`from_wire`, `load_pipeline`,
+   `validate_policy`, the pod manifest key check), `load_document` **MUST** attempt
+   `model_validate` against that kind's model before raising; on a `pydantic.ValidationError`,
+   the raised `ConfigDocError`'s `field` and, for a closed-vocabulary field, `valid` **MUST**
+   come from the model's own error instead of the parser's plain message. A document that does
+   not unambiguously look like the short form (a canonical document sharing the same
+   `kind:`/`name:` envelope) **MUST NOT** be checked against the model — its `extra="forbid"`
+   would otherwise reject every canonical-only field (`modelClass`, `hook`, ...) as unknown
+   instead of surfacing the real error.
+4. These schemas are a generated, pinned artifact for external editors and validators, not a
+   second validation path: `docket validate`/`load_document` **MUST** continue to dispatch to
+   each kind's own parser as the sole authority for whether a document is valid.
+
+### Short-form export
+
+1. Every role, policy, or pod-manifest YAML file `core.pod_apply.export_pod` writes **MUST**
+   start with a `# yaml-language-server: $schema=<relative path>` comment line resolving to
+   that kind's schema, copied into the export's own `<directory>/.schemas/` alongside the four
+   files it writes. A copied bound pipeline file is exempt — it is written verbatim (see
+   pod-blueprints.spec.md, "Pod manifests: export"), never regenerated, so it carries no header
+   this spec would need to add.
+2. `discover_config_paths` and `plan_apply` **MUST NOT** look under `.schemas/` — it holds
+   reference schema copies, never a configuration document to load.
+
 ## Interface Contracts
 
 ### Python API
@@ -156,6 +201,13 @@ core.config_docs.ConfigDocError(ValueError)
 core.config_docs.load_document(path, *, kind: str | None = None) -> Document
 core.config_docs.discover_config_paths(directory: Path) -> list[Path]
 core.config_docs.validate_directory(directory) -> list[ConfigDocError]
+
+core.config_docs.RoleDocument | PipelineDocument | PolicyDocument | PodDocument  # pydantic
+    # models: the short-form schema per kind, source of `docs/contracts/config-v1/
+    # <kind>.schema.json` and of a short-form document's refined `ConfigDocError`
+
+scripts.gen_config_schemas.render(kind: str) -> str      # one schema.json's rendered content
+scripts.gen_config_schemas.main(argv=None) -> int        # writes, or --check exits 1 if stale
 ```
 
 ### CLI Command Signature
@@ -223,6 +275,19 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.1.0 (2026-09-26)
+
+- **P28-8: schemas editors can use, export in the short form, and docs that show only v1.**
+  New `### Published schemas` and `### Short-form export` Requirements sections: four new
+  Pydantic short-form models in `core/config_docs.py` (`RoleDocument`, `PipelineDocument`,
+  `PolicyDocument`, `PodDocument`), a new `scripts/gen_config_schemas.py` generating
+  `docs/contracts/config-v1/{role,pipeline,policy,pod}.schema.json` (and a byte-identical
+  package copy under `src/docket/templates/schemas/`), and `load_document` now refining a
+  short-form document's `ConfigDocError` with the failing model's field name and valid values.
+  `core/pod_apply.py::export_pod` writes every role/policy/pod file in the short form with a
+  `# yaml-language-server:` header resolving against a copied `.schemas/` directory. See
+  pod-blueprints.spec.md, "Pod manifests: export" for the export shape itself.
 
 ### Version 1.0.0 (2026-09-26)
 

@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.38.0
+**Version**: 1.39.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -395,11 +395,14 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   pipeline would resolve against once `members` join, and every setting before writing anything;
   idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
   See `pod-blueprints.spec.md`, "Pod manifests: apply"
-- `export <dir> [--force]`: Write this pod's own scope — pod-overlay `roles/*.yaml`, this pod's
-  own `policies/*.json`, a bound `pipeline.yaml` copy (if any), and a `pod.yaml` naming non-Lead
-  `members` and every non-default `setting` — into `<dir>`, the same shape `apply` reads back.
-  Global scope (the operator's own role overlay, fleet-wide policies, other pods) is never
-  exported. Refuses a non-empty `<dir>` unless `--force`. See `pod-blueprints.spec.md`,
+- `export <dir> [--force]`: Write this pod's own scope, every YAML file in the short form with
+  a `# yaml-language-server:` header — pod-overlay `roles/<name>.yaml` (+ paired
+  `roles/<name>.md` instructions), this pod's own `policies/<stem>.yaml`, a bound
+  `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`, `name`, non-Lead `members`
+  and every non-default `setting`, and the four config-v1 JSON Schemas copied into
+  `.schemas/` — into `<dir>`, the same shape `apply` reads back. Global scope (the operator's
+  own role overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty
+  `<dir>` unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
 - `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
@@ -988,6 +991,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
+### Version 1.39.0 (2026-09-26)
+
+- `docket pod <project> export <dir> [--force]`: now writes the short form throughout, each
+  file starting with a `# yaml-language-server:` header, a role's instructions moved to a
+  paired `roles/<name>.md`, `pod.yaml` gaining `kind: pod`/`name`, and the four config-v1 JSON
+  Schemas copied into `.schemas/` (`core/pod_apply.py`, P28-8). See `config-format.spec.md`,
+  "Published schemas"/"Short-form export", and `pod-blueprints.spec.md`, "Pod manifests:
+  export".
 ### Version 1.38.0 (2026-09-26)
 
 - New `docket plugins list [--pod <p>]` (`cli/_plugins.py`, `core/plugins.py`): lists every

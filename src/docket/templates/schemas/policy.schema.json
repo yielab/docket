@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/policy.schema.json",
+  "title": "PolicyDocument",
+  "$defs": {
+    "PolicyWhen": {
+      "additionalProperties": false,
+      "description": "A policy's structured predicate -- see security-gates.spec.md (\"Policy format v1\").\n`plugin`/`with` describe the predicate-plugin escape hatch (ADR 0010 \u00a74); the runtime\nengine's own support for them is a separate, later card.",
+      "properties": {
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "matches": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Matches"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
+        "anyOf": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PolicyWhen"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Anyof"
+        },
+        "plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plugin"
+        },
+        "with": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "With"
+        }
+      },
+      "title": "PolicyWhen",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The short-form policy document -- see security-gates.spec.md (\"Policy format v1\").",
+  "properties": {
+    "kind": {
+      "const": "policy",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "appliesTo": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Appliesto"
+    },
+    "on": {
+      "anyOf": [
+        {
+          "enum": [
+            "input",
+            "toolCall",
+            "output"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "On"
+    },
+    "when": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PolicyWhen"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "then": {
+      "enum": [
+        "allow",
+        "warn",
+        "ask",
+        "block",
+        "redact"
+      ],
+      "title": "Then",
+      "type": "string"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "then"
+  ],
+  "type": "object"
+}

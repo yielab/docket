@@ -7,9 +7,12 @@ specs/functional/config-format.spec.md."""
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.core import archetypes as _archetypes
 from docket.core import pipeline as _pipeline
@@ -19,6 +22,152 @@ from docket.core import policy as _policy
 KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod")
 
 _LOCATION_KIND: dict[str, str] = {"roles": "role", "policies": "policy"}
+
+
+# ── Short-form models ─────────────────────────────────────────────────────────
+#
+# These describe exactly the short forms `core.archetypes.normalize_role`,
+# `core.pipeline.normalize_pipeline`, and `core.policy.normalize_policy` accept, for JSON
+# Schema generation (`scripts/gen_config_schemas.py`) and to give `load_document`'s error a
+# field name and valid-values list when a short-form document fails its kind's real parser.
+# The normalisers remain the only loaders; nothing here ever parses a document directly.
+
+
+class RoleDocument(BaseModel):
+    """The short-form role document -- see role-archetypes.spec.md ("Wire format")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["role"]
+    name: str
+    description: str | None = None
+    model: Literal["cheap", "strong"] | None = None
+    cannot: list[str] | None = None
+    verdict: list[str] | None = None
+    verify: bool | None = None
+    approval: bool | None = None
+    instructions: str | None = None
+    scope: str | None = None
+    version: int | None = None
+    tokenBudget: int | None = None
+    toolProfile: str | None = None
+    hopInstruction: str | None = None
+    policyRole: str | None = None
+
+
+class PipelineDocument(BaseModel):
+    """The short-form pipeline document -- see pipeline-format.spec.md ("Short form"). Each
+    `steps` entry's own sugar keys are validated by `core.pipeline.normalize_pipeline`, not
+    here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["pipeline"]
+    name: str
+    description: str | None = None
+    variables: dict[str, Any] | None = None
+    steps: list[dict[str, Any]]
+
+
+class PolicyWhen(BaseModel):
+    """A policy's structured predicate -- see security-gates.spec.md ("Policy format v1").
+    `plugin`/`with` describe the predicate-plugin escape hatch (ADR 0010 §4); the runtime
+    engine's own support for them is a separate, later card."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    tool: str | None = None
+    path: str | None = None
+    matches: str | None = None
+    branch: str | None = None
+    anyOf: list[PolicyWhen] | None = None
+    plugin: str | None = None
+    with_: dict[str, Any] | None = Field(None, alias="with")
+
+
+PolicyWhen.model_rebuild()
+
+
+class PolicyDocument(BaseModel):
+    """The short-form policy document -- see security-gates.spec.md ("Policy format v1")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["policy"]
+    name: str
+    description: str | None = None
+    appliesTo: list[str] | str | None = None
+    on: Literal["input", "toolCall", "output"] | None = None
+    when: PolicyWhen | None = None
+    then: Literal["allow", "warn", "ask", "block", "redact"]
+    message: str | None = None
+
+
+class PodDocument(BaseModel):
+    """The short-form pod manifest -- see pod-blueprints.spec.md ("Pod manifests: apply")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["pod"]
+    name: str
+    members: list[str] | None = None
+    settings: dict[str, Any] | None = None
+    pipeline: str | None = None
+
+
+_MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
+    "role": RoleDocument,
+    "pipeline": PipelineDocument,
+    "policy": PolicyDocument,
+    "pod": PodDocument,
+}
+
+
+_ROLE_SHORT_KEYS: tuple[str, ...] = (
+    "cannot",
+    "verdict",
+    "verify",
+    "approval",
+    "instructions",
+    "model",
+)
+_POLICY_SHORT_KEYS: tuple[str, ...] = ("appliesTo", "on", "when", "then")
+
+
+def _is_short_form(kind: str, doc: dict[str, Any]) -> bool:
+    """Whether *doc* is unambiguously short form -- a canonical document sharing the same
+    envelope must never hit the short-form model's ``extra="forbid"``, which would reject
+    every canonical-only field it does not know instead of surfacing the real error."""
+    if kind == "role":
+        return any(k in doc for k in _ROLE_SHORT_KEYS)
+    if kind == "pipeline":
+        return "kind" in doc
+    if kind == "policy":
+        return any(k in doc for k in _POLICY_SHORT_KEYS)
+    return kind == "pod"
+
+
+def _refine_with_model(
+    path: Path, kind: str, doc: dict[str, Any], fallback: Exception
+) -> ConfigDocError:
+    """When *doc* is short form and also fails its kind's model, prefer the model's field name
+    and valid values over *fallback*'s plain message; otherwise fall back to it unchanged."""
+    model = _MODEL_FOR_KIND.get(kind)
+    if model is None or not _is_short_form(kind, doc):
+        return ConfigDocError(path, str(fallback))
+    try:
+        model.model_validate(doc)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        field = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
+        valid: tuple[str, ...] = ()
+        expected = (first.get("ctx") or {}).get("expected")
+        if isinstance(expected, str):
+            valid = tuple(
+                v.strip("'\" ") for v in re.split(r"\s+or\s+|,\s*", expected) if v.strip("'\" ")
+            )
+        return ConfigDocError(path, first["msg"], field=field, valid=valid)
+    return ConfigDocError(path, str(fallback))
 
 
 @dataclass(frozen=True)
@@ -186,14 +335,17 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             )
         effective_kind = declared
 
-    if effective_kind == "role":
-        doc = _load_role(p)
-    elif effective_kind == "pipeline":
-        _validate_pipeline(p, text)
-    elif effective_kind == "policy":
-        _validate_policy(p)
-    elif effective_kind == "pod":
-        _validate_pod(p, doc)
+    try:
+        if effective_kind == "role":
+            doc = _load_role(p)
+        elif effective_kind == "pipeline":
+            _validate_pipeline(p, text)
+        elif effective_kind == "policy":
+            _validate_policy(p)
+        elif effective_kind == "pod":
+            _validate_pod(p, doc)
+    except ConfigDocError as exc:
+        raise _refine_with_model(p, effective_kind, doc, exc) from exc
 
     name = str(doc.get("name", p.stem))
     return Document(kind=effective_kind, name=name, path=p, doc=doc, deprecated=deprecated)

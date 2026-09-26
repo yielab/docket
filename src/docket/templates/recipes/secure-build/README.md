@@ -16,18 +16,19 @@ docket pod <project> apply templates/recipes/secure-build
 `pod.yaml` names the one member this recipe adds (`security-vetter`); `apply` validates the
 role, the policy pack, the resulting roster, and `pipeline.yaml` before writing anything, and is
 safe to run again (a second run plans every item `skip`). `--dry-run` prints the plan without
-writing. The bundled `policies/require-approval-secret-writes.json` is applied along with
+writing. The bundled `policies/require-approval-secret-writes.yaml` is applied along with
 everything else, so a secret-shaped write always asks a human, independent of the vetter's own
 verdict.
 
 ## Files
 
-- `pod.yaml` — what `apply` reads: `members: [security-vetter]`.
-- `roles/security-vetter.yaml` — the custom role: `read-only` edit rights, `deniedTools:
-  [write, edit, bash]`, `verdict` gate contract on `APPROVE`/`REQUEST-CHANGES`.
+- `pod.yaml` — what `apply` reads: `kind: pod`, `name: secure-build`, `members:
+  [security-vetter]`.
+- `roles/security-vetter.yaml` (+ `roles/security-vetter.md`) — the custom role, short form:
+  `cannot: [write, edit, bash]`, `verdict: [APPROVE, REQUEST-CHANGES]`.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
-- `policies/require-approval-secret-writes.json` — applied into the pod's own policy directory;
+- `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
   narrows the Implementer's exec surface for secret-shaped writes regardless of the vetter's
   own review.
 
@@ -36,5 +37,5 @@ verdict.
 ```bash
 docket pod <project> config unset pipeline
 docket pod <project> remove <project>-security-vetter
-rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.json
+rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
 ```

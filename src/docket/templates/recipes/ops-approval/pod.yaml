@@ -1,1 +1,3 @@
+kind: pod
+name: ops-approval
 members: [operator]
