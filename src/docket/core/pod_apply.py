@@ -192,8 +192,8 @@ def _plan_roles(
 
 
 def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PolicyWrite]]:
-    """Plan ``policies/*.json`` into *project*'s own policy directory -- the same one
-    ``core.policy.policy_files`` reads and ``_export_policies`` copies, never the fleet-wide
+    """Plan ``policies/*.json|*.yaml|*.yml`` into *project*'s own policy directory -- the same
+    one ``core.policy.policy_files`` reads and ``_export_policies`` copies, never the fleet-wide
     ``$POLICIES_DIR``. Each file must pass ``core.policy.validate_policy`` first."""
     items: list[ApplyItem] = []
     writes: list[_PolicyWrite] = []
@@ -201,7 +201,10 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
     if not policies_dir.is_dir():
         return items, writes
     dest_dir = _cfg.pod_config_dir(project) / "policies"
-    for policy_file in sorted(policies_dir.glob("*.json")):
+    policy_files = sorted(
+        p for pattern in ("*.json", "*.yaml", "*.yml") for p in policies_dir.glob(pattern)
+    )
+    for policy_file in policy_files:
         error = _policy.validate_policy(policy_file)
         if error:
             raise PodApplyError(f"{policy_file}: {error}")

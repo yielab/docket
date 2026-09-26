@@ -1,0 +1,9 @@
+kind: policy
+name: high-risk-payment
+class: high-risk
+description: Payment/financial operations always require approval (high-risk class — overrides allowlist)
+appliesTo: ["*"]
+when:
+  matches: '\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|payment.*charge|refund.*amount|wire\s+transfer|bank\s+transfer|\bpayout\b|crypto.*send|\bbtc\b.*send|\beth\b.*send'
+then: ask
+message: Payment/financial operation always requires approval, regardless of exec allowlist.

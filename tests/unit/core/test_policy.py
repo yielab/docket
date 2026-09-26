@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -30,10 +31,12 @@ def policies_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     d.mkdir()
     monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
 
-    # Copy every shipped template so we get the full baseline set.
+    # Copy every shipped template so we get the full baseline set -- JSON or YAML, since
+    # the baseline templates ship as short-form YAML.
     template_dir = _cfg.policy_templates_dir()
-    for f in template_dir.glob("*.json"):
-        shutil.copy(f, d / f.name)
+    for pattern in ("*.json", "*.yaml", "*.yml"):
+        for f in template_dir.glob(pattern):
+            shutil.copy(f, d / f.name)
 
     return d
 
@@ -164,28 +167,28 @@ class TestHighRiskTemplatesValid:
     """Every high-risk template must pass the schema validator."""
 
     def test_payment_template_valid(self) -> None:
-        p = _cfg.policy_templates_dir() / "high-risk-payment.json"
-        assert p.exists(), "high-risk-payment.json template must exist"
+        p = _cfg.policy_templates_dir() / "high-risk-payment.yaml"
+        assert p.exists(), "high-risk-payment.yaml template must exist"
         err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-payment.json invalid: {err}"
+        assert err == "", f"high-risk-payment.yaml invalid: {err}"
 
     def test_deploy_template_valid(self) -> None:
-        p = _cfg.policy_templates_dir() / "high-risk-deploy.json"
-        assert p.exists(), "high-risk-deploy.json template must exist"
+        p = _cfg.policy_templates_dir() / "high-risk-deploy.yaml"
+        assert p.exists(), "high-risk-deploy.yaml template must exist"
         err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-deploy.json invalid: {err}"
+        assert err == "", f"high-risk-deploy.yaml invalid: {err}"
 
     def test_credentials_template_valid(self) -> None:
-        p = _cfg.policy_templates_dir() / "high-risk-credentials.json"
-        assert p.exists(), "high-risk-credentials.json template must exist"
+        p = _cfg.policy_templates_dir() / "high-risk-credentials.yaml"
+        assert p.exists(), "high-risk-credentials.yaml template must exist"
         err = _policy.validate_policy(p)
-        assert err == "", f"high-risk-credentials.json invalid: {err}"
+        assert err == "", f"high-risk-credentials.yaml invalid: {err}"
 
     def test_all_three_have_class_field(self) -> None:
         for name in ("high-risk-payment", "high-risk-deploy", "high-risk-credentials"):
-            p = _cfg.policy_templates_dir() / f"{name}.json"
-            doc = json.loads(p.read_text())
-            assert doc.get("class") == "high-risk", f"{name}.json must have class: high-risk"
+            p = _cfg.policy_templates_dir() / f"{name}.yaml"
+            doc = _policy.read_policy(p)
+            assert doc.get("class") == "high-risk", f"{name}.yaml must have class: high-risk"
 
 
 # ── policy store integrity (fail closed) ─────────────────────────────────────
@@ -370,4 +373,82 @@ class TestPodPolicies:
         assert (
             _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="p")
             == "block"
+        )
+
+
+# ── short form (ADR 0010) ────────────────────────────────────────────────────────
+
+
+class TestNormalizePolicy:
+    """The short form a person writes normalises to exactly the canonical dict the engine
+    has always evaluated -- a plain regex policy round-trips byte-for-byte either way."""
+
+    _SHORT: ClassVar[dict[str, object]] = {
+        "kind": "policy",
+        "name": "block-destructive",
+        "description": "Gate destructive shell commands behind explicit approval",
+        "appliesTo": ["*"],
+        "when": {"matches": r"\brm\s+-[rf]"},
+        "then": "ask",
+        "message": "Destructive command requires operator approval before execution.",
+    }
+    _CANONICAL: ClassVar[dict[str, object]] = {
+        "id": "block-destructive",
+        "description": "Gate destructive shell commands behind explicit approval",
+        "applies_to": ["*"],
+        "hook": "pre_tool_call",
+        "match": {"type": "regex", "pattern": r"\brm\s+-[rf]"},
+        "action": "require_approval",
+        "message": "Destructive command requires operator approval before execution.",
+    }
+
+    def test_short_form_normalizes_to_canonical(self) -> None:
+        assert _policy.normalize_policy(self._SHORT) == self._CANONICAL
+
+    def test_both_forms_evaluate_identically(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for label, doc in (("short", self._SHORT), ("canonical", self._CANONICAL)):
+            d = tmp_path / label
+            d.mkdir()
+            monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
+            (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
+            assert _policy.policy_eval("implementer", "pre_tool_call", "ls src") == "allow"
+            assert (
+                _policy.policy_eval("implementer", "pre_tool_call", "rm -rf /tmp")
+                == "require_approval"
+            )
+
+    def test_unknown_kind_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="policy"):
+            _policy.normalize_policy({"kind": "pipeline", "name": "x"})
+
+
+class TestStructuredPredicates:
+    """A `when` predicate can test the tool call itself, not just its rendered text."""
+
+    def test_tool_and_path_predicate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        d = tmp_path / "policies"
+        d.mkdir()
+        monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
+        _write_policy(
+            d,
+            "gh-workflow-write.json",
+            {
+                "id": "gh-workflow-write",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "when": {"tool": "write", "path": ".github/**"},
+                "action": "require_approval",
+            },
+        )
+        allow_call = _policy.ToolCallFacts("write", {"path": "src/x.py"}, lambda: "")
+        assert (
+            _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=allow_call).action
+            == "allow"
+        )
+        ask_call = _policy.ToolCallFacts("write", {"path": ".github/x.yml"}, lambda: "")
+        assert (
+            _policy.policy_eval_detail("implementer", "pre_tool_call", "", call=ask_call).action
+            == "require_approval"
         )

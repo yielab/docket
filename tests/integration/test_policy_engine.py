@@ -129,10 +129,20 @@ class _RecordingRunner:
 # ── install_policies() — the shared producer behind `init` and install Step 9 ────
 
 
+def _shipped_template_files() -> list[Path]:
+    """Every shipped template -- JSON or YAML, since the baseline templates ship as short-form
+    YAML -- sorted the same way ``core.policy.install_policies`` iterates them."""
+    return sorted(
+        p
+        for pattern in ("*.json", "*.yaml", "*.yml")
+        for p in _cfg.policy_templates_dir().glob(pattern)
+    )
+
+
 class TestInstallPolicies:
     def test_first_call_installs_every_shipped_template(self) -> None:
         result = _policy.install_policies()
-        template_names = {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
+        template_names = {f.name for f in _shipped_template_files()}
         assert set(result.installed) == template_names
         assert result.skipped == []
         for name in template_names:
@@ -144,12 +154,12 @@ class TestInstallPolicies:
         _policy.install_policies()
         result = _policy.install_policies()
         assert result.installed == []
-        template_names = {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
+        template_names = {f.name for f in _shipped_template_files()}
         assert set(result.skipped) == template_names
 
     def test_entries_preserve_interleaved_order(self) -> None:
         """One entry per file, in template order — not two separately-sorted groups."""
-        templates = sorted(_cfg.policy_templates_dir().glob("*.json"))
+        templates = _shipped_template_files()
         # Pre-install just the first template so the second call mixes skip/install.
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
         shutil.copy(templates[0], _cfg.POLICIES_DIR / templates[0].name)

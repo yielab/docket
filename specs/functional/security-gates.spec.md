@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.25.0
+**Version**: 0.26.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -413,6 +413,81 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    that file. `docket policies list|test|validate` **MUST** accept `--pod <p>` to fold that pod's
    directory into the files considered; omitting `--pod` **MUST** leave `docket policies list`'s
    output byte-identical to before this requirement.
+
+### Policy format v1 (short form and structured predicates) (implemented, ROADMAP D-44, ADR 0010)
+
+Before this card, a policy file was JSON only, in the runtime's own vocabulary (`applies_to`,
+`hook`, `match.type: regex`, `action: require_approval`), and the engine saw only the tool call's
+*rendered text* — a policy could not say "the `write` tool under `.github/`" without a regex over
+that text. This section is the short form ADR 0010 defines for policies, and the structured
+predicates it adds beside the rendered text.
+
+1. `core.policy.policy_files` **MUST** glob `*.json`, `*.yaml`, and `*.yml` in every policy
+   directory it reads (the fleet-wide `$POLICIES_DIR` and a pod's own `config/policies/`),
+   sorted by name across all three extensions together. `core.policy.install_policies` **MUST**
+   copy a shipped template whatever its extension.
+2. `core.policy.normalize_policy(short: dict) -> dict` **MUST** be a pure function mapping a
+   short-form document to the canonical shape every existing caller has always evaluated —
+   `{id, applies_to, hook, match, action, message}`, plus an optional structured `when` (item 4).
+   The mapping: a top-level `kind: policy` **MUST** be accepted and stripped; any other `kind`
+   value **MUST** be refused, naming the expected one. `name` maps to `id`; `appliesTo` to
+   `applies_to`; `on: input|toolCall|output` to `hook` (`pre_input`/`pre_tool_call`/
+   `pre_output`), defaulting to `pre_tool_call` when neither `on` nor `hook` is given; `then:
+   allow|warn|ask|block|redact` to `action`, with `ask` mapping to `require_approval` and the
+   rest mapping to themselves. A document already in canonical form (no short-form keys) **MUST**
+   come back unchanged but for a `kind` key. Loading **MUST** disable YAML's implicit `on`/`off`/
+   `yes`/`no` boolean resolution for a policy document — the short form's own `on:` key would
+   otherwise silently parse as the boolean `True` rather than the string `"on"` on a bare
+   (unquoted) value, and no policy field is ever a genuine boolean.
+3. `core.policy.read_policy(path) -> dict` **MUST** be the single reader `validate_policy`,
+   `policy_eval_detail`'s per-file loop, and the CLI's `list`/`show`/`validate` share: it parses
+   the file as YAML (JSON stays valid YAML, so an existing canonical file needs no change) and
+   returns `normalize_policy` of the result. `validate_policy`'s name and signature **MUST NOT**
+   change.
+4. A canonical policy **MAY** carry a structured `when` mapping instead of, or in addition to
+   deriving, `match`: `{tool?, path?, matches?, branch?, anyOf?: [...]}`. Keys are implicit
+   AND; `anyOf` is OR over its items, itself AND'd with any sibling keys. `tool` **MUST** equal
+   the call's tool name; `path` **MUST** be an `fnmatch` glob over whichever of the call's
+   `path`/`file_path`/`file` arguments is present (absent on the call, the predicate never
+   matches); `matches` **MUST** be the same regex-over-rendered-text test `match.pattern` has
+   always been; `branch` **MUST** be an `fnmatch` glob over the worktree's current branch. A
+   `when` whose only key is `matches` **MUST** normalize to plain `match: {type: regex, pattern:
+   ...}` instead of a structured `when` — a plain regex policy's canonical form is byte-identical
+   whether written short or long, which is what lets the six shipped templates move to short-form
+   YAML with unchanged behaviour. `core._validate_doc` **MUST** validate `when` the same way it
+   validates `match`: a policy **MUST** carry a `match` or a `when` (a document with neither is
+   invalid, since neither part gives it anything to fire on); an unknown `when` key **MUST** be
+   rejected naming the four predicates (`tool`, `path`, `matches`, `branch`); an uncompilable
+   `when.matches` **MUST** be rejected the same way an uncompilable `match.pattern` is; a broken
+   `when.anyOf` (not a non-empty list) **MUST** be rejected.
+5. `core.policy.ToolCallFacts(tool, args, branch_of)` **MUST** carry what a `when` predicate can
+   test beside the hook's rendered text: the call's tool name, its raw arguments, and a
+   zero-argument `branch_of` getter. `policy_eval_detail`, `policy_eval`, and `policy_test`
+   **MUST** accept a `call: ToolCallFacts | None = None` keyword, default `None` (byte-identical
+   to before this requirement for every existing caller). `branch_of` **MUST** be invoked at most
+   once per `policy_eval_detail` call, and only when some loaded policy actually declares a
+   `branch` predicate — a call against a codebase with no such policy **MUST NOT** shell out to
+   read the branch. A `tool`/`path`/`branch` predicate **MUST NOT** match when `call` is `None`
+   (the text-only hooks, `pre_input` and `pre_output`, and a non-`exec` dry run with no `--arg`);
+   `matches` **MUST** still evaluate normally against the rendered text regardless of `call`.
+6. `core/tools.py::evaluate_tool_call` **MUST** build one `ToolCallFacts` per call — `tool` and
+   `args` from the call already being evaluated, `branch_of` a lazy
+   `edges/adapters/system.py::git_current_branch` over `ctx.roots[0]` (`""` with no roots) — and
+   pass it as `policy_eval_detail`'s `call`. This is the only change this requirement makes to
+   that function.
+7. `docket policies test <hook> <role> "<text>"` **MUST** accept repeatable `--arg key=value`
+   flags building a `ToolCallFacts` (`branch_of` always `""` in a dry run, since there is no
+   worktree to read one from) passed to the evaluation, for both the `exec`-kind path
+   (`evaluate_tool_call`, `args = {"command": text, **call_args}`) and the declarative-only path
+   (`policy_eval_detail(..., call=...)`) — so `docket policies test pre_tool_call implementer ""
+   --tool write --arg path=.github/x.yml` reports the verdict a `when.path` predicate on `write`
+   would give a live call, with an empty `<text>` accepted (a predicate-only test has no rendered
+   text to check).
+8. Every shipped template under `templates/policies/` **MUST** be short-form YAML; behaviour
+   (id, pattern, applies-to, action, message) **MUST** be unchanged from the JSON it replaces —
+   proven by the existing policy suite passing unmodified in substance (only the installed file's
+   *extension* is a visible difference, e.g. `docket policies init` now reports `installed:
+   block-destructive.yaml`).
 
 ### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
 
@@ -1229,6 +1304,20 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.26.0 (2026-09-26)
+
+- New "Policy format v1 (short form and structured predicates)" section: a policy file may be
+  short-form YAML (`kind: policy`, `appliesTo`, `on`, `when`, `then`) that
+  `core.policy.normalize_policy` turns into the canonical shape the engine has always evaluated;
+  `core.policy.read_policy` is the single JSON-or-YAML reader `validate_policy`, the evaluator,
+  and the CLI share; `policy_files`/`install_policies` glob `*.json`/`*.yaml`/`*.yml`. A
+  canonical policy may carry a structured `when` (`tool`, `path`, `matches`, `branch`, `anyOf`)
+  tested against a new `core.policy.ToolCallFacts`, which `evaluate_tool_call` builds once per
+  call and `policy_eval_detail`/`policy_eval`/`policy_test` accept as an optional `call` keyword
+  (default `None`, unchanged for every existing caller). `docket policies test` accepts
+  repeatable `--arg key=value` to build one for a dry run. The six shipped templates are now
+  short-form YAML with unchanged behaviour.
 
 ### Version 0.25.0 (2026-09-26)
 

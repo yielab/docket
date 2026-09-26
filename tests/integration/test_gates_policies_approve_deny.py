@@ -69,9 +69,11 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _seed_policies(oc_dir: Path) -> None:
-    """Copy the shipped baseline policy templates into the temp POLICIES_DIR."""
-    for f in _cfg.policy_templates_dir().glob("*.json"):
-        shutil.copy(f, oc_dir / "policies" / f.name)
+    """Copy the shipped baseline policy templates into the temp POLICIES_DIR -- JSON or YAML,
+    since the baseline templates ship as short-form YAML."""
+    for pattern in ("*.json", "*.yaml", "*.yml"):
+        for f in _cfg.policy_templates_dir().glob(pattern):
+            shutil.copy(f, oc_dir / "policies" / f.name)
 
 
 # ── high-risk action classes ─────────────────────────────────────────────────────
@@ -304,9 +306,9 @@ class TestPolicies:
         rc = _policies.run_policies("init")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "installed: block-destructive.json" in out
+        assert "installed: block-destructive.yaml" in out
         # Files copied + 0600.
-        dest = oc_dir / "policies" / "block-destructive.json"
+        dest = oc_dir / "policies" / "block-destructive.yaml"
         assert dest.is_file()
         assert (dest.stat().st_mode & 0o777) == 0o600
 
@@ -418,7 +420,7 @@ class TestPolicies:
         rc = _policies.run_policies("validate")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "block-destructive.json is valid" in out
+        assert "block-destructive.yaml is valid" in out
 
     def test_validate_no_args_no_policies_installed(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -495,7 +497,7 @@ class TestPolicyEngine:
 
     def test_validate_good_policy(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        f = oc_dir / "policies" / "block-destructive.json"
+        f = oc_dir / "policies" / "block-destructive.yaml"
         assert _policy.validate_policy(f) == ""
 
     def test_validate_bad_policy(self, oc_dir: Path) -> None:
