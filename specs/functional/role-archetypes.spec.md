@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Implemented. **P27-6** gives a recipe's own role YAML a second consumer,
 `docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
@@ -365,7 +365,8 @@ to rediscover the same pitfalls.
    members. A `roles/*.yaml` directory and a `policies/*.json` directory are both **optional** —
    a recipe whose roster is entirely built-in/starter archetypes (e.g. `operator`, `critic`)
    ships no role YAML at all, since one would just restate data this registry already has; an
-   optional policy pack is not read by `apply` and stays a manually-copied, README-named file.
+   optional policy pack **is** read and applied (`pod-blueprints.spec.md`'s "Pod manifests: apply"
+   requirement 3) — no manual copy into the fleet-wide policy directory remains.
 3. A recipe's own role YAML **MUST** pass `docket roles validate` unmodified — a recipe is not a
    second archetype format; it is data consumed by the same `add_user_archetype`/`from_wire`
    this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pipeline validate`
@@ -373,12 +374,12 @@ to rediscover the same pitfalls.
    resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
    its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
 4. Applying a shipped recipe **MUST** be one command, `docket pod <p> apply <dir>`
-   (`pod-blueprints.spec.md`, P27-6/P27-9), which composes the pre-existing `docket roles add
-   --pod <p>`/`docket pod <p> add <role>`/`docket pod <p> config set pipeline <file>` writers
-   (a recipe's own roles land in `<p>`'s pod-scoped overlay, never the global one) rather than
-   replacing them — that manual sequence remains valid for a partial or hand-tuned application,
-   and (for an optional policy pack) copying a file into `POLICIES_DIR` is still manual. A
-   separate `docket recipes` command remains an explicit non-goal.
+   (`pod-blueprints.spec.md`, "Pod manifests: apply"), which composes the pre-existing `docket
+   roles add --pod <p>`/`docket pod <p> add <role>`/`docket pod <p> config set pipeline <file>`
+   writers (a recipe's own roles and its optional policy pack both land in `<p>`'s own pod-scoped
+   directories, never a global one) rather than replacing them — that manual sequence remains
+   valid for a partial or hand-tuned application. A separate `docket recipes` command remains an
+   explicit non-goal.
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
    read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
    archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
@@ -607,6 +608,14 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.17.0 (2026-09-26)
+
+- **P27-10: a recipe's policy pack is applied, not copied by hand.** "Shipped recipes"
+  requirement 2 corrects the P26-20 wording: an optional `policies/*.json` directory is now read
+  and written by `apply` (`pod-blueprints.spec.md` v1.9.0), into `<p>`'s own policy directory.
+  Requirement 4 drops the "copying a file into `POLICIES_DIR` is still manual" clause it is no
+  longer true of.
 
 ### Version 1.16.0 (2026-09-26)
 

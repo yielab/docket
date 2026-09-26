@@ -14,16 +14,11 @@ docket pod <project> apply templates/recipes/secure-build
 ```
 
 `pod.yaml` names the one member this recipe adds (`security-vetter`); `apply` validates the
-role, the resulting roster, and `pipeline.yaml` before writing anything, and is safe to run
-again (a second run plans every item `skip`). `--dry-run` prints the plan without writing.
-
-Optional: copy the policy pack so a secret-shaped write always asks a human, independent of
-the vetter's own verdict (paths relative to `~/.docket` unless `POLICIES_DIR` is set):
-
-```bash
-docket policies validate policies/require-approval-secret-writes.json
-cp policies/require-approval-secret-writes.json ~/.docket/policies/
-```
+role, the policy pack, the resulting roster, and `pipeline.yaml` before writing anything, and is
+safe to run again (a second run plans every item `skip`). `--dry-run` prints the plan without
+writing. The bundled `policies/require-approval-secret-writes.json` is applied along with
+everything else, so a secret-shaped write always asks a human, independent of the vetter's own
+verdict.
 
 ## Files
 
@@ -32,7 +27,7 @@ cp policies/require-approval-secret-writes.json ~/.docket/policies/
   [write, edit, bash]`, `verdict` gate contract on `APPROVE`/`REQUEST-CHANGES`.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
-- `policies/require-approval-secret-writes.json` — optional, not applied automatically;
+- `policies/require-approval-secret-writes.json` — applied into the pod's own policy directory;
   narrows the Implementer's exec surface for secret-shaped writes regardless of the vetter's
   own review.
 
@@ -41,5 +36,5 @@ cp policies/require-approval-secret-writes.json ~/.docket/policies/
 ```bash
 docket pod <project> config unset pipeline
 docket pod <project> remove <project>-security-vetter
-rm ~/.docket/policies/require-approval-secret-writes.json   # if copied
+rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.json
 ```
