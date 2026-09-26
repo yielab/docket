@@ -542,5 +542,13 @@
     "heading": "◆ PHASE 27 — COMPLETE (opened 2026-09-26, closed 2026-09-26): per-pod configuration and portable teams (D-43)",
     "bytes": 27664,
     "sha256": "4a278b21c9074d9f27b71590e4b6c272b681295d79f2b9cdd91793fca08a90c3"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 28 — COMPLETE (opened 2026-09-26, closed 2026-09-26): configuration format v1 and the two extension points (D-44)",
+    "bytes": 20002,
+    "sha256": "b10778a5585021e25a8213949dcd7508757f06f1c1c8f99f9b8e6e0298f2c39a"
   }
 ]

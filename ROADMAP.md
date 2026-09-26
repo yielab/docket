@@ -27,11 +27,13 @@ per pod above a global structural base, an MCP server declares its kind and tool
 instruction is data, and the recipe directory is a manifest with `docket pod <p> apply|export`
 proven by a round trip; reasoning in
 [docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md).
-**Phase 28 (configuration format v1 and the two extension points, D-44) was planned the same day**,
-now unblocked by Phase 27 closing: a `kind` envelope and one `docket validate`, short forms for roles,
-pipelines and policies over the unchanged canonical form, control flow as bounded data (`on`,
-`until`, closed `when` predicates, command steps), and hashed, operator-applied Python predicate
-plugins for policies; reasoning in
+**Phase 28 (configuration format v1 and the two extension points, D-44) shipped 2026-09-26**,
+eight cards over Waves 44–46, one Sonnet worker per card under one integrator: a `kind` envelope
+and one `docket validate`, short forms for roles, pipelines and policies over the unchanged
+canonical form (each normaliser proven by a round trip), control flow as bounded data (`on`,
+`until`, closed `when` predicates, command steps; the executor is `core/dispatch.py`, which the ADR
+had mislocated), hashed, operator-applied Python predicate plugins for policies that are never
+imported from the codebase, generated JSON Schemas and a short-form `export`; reasoning in
 [docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
 **Phase 29 (the provider catalog, D-45) was planned the same day**, independent of 27/28 in files:
 model providers become `kind: provider` documents in two scopes (built-in in the wheel, global for

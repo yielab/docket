@@ -10,6 +10,19 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-26 (Phase 28 complete, D-44) — configuration format v1 and the two extension
+  points.** Eight cards over Waves 44–46, one Sonnet worker per card in isolated worktrees under
+  one integrator. Shipped: `kind:`/`name:` on every configuration file with `docket validate`
+  (P28-1); policy, pipeline and role short forms normalised into the unchanged canonical form,
+  each proven by a round trip, with structured policy predicates over the tool call (P28-2..4);
+  `on:` outcome routing with a mandatory bound on backward edges, `until: verify`, closed `when`
+  predicates and command steps (P28-5..6); operator-scoped, hashed, fail-closed predicate plugins
+  with `docket plugins list` (P28-7); generated schemas under `docs/contracts/config-v1/`, export
+  in the short form and docs that show only v1 (P28-8). Integrator findings: the ADR located the
+  executor in `core/orchestrator.py`, which only plans -- routing lives in `core/dispatch.py`; the
+  role arm of `load_document` must normalise before `from_wire`, which ignores unknown keys.
+  Board section archived to `docs/cycles-ended/todo-waves.md`; packets in
+  `.agents/handoffs/wave-44-worker-packets.md`.
 - **2026-09-26 (Phase 27 complete, D-43) — per-pod configuration and portable teams.** Ten
   cards over Waves 41–43, one Sonnet worker per card in isolated worktrees under one
   integrator. Shipped: pod role overlays and pod policies (`--pod`), MCP servers declaring

@@ -159,6 +159,11 @@ The guarantees above are the governance surface. Beside them docket ships:
   `allowCommands`, `pipeline`, `schedule`, `projectInstructions`), validated at write, audited,
   and refused loudly at dispatch if a stored value is invalid. `docket config explain <agent>`
   prints the whole effective configuration with the source of each value.
+- **Configuration files a newcomer can read** — every role, pipeline, policy and pod manifest
+  starts with `kind:` and reads as "who, what is checked, where it goes" or "when this, then
+  that"; `docket validate` checks a directory with editor-usable schemas, control flow is bounded
+  data (`on`, `until`, `when`, command steps), and the rare complex rule is a hashed Python
+  predicate the operator applies -- never a program written in YAML.
 - **Pipelines you can bind, not just run** — `docket pod <p> config set pipeline <file>` makes a
   validated custom pipeline the pod's default for *every* trigger (dispatch, serve sweep,
   schedule, webhook, MCP); steps carry their own `instructions` with `${var}` interpolation from
