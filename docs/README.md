@@ -86,6 +86,12 @@ docket gates status            # Gate + isolation posture (the tool-call gate is
 docket audit                   # Recent docket-initiated changes
 ```
 
+Keys are stored once, in `secrets.json` or the `keyring` backend, and resolved from there at the
+point of use — docket no longer writes them out into per-agent workspace `.env` files (`docket
+doctor` flags and, with `--fix`, removes any leftover from that retired path). The `keyring`
+backend stores through `secret-tool`/libsecret when it's available, or refuses honestly rather than
+silently falling back to a weaker store.
+
 See the [Command Reference](commands.md) for the full set.
 
 ---
@@ -98,9 +104,9 @@ daemon and no second config file anywhere else:
 ```
 ~/.docket/
 ├── fleet.json                     # Agent registration, channel bindings, gate/isolation flags,
-│                                   # provider endpoints, the org default model
+│                                   # provider endpoints
 ├── secrets.json                   # Stored provider API keys (0600)
-├── docket-models.json             # Role→model policy overrides
+├── docket-models.json             # Role→model policy overrides, plus the org default model
 ├── docket-roles.json              # User-defined role archetypes
 ├── docket-conversations.json      # docket's own channel-thread registry
 ├── docket-runs.json               # docket's own dispatch run registry
@@ -119,6 +125,8 @@ daemon and no second config file anywhere else:
     └── projects/
         └── <project>-<role>/      # Pod member workspace (e.g. myapp-lead, myapp-implementer)
             ├── SOUL.md            # Identity + session key (+ optional persona)
+            ├── INSTRUCTIONS.md    # Operator-owned; docket never writes it, composes right
+            │                      # after SOUL.md; survives set-verify/sync/rebuild
             ├── AGENTS.md          # Session protocol
             ├── TOOLS.md           # Project commands
             ├── HEARTBEAT.md       # Durable task ledger (dispatch keeps its own region current)
