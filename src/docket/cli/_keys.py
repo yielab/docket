@@ -26,8 +26,7 @@ from docket import ui
 from docket.cli._flags import find_unknown_flag
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
-from docket.core.utils import project_ids
-from docket.edges import store
+from docket.edges.adapters import system as _system
 
 
 def _load_secrets() -> dict[str, str]:
@@ -46,20 +45,6 @@ def _touch_secrets_meta(name: str, event: str) -> None:
     _secrets.touch_meta(name, event)
 
 
-_PROVIDER_KEYS: dict[str, str] = {
-    "ANTHROPIC_API_KEY": "anthropic",
-    "OPENAI_API_KEY": "openai",
-    "GOOGLE_AI_API_KEY": "google",
-    "OPENROUTER_API_KEY": "openrouter",
-    "AI_GATEWAY_API_KEY": "ai-gateway",
-    "VERCEL_OIDC_TOKEN": "ai-gateway",
-    "GROQ_API_KEY": "groq",
-    "MISTRAL_API_KEY": "mistral",
-    "XAI_API_KEY": "xai",
-    "CEREBRAS_API_KEY": "cerebras",
-    "HUGGINGFACE_TOKEN": "huggingface",
-}
-
 _KEY_PREFIXES: dict[str, tuple[str, int]] = {
     "ANTHROPIC_API_KEY": ("sk-ant-", 40),
     "OPENAI_API_KEY": ("sk-", 40),
@@ -67,13 +52,19 @@ _KEY_PREFIXES: dict[str, tuple[str, int]] = {
     "OPENROUTER_API_KEY": ("sk-or-", 0),
 }
 
-# Stored secrets that are docket's own operational credentials, not a model
-# provider's -- these are excluded from `_sync_keys_to_agents`'s per-agent
-# .env write. Every project agent's workspace is a wider blast radius than
-# the one process that actually needs the credential; `TELEGRAM_BOT_TOKEN`
-# is read by `core/telegram.py`/`docket serve` only, and no agent's own turn
-# has any legitimate use for docket's channel bot's own token.
-_NON_AGENT_KEYS: frozenset[str] = frozenset({_cfg.TELEGRAM_BOT_TOKEN_KEY})
+
+def _keyring_active() -> bool:
+    """True when the keyring backend is requested and `secret-tool` is on PATH -- the same
+    check `core/secrets.py`'s `secret_value()`/`secret_values()` each make locally (no shared
+    cache to invalidate; see those functions for why)."""
+    return _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available()
+
+
+def _resolve_display_value(name: str, raw_value: str) -> str:
+    """Resolve the value to mask/validate/export for *name* -- under the keyring backend,
+    secrets.json holds only a name index, so this goes through `core.secrets.secret_value`
+    (file vs. keyring) rather than trusting the raw dict value directly."""
+    return _secrets.secret_value(name) or raw_value
 
 
 def _mask_key(value: str) -> str:
@@ -93,36 +84,6 @@ def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _sync_keys_to_agents() -> None:
-    """Write .env files to agent workspaces with their provider keys."""
-    secrets = _load_secrets()
-    if not secrets:
-        return
-
-    for aid in project_ids():
-        ws = _cfg.workspace_dir(aid)
-        if not ws.is_dir():
-            continue
-        raw = store.read_json(_cfg.meta_path(aid))
-        model = str(raw.get("model", _cfg.DEFAULT_MODEL))
-        agent_provider = model.split("/")[0] if "/" in model else ""
-
-        env_lines: list[str] = []
-        for key_name, key_provider in _PROVIDER_KEYS.items():
-            if key_name not in secrets:
-                continue
-            if key_provider == agent_provider or key_provider not in _PROVIDER_KEYS.values():
-                env_lines.append(f'{key_name}="{secrets[key_name]}"')
-
-        for key_name, value in secrets.items():
-            if key_name not in _PROVIDER_KEYS and key_name not in _NON_AGENT_KEYS:
-                env_lines.append(f'{key_name}="{value}"')
-
-        env_file = ws / ".env"
-        env_file.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
-        env_file.chmod(0o600)
-
-
 def _keys_list() -> int:
     secrets = _load_secrets()
     if not secrets:
@@ -134,7 +95,8 @@ def _keys_list() -> int:
     ui.header("Stored API Keys")
     ui.console.print()
     meta = _load_secrets_meta()
-    for name, value in sorted(secrets.items()):
+    for name, raw_value in sorted(secrets.items()):
+        value = _resolve_display_value(name, raw_value)
         masked = _mask_key(value)
         entry = meta.get(name, {})
         added = entry.get("added_at", "")[:10] if entry else ""
@@ -172,10 +134,18 @@ def _keys_add(name: str) -> int:
     if not ok:
         ui.warn(f"Key format warning: {reason}")
 
-    secrets[name] = value
+    if _keyring_active():
+        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
+            ui.error(
+                f"Could not store '{name}' in the OS keyring (secret-tool store failed).\n"
+                "  Not falling back to plaintext storage under DOCKET_SECRETS_BACKEND=keyring."
+            )
+            return 1
+        secrets[name] = ""  # index only; the real value lives in the keyring
+    else:
+        secrets[name] = value
     _save_secrets(secrets)
     _touch_secrets_meta(name, "added")
-    _sync_keys_to_agents()
     audit_log("keys.add", name)
 
     ui.success(f"Key '{name}' stored.")
@@ -194,10 +164,12 @@ def _keys_remove(name: str) -> int:
             ui.warn("Cancelled.")
             return 0
 
+    if _keyring_active():
+        _system.secret_tool_clear(_cfg.KEYRING_SERVICE, name)
+
     del secrets[name]
     _save_secrets(secrets)
     _touch_secrets_meta(name, "removed")
-    _sync_keys_to_agents()
     audit_log("keys.remove", name)
 
     ui.success(f"Key '{name}' removed.")
@@ -224,10 +196,18 @@ def _keys_rotate(name: str) -> int:
     if not ok:
         ui.warn(f"Key format warning: {reason}")
 
-    secrets[name] = value
+    if _keyring_active():
+        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
+            ui.error(
+                f"Could not store '{name}' in the OS keyring (secret-tool store failed).\n"
+                "  Not falling back to plaintext storage under DOCKET_SECRETS_BACKEND=keyring."
+            )
+            return 1
+        secrets[name] = ""
+    else:
+        secrets[name] = value
     _save_secrets(secrets)
     _touch_secrets_meta(name, "rotated")
-    _sync_keys_to_agents()
     audit_log("keys.rotate", name)
 
     ui.success(f"Key '{name}' rotated.")
@@ -246,7 +226,8 @@ def _keys_validate(name: str | None) -> int:
         return 1
 
     any_fail = False
-    for key_name, value in sorted(targets.items()):
+    for key_name, raw_value in sorted(targets.items()):
+        value = _resolve_display_value(key_name, raw_value)
         ok, reason = _validate_key_format(key_name, value)
         if ok:
             ui.console.print(f"  [green]✓[/green] {key_name}")
@@ -265,7 +246,8 @@ def _keys_export() -> int:
         ui.info("No keys stored.")
         return 0
 
-    for name, value in sorted(secrets.items()):
+    for name, raw_value in sorted(secrets.items()):
+        value = _resolve_display_value(name, raw_value)
         # Shell-safe: escape single quotes
         safe_value = value.replace("'", "'\\''")
         print(f"export {name}='{safe_value}'")
@@ -295,7 +277,11 @@ def _keys_setup() -> int:
 
     for key_name, label, _prefix in providers:
         exists = key_name in secrets
-        status = f"[already set: {_mask_key(secrets[key_name])}]" if exists else "[not set]"
+        status = (
+            f"[already set: {_mask_key(_resolve_display_value(key_name, secrets[key_name]))}]"
+            if exists
+            else "[not set]"
+        )
         ui.console.print(f"[bold]{label}[/bold] {status}")
         action = input(f"  Configure {key_name}? [y/N]: ").strip().lower()
         if action != "y":
@@ -320,7 +306,14 @@ def _keys_setup() -> int:
                 ui.console.print()
                 continue
 
-        secrets[key_name] = value
+        if _keyring_active():
+            if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, key_name, value):
+                ui.warn(f"  Could not store {key_name} in the OS keyring; skipping.")
+                ui.console.print()
+                continue
+            secrets[key_name] = ""
+        else:
+            secrets[key_name] = value
         event = "rotated" if exists else "added"
         _touch_secrets_meta(key_name, event)
         audit_log("keys.rotate" if exists else "keys.add", key_name)
@@ -330,9 +323,7 @@ def _keys_setup() -> int:
 
     if changed:
         _save_secrets(secrets)
-        _sync_keys_to_agents()
-
-        ui.success("Keys saved; matching credentials synced to agent workspaces.")
+        ui.success("Keys saved.")
     else:
         ui.info("No changes made.")
     return 0

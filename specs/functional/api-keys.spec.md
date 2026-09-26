@@ -1,13 +1,13 @@
 # API Key Management Specification
 
-**Version**: 1.3.1
+**Version**: 1.4.0
 **Status**: Complete
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
-This specification defines centralized API key management: storing provider keys once, resolving
-them in Docket's model client, and syncing only the credentials each agent needs.
+This specification defines centralized API key management: storing provider keys once, exactly
+where Docket's model client resolves them, with no secondary copy anywhere else.
 
 ## Scope
 
@@ -15,7 +15,7 @@ This specification covers:
 
 - Listing, adding, validating, removing, and exporting keys (`docket keys`)
 - The supported key names
-- Automatic propagation of keys to agents
+- The storage backends (file and OS keyring)
 
 This specification does NOT cover provider key *format* rules (see input-validation.spec.md).
 
@@ -43,9 +43,9 @@ This specification does NOT cover provider key *format* rules (see input-validat
 
 ### Propagation
 
-1. After `setup`, `add`, `rotate`, or `remove`, the key for an agent's selected model provider
-   **MUST** be re-synced automatically to that agent (each agent workspace's `.env`, mode `600`). Generic custom keys **MAY** sync to every agent; Docket-owned
-   operational credentials **MUST NOT**.
+1. Keys **MUST NOT** be propagated to any per-agent file. There is no per-agent `.env` (or
+   equivalent) sync path — nothing on the live turn path ever read one; `docket doctor --fix`
+   deletes any workspace `.env` left over from a docket version prior to 1.4.0.
 2. Docket's model endpoint resolver **MUST** read the selected provider credential directly from
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
    need to export the key after `docket keys add`.
@@ -53,6 +53,18 @@ This specification does NOT cover provider key *format* rules (see input-validat
    no callable endpoint. In particular, Anthropic/OpenAI/Google keys are stored and masked normally
    but require an explicitly registered OpenAI-compatible endpoint until Docket ships a native
    adapter for that provider.
+
+### Backends
+
+1. The default backend (`DOCKET_SECRETS_BACKEND` unset, or set to `file`) stores every value in
+   `secrets.json`.
+2. `DOCKET_SECRETS_BACKEND=keyring` **MUST** store the value itself in the OS keyring
+   (`secret-tool store`) when `secret-tool` is on `PATH`; `secrets.json` then holds only a name
+   index (an empty placeholder), never the secret. `add`/`rotate` **MUST** fail (exit 1) rather
+   than silently fall back to plaintext storage when `secret-tool store` fails. `remove` **MUST**
+   also clear the keyring entry (best-effort — a missing entry is not an error).
+3. `list`, `validate`, and `export` of a keyring-backed key **MUST** resolve the real value
+   through the same lookup the runtime uses (`secret-tool lookup`), never the raw index value.
 
 ## Interface Contracts
 
@@ -62,7 +74,7 @@ This specification does NOT cover provider key *format* rules (see input-validat
 docket keys                       # List (masked) — default
 docket keys setup                 # Interactive wizard
 docket keys add <KEY_NAME>        # Add one new key
-docket keys rotate <KEY_NAME>     # Replace an existing key and re-sync matching agents
+docket keys rotate <KEY_NAME>     # Replace an existing key's value
 docket keys validate [KEY_NAME]   # Check known local format rules
 docket keys remove <KEY_NAME>     # Remove a key
 docket keys export                # Print as env vars
@@ -104,7 +116,7 @@ does not.
 ### Post-conditions
 
 - After `add`, the key **MUST** be stored, immediately resolvable by the selected model provider,
-  and propagated only to matching agents (or according to the custom-key rule above).
+  and copied nowhere else (see Backends above for where "stored" means under `keyring`).
 - After `remove`, the key **MUST NOT** remain in the central store.
 
 ### Invariants
@@ -114,6 +126,19 @@ does not.
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.4.0 (2026-09-25)
+
+- Removed per-agent `.env` propagation entirely (P26-13): nothing on the live turn path ever
+  read it, and the write left a plaintext copy of every stored key in each agent workspace with
+  a brief pre-`chmod` window at umask permissions. `docket doctor --fix` now deletes any leftover
+  file; `cli/_keys.py::_sync_keys_to_agents` is gone.
+- The keyring backend (`DOCKET_SECRETS_BACKEND=keyring`) now actually stores through
+  `secret-tool store` — previously it only changed lookups, so `keys add` under keyring still
+  wrote the plaintext value to `secrets.json`. `add`/`rotate` fail closed (exit 1), never falling
+  back to file storage, when the keyring write fails; `remove` clears the keyring entry too;
+  `list`/`validate`/`export` resolve the real value through the same lookup instead of the
+  index secrets.json now holds.
 
 ### Version 1.3.1 (2026-09-19)
 

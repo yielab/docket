@@ -1108,8 +1108,8 @@ def cmd_keys(
 ) -> None:
     """API key management (add/list/remove/rotate/validate/export/setup).
 
-    Docket's model client reads keys centrally; matching provider credentials
-    are also synced to the agent workspaces that need them.
+    Docket's model client reads keys centrally -- there is no per-agent file
+    sync of any kind; nothing on the live turn path ever read one.
 
     Subcommands:
       list (default)     masked table of stored keys with a format badge and
@@ -1140,8 +1140,9 @@ def cmd_keys(
     AI_GATEWAY_API_KEY, VERCEL_OIDC_TOKEN, GROQ_API_KEY, MISTRAL_API_KEY,
     XAI_API_KEY, CEREBRAS_API_KEY, HUGGINGFACE_TOKEN. The runtime reads a
     selected provider's stored credential directly -- exporting is optional.
-    add/remove/rotate re-sync only matching provider credentials (plus
-    allowed custom keys) to agent workspaces."""
+    Under DOCKET_SECRETS_BACKEND=keyring, add/rotate store the value in the
+    OS keyring (secret-tool) instead of secrets.json, which then keeps only
+    a name index; remove clears the keyring entry too."""
     from docket.cli._keys import run_keys
 
     raise typer.Exit(run_keys(sub, list(ctx.args)))

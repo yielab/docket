@@ -408,10 +408,9 @@ FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))
 # bespoke config file, so it inherits the same at-rest handling (0600 JSON)
 # and the same redaction path (core/trace.py's redact() reads every stored
 # secret VALUE via core.secrets.secret_values()) every other credential
-# already gets. cli/_keys.py excludes this one name from the per-agent .env
-# sync every other stored key gets -- no project agent needs the fleet's own
-# bot credential, and every project workspace is a wider blast radius than
-# the single `docket serve` process that actually uses it.
+# already gets. No project agent has any legitimate use for the fleet's own
+# bot credential; cli/_keys.py never propagates any stored key to project
+# workspaces (there is no per-agent file sync at all -- see api-keys.spec.md).
 TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN"
 # TELEGRAM_POLL_TIMEOUT_S: the Telegram-side long-poll wait passed to
 # getUpdates -- an empty reply after this many seconds is normal, not a

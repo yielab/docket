@@ -1,28 +1,19 @@
-"""`docket serve --telegram` wiring, and the bot token's exclusion
-from per-agent `.env` sync.
+"""`docket serve --telegram` wiring: the poll loop's pacing/backoff discipline.
 
-Two things pinned here that the channel/adapter test modules don't reach:
-(1) `serve.py`'s poll loop paces itself (no busy-loop on an unconfigured
-bot or transport error) and never lets an unexpected exception escape
-silently -- catch, print, back off, keep going, never a bare
-`contextlib.suppress(Exception)`; (2) `docket keys add TELEGRAM_BOT_TOKEN`
-must NOT copy the token into every project agent's `.env` the way a
-provider key does -- that would spread docket's own operational
-credential far wider than the one process that needs it.
+Pinned here, which the channel/adapter test modules don't reach: `serve.py`'s poll loop
+paces itself (no busy-loop on an unconfigured bot or transport error) and never lets an
+unexpected exception escape silently -- catch, print, back off, keep going, never a bare
+`contextlib.suppress(Exception)`.
 """
 
 from __future__ import annotations
 
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
-import docket.config as _cfg
 import docket.serve as serve
-from docket.cli import _keys
-from docket.core import secrets as _secrets
 from docket.core import telegram as _telegram
 
 SUBJECT = "docket.serve"
@@ -176,47 +167,3 @@ class TestRunServeTelegramFlag:
         serve.run_serve(port=0, interval=30, telegram=True)
         out = capsys.readouterr().out
         assert "telegram=on" in out
-
-
-# ── the bot token is excluded from per-agent .env sync ──────────────────────
-
-
-class TestTelegramTokenExcludedFromAgentSync:
-    def test_telegram_token_is_not_written_to_a_project_agents_env_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = tmp_path / ".docket"
-        ws = home / "workspaces" / "projects" / "demo"
-        ws.mkdir(parents=True)
-        (ws / ".docket-meta.json").write_text('{"model": "anthropic/claude-sonnet-4-6"}')
-        monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-
-        _secrets.save_secrets(
-            {"TELEGRAM_BOT_TOKEN": "123456:super-secret-bot-token", "ANTHROPIC_API_KEY": "sk-ant-x"}
-        )
-
-        _keys._sync_keys_to_agents()
-
-        env_text = (ws / ".env").read_text()
-        assert "TELEGRAM_BOT_TOKEN" not in env_text
-        assert "super-secret-bot-token" not in env_text
-        assert "ANTHROPIC_API_KEY" in env_text
-
-    def test_a_generic_custom_key_is_still_synced(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The exclusion is specific to TELEGRAM_BOT_TOKEN, not a regression
-        of the existing generic custom-key sync behavior."""
-        home = tmp_path / ".docket"
-        ws = home / "workspaces" / "projects" / "demo"
-        ws.mkdir(parents=True)
-        (ws / ".docket-meta.json").write_text('{"model": "anthropic/claude-sonnet-4-6"}')
-        monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-
-        _secrets.save_secrets({"SOME_OTHER_CUSTOM_KEY": "whatever"})
-        _keys._sync_keys_to_agents()
-
-        env_text = (ws / ".env").read_text()
-        assert "SOME_OTHER_CUSTOM_KEY" in env_text

@@ -381,6 +381,29 @@ def _check_policies() -> int:
     return 0
 
 
+def _check_workspace_env_files(ids: list[str], do_fix: bool) -> int:
+    """Flag leftover per-agent `.env` files from the retired key-sync path -- nothing on the
+    live turn path reads them; the model client resolves credentials through
+    `core/secrets.py` directly (see specs/functional/api-keys.spec.md). `--fix` deletes them."""
+    stray = [aid for aid in ids if (_cfg.workspace_dir(aid) / ".env").is_file()]
+    if not stray:
+        return 0
+    ui.console.print()
+    ui.console.print("[bold]Workspace .env files (retired key-sync artifact):[/bold]")
+    issues = 0
+    for aid in stray:
+        issues += 1
+        env_file = _cfg.workspace_dir(aid) / ".env"
+        if do_fix:
+            env_file.unlink()
+            ui.success(f"  {aid}: removed stray .env")
+            issues -= 1
+        else:
+            ui.console.print(f"[red]✗[/red]   {aid}: stray .env — nothing reads it")
+            ui.console.print("    Fix with: docket doctor --fix")
+    return issues
+
+
 def _check_template_version(ids: list[str]) -> int:
     """Template/prompt version drift (advisory — never fails)."""
     if not ids:
@@ -857,6 +880,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_provider_coverage(ids)
     issues += _check_security_gates()
     issues += _check_policies()
+    issues += _check_workspace_env_files(ids, do_fix)
     _check_template_version(ids)
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
