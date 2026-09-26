@@ -130,6 +130,8 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
     for node in plan.nodes:
         units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
         for unit in units:
+            if unit.run:
+                continue
             if unit.role is not None and unit.skipped:
                 problems.append(f"step '{unit.step_id}': role '{unit.role}' not in pod '{project}'")
             elif unit.agent is not None and pod.pod_of(unit.agent) != project:

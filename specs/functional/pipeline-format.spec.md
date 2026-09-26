@@ -1,8 +1,11 @@
 # Pipeline Format Specification
 
-**Version**: 2.7.0
+**Version**: 2.9.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
-interpolation. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
+interpolation. **P28-6** adds two more elements to control flow as bounded data (ADR 0010 §3):
+a `when:` predicate that skips a step on a closed vocabulary, and a `run:` command step that
+executes with no agent turn at all — see "Steps" Requirement 9 and the new "Conditional steps
+and command steps" section below. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
 `instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
 Requirement 8 below and `role-archetypes.spec.md`'s "Hop instructions". The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
@@ -191,6 +194,13 @@ This specification does NOT cover:
    "Variables" Requirement 5. A step whose target is `role: lead` **MUST** have its `instructions`
    applied like any other role (P27-5): it replaces the Lead's own instruction text (the built-in
    hardcoded line, or an overlaid `lead` archetype's `hopInstruction`) instead of being ignored.
+9. A unit step **MAY** target `run` (`str`, a shell command) instead of `role`/`agent` —
+   declaring `run` alongside either **MUST** be a validation error, the same "exactly one
+   target" rule Requirement 2 states for `role`/`agent`. A `run` step (a "command step") **MUST
+   NOT** also declare `gate`, `instructions`, `retries`, or `archetype` — each is a validation
+   error naming the field. It **MAY** still declare `timeout` and `when` (see "Conditional steps
+   and command steps" below). Its exit code is its own outcome; this format does not model a
+   separate `gate` for it (see `pod-dispatch.spec.md` for execution).
 
 ### Gates
 
@@ -355,6 +365,29 @@ This specification does NOT cover:
    case builds a `PipelineSpec` at all, so this format's own extension points (an outcome map, a
    forward edge, a terminal `fail`/`stop`) stay reserved for whichever later version actually
    implements them.
+
+### Conditional steps and command steps
+
+1. Any step (unit or command) **MAY** declare `when` — a closed, code-implemented predicate
+   vocabulary, never a general expression language: `changed` (`str`, a glob matched against the
+   working tree's changed paths), `var` (`str`, a pipeline variable name) paired with `is` (`str`,
+   its expected resolved string form), and `memberPresent` (`str`, a pod role). `var` and `is`
+   **MUST** be set together — one without the other is a validation error. At least one predicate
+   **MUST** be set; declaring `when` with none is a validation error. Declaring more than one
+   predicate **MUST** mean every one is ANDed together — this format defines no `anyOf`/`not` for
+   `when`, the same closed-vocabulary posture `security-gates.spec.md`'s policy predicates take.
+   A false predicate skips the step (see `pod-dispatch.spec.md` for the skip/trace mechanics);
+   this format only defines the shape.
+2. `run` (Steps Requirement 9) is this format's command step: a plain shell command string, run
+   with no agent turn at all — the language-agnostic escape hatch ADR 0010 §3 describes. Its
+   `timeout` (if set) bounds the command the same way a `mechanical` gate's own `timeout` bounds
+   a verify command; its exit code and (when the command step also carries an `on:` outcome map —
+   a later format version, not this one) its last stdout line are its outcome, entirely an
+   execution concern this format does not itself model as a `gate`.
+3. `docket pipeline validate`/`plan` **MUST** treat a `when`/`run` shape violation exactly like
+   any other schema violation (one error string naming the offending field's dotted location);
+   `plan`'s rendering of a `run` step and a `when`-bearing step is specified in `pod-dispatch.spec.md`
+   (the executor) since this format itself defines no renderer.
 
 ## Interface Contracts
 
@@ -538,6 +571,21 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.9.0 (2026-09-26)
+
+- **P28-6: conditional (`when`) and command (`run`) steps.** New "Conditional steps and command
+  steps" requirements subsection (ADR 0010 §3) and Steps Requirement 9. `Step` gains `when` (a
+  new `When` model: `changed`/`var`+`is`/`memberPresent`, closed vocabulary, every set predicate
+  ANDed, at least one required) and `run` (a command step, exclusive of `role`/`agent`, carrying
+  no `gate`/`instructions`/`retries`/`archetype` of its own). Short form gains a nested shape:
+  `- lint: {run: "ruff check ."}` (a one-key mapping whose value is itself a mapping carrying
+  `run`) expands to `{id: lint, run: ..., timeout?, when?}` in `_normalize_short_step`; a string
+  target (`- lint: "ruff check ."`) is still a role/agent, never a command step. No change to any
+  existing document — every prior valid pipeline (including the three shipped recipes) still
+  loads and renders byte-identically. Execution (skip mechanics, command-step outcome, the
+  approval/refuse posture on a non-allowlisted command) is `pod-dispatch.spec.md`'s
+  "Conditional steps and command steps".
 
 ### Version 2.7.0 (2026-09-26)
 

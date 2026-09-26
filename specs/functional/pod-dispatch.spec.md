@@ -1,7 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.18.0
-**Status**: Complete. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
+**Version**: 6.20.0
+**Status**: Complete. **P28-6** adds a new "Conditional steps and command steps" section: a
+`when`-gated step is evaluated and, on a false predicate, skipped with a `step_skipped` trace
+event and no hop; a `run` step executes its command directly (`command_step` trace event), with
+no agent turn, gated on `core.security.classify_command` before it runs. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
 instruction data instead of a process-wide hardcoded string: `_hop_message`'s `role == "lead"`
 branch now resolves its instruction text through `core/archetypes.py`'s `resolve_hop_instruction`
 (the `lead` archetype's own `hopInstruction`, defaulting to the pre-existing hardcoded text) and
@@ -982,6 +985,42 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    "Retries and the failure-kind taxonomy") — the built-in pipeline's steps never set either, so
    this is never a behavior change for it.
 
+### Conditional steps and command steps
+
+1. Before a top-level step's gate or hop runs, dispatch **MUST** evaluate its `when` (if any,
+   `core/dispatch.py`'s `_step_skipped`), called ahead of `_execute_unit`: `changed` matches when
+   any path from `edges.adapters.system.git_changed_files` (of the latest successful
+   Implementer's worktree, or the pod Lead's own codebase when there is none) matches the glob;
+   `var`/`is` compares this run's resolved pipeline variable namespace (stringified) against the
+   given value; `memberPresent` checks the role against `pod_full_roster`. Every predicate set on
+   the step **MUST** be ANDed. A false predicate **MUST** emit a `step_skipped` trace event
+   naming the step and its `when`, and the pipeline **MUST** advance to the next position with no
+   hop, no agent turn, and no cost.
+2. A `run` step (pipeline-format.spec.md's Steps Requirement 9) **MUST** execute via
+   `core/dispatch.py`'s `_run_command_step` instead of `_execute_unit`: no agent turn, no
+   session, no cost. Its command **MUST** first be classified (`core.security.classify_command`,
+   extended by the pod's own `allowCommands`); an `allow` verdict **MUST** run it via
+   `edges.adapters.system.run_verify_cmd`, in the same cwd this section's `changed` predicate
+   uses, bounded by the step's own `timeout` else the pod's `verifyTimeoutS`. A non-`allow`
+   verdict **MUST NOT** run the command: under the pod's `approvalMode: "refuse"` the step
+   **MUST** fail immediately, naming the classifier's reason; under the default `"wait"` it
+   **MUST** gate exactly like a pipeline `approval` step (`_gate_pre_hop_approval`, keyed to the
+   step's own pipeline position), so a granted single-use override lets a resumed run through
+   without asking again.
+3. A command step's exit code **MUST** be its outcome: `0` advances, nonzero fails the task with
+   a reason naming the step and command. Its `HopResult` **MUST** carry `role` set to the step
+   id, `member_id=""`, the redacted captured output, and `ok` set to whether the exit was `0`; it
+   is persisted through the same `on_hop`/`hops[]` path as any other hop, so it is visible and
+   replayable on resume exactly like an agent hop would be. A `command_step` trace event
+   `{"step", "cmd", "exit"}` **MUST** be emitted for every outcome that reached a verdict
+   (`exit` is `0`/`1`); a step refused under `approvalMode: "refuse"` without ever running
+   **MUST** also emit `command_step` with `exit: null`, so an operator can tell "never ran" apart
+   from "ran and failed".
+4. **Known limitation:** this section covers only a **top-level** step. A `parallel` group's
+   children run through `_execute_unit` directly (see "Parallel step groups"), which does not
+   evaluate `when` or execute a `run` command — a child declaring either is not yet a supported
+   combination.
+
 ### Parallel step groups (ROADMAP Phase 16 W-2)
 
 1. A `parallel` step's children (W-1's shape) **MUST** run concurrently via a bounded thread pool
@@ -1300,6 +1339,8 @@ approval_task_denied             # a denied approval failed the task terminally 
 session_end                  # once, at the end of dispatch_task, carrying the final status
 run_cancellation_observed    # once when execution first observes the persisted run request
 run_cancelled                # once when execution has fully stopped and terminalizes the run
+step_skipped                  # a `when` predicate was false; the step advanced with no hop
+command_step                  # a `run` step executed (or was refused), carrying its exit code
 ```
 
 ## Examples
@@ -1458,6 +1499,19 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.20.0 (2026-09-26)
+
+- **P28-6: conditional (`when`) and command (`run`) steps execute.** New "Conditional steps and
+  command steps" requirements subsection; the trace-event list gains `step_skipped` and
+  `command_step`. `core/dispatch.py` gains `_step_skipped` and `_run_command_step`, both called
+  from the top of `_run_pipeline`'s loop body ahead of `_execute_unit`: a false `when` predicate
+  skips a top-level step with no hop; a `run` step executes its command directly, classified via
+  `core.security.classify_command` (allow runs it; anything else gates like a pipeline `approval`
+  step, or fails outright under `approvalMode: "refuse"`) and gated on its own exit code. Known
+  limitation: a `parallel` group's children do not yet support `when`/`run` (see the new
+  section's requirement 4). No change to any existing pipeline's execution — a step declaring
+  neither `when` nor `run` is unaffected.
 
 ### Version 6.18.0 (2026-09-26)
 

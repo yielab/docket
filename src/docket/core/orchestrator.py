@@ -28,7 +28,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from docket.core import archetypes as _archetypes
 from docket.core import pipeline as _pipeline
@@ -53,6 +53,11 @@ class PlannedUnit:
     retries: int | None
     timeout: int | None
     skipped: bool = False
+    # A command step's `when` (dumped by alias: "changed"/"var"/"is"/"memberPresent")
+    # and `run` -- `None` for an ordinary role/agent step. See
+    # specs/functional/pipeline-format.spec.md ("Conditional steps and command steps").
+    when: dict[str, Any] | None = None
+    run: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,8 +136,12 @@ def resolve_gate(
 def _resolve_unit(
     step: _pipeline.Step, roster: dict[str, str], registry: _archetypes.ArchetypeRegistry
 ) -> PlannedUnit:
-    if step.agent is not None:
-        member_id: str | None = step.agent
+    if step.run is not None:
+        # A command step needs no member -- it never runs an agent turn.
+        member_id: str | None = None
+        skipped = False
+    elif step.agent is not None:
+        member_id = step.agent
         skipped = False
     else:
         assert step.role is not None  # PipelineSpec's own validator guarantees this
@@ -148,6 +157,8 @@ def _resolve_unit(
         retries=step.retries,
         timeout=step.timeout,
         skipped=skipped,
+        when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
+        run=step.run,
     )
 
 
@@ -188,10 +199,27 @@ def render_plan(plan: ExecutionPlan) -> str:
 
 
 def _render_unit(unit: PlannedUnit) -> str:
-    target = unit.agent if unit.agent is not None else f"role={unit.role}"
-    who = unit.member_id or "(unresolved)"
-    gate_label = _gate_label(unit.gate)
-    return f"{target} -> {who} [gate: {gate_label}]"
+    if unit.run is not None:
+        base = f"run {unit.run!r} [gate: exit code]"
+    else:
+        target = unit.agent if unit.agent is not None else f"role={unit.role}"
+        who = unit.member_id or "(unresolved)"
+        gate_label = _gate_label(unit.gate)
+        base = f"{target} -> {who} [gate: {gate_label}]"
+    if unit.when:
+        base += f" when {_render_when(unit.when)}"
+    return base
+
+
+def _render_when(when: dict[str, Any]) -> str:
+    parts: list[str] = []
+    if "changed" in when:
+        parts.append(f"changed={when['changed']}")
+    if "var" in when:
+        parts.append(f"var={when['var']} is {when.get('is')}")
+    if "memberPresent" in when:
+        parts.append(f"memberPresent={when['memberPresent']}")
+    return " ".join(parts)
 
 
 def _gate_label(gate: _pipeline.Gate | None) -> str:
