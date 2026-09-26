@@ -55,6 +55,7 @@ compilation extends this module then, with a real input to shape it around.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import docket.config as cfg
 from docket.core import archetypes as _arch
@@ -66,6 +67,52 @@ from docket.core.handoff import HandoffArtifact
 #: ``token_budget`` for anything built through ``from_wire``, but a
 #: hand-built ``RoleArchetype`` in a test is not required to go through it).
 DEFAULT_TOKEN_BUDGET = 6000
+
+#: Where a resolved budget's value came from — named consistently wherever a
+#: budget is reported (the ``prompt_composed`` trace event, ``maintain
+#: check``): an explicit ``CONTEXT_TOKEN_BUDGET`` env override, an archetype's
+#: own declared ``tokenBudget``, a computed share of the resolved model
+#: window, or today's plain constant (no override, no usable window).
+BudgetSource = Literal["env", "archetype", "window", "default"]
+
+#: Conservative flat allowance reserved for a turn's advertised tool schemas
+#: when computing a window-share budget below. This is a fixed approximation,
+#: not a measurement of any specific role's live registry — introspecting the
+#: actual tool set at composition time is unnecessary generality for a bound
+#: whose whole job is to be a safe, honestly-labelled estimate (see module
+#: docstring).
+TOOL_SCHEMA_RESERVE_TOKENS = 1500
+
+#: Share of the resolved model window (after the output-token reserve and
+#: ``TOOL_SCHEMA_RESERVE_TOKENS``) a budget may claim once nothing overrides
+#: it. Chosen so today's only registered window (16384 tokens, 8192 reserved
+#: for output — see ``core/provider.py``'s local-endpoint defaults) still
+#: resolves to each budget's existing floor: half of the ~6.7K tokens left
+#: after reserving output and tool-schema room is well under the 6000-token
+#: floor, so a 16k endpoint's behaviour is unchanged. A large hosted window
+#: (100K+ tokens) clears the floor by a wide margin instead.
+WINDOW_SHARE = 0.5
+
+
+def resolve_window_share_tokens(
+    *,
+    context_window_tokens: int | None,
+    max_output_tokens: int | None,
+    floor_tokens: int,
+    reserved_tokens: int = 0,
+    share: float = WINDOW_SHARE,
+) -> int:
+    """A token budget: ``max(floor_tokens, share * (window - output_reserve - reserved))``."""
+    # floor_tokens is a lower bound, never a ceiling: an absent/non-positive window, or
+    # one so small/reserved that its share undercuts the floor, must never resolve to
+    # less than today's plain constant -- an honest bytes/divisor estimate, not a
+    # measured count, exactly like every other budget in this module.
+    if context_window_tokens is None or context_window_tokens <= 0:
+        return floor_tokens
+    reserve = max(max_output_tokens or 0, 0) + max(reserved_tokens, 0)
+    available = max(context_window_tokens - reserve, 0)
+    return max(floor_tokens, int(available * share))
+
 
 #: Visible marker used when ``summary`` itself must be truncated — the
 #: consumer-facing proof that content was cut, never a silent shortening.
@@ -85,17 +132,30 @@ def estimate_tokens(text: str) -> int:
     return len(text.encode("utf-8")) // cfg.CONTEXT_BYTES_PER_TOKEN
 
 
-def budget_for_role(role: str) -> int:
+def budget_for_role(
+    role: str,
+    *,
+    context_window_tokens: int | None = None,
+    max_output_tokens: int | None = None,
+) -> int:
     """The token budget the named role's archetype declares.
 
-    Falls back to ``DEFAULT_TOKEN_BUDGET`` when *role* isn't in the live
-    archetype registry (``core/archetypes.py.load_registry``), or resolves a
-    non-positive ``token_budget``.
+    Falls back to a window-share of ``DEFAULT_TOKEN_BUDGET`` when *role* isn't
+    in the live archetype registry, or resolves a non-positive ``token_budget``.
     """
+    # An archetype's own declared token_budget always wins -- data set on purpose,
+    # like an explicit CONTEXT_TOKEN_BUDGET override elsewhere -- so the window
+    # arguments below can never widen or shrink it. Every existing caller omits
+    # both keyword-only window arguments, so they keep resolving plain
+    # DEFAULT_TOKEN_BUDGET, byte-for-byte, exactly as before this fallback existed.
     found = _arch.load_registry().get(role)
-    if found is None or found.token_budget <= 0:
-        return DEFAULT_TOKEN_BUDGET
-    return found.token_budget
+    if found is not None and found.token_budget > 0:
+        return found.token_budget
+    return resolve_window_share_tokens(
+        context_window_tokens=context_window_tokens,
+        max_output_tokens=max_output_tokens,
+        floor_tokens=DEFAULT_TOKEN_BUDGET,
+    )
 
 
 def hop_share(rank: int, total_budget: int) -> int:

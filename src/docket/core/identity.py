@@ -34,11 +34,13 @@ stale copy.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import docket.config as _cfg
+from docket.core import context as _context
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
 from docket.core.models import AgentMeta, Persona
 from docket.edges import store as _store
@@ -90,6 +92,11 @@ class PromptComposition:
 
     text: str
     sections: tuple[PromptSectionReport, ...] = ()
+    # The static-context budget this composition was fit to, and where that number
+    # came from (see resolve_static_context_budget) -- reported even for an empty
+    # composition (no prompt material), describing what would have applied.
+    budget_tokens: int = _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+    budget_source: _context.BudgetSource = "default"
 
 
 def quarantine_scaffolding(ws: Path) -> list[str]:
@@ -275,6 +282,38 @@ def _omission_marker(name: str, text: str) -> str:
     return f"[... {name} omitted: {len(text.encode('utf-8'))} bytes omitted ...]"
 
 
+def resolve_static_context_budget(
+    context_window_tokens: int | None = None,
+    max_output_tokens: int | None = None,
+) -> tuple[int, _context.BudgetSource]:
+    """Resolve the static-context token budget (SOUL plus runtime workspace
+    state) and name where its value came from: ``env``, ``window``, or ``default``.
+    """
+    # An explicit CONTEXT_TOKEN_BUDGET override always wins, checked two ways so both
+    # a real deployment (the environment variable) and a test
+    # (monkeypatch.setattr(config, "CONTEXT_TOKEN_BUDGET", ...), which never touches
+    # the environment) count as "explicitly set": either the env var is present, or
+    # the resolved module constant no longer matches CONTEXT_TOKEN_BUDGET_DEFAULT.
+    # Otherwise the budget is a documented share of the resolved window (see
+    # core.context.resolve_window_share_tokens), floored at today's plain constant so
+    # an absent or unregistered window resolves to exactly today's behaviour.
+    if (
+        os.environ.get("CONTEXT_TOKEN_BUDGET")
+        or _cfg.CONTEXT_TOKEN_BUDGET != _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+    ):
+        return _cfg.CONTEXT_TOKEN_BUDGET, "env"
+    tokens = _context.resolve_window_share_tokens(
+        context_window_tokens=context_window_tokens,
+        max_output_tokens=max_output_tokens,
+        floor_tokens=_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT,
+        reserved_tokens=_context.TOOL_SCHEMA_RESERVE_TOKENS,
+    )
+    source: _context.BudgetSource = (
+        "window" if tokens > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT else "default"
+    )
+    return tokens, source
+
+
 def _cap_soul_text(soul_text: str, max_bytes: int) -> tuple[str, PromptSectionReport | None]:
     """Truncate an oversized SOUL to at most half of *max_bytes*, so it can never
     exhaust the room the runtime contract and private-workspace sections need."""
@@ -290,9 +329,12 @@ def _cap_soul_text(soul_text: str, max_bytes: int) -> tuple[str, PromptSectionRe
 
 
 def _runtime_workspace_context(
-    ws: Path, base_prompt: str
+    ws: Path, base_prompt: str, max_bytes: int | None = None
 ) -> tuple[str, tuple[PromptSectionReport, ...]]:
     """Fit freshly read private workspace state after mandatory identity context."""
+    # max_bytes defaults to today's plain CONTEXT_TOKEN_BUDGET reading when omitted, so a
+    # direct caller with no resolved budget of its own keeps today's behaviour unchanged;
+    # compose_agent_prompt always passes the resolved resolve_static_context_budget value.
     available_sections: list[tuple[str, str]] = []
     for name in _RUNTIME_CONTEXT_FILES:
         text = _read_workspace_text(ws / name)
@@ -304,7 +346,8 @@ def _runtime_workspace_context(
     if not available_sections:
         return "", ()
 
-    max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
+    if max_bytes is None:
+        max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
     remaining = max_bytes - len(base_prompt.encode("utf-8"))
     if base_prompt:
         remaining -= len(b"\n\n---\n\n")
@@ -382,12 +425,20 @@ def compose_agent_prompt(
     agent_id: str,
     *,
     project_roots: tuple[Path, ...] = (),
+    context_window_tokens: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> PromptComposition:
     """Read *agent_id*'s identity plus bounded private state and compose a prompt — the
     one I/O entry point ``core/agent_loop.py`` needs. An unprovisioned agent composes to
     an empty ``PromptComposition`` rather than raising: a turn must still run."""
+    # context_window_tokens/max_output_tokens are the resolved model window and output
+    # reserve for this turn, when known (None for an unresolvable/unregistered model) --
+    # passed straight to resolve_static_context_budget, never read from edges/ here.
+    budget_tokens, budget_source = resolve_static_context_budget(
+        context_window_tokens, max_output_tokens
+    )
     if not agent_id:
-        return PromptComposition("")
+        return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
     ws = _cfg.workspace_dir(agent_id)
     soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
@@ -400,22 +451,29 @@ def compose_agent_prompt(
         or (persona is not None and persona.label())
     )
     if not has_prompt_material:
-        return PromptComposition("")
-    max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
+        return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
+    max_bytes = budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
     soul_text, soul_report = _cap_soul_text(soul_text_raw, max_bytes)
     runtime_contract = _runtime_startup_contract(project_roots)
     base_prompt = compose_system_prompt(soul_text, runtime_contract, persona)
-    runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt)
+    runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt, max_bytes)
     text = compose_system_prompt(soul_text, runtime_contract, persona, runtime_context)
     sections = ((soul_report,) if soul_report is not None else ()) + context_reports
-    return PromptComposition(text, sections)
+    return PromptComposition(text, sections, budget_tokens, budget_source)
 
 
 def system_prompt_for_agent(
     agent_id: str,
     *,
     project_roots: tuple[Path, ...] = (),
+    context_window_tokens: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> str:
     """Read *agent_id*'s identity plus bounded private state and compose a prompt.
     Thin wrapper over :func:`compose_agent_prompt` for callers that only need the text."""
-    return compose_agent_prompt(agent_id, project_roots=project_roots).text
+    return compose_agent_prompt(
+        agent_id,
+        project_roots=project_roots,
+        context_window_tokens=context_window_tokens,
+        max_output_tokens=max_output_tokens,
+    ).text

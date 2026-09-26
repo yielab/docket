@@ -76,6 +76,87 @@ class TestBudgetForRole:
         finally:
             object.__setattr__(arch, "token_budget", 8000)
 
+    def test_a_registered_archetype_budget_ignores_any_window_argument(self) -> None:
+        """An archetype's own declared token_budget is data set on purpose -- a resolved
+        model window must never override it, unlike the unregistered-role fallback below."""
+        assert (
+            _ctx.budget_for_role(
+                "implementer", context_window_tokens=1_000_000, max_output_tokens=8_192
+            )
+            == _arch.BUILTIN_ARCHETYPES["implementer"].token_budget
+        )
+
+    def test_unregistered_role_with_no_window_still_falls_back_to_the_default(self) -> None:
+        """Every existing caller omits the window kwargs -- confirms they keep resolving
+        plain DEFAULT_TOKEN_BUDGET, byte-for-byte, with the new signature in place."""
+        assert (
+            _ctx.budget_for_role("no-such-role-anywhere", context_window_tokens=None)
+            == _ctx.DEFAULT_TOKEN_BUDGET
+        )
+
+    def test_unregistered_role_with_a_large_window_gets_a_window_share(self) -> None:
+        """Once a caller does supply a window, the unregistered-role fallback may exceed
+        DEFAULT_TOKEN_BUDGET -- this capability is added but not wired into any existing
+        caller (dispatch.py's hop composition, session.py's compaction default)."""
+        budget = _ctx.budget_for_role(
+            "no-such-role-anywhere", context_window_tokens=200_000, max_output_tokens=8_192
+        )
+        assert budget > _ctx.DEFAULT_TOKEN_BUDGET
+
+
+class TestResolveWindowShareTokens:
+    def test_absent_window_returns_the_floor(self) -> None:
+        assert (
+            _ctx.resolve_window_share_tokens(
+                context_window_tokens=None, max_output_tokens=None, floor_tokens=6000
+            )
+            == 6000
+        )
+
+    def test_non_positive_window_returns_the_floor(self) -> None:
+        assert (
+            _ctx.resolve_window_share_tokens(
+                context_window_tokens=0, max_output_tokens=None, floor_tokens=6000
+            )
+            == 6000
+        )
+
+    def test_a_small_registered_window_stays_at_the_floor(self) -> None:
+        """Today's only deployed window (16384 tokens, 8192 reserved for output) must
+        resolve to exactly today's floor -- the whole point of a floor, not a ceiling."""
+        assert (
+            _ctx.resolve_window_share_tokens(
+                context_window_tokens=16_384,
+                max_output_tokens=8_192,
+                floor_tokens=6000,
+                reserved_tokens=_ctx.TOOL_SCHEMA_RESERVE_TOKENS,
+            )
+            == 6000
+        )
+
+    def test_a_large_registered_window_clears_the_floor(self) -> None:
+        result = _ctx.resolve_window_share_tokens(
+            context_window_tokens=200_000,
+            max_output_tokens=8_192,
+            floor_tokens=6000,
+            reserved_tokens=_ctx.TOOL_SCHEMA_RESERVE_TOKENS,
+        )
+        assert result > 6000
+        assert result == max(
+            6000, int((200_000 - 8_192 - _ctx.TOOL_SCHEMA_RESERVE_TOKENS) * _ctx.WINDOW_SHARE)
+        )
+
+    def test_reserves_never_go_negative(self) -> None:
+        """An output reserve larger than the window must not underflow to a negative budget."""
+        assert (
+            _ctx.resolve_window_share_tokens(
+                context_window_tokens=1000,
+                max_output_tokens=5000,
+                floor_tokens=6000,
+            )
+            == 6000
+        )
+
 
 # ── hop_share ────────────────────────────────────────────────────────────────
 

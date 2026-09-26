@@ -15,6 +15,10 @@ import docket.config as _cfg
 from docket.core import identity as I
 from docket.core.models import AgentMeta, Persona
 
+_LOCAL_WINDOW = 16_384
+_LOCAL_MAX_OUTPUT = 8_192
+_HOSTED_WINDOW = 200_000
+
 SUBJECT = "docket.core.identity"
 
 
@@ -174,3 +178,89 @@ class TestRuntimeWorkspaceContextReporting:
         assert all(s.status == "omitted" for s in sections)
         assert "[... HEARTBEAT.md omitted:" in text
         assert "[... AGENTS.md omitted:" in text
+
+
+class TestResolveStaticContextBudget:
+    """Explicit override > window share > today's plain constant."""
+
+    def test_no_window_resolves_to_the_default(self) -> None:
+        tokens, source = I.resolve_static_context_budget(None, None)
+        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "default")
+
+    def test_a_small_registered_window_keeps_the_default(self) -> None:
+        """Today's only deployed window (local llama.cpp, 16384/8192) must not change
+        the resolved static budget -- the floor, not the share, wins here."""
+        tokens, source = I.resolve_static_context_budget(_LOCAL_WINDOW, _LOCAL_MAX_OUTPUT)
+        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "default")
+
+    def test_a_large_registered_window_resolves_a_bigger_share(self) -> None:
+        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+        assert source == "window"
+        assert tokens > _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+
+    def test_env_style_override_wins_even_with_a_large_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A test-style override (module attribute, never the environment) must still be
+        honoured as an explicit override -- the same path a real CONTEXT_TOKEN_BUDGET env
+        var takes, since the module constant is what every reader actually sees."""
+        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 350, raising=True)
+        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+        assert (tokens, source) == (350, "env")
+
+    def test_real_env_var_wins_even_when_equal_to_the_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CONTEXT_TOKEN_BUDGET", str(_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT))
+        tokens, source = I.resolve_static_context_budget(_HOSTED_WINDOW, _LOCAL_MAX_OUTPUT)
+        assert (tokens, source) == (_cfg.CONTEXT_TOKEN_BUDGET_DEFAULT, "env")
+
+
+class TestComposeAgentPromptIsWindowAware:
+    """The oversized-SOUL fixture: a 16k window changes nothing; a large
+    registered window fits every section in full instead of truncating SOUL."""
+
+    def _oversized_soul_workspace(self, agent_id: str) -> Path:
+        """No ``.docket-meta.json`` needed: ``compose_agent_prompt`` degrades a missing
+        persona lookup to ``None`` rather than raising, and DOCKET_HOME isolation is the
+        autouse ``tests/conftest.py`` fixture, not something this test manages."""
+        ws = _cfg.workspace_dir(agent_id)
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "TOOLS.md").write_text("Run the verify gate: VERIFY-GATE-LINE\n")
+        return ws
+
+    def test_red_at_16k_the_oversized_soul_is_still_truncated(self) -> None:
+        """Pinned: a registered-but-small window changes nothing from the unregistered
+        (no-window) case this fixture already covers in test_role_tools_and_identity.py."""
+        self._oversized_soul_workspace("windowed-16k-agent")
+        composition = I.compose_agent_prompt(
+            "windowed-16k-agent",
+            context_window_tokens=_LOCAL_WINDOW,
+            max_output_tokens=_LOCAL_MAX_OUTPUT,
+        )
+        assert "[... SOUL.md truncated:" in composition.text
+        assert "SOUL-HEAD-MARKER" in composition.text
+        assert "SOUL-TAIL-MARKER" in composition.text
+        assert "ACTIVE-LEDGER-LINE" in composition.text
+        assert "VERIFY-GATE-LINE" in composition.text
+        assert composition.budget_tokens == _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
+        assert composition.budget_source == "default"
+
+    def test_a_large_registered_window_fits_every_section_in_full(self) -> None:
+        """The RED-first case: on the base, this same fixture is truncated regardless of
+        window because nothing reads context_window_tokens at all yet."""
+        self._oversized_soul_workspace("windowed-200k-agent")
+        composition = I.compose_agent_prompt(
+            "windowed-200k-agent",
+            context_window_tokens=_HOSTED_WINDOW,
+            max_output_tokens=_LOCAL_MAX_OUTPUT,
+        )
+        assert "[... SOUL.md truncated:" not in composition.text
+        assert "[... SOUL.md omitted:" not in composition.text
+        assert "s" * 30_000 in composition.text
+        assert "ACTIVE-LEDGER-LINE" in composition.text
+        assert "VERIFY-GATE-LINE" in composition.text
+        assert composition.budget_source == "window"
+        assert all(s.status == "full" for s in composition.sections)

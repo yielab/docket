@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.19.0
+**Version**: 1.20.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -213,11 +213,21 @@ This specification does NOT cover:
     `## Red Lines`, and other custom sections byte-for-byte; a custom AGENTS file without that
     heading remains intact. Prompt composition **MUST NOT** rewrite any source workspace file or
     regex-filter arbitrary prose.
-    The projected contract plus appended state **MUST** fit the existing
-    `CONTEXT_TOKEN_BUDGET` estimate, preserve higher priorities first, and mark any
-    truncation/omission visibly rather than silently growing an endpoint's context or dropping
-    state. The runtime contract is never truncated; `HEARTBEAT.md` and `TOOLS.md` **MUST NOT** be
-    crowded out in favor of `SOUL.md` — an oversized `SOUL.md` **MUST** itself be visibly,
+    The projected contract plus appended state **MUST** fit a resolved static-context budget,
+    preserve higher priorities first, and mark any truncation/omission visibly rather than silently
+    growing an endpoint's context or dropping state. That budget (`core.identity.
+    resolve_static_context_budget`) **MUST** resolve, in order: (a) an explicit `CONTEXT_TOKEN_BUDGET`
+    override — the environment variable, or a resolved value that no longer equals
+    `config.CONTEXT_TOKEN_BUDGET_DEFAULT` — always wins unchanged; (b) otherwise, when
+    `run_agent_turn` has a positive resolved model context window for this turn (`_resolve_context_bounds`,
+    requirement 45), a documented share of that window after reserving the output-token budget and a
+    fixed tool-schema allowance (`core.context.resolve_window_share_tokens`/`WINDOW_SHARE`/
+    `TOOL_SCHEMA_RESERVE_TOKENS`), floored at `config.CONTEXT_TOKEN_BUDGET_DEFAULT` so a small or
+    heavily-reserved window can only ever match today's behaviour, never shrink below it; (c) absent
+    or non-positive window information (an unresolvable or unregistered model) **MUST** resolve to
+    plain `config.CONTEXT_TOKEN_BUDGET_DEFAULT`, unchanged from before this budget became
+    window-aware. The runtime contract is never truncated; `HEARTBEAT.md` and `TOOLS.md` **MUST NOT**
+    be crowded out in favor of `SOUL.md` — an oversized `SOUL.md` **MUST** itself be visibly,
     middle-truncated (head and tail kept, a marker naming the omitted byte count in between) to a
     bounded share of the budget *before* the private-workspace sections are fitted, so `SOUL.md`
     alone can never exhaust the room the runtime contract and private-workspace sections need. When
@@ -229,9 +239,12 @@ This specification does NOT cover:
     erases what follows it. `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace
     event per non-empty composition, listing every section actually attempted — `SOUL.md` plus
     whichever of `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had content — with the bytes
-    included and a `full`/`truncated`/`omitted` status per section. An agent with no
-    identity/startup/private files still composes no system message and emits no `prompt_composed`
-    event for that empty composition.
+    included and a `full`/`truncated`/`omitted` status per section, plus the resolved
+    `budgetTokens` and its `budgetSource` (`env`/`window`/`default`) for this composition. An agent
+    with no identity/startup/private files still composes no system message and emits no
+    `prompt_composed` event for that empty composition. This budget resolution is an estimate like
+    every other bytes/divisor figure in this codebase — never a measured token count, and never
+    reused to bound `AGENT_LOOP_TOKEN_BUDGET`'s separate, measured-usage cumulative turn budget.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
     so a persona change or refreshed private workspace state (requirement 30) is reflected on the
@@ -648,6 +661,23 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.20.0 (2026-09-26)
+
+- P26-3 makes requirement 30's static-context budget window-aware instead of a flat constant for
+  every model: `core.identity.resolve_static_context_budget` resolves an explicit
+  `CONTEXT_TOKEN_BUDGET` override first, then a documented share of the turn's already-resolved
+  model context window (`core.context.resolve_window_share_tokens`, reserving output tokens and a
+  fixed tool-schema allowance), floored at today's constant (`config.CONTEXT_TOKEN_BUDGET_DEFAULT`)
+  so an unregistered/absent window, or a small one (today's only deployed 16k local endpoint),
+  resolves to exactly the old fixed budget. A large registered window (100K+ tokens) now lets the
+  static prompt use much more of it instead of truncating a `SOUL.md` that a smaller-context
+  deployment genuinely could not afford. The `prompt_composed` trace event gained `budgetTokens`
+  and `budgetSource` (`env`/`window`/`default`) alongside the existing per-section report.
+  `core.context.budget_for_role` (the separate per-role hop-carryover budget `pod-dispatch.spec.md`
+  and `session-history.spec.md` own) gained the same optional window-share resolution for its own
+  unregistered-role fallback, callable but not wired into either of those two existing callers,
+  which keep resolving `DEFAULT_TOKEN_BUDGET` exactly as before.
 
 ### Version 1.19.0 (2026-09-25)
 

@@ -509,6 +509,8 @@ def _trace_prompt_composed(
     session_key: str,
     role: str,
     sections: tuple[_identity.PromptSectionReport, ...],
+    budget_tokens: int,
+    budget_source: str,
 ) -> None:
     trace_event(
         project,
@@ -516,20 +518,39 @@ def _trace_prompt_composed(
         role,
         "prompt_composed",
         json.dumps(
-            {"sections": [{"name": s.name, "bytes": s.bytes, "status": s.status} for s in sections]}
+            {
+                "sections": [
+                    {"name": s.name, "bytes": s.bytes, "status": s.status} for s in sections
+                ],
+                "budgetTokens": budget_tokens,
+                "budgetSource": budget_source,
+            }
         ),
     )
 
 
 # Resolved once per turn, not per iteration -- neither the role's toolset nor
-# this agent's identity files change mid-turn.
+# this agent's identity files change mid-turn. *context_window_tokens*/
+# *output_reserve_tokens* are this turn's already-resolved model bounds (see
+# `_resolve_context_bounds`, called just before this in `_TurnState.create`) --
+# threaded through so `compose_agent_prompt`'s static-context budget can share
+# the same resolved window instead of a second, independent lookup.
 def _resolve_role_registry_and_prompt(
-    registry: ToolRegistry, ctx: ToolContext
-) -> tuple[ToolRegistry, str, list[ToolSpec], tuple[_identity.PromptSectionReport, ...]]:
+    registry: ToolRegistry,
+    ctx: ToolContext,
+    *,
+    context_window_tokens: int | None = None,
+    output_reserve_tokens: int | None = None,
+) -> tuple[ToolRegistry, _identity.PromptComposition, list[ToolSpec]]:
     """Narrow the tool registry to this role and compose today's system prompt."""
     registry = _archetypes.registry_for_role(registry, ctx.role)
-    composition = _identity.compose_agent_prompt(ctx.agent_id, project_roots=ctx.roots)
-    return registry, composition.text, registry.specs(), composition.sections
+    composition = _identity.compose_agent_prompt(
+        ctx.agent_id,
+        project_roots=ctx.roots,
+        context_window_tokens=context_window_tokens,
+        max_output_tokens=output_reserve_tokens,
+    )
+    return registry, composition, registry.specs()
 
 
 def _selected_estimate(selected: list[ChatMessage]) -> int:
@@ -665,11 +686,22 @@ class _TurnState:
         project, trace_key = _resolve_trace_coordinates(
             ctx, session_key, trace_project, trace_session_key
         )
-        registry, system_prompt, tool_specs, prompt_sections = _resolve_role_registry_and_prompt(
-            registry, ctx
+        registry, composition, tool_specs = _resolve_role_registry_and_prompt(
+            registry,
+            ctx,
+            context_window_tokens=context_window,
+            output_reserve_tokens=output_reserve,
         )
-        if prompt_sections:
-            _trace_prompt_composed(project, trace_key, ctx.role, prompt_sections)
+        system_prompt = composition.text
+        if composition.sections:
+            _trace_prompt_composed(
+                project,
+                trace_key,
+                ctx.role,
+                composition.sections,
+                composition.budget_tokens,
+                composition.budget_source,
+            )
         return cls(
             backend=backend,
             ctx=ctx,
