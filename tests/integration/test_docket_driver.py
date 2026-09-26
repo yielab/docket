@@ -290,7 +290,6 @@ class TestRunTurn:
         monkeypatch.delenv(provider_key, raising=False)
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
-        monkeypatch.setattr(_keys, "project_ids", lambda: [])
         monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: secret)
 
         assert _keys.run_keys("add", [provider_key]) == 0

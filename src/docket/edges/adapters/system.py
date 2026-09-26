@@ -69,6 +69,39 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
     return result.stdout or None
 
 
+def secret_tool_store(service: str, key: str, value: str) -> bool:
+    """Store one secret via `secret-tool store` (value piped over stdin, never argv). Returns
+    ``False`` on any failure -- unlike `secret_tool_lookup`, the caller treats that as an
+    error, since a silent fallback to plaintext storage would defeat the keyring backend."""
+    try:
+        result = subprocess.run(
+            ["secret-tool", "store", "--label", f"docket: {key}", "service", service, "key", key],
+            input=value,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
+def secret_tool_clear(service: str, key: str) -> bool:
+    """Remove one secret via `secret-tool clear`; best-effort like `secret_tool_lookup` --
+    returns ``False`` on any failure, but the caller does not fail the surrounding command
+    on that (the secrets.json index entry is removed either way)."""
+    try:
+        result = subprocess.run(
+            ["secret-tool", "clear", "service", service, "key", key],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
 def gateway_active() -> bool:
     """No daemon gateway exists; always returns ``False``. Kept as a stable
     call site for existing callers -- see ``specs/data/serve-read-api.spec.md``."""

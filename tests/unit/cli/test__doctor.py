@@ -593,6 +593,58 @@ class TestFullRun:
         assert rc == 0
 
 
+class TestWorkspaceEnvFiles:
+    """A stray workspace `.env` has no reader on the live turn path -- credentials resolve
+    through `core/secrets.py` directly, never a per-agent file. `--fix` deletes it."""
+
+    def test_flags_a_stray_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
+        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
+
+        issues = _doctor._check_workspace_env_files(["myshop"], do_fix=False)
+        out = capsys.readouterr().out
+
+        assert issues == 1
+        assert "myshop" in out and "stray .env" in out
+        assert env_file.is_file()
+
+    def test_fix_removes_the_stray_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
+        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
+
+        issues = _doctor._check_workspace_env_files(["myshop"], do_fix=True)
+        out = capsys.readouterr().out
+
+        assert issues == 0
+        assert not env_file.exists()
+        assert "removed stray .env" in out
+
+    def test_no_env_file_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        assert _doctor._check_workspace_env_files(["myshop"], do_fix=False) == 0
+        assert capsys.readouterr().out == ""
+
+    def test_full_doctor_run_with_fix_heals_a_stray_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
+        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
+
+        rc = _doctor.run_doctor(json_out=False, do_fix=True)
+
+        assert rc == 0
+        assert not env_file.exists()
+
+
 class TestGuardrailPolicies:
     """Doctor reports a policy file the evaluator would fail closed on."""
 

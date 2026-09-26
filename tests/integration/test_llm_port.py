@@ -441,7 +441,6 @@ class TestEndpointResolution:
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
         monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
-        monkeypatch.setattr(_keys, "project_ids", lambda: [])
         monkeypatch.setattr(_keys, "audit_log", lambda *args: None)
         entered = iter(("sk-or-stored", "vercel-stored"))
         monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: next(entered))
