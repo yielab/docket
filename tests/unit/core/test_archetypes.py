@@ -24,7 +24,9 @@ from docket.core.archetypes import (
     resolve_hop_instruction,
 )
 from docket.core.memory import HEARTBEAT_FILE
+from docket.core.pod import member_id as _pod_member_id
 from docket.core.tools import builtin_registry
+from docket.edges import store as _store
 
 SUBJECT = "docket.core.archetypes"
 
@@ -278,3 +280,40 @@ class TestPodRoleOverlay:
         narrowed = registry_for_role(builtin_registry(), "vetter", project="")
 
         assert "write" in narrowed.names()
+
+
+def _write_lead_meta(project: str, denied_tools: str) -> None:
+    path = _cfg.meta_path(_pod_member_id(project, "lead"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(
+        path,
+        {"schemaVersion": 1, "kind": "project", "scope": "project", "deniedTools": denied_tools},
+    )
+
+
+class TestPodDeniedTools:
+    """A pod's own `deniedTools` setting unions with a role's own `denied_tools`,
+    so a pod-level denial reaches every role in it."""
+
+    def test_pod_denial_removes_a_tool_the_role_itself_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        # "implementer" denies nothing by default -- a pod-level "fetch" denial
+        # must still remove it, proving this is a union, not just the role's own list.
+        _write_lead_meta("acme", "fetch")
+
+        narrowed = registry_for_role(builtin_registry(), "implementer", project="acme")
+
+        assert "fetch" not in narrowed.names()
+        assert "write" in narrowed.names()  # nothing else the role allows is touched
+
+    def test_no_project_ignores_the_pod_setting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        _write_lead_meta("acme", "fetch")
+
+        narrowed = registry_for_role(builtin_registry(), "implementer", project="")
+
+        assert "fetch" in narrowed.names()

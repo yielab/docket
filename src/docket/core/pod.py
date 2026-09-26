@@ -23,6 +23,7 @@ from pydantic import ValidationError as _PydanticValidationError
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import fleet as _fleet
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
 from docket.core import schedule as _schedule
 from docket.core import security as _security
@@ -286,6 +287,8 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "pipeline": "pipeline",
     "schedule": "schedule",
     "projectInstructions": "project_instructions",
+    "mcpServers": "mcp_servers",
+    "deniedTools": "denied_tools",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -345,6 +348,25 @@ class PodSettings(BaseModel):
     # operator file) or `schedule`'s (which writes a second store).
     project_instructions: tuple[str, ...] = Field((), alias="projectInstructions")
 
+    # This pod's own selection from the shared MCP server catalog
+    # (core/mcp_tools.py::load_mcp_servers()). ``None`` (the default, and every
+    # pod before this field existed) means "every configured server" -- today's
+    # behavior, unchanged. A non-empty tuple names the exhaustive subset this
+    # pod's turns load; edges/adapters/docket_runtime.py::_load_mcp_tools is the
+    # sole reader (see its docstring for the live-turn refusal this feeds).
+    # Validated against the *live* catalog at `set` time (below) -- not merely
+    # syntactically -- because an unconfigured server name here is always a
+    # mistake, unlike allowCommands/projectInstructions, whose validity does not
+    # depend on any other docket-owned store.
+    mcp_servers: tuple[str, ...] | None = Field(None, alias="mcpServers")
+    # Built-in tool names this pod's every role additionally denies, unioned with
+    # each role's own `denied_tools` by `core.archetypes.registry_for_role` (see
+    # role-archetypes.spec.md's "Per-role tool sets" requirement 7). Validated
+    # against the same known tool-name universe `denied_tools` narrowing already
+    # keys off (`core.archetypes.BUILTIN_TOOL_KINDS`), so a typo is refused at
+    # `set` instead of silently doing nothing at dispatch time.
+    denied_tools: tuple[str, ...] = Field((), alias="deniedTools")
+
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
@@ -357,6 +379,8 @@ class PodSettings(BaseModel):
         "pipeline",
         "schedule",
         "projectInstructions",
+        "mcpServers",
+        "deniedTools",
     )
 
     @field_validator("allow_commands", mode="before")
@@ -422,6 +446,52 @@ class PodSettings(BaseModel):
                 raise ValueError(f"{name!r} is not a relative path inside the codebase root")
             if ".." in Path(name).parts:
                 raise ValueError(f"{name!r} escapes the codebase root")
+            kept.setdefault(name, None)
+        return tuple(kept.keys())
+
+    # Checked against `core.mcp_tools.load_mcp_servers()` right here -- a name absent
+    # from the live catalog is refused (naming it) at `set` time, so a typo or a
+    # since-removed server can never silently resolve to "load nothing" at dispatch
+    # time.
+    @field_validator("mcp_servers", mode="before")
+    @classmethod
+    def _parse_mcp_servers(cls, value: Any) -> tuple[str, ...] | None:
+        """Comma-separated names from the shared MCP server catalog, or ``None`` (the
+        default) for "every configured server"."""
+        if value in (None, ""):
+            return None
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        catalog = {s.name for s in _mcp_tools.load_mcp_servers()}
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip()
+            if not name:
+                continue
+            if name not in catalog:
+                raise ValueError(
+                    f"{name!r} is not a configured MCP server (docket mcp servers list)"
+                )
+            kept.setdefault(name, None)
+        return tuple(kept.keys()) or None
+
+    # Rejects (naming it) any name outside `core.archetypes.BUILTIN_TOOL_KINDS` -- the
+    # same known-tool universe `registry_for_role`'s kind-based narrowing already keys
+    # off -- so a typo is refused here rather than silently denying nothing.
+    @field_validator("denied_tools", mode="before")
+    @classmethod
+    def _parse_denied_tools(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated built-in tool names, like ``allow_commands``."""
+        if value in (None, ""):
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        known = set(_archetypes.BUILTIN_TOOL_KINDS)
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip()
+            if not name:
+                continue
+            if name not in known:
+                raise ValueError(f"{name!r} is not a known tool name ({', '.join(sorted(known))})")
             kept.setdefault(name, None)
         return tuple(kept.keys())
 

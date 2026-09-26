@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
 policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
 existing `docket roles`/`docket pod`/`docket policies` CLI surface; a recipe's own role YAML is
@@ -272,6 +272,20 @@ This specification does NOT cover:
    them already names all three (or, for `tester`, both `write`-kind names) — so it only starts
    mattering once a registry actually contains a non-built-in tool, which was impossible before
    this requirement's own card wired `load_mcp_tools` into a live turn.
+7. **A pod also narrows every role's tools by its own `deniedTools` setting** (P27-4;
+   `core.pod.PodSettings`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 8).
+   `registry_for_role(base, role, project)` **MUST**, when *project* names a pod, union that
+   pod's `denied_tools` with *role*'s own `denied_tools` before requirement 2's name-based
+   removal and requirement 6's kind-based removal run — over the union, never over the role's
+   own list alone. A pod-level denial is therefore as strong as an archetype-declared one: a
+   `deniedTools` entry naming `fetch` **MUST** remove it from every role in that pod, not only
+   the ones whose own archetype already names it. An unreadable or malformed stored pod setting
+   **MUST NOT** raise out of `registry_for_role` — it **MUST** degrade to "no additional
+   pod-level denial" for that turn (mirroring `edges/adapters/docket_runtime.py`'s
+   `_resolve_allow_commands` fail-open pattern for a different pod setting), because this
+   function runs on every turn's live agent-loop path, which must never crash over a
+   hand-edited meta file; the write path (`PodSettings.coerce`) is what refuses a bad value
+   before it can ever reach here.
 
 ### Hop instructions (P26-7)
 
@@ -572,6 +586,18 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.13.0 (2026-09-26)
+
+- **P27-4: a pod's own `deniedTools` setting reaches every role in it.** "Per-role tool sets"
+  gains requirement 7: `registry_for_role(base, role, project)` unions *project*'s pod
+  `deniedTools` (`core.pod.PodSettings`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 8)
+  with *role*'s own `denied_tools` before the existing name-based (requirement 2) and kind-based
+  (requirement 6) removal run — a pod-level denial is as strong as an archetype-declared one. An
+  unreadable/malformed stored pod setting degrades to no additional denial rather than raising,
+  mirroring `_resolve_allow_commands`'s fail-open precedent for a different pod setting on the
+  same live-turn path. `project=""` (no pod) is byte-identical to before this requirement. See
+  `mcp-client.spec.md` v1.6.0 for the companion `mcpServers` reader this same card shipped.
 
 ### Version 1.12.0 (2026-09-26)
 

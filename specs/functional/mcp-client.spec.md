@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -219,12 +219,13 @@ This specification does NOT cover:
 ### Live-turn wiring (ROADMAP Phase 19/wave 17)
 
 25. `edges/adapters/docket_runtime.py`'s `DocketDriver` **MUST** expose an `mcp_loader` seam
-    (`Callable[[ToolRegistry, str], list[McpServerLoadResult]]`), defaulting to a thin wrapper
-    around `load_mcp_tools`, so a test can substitute a fake `list_tools`/`call_tool` pair (per
-    Requirement 4's own port) without spawning a subprocess or requiring the `mcp` SDK.
-26. `DocketDriver.run_turn` **MUST** call `self.mcp_loader(registry, role)` against the registry
-    returned by `self.registry_factory()` (typically `core.tools.builtin_registry()`) **before**
-    that registry is handed to `core.agent_loop.run_agent_turn` — i.e. before
+    (`Callable[[ToolRegistry, str, str], list[McpServerLoadResult]]` — registry, role, project),
+    defaulting to a thin wrapper around `load_mcp_tools`, so a test can substitute a fake
+    `list_tools`/`call_tool` pair (per Requirement 4's own port) without spawning a subprocess or
+    requiring the `mcp` SDK.
+26. `DocketDriver.run_turn` **MUST** call `self.mcp_loader(registry, role, ctx.project)` against
+    the registry returned by `self.registry_factory()` (typically `core.tools.builtin_registry()`)
+    **before** that registry is handed to `core.agent_loop.run_agent_turn` — i.e. before
     `core.archetypes.registry_for_role`'s once-per-turn narrowing runs (`agent-loop.spec.md`).
     This ordering **MUST NOT** be reversed: narrowing after loading is what lets
     `role-archetypes.spec.md`'s requirement 6 (kind-based exclusion) see, and exclude, an
@@ -238,12 +239,28 @@ This specification does NOT cover:
     "never raises for an ordinary failure" contract (`agent-loop.spec.md`) — `load_mcp_tools`
     already never raises (Requirement 11-13, 19), so a server that is unreachable, hung (bounded by
     Requirement 13's timeout), or returns a malformed listing degrades to "unavailable" and the
-    turn proceeds on whatever registry resulted, never failing solely because of MCP loading.
+    turn proceeds on whatever registry resulted, never failing solely because of MCP loading. The
+    one deliberate exception is Requirement 34's pod-scoped selection: a caller misconfiguration,
+    not a live-server failure, so it raises instead of degrading.
 29. This specification does not itself define a caching layer for `load_mcp_tools`'s per-turn
     cost — see Status above for the measured latency and the named trigger for adding one. Any
     future cache **MUST** invalidate on a `docket mcp servers remove`/`add`/edit, not merely on a
     TTL — a stale cache that resurrects a removed server's tool is a correctness bug, not a
     performance tradeoff.
+
+### Pod-scoped server selection (P27-4)
+
+34. `edges/adapters/docket_runtime.py::_load_mcp_tools(registry, role, project)` **MUST** filter
+    `load_mcp_servers()`'s catalog by *project*'s pod `mcpServers` setting
+    (`core.pod.PodSettings.mcp_servers`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 7)
+    before calling `load_mcp_tools`. `None` — the default, and every project before this setting
+    existed — **MUST** load every configured server, byte-for-byte identical to Requirement 27's
+    zero-server fast path and to every dispatch before this card. A selection naming a server
+    absent from the *live* catalog **MUST** raise `DispatchError` naming it, instead of silently
+    loading the remaining servers or none at all — a stale selection (the server was renamed or
+    removed after `config set`) **MUST** be loud. This re-check runs on every read (through
+    `PodSettings.coerce`, not `PodSettings.load_for`, so an unrelated malformed pod setting never
+    blocks MCP loading — see `pod-dispatch.spec.md` item 7), not only at `config set` time.
 
 ### Model-visible output bound
 
@@ -330,19 +347,20 @@ def call_remote_tool(
 class DocketDriver:
     backend_factory: Callable[[str], ChatBackend | None] = client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
-    mcp_loader: Callable[[ToolRegistry, str], list[Any]] = _load_mcp_tools  # wraps load_mcp_tools
+    mcp_loader: Callable[[ToolRegistry, str, str], list[Any]] = _load_mcp_tools  # wraps load_mcp_tools
 
     def run_turn(self, agent_id: str, session_key: str, message: str, ...) -> TurnResult:
         ...
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role)   # folds MCP tools in, before role narrowing
+        self.mcp_loader(registry, meta.role, ctx.project)   # folds MCP tools in, before role narrowing
         ...
         result = _loop.run_agent_turn(backend, registry, ctx, session_key, message, config=loop_config)
 ```
 
-`mcp_loader`'s two-positional shape (`registry`, `role`) is a fixed wrapper around
+`mcp_loader`'s three-positional shape (`registry`, `role`, `project`) is a fixed wrapper around
 `load_mcp_tools`'s keyword-heavy signature (Module API above) so a test can substitute a fake
-without matching that full surface — see Requirement 25.
+without matching that full surface — see Requirement 25. `project` is what Requirement 34's
+pod-scoped `mcpServers` filtering keys off.
 
 Both functions spawn a fresh stdio subprocess for exactly one exchange and tear it down again —
 no connection is kept open between calls, so a misbehaving server cannot corrupt a later,
@@ -532,8 +550,25 @@ dispatch_tool(
 - A failure isolated to `DocketDriver.mcp_loader` (an unreachable, hung, or malformed-listing
   server) **MUST NOT** cause `run_turn` to return `ok=False` on its own — only an otherwise-real
   turn failure (backend error, timeout, budget) may do that (Requirement 28).
+- A pod's stale `mcpServers` selection (Requirement 34) is not this kind of failure: it **MUST**
+  raise `DispatchError` out of `run_turn` rather than folding into a `TurnResult(ok=False, ...)` —
+  a caller misconfiguration surfaces to its caller's own settle/fail path (`pod-dispatch.spec.md`),
+  never as an ordinary turn outcome.
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-26)
+
+- **P27-4: a pod can select which configured MCP servers reach its turns.** New "Pod-scoped
+  server selection" requirement 34: `_load_mcp_tools` gains a `project` parameter and filters
+  `load_mcp_servers()`'s catalog by that pod's `mcpServers` setting (`pod-dispatch.spec.md`'s
+  "Pod dispatch settings" item 7) before folding servers in; `None` (unset) loads every server,
+  unchanged from every dispatch before this card. A stale selection (naming a server no longer
+  in the catalog) raises `DispatchError` naming it rather than silently narrowing further or
+  loading nothing — the one deliberate exception to Requirement 28's "never raises" contract,
+  since this is a caller misconfiguration, not a live-server failure. Requirements 25/26 and the
+  `DocketDriver` wiring-seam Interface Contract are reworded for `mcp_loader`'s new three-
+  positional shape (`registry`, `role`, `project`).
 
 ### Version 1.5.0 (2026-09-26)
 
