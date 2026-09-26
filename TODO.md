@@ -11,13 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 42 (opened 2026-09-26): Phase 27, per-pod configuration (D-43)
+> ## ▶ ACTIVE BOARD — WAVE 43 (opened 2026-09-26): Phase 27, per-pod configuration (D-43)
 >
-> Wave 41 (P27-1, P27-2, P27-3) merged green into `main` with rollup `40d6b78` on 2026-09-26.
-> Wave 42 runs P27-4 and P27-5 in parallel, one Sonnet worker per card in an isolated worktree
-> under one integrator; packets in
+> Wave 41 (P27-1, P27-2, P27-3; rollup `40d6b78`) and Wave 42 (P27-4, P27-5; rollup `d607ef1`)
+> merged green into `main` on 2026-09-26. Wave 43 runs P27-6 and P27-8 in parallel, then P27-7
+> serially after P27-6 merges; one Sonnet worker per card in an isolated worktree under one
+> integrator; packets in
 > [.agents/handoffs/wave-41-worker-packets.md](.agents/handoffs/wave-41-worker-packets.md).
-> Wave 43 opens only after this wave's rollup merges green.
+> Phase 27 closes when P27-7's round trip is green.
 >
 > **◇ WAVE 37 CLOSED (2026-09-25) — no card claimed.**
 >
@@ -105,9 +106,9 @@ release source.
 ---
 
 
-## ▶ WAVE 42 — ACTIVE (opened 2026-09-26): Phase 27, per-pod configuration and portable teams (D-43)
+## ▶ WAVE 43 — ACTIVE (opened 2026-09-26): Phase 27, per-pod configuration and portable teams (D-43)
 
-**Opened 2026-09-26 (Wave 41 done; Wave 42 active; Wave 43 queued in this section).** Eight cards in three waves. Decision, the three
+**Opened 2026-09-26 (Waves 41–42 done; Wave 43 active).** Eight cards in three waves. Decision, the three
 scopes, the resolution rule, the verdict table and the pre-assigned spec versions are in
 [docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md);
 this section holds only the executable cards. **Activation gate:** the integrator confirms the
@@ -251,7 +252,7 @@ function), `cli/_mcp.py`, the mcp-client spec sections named.
 
 ### P27-4 — pod settings `mcpServers` and `deniedTools`, each with its live reader
 
-**Status:** IN-PROGRESS (@sonnet-p27-4) · **Size:** M · **Wave:** 42 (after P27-1 and P27-3) · **Spec:** `pod-dispatch.spec.md` → 6.16.0 (pod settings), `mcp-client.spec.md` → 1.6.0 (live-turn wiring), `role-archetypes.spec.md` → 1.13.0 (per-role tool sets)
+**Status:** DONE (2026-09-26, 4eac7a1, merged in Wave 42) · **Size:** M · **Wave:** 42 (after P27-1 and P27-3) · **Spec:** `pod-dispatch.spec.md` → 6.16.0 (pod settings), `mcp-client.spec.md` → 1.6.0 (live-turn wiring), `role-archetypes.spec.md` → 1.13.0 (per-role tool sets)
 
 **Trigger:**
 - `DocketDriver._load_mcp_tools` loads every catalog server into every pod's turns; a pod cannot
@@ -294,7 +295,7 @@ key on the base.
 
 ### P27-5 — the Lead's instruction is data, and step instructions reach it
 
-**Status:** IN-PROGRESS (@sonnet-p27-5) · **Size:** S · **Wave:** 42 · **Spec:** `pod-dispatch.spec.md` → 6.17.0 (hop message), `pipeline-format.spec.md` → 2.6.0 (step `instructions`), `pod-blueprints.spec.md` → 1.5.0, `role-archetypes.spec.md` → 1.14.0 (hop instructions)
+**Status:** DONE (2026-09-26, 92ad787, merged in Wave 42) · **Size:** S · **Wave:** 42 · **Spec:** `pod-dispatch.spec.md` → 6.17.0 (hop message), `pipeline-format.spec.md` → 2.6.0 (step `instructions`), `pod-blueprints.spec.md` → 1.5.0, `role-archetypes.spec.md` → 1.14.0 (hop instructions)
 
 **Trigger:**
 - `core/dispatch.py` hop-message builder, `role == "lead"` branch: "Decompose this task into a
@@ -333,7 +334,7 @@ the base.
 
 ### P27-6 — `docket pod <p> apply <dir>`: a recipe applies to any pod in one command
 
-**Status:** TODO · **Size:** M · **Wave:** 43 (after Wave 42 merges) · **Spec:** `pod-blueprints.spec.md` → 1.6.0 (new section "Pod manifests: apply"), `role-archetypes.spec.md` → 1.15.0 ("Shipped recipes"), `cli-interface.spec.md` → 1.33.0
+**Status:** IN-PROGRESS (@sonnet-p27-6) · **Size:** M · **Wave:** 43 (after Wave 42 merges) · **Spec:** `pod-blueprints.spec.md` → 1.6.0 (new section "Pod manifests: apply"), `role-archetypes.spec.md` → 1.15.0 ("Shipped recipes"), `cli-interface.spec.md` → 1.33.0
 
 **Trigger:**
 - Each shipped recipe README lists six commands; every teammate repeats them per machine.
@@ -413,7 +414,7 @@ round-trip test fails on the base because `export_pod` does not exist.
 
 ### P27-8 — every resolved value says which scope it came from
 
-**Status:** TODO · **Size:** S · **Wave:** 43 (parallel with P27-6) · **Spec:** `cli-interface.spec.md` → 1.35.0 (`config explain`, `doctor`)
+**Status:** IN-PROGRESS (@sonnet-p27-8) · **Size:** S · **Wave:** 43 (parallel with P27-6) · **Spec:** `cli-interface.spec.md` → 1.35.0 (`config explain`, `doctor`)
 
 **Trigger:** contract property 5 (ADR 0008): after P27-1…P27-5 a role, policy, server or denial
 can come from three places and `config explain` names none; `docket doctor` reports malformed
