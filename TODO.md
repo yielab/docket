@@ -11,7 +11,14 @@
 >
 > ---
 >
-> ## ◇ WAVE 37 CLOSED (2026-09-25) — no card claimed
+> ## ▶ ACTIVE BOARD — WAVE 41 (opened 2026-09-26): Phase 27, per-pod configuration (D-43)
+>
+> Wave 41 runs P27-1, P27-2 and P27-3 in parallel, one Sonnet worker per card in an isolated
+> worktree under one integrator; packets in
+> [.agents/handoffs/wave-41-worker-packets.md](.agents/handoffs/wave-41-worker-packets.md).
+> Waves 42 and 43 open only after the previous wave's rollup merges green.
+>
+> **◇ WAVE 37 CLOSED (2026-09-25) — no card claimed.**
 >
 > **Wave 37 closed 2026-09-25** (ROADMAP D-41). A bounded triage ran the product on six surfaces
 > and found twelve reproducible defects; six cards fixed them in two batches of one-card Sonnet
@@ -21,7 +28,7 @@
 > evidence on the local endpoint: the journey's dispatch scene reaches `done — 3 hop(s)` with the
 > reviewer's `APPROVE`, and a `cd`-prefixed production push still asks.
 >
-> ## ◇ PHASE 26 CLOSED (2026-09-26) — the configuration contract (D-42)
+> **◇ PHASE 26 CLOSED (2026-09-26) — the configuration contract (D-42).**
 >
 > **Phase 26 closed 2026-09-26**, 20/20 cards over Waves 38–40, one integrator + one Sonnet
 > worker per card in isolated worktrees; the full board section is archived verbatim in
@@ -97,9 +104,9 @@ release source.
 ---
 
 
-## ◆ PHASE 27 — PLANNED (2026-09-26): per-pod configuration and portable teams (D-43)
+## ▶ WAVE 41 — ACTIVE (opened 2026-09-26): Phase 27, per-pod configuration and portable teams (D-43)
 
-**Planned 2026-09-26, board otherwise clear.** Eight cards in three waves. Decision, the three
+**Opened 2026-09-26 (Wave 41 active; Waves 42–43 queued in this section).** Eight cards in three waves. Decision, the three
 scopes, the resolution rule, the verdict table and the pre-assigned spec versions are in
 [docs/adr/0009-per-pod-configuration-and-portable-teams.md](docs/adr/0009-per-pod-configuration-and-portable-teams.md);
 this section holds only the executable cards. **Activation gate:** the integrator confirms the
@@ -128,7 +135,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P27-1 — a pod has its own role overlay, resolved nearest-wins
 
-**Status:** TODO · **Size:** M · **Wave:** 41 · **Spec:** `role-archetypes.spec.md` → 1.12.0 ("User registry overlay"), `cli-interface.spec.md` → 1.30.0
+**Status:** IN-PROGRESS (@sonnet-p27-1) · **Size:** M · **Wave:** 41 · **Spec:** `role-archetypes.spec.md` → 1.12.0 ("User registry overlay"), `cli-interface.spec.md` → 1.30.0
 
 **Trigger:**
 - `core/archetypes.py::load_registry` reads one overlay, `ARCHETYPE_REGISTRY_FILE`; two pods
@@ -167,7 +174,7 @@ the four lookup sites (read-only edits: add the argument, nothing else).
 
 ### P27-2 — a pod has its own policies, and they only add
 
-**Status:** TODO · **Size:** S · **Wave:** 41 · **Spec:** `security-gates.spec.md` → 0.25.0 (policy store section), `cli-interface.spec.md` → 1.31.0
+**Status:** IN-PROGRESS (@sonnet-p27-2) · **Size:** S · **Wave:** 41 · **Spec:** `security-gates.spec.md` → 0.25.0 (policy store section), `cli-interface.spec.md` → 1.31.0
 
 **Trigger:**
 - `core/policy.py::policy_files` globs `POLICIES_DIR` only; `policy_eval_detail(role, hook, text)`
@@ -206,7 +213,7 @@ the four lookup sites (read-only edits: add the argument, nothing else).
 
 ### P27-3 — an MCP server declares its kind and its exposed tools
 
-**Status:** TODO · **Size:** S · **Wave:** 41 · **Spec:** `mcp-client.spec.md` → 1.5.0 ("Configuration", "Enumeration and adaptation"), `cli-interface.spec.md` → 1.32.0
+**Status:** IN-PROGRESS (@sonnet-p27-3) · **Size:** S · **Wave:** 41 · **Spec:** `mcp-client.spec.md` → 1.5.0 ("Configuration", "Enumeration and adaptation"), `cli-interface.spec.md` → 1.32.0
 
 **Trigger:**
 - `core/mcp_tools.py::_build_tool` registers every remote tool `kind="write"`; README limit 1
