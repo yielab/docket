@@ -118,8 +118,10 @@ def _step_security(want_gates: bool) -> None:
     ui.dim("  Nothing to enable/disable there — see: docket gates status")
 
     if not want_gates:
-        ui.dim("Approval-routing posture recorded as off for this workstation (--no-gates).")
-        ui.console.print("  Record it as on later: 'docket gates enable'.")
+        ui.dim(
+            "Approval-routing posture not recorded for this workstation (--no-gates) — "
+            "nothing on the live path reads this flag regardless (see: docket doctor)."
+        )
         return
 
     tg = apply_approval_routing()
@@ -435,6 +437,9 @@ def bootstrap_workstation(
     _cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(_cfg.DOCKET_HOME, 0o700)
+        # WORKSPACES_DIR is an intermediate dir of the mkdir(parents=True) call above --
+        # harden it too, not just its PROJECTS_DIR child (umask otherwise leaves it open).
+        os.chmod(_cfg.WORKSPACES_DIR, 0o700)
         os.chmod(_cfg.PROJECTS_DIR, 0o700)
     ui.success("Directories created")
     ui.console.print(f"  {_cfg.PROJECTS_DIR}")

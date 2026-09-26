@@ -1058,30 +1058,22 @@ Manage docket's approval-routing and workspace-isolation posture.
 The tool-call gate itself -- the policy engine plus the argument-aware
 high-risk command classifier, both evaluated in `core/tools.py`'s
 `dispatch_tool` chokepoint on every call docket's turn loop makes -- is
-always active and cannot be turned off. What this command manages is
-narrower: a recorded, audited approval-routing posture flag
-(enable/disable) and whether tool execution runs inside a Docker sandbox
-(isolate). Nothing on the live path (`core/tools.py`, `core/approval.py`,
-`core/telegram.py`, `core/agent_loop.py`, `serve.py`) reads the
-approval-routing flag -- an "ask" verdict always sits in docket's own
-approval store, answerable identically by the CLI, HTTP, MCP, and
-Telegram channels regardless of it.
+always active and cannot be turned off. `enable`/`disable` are retired:
+they only flipped a recorded approval-routing flag that nothing on the
+live path (`core/tools.py`, `core/approval.py`,
+`core/telegram.py`, `core/agent_loop.py`, `serve.py`) ever read -- an
+"ask" verdict always sits in docket's own approval store, answerable
+identically by the CLI, HTTP, MCP, and Telegram channels regardless.
+What this command still manages is whether tool execution runs inside
+a Docker sandbox (isolate), which the live turn does consult.
 
 Subcommands:
   status (default)  reports that the tool-call gate is always active,
                       plus approval-routing on/off/unset and
                       workspace-isolation mode
-  enable \[--force\]  records approval-routing posture as on. Does not
-                      change how a gated call's "ask" verdict is
-                      answered: it still sits on docket's own approval
-                      store, answerable by the CLI, HTTP, MCP, and
-                      Telegram channels either way. --force is accepted
-                      for CLI compatibility but has nothing left to
-                      force over.
-  disable            records approval-routing posture as off -- same
-                      caveat: a gated call still blocks on docket's own
-                      approval store and every channel can still answer
-                      it; this flag changes nothing about that
+  enable, disable   retired -- print a notice pointing at `docket
+                      doctor` for today's posture and exit non-zero;
+                      they no longer write anything
   isolate on|off    records whether tool execution should run inside a
                       Docker sandbox. `on` requires docker on PATH --
                       errors, exit 1, if missing. Enforced on the live
@@ -1107,13 +1099,13 @@ Subcommands:
                       Read-only; the pattern list is not yet
                       user-configurable.
 
-`docket init` records approval-routing posture as on by default; pass
---no-gates to opt out -- this changes only the recorded flag, not who
-can answer an "ask" verdict. Every state change is written to the audit
-log. Approvals are answerable headlessly via `docket approve`/`docket
-deny` or `POST /approvals/<token>` (`docket serve`), or MCP, in addition
-to Telegram -- all four channels are audit-logged regardless of this
-flag. See specs/functional/security-gates.spec.md.
+`docket init` still records approval-routing posture as on by default
+(pass --no-gates to skip that write) even though `gates enable`/
+`disable` are retired -- `docket init` is a separate writer with its
+own default. Approvals are answerable headlessly via `docket
+approve`/`docket deny` or `POST /approvals/<token>` (`docket serve`),
+or MCP, in addition to Telegram -- all four channels are audit-logged.
+See specs/functional/security-gates.spec.md.
 
 
 **Aliases:** `security`

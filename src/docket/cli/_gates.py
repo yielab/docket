@@ -1,14 +1,14 @@
-"""docket gates — docket's own tool-call gate + approval-routing/isolation posture.
+"""docket gates — docket's own tool-call gate + workspace-isolation posture.
 
 ``core/tools.py``'s ``pre_tool_call`` policy hook and ``core/security.py``'s
 argument-aware command classifier are unconditionally live on every tool call
 docket dispatches — there is no "enable the gate" step; the gate is always
-on. What ``docket gates`` manages is strictly narrower: a recorded, audited
-approval-routing posture flag (``enable``/``disable``) that nothing on the
-live path reads -- an ``ask`` verdict answers identically via CLI/HTTP/MCP/
-Telegram regardless -- and whether tool execution runs sandboxed
-(``isolate``). ``run_gates(sub, *, want, force)`` returns the process exit
-code; the coordinator wraps it in a Typer command.
+on. ``enable``/``disable`` are retired: the approval-routing flag they wrote
+had no reader anywhere on the live turn path -- see ``_RETIRED_NOTICE``. What
+``docket gates`` still manages is whether tool execution runs sandboxed
+(``isolate``), which the turn loop does consult. ``run_gates(sub, *, want,
+force)`` returns the process exit code; the coordinator wraps it in a Typer
+command.
 """
 
 from __future__ import annotations
@@ -20,6 +20,26 @@ from docket.core import fleet as _fleet
 from docket.core import security as _sec
 from docket.core.audit import audit_log
 
+# `enable`/`disable` retirement notice (security-gates.spec.md's Enablement section): the
+# approval-routing flag they wrote had no reader anywhere on the live turn path. Do not
+# claim a not-yet-shipped replacement command exists.
+_RETIRED_NOTICE = (
+    "docket gates {sub} was retired — it only recorded an approval-routing posture flag "
+    "that nothing on the live path (core/tools.py, core/approval.py, core/telegram.py, "
+    "core/agent_loop.py, serve.py) ever read; every channel answers an 'ask' verdict the "
+    "same way regardless of it.",
+    "Check today's posture:  docket doctor       (or the narrower: docket gates status)",
+    "A wired, per-pod approval setting is planned but not shipped yet — there is no live "
+    "consumer to route this flag to today.",
+)
+
+
+def _retired(sub: str) -> int:
+    ui.console.print(f"[red]✗[/red] {_RETIRED_NOTICE[0].format(sub=sub)}")
+    for line in _RETIRED_NOTICE[1:]:
+        ui.console.print(f"  {line}")
+    return 1
+
 
 def _usage() -> None:
     ui.console.print("[bold]Usage:[/bold] docket gates <command>")
@@ -27,12 +47,6 @@ def _usage() -> None:
     ui.console.print("[bold]Commands:[/bold]")
     ui.console.print(
         "  [green]status[/green]            Show approval-routing and isolation posture"
-    )
-    ui.console.print(
-        "  [green]enable[/green] [--force]  Record approval-routing posture as on (display only)"
-    )
-    ui.console.print(
-        "  [green]disable[/green]           Record approval-routing posture as off (display only)"
     )
     ui.console.print(
         "  [green]isolate[/green] [on|off]  "
@@ -47,6 +61,7 @@ def _usage() -> None:
         "  docket's own tool-call gate (pre_tool_call + the argument-aware command"
         " classifier) is always active — there is nothing here to turn on or off."
     )
+    ui.dim("  'enable'/'disable' are retired — see 'docket gates enable' for why.")
     ui.dim("  Verify anytime with 'docket doctor'.")
 
 
@@ -136,64 +151,20 @@ def _isolate(want: str) -> int:
     return 0
 
 
-def _enable(force: bool) -> int:
-    ui.header("Approval routing")
-    ui.console.print()
-    ui.dim(
-        "  docket's own tool-call gate is always active; this only records approval-routing"
-        " posture — nothing on the live path reads it."
-    )
-    ui.console.print()
-
-    tg_count = _sec.apply_approval_routing()
-    ui.success("Approval routing on (mode=session)")
-    if tg_count > 0:
-        ui.console.print(
-            f"  {tg_count} channel-bound agent(s) configured (see 'docket wire'); a wired Telegram"
-            " chat answers a request it receives, it never gets pushed one."
-        )
-    else:
-        ui.warn(
-            "No channel-bound agents yet — wire one (docket wire <id>) if you want a Telegram"
-            " chat able to answer /approve or /deny."
-        )
-    ui.dim(
-        "  This flag changes nothing about who can answer: CLI (docket approve/deny), HTTP"
-        " (POST /approvals), MCP, and a wired Telegram chat all answer an ask verdict the same"
-        " way regardless of it."
-    )
-
-    audit_log("gates.enable", f"routing=on force={force}")
-    ui.console.print()
-    ui.console.print("  Verify:  [green]docket doctor[/green]")
-    ui.console.print("  Disable: [green]docket gates disable[/green]")
-    return 0
-
-
-def _disable() -> int:
-    ui.header("Disabling approval routing")
-    ui.console.print()
-    _sec.disable_approval_routing()
-    audit_log("gates.disable", "")
-    ui.success("Approval routing off")
-    return 0
-
-
 def run_gates(sub: str | None = None, *, want: str = "on", force: bool = False) -> int:
     """Dispatch the gates subcommand. Returns the process exit code.
 
-    sub:   status (default) | enable | disable | isolate | classes | <anything else → usage>
+    sub:   status (default) | isolate | classes | enable/disable (retired) |
+           <anything else → usage>
     want:  on (default) | off — argument to 'isolate'.
-    force: --force flag for 'enable' (kept for CLI compatibility; routing has no
-           existing-config distinction left to force over).
+    force: accepted (unused) for `enable`'s old CLI compatibility; parsing 'gates enable
+           --force' must not error on the flag itself, only on the retired subcommand.
     """
     subcmd = sub or "status"
     if subcmd == "status":
         return _status()
-    if subcmd == "enable":
-        return _enable(force)
-    if subcmd == "disable":
-        return _disable()
+    if subcmd in ("enable", "disable"):
+        return _retired(subcmd)
     if subcmd == "isolate":
         return _isolate(want)
     if subcmd == "classes":

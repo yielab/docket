@@ -6,9 +6,9 @@ the live module attributes (the same technique as the doctor and trace/audit
 suites). The `docker` binary is stubbed off PATH so isolation reports "needs
 Docker".
 
-There is no daemon and no exec-approvals.json file format -- `docket gates
-enable/disable` only flips fleet.json's approval-routing state (see
-cli/_gates.py); there is no daemon config to write.
+There is no daemon and no exec-approvals.json file format. `docket gates enable/disable` is
+retired; the approval-routing state in fleet.json is still readable (`docket gates
+status`/`doctor`) and still written by `docket init`, but has no remaining CLI writer of its own.
 """
 
 from __future__ import annotations
@@ -143,7 +143,9 @@ class TestGatesStatus:
     def test_status_after_enable_reports_routing_on(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _gates.run_gates("enable")
+        # `gates enable` is retired (TestGatesEnableDisableRetired) -- seed the posture
+        # the way the only remaining writer (`docket init --gates`) does.
+        _sec.apply_approval_routing()
         capsys.readouterr()
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
@@ -151,43 +153,50 @@ class TestGatesStatus:
         assert "Approval routing: on (mode=session)" in out
 
 
-class TestGatesEnableDisable:
-    """`docket gates enable/disable` only flips fleet.json's approval-routing state; there is
-    no daemon exec-approvals.json allowlist to seed, so no idempotent/--force test asserting
-    on repeated exec-approvals.json writes exists here."""
+class TestGatesEnableDisableRetired:
+    """`docket gates enable/disable` is retired: the approval-routing flag it wrote had no
+    reader anywhere on the live path -- see security-gates.spec.md's Enablement section.
+    `status`/`isolate`/`classes` are unaffected."""
 
-    def test_enable_turns_on_routing(
+    def test_enable_prints_retirement_notice_and_exits_nonzero(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         rc = _gates.run_gates("enable")
         out = capsys.readouterr().out
-        assert rc == 0
-        assert "Approval routing on (mode=session)" in out
-        # Routing wired; myshop has a telegram binding → count >= 1.
-        assert "1 channel-bound agent" in out
-        fleet = json.loads(_cfg.FLEET_FILE.read_text())
-        assert fleet["security"]["approvalRoutingState"] == "on"
-        assert fleet["security"]["approvalRoutingMode"] == "session"
+        assert rc != 0
+        assert "retired" in out.lower()
+        assert "docket doctor" in out
+        # Must not claim a not-yet-shipped command exists.
+        assert "pod config" not in out.lower()
 
-    def test_enable_is_idempotent(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        _gates.run_gates("enable")
-        capsys.readouterr()
-        rc = _gates.run_gates("enable")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Approval routing on (mode=session)" in out
-        fleet = json.loads(_cfg.FLEET_FILE.read_text())
-        assert fleet["security"]["approvalRoutingState"] == "on"
-
-    def test_disable_resets_routing(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        _gates.run_gates("enable")
-        capsys.readouterr()
+    def test_disable_prints_retirement_notice_and_exits_nonzero(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         rc = _gates.run_gates("disable")
         out = capsys.readouterr().out
-        assert rc == 0
-        assert "Approval routing off" in out
+        assert rc != 0
+        assert "retired" in out.lower()
+        assert "docket doctor" in out
+
+    def test_enable_writes_nothing_to_fleet(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        before = json.loads(_cfg.FLEET_FILE.read_text())
+        _gates.run_gates("enable")
+        capsys.readouterr()
+        after = json.loads(_cfg.FLEET_FILE.read_text())
+        assert after["security"] == before["security"]
+
+    def test_disable_does_not_clear_a_posture_set_another_way(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _sec.apply_approval_routing()
+        capsys.readouterr()
+        rc = _gates.run_gates("disable")
+        capsys.readouterr()
+        assert rc != 0
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
-        assert fleet["security"]["approvalRoutingState"] == "off"
+        assert fleet["security"]["approvalRoutingState"] == "on"
 
 
 class TestGatesClasses:
@@ -261,13 +270,15 @@ class TestGatesCliFlagParsing:
     """`--force` is parsed out of raw `ctx.args` in `cmd_gates` before `run_gates` ever sees them,
     so an unrecognized flag can only be caught at the real CLI boundary, not through run_gates."""
 
-    def test_enable_force_still_parses(self, oc_dir: Path) -> None:
+    def test_enable_force_still_parses_but_command_is_retired(self, oc_dir: Path) -> None:
         from typer.testing import CliRunner
 
         from docket.cli import app as _app
 
         result = CliRunner().invoke(_app, ["gates", "enable", "--force"])
-        assert result.exit_code == 0
+        # `--force` parses cleanly (no "unrecognized flag" error); `enable` itself is retired.
+        assert "unrecognized flag" not in (result.stdout + str(result.exception or ""))
+        assert result.exit_code != 0
 
     def test_status_rejects_unknown_flag(self, oc_dir: Path) -> None:
         from typer.testing import CliRunner
