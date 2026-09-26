@@ -31,6 +31,7 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 |-----|----------------|
 | [Quick Start](QUICK-START-DOCKET.md) | Ten-minute setup: install, provision your first pod, dispatch a governed turn |
 | **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
+| **[Configuration](CONFIGURATION.md)** | **Every file docket creates, globally and per project: what it controls, what reads it on the live path, and recipes for customizing agents, roles, pipelines, policies and tools** |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
 | [Models, gateways, and harnesses](MODEL-GATEWAYS.md) | Codex/Claude Code/OpenCode portability; OpenRouter and Vercel AI Gateway setup and limits |

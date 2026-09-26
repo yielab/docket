@@ -305,6 +305,9 @@ docket edit manager    # Opens manager's SOUL.md in $EDITOR
 There is nothing to restart — docket has no external daemon or gateway process; the next turn
 picks the edited file up directly.
 
+Which files reach the model, what overwrites your edits, and how to customize roles, pipelines
+and policies are covered in the [Configuration guide](CONFIGURATION.md).
+
 ### Q: How do I know it's working?
 **A:** Check token usage:
 1. Dispatch a task through the pod (`docket pod <project> dispatch`, or `/delegate <task>`
