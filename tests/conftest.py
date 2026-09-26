@@ -104,6 +104,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("TRACES_DIR", "traces"),
     ("APPROVALS_DIR", "approvals"),
     ("POLICIES_DIR", "policies"),
+    ("PLUGINS_DIR", "plugins"),
     ("SESSIONS_DIR", "sessions"),
     ("PORT_ALLOC_FILE", "port-allocations.json"),
     ("CONVERSATIONS_FILE", "docket-conversations.json"),

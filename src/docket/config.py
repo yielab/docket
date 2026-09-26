@@ -46,6 +46,9 @@ AUDIT_LOG = DOCKET_HOME / "audit.log"
 # back than that one backup (see specs/functional/audit.spec.md).
 AUDIT_LOG_MAX_BYTES = int(os.environ.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1024)))
 POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
+# PLUGINS_DIR: operator-applied predicate plugins (*.py), never a codebase path -- see
+# core/plugins.py::discover, which also reads a pod's own pod_config_dir(project)/"plugins".
+PLUGINS_DIR = Path(os.environ.get("PLUGINS_DIR", DOCKET_HOME / "plugins"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
 # RUNS_FILE: the persisted dispatch-run registry — one record per

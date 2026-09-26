@@ -45,10 +45,10 @@ class PodApplyError(ValueError):
 
 @dataclass(frozen=True)
 class ApplyItem:
-    """One planned change: ``kind`` (role/policy/member/pipeline/setting), the thing named, and
-    whether applying it would add, replace, or skip (already matches disk)."""
+    """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing
+    named, and whether applying it would add, replace, or skip (already matches disk)."""
 
-    kind: Literal["role", "policy", "member", "pipeline", "setting"]
+    kind: Literal["role", "policy", "plugin", "member", "pipeline", "setting"]
     name: str
     action: ApplyAction
 
@@ -62,6 +62,12 @@ class _RoleWrite:
 class _PolicyWrite:
     name: str
     text: str
+
+
+@dataclass(frozen=True)
+class _PluginWrite:
+    name: str
+    source: bytes
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,7 @@ class ApplyPlan:
     items: tuple[ApplyItem, ...]
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
+    _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
@@ -204,6 +211,31 @@ def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list
             action = "replace" if dest.is_file() else "add"
             writes.append(_PolicyWrite(name=policy_file.name, text=text))
         items.append(ApplyItem(kind="policy", name=policy_file.name, action=action))
+    return items, writes
+
+
+def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PluginWrite]]:
+    """Plan ``plugins/*.py`` into *project*'s own ``config/plugins/`` -- the same directory
+    ``core.plugins.discover`` reads and ``_export_plugins`` copies back, by sha256: an installed
+    copy with the same hash is left alone, any other content is replaced."""
+    items: list[ApplyItem] = []
+    writes: list[_PluginWrite] = []
+    plugins_dir = directory / "plugins"
+    if not plugins_dir.is_dir():
+        return items, writes
+    dest_dir = _cfg.pod_config_dir(project) / "plugins"
+    for plugin_file in sorted(plugins_dir.glob("*.py")):
+        source = plugin_file.read_bytes()
+        dest = dest_dir / plugin_file.name
+        if (
+            dest.is_file()
+            and hashlib.sha256(dest.read_bytes()).digest() == hashlib.sha256(source).digest()
+        ):
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if dest.is_file() else "add"
+            writes.append(_PluginWrite(name=plugin_file.name, source=source))
+        items.append(ApplyItem(kind="plugin", name=plugin_file.name, action=action))
     return items, writes
 
 
@@ -374,6 +406,8 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     policy_items, policy_writes = _plan_policies(directory, project)
 
+    plugin_items, plugin_writes = _plan_plugins(directory, project)
+
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
 
     pipeline_item, pipeline_write = _plan_pipeline(
@@ -382,7 +416,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     setting_items, setting_writes = _plan_settings(project, raw_settings)
 
-    items = [*role_items, *policy_items, *member_items]
+    items = [*role_items, *policy_items, *plugin_items, *member_items]
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(setting_items)
@@ -393,6 +427,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         items=tuple(items),
         _role_writes=tuple(role_writes),
         _policy_writes=tuple(policy_writes),
+        _plugin_writes=tuple(plugin_writes),
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),
@@ -400,9 +435,9 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
 
 def apply(plan: ApplyPlan) -> ApplyResult:
-    """Write every non-``skip`` item in *plan*, in role -> policy -> member -> pipeline ->
-    setting order (a member's role must exist before it is provisioned). Audits once as
-    ``pod.apply``, only when at least one item actually changed something."""
+    """Write every non-``skip`` item in *plan*, in role -> policy -> plugin -> member ->
+    pipeline -> setting order (a member's role must exist before it is provisioned). Audits
+    once as ``pod.apply``, only when at least one item actually changed something."""
     lead_id = pod.member_id(plan.project, "lead")
 
     for role_write in plan._role_writes:
@@ -419,6 +454,19 @@ def apply(plan: ApplyPlan) -> ApplyResult:
         for policy_write in plan._policy_writes:
             dest = policies_dir / policy_write.name
             dest.write_text(policy_write.text, encoding="utf-8")
+            dest.chmod(0o600)
+
+    if plan._plugin_writes:
+        plugins_dir = _cfg.pod_config_dir(plan.project) / "plugins"
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            _cfg.PODS_DIR.chmod(0o700)
+            plugins_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
+            plugins_dir.parent.chmod(0o700)  # pod_config_dir(project)
+            plugins_dir.chmod(0o700)
+        for plugin_write in plan._plugin_writes:
+            dest = plugins_dir / plugin_write.name
+            dest.write_bytes(plugin_write.source)
             dest.chmod(0o600)
 
     for member_write in plan._member_writes:
@@ -482,6 +530,20 @@ def _export_policies(project: str, directory: Path) -> None:
         (dest_dir / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+def _export_plugins(project: str, directory: Path) -> None:
+    """Copy *project*'s own ``config/plugins/`` files byte-for-byte as ``plugins/<name>.py``
+    -- never a file from a codebase, since a plugin is only ever applied through this pod's
+    own scope."""
+    src_dir = _cfg.pod_config_dir(project) / "plugins"
+    files = sorted(src_dir.glob("*.py")) if src_dir.is_dir() else []
+    if not files:
+        return
+    dest_dir = directory / "plugins"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        (dest_dir / f.name).write_bytes(f.read_bytes())
+
+
 def _export_pipeline(project: str, directory: Path) -> None:
     """Copy *project*'s bound pipeline copy (if ``PodSettings.pipeline`` is set) as
     ``pipeline.yaml`` -- the default filename ``apply`` resolves with no explicit
@@ -524,5 +586,6 @@ def export_pod(project: str, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     _export_roles(project, directory)
     _export_policies(project, directory)
+    _export_plugins(project, directory)
     _export_pipeline(project, directory)
     _export_manifest(project, directory)

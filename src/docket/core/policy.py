@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+import docket.plugins as _plugin_api
+from docket.core import plugins as _plugins
 
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
 VALID_ACTIONS: frozenset[str] = frozenset({"allow", "warn", "redact", "require_approval", "block"})
@@ -39,7 +41,8 @@ _THEN_TO_ACTION: dict[str, str] = {
     "block": "block",
     "redact": "redact",
 }
-_WHEN_PREDICATE_KEYS: frozenset[str] = frozenset({"tool", "path", "matches", "branch"})
+_WHEN_PREDICATE_KEYS: frozenset[str] = frozenset({"tool", "path", "matches", "branch", "plugin"})
+_WHEN_MODIFIER_KEYS: frozenset[str] = frozenset({"with"})  # meaningful only beside "plugin"
 _POLICY_GLOBS: tuple[str, ...] = ("*.json", "*.yaml", "*.yml")
 
 # Most-restrictive-wins ranking.
@@ -57,15 +60,15 @@ _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 
 def _validate_when(when: Any, label: str) -> str:
     """Validate a canonical ``when`` predicate mapping (or one ``anyOf`` item): '' if valid,
-    else the error. Unknown keys are reported against the four leaf predicates -- ``anyOf`` is
+    else the error. Unknown keys are reported against the five leaf predicates -- ``anyOf`` is
     the OR container, not a predicate itself."""
     if not isinstance(when, dict):
         return f"{label}: when must be a mapping"
-    unknown = set(when.keys()) - _WHEN_PREDICATE_KEYS - {"anyOf"}
+    unknown = set(when.keys()) - _WHEN_PREDICATE_KEYS - _WHEN_MODIFIER_KEYS - {"anyOf"}
     if unknown:
         return (
             f"{label}: unknown predicate key(s) {sorted(unknown)} "
-            "(valid: tool, path, matches, branch)"
+            "(valid: tool, path, matches, branch, plugin)"
         )
     matches = when.get("matches")
     if matches is not None:
@@ -73,6 +76,14 @@ def _validate_when(when: Any, label: str) -> str:
             re.compile(str(matches), re.IGNORECASE | re.MULTILINE)
         except re.error as exc:
             return f"{label}: when.matches does not compile: {exc}"
+    plugin = when.get("plugin")
+    if plugin is not None and not str(plugin).strip():
+        return f"{label}: when.plugin must be a non-empty string"
+    with_ = when.get("with")
+    if with_ is not None and not isinstance(with_, dict):
+        return f"{label}: when.with must be a mapping"
+    if "with" in when and not plugin:
+        return f"{label}: when.with requires when.plugin"
     any_of = when.get("anyOf")
     if any_of is not None:
         if not isinstance(any_of, list) or not any_of:
@@ -258,7 +269,8 @@ class PolicyHit:
 
 @dataclass(frozen=True)
 class ToolCallFacts:
-    """The facts a ``when`` predicate can test, beside the hook's rendered text."""
+    """The facts a ``when`` predicate can test, beside the hook's rendered text. ``worktree_root``
+    reaches a plugin's ``PolicyContext`` unchanged; it plays no part in the built-in predicates."""
 
     tool: str
     # Raw call arguments; the `path` predicate reads whichever of path/file_path/file this
@@ -267,6 +279,7 @@ class ToolCallFacts:
     # A zero-argument branch getter, called at most once per `policy_eval_detail` call and
     # only when some loaded policy declares a `branch` predicate.
     branch_of: Callable[[], str]
+    worktree_root: str = ""
 
 
 def _path_arg(args: dict[str, Any]) -> str | None:
@@ -278,11 +291,62 @@ def _path_arg(args: dict[str, Any]) -> str | None:
     return None
 
 
+class _PluginFailClosed(Exception):
+    """A ``when.plugin`` predicate could not be evaluated -- unknown name, import failure, a
+    raise, a non-bool return, or a budget overrun. Raised rather than returned so it wins
+    wherever it appears in a predicate tree, including inside ``anyOf``."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+def _plugin_matches(
+    when: dict[str, Any],
+    call: ToolCallFacts | None,
+    text: str,
+    get_branch: Callable[[], str],
+    role: str,
+    project: str,
+) -> bool:
+    """Evaluate a ``when.plugin`` predicate. Raises ``_PluginFailClosed`` for an unapplied name
+    or a plugin that fails; otherwise returns the plugin's own verdict."""
+    name = str(when["plugin"])
+    try:
+        registry = _plugins.discover(project)
+    except _plugins.PluginError:
+        registry = {}
+    pred = registry.get(name)
+    if pred is None:
+        raise _PluginFailClosed(f"plugin '{name}' is not applied in scope global or pod:{project}")
+    tool_call = _plugin_api.ToolCall(
+        tool=call.tool if call is not None else "",
+        args=dict(call.args) if call is not None else {},
+        rendered=text,
+    )
+    ctx = _plugin_api.PolicyContext(
+        role=role,
+        project=project,
+        branch=get_branch(),
+        worktree_root=call.worktree_root if call is not None else "",
+    )
+    verdict, reason = _plugins.evaluate(pred, tool_call, ctx, dict(when.get("with") or {}))
+    if reason:
+        raise _PluginFailClosed(f"plugin '{name}': {reason}")
+    return verdict
+
+
 def _predicate_matches(
-    when: dict[str, Any], call: ToolCallFacts | None, text: str, get_branch: Callable[[], str]
+    when: dict[str, Any],
+    call: ToolCallFacts | None,
+    text: str,
+    get_branch: Callable[[], str],
+    role: str = "",
+    project: str = "",
 ) -> bool:
     """Evaluate one canonical ``when`` mapping: implicit AND across its keys, ``anyOf`` an OR
-    over its items AND'd with any siblings."""
+    over its items AND'd with any siblings. A failing ``plugin`` predicate raises
+    ``_PluginFailClosed`` instead of returning, so the caller fails the whole policy closed."""
     # A `tool`/`path`/`branch` predicate never matches with `call is None` (a text-only hook);
     # `matches` always can, since it only needs the rendered text every hook already has.
     if "tool" in when and (call is None or call.tool != when["tool"]):
@@ -297,9 +361,13 @@ def _predicate_matches(
         return False
     if "branch" in when and (call is None or not fnmatch(get_branch(), str(when["branch"]))):
         return False
+    if "plugin" in when and not _plugin_matches(when, call, text, get_branch, role, project):
+        return False
     any_of = when.get("anyOf")
     if any_of:
-        return any(_predicate_matches(item, call, text, get_branch) for item in any_of)
+        return any(
+            _predicate_matches(item, call, text, get_branch, role, project) for item in any_of
+        )
     return True
 
 
@@ -375,7 +443,11 @@ def policy_eval_detail(
 
         when = p.get("when")
         if isinstance(when, dict):
-            fires = _predicate_matches(when, call, text, get_branch)
+            try:
+                fires = _predicate_matches(when, call, text, get_branch, role, project)
+            except _PluginFailClosed as exc:
+                consider("block", str(p.get("id", "")), exc.message)
+                continue
         else:
             pattern = str((p.get("match") or {}).get("pattern", ""))
             fires = bool(re.search(pattern, text, re.IGNORECASE | re.MULTILINE))

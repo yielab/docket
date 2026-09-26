@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.26.0
+**Version**: 0.27.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -16,7 +16,10 @@ also extend the curated allowlist for its own turns only, via `PodSettings.allow
 item 13. Since ROADMAP P27-2, a pod may also install its own `pre_tool_call`/`pre_input`/
 `pre_output` policy files, which join the global set in the same most-restrictive-wins evaluation
 and can only ever add a restriction, never override a global `block`/`require_approval` — see
-"Policy engine on the live path" requirement 9 and In-turn tool-call gate requirement 4.
+"Policy engine on the live path" requirement 9 and In-turn tool-call gate requirement 4. A
+`when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
+from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
+below.
 **Last Updated**: 2026-09-26
 
 ## Purpose
@@ -488,6 +491,63 @@ predicates it adds beside the rendered text.
    proven by the existing policy suite passing unmodified in substance (only the installed file's
    *extension* is a visible difference, e.g. `docket policies init` now reports `installed:
    block-destructive.yaml`).
+
+### Predicate plugins (implemented, ADR 0010)
+
+A closed predicate vocabulary (`tool`, `path`, `matches`, `branch`) cannot express a rule that
+needs project-specific knowledge — "ask when a migration file is touched outside the tree of the
+app that owns it" has no path but a fragile regex. This section adds a fifth predicate,
+`plugin`, that calls operator-applied Python instead of inventing an expression language, with
+the trust boundary a policy's live-path position demands: a policy runs inside the gate on every
+tool call the agent itself makes, so a plugin loaded from the codebase the agent edits would let
+it rewrite its own gate for the next turn.
+
+1. `docket.plugins` **MUST** be the only module a plugin file imports for the API: it carries
+   `PLUGIN_API_VERSION`, the `@predicate(name)` decorator, and the frozen `ToolCall(tool, args,
+   rendered)` / `PolicyContext(role, project, branch, worktree_root)` types a predicate receives.
+   It **MUST NOT** import anything from `core/`, since a plugin is operator code loaded by
+   convention, not part of the policy engine.
+2. `core.plugins.discover(project: str = "") -> dict[str, LoadedPredicate]` **MUST** search only
+   `PLUGINS_DIR` (global, `$DOCKET_HOME/plugins`) and, when *project* is given, that pod's own
+   `pod_config_dir(project)/plugins` -- **never** a codebase path. Each `*.py` file **MUST** be
+   imported with `importlib.util.spec_from_file_location`, draining `docket.plugins.REGISTRY`
+   after each file; a duplicate predicate name across files **MUST** raise `PluginError` naming
+   both files. A cache keyed by a file's `(mtime_ns, size)` **MUST** skip re-importing an
+   unchanged file, so a live turn does not re-import on every call.
+3. `core.plugins.evaluate(pred, call, ctx, with_, *, budget_ms=250) -> tuple[bool, str]` **MUST**
+   never raise: a predicate that raises, returns a non-`bool`, or exceeds *budget_ms* (measured
+   wall clock around the call -- Python cannot pre-empt a running predicate, so the budget denies
+   only after the fact) **MUST** return `(False, <reason>)` naming what went wrong; a normal
+   `bool` return **MUST** carry `reason=""`. Every call **MUST** write one `policy.plugin` audit
+   entry naming the predicate, its scope, its sha256, and the resulting `verdict` (`allow` or
+   `deny`).
+4. A canonical policy's `when` **MAY** carry `plugin: <name>` with an optional `with: <mapping>`,
+   validated the same way the other four predicate keys are (`when.plugin` **MUST** be a
+   non-empty string; `when.with`, when present, **MUST** be a mapping and **MUST NOT** appear
+   without `when.plugin`; the unknown-key error names all five predicates).
+5. `core._predicate_matches` **MUST** resolve `discover(project)` for a `plugin` predicate and
+   evaluate the named entry. An unknown name, or any `PluginError` from `discover` **MUST** fail
+   the whole policy closed as `block`, naming the plugin and the two scopes searched, regardless
+   of the policy's own `then:` -- a policy that names a plugin nobody applied **MUST NOT** ever
+   silently allow. A plugin that `evaluate` denies with a non-empty reason **MUST** likewise fail
+   the policy closed as `block`, naming the reason; a plugin `evaluate` returns `(False, "")` for
+   **MUST** be treated as an ordinary non-match (the predicate did not fire, the policy does not
+   fire), never as a failure. This fail-closed behaviour **MUST** win regardless of where the
+   `plugin` key appears in the predicate tree, including inside `anyOf`, so it cannot be
+   neutralized by pairing it with an always-true sibling.
+6. `core/tools.py::evaluate_tool_call` **MUST** pass its `ToolCallFacts.worktree_root` (a new
+   field, `ctx.roots[0]` when the call has roots, else `""`) through to a plugin's
+   `PolicyContext.worktree_root` unchanged; this is the only change this requirement makes to
+   that function.
+7. `docket plugins list [--pod <p>]` **MUST** print every predicate `discover` returns for that
+   scope -- name, scope, file, sha256 -- global first, then the pod's own; `"No plugins
+   applied."` when empty. A predicate present only under a codebase's own `.docket/plugins/`
+   **MUST NOT** appear: only `PLUGINS_DIR` and a pod's own overlay are ever searched.
+8. `docket pod <p> apply` **MUST** copy a recipe's `plugins/*.py` into that pod's own
+   `pod_config_dir(project)/plugins`, by sha256 (an installed copy with the same hash is left
+   alone, any other content is replaced) -- exactly the same by-hash copy `apply` already gives
+   policies. A later edit to the codebase's own copy **MUST** change nothing until the operator
+   applies again.
 
 ### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
 
@@ -1304,6 +1364,20 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.27.0 (2026-09-26)
+
+- New "Predicate plugins" section: a `when` predicate can name `plugin: <name>` (with an
+  optional `with: <mapping>`), resolved by `core.plugins.discover(project)` against
+  `docket.plugins`-authored Python -- global (`$PLUGINS_DIR`) then a pod's own
+  `config/plugins/`, never a codebase. `core.plugins.evaluate` never raises: a raise, a
+  non-bool return, or a budget overrun (default 250 ms, measured wall clock) all deny with a
+  reason, audited as one `policy.plugin` entry naming the predicate, its scope, sha256, and
+  verdict. An unknown plugin name, a `PluginError`, or a denying reason all fail the whole
+  policy closed as `block`, regardless of the policy's own `then:` and regardless of where
+  `plugin` sits in the predicate tree (including inside `anyOf`). `docket plugins list
+  [--pod <p>]` lists every applied predicate; `docket pod <p> apply` copies a recipe's
+  `plugins/*.py` into pod scope by sha256, the same way it already copies policies.
 
 ### Version 0.26.0 (2026-09-26)
 

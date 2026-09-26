@@ -68,6 +68,7 @@ OBSERVABILITY
   policies list      List installed guardrail policies
   policies init      Install baseline policies (block-destructive, injection, redact)
   policies test      Dry-run policy evaluator on any text
+  plugins list       List operator-applied predicate plugins (global + pod)
   approve  <token>   Grant a pending HITL approval
   deny     <token>   Deny a pending HITL approval
 

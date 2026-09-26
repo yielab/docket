@@ -118,7 +118,7 @@ GROUPS: list[tuple[str, list[str]]] = [
             "mcp",
         ],
     ),
-    ("Security & Audit", ["gates", "audit", "policies", "approve", "deny"]),
+    ("Security & Audit", ["gates", "audit", "policies", "plugins", "approve", "deny"]),
     ("Observability Commands", ["runs", "trace", "metrics", "harness"]),
 ]
 
@@ -418,6 +418,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         ("POLICIES_DIR",),
         "Root of installed/edited policy JSON (`docket policies`, `docket gates`)",
         "`$DOCKET_HOME/policies`",
+    ),
+    (
+        ("PLUGINS_DIR",),
+        "Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`)",
+        "`$DOCKET_HOME/plugins`",
     ),
     (
         ("APPROVALS_DIR",),
