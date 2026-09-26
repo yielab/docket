@@ -381,7 +381,7 @@ listing the added lines.
 
 ### P27-9 — pod-scoped custom roles resolve in the roster, and `apply` writes pod scope
 
-**Status:** IN-PROGRESS (@sonnet-p27-9) · **Size:** S · **Wave:** 43 (serially after P27-6, before P27-7) · **Spec:** `pod-dispatch.spec.md` → 6.18.0 (membership), `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: apply" corrected), `role-archetypes.spec.md` → 1.16.0 ("Shipped recipes" corrected)
+**Status:** DONE (2026-09-26, 3dcd099, merged in Wave 43) · **Size:** S · **Wave:** 43 (serially after P27-6, before P27-7) · **Spec:** `pod-dispatch.spec.md` → 6.18.0 (membership), `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: apply" corrected), `role-archetypes.spec.md` → 1.16.0 ("Shipped recipes" corrected)
 
 **Trigger (deterministic reproduction, found by the P27-6 worker on 2026-09-26):** a role
 registered only in a pod overlay (`add_user_archetype(doc, project)`) can be provisioned as a
@@ -424,7 +424,7 @@ the three spec sections named, `tests/unit/core/test_pod.py`,
 
 ### P27-7 — `docket pod <p> export <dir>`, and the round trip is the proof
 
-**Status:** TODO · **Size:** S · **Wave:** 43 (serially after P27-6) · **Spec:** `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: export"), `cli-interface.spec.md` → 1.34.0
+**Status:** IN-PROGRESS (@sonnet-p27-7) · **Size:** S · **Wave:** 43 (serially after P27-6) · **Spec:** `pod-blueprints.spec.md` → 1.7.0 ("Pod manifests: export"), `cli-interface.spec.md` → 1.34.0
 
 **Trigger:** the deferred manifest's own trigger, "a pod reproduced on a second machine", needs
 the write direction; `roles show` already emits the YAML wire format, the bound pipeline copy and
