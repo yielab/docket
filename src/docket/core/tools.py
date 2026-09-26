@@ -55,6 +55,7 @@ class ToolContext:
     sandbox: SandboxMode = "off"
     cancellation_check: Callable[[], bool] | None = None
     approval_mode: Literal["wait", "refuse"] = "wait"
+    allow_commands: tuple[str, ...] = ()
 
 
 @dataclass
@@ -224,7 +225,7 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
     command_reason = ""
     if tool.kind == "exec":
         command = str(args.get("command") or "")
-        cmd_verdict = classify_command(command)
+        cmd_verdict = classify_command(command, extra_bins=frozenset(ctx.allow_commands))
         if cmd_verdict.action != "allow":
             command_decision = "ask" if cmd_verdict.action == "ask" else "deny"
             command_reason = cmd_verdict.reason

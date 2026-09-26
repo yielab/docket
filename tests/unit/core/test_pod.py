@@ -208,3 +208,44 @@ class TestPodSettings:
         settings = pod.PodSettings.load_for("shop")
         assert settings.value_and_source("maxReworkCycles", "shop") == (3, "set")
         assert settings.value_and_source("budgetUsd", "shop") == (0.0, "default")
+
+
+class TestPodSettingsAllowCommands:
+    """`PodSettings.allowCommands`: a pod's own extra unattended binaries."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").allow_commands == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "pytest, uv, pytest"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("pytest", "uv")
+
+    def test_a_bin_already_on_safe_bins_is_silently_dropped(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "pytest, ls"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("pytest",)
+
+    def test_rejects_a_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "./pytest")
+
+    def test_rejects_a_shell_metacharacter(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "pytest;rm")
+
+    @pytest.mark.parametrize("name", ["eval", "exec", "source", ".", "export"])
+    def test_rejects_opaque_or_scope_changing_names(self, name: str) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", name)
+
+    def test_rejects_a_high_risk_class_bin(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="allowCommands"):
+            pod.PodSettings.coerce("allowCommands", "git")
+
+    def test_coerce_returns_the_canonical_comma_joined_form(self) -> None:
+        assert pod.PodSettings.coerce("allowCommands", "uv, pytest") == "uv,pytest"
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"allowCommands": "pytest,uv"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("allowCommands", "shop") == ("pytest,uv", "set")

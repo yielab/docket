@@ -215,6 +215,24 @@ class TestMostRestrictiveWins:
         assert verdict.decision == "deny"
         assert verdict.policy_id == "custom-block"
 
+    def test_policy_block_overrides_a_pod_allow_commands_entry(self, workspace: Path) -> None:
+        """A pod's `allowCommands` only widens the classifier's own membership check; a
+        `pre_tool_call` block policy on the same binary still wins."""
+        _write_policy("no-pytest", r"\bpytest\b", "block", message="nope")
+        extended_ctx = ToolContext(
+            agent_id="demo-implementer",
+            role="implementer",
+            project="demo",
+            roots=(workspace,),
+            timeout=10,
+            allow_commands=("pytest",),
+        )
+        bash_tool = builtin_registry().get("bash")
+        assert bash_tool is not None
+        verdict = evaluate_tool_call(bash_tool, {"command": "pytest -q"}, extended_ctx)
+        assert verdict.decision == "deny"
+        assert verdict.policy_id == "no-pytest"
+
     def test_classifier_ask_overrides_a_policy_allow(self, ctx: ToolContext) -> None:
         bash_tool = builtin_registry().get("bash")
         assert bash_tool is not None

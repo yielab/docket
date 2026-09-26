@@ -103,6 +103,18 @@ def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> s
     return ""
 
 
+def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
+    """This pod's ``allowCommands`` setting, or empty for a non-pod agent or an
+    unreadable settings store -- fail closed, never grants more than SAFE_BINS."""
+    project = _pod.pod_of(agent_id)
+    if project is None:
+        return ()
+    try:
+        return _pod.PodSettings.load_for(project).allow_commands
+    except _pod.PodSettingsError:
+        return ()
+
+
 def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]:
     """Fail-closed go/no-go for this turn's isolation posture. Returns ``(want_sandbox,
     refusal)``; a non-``None`` refusal means isolation is on but no backend (docker/bwrap) is
@@ -218,6 +230,7 @@ class DocketDriver:
                 cancellation_signal.observe if cancellation_signal is not None else None
             ),
             approval_mode=approval_mode,
+            allow_commands=_resolve_allow_commands(agent_id),
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside

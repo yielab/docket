@@ -12,16 +12,18 @@ one function here with I/O — it reads a member's recorded meta via `core/fleet
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import Any, ClassVar, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic import ValidationError as _PydanticValidationError
 
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.core import security as _security
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
@@ -277,7 +279,17 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "maxReworkCycles": "max_rework_cycles",
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
+    "allowCommands": "allow_commands",
 }
+
+# allowCommands validation: no path segment, no shell metacharacter -- this is
+# the same charset a bare basename can use, nothing that could resolve to a
+# different binary or escape the allowlist check it feeds.
+_INVALID_BIN_NAME_CHARS = re.compile(r"[^A-Za-z0-9_.+-]")
+# Opaque/scope-changing shell names: allowlisting these would let a pod
+# smuggle an arbitrary binary in behind a name docket cannot statically
+# classify, the same reason classify_command keeps them off SAFE_BINS.
+_OPAQUE_COMMAND_NAMES: frozenset[str] = frozenset({"eval", "exec", "source", ".", "export"})
 
 
 # Typed, validated view over the pod Lead's dispatch-configuration meta keys
@@ -298,6 +310,7 @@ class PodSettings(BaseModel):
     max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
+    allow_commands: tuple[str, ...] = Field((), alias="allowCommands")
 
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
@@ -306,7 +319,34 @@ class PodSettings(BaseModel):
         "maxReworkCycles",
         "turnTimeoutS",
         "verifyTimeoutS",
+        "allowCommands",
     )
+
+    @field_validator("allow_commands", mode="before")
+    @classmethod
+    def _parse_allow_commands(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated exact binary basenames. Rejects a path segment, a shell
+        metacharacter, an opaque/scope-changing name, or a high-risk-class binary;
+        a name already on ``SAFE_BINS`` is accepted but dropped (redundant)."""
+        if value in (None, ""):
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        high_risk_bins = {b for hrc in _security.HIGH_RISK_PATTERNS for b in hrc.bins}
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip()
+            if not name:
+                continue
+            if _INVALID_BIN_NAME_CHARS.search(name):
+                raise ValueError(f"{name!r} is not a valid binary basename")
+            if name in _OPAQUE_COMMAND_NAMES:
+                raise ValueError(f"{name!r} is opaque/scope-changing, cannot be allowlisted")
+            if name in high_risk_bins:
+                raise ValueError(f"{name!r} names a high-risk action class, cannot be allowlisted")
+            if name in _security.SAFE_BINS:
+                continue  # already unattended-safe -- redundant, silently dropped
+            kept.setdefault(name, None)
+        return tuple(kept.keys())
 
     @classmethod
     def _validated(cls, present: dict[str, str]) -> PodSettings:
@@ -328,19 +368,27 @@ class PodSettings(BaseModel):
         return cls._validated(present)
 
     @classmethod
-    def coerce(cls, key: str, value: str) -> float | int:
-        """Validate *value* for *key* and return the number a caller should
-        persist via ``core.fleet.meta_set``; never writes anything itself."""
+    def coerce(cls, key: str, value: str) -> float | int | str:
+        """Validate *value* for *key* and return the number or comma-joined form a
+        caller should persist via ``core.fleet.meta_set``; never writes itself."""
         if key not in cls.KEYS:
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
         settings = cls._validated({key: value})
-        return cast("float | int", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
+        return cast(
+            "float | int | str", cls._stored_form(getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
+        )
 
-    def value_and_source(self, key: str, project: str) -> tuple[float | int | None, str]:
+    @staticmethod
+    def _stored_form(value: float | int | tuple[str, ...] | None) -> float | int | str | None:
+        """A tuple-valued setting's meta-store form: comma-joined, matching how
+        it is read back (``meta_get`` always returns a plain string)."""
+        return ",".join(value) if isinstance(value, tuple) else value
+
+    def value_and_source(self, key: str, project: str) -> tuple[float | int | str | None, str]:
         """This setting's value plus whether it is "set" (Lead meta) or
         "default" (this model's own default)."""
         lead_id = member_id(project, "lead")
         source = "set" if _fleet.meta_get(lead_id, key, "") else "default"
-        return getattr(self, _SETTING_FIELD_BY_ALIAS[key]), source
+        return self._stored_form(getattr(self, _SETTING_FIELD_BY_ALIAS[key])), source

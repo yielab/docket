@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.22.0
+**Version**: 0.23.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -9,8 +9,11 @@ enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`)
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
 in-turn tool-call gate section below. The approval-routing posture flag `docket gates
 enable`/`disable` used to write is retired -- see Enablement requirement 2. Cancellation reaches
-an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers.
-**Last Updated**: 2026-09-25
+an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers. A pod may
+also extend the curated allowlist for its own turns only, via `PodSettings.allowCommands` and
+`ToolContext.allow_commands` — see Tool-approval gates requirement 1 and In-turn tool-call gate
+item 13.
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -80,7 +83,24 @@ are owned here, not there.
    exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
    function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
    `cd`-prefixed or otherwise-shaped command cannot get a different answer in the dry-run than it
-   would live.
+   would live. **A pod MAY extend the curated allowlist for its own turns** via
+   `core.pod.PodSettings.allowCommands` (`docket pod <project> config set allowCommands
+   <bin>[,<bin>...]`, comma-separated exact basenames): `core/security.py::classify_command` takes
+   an `extra_bins` parameter, default an empty `frozenset`, so every prior verdict in this spec is
+   byte-identical when it is unset. A configured extra bin is folded into the `SAFE_BINS`
+   membership check *only* — it does not widen the opaque-marker check or the high-risk-class
+   check, both of which still run against the full command line first, so `uv run pytest && git
+   push origin main` still asks even with `pytest`/`uv` allowlisted. Every extra bin is treated as
+   redirect-sensitive, the same conservative rule `echo` gets, since docket cannot know whether a
+   pod-supplied binary's argument is model-composed text. Write-time validation
+   (`core.pod.PodSettings`) rejects a value containing a path separator or shell metacharacter, the
+   opaque/scope-changing names `eval`/`exec`/`source`/`.`/`export`, and any name appearing in a
+   `HighRiskClass.bins` list (e.g. `git`, `npm`) — those stay governed exclusively by the classes
+   below, never individually re-opted-in; a name already on `SAFE_BINS` is redundant and is
+   silently dropped rather than rejected. This extension is strictly per-pod: only the turn of an
+   agent belonging to that pod carries the setting (see "In-turn tool-call gate" item 13 below for
+   the live-path wiring), and a `pre_tool_call` policy `block`/`require_approval` on the same
+   binary still wins (most-restrictive-wins, item 3 of the next section).
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
    channel (CLI `docket approve`/`docket deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
@@ -511,6 +531,20 @@ tool call to take.**
     call made from within the shell command rather than by docket's own dispatcher. A caller that
     never passes `cancelled` (the default, `None`) **MUST** see today's exact behavior, including
     the timeout message, byte for byte.
+
+13. **A pod's `allowCommands` reaches the live gate via `ToolContext`, never read inside
+    `core/tools.py` itself.** `ToolContext` carries `allow_commands: tuple[str, ...] = ()`;
+    `evaluate_tool_call` is its one consumer, passing `classify_command(command,
+    extra_bins=frozenset(ctx.allow_commands))` for an `exec` tool — the only edit this capability
+    makes inside `core/tools.py`. The field is filled once per turn by the driver
+    (`edges/adapters/docket_runtime.py::run_turn`), which resolves the calling agent's pod
+    (`core.pod.pod_of`) and reads that pod's `PodSettings.allow_commands` — the same source
+    `docket pod <project> config get/set/unset allowCommands` reads and writes, so there is one
+    reader and one writer, not a second copy. A non-pod agent, or a pod whose Lead's stored
+    settings fail `PodSettings` validation for any reason, **MUST** resolve to an empty tuple
+    (fail closed to the unmodified `SAFE_BINS` allowlist) rather than raise out of `run_turn` or
+    grant anything wider. An agent belonging to a different pod **MUST NOT** observe another pod's
+    `allowCommands` — the setting is read from that turn's own agent's pod only.
 
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
@@ -1155,6 +1189,21 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.23.0 (2026-09-26)
+
+- Tool-approval gates requirement 1 and In-turn tool-call gate item 13: a pod may extend the
+  curated allowlist for its own turns via `core.pod.PodSettings.allowCommands`
+  (`docket pod <project> config set/unset allowCommands`, comma-separated exact basenames).
+  `core/security.py::classify_command` gains an `extra_bins` parameter (default empty, so every
+  prior verdict stays byte-identical); `ToolContext.allow_commands` carries it into
+  `evaluate_tool_call`'s one call site, filled per turn by
+  `edges/adapters/docket_runtime.py::run_turn` from the calling agent's own pod, never read inside
+  `core/tools.py`. Write-time validation rejects a path/shell-metacharacter, an
+  opaque/scope-changing name, or a `HighRiskClass.bins` member; a name already on `SAFE_BINS` is
+  silently dropped. Opaque markers, high-risk classes, and `pre_tool_call` policies are unaffected
+  and still apply most-restrictive-wins; an unreadable stored setting or a non-pod agent fails
+  closed to no extra bins (P26-8).
 
 ### Version 0.22.0 (2026-09-25)
 
