@@ -1281,12 +1281,17 @@ def _cmd_models_provider(rest: list[str]) -> None:
 
     name = pos[0] if len(pos) > 0 else _prov.DEFAULT_PROVIDER
     base_url = pos[1] if len(pos) > 1 else _prov.DEFAULT_BASE_URL
+    model_id = opts.get("model", _prov.DEFAULT_MODEL_ID)
+    # Without an explicit --name, the label must derive from --model, never
+    # carry the shipped "Qwen3 30B-A3B (local)" caption for a different
+    # model. The shipped default model id keeps its shipped display name.
+    default_label = _prov.DEFAULT_MODEL_NAME if model_id == _prov.DEFAULT_MODEL_ID else model_id
     raise typer.Exit(
         _provider.run_provider_add(
             name=name,
             base_url=base_url,
-            model_id=opts.get("model", _prov.DEFAULT_MODEL_ID),
-            model_name=opts.get("name", _prov.DEFAULT_MODEL_NAME),
+            model_id=model_id,
+            model_name=opts.get("name", default_label),
             ctx=int(opts.get("ctx", _prov.DEFAULT_CTX)),
             max_tokens=int(opts.get("max-tokens", _prov.DEFAULT_MAX_TOKENS)),
         )

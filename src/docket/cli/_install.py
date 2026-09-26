@@ -447,6 +447,8 @@ def bootstrap_workstation(
     ui.console.print()
 
     ui.header("Step 3: Configuring the default model")
+    # Persists into docket-models.json's `default` -- the one place a
+    # default model lives; `set_default_model` no longer writes fleet.json.
     _fleet.set_default_model(selected_model)
     ui.success("Default model configured")
     ui.console.print(f"  Default model: {selected_model}")

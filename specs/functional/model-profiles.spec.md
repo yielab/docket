@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.8.2
+**Version**: 2.10.0
 **Status**: Complete
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -222,6 +222,30 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
    registered context/output limits, and reach the ordinary non-streaming Chat Completions tool
    wire. Default tests remain hermetic; the local `127.0.0.1:8081` canary is opt-in and keyless.
 
+### The default model (single source)
+
+1. `docket-models.json`'s `default` key **MUST** be the only default model of record. Nothing
+   else is consulted on the live path — an org-wide default written by an older docket version
+   under `fleet.json`'s `defaults.model` field is never read there again once migrated (rule 2).
+2. On first read after upgrade, a non-empty `fleet.json` `defaults.model` **MUST** be ported into
+   the registry's `default` (only when the registry does not already have an explicit `default` of
+   its own), and the `fleet.json` field **MUST** then be cleared. This runs at most once — a
+   no-op on every later read, the same shape as the `profiles:` → `roles:` migration above.
+3. `docket init`'s default-model step and `docket models set default` / `preset` / `reset`
+   **MUST** write only to the registry — never to `fleet.json`.
+
+### Provider registration display fields
+
+1. `docket models provider add <name> <base-url> --model <id>` given no `--name` **MUST** label
+   the registered model after `<id>`, not a caption unrelated to the selected model. The shipped
+   default model id (`core/provider.py`'s `DEFAULT_MODEL_ID`) is the one id that keeps the shipped
+   "Qwen3 30B-A3B (local)" caption when neither `--model` nor `--name` is given.
+2. The per-model `name`, `cost`, `reasoning` and `input` fields, and the provider block's
+   top-level `api` field, are **display-only** — `edges/adapters/llm.py`'s `resolve_endpoint`
+   reads only `baseUrl`, `apiKey`, `models[].id`, `models[].contextWindow` and
+   `models[].maxTokens` to route a request. Docket **MUST NOT** claim these display-only fields
+   affect endpoint resolution, request routing, or pricing.
+
 ### Pricing
 
 1. Each built-in direct-provider model whose price Docket claims **MUST** have a pricing entry in
@@ -394,6 +418,21 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.10.0 (2026-09-26)
+
+- Added "The default model (single source)": `docket-models.json`'s `default` is now the only
+  default model of record. `fleet.json`'s `defaults.model` (the org-wide default `docket init`
+  used to write) is ported into the registry on first read when the registry has no `default` of
+  its own yet, then cleared — `core/fleet.py`'s `get_default_model`/`set_default_model` delegate to
+  the registry and never read or write the fleet field again. Closes the gap where `models set
+  default`/`models preset` changed the registry but left the fleet copy stale, so the hidden
+  `_json default-model-get` bridge (`cli/__init__.py`) answered from the wrong source.
+- Added "Provider registration display fields": `docket models provider add --model <id>` with no
+  `--name` now labels the entry after `<id>` instead of always defaulting to the shipped
+  "Qwen3 30B-A3B (local)" caption; the per-model `name`/`cost`/`reasoning`/`input` fields and the
+  provider block's `api` field are documented as display-only, matching what
+  `edges/adapters/llm.py`'s `resolve_endpoint` actually reads.
 
 ### Version 2.8.2 (2026-09-21)
 
