@@ -332,9 +332,11 @@ the way the limits below describe.
   only when the owned loop reaches a `safe checkpoint`. A running `bash` command is killed, but an
   HTTP call or any other tool handler already executing may finish before its result is discarded
   or retained atomically.
-- **A read-only role gets no MCP tools at all:** nothing can prove a remote tool is read-only, so
-  every MCP tool is treated as a write and a Reviewer receives none, not a narrowed subset. Each
-  configured stdio server is also re-spawned per turn; there is no listing cache.
+- **MCP tools are writes unless the operator says otherwise:** nothing can prove a remote tool is
+  read-only, so a server left at the default is treated as write and a Reviewer receives none of
+  its tools. A server declared `--kind read` reaches read-only roles; that is an operator
+  assertion, not a verified fact. Each configured stdio server is also re-spawned per turn; there
+  is no listing cache.
 - **Telegram is inbound-only:** four verbs, no free-text chat, and docket never messages a chat
   first — no approval notifications, no completion reports.
 - **Metrics counters are not monotonic:** they count what current storage holds, so audit

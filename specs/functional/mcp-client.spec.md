@@ -535,6 +535,16 @@ dispatch_tool(
 
 ## Changelog
 
+### Version 1.5.0 (2026-09-26)
+
+- Requirements 32-33 added: `McpServerConfig` gains `kind: read|write` (default `write`, an
+  operator assertion never inferred from the server) and `tools` (an allow-list; empty means every
+  advertised tool). `_build_tool` registers each adapted tool with the server's declared kind
+  instead of `write` unconditionally, so a server declared `read` survives a role's `write`
+  denial; a tool outside a non-empty `tools` list is recorded as skipped. Requirement 6 reworded;
+  Status, Non-goals, Interface Contracts, Wire format and CLI syntax updated for `--kind`/`--tools`.
+  A file from before this version loads unchanged.
+
 ### Version 1.4.0 (2026-09-21)
 
 - Requirement 21 reworded (W36-C2): `--env`/`--timeout` rejection is scoped to flags given before `--`, and the rule holds through the real CLI entry point, where Click used to consume the separator and `docket mcp servers add` always failed.

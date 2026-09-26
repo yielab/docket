@@ -78,11 +78,10 @@ def validate_policy(path: Path) -> str:
 
 
 def _pod_policies_dir(project: str) -> Path | None:
-    """This pod's own policy directory, or ``None`` for no pod (kept local to this module,
-    independent of any sibling per-pod config-path helper elsewhere)."""
+    """This pod's own policy directory under ``pod_config_dir``, or ``None`` for no pod."""
     if not project:
         return None
-    return _cfg.PODS_DIR / project / "config" / "policies"
+    return _cfg.pod_config_dir(project) / "policies"
 
 
 def policy_files(project: str = "") -> list[Path]:

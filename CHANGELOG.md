@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pod has its own role overlay and its own policies.** `docket roles add|list|show --pod <p>`
+  write and resolve `~/.docket/workspaces/pods/<p>/config/roles.json` above the global overlay for
+  that pod alone, and `docket policies list|test|validate --pod <p>` fold that pod's
+  `config/policies/*.json` into the same most-restrictive-wins evaluation, so a pod's policies can
+  only add restrictions. Both reach a member's live turn, including a standalone one.
+- **An MCP server declares its kind and its exposed tools.** `docket mcp servers add <name> --kind
+  read|write --tools a,b -- <cmd>`: a server declared `read` now reaches a read-only role instead of
+  being dropped with everything else; `--tools` limits which advertised tools register. Undeclared
+  servers keep the fail-closed `write` default.
 - **A pod's dispatch settings are a typed, validated, writable configuration surface.**
   `docket pod <p> config [get|set|unset] <key> [<value>]` (with `--json` on `get`) covers nine
   keys — `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`,

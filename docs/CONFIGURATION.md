@@ -389,10 +389,11 @@ Every tool call passes one chokepoint that applies, in order:
 
 **Tool denials (per role).** The built-in tools are `read`, `glob`, `grep`, `fetch` (read kind),
 `write` and `edit` (write kind), and `bash` (exec kind). MCP tools arrive as
-`mcp__<server>__<tool>` and count as write kind.
+`mcp__<server>__<tool>` and carry the kind their server declares (`docket mcp servers add --kind
+read|write`, default `write`; `--tools a,b` limits which of its tools register).
 
 - Denying a tool also denies every tool of its kind. That is how a read-only role gets **no** MCP
-  tools.
+  tools from a server left at the default kind.
 - Built-in denials:
   - `lead`, `reviewer`, `critic`, `monitor`: `write`, `edit`, `bash`.
   - `tester`: `write`, `edit`.

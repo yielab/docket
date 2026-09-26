@@ -1941,3 +1941,101 @@ class TestAllowCommandsWiring:
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "not on the curated allowlist" not in tool_msg.content
+
+
+def _pod_overlay_denying(project: str, role: str, denied: list[str]) -> None:
+    path = _cfg.pod_config_dir(project) / "roles.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "roles": {
+                    role: {
+                        "name": role,
+                        "version": 1,
+                        "scope": "pod",
+                        "modelClass": "cheap",
+                        "soulTemplate": "x",
+                        "agentsTemplate": "y",
+                        "gateContract": {"kind": "none"},
+                        "editRights": "read-only",
+                        "toolProfile": "read-only",
+                        "deniedTools": denied,
+                    }
+                }
+            }
+        )
+    )
+
+
+def _bash_then_done(command: str) -> _ScriptedBackend:
+    call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": command}))
+    return _ScriptedBackend(
+        [
+            ChatResponse(
+                ok=True,
+                message=assistant("", tool_calls=[call]),
+                finish_reason="tool_calls",
+                usage=TokenUsage(10, 5),
+            ),
+            _final_response("done"),
+        ]
+    )
+
+
+class TestPodScopeWiring:
+    """Seam test: a standalone member turn resolves its pod into `ToolContext.project`
+    (`run_turn`), and that value reaches both the pod role overlay (`registry_for_role`) and
+    the pod policy directory (`policy_eval_detail`) on the real gate."""
+
+    def test_a_pod_role_overlay_narrows_a_standalone_member_turn(self) -> None:
+        _write_meta("shop-implementer", pod="shop")
+        _write_meta("shop-lead", role="lead", pod="shop")
+        _pod_overlay_denying("shop", "implementer", ["bash"])
+        backend = _bash_then_done("uname")
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn("shop-implementer", "agent:shop-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert "unknown tool 'bash'" in tool_msg.content
+
+    def test_a_pod_policy_blocks_a_standalone_member_turn(self) -> None:
+        _write_meta("shop-implementer", pod="shop")
+        _write_meta("shop-lead", role="lead", pod="shop")
+        pod_policies = _cfg.pod_config_dir("shop") / "policies"
+        pod_policies.mkdir(parents=True, exist_ok=True)
+        (pod_policies / "no-uname.json").write_text(
+            json.dumps(
+                {
+                    "id": "shop-no-uname",
+                    "applies_to": ["*"],
+                    "hook": "pre_tool_call",
+                    "match": {"type": "regex", "pattern": "uname"},
+                    "action": "block",
+                    "message": "shop forbids uname",
+                }
+            )
+        )
+        backend = _bash_then_done("uname")
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn("shop-implementer", "agent:shop-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert "shop-no-uname" in tool_msg.content
+
+    def test_another_pod_is_untouched_by_both(self) -> None:
+        _write_meta("shop-implementer", pod="shop")
+        _write_meta("other-implementer", pod="other")
+        _pod_overlay_denying("shop", "implementer", ["bash"])
+        backend = _bash_then_done("uname")
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn("other-implementer", "agent:other-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert "unknown tool" not in tool_msg.content
