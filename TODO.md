@@ -520,7 +520,7 @@ with the source that set it (meta/policy/pin, pod setting, env, default):
 
 ### P26-14 — one default model of record; provider fields that mean something
 
-**Status:** TODO · **Size:** S · **Wave:** 40 · **Spec:** `model-profiles.spec.md`
+**Status:** DONE (merged, worker commit `6db711d`; legacy fleet default migrates in and clears on first read) · **Size:** S · **Wave:** 40 · **Spec:** `model-profiles.spec.md`
 
 **Trigger:**
 - `fleet.json` `defaults.model` is read only by the hidden `_json default-model-get`

@@ -553,7 +553,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
-| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}`, `defaults.model`, `providers{<name>{baseUrl,apiKey,models[{id,contextWindow,maxTokens,…}]}}` | init, `models provider add`, `wire`, `gates` | endpoint resolution (`baseUrl`, `apiKey`, `models[].id/contextWindow/maxTokens`), isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}`, `providers{<name>{baseUrl,apiKey,models[{id,contextWindow,maxTokens,…}]}}` | init, `models provider add`, `wire`, `gates` | endpoint resolution (`baseUrl`, `apiKey`, `models[].id/contextWindow/maxTokens`), isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
 | `policies/*.json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
@@ -610,10 +610,10 @@ for most of them.
 - **Some files are skipped silently.** An invalid policy file, schedule spec, model-policy entry
   or overlay role is skipped without a warning. For a `block` policy that means the call is
   **allowed** (§3.6). Test after every edit.
-- **Two "default model" fields.** `fleet.json` `defaults.model` is not what agents use;
-  `docket-models.json` `default` and each agent's own `model` are.
-- **The provider display name is cosmetic.** `models provider add` without `--name` stores a fixed
-  label. Only `id`, `contextWindow` and `maxTokens` are read.
+- **The provider display name derives from `--model`.** `models provider add` without `--name`
+  labels the entry after `--model` (only the shipped default model id keeps its shipped caption).
+  The per-model `name`/`cost`/`reasoning`/`input` fields and the provider block's `api` field are
+  display-only — only `id`, `contextWindow` and `maxTokens` drive request routing.
 - **The registries grow forever.** `docket-runs.json`, `approvals/` and
   `docket-conversations.json` are never pruned. Only traces have retention.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action

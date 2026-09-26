@@ -153,7 +153,7 @@ Each specification document must include:
 | API Keys | 1.4.0 | Complete | Central keys feed resolved endpoints directly; credential presence alone never claims provider readiness |
 | Audit | 2.9.2 | Implemented | Rotation, head lookup, durable append, and coherent readers share one audit lock; approval terminal decisions emit exactly one matching winner event |
 | Cost Tracking | 1.7.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
-| Model Profiles | 2.8.2 | Complete | Fail-closed provider readiness separates coding subscriptions, credentials, endpoints, and the keyless local tool path |
+| Model Profiles | 2.10.0 | Complete | Fail-closed provider readiness separates coding subscriptions, credentials, endpoints, and the keyless local tool path |
 | Pipeline Format | 2.4.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; verdict gates accept one unambiguous line-anchored marker across complete output; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2) |
 | Pod Blueprints | 1.4.0 | Implemented | Five built-ins — software/research/content/ops plus `agentic-product`; deliberately data, not scaffolding. `docket init --blueprint`/`--from`; dispatch runs a blueprint's default pipeline (W36-C6); no user-authored blueprints yet |
 | Pod Dispatch | 6.12.0 | Complete | Hop execution/history/handoff behavior is live; conversation hops mutate one validated locked registry and retain concurrent updates |
