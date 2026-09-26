@@ -346,7 +346,7 @@ def _check_security_gates() -> int:
     elif r_state == "off":
         ui.warn("  Approval routing: off — gated prompts have nowhere configured to go")
     else:
-        ui.dim("  Approval routing: not configured — docket gates enable")
+        ui.dim("  Approval routing: not configured — set with docket init (no --no-gates)")
 
     iso = _fleet.get_isolation_mode()
     if iso in ("non-main", "all"):

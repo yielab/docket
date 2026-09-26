@@ -275,6 +275,76 @@ class TestTeardownMemberWorktree:
         assert ok
         assert not ws.exists()
 
+    def test_teardown_deletes_branch_merged_into_codebases_current_branch(
+        self, tmp_path: Path, pod_home: Path
+    ) -> None:
+        repo = tmp_path / "repo4"
+        repo.mkdir()
+        _init_git_repo(repo)
+        m = _make_member("implementer", "proj4")
+        ws = _cfg.PROJECTS_DIR / m.member_id
+        wt = ws / "worktree"
+        branch = _worktree_branch("proj4", m.member_id)
+        ok, err = _sys.git_worktree_add(str(repo), str(wt), branch)
+        assert ok, err
+        # Freshly branched from the codebase's current HEAD -- trivially merged.
+        self._write_meta(
+            ws, {"worktreeDir": str(wt), "codebase": str(repo), "worktreeBranch": branch}
+        )
+        ok, _ = teardown_member(m.member_id)
+        assert ok
+        remaining = subprocess.run(
+            ["git", "-C", str(repo), "branch", "--list", branch],
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert branch not in remaining
+
+    def test_teardown_keeps_unmerged_branch_and_reports_manual_command(
+        self, tmp_path: Path, pod_home: Path
+    ) -> None:
+        repo = tmp_path / "repo5"
+        repo.mkdir()
+        _init_git_repo(repo)
+        m = _make_member("implementer", "proj5")
+        ws = _cfg.PROJECTS_DIR / m.member_id
+        wt = ws / "worktree"
+        branch = _worktree_branch("proj5", m.member_id)
+        ok, err = _sys.git_worktree_add(str(repo), str(wt), branch)
+        assert ok, err
+        # Diverge the branch from the codebase's current HEAD.
+        (wt / "extra.txt").write_text("unmerged work\n")
+        subprocess.run(["git", "-C", str(wt), "add", "."], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(wt), "commit", "-m", "unmerged"], check=True, capture_output=True
+        )
+        self._write_meta(
+            ws, {"worktreeDir": str(wt), "codebase": str(repo), "worktreeBranch": branch}
+        )
+        ok, msg = teardown_member(m.member_id)
+        assert ok
+        remaining = subprocess.run(
+            ["git", "-C", str(repo), "branch", "--list", branch],
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert branch in remaining
+        assert branch in msg
+        assert "git branch -D" in msg
+
+    def test_teardown_no_branch_field_deletes_nothing(self, tmp_path: Path, pod_home: Path) -> None:
+        repo = tmp_path / "repo6"
+        repo.mkdir()
+        _init_git_repo(repo)
+        m = _make_member("implementer", "proj6")
+        ws = _cfg.PROJECTS_DIR / m.member_id
+        self._write_meta(ws, {"codebase": str(repo)})
+        delete_calls: list[str] = []
+        with mock.patch.object(_sys, "git_branch_delete", side_effect=delete_calls.append):
+            ok, _ = teardown_member(m.member_id)
+        assert ok
+        assert delete_calls == []
+
 
 # ── TestSystemAdapterWorktreeFunctions ───────────────────────────────────────
 
@@ -328,5 +398,65 @@ class TestSystemAdapterWorktreeFunctions:
     def test_git_unavailable_worktree_remove_fails(self, tmp_path: Path) -> None:
         with mock.patch.object(_sys, "git_available", return_value=False):
             ok, err = _sys.git_worktree_remove(str(tmp_path), str(tmp_path / "wt"))
+        assert not ok
+        assert "git not found" in err
+
+    def test_git_branch_merged_true_for_unmodified_branch(self, git_repo: Path) -> None:
+        cur = _sys.git_current_branch(str(git_repo))
+        subprocess.run(
+            ["git", "-C", str(git_repo), "branch", "feat"], check=True, capture_output=True
+        )
+        assert _sys.git_branch_merged(str(git_repo), "feat", cur) is True
+
+    def test_git_branch_merged_false_for_diverged_branch(
+        self, git_repo: Path, tmp_path: Path
+    ) -> None:
+        cur = _sys.git_current_branch(str(git_repo))
+        wt = tmp_path / "wt3"
+        ok, err = _sys.git_worktree_add(str(git_repo), str(wt), "feat2")
+        assert ok, err
+        (wt / "new.txt").write_text("x\n")
+        subprocess.run(["git", "-C", str(wt), "add", "."], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(wt), "commit", "-m", "diverge"], check=True, capture_output=True
+        )
+        assert _sys.git_branch_merged(str(git_repo), "feat2", cur) is False
+
+    def test_git_branch_merged_git_unavailable_is_false(self, git_repo: Path) -> None:
+        with mock.patch.object(_sys, "git_available", return_value=False):
+            assert _sys.git_branch_merged(str(git_repo), "feat", "main") is False
+
+    def test_git_branch_delete_removes_merged_branch(self, git_repo: Path) -> None:
+        subprocess.run(
+            ["git", "-C", str(git_repo), "branch", "feat3"], check=True, capture_output=True
+        )
+        ok, err = _sys.git_branch_delete(str(git_repo), "feat3")
+        assert ok, err
+        remaining = subprocess.run(
+            ["git", "-C", str(git_repo), "branch", "--list", "feat3"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert "feat3" not in remaining
+
+    def test_git_branch_delete_refuses_unmerged_branch(
+        self, git_repo: Path, tmp_path: Path
+    ) -> None:
+        wt = tmp_path / "wt4"
+        ok, err = _sys.git_worktree_add(str(git_repo), str(wt), "feat4")
+        assert ok, err
+        (wt / "new.txt").write_text("x\n")
+        subprocess.run(["git", "-C", str(wt), "add", "."], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(wt), "commit", "-m", "diverge"], check=True, capture_output=True
+        )
+        _sys.git_worktree_remove(str(git_repo), str(wt))
+        ok2, err2 = _sys.git_branch_delete(str(git_repo), "feat4")
+        assert not ok2
+        assert err2 != ""
+
+    def test_git_unavailable_branch_delete_fails(self, tmp_path: Path) -> None:
+        with mock.patch.object(_sys, "git_available", return_value=False):
+            ok, err = _sys.git_branch_delete(str(tmp_path), "b")
         assert not ok
         assert "git not found" in err

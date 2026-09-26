@@ -425,13 +425,20 @@ def provision_member(
     return (True, "", fallback_reason)
 
 
+def _provision_lock_dir(project: str) -> Path:
+    return _cfg.WORKSPACES_DIR / ".pod-provision-locks" / project.encode().hex()
+
+
 @contextlib.contextmanager
 def _project_provision_lock(project: str) -> Iterator[None]:
     """Serialize one project's provisioning lifecycle without coupling projects.
 
     Lives outside ``PODS_DIR / project`` since rollback deletes it; an inside lock would relock."""
-    lock_dir = _cfg.WORKSPACES_DIR / ".pod-provision-locks" / project.encode().hex()
+    lock_dir = _provision_lock_dir(project)
     lock_dir.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        lock_dir.parent.chmod(0o700)
+        lock_dir.chmod(0o700)
     with _store.with_lock(lock_dir / ".provision"):
         yield
 
@@ -453,6 +460,10 @@ def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
     scratch_created = not scratch.exists()
     scratch.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
+        # scratch's own parents (PODS_DIR, PODS_DIR/project) are created by the same
+        # mkdir(parents=True) call above and inherit umask -- harden them too.
+        _cfg.PODS_DIR.chmod(0o700)
+        scratch.parent.chmod(0o700)
         scratch.chmod(0o700)
     return start, count, str(scratch), created, scratch_created
 
@@ -500,11 +511,12 @@ def _free_pod_resources(project: str) -> None:
 
 
 def free_pod_resources(project: str) -> None:
-    """Release the port range and remove the scratch dir for *project*.
+    """Release the port range, scratch dir, and provision-lock dir for *project*; idempotent.
 
-    Idempotent; explicit teardown only -- failed provisioning self-cleans (module docstring)."""
+    The lock dir is removed last, after releasing it -- never while still held."""
     with _project_provision_lock(project):
         _free_pod_resources(project)
+    shutil.rmtree(_provision_lock_dir(project), ignore_errors=True)
 
 
 def purge_pod_history(project: str, member_ids: list[str]) -> None:
@@ -524,28 +536,49 @@ def purge_pod_history(project: str, member_ids: list[str]) -> None:
             shutil.rmtree(trace_dir, ignore_errors=True)
 
 
-def teardown_member(member_id: str) -> tuple[bool, str]:
-    """Remove one pod member: fleet registration + workspace.
+def _teardown_worktree_branch(codebase: str, branch: str) -> str:
+    """Delete *branch* if merged into the codebase's current branch; else return a one-line
+    manual ``git branch -D`` note for the caller to print (this module never imports ``ui``)."""
+    current = _sys.git_current_branch(codebase)
+    if current and _sys.git_branch_merged(codebase, branch, current):
+        ok, _err = _sys.git_branch_delete(codebase, branch)
+        if ok:
+            return ""
+    where = f" into {current!r}" if current else ""
+    return (
+        f"kept branch {branch!r} (not merged{where}) -- delete manually: "
+        f"git branch -D {branch}  (run inside {codebase})"
+    )
 
-    Does not free pod resources (caller's job); worktree removed before workspace dir."""
+
+def teardown_member(member_id: str) -> tuple[bool, str]:
+    """Remove one pod member: fleet registration + workspace; worktree removed first.
+
+    Does not free pod resources (caller's job). ``note`` reports a worktree branch left
+    behind unmerged (see ``_teardown_worktree_branch``); empty otherwise."""
     # Remove the git worktree first (before the workspace dir disappears).
     ws = _cfg.PROJECTS_DIR / member_id
     try:
         raw = _store.read_json(ws / _cfg.META_FILE)
         worktree_dir = str(raw.get("worktreeDir", ""))
         codebase = str(raw.get("codebase", ""))
+        branch = str(raw.get("worktreeBranch", ""))
     except Exception:
         worktree_dir = ""
         codebase = ""
+        branch = ""
     if worktree_dir and codebase:
         _ok, _err = _sys.git_worktree_remove(codebase, worktree_dir)
+    branch_note = ""
+    if branch and codebase:
+        branch_note = _teardown_worktree_branch(codebase, branch)
 
     # No daemon to unregister from -- fleet.json only.
     with contextlib.suppress(Exception):
         _fleet.remove_agent(member_id)
     if ws.is_dir():
         shutil.rmtree(ws, ignore_errors=True)
-    return (True, "")
+    return (True, branch_note)
 
 
 def provision_members(

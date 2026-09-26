@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.13.0
+**Version**: 1.14.0
 **Status**: Complete
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-25
 
 ## Purpose
 
@@ -123,6 +123,15 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
    or rewrite the global audit log; the deletion record remains as durable evidence.
 8. The pre-deletion summary **MUST** render each member's role literally, without markup syntax
    hiding the value.
+9. An Implementer's git-worktree branch **MUST** be deleted at member teardown only when it is
+   fully merged into the codebase's current branch (`edges/adapters/system.py`'s
+   `git_branch_merged` against `git_current_branch(codebase)`, deleted with `git_branch_delete`'s
+   `-d`, never `-D`). An unmerged branch, or a missing/failing git, **MUST** be left in place; the
+   caller prints a one-line manual `git branch -D <branch>` note naming it rather than losing the
+   work silently. A worktree-remove failure **MUST NOT** block workspace/fleet cleanup either way.
+10. Pod-level provisioning state **MUST NOT** outlive the pod: `free_pod_resources` (whole-pod
+    teardown) **MUST** remove that project's `.pod-provision-locks/<hex>/` directory, once its own
+    lock is released (never while held).
 
 ### Agent Maintenance (docket maintain)
 
@@ -314,6 +323,14 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.14.0 (2026-09-25)
+
+- Agent Deletion requirement 9: teardown deletes an Implementer's worktree branch only when it is
+  merged into the codebase's current branch, and prints a manual `git branch -D` command otherwise
+  instead of silently keeping (or losing) it.
+- Agent Deletion requirement 10: whole-pod teardown now removes the project's
+  `.pod-provision-locks/<hex>/` directory; it previously accumulated forever.
 
 ### Version 1.13.0 (2026-09-21)
 

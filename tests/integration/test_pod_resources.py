@@ -259,3 +259,35 @@ class TestPodResources:
         _seed(tmp_path, monkeypatch)
         # Calling free on a pod that never existed is safe.
         _pod.free_pod_resources("nonexistent")
+
+    def test_provision_lock_dir_is_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pp.provision_pod("demo", "software", location="/src/demo")
+        lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+        assert lock_dir.is_dir()
+        assert lock_dir.stat().st_mode & 0o777 == 0o700
+        assert lock_dir.parent.stat().st_mode & 0o777 == 0o700
+
+    def test_pod_delete_removes_provision_lock_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pp.provision_pod("demo", "software", location="/src/demo")
+        lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+        assert lock_dir.is_dir()
+        _pod.free_pod_resources("demo")
+        assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
+
+    def test_pods_dir_and_project_dir_are_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        pods_dir = home / "workspaces" / "pods"
+        project_dir = pods_dir / "demo"
+        assert pods_dir.is_dir()
+        assert project_dir.is_dir()
+        assert pods_dir.stat().st_mode & 0o777 == 0o700
+        assert project_dir.stat().st_mode & 0o777 == 0o700

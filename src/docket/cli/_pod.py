@@ -359,6 +359,8 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     ok, msg = teardown_member(member_id)
     if ok:
         ui.success(f"Removed {member_id}")
+        if msg:
+            ui.dim(f"  {msg}")
     else:
         ui.warn(f"{member_id}: fleet deregistration reported: {msg} (workspace cleaned)")
     audit_log("pod.remove", f"{project} member={member_id} role={role}")

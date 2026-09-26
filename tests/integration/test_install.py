@@ -292,6 +292,20 @@ def test_install_creates_directories(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert (home / "Sites").is_dir()
 
 
+def test_install_workspaces_dir_is_owner_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`workspaces/` is an intermediate dir of the `PROJECTS_DIR.mkdir(parents=True)` call --
+    only `DOCKET_HOME` and `PROJECTS_DIR` itself were hardened to 0700, leaving this level at
+    whatever the operator's umask allows."""
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
+
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
+
+    assert (home / "workspaces").stat().st_mode & 0o777 == 0o700
+
+
 def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A second run reports specialists already registered and stays clean."""
     _seed_fresh(tmp_path, monkeypatch)
@@ -395,14 +409,19 @@ def test_step5_registered_local_endpoint_needs_no_api_key(
 def test_install_no_gates_skips_approval_routing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`--no-gates` writes nothing (the flag has no live-path reader either way), so the
+    message must not claim a posture was 'recorded' — see security-gates.spec.md's
+    Enablement section."""
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
     _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Approval-routing posture recorded as off for this workstation (--no-gates)" in out
+    assert "recorded as off" not in out
+    assert "docket gates enable" not in out
+    assert "Approval-routing posture not recorded for this workstation (--no-gates)" in out
     r_state, _mode = _fleet.get_approval_routing()
-    assert r_state != "on"
+    assert r_state == "unset"
 
 
 def test_install_with_gates_turns_on_approval_routing(

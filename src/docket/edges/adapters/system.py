@@ -504,3 +504,42 @@ def git_worktree_remove(repo_dir: str, worktree_path: str) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, (result.stderr or result.stdout).strip()
     return True, ""
+
+
+def git_branch_merged(repo_dir: str, branch: str, into: str) -> bool:
+    """True if ``branch`` is fully merged into ``into`` in ``repo_dir``; False on a missing
+    binary, non-repo directory, timeout, or a genuinely unmerged branch."""
+    if not git_available():
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "branch", "--merged", into],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    if result.returncode != 0:
+        return False
+    names = {line.strip().lstrip("* ").strip() for line in result.stdout.splitlines()}
+    return branch in names
+
+
+def git_branch_delete(repo_dir: str, branch: str) -> tuple[bool, str]:
+    """Delete a local branch with ``-d`` (refuses an unmerged branch; never ``-D``).
+    Returns ``(success, message)``; degrades gracefully on errors."""
+    if not git_available():
+        return False, "git not found on PATH"
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "branch", "-d", branch],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        return False, str(exc)
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout).strip()
+    return True, ""
