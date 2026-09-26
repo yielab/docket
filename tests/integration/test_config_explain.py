@@ -287,7 +287,14 @@ class TestConfigExplainPolicies:
         lead = pod.member_id("demo", "lead")
         report = _explain_json(lead, capsys)
         ids = {p["id"] for p in report["policies"]}
-        assert ids == {name.removesuffix(".json") for name in result.installed}
+
+        def _stem(name: str) -> str:
+            for ext in (".json", ".yaml", ".yml"):
+                if name.endswith(ext):
+                    return name[: -len(ext)]
+            return name
+
+        assert ids == {_stem(name) for name in result.installed}
 
     def test_role_scoped_policy_is_excluded_for_other_roles(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -3,16 +3,20 @@
   docket policies list               List installed policies
   docket policies show <id>          Show one policy
   docket policies init               Install baseline policies to $POLICIES_DIR
-  docket policies test <hook> <role> "<text>" [--tool <name>]   Dry-run the evaluator
-  docket policies validate [id|file.json]       Schema-check installed policies, one, or a file
+  docket policies test <hook> <role> "<text>" [--tool <name>] [--arg key=value ...]
+                                      Dry-run the evaluator
+  docket policies validate [id|file] Schema-check installed policies, one, or a file
 
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
-docket-owned artefacts read/written directly.
+docket-owned artefacts (JSON or YAML, short or canonical form) read/written directly via
+``core/policy.py``'s ``read_policy``.
 
 ``validate`` wires ``core/policy.py``'s ``validate_policy``. ``test``'s ``pre_tool_call`` case
 evaluates an exec-kind tool (``--tool``, default ``bash``) through the live gate's own
 ``evaluate_tool_call``; a non-exec ``--tool`` evaluates the declarative hook alone, because the
-live gate classifies exec commands only.
+live gate classifies exec commands only. Either way, repeatable ``--arg key=value`` flags build
+the :class:`~docket.core.policy.ToolCallFacts` a ``when`` predicate can test (``branch_of``
+always reports ``""`` here -- there is no worktree to read one from in a dry run).
 
 ``list``/``test``/``validate`` accept ``--pod <p>``: fold that pod's own policy directory into
 the files considered, on top of the global set -- a pod's policies only ever add.
@@ -72,6 +76,28 @@ def _extract_pod(args: list[str]) -> tuple[list[str], str, str]:
     return rest, "", ""
 
 
+def _extract_args(args: list[str]) -> tuple[list[str], dict[str, str], str]:
+    """Pull every repeated ``--arg key=value`` out of *args*. Returns ``(remaining, args_dict,
+    error)``; *args_dict* is ``{}`` when none are given."""
+    rest: list[str] = []
+    call_args: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        if args[i] == "--arg":
+            if i + 1 >= len(args):
+                return rest, call_args, "--arg requires key=value"
+            kv = args[i + 1]
+            if "=" not in kv:
+                return rest, call_args, f"--arg must be key=value, got {kv!r}"
+            key, _, value = kv.partition("=")
+            call_args[key] = value
+            i += 2
+        else:
+            rest.append(args[i])
+            i += 1
+    return rest, call_args, ""
+
+
 def _list(pod: str = "") -> int:
     ui.header("Guardrail Policies")
     ui.console.print()
@@ -89,7 +115,7 @@ def _list(pod: str = "") -> int:
     print(f"  {'─' * 80}")
     for f in files:
         try:
-            p = json.loads(f.read_text(encoding="utf-8"))
+            p = _policy.read_policy(f)
             pid = str(p.get("id", "?"))[:28]
             hook = str(p.get("hook", "?"))[:14]
             act = str(p.get("action", "?"))[:14]
@@ -112,7 +138,7 @@ def _show(args: list[str]) -> int:
     found = None
     for f in _policy.policy_files():
         try:
-            fid = json.loads(f.read_text(encoding="utf-8")).get("id", "")
+            fid = _policy.read_policy(f).get("id", "")
         except Exception:
             fid = ""
         if fid == target:
@@ -124,7 +150,7 @@ def _show(args: list[str]) -> int:
         return 1
 
     # Use plain print() so bracketed regex patterns aren't parsed as Rich markup.
-    parsed = json.loads(found.read_text(encoding="utf-8"))
+    parsed = _policy.read_policy(found)
     print(json.dumps(parsed, indent=4))
     return 0
 
@@ -169,11 +195,18 @@ def _test(args: list[str]) -> int:
     if pod_err:
         ui.error(pod_err)
         return 1
+    rest, call_args, arg_err = _extract_args(rest)
+    if arg_err:
+        ui.error(arg_err)
+        return 1
     hook = rest[0] if len(rest) > 0 else ""
     role = rest[1] if len(rest) > 1 else ""
     text = rest[2] if len(rest) > 2 else ""
-    if not hook or not role or not text:
-        ui.error('Usage: docket policies test <hook> <role> "<text>" [--tool <name>] [--pod <p>]')
+    if not hook or not role or len(rest) < 3:
+        ui.error(
+            'Usage: docket policies test <hook> <role> "<text>" [--tool <name>] '
+            "[--arg key=value] [--pod <p>]"
+        )
         return 1
     if hook not in _VALID_HOOKS:
         ui.error(f"Unknown hook '{hook}'. Valid: {' '.join(_VALID_HOOKS)}")
@@ -203,7 +236,7 @@ def _test(args: list[str]) -> int:
                 handler=_unreachable_handler,
                 kind="exec",
             ),
-            {"command": text},
+            {"command": text, **call_args},
             _tools.ToolContext(role=role, project=pod),
         )
         action = verdict.decision
@@ -214,7 +247,8 @@ def _test(args: list[str]) -> int:
         # The live gate runs the command classifier for exec tools only
         # (security-gates.spec.md, policy engine requirement 8), so a
         # write/edit render is judged by the declarative hook alone here.
-        hit = _policy.policy_eval_detail(role, hook, text, project=pod)
+        call = _policy.ToolCallFacts(tool=tool_name, args=call_args, branch_of=lambda: "")
+        hit = _policy.policy_eval_detail(role, hook, text, project=pod, call=call)
         action = {"block": "deny", "require_approval": "ask"}.get(hit.action, "allow")
         reason = f"command classifier skipped: '{tool_name}' is kind={builtin[tool_name].kind}"
         policy_id = hit.policy_id
@@ -279,7 +313,7 @@ def _validate(args: list[str], pod: str = "") -> int:
         found = None
         for f in _policy.policy_files(pod):
             try:
-                fid = json.loads(f.read_text(encoding="utf-8")).get("id", "")
+                fid = _policy.read_policy(f).get("id", "")
             except Exception:
                 fid = ""
             if fid == target:

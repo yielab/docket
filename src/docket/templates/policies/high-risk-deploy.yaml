@@ -1,0 +1,9 @@
+kind: policy
+name: high-risk-deploy
+class: high-risk
+description: Production deployment always requires approval (high-risk class — overrides allowlist)
+appliesTo: ["*"]
+when:
+  matches: 'kubectl\s+(apply|delete|replace|rollout)|helm\s+upgrade|terraform\s+apply|git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish|docker\s+push|fly\s+deploy|vercel\s+--prod|heroku\s+promote'
+then: ask
+message: Production deployment always requires approval, regardless of exec allowlist.

@@ -24,6 +24,7 @@ from docket.core.audit import audit_log
 from docket.core.llm import ToolCall, ToolCallArgumentsError, ToolSpec
 from docket.core.security import classify_command
 from docket.core.trace import redact as _redact
+from docket.edges.adapters import system as _sys
 from docket.edges.adapters.toolbox import SandboxMode, ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
@@ -231,7 +232,14 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
             command_reason = cmd_verdict.reason
 
     rendered = render_tool_call(tool.name, args)
-    hit = _policy.policy_eval_detail(ctx.role, "pre_tool_call", rendered, project=ctx.project)
+    call = _policy.ToolCallFacts(
+        tool=tool.name,
+        args=args,
+        branch_of=lambda: _sys.git_current_branch(str(ctx.roots[0])) if ctx.roots else "",
+    )
+    hit = _policy.policy_eval_detail(
+        ctx.role, "pre_tool_call", rendered, project=ctx.project, call=call
+    )
     policy_decision = _POLICY_ACTION_TO_DECISION.get(hit.action, "allow")
     policy_reason = f"policy {hit.policy_id!r}: {hit.message}" if hit.policy_id else ""
 

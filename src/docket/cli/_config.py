@@ -96,10 +96,10 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
     matched: list[dict[str, str]] = []
     for path in _policy.policy_files(project):
         try:
-            doc: dict[str, Any] = _json.loads(path.read_text(encoding="utf-8"))
+            doc: dict[str, Any] = _policy.read_policy(path)
         except Exception:
             continue
-        if not isinstance(doc, dict) or _policy.validate_policy(path):
+        if _policy.validate_policy(path):
             continue
         applies = doc.get("applies_to") or []
         if "*" in applies or role in applies:
