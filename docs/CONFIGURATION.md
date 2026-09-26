@@ -630,8 +630,6 @@ for most of them.
   labels the entry after `--model` (only the shipped default model id keeps its shipped caption).
   The per-model `name`/`cost`/`reasoning`/`input` fields and the provider block's `api` field are
   display-only — only `id`, `contextWindow` and `maxTokens` drive request routing.
-- **The registries grow forever.** `docket-runs.json`, `approvals/` and
-  `docket-conversations.json` are never pruned. Only traces have retention.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action
   `tool.warn`), not in traces — so `docket trace`/`metrics` won't show it.
 - **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it

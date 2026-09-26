@@ -548,7 +548,7 @@ resolve. `provider add x url --model m` labels the entry `m`.
 
 ### P26-15 — registries stay bounded; traces are filed where an operator looks
 
-**Status:** TODO · **Size:** M · **Wave:** 40 · **Spec:** `pod-dispatch.spec.md`, `audit.spec.md`
+**Status:** DONE (merged, worker commit `8b5a1c8`; approvals prune is sweep-only by scope call — no CLI slot; cli-interface.spec.md prose left for a later sync) · **Size:** M · **Wave:** 40 · **Spec:** `pod-dispatch.spec.md`, `audit.spec.md`
 (retention wording), the trace spec section
 
 **Trigger:**
