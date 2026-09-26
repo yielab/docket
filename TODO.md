@@ -81,7 +81,7 @@ release source.
 
 **Opened 2026-09-25, immediately after Wave 37 closed (`3089a00`) removed the file-contention
 blocks (W37-C5 on `core/approval.py`, W37-C6 on `cli/_policies.py`/`cli/_keys.py`).** Twenty
-cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); batch B (P26-4, P26-19) is next. Decision, verdict table and the
+cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); **Batch B closed 2026-09-26** (P26-4 `acf471f`, P26-19 `1781c73`; both Sonnet workers, integrator-resolved conflicts). **Wave 39 open**: P26-3, P26-5, P26-6, P26-7, P26-8. Decision, verdict table and the
 six-property contract: [docs/adr/0008-configuration-contract.md](docs/adr/0008-configuration-contract.md).
 The user-facing map of every installed file is [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Each closing card deletes its own bullet from that guide's §5 "Sharp edges" in the same commit.
@@ -219,7 +219,7 @@ plumbing from `DocketDriver` into `LoopConfig`/`ToolContext`.
 
 ### P26-4 — pod settings are typed, validated and writable
 
-**Status:** TODO · **Size:** M · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`,
+**Status:** DONE (2026-09-26, merged acf471f) · **Size:** M · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`,
 `cli-json-shapes.spec.md`
 
 **Trigger:**
@@ -678,7 +678,7 @@ for built-in roles is byte-identical.
 
 ### P26-19 — a deterministic dispatch refusal settles the claim; an orphaned task is recoverable
 
-**Status:** TODO · **Size:** S · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`
+**Status:** DONE (2026-09-26, merged 1781c73) · **Size:** S · **Wave:** 38 · **Spec:** `pod-dispatch.spec.md`
 
 **Trigger (live 2026-09-25):** the P26-18 refusal raised out of `dispatch_pod` after the build
 hop. The claim was never settled, so the task sat `running` with no process. Recovery deadlock:

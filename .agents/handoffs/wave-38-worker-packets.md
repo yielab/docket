@@ -128,3 +128,88 @@ at function level and strict; a conflict is resolved by the integrator keeping b
   claim is settled, and `--resume` (with `--resume` counting stale-claimed `running` tasks
   too) re-runs it from the last persisted hop without a decoy task or CLAIM_STALE_TIMEOUT
   override. A kill -9 mid-hop must still leave `running` for the stale sweep — pin that.
+
+---
+
+# Wave 39 worker packets (opened after batch B merged; base is the commit your worktree starts on — verify with `git log --oneline -1` and `git merge --ff-only <base>` if the coordinator's prompt names a newer one)
+
+Five cards, five Sonnet workers, strict function-level ownership. Three cards each add ONE field
+to `core/pod.py::PodSettings` (P26-5 `approvalMode`, P26-6 `pipeline`, P26-8 `allowCommands`):
+add only your field, its validation and its `_SETTING_FIELD_BY_ALIAS` entry, appended at the end
+of the existing blocks — never reorder or reformat the class; the integrator resolves the
+overlapping one-line conflicts. Same shared rules as Wave 38 (top of this file): never stash,
+`env -u VIRTUAL_ENV`, temp DOCKET_HOME, RED-first, spec-first, COMMIT your branch, no AI
+trailers, forbidden central files, docstrings <= 3 lines, run `tests/guards` before handoff.
+
+## P26-3 — context budgets follow the resolved model window
+- Card: `card_packet.py P26-3`. Depends on P26-2 (merged): identity.py already has
+  PromptComposition/section reports.
+- Owns: budget resolution in `core/identity.py` (window-aware default; explicit
+  `CONTEXT_TOKEN_BUDGET` env stays an override) and `core/context.py` (`tokenBudget` default as
+  a window share when unset), the window plumbing from `edges/adapters/docket_runtime.py` into
+  the loop/ToolContext ONLY as needed to hand identity/context the resolved
+  `contextWindow`/`maxTokens` (see how `resolve_endpoint` already reads them at
+  `edges/adapters/llm.py:469`), `docket maintain check`'s report line, `agent-loop.spec.md` and
+  `session-history.spec.md` sections + changelogs, tests.
+- Do NOT touch: `AGENT_LOOP_TOKEN_BUDGET` semantics, compaction, `core/dispatch.py`,
+  `core/security.py`, PodSettings.
+- Contract: documented shares of (window - output reserve - tool schemas); unregistered window
+  -> today's constants, stated in the report; `prompt_composed` + `maintain check` name the
+  effective budget and its source (env|window|default). A 16k window keeps today's behaviour;
+  a 200k window fits the P26-2 oversized-SOUL fixture with every section full.
+
+## P26-5 — unattended turns can refuse instead of waiting on nobody
+- Card: `card_packet.py P26-5`.
+- Owns: `PodSettings.approvalMode` (`wait`|`refuse`, default wait), the hop tool-env builder in
+  `core/dispatch.py` (the function that assembles the env dict handed to the driver — it already
+  carries `PIPELINE_WORKTREE_ENV`; thread `DOCKET_APPROVAL_MODE=refuse` the same internal-env
+  way `cli/_harness.py:185` does), task failure reason on `approval_unavailable`,
+  `pod-dispatch.spec.md` + `security-gates.spec.md` sections + changelogs, tests.
+- Do NOT touch: `core/approval.py`, `core/tools.py`, harness code, other dispatch functions.
+- Oracle: with refuse, an asking call ends the hop well under one TOOL_APPROVAL_TIMEOUT with the
+  approval_unavailable shape naming tool/call/policy recorded on the task and trace; with wait
+  (default), byte-identical behaviour to base, pinned.
+
+## P26-6 — a pipeline file can be a pod's default for every trigger
+- Card: `card_packet.py P26-6`.
+- Owns: `PodSettings.pipeline` (stored docket-owned copy + hash in the Lead workspace —
+  `pod config set pipeline <file>` validates via `core/pipeline.py::load_pipeline` and plans
+  against the roster before accepting), `core/dispatch.py::effective_pipeline` and
+  `_blueprint_pipeline` ONLY, `pipeline plan` source labelling in `cli/_pipeline.py`,
+  `pipeline-format.spec.md` + `pod-dispatch.spec.md` sections + changelogs, tests (incl. one
+  proving a serve-sweep-shaped call — `dispatch_pod(project, spec=None)` — executes the bound
+  file's step ids, and an MCP-path call sees the same).
+- Do NOT touch: the pipeline dialect itself, orchestrator, serve.py, the hop-message builder.
+- `unset pipeline` restores the blueprint default; a bound file whose roles leave the roster
+  refuses at dispatch with a named reason (fail loud, not skip).
+
+## P26-7 — custom roles and steps carry their own hop instructions; variables get a consumer
+- Card: `card_packet.py P26-7`.
+- Owns: the hop-message builder in `core/dispatch.py` (~the function around lines 526-644 that
+  sets `instructions = ""` for non-built-in roles), archetype field `hopInstruction`
+  (`core/archetypes.py`: wire schema, from_wire, validate; generated fallback from
+  `gateContract` for gated roles without one), pipeline step field `instructions` +
+  `${var}` interpolation from the run's resolved variables (`core/pipeline.py`,
+  `resolve_variables` currently only stored on the run record — thread them into dispatch),
+  `--var k=v` on `pipeline run` (`cli/_pipeline.py`), unresolved variable -> refuse the run,
+  `role-archetypes.spec.md` + `pipeline-format.spec.md` + changelogs, tests.
+- Do NOT touch: effective_pipeline/_blueprint_pipeline (P26-6), the tool-env builder (P26-5),
+  identity/prompt composition.
+- Oracle: the four built-in roles' hop messages byte-identical to base (pinned); a custom
+  verdict-gated role's message contains its marker instruction; `--var area=auth` renders
+  "Focus on auth"; missing var refuses before any hop.
+
+## P26-8 — a pod can allow its own tool binaries, scoped and audited
+- Card: `card_packet.py P26-8`.
+- Owns: `PodSettings.allowCommands` (list of exact binary basenames; validation rejects
+  paths, shell metacharacters, `eval`/`exec`/`source`/`.`/`export`, and any name matching a
+  high-risk class pattern), `core/security.py::classify_command` gains an optional
+  `extra_bins` parameter (default empty — zero behaviour change without it),
+  `core/tools.py::ToolContext` gains the field and `evaluate_tool_call` passes it (the ONLY
+  edit in tools.py), the driver plumbing that fills it from the pod setting
+  (`edges/adapters/docket_runtime.py` + the dispatch env/context path that already carries
+  pod facts), audited at `pod config set`, `security-gates.spec.md` + changelog, tests.
+- Do NOT touch: SAFE_BINS itself, high-risk patterns, policies, dispatch_tool.
+- Oracle (from the card): `pytest -q` and `uv run pytest` allow in the configured pod;
+  `uv run pytest && git push origin main` still asks; a block policy on pytest still denies;
+  another pod still asks. Opaque markers and redirect handling unchanged, pinned.
