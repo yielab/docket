@@ -10,14 +10,31 @@ Reviewer and a Tester — and runs them against your codebase as one pipeline.**
 of that job: which agent does what, in what order, and what every one of them is actually allowed
 to do.
 
+It exists because four things go wrong when you leave autonomous agents alone with a repository:
+
+- **An agent told not to do something does it anyway.** A prompt is advice. docket removes the
+  tool from the role's registry instead — a Reviewer *cannot* write, whatever the model decides —
+  and routes every remaining call through one policy-and-approval gate with no second path
+  around it.
+- **A "safety setting" turns out to be wired to nothing.** Every docket setting has one writer,
+  is validated when you write it, and has a consumer on the live path; a broken guardrail file
+  blocks instead of silently allowing, and `docket config explain <agent>` shows exactly what a
+  turn will use and what set each value.
+- **An unattended run hangs, overspends, or leaves no trail.** Budgets pause the pod
+  deterministically, an unattended pod can refuse approval-gated calls instead of waiting on
+  nobody, and every verdict, approval and execution lands in a hash-chained audit log.
+- **The team's output is only as good as the model's self-report.** Advancement is gated on exit
+  codes and explicit verdicts — a verify command, a Reviewer's `APPROVE`, a Tester's `PASS` — not
+  on how confident the prose sounds.
+
 The gate half is the part most agentic tooling leaves unfinished. Whatever owns an agent's turn
-loop is the only thing positioned to intercept a tool call before it executes, so if that owner is
-not a dedicated policy layer, enforcement is left to the agent's own judgment. **docket owns the
-turn loop for every role in the pipeline, specifically so that does not happen:** every file edit,
-every shell command and every API call passes one policy-and-approval gate first, with no second
-path around it. docket ships no dashboard and is not a general-purpose orchestration
-framework. It runs a supervised team, not a solo personal assistant, and keeps every action
-inspectable after the fact.
+loop is the only thing positioned to intercept a tool call before it executes — so frameworks
+that own the loop without a dedicated policy layer leave enforcement to the agent's own judgment,
+and wrappers that bolt a policy onto someone else's loop can be routed around. **docket owns the
+turn loop for every role in the pipeline, specifically so that does not happen.** docket ships no
+dashboard and is not a general-purpose orchestration framework: it feeds an external control
+plane over a read API instead. It runs a supervised team, not a solo personal assistant, and
+keeps every action inspectable after the fact.
 
 > [!WARNING]
 > docket is beta software (`v0.2.0-beta.3`). Core contracts are spec-first and test-backed, but the
@@ -99,8 +116,11 @@ way.
 The guarantees that matter before letting autonomous agents touch a production codebase:
 
 - **Fail-closed, not fail-open.** An unrouted approval denies itself after 120 seconds; an async
-  pod-dispatch approval denies after 15 minutes. If isolation is enabled but no sandbox backend is
-  reachable, the turn is **refused outright** — it never falls back to running unsandboxed.
+  pod-dispatch approval denies after 15 minutes. A guardrail policy file that no longer parses —
+  bad JSON, a regex that will not compile, an unknown action — **blocks the calls it governed**
+  instead of silently dropping out, and `docket doctor` names it. If isolation is enabled but no
+  sandbox backend is reachable, the turn is **refused outright** — it never falls back to running
+  unsandboxed.
 - **Structural role boundaries.** A Reviewer has no `write`/`edit`/`bash` tool in its registry at
   all — not a prompt telling it not to use them. Tools are removed from a role's registry *before*
   the model ever sees them, so a compromised diff has no tool call to make even if it convinced the
@@ -129,6 +149,29 @@ The guarantees that matter before letting autonomous agents touch a production c
 
 The guarantees above are the governance surface. Beside them docket ships:
 
+- **Per-pod configuration that is checked, not hoped** (`docket pod <p> config`) — nine typed
+  keys (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`,
+  `allowCommands`, `pipeline`, `schedule`, `projectInstructions`), validated at write, audited,
+  and refused loudly at dispatch if a stored value is invalid. `docket config explain <agent>`
+  prints the whole effective configuration with the source of each value.
+- **Pipelines you can bind, not just run** — `docket pod <p> config set pipeline <file>` makes a
+  validated custom pipeline the pod's default for *every* trigger (dispatch, serve sweep,
+  schedule, webhook, MCP); steps carry their own `instructions` with `${var}` interpolation from
+  `docket pipeline run --var key=value`, and `pipeline plan` names which pipeline would run.
+- **Shipped recipes** (`templates/recipes/`) — `secure-build`, `research-review` and
+  `ops-approval` bundle a role, a pipeline and a policy pack with the exact commands to apply
+  them; each is CI-validated and `secure-build` is proven by an end-to-end dispatch.
+- **Unattended runs that fail fast instead of hanging** — `approvalMode refuse` turns a would-be
+  120-second approval wait into an immediate, named failure, and `allowCommands` lets one pod run
+  its own test binaries without a human in the loop (high-risk commands stay refused).
+- **Three instruction layers with clear ownership** — generated role templates (re-rendered by
+  `docket pod <p> sync` when they go stale), an operator-owned `INSTRUCTIONS.md` docket never
+  writes, and opt-in `projectInstructions` that fold your repo's own `AGENTS.md` into the prompt,
+  screened as untrusted input.
+- **Prompts that scale with the model** — the context budget follows the resolved model's
+  window (a 200k endpoint fits everything; a 16k local endpoint keeps the same floor as before),
+  and a section that must be truncated or omitted is always visibly marked and traced, never
+  silently dropped.
 - **Role-based model routing** (`docket models`) — cheap models for planning and review roles,
   stronger ones only where code is written; `docket models preset <provider>` switches every role
   at once, and a pinned agent is never re-resolved behind your back.
@@ -146,8 +189,10 @@ The guarantees above are the governance surface. Beside them docket ships:
   (`/approve`, `/deny`, `/status`, `/delegate`), each decision audit-logged with its channel.
 - **Egress and sandboxing** — the `fetch` tool is domain-allowlisted and deny-by-default; opt-in
   Docker or bwrap isolation (`docket gates isolate on`) fails closed when the backend is missing.
-- **Traces with retention** — `docket trace` renders, tails or exports per-session JSONL;
-  `docket trace expire` prunes terminated traces past a 30-day window.
+- **Traces and registries with retention** — `docket trace` renders, tails or exports
+  per-session JSONL and `docket trace expire` prunes terminated traces; the same window bounds
+  finished runs, resolved approvals and closed conversations (`docket runs prune`,
+  `docket conversations prune`), and live or pending records are never touched.
 - **Crash recovery** — a corrupt docket-owned JSON file recovers from its validated backup without
   overwriting the good copy; `docket doctor --fix` repairs workspace drift.
 
@@ -234,9 +279,12 @@ JSON registry under `~/.docket/`, evaluated by code and audited when it fires.**
 merely reads for context is advisory, not a guarantee — both are real customization, only one is
 governance. Company guardrails live in `~/.docket/policies/*.json`, checked with `docket
 policies test` and `docket policies validate`; a role's callable tools live in
-`docket-roles.json`, approval routing and sandboxing in `fleet.json`, and role-to-model routing in
-`docket-models.json`. Workspace files (`SOUL.md`, `AGENTS.md`, `TOOLS.md`) carry prose the agent
-reads once; they are not mechanically enforced. Full reference:
+`docket-roles.json`, sandboxing in `fleet.json`, role-to-model routing in `docket-models.json`,
+and each pod's own knobs behind `docket pod <p> config`. Workspace files (`SOUL.md`, `AGENTS.md`,
+`TOOLS.md`) carry prose the agent reads once; the operator-owned `INSTRUCTIONS.md` and opt-in
+`projectInstructions` are the durable way to put your own words in front of an agent. The
+file-by-file map of everything an install creates — and how each file reaches (or never reaches)
+the model — is [Configuration](docs/CONFIGURATION.md); the team-level reference is
 [Agent teams](docs/AGENT-TEAMS.md).
 
 ## Best practices
@@ -293,6 +341,7 @@ before relying on a model endpoint or MCP server.
 | --- | --- |
 | Install and first governed turn | [Quick start](docs/QUICK-START-DOCKET.md) |
 | Roles, pod shapes, handoffs, gates | [Agent teams](docs/AGENT-TEAMS.md) |
+| Every installed file, every setting, recipes | [Configuration](docs/CONFIGURATION.md) |
 | Every command and flag | [Command reference](docs/commands.md) |
 | Provider endpoints and coding harnesses | [Models and gateways](docs/MODEL-GATEWAYS.md) |
 | Security posture and deployment limits | [Security model](SECURITY.md) |
