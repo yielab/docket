@@ -32,7 +32,7 @@ from docket.core import policy as _policy
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
-_MANIFEST_KEYS = frozenset({"members", "settings", "pipeline"})
+_MANIFEST_KEYS = frozenset({"members", "settings", "pipeline", "kind", "name"})
 
 ApplyAction = Literal["add", "replace", "skip"]
 
@@ -113,30 +113,11 @@ class ApplyResult:
     items: tuple[ApplyItem, ...]
 
 
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    """Parse *path* as a YAML mapping, or ``{}`` for a missing/empty file."""
-    if not path.is_file():
-        return {}
+def _dump_yaml_file(path: Path, doc: dict[str, Any]) -> None:
+    """Write *doc* to *path* as YAML, key order preserved (``export_pod``'s writer side of the
+    manifest ``plan_apply`` reads back through ``core.config_docs.load_document``)."""
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
-    except ImportError:
-        raise PodApplyError("PyYAML not installed -- run: pip install pyyaml") from None
-    try:
-        doc = _yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise PodApplyError(f"{path}: YAML parse error: {exc}") from exc
-    if doc is None:
-        return {}
-    if not isinstance(doc, dict):
-        raise PodApplyError(f"{path}: must be a mapping")
-    return doc
-
-
-def _dump_yaml_file(path: Path, doc: dict[str, Any]) -> None:
-    """Write *doc* to *path* as YAML, key order preserved (``export_pod``'s writer side
-    of ``_load_yaml_mapping``)."""
-    try:
-        import yaml as _yaml
     except ImportError:
         raise PodApplyError("PyYAML not installed -- run: pip install pyyaml") from None
     path.write_text(_yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
@@ -170,8 +151,13 @@ def _plan_roles(
     roles_dir = directory / "roles"
     if not roles_dir.is_dir():
         return items, writes, merged
+    from docket.core import config_docs as _config_docs
+
     for role_file in sorted(roles_dir.glob("*.yaml")):
-        doc = _arch.parse_yaml_file(str(role_file))
+        try:
+            doc = _config_docs.load_document(role_file, kind="role").doc
+        except _config_docs.ConfigDocError as exc:
+            raise PodApplyError(str(exc)) from exc
         name = str(doc.get("name", "")).strip()
         if not name:
             raise PodApplyError(f"{role_file}: archetype has no top-level 'name'")
@@ -355,7 +341,16 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     except _dispatch.DispatchError as exc:
         raise PodApplyError(str(exc)) from exc
 
-    manifest = _load_yaml_mapping(directory / "pod.yaml")
+    from docket.core import config_docs as _config_docs
+
+    manifest_file = directory / "pod.yaml"
+    if manifest_file.is_file():
+        try:
+            manifest = _config_docs.load_document(manifest_file, kind="pod").doc
+        except _config_docs.ConfigDocError as exc:
+            raise PodApplyError(str(exc)) from exc
+    else:
+        manifest = {}
     unknown_keys = set(manifest) - _MANIFEST_KEYS
     if unknown_keys:
         raise PodApplyError(f"pod.yaml: unknown key(s): {', '.join(sorted(unknown_keys))}")

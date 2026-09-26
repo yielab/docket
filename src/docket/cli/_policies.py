@@ -27,6 +27,7 @@ from typing import Any, NoReturn
 import docket.config as _cfg
 from docket import ui
 from docket.cli._flags import find_unknown_flag
+from docket.core import config_docs as _config_docs
 from docket.core import policy as _policy
 from docket.core import tools as _tools
 
@@ -267,9 +268,10 @@ def _validate(args: list[str], pod: str = "") -> int:
     if target:
         candidate = Path(target)
         if candidate.is_file():
-            err = _policy.validate_policy(candidate)
-            if err:
-                ui.fail(err)
+            try:
+                _config_docs.load_document(candidate, kind="policy")
+            except _config_docs.ConfigDocError as exc:
+                ui.fail(str(exc))
                 return 1
             ui.success(f"{candidate} is valid.")
             return 0

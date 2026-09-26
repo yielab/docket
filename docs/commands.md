@@ -1067,6 +1067,26 @@ subcommands.
 
 ---
 
+### validate
+
+**Usage:** `docket validate`
+
+Validate role, pipeline, policy, and pod configuration documents.
+
+With no argument, validates `<cwd>/.docket` if it exists, else the current
+directory. A directory argument validates every `roles/*.yaml|yml|json`,
+`policies/*.yaml|yml|json`, `pipeline.yaml`, and `pod.yaml` found under it;
+a file argument validates that one file. Prints one line per file -- `ok
+<file> (<kind> <name>)` or its error -- with invalid files listed first,
+plus a `note:` line for a file loaded without a top-level `kind:` key.
+Exits 1 if any file is invalid.
+
+
+**Aliases:** None
+
+
+---
+
 ### snapshot
 
 **Usage:** `docket snapshot`
@@ -1518,7 +1538,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `help` have no alias.
+`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---

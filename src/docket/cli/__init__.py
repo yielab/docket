@@ -2573,6 +2573,22 @@ def cmd_completions(shell: str | None = typer.Argument(None)) -> None:
     raise typer.Exit(run_completions(shell))
 
 
+@app.command("validate")
+def cmd_validate(target: str | None = typer.Argument(None)) -> None:
+    """Validate role, pipeline, policy, and pod configuration documents.
+
+    With no argument, validates `<cwd>/.docket` if it exists, else the current
+    directory. A directory argument validates every `roles/*.yaml|yml|json`,
+    `policies/*.yaml|yml|json`, `pipeline.yaml`, and `pod.yaml` found under it;
+    a file argument validates that one file. Prints one line per file -- `ok
+    <file> (<kind> <name>)` or its error -- with invalid files listed first,
+    plus a `note:` line for a file loaded without a top-level `kind:` key.
+    Exits 1 if any file is invalid."""
+    from docket.cli._validate import run_validate
+
+    raise typer.Exit(run_validate([target] if target else []))
+
+
 @app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
