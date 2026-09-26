@@ -11,12 +11,12 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 44 (opened 2026-09-26): Phase 28, configuration format v1 (D-44)
+> ## ▶ ACTIVE BOARD — WAVE 45 (opened 2026-09-26): Phase 28, control flow as bounded data (D-44)
 >
-> Wave 44 runs P28-1, P28-2, P28-3 and P28-4 in parallel, one Sonnet worker per card in an
-> isolated worktree under one integrator; packets in
+> Wave 44 (P28-1..P28-4) merged 2026-09-26 with rollup `ea9e354`. Wave 45 runs P28-5 and P28-6 in
+> parallel with function-level ownership of `core/dispatch.py`; packets (Wave 45 section) in
 > [.agents/handoffs/wave-44-worker-packets.md](.agents/handoffs/wave-44-worker-packets.md).
-> Waves 45 and 46 open only after the previous wave's rollup merges green.
+> Wave 46 opens only after the Wave 45 rollup merges green.
 >
 > **☑ Phase 27 complete (2026-09-26).**
 >
@@ -117,9 +117,9 @@ release source.
 ---
 
 
-## ▶ WAVE 44 — ACTIVE (opened 2026-09-26): Phase 28, configuration format v1 and the two extension points (D-44)
+## ▶ WAVE 45 — ACTIVE (opened 2026-09-26): Phase 28, configuration format v1 and the two extension points (D-44)
 
-**Opened 2026-09-26 (Wave 44 active; Waves 45–46 queued in this section).** Eight cards in three waves. Decision, the format, the control-flow rule,
+**Opened 2026-09-26 (Wave 45 active; Wave 44 done, Wave 46 queued in this section).** Eight cards in three waves. Decision, the format, the control-flow rule,
 the plugin trust boundary and the verdict table are in
 [docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
 **Activation gate met:** Phase 27 closed 2026-09-26 (`e7dffbb`); packets in
@@ -144,7 +144,7 @@ agent-lane tests, no guards.
 
 ### P28-1 — every configuration file says what it is, and one command validates them all
 
-**Status:** IN-PROGRESS (@sonnet-p28-1) · **Size:** S · **Wave:** 44 · **Spec:** new `specs/functional/config-format.spec.md` 1.0.0, `cli-interface.spec.md` → 1.36.0
+**Status:** DONE (2026-09-26) · **Size:** S · **Wave:** 44 · **Spec:** new `specs/functional/config-format.spec.md` 1.0.0, `cli-interface.spec.md` → 1.36.0
 
 **Trigger:** no configuration file carries a `kind`; roles, pipelines, policies and the Phase 27
 manifest are told apart by directory and by the caller's choice of parser; policies are JSON
@@ -182,7 +182,7 @@ config_docs` fails on the base.
 
 ### P28-2 — policies read as "when this, then that", with predicates over the tool and its arguments
 
-**Status:** IN-PROGRESS (@sonnet-p28-2) · **Size:** M · **Wave:** 44 · **Spec:** `security-gates.spec.md` → 0.26.0 (policy format)
+**Status:** DONE (2026-09-26) · **Size:** M · **Wave:** 44 · **Spec:** `security-gates.spec.md` → 0.26.0 (policy format)
 
 **Trigger:**
 - `core/policy.py` documents `{id, applies_to, hook, match{type,pattern}, action}`: runtime
@@ -221,7 +221,7 @@ call in `core/tools.py::evaluate_tool_call`, `templates/policies/*`.
 
 ### P28-3 — a pipeline step reads as "who, what is checked, where it goes"
 
-**Status:** IN-PROGRESS (@sonnet-p28-3) · **Size:** S · **Wave:** 44 · **Spec:** `pipeline-format.spec.md` → 2.7.0 (short form)
+**Status:** DONE (2026-09-26) · **Size:** S · **Wave:** 44 · **Spec:** `pipeline-format.spec.md` → 2.7.0 (short form)
 
 **Trigger:** every shipped recipe repeats `pattern: '^\s*(APPROVE|REQUEST-CHANGES)\b'`,
 `passValues: [approve]` and `rework: {to, when, maxCycles}` to say "verdict gate, one rework".
@@ -256,7 +256,7 @@ call in `core/tools.py::evaluate_tool_call`, `templates/policies/*`.
 
 ### P28-4 — a role file carries only what is enforced, and its prose lives in Markdown
 
-**Status:** IN-PROGRESS (@sonnet-p28-4) · **Size:** S · **Wave:** 44 · **Spec:** `role-archetypes.spec.md` → 1.18.0 (wire format; 1.16.0 was consumed by Phase 27)
+**Status:** DONE (2026-09-26) · **Size:** S · **Wave:** 44 · **Spec:** `role-archetypes.spec.md` → 1.18.0 (wire format; 1.16.0 was consumed by Phase 27)
 
 **Trigger:** `RoleArchetype.edit_rights` is "descriptive only" beside `denied_tools`; `gateContract:
 {kind, regexes}` duplicates the pipeline's verdict vocabulary; `soulTemplate` and `agentsTemplate`
@@ -290,7 +290,7 @@ are long block scalars a non-expert edits badly.
 
 ### P28-5 — outcomes route the pipeline, and every loop has a bound
 
-**Status:** TODO · **Size:** M · **Wave:** 45 (after P28-3) · **Spec:** `pipeline-format.spec.md` → 2.8.0 (control flow), `pod-dispatch.spec.md` → 6.18.0
+**Status:** IN-PROGRESS (@sonnet-p28-5) · **Size:** M · **Wave:** 45 (after P28-3) · **Spec:** `pipeline-format.spec.md` → 2.8.0 (control flow), `pod-dispatch.spec.md` → 6.19.0
 
 **Trigger:** `core/orchestrator.py` routes only through a `VerdictGate.rework` edge to an earlier
 step; a verdict cannot send the task to a later step, escalate to an approval step, or stop; a
@@ -309,9 +309,11 @@ mechanical gate cannot retry its own step.
 
 **Non-goals:** `when` and command steps (P28-6); parallel changes.
 
-**Owns:** `core/orchestrator.py` outcome routing (one function) and the two checks;
+**Owns:** the routing of a gate's outcome in `core/dispatch.py` (`_route_outcome`, called by
+`_run_pipeline`; the executor lives there, not in `core/orchestrator.py`, which only plans),
+the two checks as `PipelineSpec` validators, `PlannedUnit.on` and the plan suffix;
 `core/pipeline.py` `on`/`until` model fields (P28-3 parsed them; this card lifts the "not
-available yet" refusal).
+available yet" refusal). Function ownership against P28-6 is in the packets file.
 
 **Acceptance / oracle:**
 
@@ -327,7 +329,7 @@ sequential step on the base.
 
 ### P28-6 — a step can be skipped on a closed predicate, and a step can be a command
 
-**Status:** TODO · **Size:** S · **Wave:** 45 · **Spec:** `pipeline-format.spec.md` → 2.9.0, `cli-interface.spec.md` → 1.37.0
+**Status:** IN-PROGRESS (@sonnet-p28-6) · **Size:** S · **Wave:** 45 · **Spec:** `pipeline-format.spec.md` → 2.9.0, `pod-dispatch.spec.md` → 6.20.0, `cli-interface.spec.md` → 1.37.0 (only if help text changes)
 
 **Trigger:** a Tester step cannot be skipped when nothing under `src/` changed; a lint or report
 step needs an agent turn even when a command would do; the only code escape for a pipeline is a
@@ -347,8 +349,9 @@ verify command attached to an agent.
 
 **Non-goals:** more predicates (a new one is a card with a test); Python step plugins (deferred).
 
-**Owns:** step skipping and the command-step executor in `core/orchestrator.py` (its own
-function), `core/pipeline.py` `when`/`run` fields, the `plan` renderer lines.
+**Owns:** step skipping and the command-step executor in `core/dispatch.py` (`_step_skipped`,
+`_run_command_step`, called at the top of `_run_pipeline`'s loop), `core/pipeline.py`
+`when`/`run` fields, `PlannedUnit.when`/`run`, the `plan` renderer lines.
 
 **Acceptance / oracle:**
 

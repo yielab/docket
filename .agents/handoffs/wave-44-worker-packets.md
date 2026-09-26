@@ -274,3 +274,141 @@ convention; "Archetype schema" notes `editRights` is derived from `cannot` in th
 
 Written by the integrator when Wave 44's rollup merges green; the card text in `TODO.md` and
 the ADR's wave table are the contract until then.
+
+---
+
+## Wave 45 — control flow (written 2026-09-26 after the Wave 44 rollup `ea9e354`)
+
+**Where the executor really lives.** The ADR and the two cards say `core/orchestrator.py` owns
+outcome routing. It does not: `core/orchestrator.py` is the pure planner (`resolve_plan`,
+`resolve_gate`, `render_plan`, `parse_verdict`, `run_group`); the loop that walks a task through
+its steps is `core/dispatch.py::_run_pipeline` (~L1699), the gates are evaluated by
+`_evaluate_mechanical_gate` (~L1384) and `_evaluate_verdict_gate` (~L1443), one hop is
+`_execute_unit` (~L1564), an outcome is `_UnitOutcome` (~L962, `kind` in advance | rework |
+blocked | waiting_approval | failed | cancelled), and a resumed task replays its history in
+`_replay_pipeline_position` (~L835). `PlannedUnit` (orchestrator ~L40) is what the loop sees for
+a step. Both Wave 45 cards edit `core/dispatch.py`, `core/orchestrator.py` and `core/pipeline.py`;
+ownership below is by **function**, and the integrator resolves a same-function conflict by
+keeping both blocks and importing the module.
+
+| Card | `core/pipeline.py` | `core/orchestrator.py` | `core/dispatch.py` |
+| --- | --- | --- | --- |
+| P28-5 | `Step.on`, `Step.until`/`Step.max`, the `PipelineSpec` route validators, the `on`/`until` arms of `normalize_pipeline` (lifting P28-3's refusal) | `PlannedUnit.on`, the route suffix in `_gate_label`/`_render_unit` | `_UnitOutcome.label`, `_evaluate_mechanical_gate`/`_evaluate_verdict_gate` return values, **new** `_route_outcome` called from `_run_pipeline` after an outcome, `HopResult.next_step` + `_hop_record`/`_hop_from_record`, `_replay_pipeline_position` |
+| P28-6 | `Step.when`, `Step.run`, the `run` arm of `_normalize_short_step` | `PlannedUnit.when`/`run`, `_resolve_unit` for a command step, the `when`/`run` text in `_render_unit` | **new** `_step_skipped` and **new** `_run_command_step`, each called from the top of `_run_pipeline`'s loop body before `_execute_unit` |
+
+Spec versions: pipeline-format 2.8.0 (P28-5) and 2.9.0 (P28-6) -- both add a changelog entry
+under the same `## Changelog`, the integrator keeps both newest first; pod-dispatch **6.19.0**
+(P28-5, "Generalized gate execution" + the trace-event list) and **6.20.0** (P28-6, a new
+"Conditional steps and command steps" subsection + the trace-event list); cli-interface 1.37.0
+(P28-6) only if `docket pipeline` help text changes. Base commit for Wave 45: the commit that
+appended this section (`git log -1 --format=%h -- .agents/handoffs/wave-44-worker-packets.md`).
+
+## P28-5 — outcomes route the pipeline, and every loop has a bound
+
+Branch `p28-5-outcome-routing`. Specs: `pipeline-format.spec.md` -> 2.8.0 (new `### Outcome
+routing` subsection after "Short form"; "Rework edges" gains one sentence saying `rework` is the
+canonical spelling of the one bounded backward verdict edge and `on:` generalises it);
+`pod-dispatch.spec.md` -> 6.19.0 ("Generalized gate execution" item 2 gains the routing rule; the
+"Trace events this pipeline emits" block gains `route_taken`).
+
+- **Model.** `Step.on: dict[str, Route] | None` where a `Route` is a mapping `{goto: <step id>,
+  max: <int >= 1, required when the target is at or before this step>}`, or one of the strings
+  `fail` | `stop` | `<step id>` (a bare forward target). Keys are outcome labels, compared
+  case-insensitively: a verdict gate's matched value, `pass`/`fail` for a mechanical gate,
+  `approved` for an approval gate (a denial never reaches routing: it fails the task before the
+  hop, as today). `Step.until: Literal["verify"] | None` with `Step.max: int | None` is sugar the
+  normaliser rewrites to `on: {fail: {goto: <this step>, max: N}}` (only valid with a mechanical
+  gate); the canonical form never carries `until`. PyYAML reads a bare `on:` as `True`: reuse
+  P28-3's `_get_on` so both spellings load, and make the canonical key the string `"on"`
+  (`Field(alias="on")` on a Python attribute named `on_` or similar). `PipelineSpec` validators:
+  every `goto` names a step in the document; a backward or self `goto` without `max` is an error
+  naming the step; a step no path reaches (walk from step 0 through the default next step and
+  every `goto`, stopping at `fail`/`stop`) is an error naming it. Byte-identity: a verdict step
+  whose only `on:` entry is one backward `{goto, max}` keeps normalising to `rework` exactly as
+  P28-3 shipped (the three recipes and `render_plan` on them stay byte-identical); every other
+  `on:` shape now becomes the canonical `on` field instead of the "not available yet" error --
+  delete that error and its test, and replace the test with the round trip below.
+- **Executor.** `_UnitOutcome` gains `label: str = ""` (the outcome label above, `""` for a step
+  with no gate). `_evaluate_mechanical_gate` sets `label="pass"|"fail"`; `_evaluate_verdict_gate`
+  sets `label=<verdict>` and, **before** its rework/fail handling, returns
+  `_UnitOutcome(kind="routed", label=verdict, hops=[hop])` when the unit's `on` map has an entry
+  for that label (so `on:` beats the built-in fail; a label the map does not name behaves exactly
+  as today, including the legacy trace event names). Same for a mechanical `fail` with an `on`
+  entry. New `_route_outcome(ctx, node, outcome, pipeline_index) -> tuple[int | None, str]`
+  resolves a `routed` outcome: `fail` -> the task fails with reason `step '<id>' outcome <LABEL>
+  routed to fail`; `stop` -> the task ends `done` (return `None` and a reason the loop records);
+  `goto` -> the target index, a backward jump counting against `max` in a `ctx.route_counts`
+  dict keyed by `(step_id, label)` (add it beside `rework_counts`), exhausted -> the task fails
+  naming step, label and max. Every decision emits a `route_taken` trace event with
+  `{"step", "outcome", "target"}` (`target` is `fail`/`stop`/the step id). `_run_pipeline`
+  handles `kind == "routed"` by calling `_route_outcome`; nothing else in the loop changes.
+  `HopResult` gains `next_step: str | None = None`, persisted by `_hop_record`/`_hop_from_record`
+  and set by the router on the routed hop, so `_replay_pipeline_position` follows it on resume
+  (recounting backward jumps into `route_counts`, which `_UnitContext` must carry in).
+  `PlannedUnit` gains `on: dict[str, Any] | None` copied from the step by `_resolve_unit`;
+  `_render_unit` appends ` on FAIL->escalate, PASS->stop` (labels upper-cased, targets as
+  written) when the step has an `on` map.
+- **Do not touch:** `_execute_unit`'s body, `_compose_hop`, the approval gate functions,
+  `core/pod_apply.py`, `cli/`, and anything P28-6 owns above (`when`, `run`, command steps).
+- **RED:** `tests/unit/core/test_pipeline__spec.py` (`SUBJECT = "docket.core.pipeline"`):
+  `until: verify, max: 2` normalises to `on: {fail: {goto: <self>, max: 2}}` and loads (on the
+  base `on` is refused as "not available yet"); negative case: an unreachable step is a load
+  error naming it. One execution test in `tests/integration/test_generalized_gates.py`
+  (`SUBJECT = "docket.core"`, copy its fixture shape and `FakeDriver`): a verdict step with
+  `on: {FAIL: escalate}` where `escalate` is a later approval step reaches `waiting_approval` at
+  `escalate` after the fake driver answers `FAIL`, and the trace has one `route_taken`. No other
+  new tests; the existing rework tests are the byte-identity oracle.
+
+## P28-6 — a step can be skipped on a closed predicate, and a step can be a command
+
+Branch `p28-6-when-and-command-steps`. Specs: `pipeline-format.spec.md` -> 2.9.0 (new
+`### Conditional steps and command steps` subsection after "Short form"; "Steps" gains the
+`run` xor `role`/`agent` rule); `pod-dispatch.spec.md` -> 6.20.0 (a new `### Conditional steps
+and command steps` requirements subsection after "Generalized gate execution"; the trace-event
+list gains `step_skipped` and `command_step`); `cli-interface.spec.md` -> 1.37.0 only if you change
+`docket pipeline` help text.
+
+- **Model.** `Step.when: When | None` where `When` is a Pydantic model with `extra="forbid"` and
+  exactly three optional predicates: `changed: str` (glob), `var: str` with `is: str` (alias
+  `is_`), `memberPresent: str` (alias `member_present`); at least one must be set; more than one
+  is AND. `Step.run: str | None`: a command step targets `run` instead of `role`/`agent` (xor with
+  both), may carry `timeout`, `when` and P28-5's `on`, and must not carry `gate`, `instructions`,
+  `retries`, `archetype` or `parallel`. Short form: `- lint: {run: "ruff check ."}` (a one-key
+  mapping whose value is a mapping with `run`) becomes `{id: lint, run: ..., <sugar>}` in
+  `_normalize_short_step`; `- lint: "ruff check ."` is **not** a command step (a string target is
+  a role or agent, as P28-3 defined).
+- **Planner.** `PlannedUnit` gains `when: dict[str, Any] | None` and `run: str | None`;
+  `_resolve_unit` gives a command step `member_id=None`, `skipped=False` (it needs no member),
+  and `core/pod_apply.py::unresolvable_pipeline_steps` must not report it (one `if unit.run` guard
+  -- the only line you touch in that file). `_render_unit` prints `run 'ruff check .' [gate: exit
+  code]` for a command step and appends ` when changed=src/**` (or `var=name is value`,
+  `memberPresent=role`) for any step with `when`.
+- **Executor.** Two new functions in `core/dispatch.py`, each called at the top of
+  `_run_pipeline`'s loop body for a `PlannedUnit` before `_execute_unit` runs (P28-5 adds a call
+  *after* the outcome; keep your two calls together at the top). `_step_skipped(ctx, node,
+  prior) -> bool` evaluates `when`: `changed` = any path from `_sys.git_changed_files(cwd)`
+  matches the glob (`fnmatch`), `cwd` being the latest successful Implementer worktree
+  (`_prior_implementer_worktree(prior)`) or the Lead's codebase; `var`/`is` compares the resolved
+  pipeline variable's string form (find where `_UnitContext` carries the resolved variables, or
+  add `variables: dict[str, str]` to it from `dispatch_task`'s resolved mapping); `memberPresent`
+  checks `ctx.id_to_index`'s roster source (`pod_full_roster(ctx.project)`). A false predicate
+  emits `step_skipped` `{"step", "when"}` and the loop advances to the next index with no hop.
+  `_run_command_step(ctx, node, prior) -> _UnitOutcome` runs `node.run` through
+  `_sys.run_verify_cmd(cmd, cwd, node.timeout or ctx.resolved_verify_timeout)` in the same `cwd`
+  rule, after `classify_command(cmd, extra_bins=<the pod's allowCommands>)`: `allow` runs;
+  anything else is refused as `failed` with the classifier's reason under `approvalMode refuse`,
+  and under `wait` goes through `_gate_pre_hop_approval` exactly like an approval gate (the step
+  id is the role name in the approval record). The outcome is a `HopResult` with `role=<step
+  id>`, `member_id=""`, `output=<captured, redacted>`, `ok=<exit 0>`; a `command_step` trace
+  event `{"step", "cmd", "exit"}`; `_UnitOutcome(kind="advance"|"failed", label=...)` where the
+  label is `pass`/`fail` unless the last stdout line is a single uppercase token, which becomes
+  the label (P28-5's `on:` reads it). No model call, no cost, no session.
+- **Do not touch:** `_execute_unit`, `_evaluate_*_gate`, `_replay_pipeline_position`,
+  `_UnitOutcome`'s fields (P28-5 adds `label`; construct yours with the fields that exist on your
+  base and say so -- the integrator wires the label), `Step.on`, `cli/`.
+- **RED:** `tests/unit/core/test_pipeline__spec.py`: a `run:` step is rejected as an unknown key
+  on the base; it loads and `render_plan` shows `run 'false' [gate: exit code]` after. Two
+  execution tests in `tests/integration/test_generalized_gates.py`: `run: "false"` fails the
+  task with no `FakeDriver` call for that step and a `command_step` event; `when: {changed:
+  "src/**"}` on a tree whose only change is under `docs/` skips the step (`step_skipped` event)
+  and the next step runs. No other new tests.
