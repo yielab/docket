@@ -34,12 +34,18 @@ stale copy.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import docket.config as _cfg
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
 from docket.core.models import AgentMeta, Persona
 from docket.edges import store as _store
+
+#: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
+#: `core/agent_loop.py` emits -- this module stays trace-free and only reports data.
+PromptSectionStatus = Literal["full", "truncated", "omitted"]
 
 PERSONA_BEGIN = "<!-- docket-persona:begin -->"
 PERSONA_END = "<!-- docket-persona:end -->"
@@ -67,6 +73,23 @@ _PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, memory/, an
 #: pod Lead behave like a free-roaming assistant. docket owns identity via metadata +
 #: SOUL, so these are pollution to quarantine (see agent-structure-analysis.md §6).
 SCAFFOLDING_FILES = ("IDENTITY.md", "BOOTSTRAP.md")
+
+
+@dataclass(frozen=True)
+class PromptSectionReport:
+    """One section's byte accounting in a composed prompt."""
+
+    name: str
+    bytes: int
+    status: PromptSectionStatus
+
+
+@dataclass(frozen=True)
+class PromptComposition:
+    """A composed system prompt plus its per-section fit accounting."""
+
+    text: str
+    sections: tuple[PromptSectionReport, ...] = ()
 
 
 def quarantine_scaffolding(ws: Path) -> list[str]:
@@ -247,7 +270,28 @@ def _visible_truncate(text: str, max_bytes: int, label: str) -> str:
     return f"{head}{marker}{tail}"
 
 
-def _runtime_workspace_context(ws: Path, base_prompt: str) -> str:
+def _omission_marker(name: str, text: str) -> str:
+    """A one-line marker for a section dropped entirely for lack of room."""
+    return f"[... {name} omitted: {len(text.encode('utf-8'))} bytes omitted ...]"
+
+
+def _cap_soul_text(soul_text: str, max_bytes: int) -> tuple[str, PromptSectionReport | None]:
+    """Truncate an oversized SOUL to at most half of *max_bytes*, so it can never
+    exhaust the room the runtime contract and private-workspace sections need."""
+    if not soul_text.strip():
+        return soul_text, None
+    original_bytes = len(soul_text.encode("utf-8"))
+    ceiling = max(0, max_bytes - max_bytes // 2)
+    capped = _visible_truncate(soul_text, ceiling, SOUL_FILE)
+    if capped == soul_text:
+        return capped, PromptSectionReport(SOUL_FILE, original_bytes, "full")
+    status: PromptSectionStatus = "truncated" if capped else "omitted"
+    return capped, PromptSectionReport(SOUL_FILE, len(capped.encode("utf-8")), status)
+
+
+def _runtime_workspace_context(
+    ws: Path, base_prompt: str
+) -> tuple[str, tuple[PromptSectionReport, ...]]:
     """Fit freshly read private workspace state after mandatory identity context."""
     available_sections: list[tuple[str, str]] = []
     for name in _RUNTIME_CONTEXT_FILES:
@@ -258,7 +302,7 @@ def _runtime_workspace_context(ws: Path, base_prompt: str) -> str:
         if projected.strip():
             available_sections.append((name, projected))
     if not available_sections:
-        return ""
+        return "", ()
 
     max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
     remaining = max_bytes - len(base_prompt.encode("utf-8"))
@@ -268,25 +312,45 @@ def _runtime_workspace_context(ws: Path, base_prompt: str) -> str:
     prefix_bytes = len(prefix.encode("utf-8"))
     footer_bytes = len(_RUNTIME_CONTEXT_FOOTER.encode("utf-8"))
     if remaining < prefix_bytes + footer_bytes:
-        return ""
+        # Not even the frame fits: every section is omitted, but each still gets
+        # its own marker rather than the whole block silently vanishing.
+        lines: list[str] = []
+        for name, text in available_sections:
+            line = _omission_marker(name, text)
+            cost = len(line.encode("utf-8")) + (2 if lines else 0)
+            if remaining < cost:
+                break
+            lines.append(line)
+            remaining -= cost
+        bulk_reports = tuple(
+            PromptSectionReport(name, 0, "omitted") for name, _ in available_sections
+        )
+        return "\n\n".join(lines), bulk_reports
 
     parts = [prefix]
     remaining -= prefix_bytes + footer_bytes
+    reports: list[PromptSectionReport] = []
     for name, text in available_sections:
         header = f"\n\n## {name}\n"
         header_bytes = len(header.encode("utf-8"))
         if remaining <= header_bytes:
-            break
+            marker = f"\n\n{_omission_marker(name, text)}"
+            marker_bytes = len(marker.encode("utf-8"))
+            if remaining >= marker_bytes:
+                parts.append(marker)
+                remaining -= marker_bytes
+            reports.append(PromptSectionReport(name, 0, "omitted"))
+            continue
+        fitted = _visible_truncate(text, remaining - header_bytes, name)
         parts.append(header)
         remaining -= header_bytes
-        fitted = _visible_truncate(text, remaining, name)
         parts.append(fitted)
         used = len(fitted.encode("utf-8"))
         remaining -= used
-        if fitted != text:
-            break
+        status: PromptSectionStatus = "full" if fitted == text else "truncated"
+        reports.append(PromptSectionReport(name, used, status))
     parts.append(_RUNTIME_CONTEXT_FOOTER)
-    return "".join(parts)
+    return "".join(parts), tuple(reports)
 
 
 def load_agent_persona(agent_id: str) -> Persona | None:
@@ -314,30 +378,44 @@ def _read_workspace_text(path: Path) -> str:
         return ""
 
 
-def system_prompt_for_agent(
+def compose_agent_prompt(
     agent_id: str,
     *,
     project_roots: tuple[Path, ...] = (),
-) -> str:
+) -> PromptComposition:
     """Read *agent_id*'s identity plus bounded private state and compose a prompt — the
-    one I/O entry point ``core/agent_loop.py`` needs. Returns ``""`` for an unprovisioned
-    agent rather than raising: a turn must still run with no identity to compose."""
+    one I/O entry point ``core/agent_loop.py`` needs. An unprovisioned agent composes to
+    an empty ``PromptComposition`` rather than raising: a turn must still run."""
     if not agent_id:
-        return ""
+        return PromptComposition("")
     ws = _cfg.workspace_dir(agent_id)
-    soul_text = _read_workspace_text(ws / SOUL_FILE)
+    soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
     persona = load_agent_persona(agent_id)
     has_private_state = any((ws / name).is_file() for name in _RUNTIME_CONTEXT_FILES)
     has_prompt_material = bool(
-        soul_text.strip()
+        soul_text_raw.strip()
         or workflow_text.strip()
         or has_private_state
         or (persona is not None and persona.label())
     )
     if not has_prompt_material:
-        return ""
+        return PromptComposition("")
+    max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
+    soul_text, soul_report = _cap_soul_text(soul_text_raw, max_bytes)
     runtime_contract = _runtime_startup_contract(project_roots)
     base_prompt = compose_system_prompt(soul_text, runtime_contract, persona)
-    runtime_context = _runtime_workspace_context(ws, base_prompt)
-    return compose_system_prompt(soul_text, runtime_contract, persona, runtime_context)
+    runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt)
+    text = compose_system_prompt(soul_text, runtime_contract, persona, runtime_context)
+    sections = ((soul_report,) if soul_report is not None else ()) + context_reports
+    return PromptComposition(text, sections)
+
+
+def system_prompt_for_agent(
+    agent_id: str,
+    *,
+    project_roots: tuple[Path, ...] = (),
+) -> str:
+    """Read *agent_id*'s identity plus bounded private state and compose a prompt.
+    Thin wrapper over :func:`compose_agent_prompt` for callers that only need the text."""
+    return compose_agent_prompt(agent_id, project_roots=project_roots).text
