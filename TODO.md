@@ -81,7 +81,7 @@ release source.
 
 **Opened 2026-09-25, immediately after Wave 37 closed (`3089a00`) removed the file-contention
 blocks (W37-C5 on `core/approval.py`, W37-C6 on `cli/_policies.py`/`cli/_keys.py`).** Twenty
-cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); **Batch B closed 2026-09-26** (P26-4 `acf471f`, P26-19 `1781c73`; both Sonnet workers, integrator-resolved conflicts). **Wave 39 open**: P26-3, P26-5, P26-6, P26-7, P26-8. Decision, verdict table and the
+cards. **Wave 38 batch A closed 2026-09-25**: P26-1, P26-2, P26-13, P26-16, P26-18 merged (P26-1 by the coordinator, the rest by one Sonnet worker each in isolated worktrees); **Batch B closed 2026-09-26** (P26-4 `acf471f`, P26-19 `1781c73`; both Sonnet workers, integrator-resolved conflicts). **Wave 39 closed 2026-09-26**: P26-3, P26-5 (`971cb4c`), P26-6 (`c12dae5`), P26-7 (`3d63caa`), P26-8 (`1184eb8`) — five Sonnet workers in parallel from base `2087e0b`; the integrator re-versioned two silent same-day spec collisions (security-gates 0.24.0, pod-dispatch 6.12.0, pipeline-format 2.4.0). **Wave 40 open**: P26-9→P26-10→P26-17 serial, plus P26-11, P26-12, P26-14, P26-15, P26-20. Decision, verdict table and the
 six-property contract: [docs/adr/0008-configuration-contract.md](docs/adr/0008-configuration-contract.md).
 The user-facing map of every installed file is [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Each closing card deletes its own bullet from that guide's §5 "Sharp edges" in the same commit.
@@ -313,8 +313,8 @@ key.
 
 ### P26-7 — custom roles and steps carry their own hop instructions; `variables` get a consumer
 
-**Status:** TODO · **Size:** M · **Wave:** 39 · **Spec:** `role-archetypes.spec.md`,
-`pipeline-format.spec.md`
+**Status:** DONE (merged `3d63caa`, worker commit `b096fdf`) · **Size:** M · **Wave:** 39 · **Spec:** `role-archetypes.spec.md` 1.8.0,
+`pipeline-format.spec.md` 2.4.0 (re-versioned from the worker's 2.3.0 — collided with P26-6)
 
 **Trigger:**
 - `dispatch.py:571-572,639`: any role outside lead, implementer, reviewer and tester gets

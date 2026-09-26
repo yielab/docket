@@ -116,8 +116,13 @@ The system prompt is, in this order:
    - `AGENTS.md` is included without its `## Session Startup` section.
    - `TOOLS.md` and `MEMORY.md` are included verbatim.
 
-Section 3 shares one budget: `CONTEXT_TOKEN_BUDGET` (default 6000) × `CONTEXT_BYTES_PER_TOKEN`
-(default 4), so about 24 KB. An oversized `SOUL.md` is capped (middle-truncated with a visible
+Section 3 shares one budget, resolved per turn from the model actually being called: half the
+registered context window (minus the output reserve and a labelled tool-schema allowance),
+floored at `CONTEXT_TOKEN_BUDGET` (default 6000) × `CONTEXT_BYTES_PER_TOKEN` (default 4) ≈ 24 KB.
+A 16k local endpoint resolves below that floor, so it gets exactly the floor; a 200k hosted model
+fits every section in full. Setting `CONTEXT_TOKEN_BUDGET` explicitly overrides both. The
+`prompt_composed` trace event names the resolved `budgetTokens` and its `budgetSource`
+(`env`/`window`/`default`). An oversized `SOUL.md` is capped (middle-truncated with a visible
 marker) so it cannot crowd out the contract or the state sections; a state file that does not fit
 is truncated or omitted **with a one-line marker in the prompt naming it**, and every composition
 emits a `prompt_composed` trace event listing each section as full, truncated or omitted
@@ -130,7 +135,7 @@ context passes the budget.
 |---|---|
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
 | `memory/YYYY-MM-DD.md` | Input to `docket maintain distill` (and to `clean`/`reset`, which distill first). Not in the prompt. Distill to move its content into `MEMORY.md`, which is. |
-| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--file` (see §3.5). |
+| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--file` or bound with `pod config set pipeline` (see §3.5). |
 
 ### Who decides what: the ownership map
 
@@ -141,11 +146,11 @@ where a change belongs, find the question first:
 |---|---|---|---|
 | What needs doing? | **Task** | the Lead's `TASK_LIST.json` | `docket pod <p> delegate` |
 | Which team shape does a new pod get? | **Blueprint** | Lead meta `blueprint` (creation-time only) | `docket init --blueprint` |
-| Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | the blueprint's built-in default; a YAML file for a custom route | `docket pipeline validate/plan/run` |
+| Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-ins + `~/.docket/docket-roles.json` | `docket roles`, `docket pod <p> add <role>` |
 | What does *this* agent know about *this* project? | **Workspace instructions** | `SOUL.md`, `TOOLS.md`, `MEMORY.md` | `docket edit` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | `~/.docket/policies/*.json` (+ fixed `SAFE_BINS`) | `docket policies` |
-| What budget, timeouts and verify gate bound this pod? | **Pod settings** | the Lead's / member's `.docket-meta.json` | `set-verify`, `profile --budget` (rest: P26-4) |
+| What budget, timeouts, approval posture, extra allowed commands and verify gate bound this pod? | **Pod settings** | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`); `set-verify` |
 
 Two boundaries worth stating because they are easy to get backwards:
 
@@ -153,14 +158,20 @@ Two boundaries worth stating because they are easy to get backwards:
   and *how the output is judged* (mechanical exit code, verdict marker, human approval). What the
   agent is told comes from its role template and workspace files (§2), plus the task text.
 - **Every pod always has a pipeline.** `docket pod <p> dispatch` runs the blueprint's default with
-  no setup. The `pipeline` command exists only for a *custom* route: `validate` a file, `plan` it
-  against the real roster without spending tokens, and (today) `run --file` it by hand. A custom
-  route currently runs **only** through that command — binding it as the pod's default for every
-  trigger is P26-6.
+  no setup. For a *custom* route: `docket pipeline validate` checks a file, `plan` shows it against
+  the real roster without spending tokens, `run --file` executes it once by hand, and
+  `docket pod <p> config set pipeline <file>` **binds it as the pod's default for every trigger**
+  (dispatch, serve sweep, schedules, webhooks, MCP). Binding validates and plans the file first,
+  stores a docket-owned copy with its hash, and a later hash mismatch refuses dispatch loudly.
+  `docket pipeline plan <p>` prints a `Source:` line naming which route would run.
 
 **The task itself** arrives as the turn's user message, built by dispatch: the task description,
-a one-line instruction for the four built-in roles (a custom role gets none), and the previous
-hops' output trimmed to the role's `tokenBudget`. Workspace files are not re-read into it.
+an instruction line, and the previous hops' output trimmed to the role's `tokenBudget`. The
+instruction is, in order of precedence: the pipeline step's own `instructions` (which may
+interpolate declared `${variables}`, fed by `docket pipeline run --var key=value` or the webhook
+body), the built-in role's hardcoded line, or a custom role's `hopInstruction` (declared, or
+generated from its `gateContract` so a verdict role always knows its marker). Workspace files are
+not re-read into it.
 
 **Private means read-only for the agent.** The generated `SOUL.md`, `AGENTS.md` and
 `WORKFLOW_AUTO.md` tell an agent to write its plan into `HEARTBEAT.md` and its day into `memory/`.
@@ -364,12 +375,9 @@ Schema (unknown keys are rejected at every level):
 - **Defaults:** a step with no `gate` falls back to its role's `gateContract`, without a rework
   edge. A step whose role is not in the pod is skipped.
 
-Two limits to plan around:
-
-- **A pipeline file is used only by `docket pipeline run --file`.** `docket pod <p> dispatch`,
-  `docket serve --dispatch`, schedules, webhooks and MCP `dispatch` always run the blueprint's
-  default pipeline. No per-pod setting makes a file the default.
-- `variables` are validated but not yet substituted into any hop.
+One rule to plan around: a **bound** pipeline (`pod config set pipeline`) is treated like a
+caller-supplied `--file` — the pod's `maxReworkCycles` setting never patches it, so the file's own
+rework edges are what run. Only the blueprint/built-in default is patched by that setting.
 
 ### 3.6 Govern what agents may do
 
@@ -401,16 +409,24 @@ matches. Anything else asks a human.
   still asks.
 - **Not on the list,** so each one asks: `pytest`, `python`, `uv`, `bash`, `rm`, `export`,
   `source`.
-- **Not configurable.** A policy can only make a call *stricter*; an `allow` policy cannot loosen
-  the classifier.
+- **Per-pod widening, scoped and audited:** `docket pod <p> config set allowCommands pytest,uv`
+  adds exact binary basenames to the allowlist *for that pod's turns only*. Paths, shell
+  metacharacters, opaque names (`eval`, `source`, …) and high-risk-class bins (`git`, `npm`) are
+  rejected at write time; a redirected call still asks. Policies remain stricter-only: an `allow`
+  policy cannot loosen the classifier.
 - **In an unattended run,** each ask blocks the turn for `TOOL_APPROVAL_TIMEOUT` (120 s) and is
   then denied. After three denials in a row (`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`), the hop
-  fails.
+  fails. For a pod that is *known* to run unattended, set
+  `docket pod <p> config set approvalMode refuse`: a gated call then fails the hop immediately
+  with `approval_unavailable`, naming the tool and policy, instead of eating the timeout.
 - **This is not hypothetical.** Verifying this guide, a real dispatch passed Lead, Implementer
   and Reviewer, then **failed the task** at the Tester on three asks. The asks were for
   `cd <worktree> && python3 …`, which W37-C1 has since allowed. `pytest` and `uv` still ask.
 
-Two ways to avoid it:
+Three ways to avoid it:
+
+- **Allowlist the bins for that pod.** `docket pod <p> config set allowCommands pytest,uv`
+  (see above) is the direct fix for exactly this failure.
 
 - **Run checks through the verify gate.** Put them in the mechanical gate (`set-verify`, or a
   pipeline `mechanical` gate). That command runs outside the tool classifier; only high-risk
@@ -419,7 +435,6 @@ Two ways to avoid it:
   or `uv run pytest`. `bash` already starts in the agent's first project root (the worktree, for an
   Implementer), so relative paths work.
 
-A scoped, audited per-pod allowlist is planned (P26-8 in `TODO.md`).
 
 **Policies** (`~/.docket/policies/*.json`, relocatable with `POLICIES_DIR`). Every `*.json` file
 in the directory is loaded, and all of them are re-read on every call, so a new file is live
@@ -589,30 +604,18 @@ assuming it. Phase 26 in `TODO.md` ([ADR 0008](adr/0008-configuration-contract.m
 for most of them.
 
 - **`WORKFLOW_AUTO.md` and `memory/` are not in the prompt** (§2). Edit `SOUL.md`/`MEMORY.md`.
-- **Pipeline files do not change `pod dispatch` or `serve`** (§3.5).
 - **Existing members keep their provisioned `SOUL.md`.** Changing a role template does not
   re-render them.
 - **Tool denials are per role only.** Nothing allows or denies tools per agent or per pod.
-- **Some meta values are skipped silently.** An invalid `maxReworkCycles`, `turnTimeoutS` or
-  `verifyTimeoutS` in the Lead's meta falls back to the default without a warning.
 - **Some files are skipped silently.** An invalid policy file, schedule spec, model-policy entry
   or overlay role is skipped without a warning. For a `block` policy that means the call is
   **allowed** (§3.6). Test after every edit.
-- **The shell allowlist is fixed, and asks block unattended runs.** Common commands (`pytest`,
-  `uv`, `python`) ask a human, and in an unattended run each ask costs 120 s before it is denied
-  (§3.6).
 - **Two "default model" fields.** `fleet.json` `defaults.model` is not what agents use;
   `docket-models.json` `default` and each agent's own `model` are.
 - **The provider display name is cosmetic.** `models provider add` without `--name` stores a fixed
   label. Only `id`, `contextWindow` and `maxTokens` are read.
 - **The registries grow forever.** `docket-runs.json`, `approvals/` and
   `docket-conversations.json` are never pruned. Only traces have retention.
-- **A dispatch refusal can orphan a task as `running`.** A configuration error mid-pipeline (for
-  example the role-name defect above) leaves the claimed task `running` with no process, and the
-  CLI then refuses to dispatch at all ("No pending tasks"), which also blocks the sweep that would
-  recover it. Recovery today: queue another task, then run
-  `CLAIM_STALE_TIMEOUT=1 docket pipeline run <p> --file <f> --resume` once — the sweep fails the
-  orphan and `--resume` reclaims it from its persisted hops. Verified live 2026-09-25.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action
   `tool.warn`), not in traces — so `docket trace`/`metrics` won't show it.
 - **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it
