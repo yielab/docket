@@ -160,6 +160,38 @@ class TestCommandClassifierIsArgumentAware:
             assert verdict.reason == "'echo' is not on the curated allowlist", command
 
 
+class TestExtraBinsExtendTheAllowlist:
+    """`classify_command`'s `extra_bins` parameter -- `core.pod.PodSettings.allow_commands`'s
+    live path. Default empty leaves every prior verdict byte-identical."""
+
+    def test_default_is_identical_to_omitting_the_argument(self) -> None:
+        assert classify_command("pytest -q") == classify_command("pytest -q", frozenset())
+
+    def test_without_the_setting_an_offlist_binary_still_asks(self) -> None:
+        assert classify_command("pytest -q").action == "ask"
+
+    def test_an_extra_bin_runs_unattended(self) -> None:
+        extra = frozenset({"pytest", "uv"})
+        assert classify_command("pytest -q", extra).action == "allow"
+        assert classify_command("uv run pytest", extra).action == "allow"
+
+    def test_a_high_risk_segment_still_asks_alongside_an_extra_bin(self) -> None:
+        extra = frozenset({"pytest", "uv"})
+        verdict = classify_command("uv run pytest && git push origin main", extra)
+        assert verdict.action == "ask"
+        assert verdict.risk_class == "prod-deploy"
+
+    def test_an_extra_bin_is_redirect_sensitive(self) -> None:
+        verdict = classify_command("pytest -q > out.txt", frozenset({"pytest"}))
+        assert verdict.action == "ask"
+        assert verdict.bin_name == "pytest"
+
+    def test_an_extra_bin_does_not_cover_a_sibling_offlist_binary(self) -> None:
+        verdict = classify_command("pytest -q && rm -rf /tmp/x", frozenset({"pytest"}))
+        assert verdict.action == "ask"
+        assert verdict.bin_name == "rm"
+
+
 class TestSegmentSplitting:
     def test_operators_start_new_segments(self) -> None:
         assert split_command_segments("ls -la && git status") == [
@@ -326,6 +358,17 @@ class TestDispatchChokepoint:
     def test_allowlisted_command_is_executed(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("bash", '{"command": "ls"}'), ctx, builtin_registry())
         assert res.executed and res.decision == "allow"
+
+    def test_ctx_allow_commands_reaches_the_live_gate(self, workspace: Path) -> None:
+        extended = ToolContext(
+            agent_id="demo-implementer", roots=(workspace,), timeout=10, allow_commands=("pytest",)
+        )
+        res = dispatch_tool(_call("bash", '{"command": "pytest -q"}'), extended, builtin_registry())
+        assert res.executed and res.decision == "allow"
+
+    def test_a_bare_ctx_without_allow_commands_still_asks(self, ctx: ToolContext) -> None:
+        res = dispatch_tool(_call("bash", '{"command": "pytest -q"}'), ctx, builtin_registry())
+        assert res.denied and not res.executed
 
     def test_a_raising_handler_returns_a_result_instead_of_unwinding_the_turn(
         self, ctx: ToolContext

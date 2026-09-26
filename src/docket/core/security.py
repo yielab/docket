@@ -219,18 +219,27 @@ def split_command_segments(command: str) -> list[list[str]]:
     return [tokens for tokens, _redirected in _split_segments_with_redirect_flags(command)]
 
 
-def classify_command(command: str) -> CommandVerdict:
+def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> CommandVerdict:
     """Decide whether *command* may run unattended. First match wins: empty
     -> deny; opaque (command substitution/``eval``/``exec``) or
     untokenizable -> ask, since the binary that will run is not knowable; a
     high-risk class matching the full line -> ask, naming it (argument-aware:
     ``git`` is allowlisted, but ``git push origin production`` still asks);
-    any segment's binary off ``SAFE_BINS`` -> ask, naming it (every segment
-    is checked, so a safe binary cannot smuggle an unsafe one in behind
-    ``;``/``&&``); a redirect-sensitive SAFE_BINS entry (``echo``) used with an
-    output redirect -> ask, by that same not-on-the-allowlist path, so adding
-    it to SAFE_BINS did not also unlock unattended arbitrary-path writes;
-    otherwise -> allow.
+    any segment's binary off ``SAFE_BINS`` (and off *extra_bins*) -> ask,
+    naming it (every segment is checked, so a safe binary cannot smuggle an
+    unsafe one in behind ``;``/``&&``); a redirect-sensitive SAFE_BINS entry
+    (``echo``) used with an output redirect -> ask, by that same
+    not-on-the-allowlist path, so adding it to SAFE_BINS did not also unlock
+    unattended arbitrary-path writes; otherwise -> allow.
+
+    *extra_bins* is a caller-supplied, per-pod extension of the membership
+    check only (``core.pod.PodSettings.allow_commands``) -- it never widens
+    the opaque-marker check or the high-risk-class check above, both of which
+    still run against the full command line first. Every member of
+    *extra_bins* is treated as redirect-sensitive, the same conservative rule
+    ``echo`` gets, since docket cannot know whether a pod-supplied binary's
+    argument is model-composed text. The default, empty *extra_bins* leaves
+    every prior verdict byte-identical.
 
     Does not catch: a safe binary used destructively within its own remit
     (``git reset --hard``), writes through a redirect outside the workspace
@@ -269,8 +278,10 @@ def classify_command(command: str) -> CommandVerdict:
 
     for segment, redirected in segment_pairs:
         bin_name = os.path.basename(segment[0])
-        off_allowlist = bin_name not in SAFE_BINS
+        off_allowlist = bin_name not in SAFE_BINS and bin_name not in extra_bins
         if not off_allowlist and redirected and bin_name in _REDIRECT_SENSITIVE_BINS:
+            off_allowlist = True
+        if not off_allowlist and redirected and bin_name in extra_bins:
             off_allowlist = True
         if off_allowlist:
             return CommandVerdict(

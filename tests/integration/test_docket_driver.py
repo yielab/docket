@@ -1817,3 +1817,113 @@ class TestApprovalModeWiring:
         assert "approval_unavailable" in result.error
         assert "block-destructive" in result.error
         assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
+
+
+def _allow_commands_probe_registry() -> ToolRegistry:
+    """One-tool registry reporting `ctx.allow_commands` -- the pod
+    `allowCommands` setting's own oracle, mirroring the approval-mode probe."""
+    registry = ToolRegistry()
+
+    def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+        return ToolOutcome(True, content=f"allow_commands={','.join(ctx.allow_commands)}")
+
+    registry.register(
+        Tool(
+            name="probe",
+            description="reports ctx.allow_commands",
+            parameters={"type": "object", "properties": {}},
+            handler=_probe,
+            kind="read",
+        )
+    )
+    return registry
+
+
+class TestAllowCommandsWiring:
+    """A pod Lead's `allowCommands` setting reaching a member agent's real
+    `ToolContext` (`core.pod.PodSettings` -> `edges/adapters/docket_runtime.py`)."""
+
+    def test_a_non_pod_agent_gets_no_extra_bins(self) -> None:
+        _write_meta("solo-agent")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_allow_commands_probe_registry,
+        )
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "allow_commands="
+
+    def test_a_pod_member_sees_its_leads_configured_setting(self) -> None:
+        _write_meta("shop-implementer")
+        _write_meta("shop-lead", role="lead", allowCommands="pytest,uv")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_allow_commands_probe_registry,
+        )
+
+        result = driver.run_turn("shop-implementer", "agent:shop-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "allow_commands=pytest,uv"
+
+    def test_a_member_of_a_different_pod_sees_no_extra_bins(self) -> None:
+        _write_meta("shop-implementer")
+        _write_meta("shop-lead", role="lead", allowCommands="pytest,uv")
+        _write_meta("other-implementer")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_allow_commands_probe_registry,
+        )
+
+        result = driver.run_turn("other-implementer", "agent:other-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "allow_commands="
+
+    def test_a_malformed_pod_setting_fails_closed_to_no_extra_bins(self) -> None:
+        _write_meta("shop-implementer")
+        _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="pytest")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_allow_commands_probe_registry,
+        )
+
+        result = driver.run_turn("shop-implementer", "agent:shop-implementer:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "allow_commands="
+
+    def test_the_extra_bin_actually_reaches_the_real_gate_end_to_end(self) -> None:
+        """The whole-path proof: `uname`, off SAFE_BINS, executes unattended
+        through the real `bash` tool once its pod's Lead configures it."""
+        _write_meta("shop-implementer")
+        _write_meta("shop-lead", role="lead", allowCommands="uname")
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "uname"}))
+        backend = _ScriptedBackend(
+            [
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+                _final_response("ran it"),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn("shop-implementer", "agent:shop-implementer:default", "uname", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert "not on the curated allowlist" not in tool_msg.content
