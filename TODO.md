@@ -11,7 +11,14 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-09-26) — Phase 27 complete, Phase 28 planned below
+> ## ▶ ACTIVE BOARD — WAVE 44 (opened 2026-09-26): Phase 28, configuration format v1 (D-44)
+>
+> Wave 44 runs P28-1, P28-2, P28-3 and P28-4 in parallel, one Sonnet worker per card in an
+> isolated worktree under one integrator; packets in
+> [.agents/handoffs/wave-44-worker-packets.md](.agents/handoffs/wave-44-worker-packets.md).
+> Waves 45 and 46 open only after the previous wave's rollup merges green.
+>
+> **☑ Phase 27 complete (2026-09-26).**
 >
 > **Phase 27 closed 2026-09-26** (ROADMAP D-43, [ADR 0009](docs/adr/0009-per-pod-configuration-and-portable-teams.md)):
 > ten cards over Waves 41–43, one Sonnet worker per card in isolated worktrees under one
@@ -110,14 +117,15 @@ release source.
 ---
 
 
-## ◆ PHASE 28 — PLANNED (2026-09-26): configuration format v1 and the two extension points (D-44)
+## ▶ WAVE 44 — ACTIVE (opened 2026-09-26): Phase 28, configuration format v1 and the two extension points (D-44)
 
-**Planned 2026-09-26.** Eight cards in three waves. Decision, the format, the control-flow rule,
+**Opened 2026-09-26 (Wave 44 active; Waves 45–46 queued in this section).** Eight cards in three waves. Decision, the format, the control-flow rule,
 the plugin trust boundary and the verdict table are in
 [docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
-**Activation gate:** Phase 27 closes (its `apply`/`export` and pod scope are what P28-7 and P28-8
-build on); then the same integrator steps as Phase 27 (batching, packets file, the `▶ ACTIVE
-BOARD — WAVE 44` banner).
+**Activation gate met:** Phase 27 closed 2026-09-26 (`e7dffbb`); packets in
+[.agents/handoffs/wave-44-worker-packets.md](.agents/handoffs/wave-44-worker-packets.md), which
+also corrects the spec versions Phase 27 consumed (role-archetypes → 1.18.0, pod-blueprints →
+1.10.0, pod-dispatch → 6.19.0).
 
 **Trigger (explicit request, 2026-09-26):** every configuration file must have a standard
 structure a non-expert can read; pipelines and policies must use a clear language; complex
@@ -136,7 +144,7 @@ agent-lane tests, no guards.
 
 ### P28-1 — every configuration file says what it is, and one command validates them all
 
-**Status:** TODO · **Size:** S · **Wave:** 44 · **Spec:** new `specs/functional/config-format.spec.md` 1.0.0, `cli-interface.spec.md` → 1.36.0
+**Status:** IN-PROGRESS (@sonnet-p28-1) · **Size:** S · **Wave:** 44 · **Spec:** new `specs/functional/config-format.spec.md` 1.0.0, `cli-interface.spec.md` → 1.36.0
 
 **Trigger:** no configuration file carries a `kind`; roles, pipelines, policies and the Phase 27
 manifest are told apart by directory and by the caller's choice of parser; policies are JSON
@@ -174,7 +182,7 @@ config_docs` fails on the base.
 
 ### P28-2 — policies read as "when this, then that", with predicates over the tool and its arguments
 
-**Status:** TODO · **Size:** M · **Wave:** 44 · **Spec:** `security-gates.spec.md` → 0.26.0 (policy format)
+**Status:** IN-PROGRESS (@sonnet-p28-2) · **Size:** M · **Wave:** 44 · **Spec:** `security-gates.spec.md` → 0.26.0 (policy format)
 
 **Trigger:**
 - `core/policy.py` documents `{id, applies_to, hook, match{type,pattern}, action}`: runtime
@@ -213,7 +221,7 @@ call in `core/tools.py::evaluate_tool_call`, `templates/policies/*`.
 
 ### P28-3 — a pipeline step reads as "who, what is checked, where it goes"
 
-**Status:** TODO · **Size:** S · **Wave:** 44 · **Spec:** `pipeline-format.spec.md` → 2.7.0 (short form)
+**Status:** IN-PROGRESS (@sonnet-p28-3) · **Size:** S · **Wave:** 44 · **Spec:** `pipeline-format.spec.md` → 2.7.0 (short form)
 
 **Trigger:** every shipped recipe repeats `pattern: '^\s*(APPROVE|REQUEST-CHANGES)\b'`,
 `passValues: [approve]` and `rework: {to, when, maxCycles}` to say "verdict gate, one rework".
@@ -248,7 +256,7 @@ call in `core/tools.py::evaluate_tool_call`, `templates/policies/*`.
 
 ### P28-4 — a role file carries only what is enforced, and its prose lives in Markdown
 
-**Status:** TODO · **Size:** S · **Wave:** 44 · **Spec:** `role-archetypes.spec.md` → 1.16.0 (wire format)
+**Status:** IN-PROGRESS (@sonnet-p28-4) · **Size:** S · **Wave:** 44 · **Spec:** `role-archetypes.spec.md` → 1.18.0 (wire format; 1.16.0 was consumed by Phase 27)
 
 **Trigger:** `RoleArchetype.edit_rights` is "descriptive only" beside `denied_tools`; `gateContract:
 {kind, regexes}` duplicates the pipeline's verdict vocabulary; `soulTemplate` and `agentsTemplate`
@@ -261,7 +269,9 @@ are long block scalars a non-expert edits badly.
   `AGENTS.md` keeps the built-in red lines unless the Markdown has an `## AGENTS` section).
 - `normalize_role(short, base_dir) -> canonical dict` is pure; `editRights` is derived
   (`cannot` contains `write` → `read-only`) and no longer written by `export`.
-- `docket roles show` prints the short form when the archetype came from a short-form file.
+- `model:` accepts `cheap|strong` only; a model id is refused naming `docket models set` (an
+  archetype has no model-id field and this card adds none). Printing the short form back
+  (`roles show`, `export`) is P28-8's, beside export.
 
 **Non-goals:** changing built-ins; the pod overlay (Phase 27).
 
