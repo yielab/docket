@@ -106,6 +106,12 @@ Provisioning a starter role into a live pod works exactly like any other role:
 `docket roles add`) can add a brand-new role name or override an existing one — merged into
 `~/.docket/docket-roles.json`, "user wins" by name.
 
+A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
+if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
+exact `APPROVE`/`REJECT`-style marker convention). Either way, a pipeline step's own `instructions`
+(when set) overrides it for that one hop — see [Pipelines](WORKFLOW-GUIDE.md#pipelines-the-one-dialect-docket-runs)
+in the Workflow Guide.
+
 Composing several starter roles into one pod shape, in a single command, is a **pod blueprint** —
 next section.
 
@@ -143,7 +149,9 @@ blueprint's own fixed roster instead of trying to combine the two.
 
 There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
-`docket pod <project> add <role>`.
+`docket pod <project> add <role>`. For a pre-built role+pipeline+policy bundle instead of composing
+by hand, the package ships `secure-build`, `research-review`, and `ops-approval` recipes under
+`templates/recipes/` — see [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-shipped-recipe).
 
 ---
 
@@ -301,6 +309,15 @@ self-authored `IDENTITY.md`. docket also quarantines the base-assistant self-aut
 a model may leave behind (`IDENTITY.md`, `BOOTSTRAP.md`) out of managed workspaces — on
 provisioning, and again on `docket doctor` — moving any that appear into `.docket-archive/`.
 Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
+
+A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
+templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod <project> sync` when
+they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
+`SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and an **opt-in**
+`projectInstructions` section — codebase files (an `AGENTS.md`, say) a pod can be pointed at with
+`docket pod <project> config set projectInstructions <path,...>`, screened through the same
+`pre_input` policy hook as any other input and restricted to relative paths that can't escape the
+codebase root. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 
 ---
 

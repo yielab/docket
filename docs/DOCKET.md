@@ -208,7 +208,12 @@ by docket, through `edges/store.py`:
   additions like `blueprint`/`workspaceKind`/`workDir` and a pod's allocated
   `portRangeStart`/`portRangeCount`/`scratchDir`
 - **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
-  isolation flags, local provider endpoints, and the org-wide default model
+  isolation flags, local provider endpoints
+
+The org-wide default model lives in `~/.docket/docket-models.json`'s `default` field, not
+`fleet.json` — `get_default_model`/`set_default_model` read/write it there. A legacy `fleet.json`
+value from before this split is migrated in on first read and then cleared, so `docket-models.json`
+stays the single source of record.
 
 This is a narrower split than it looks: `fleet.json` deliberately does **not** duplicate `model`/
 `sessionKey`/`projectKey` — those stay `.docket-meta.json`'s job alone. Before Phase 19, the
@@ -971,7 +976,9 @@ agent turn does; `redact` scrubs the text in place; `warn` only logs and feeds `
 In-turn tool calls have their own separate hook — `pre_tool_call`, evaluated by `core/tools.py`'s
 `dispatch_tool` on every call docket's own turn loop makes (Phase 19 P19-3) — which this
 dispatch-level engine does not duplicate; `docket policies test pre_tool_call <role> "<text>"`
-dry-runs that hook specifically.
+dry-runs that hook specifically, against `bash` by default. Pass `--tool <name>` to test a
+non-`bash` tool instead, so it is evaluated on its own terms rather than misclassified against the
+shell command allowlist.
 
 ---
 

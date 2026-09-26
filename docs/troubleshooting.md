@@ -149,8 +149,10 @@ actually get re-injected (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, MEMORY.md)
 they exceed the configured budget:
 ```bash
 docket maintain <agent-id> check
-# ⚠ Context footprint: ~7,400 tok/turn (budget 6,000) — trim MEMORY.md/HEARTBEAT.md
+# ⚠ Context footprint: ~7,400 tok re-sent each turn (budget 6,000 via default) — trim MEMORY.md/HEARTBEAT.md
 ```
+The budget itself scales with the model's registered context window (`via window`), not a flat
+number — `via default` is the 6,000-token floor used when no larger window is registered.
 If it's over budget, summarize the daily logs into MEMORY.md and archive them instead of letting
 `memory/` grow unbounded:
 ```bash

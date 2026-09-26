@@ -23,19 +23,20 @@
 > "ask" (blocking a live tool call) denies itself after 120 seconds with nobody watching; an
 > async dispatch-level approval denies after 15 minutes.
 >
-> `--no-gates` (on `docket init`, or `docket gates disable`) does **not** turn the tool-call gate off —
-> it cannot be turned off, and it does not change how an "ask" verdict is answered either. What
-> `--gates`/`--no-gates` and `docket gates enable`/`disable` actually control is
-> `security.approvalRoutingState`/`approvalRoutingMode`, a recorded, audited posture flag that
-> `docket gates status` and `docket doctor` report — nothing on the live path (`core/tools.py`,
-> `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`, `serve.py`) reads it. An "ask"
-> verdict always blocks the call and always sits in docket's own approval store, answerable
-> identically by the CLI, HTTP, MCP, and Telegram channels whether this flag is on or off; docket
-> never pushes a prompt to any of them on its own, so there is no "channel actively watching" for
-> this flag to turn on (see telegram-integration.spec.md's Command-grammar requirements 7-8:
-> inbound-only, no notification on a newly-created approval). Wiring this flag into a real
-> consumer, or retiring `docket gates enable`/`disable`, is an open maintainer decision this repo
-> has not made. Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
+> `--no-gates` (on `docket init`) does **not** turn the tool-call gate off — it cannot be turned
+> off, and it does not change how an "ask" verdict is answered either. What `--gates`/`--no-gates`
+> on `docket init` actually controls is `security.approvalRoutingState`/`approvalRoutingMode`, a
+> recorded, audited posture flag that `docket gates status` and `docket doctor` report — nothing on
+> the live path (`core/tools.py`, `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`,
+> `serve.py`) reads it. `docket gates enable`/`disable` are **retired**: they print a notice
+> pointing at `docket doctor` and exit non-zero, writing nothing — `docket init` is now the only
+> writer of that flag. An "ask" verdict always blocks the call and always sits in docket's own
+> approval store, answerable identically by the CLI, HTTP, MCP, and Telegram channels whether this
+> flag is on or off; docket never pushes a prompt to any of them on its own, so there is no
+> "channel actively watching" for this flag to turn on (see telegram-integration.spec.md's
+> Command-grammar requirements 7-8: inbound-only, no notification on a newly-created approval).
+> Wiring this flag into a real consumer is an open maintainer decision this repo has not made.
+> Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
 > separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
 > every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
@@ -63,8 +64,9 @@ dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval b
 see the status note above for who can answer, and for the `git`/`npm` carve-out. A first `docket
 init` also records approval-**routing** posture as on by default (`docket gates status`
 reports it); that posture flag is recorded and audited but not read by the approval path itself,
-so opting out with `--no-gates` on `docket init`, or later with `docket gates disable`, changes nothing
-about who can answer an "ask" verdict — CLI, HTTP, MCP, and Telegram always can.
+so opting out with `--no-gates` on `docket init` changes nothing about who can answer an "ask"
+verdict — CLI, HTTP, MCP, and Telegram always can. `docket gates enable`/`disable` are retired
+(they print a notice and exit non-zero, writing nothing); `docket init` is the only writer left.
 
 ### 2. A Reviewer Can Veto (when the pod has one)
 
@@ -139,7 +141,13 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   (reject the task, or stop the pipeline where it tripped), or — enqueue-time only —
   `require_approval` (routes into the approval store above).
 - `docket policies list` to see what's installed, `docket policies test <hook> <role> "<text>"`
-  to dry-run one without touching anything real.
+  to dry-run one without touching anything real. Add `--tool <name>` when testing `pre_tool_call`
+  against something other than `bash` (the default), so a non-shell tool isn't misclassified
+  against the command allowlist.
+- **A broken policy file fails closed.** Unparseable JSON, a pattern that doesn't compile as a
+  regex, or an unknown action makes that file evaluate as `block` within its readable scope — the
+  hook and roles it declares, or every hook and role if the JSON itself won't parse — named to the
+  file so you know what to fix. `docket doctor` catches this before a live turn does.
 
 ### Layer 5: High-Risk Action Classes (Automatic, and — since Phase 19 — argument-aware)
 - A small, built-in list of especially consequential command patterns: money-movement,
@@ -157,6 +165,12 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   — the `fetch` tool is domain-allowlisted and the *inspectable* path, but not yet the *only* one.
   Tracked as an open gap, not glossed over. It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
+- **A pod can widen its own allowlist** with `docket pod <p> config set allowCommands pytest,uv`
+  (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
+  refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
+  `pytest > /etc/passwd` still asks. An unattended pod can also set `approvalMode refuse`, so a
+  gated call fails fast with `approval_unavailable` instead of blocking the turn for the usual
+  120-second in-turn timeout.
 
 ---
 
@@ -255,7 +269,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) and `docket gates disable` only record approval-routing posture as off, a flag nothing on the live path reads; `docket gates enable` records it as on for the same reason `docket gates status`/`doctor` display it, not because it changes how an "ask" verdict is answered. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
+**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
 
 ---
 
@@ -267,6 +281,7 @@ None of this needs a human to run day to day — it's here for when you want to 
 docket gates status       # gate always active; approval-routing posture; isolation mode
 docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
 docket policies list      # installed guardrail policies
+docket doctor             # catches a broken policy file before a live turn does, and more
 docket approve            # list pending approvals in docket's own store
 docket audit verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
 ```

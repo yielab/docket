@@ -347,6 +347,7 @@ $ docket pipeline validate workflows/broken.yml
 $ docket pipeline plan myapp
 
 Pipeline plan — myapp
+Source: built-in default
 
 Pipeline: default
   [lead] role=lead -> myapp-lead [gate: none]
@@ -404,6 +405,7 @@ steps:
 $ docket pipeline plan myapp --file workflows/release.yml
 
 Pipeline plan — myapp
+Source: file 'workflows/release.yml'
 
 Pipeline: release
   [plan] role=lead -> myapp-lead [gate: none]
@@ -429,15 +431,30 @@ Three gate kinds, and what a failure does to the task:
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
 | `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
 
-### Declared variables — real, but only wired to one trigger today
+### Declared variables — interpolated into step instructions
 
-A pipeline can declare `variables` (defaults, descriptions, `required`), but this format defines
-**no interpolation engine** — declaring one never substitutes a value into a hop's prompt or
-environment anywhere. The one place a declared variable's value is actually resolved today is the
-`docket serve` webhook (next section); `docket pipeline plan`/`run` from the CLI never look at
-`variables` at all — a `required` variable with no default does not block a CLI-triggered run.
-Treat `variables` today as metadata a webhook caller can supply and a later `docket runs show`
-can report, not a general parameterization mechanism yet.
+A pipeline can declare `variables` (defaults, descriptions, `required`). A step's own
+`instructions` text can reference one with `${name}`, and it is substituted from the run's
+resolved variable namespace before that hop runs:
+
+```yaml
+steps:
+  - id: deploy
+    role: implementer
+    instructions: "Deploy to ${env}, then verify the health check."
+```
+
+```bash
+$ docket pipeline run myapp --var env=staging
+```
+
+`--var key=value` is repeatable and works from `docket pipeline run`; the `docket serve` webhook
+resolves the same namespace from its JSON body. Either way, resolution happens once, up front: a
+`required` variable with no value supplied is rejected before a run record is even created, and if
+any step's `instructions` still reference a `${name}` the resolved namespace doesn't cover, the
+whole run refuses before any hop starts rather than sending a literal `${name}` to a model. The
+resolved namespace is persisted on the run record (`docket runs show <id>`), so you can see exactly
+what a dispatch saw.
 
 ---
 
@@ -504,8 +521,9 @@ Two ways to trigger a pod's pipeline without a human typing `dispatch`:
 
 ### Schedules — cron, a daily time, or a fixed interval
 
-Schedules live in `~/.docket/docket-schedules.json` — there is no CLI writer for this file yet,
-so you edit it directly:
+Schedules live in `~/.docket/docket-schedules.json`. Set one with `docket pod <project> config set
+schedule "<spec>"` — it validates the spec and writes the file for you; `docket pod <project>
+config unset schedule` removes the entry. The file's shape:
 
 ```json
 {
@@ -522,7 +540,9 @@ Three formats: `@every <N>s|m|h`, a daily `HH:MM` (UTC), or a standard 5-field c
 checked at most once per matching minute and **only while `docket serve --dispatch` is running**
 — plain read-only `docket serve`, or no `docket serve` at all, never fires one. Each due project
 gets its own run record (`source: "schedule"`), so a scheduled dispatch is exactly as inspectable
-via `docket runs` as a manual one.
+via `docket runs` as a manual one. An invalid spec (however it got into the file) is never treated
+as silently never-due: the sweep logs `schedule '<project>' skipped — <reason>` once per sweep
+instead of dropping it quietly; `docket doctor` reports the same problem outside of `serve`.
 
 ### Webhooks — trigger from CI or any external system
 
@@ -541,12 +561,11 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7331/runs/run-3f2a1c9
 ```
 
 The JSON body is resolved against the pod's own configured/default pipeline's declared
-`variables` **before** a run record is even created — this is the one path where a pipeline's
-declared `variables` actually do something (see the note above): a missing `required` variable
-is rejected with `400` and no run record is created at all; the resolved namespace is persisted
-on the run record
-(`docket runs show <id>` shows it) purely so you can answer "what did this dispatch actually see"
-— it is still never interpolated into a hop's prompt. The webhook always uses the pod's own
+`variables` **before** a run record is even created, exactly like `--var` on `docket pipeline run`
+(see the section above): a missing `required` variable is rejected with `400` and no run record is
+created at all; an unresolved `${name}` in a step's `instructions` also refuses the run before any
+hop starts. The resolved namespace is persisted on the run record (`docket runs show <id>` shows
+it), so you can answer "what did this dispatch actually see". The webhook always uses the pod's own
 pipeline; it has no way to supply a `--file` of its own, only variable *values*.
 
 ---
@@ -615,6 +634,33 @@ reviewed and validated before it landed."
 ---
 
 ## Pod configuration
+
+### Pod dispatch settings — `docket pod <project> config`
+
+A pod's dispatch behavior is nine typed keys on the Lead's meta, read/written through one
+generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
+`verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`.
+
+```bash
+docket pod myapp config get                    # every key, with its source (default vs. set)
+docket pod myapp config get --json             # same, machine-readable
+docket pod myapp config set budgetUsd 5
+docket pod myapp config unset budgetUsd
+```
+
+Every write is validated before it's stored (bad type, out-of-range, or an unknown key refuses
+the write) and audited as `pod.config`; a value that somehow ends up malformed in storage refuses
+dispatch rather than being silently coerced, naming the key. `pipeline` and `schedule` are
+validate-then-store: `config set pipeline <file>` checks the file and writes a hashed copy into
+the pod's own workspace before recording it, and `config set schedule "<spec>"` validates the cron/
+interval spec the same way (see "Schedules" below). Binding a pipeline this way makes it the
+**default for every trigger** — CLI dispatch, the serve webhook, a due schedule — whereas `docket
+pipeline run --file <f>` only swaps the spec for that one invocation. See
+[CONFIGURATION.md](CONFIGURATION.md) for the full reference on every key.
+
+To check what will actually run for a given agent before you dispatch, `docket config explain
+<agent-id> [--json]` reports its effective configuration with provenance (policy vs. pinned model,
+which pod settings are in play, and where each came from).
 
 ### What makes a pod member
 
