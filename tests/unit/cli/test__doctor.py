@@ -750,6 +750,72 @@ class TestArchetypeOverlay:
         assert "broken-role" in out
 
 
+class TestPodConfigOverlays:
+    """A malformed pod-scoped role overlay or policy file is named with the pod, not
+    silently skipped -- the pod-scoped counterpart of `TestArchetypeOverlay`/
+    `TestGuardrailPolicies`, which only ever look at the global files."""
+
+    def _build_pod(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from docket.cli import _pod
+
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_config_at(home, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        return home
+
+    def test_no_pods_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _point_config_at(tmp_path / ".docket", monkeypatch)
+        assert _doctor._check_pod_config_overlays() == 0
+
+    def test_pod_with_no_overlay_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._build_pod(tmp_path, monkeypatch)
+        assert _doctor._check_pod_config_overlays() == 0
+
+    def test_broken_pod_role_overlay_is_named_by_pod(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._build_pod(tmp_path, monkeypatch)
+        pod_roles = _cfg.pod_config_dir("demo") / "roles.json"
+        pod_roles.parent.mkdir(parents=True, exist_ok=True)
+        pod_roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+        issues = _doctor._check_pod_config_overlays()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "demo" in out
+        assert "broken-role" in out
+
+    def test_broken_pod_policy_file_is_named_by_pod(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._build_pod(tmp_path, monkeypatch)
+        pod_policies = _cfg.pod_config_dir("demo") / "policies"
+        pod_policies.mkdir(parents=True, exist_ok=True)
+        (pod_policies / "zz-broken.json").write_text('{"id": "zz", not json')
+        issues = _doctor._check_pod_config_overlays()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "demo" in out
+        assert "zz-broken.json" in out
+
+    def test_global_overlay_problem_is_not_double_counted_per_pod(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A pre-existing global overlay problem (already reported by
+        `_check_archetype_overlay`) must not also show up here once per pod."""
+        self._build_pod(tmp_path, monkeypatch)
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
+        )
+        issues = _doctor._check_pod_config_overlays()
+        assert issues == 0
+
+
 class TestDoctorSilentOnThreeFixtures:
     """`run_doctor()` flags all three fixtures below: a bad schedule, a bad models
     entry, and a bad archetype overlay."""

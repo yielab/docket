@@ -77,12 +77,24 @@ def _roots_for(agent_id: str, meta: AgentMeta, worktree_dir: str) -> tuple[Path,
     return (_cfg.workspace_dir(agent_id),)
 
 
-def _policies_for_role(role: str) -> list[dict[str, str]]:
-    """Installed policies whose ``applies_to`` covers *role* (``"*"`` or the role
-    itself) — the same membership test ``core.policy.policy_eval_detail`` applies,
-    read straight from ``policy_files()`` rather than re-evaluating any text."""
+_SOURCE_SCOPE: dict[str, str] = {"built-in": "built-in", "starter": "built-in", "user": "global"}
+
+
+def _scope_label(source: str) -> str:
+    """Map ``ArchetypeRegistry.source_of``'s ``built-in | starter | user | pod:<p>``
+    onto this report's ``built-in | global | pod`` provenance model."""
+    if source.startswith("pod:"):
+        return "pod"
+    return _SOURCE_SCOPE.get(source, "")
+
+
+def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
+    """Installed policies whose ``applies_to`` covers *role*, read from
+    ``policy_files(project)``, each carrying its ``scope`` (``pod`` for this pod's own
+    ``config/policies/`` directory, else ``global``)."""
+    pod_policies_dir = _cfg.pod_config_dir(project) / "policies" if project else None
     matched: list[dict[str, str]] = []
-    for path in _policy.policy_files():
+    for path in _policy.policy_files(project):
         try:
             doc: dict[str, Any] = _json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -91,21 +103,37 @@ def _policies_for_role(role: str) -> list[dict[str, str]]:
             continue
         applies = doc.get("applies_to") or []
         if "*" in applies or role in applies:
+            is_pod_file = pod_policies_dir is not None and path.parent == pod_policies_dir
+            scope = "pod" if is_pod_file else "global"
             matched.append(
                 {
                     "id": str(doc.get("id", path.stem)),
                     "hook": str(doc.get("hook", "")),
                     "action": str(doc.get("action", "")),
+                    "scope": scope,
                 }
             )
     return matched
 
 
-def _pod_settings_report(project: str) -> dict[str, dict[str, Any]]:
+def _mcp_servers_report(pod_settings: _pod.PodSettings | None) -> list[dict[str, str]]:
+    """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
+    set (``scope: "pod"``), else the full shared catalog (``scope: "global"``)."""
+    catalog = sorted(_mcp_tools.load_mcp_servers(), key=lambda s: s.name)
+    selected = pod_settings.mcp_servers if pod_settings is not None else None
+    if selected is None:
+        return [{"name": s.name, "kind": s.kind, "scope": "global"} for s in catalog]
+    by_name = {s.name: s for s in catalog}
+    return [
+        {"name": name, "kind": by_name[name].kind, "scope": "pod"}
+        for name in sorted(selected)
+        if name in by_name
+    ]
+
+
+def _pod_settings_report(settings: _pod.PodSettings, project: str) -> dict[str, dict[str, Any]]:
     """Every ``PodSettings`` key's effective value and source ("set"/"default") --
-    same shape as ``docket pod <p> config get --json``. Propagates
-    ``PodSettingsError`` (an invalid stored value refuses, never guesses a default)."""
-    settings = _pod.PodSettings.load_for(project)
+    same shape as ``docket pod <p> config get --json``."""
     report: dict[str, dict[str, Any]] = {}
     for key in _pod.PodSettings.KEYS:
         value, source = settings.value_and_source(key, project)
@@ -120,7 +148,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
     raw = _store.read_json(_cfg.meta_path(agent_id))
     meta = AgentMeta.model_validate(raw) if raw else AgentMeta(kind=AgentKind.project)
     role = str(raw.get("role", ""))
-    project = _pod.pod_of(agent_id)
+    project = _pod.pod_of(agent_id) or ""
 
     model = str(raw.get("model") or "") or _cfg.DEFAULT_MODEL
     model_source = _mp.agent_model_source(agent_id)
@@ -135,20 +163,33 @@ def _explain(agent_id: str) -> dict[str, Any]:
         max_output_tokens=readiness.max_output,
     )
 
-    base_registry = _tools.builtin_registry()
-    role_registry = _archetypes.registry_for_role(base_registry, role) if role else base_registry
-    denied = sorted(set(base_registry.names()) - set(role_registry.names()))
-    mcp_servers = sorted(server.name for server in _mcp_tools.load_mcp_servers())
+    # Never substitute a default for a bad stored value (matches `docket pod <p>
+    # config get`) -- raised here, before any of the resolvers below that also read
+    # this pod's settings, so every value below reflects a validated PodSettings.
+    pod_settings = _pod.PodSettings.load_for(project) if project else None
 
-    pod_settings = _pod_settings_report(project) if project is not None else None
-    pipeline = (
-        {"source": _dispatch.effective_pipeline_source(project)} if project is not None else None
+    role_registry_scope = _archetypes.load_registry(project)
+    role_scope = _scope_label(role_registry_scope.source_of(role))
+
+    base_registry = _tools.builtin_registry()
+    role_registry = (
+        _archetypes.registry_for_role(base_registry, role, project) if role else base_registry
     )
+    pod_denied = set(pod_settings.denied_tools) if pod_settings is not None else set()
+    denied = [
+        {"name": name, "scope": "pod" if name in pod_denied else role_scope}
+        for name in sorted(set(base_registry.names()) - set(role_registry.names()))
+    ]
+    mcp_servers = _mcp_servers_report(pod_settings)
+
+    pod_settings_report = _pod_settings_report(pod_settings, project) if pod_settings else None
+    pipeline = {"source": _dispatch.effective_pipeline_source(project)} if project else None
 
     return {
         "id": agent_id,
         "role": role,
-        "pod": project or "",
+        "roleScope": role_scope,
+        "pod": project,
         "model": {"value": model, "source": model_source},
         "endpoint": {
             "baseUrl": readiness.base_url,
@@ -169,9 +210,9 @@ def _explain(agent_id: str) -> dict[str, Any]:
             "denied": denied,
             "mcpServers": mcp_servers,
         },
-        "policies": _policies_for_role(role),
+        "policies": _policies_for_role(role, project),
         "pipeline": pipeline,
-        "podSettings": pod_settings,
+        "podSettings": pod_settings_report,
     }
 
 
@@ -205,11 +246,11 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
     ui.console.print()
 
     tools = report["tools"]
+    denied_names = [d["name"] for d in tools["denied"]]
+    mcp_names = [m["name"] for m in tools["mcpServers"]]
     ui.console.print(f"  [bold]Tools allowed:[/bold] {', '.join(tools['allowed']) or '(none)'}")
-    ui.console.print(f"  [bold]Tools denied:[/bold]  {', '.join(tools['denied']) or '(none)'}")
-    ui.console.print(
-        f"  [bold]MCP servers:[/bold]   {', '.join(tools['mcpServers']) or '(none configured)'}"
-    )
+    ui.console.print(f"  [bold]Tools denied:[/bold]  {', '.join(denied_names) or '(none)'}")
+    ui.console.print(f"  [bold]MCP servers:[/bold]   {', '.join(mcp_names) or '(none configured)'}")
     ui.console.print()
 
     if report["policies"]:

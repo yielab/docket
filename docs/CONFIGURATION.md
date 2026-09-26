@@ -140,17 +140,22 @@ context passes the budget.
 ### Who decides what: the ownership map
 
 Six layers make up the orchestration, and each answers exactly one question. When you are unsure
-where a change belongs, find the question first:
+where a change belongs, find the question first. **Scope** is which of the three provenance
+levels a resolved value can come from — `built-in` (shipped, unwritable), `global`
+(`~/.docket/`, every pod), or `pod` (this pod's own `config/` directory, nearest-wins above
+global) — the same three `docket config explain <agent> --json` labels per value.
 
-| Question | Layer | Lives in | Change it with |
-|---|---|---|---|
-| What needs doing? | **Task** | the Lead's `TASK_LIST.json` | `docket pod <p> delegate` |
-| Which team shape does a new pod get? | **Blueprint** | Lead meta `blueprint` (creation-time only) | `docket init --blueprint` |
-| Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
-| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-ins + `~/.docket/docket-roles.json` | `docket roles`, `docket pod <p> add <role>` |
-| What does *this* agent know about *this* project? | **Workspace instructions** | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); opt-in codebase files via `projectInstructions` | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions AGENTS.md` |
-| What is forbidden or human-gated, across everything? | **Policies + command classifier** | `~/.docket/policies/*.json` (+ fixed `SAFE_BINS`) | `docket policies` |
-| What budget, timeouts, approval posture, extra allowed commands and verify gate bound this pod? | **Pod settings** | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
+| Question | Layer | Scope | Lives in | Change it with |
+|---|---|---|---|---|
+| What needs doing? | **Task** | pod | the Lead's `TASK_LIST.json` | `docket pod <p> delegate` |
+| Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
+| Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
+| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket roles [--pod <p>]`, `docket pod <p> add <role>` |
+| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); opt-in codebase files via `projectInstructions` | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions AGENTS.md` |
+| What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.json` + this pod's own `config/policies/*.json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
+| What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
+
+**A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket doctor` flags a malformed entry in either file, naming the pod.
 
 Two boundaries worth stating because they are easy to get backwards:
 
@@ -546,11 +551,10 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 
 ---
 
-### 3.10 Start from a shipped recipe
+### 3.10 Apply a recipe in one command
 
 `templates/recipes/<name>/` (inside the installed package; `docket.config.recipes_dir()`) ships
-ready-to-apply role/pipeline/policy bundles for common shapes. Each carries its own `README.md`
-with the exact commands:
+ready-to-apply role/pipeline/policy bundles for common shapes:
 
 | Recipe | Adds | Use it for |
 |---|---|---|
@@ -558,9 +562,14 @@ with the exact commands:
 | `research-review` | the `researcher`/`analyst`/`writer`/`critic` starter roles | Critic-vetoed research, on a pod you did not create with `--blueprint research` |
 | `ops-approval` | the `operator` starter role, approval-gated | a human sign-off before an operational action runs at all |
 
-Applying one is always: add any role it needs (§3.4), `docket pipeline validate`/`plan` its
-`pipeline.yaml`, then `docket pod <p> config set pipeline <file>` (§3.5) — and optionally copy its
-policy pack (§3.6). There is no `docket recipes` command; a recipe is data, not a new surface.
+`docket pod <p> apply <dir>` applies one in a single command: it copies the directory's roles into
+this pod's own overlay (`config/roles.json`), validates and binds its `pipeline.yaml` as the pod's
+default (§3.5), and copies its policy pack into this pod's own `config/policies/` (§3.6) — the same
+three steps you would otherwise do by hand, scoped to this pod alone. `--dry-run` shows what would
+change without writing anything; re-running it is idempotent (a recipe already applied is a no-op).
+With no `<dir>` argument it defaults to `<codebase>/.docket/` — an operator-maintained recipe
+checked into the project itself, not one of the shipped ones above. There is no `docket recipes`
+command; a recipe is data, not a new surface.
 
 ## 4. File reference
 
@@ -628,11 +637,11 @@ rest of the original list; what remains below is the honest boundary, not a back
   it), composes right after `SOUL.md`, and survives `set-verify` and `pod sync`; generated files
   are re-rendered wholesale by `docket pod <p> sync` when a template or archetype changes
   (`--dry-run` shows the diff, doctor flags stale members).
-- **Tool denials are per role only.** Nothing allows or denies tools per agent or per pod.
 - **A skipped file is silent on the live path, but doctor names it.** An invalid schedule spec,
-  model-policy entry or overlay role never crashes a fleet — the loader skips it — and
-  `docket doctor` reports each one with file, key and reason (a broken *policy* file instead
-  fails closed at evaluation, §3.6). Run doctor after hand-editing any registry.
+  model-policy entry or overlay role — global or pod-scoped — never crashes a fleet — the loader
+  skips it — and `docket doctor` reports each one with pod (when applicable), file, key and reason
+  (a broken *policy* file instead fails closed at evaluation, §3.6). Run doctor after hand-editing
+  any registry.
 - **The provider display name derives from `--model`.** `models provider add` without `--name`
   labels the entry after `--model` (only the shipped default model id keeps its shipped caption).
   The per-model `name`/`cost`/`reasoning`/`input` fields and the provider block's `api` field are

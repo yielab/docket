@@ -20,8 +20,10 @@ from tests.fakes import FakeDriver
 
 import docket.config as _cfg
 from docket.cli import _config, _pod
+from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod
 from docket.core import policy as _policy
 from docket.edges import store as _store
@@ -52,6 +54,12 @@ def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict:
     capsys.readouterr()
     _config.dispatch("explain", [agent_id, "--json"])
     return json.loads(capsys.readouterr().out)
+
+
+def _explain_text(agent_id: str, capsys: pytest.CaptureFixture[str]) -> str:
+    capsys.readouterr()
+    _config.dispatch("explain", [agent_id])
+    return capsys.readouterr().out
 
 
 class TestConfigExplainUnknownAgent:
@@ -122,6 +130,7 @@ class TestConfigExplainMatchesRealDispatch:
         assert report["pipeline"] == {"source": _dispatch.effective_pipeline_source("demo")}
         # Implementer is full-repo -- the archetype denies nothing.
         assert report["tools"]["denied"] == []
+        assert report["roleScope"] == "built-in"
 
     def test_lead_model_follows_policy_by_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -140,9 +149,114 @@ class TestConfigExplainToolDenial:
         _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
         reviewer = pod.member_id("demo", "reviewer")
         report = _explain_json(reviewer, capsys)
-        assert report["tools"]["denied"] == sorted(["write", "edit", "bash"])
+        denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
+        assert denied == {"write": "built-in", "edit": "built-in", "bash": "built-in"}
         assert "write" not in report["tools"]["allowed"]
         assert "read" in report["tools"]["allowed"]
+        assert report["roleScope"] == "built-in"
+
+
+class TestConfigExplainTextUnchangedWithNoPodScope:
+    """The byte-identity oracle: human-readable `config explain` output is unchanged
+    when nothing has pod scope, pinning the exact lines `_render_human` touches."""
+
+    def test_implementer_text_matches_the_base_exactly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        text = _explain_text(pod.member_id("demo", "implementer"), capsys)
+        assert "  Tools allowed: bash, edit, fetch, glob, grep, read, write\n" in text
+        assert "  Tools denied:  (none)\n" in text
+        assert "  MCP servers:   (none configured)\n" in text
+
+    def test_reviewer_text_matches_the_base_exactly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
+        assert "  Tools allowed: fetch, glob, grep, read\n" in text
+        assert "  Tools denied:  bash, edit, write\n" in text
+
+
+class TestConfigExplainScopeLabels:
+    """Every resolved value in `--json` names which scope -- built-in, global (the
+    operator's `~/.docket` overlay), or pod (this pod's own `config/`) -- produced it."""
+
+    def test_pod_overlay_shadowed_role_policy_server_and_denial(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+
+        # The pod's own overlay shadows the built-in `reviewer` archetype.
+        _archetypes.add_user_archetype(
+            {
+                "name": "reviewer",
+                "scope": "pod",
+                "modelClass": "cheap",
+                "editRights": "read-only",
+                "soulTemplate": "# shadowed reviewer\n${role}",
+                "agentsTemplate": "# shadowed reviewer agents\n${role}",
+                "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
+                "deniedTools": ["write", "edit", "bash"],
+            },
+            project="demo",
+        )
+
+        # One global policy (the shipped baseline) and one pod-only policy, both
+        # applying to reviewer.
+        result = _policy.install_policies()
+        assert result.installed  # sanity: the shipped baseline actually installed
+        pod_policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        pod_policies_dir.mkdir(parents=True)
+        (pod_policies_dir / "pod-only.json").write_text(
+            json.dumps(
+                {
+                    "id": "pod-only",
+                    "applies_to": ["reviewer"],
+                    "hook": "pre_tool_call",
+                    "match": {"type": "regex", "pattern": "x"},
+                    "action": "warn",
+                }
+            )
+        )
+
+        # One MCP server, declared read, selected by this pod alone.
+        _mcp_tools.add_mcp_server(
+            _mcp_tools.McpServerConfig(name="search", command="stub", kind="read")
+        )
+        lead = pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "mcpServers", "search")
+        _fleet.meta_set(lead, "deniedTools", "fetch")
+
+        reviewer = pod.member_id("demo", "reviewer")
+        report = _explain_json(reviewer, capsys)
+
+        assert report["roleScope"] == "pod"
+
+        scopes_by_id = {p["id"]: p["scope"] for p in report["policies"]}
+        assert scopes_by_id["pod-only"] == "pod"
+        assert any(scope == "global" for pid, scope in scopes_by_id.items() if pid != "pod-only")
+
+        assert report["tools"]["mcpServers"] == [{"name": "search", "kind": "read", "scope": "pod"}]
+
+        denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
+        assert denied["fetch"] == "pod"
+        # The shadowed archetype's own denials are pod-scoped too, since the
+        # archetype itself resolved from this pod's overlay.
+        assert denied["write"] == "pod"
+
+    def test_pod_only_denial_is_labeled_pod_even_for_a_built_in_role(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Negative case: an unshadowed built-in role plus a pod-only `deniedTools`
+        setting -- `bash` avoids the kind-cascade so only one name is denied."""
+        _seed(tmp_path, monkeypatch)
+        lead = pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "deniedTools", "bash")
+        implementer = pod.member_id("demo", "implementer")
+        report = _explain_json(implementer, capsys)
+        assert report["roleScope"] == "built-in"
+        assert report["tools"]["denied"] == [{"name": "bash", "scope": "pod"}]
 
 
 class TestConfigExplainNonPodAgent:
