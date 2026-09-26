@@ -509,7 +509,9 @@ The command writes `docket-mcp-servers.json`. Its tools appear in every turn as
 
 - **Continuous sweep.** `docket serve --dispatch` drains every pod's queue. Add `--telegram` for
   the approval channel.
-- **Schedules.** There is no CLI; write `~/.docket/docket-schedules.json` yourself. Schedules fire
+- **Schedules.** `docket pod <p> config set schedule "<spec>"` validates and writes one
+  (`unset schedule` removes it); an invalid spec is refused at `set`, and the serve sweep logs a
+  line for any hand-edited spec it has to skip. Schedules fire
   only while `serve --dispatch` runs:
 
   ```json
@@ -623,9 +625,10 @@ for most of them.
 - **Existing members keep their provisioned `SOUL.md`.** Changing a role template does not
   re-render them.
 - **Tool denials are per role only.** Nothing allows or denies tools per agent or per pod.
-- **Some files are skipped silently.** An invalid policy file, schedule spec, model-policy entry
-  or overlay role is skipped without a warning. For a `block` policy that means the call is
-  **allowed** (§3.6). Test after every edit.
+- **A skipped file is silent on the live path, but doctor names it.** An invalid schedule spec,
+  model-policy entry or overlay role never crashes a fleet — the loader skips it — and
+  `docket doctor` reports each one with file, key and reason (a broken *policy* file instead
+  fails closed at evaluation, §3.6). Run doctor after hand-editing any registry.
 - **The provider display name derives from `--model`.** `models provider add` without `--name`
   labels the entry after `--model` (only the shipped default model id keeps its shipped caption).
   The per-model `name`/`cost`/`reasoning`/`input` fields and the provider block's `api` field are

@@ -464,7 +464,7 @@ with the source that set it (meta/policy/pin, pod setting, env, default):
 
 ### P26-12 — configuration errors are loud; schedules get a writer
 
-**Status:** TODO · **Size:** S · **Wave:** 40 · **Spec:** `pod-dispatch.spec.md`,
+**Status:** DONE (merged `6a06840`, worker commit `bb5598f`; JSON doctor path and the stale pod --help key list noted as small follow-ups) · **Size:** S · **Wave:** 40 · **Spec:** `pod-dispatch.spec.md`,
 `model-profiles.spec.md`, `role-archetypes.spec.md`
 
 **Trigger:** silent skips at:
