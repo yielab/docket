@@ -111,3 +111,83 @@ class TestConfigUnset:
         _pod.dispatch("proj", "config", ["unset", "maxReworkCycles"])
         capsys.readouterr()
         assert _dispatch.pod_max_rework_cycles("proj") == 1
+
+
+_CUSTOM_PIPELINE = (
+    "name: custom-bound\n"
+    "steps:\n"
+    "  - id: kickoff\n"
+    "    role: lead\n"
+    "  - id: assemble\n"
+    "    role: implementer\n"
+)
+
+
+class TestConfigSetPipeline:
+    """``pod config set/unset pipeline`` -- the CLI's validate-plan-store contract.
+    See ``test_dispatch.py::TestBoundPipeline`` for the resolution/refusal behavior."""
+
+    def test_set_validates_plans_and_binds_a_valid_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        pipeline_file = tmp_path / "custom.yaml"
+        pipeline_file.write_text(_CUSTOM_PIPELINE)
+
+        _pod.dispatch("proj", "config", ["set", "pipeline", str(pipeline_file)])
+        capsys.readouterr()
+
+        digest = _lead_meta("proj")["pipeline"]
+        assert isinstance(digest, str) and len(digest) == 64
+        stored = pod.bound_pipeline_path("proj")
+        assert stored.read_text() == _CUSTOM_PIPELINE
+        spec = _dispatch.effective_pipeline("proj", None)
+        assert [step.id for step in spec.steps] == ["kickoff", "assemble"]
+
+    def test_set_refuses_when_a_step_targets_a_role_the_pod_lacks(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)  # lead + implementer only, no reviewer
+        pipeline_file = tmp_path / "needs-reviewer.yaml"
+        pipeline_file.write_text("name: x\nsteps:\n  - id: r\n    role: reviewer\n")
+        before = _lead_meta("proj")
+
+        with pytest.raises(typer.Exit) as exc:
+            _pod.dispatch("proj", "config", ["set", "pipeline", str(pipeline_file)])
+        assert exc.value.exit_code == 1
+        assert "reviewer" in capsys.readouterr().err
+        assert _lead_meta("proj") == before
+        assert not pod.bound_pipeline_path("proj").exists()
+
+    def test_set_refuses_on_an_invalid_pipeline_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        pipeline_file = tmp_path / "broken.yaml"
+        pipeline_file.write_text("not: a valid\npipeline: [shape\n")
+
+        with pytest.raises(typer.Exit) as exc:
+            _pod.dispatch("proj", "config", ["set", "pipeline", str(pipeline_file)])
+        assert exc.value.exit_code == 1
+        capsys.readouterr()
+
+    def test_unset_removes_the_stored_copy_and_restores_the_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build(tmp_path, monkeypatch)
+        pipeline_file = tmp_path / "custom.yaml"
+        pipeline_file.write_text(_CUSTOM_PIPELINE)
+        _pod.dispatch("proj", "config", ["set", "pipeline", str(pipeline_file)])
+        capsys.readouterr()
+
+        _pod.dispatch("proj", "config", ["unset", "pipeline"])
+        capsys.readouterr()
+
+        assert not pod.bound_pipeline_path("proj").exists()
+        spec = _dispatch.effective_pipeline("proj", None)
+        assert [step.role for step in spec.steps] == [
+            "lead",
+            "implementer",
+            "reviewer",
+            "tester",
+        ]

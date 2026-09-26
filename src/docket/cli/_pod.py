@@ -13,7 +13,10 @@ the two surfaces cannot drift apart.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib as _hashlib
 import json as _json
+from pathlib import Path
 
 import typer
 from rich.markup import escape
@@ -25,6 +28,7 @@ from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_provisioning as _pp
@@ -681,6 +685,9 @@ def _pod_config(project: str, extra: list[str]) -> None:
             ui.error("Usage: docket pod <project> config set <key> <value>")
             raise typer.Exit(1)
         _, key, value = rest
+        if key == "pipeline":
+            _pod_config_set_pipeline(project, lead_id, value)
+            return
         try:
             coerced = pod.PodSettings.coerce(key, value)
         except pod.PodSettingsError as ex:
@@ -702,12 +709,78 @@ def _pod_config(project: str, extra: list[str]) -> None:
         # None round-trips through AgentMeta's typed fields and reads back
         # exactly like an absent key -- the writer's only way to clear one.
         _fleet.meta_set(lead_id, key, None)
+        if key == "pipeline":
+            # Best-effort: the meta hash is already cleared (the part that
+            # matters -- effective_pipeline falls back the moment it reads
+            # no pipeline set), so a failed cleanup here never blocks unset.
+            with contextlib.suppress(OSError):
+                pod.bound_pipeline_path(project).unlink()
         audit_log("pod.config", f"project={project} action=unset key={key}")
         ui.success(f"Unset {key} for pod '{project}' — falls back to its default.")
         return
 
     ui.error(f"Unknown pod config action {action!r}. Use: get | set <key> <value> | unset <key>.")
     raise typer.Exit(1)
+
+
+# Checked only at ``pod config set pipeline``: a pipeline already bound to a pod is
+# otherwise free to skip an absent role at run time, same as any other pipeline (see
+# pod-dispatch.spec.md, "Pipeline order and participation").
+def _unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list[str]:
+    """Every unit step (top-level or inside a ``parallel`` group) this pod's current
+    roster cannot run -- empty when the plan is fully resolvable."""
+    problems: list[str] = []
+    for node in plan.nodes:
+        units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
+        for unit in units:
+            if unit.role is not None and unit.skipped:
+                problems.append(f"step '{unit.step_id}': role '{unit.role}' not in pod '{project}'")
+            elif unit.agent is not None and pod.pod_of(unit.agent) != project:
+                problems.append(
+                    f"step '{unit.step_id}': agent '{unit.agent}' is not a member of pod '{project}'"
+                )
+    return problems
+
+
+# Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
+# operator's original path, which can drift or disappear -- core/dispatch.py's
+# effective_pipeline verifies the copy against this hash on every read.
+def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
+    """``docket pod <project> config set pipeline <file>``: validate *path_str* and
+    plan it against the pod's real roster before binding it."""
+    path = Path(path_str)
+    if not path.is_file():
+        ui.error(f"File not found: {path_str}")
+        raise typer.Exit(1)
+    text = path.read_text(encoding="utf-8")
+    result = _pipeline.load_pipeline(text)
+    if result.spec is None:
+        ui.error(f"Pipeline '{path_str}' is invalid:")
+        for e in result.errors:
+            ui.console.print(f"  [red]x[/red] {e}")
+        raise typer.Exit(1)
+
+    roster = _dispatch.pod_full_roster(project)
+    registry = _arch.load_registry()
+    plan = _orch.resolve_plan(result.spec, roster, registry=registry)
+    problems = _unresolvable_pipeline_steps(plan, project)
+    if problems:
+        ui.error(f"Pipeline '{path_str}' targets a role/agent this pod does not have:")
+        for p in problems:
+            ui.console.print(f"  [red]x[/red] {p}")
+        raise typer.Exit(1)
+
+    digest = _hashlib.sha256(text.encode("utf-8")).hexdigest()
+    dest = pod.bound_pipeline_path(project)
+    dest.write_text(text, encoding="utf-8")
+    dest.chmod(0o600)
+
+    _fleet.meta_set(lead_id, "pipeline", digest)
+    audit_log(
+        "pod.config",
+        f"project={project} action=set key=pipeline file={path_str} hash={digest[:12]}",
+    )
+    ui.success(f"Bound pipeline '{path_str}' (hash {digest[:12]}...) to pod '{project}'.")
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:

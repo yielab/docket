@@ -143,6 +143,44 @@ class TestPipelinePlanCli:
         out = capsys.readouterr().out
         assert "Pipeline: sample" in out
         assert "build" in out
+        assert f"Source: file '{f}'" in out
+
+    def test_default_pipeline_plan_names_the_built_in_source(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_meta("demo-lead")
+        rc = run_pipeline("plan", ["demo"])
+        assert rc == 0
+        assert "Source: built-in default" in capsys.readouterr().out
+
+    def test_blueprint_pipeline_plan_names_the_blueprint_source(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_meta("demo-lead", {"blueprint": "research"})
+        for role in ("researcher", "analyst", "writer", "critic"):
+            _write_meta(f"demo-{role}")
+        rc = run_pipeline("plan", ["demo"])
+        assert rc == 0
+        assert "Source: blueprint 'research'" in capsys.readouterr().out
+
+    def test_bound_pipeline_plan_names_the_bound_source(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.cli._pod import _pod_config_set_pipeline
+
+        _write_meta("demo-lead")
+        _write_meta("demo-implementer")
+        f = tmp_path / "sample.pipeline.yaml"
+        f.write_text(_VALID_PIPELINE)
+        _pod_config_set_pipeline("demo", "demo-lead", str(f))
+        capsys.readouterr()
+
+        rc = run_pipeline("plan", ["demo"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Source: bound pipeline (hash " in out
+        assert "Pipeline: sample" in out
 
     def test_invalid_custom_file_is_an_error(self, tmp_path: Path) -> None:
         _write_meta("demo-lead")

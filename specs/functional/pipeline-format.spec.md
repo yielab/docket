@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.2.1
+**Version**: 2.3.0
 **Status**: Implemented — format, executor, and variable resolution. The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch
 state machine, and the `docket pipeline validate|plan|run` CLI surface, now exist — see
@@ -10,7 +10,7 @@ caller-supplied `{name: value}` mapping (the serve webhook's JSON body, today) i
 against a spec's declared `variables` before dispatch. This spec still owns only the format
 itself plus that resolution function — interpolating a resolved value into a hop's prompt or
 environment remains unbuilt (see Requirement 4 below).
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -255,7 +255,12 @@ This specification does NOT cover:
 This spec defines a Python data model and pure functions in `core/pipeline.py`. The CLI surface
 that reads it (`docket pipeline validate|plan|run`) is documented in `cli-interface.spec.md`; the
 executor that runs it (`core/orchestrator.py`, `core/dispatch.py`) is documented in
-`pod-dispatch.spec.md` (see "Does NOT cover").
+`pod-dispatch.spec.md` (see "Does NOT cover"). A third caller validates a file for **storage**
+rather than one-off execution: `docket pod <project> config set pipeline <file>` calls
+`load_pipeline` to validate a would-be **bound pipeline** before persisting a copy of it, per
+`pod-dispatch.spec.md`'s "Pipeline order and participation" requirement 6 and "Pod dispatch
+settings". This format itself is unchanged by that caller — no new field, no storage concept
+lives here.
 
 ```python
 from docket.core.pipeline import load_pipeline, validate_pipeline, default_pipeline
@@ -394,6 +399,13 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.3.0 (2026-09-26)
+
+- **P26-6.** Documents a third `load_pipeline` caller: `docket pod <project> config set
+  pipeline <file>` (see pod-dispatch.spec.md), which validates a file before storing a bound
+  copy of it rather than running it once. No change to the format, the model, or
+  `load_pipeline`/`validate_pipeline` themselves — this is a doc-only cross-reference.
 
 ### Version 2.2.1 (2026-09-19)
 

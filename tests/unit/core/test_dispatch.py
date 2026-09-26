@@ -13,6 +13,7 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import urllib.error
@@ -29,6 +30,7 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
+from docket.core import pod as _pod
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.serve import _DocketHandler
@@ -657,6 +659,163 @@ class TestEffectivePipelineBlueprint:
         assert len(results) == 1
         assert results[0].status == "waiting_approval"
         assert results[0].approval_token
+
+
+class TestBoundPipeline:
+    """``PodSettings.pipeline`` binds a pipeline file as a pod's default for every
+    caller-spec-free trigger, not only an explicit ``--file`` -- see
+    pod-dispatch.spec.md, "Pipeline order and participation"."""
+
+    _CUSTOM_YAML = (
+        "name: custom-bound\n"
+        "steps:\n"
+        "  - id: kickoff\n"
+        "    role: lead\n"
+        "  - id: assemble\n"
+        "    role: implementer\n"
+        "    gate:\n"
+        "      type: mechanical\n"
+    )
+
+    def _bind(self, project: str, text: str | None = None) -> str:
+        """Seed a bound pipeline directly -- the docket-owned copy plus its Lead-meta hash --
+        exactly what ``docket pod <project> config set pipeline <file>`` produces. Bypasses
+        the CLI setter itself, which has its own integration coverage."""
+        text = self._CUSTOM_YAML if text is None else text
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        path = _pod.bound_pipeline_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        _fleet.meta_set(_pod.member_id(project, "lead"), "pipeline", digest)
+        return digest
+
+    def test_effective_pipeline_resolves_the_bound_file_not_the_builtin_default(
+        self, pod_home: Path
+    ) -> None:
+        _seed_lean_pod("myapp")
+        self._bind("myapp")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert [step.id for step in spec.steps] == ["kickoff", "assemble"]
+
+    def test_a_serve_sweep_or_mcp_shaped_dispatch_runs_the_bound_files_steps(
+        self, pod_home: Path
+    ) -> None:
+        """The exact call ``serve.py``'s sweep/schedule and ``cli/_mcp.py``'s dispatch tool
+        both make -- ``dispatch_pod(project, ...)`` with no ``spec=`` kwarg -- so binding a
+        pipeline changes every unattended trigger with zero changes to either caller."""
+        _seed_lean_pod("myapp")
+        self._bind("myapp")
+
+        def _run(
+            member_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
+
+        _dispatch.enqueue_task("myapp", "ship it")
+        results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
+
+        assert len(results) == 1
+        assert results[0].status == "done"
+        assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
+
+    def test_unbound_pod_is_unaffected(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert spec == _pipeline.default_pipeline()
+
+    def test_unset_restores_the_blueprint_default(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        self._bind("myapp")
+
+        _fleet.meta_set(_pod.member_id("myapp", "lead"), "pipeline", None)
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        assert [step.role for step in spec.steps] == [
+            "lead",
+            "implementer",
+            "reviewer",
+            "tester",
+        ]
+
+    def test_a_hash_mismatch_refuses_loudly_instead_of_falling_back(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        self._bind("myapp")
+        _pod.bound_pipeline_path("myapp").write_text("name: tampered\nsteps: []\n")
+
+        with pytest.raises(_dispatch.DispatchError, match="no longer matches"):
+            _dispatch.effective_pipeline("myapp", None)
+
+    def test_a_missing_copy_refuses_loudly_instead_of_falling_back(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        self._bind("myapp")
+        _pod.bound_pipeline_path("myapp").unlink()
+
+        with pytest.raises(_dispatch.DispatchError, match="unreadable"):
+            _dispatch.effective_pipeline("myapp", None)
+
+    def test_bound_pipelines_own_rework_config_is_never_patched_by_pod_max_rework_cycles(
+        self, pod_home: Path
+    ) -> None:
+        """A bound file's own rework config wins; the Lead's ``maxReworkCycles``
+        patch applies only to the blueprint/built-in default."""
+        _write_meta("myapp-lead", {"maxReworkCycles": "9"})
+        _write_meta("myapp-implementer")
+        custom = (
+            "name: custom-rework\n"
+            "steps:\n"
+            "  - id: build\n"
+            "    role: implementer\n"
+            "  - id: check\n"
+            "    role: implementer\n"
+            "    gate:\n"
+            "      type: verdict\n"
+            '      pattern: "^(APPROVE|REQUEST-CHANGES)\\\\b"\n'
+            "      passValues: [approve]\n"
+            "      rework:\n"
+            "        to: build\n"
+            "        when: [request-changes]\n"
+            "        maxCycles: 2\n"
+        )
+        self._bind("myapp", custom)
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+
+        check_step = next(s for s in spec.steps if s.id == "check")
+        assert isinstance(check_step.gate, _pipeline.VerdictGate)
+        assert check_step.gate.rework is not None
+        assert check_step.gate.rework.max_cycles == 2  # untouched -- never patched to 9
+
+    def test_effective_pipeline_source_names_the_bound_file(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        digest = self._bind("myapp")
+
+        assert (
+            _dispatch.effective_pipeline_source("myapp")
+            == f"bound pipeline (hash {digest[:12]}...)"
+        )
+
+    def test_effective_pipeline_source_names_the_blueprint_when_unbound(
+        self, pod_home: Path
+    ) -> None:
+        _write_meta("myapp-lead", {"blueprint": "research"})
+        for role in ("researcher", "analyst", "writer", "critic"):
+            _write_meta(f"myapp-{role}")
+
+        assert _dispatch.effective_pipeline_source("myapp") == "blueprint 'research'"
+
+    def test_effective_pipeline_source_names_the_built_in_default(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        assert _dispatch.effective_pipeline_source("myapp") == "built-in default"
 
 
 class TestPodSettingReaders:

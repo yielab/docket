@@ -13,6 +13,7 @@ one function here with I/O — it reads a member's recorded meta via `core/fleet
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import ClassVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -277,6 +278,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "maxReworkCycles": "max_rework_cycles",
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
+    "pipeline": "pipeline",
 }
 
 
@@ -298,6 +300,12 @@ class PodSettings(BaseModel):
     max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
+    # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
+    # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
+    # ``docket pod <project> config set pipeline <file>``, which validates the file and
+    # writes the copy before this ever gets written (see core/dispatch.py's
+    # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
+    pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
 
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
@@ -306,6 +314,7 @@ class PodSettings(BaseModel):
         "maxReworkCycles",
         "turnTimeoutS",
         "verifyTimeoutS",
+        "pipeline",
     )
 
     @classmethod
@@ -328,19 +337,33 @@ class PodSettings(BaseModel):
         return cls._validated(present)
 
     @classmethod
-    def coerce(cls, key: str, value: str) -> float | int:
-        """Validate *value* for *key* and return the number a caller should
-        persist via ``core.fleet.meta_set``; never writes anything itself."""
+    def coerce(cls, key: str, value: str) -> float | int | str:
+        """Validate *value* for *key* and return the value a caller should
+        persist via ``core.fleet.meta_set``; never writes anything itself. For
+        ``pipeline``, *value* is already the copy's sha256 digest, not a file path."""
         if key not in cls.KEYS:
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
         settings = cls._validated({key: value})
-        return cast("float | int", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
+        return cast("float | int | str", getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
 
-    def value_and_source(self, key: str, project: str) -> tuple[float | int | None, str]:
+    def value_and_source(self, key: str, project: str) -> tuple[float | int | str | None, str]:
         """This setting's value plus whether it is "set" (Lead meta) or
         "default" (this model's own default)."""
         lead_id = member_id(project, "lead")
         source = "set" if _fleet.meta_get(lead_id, key, "") else "default"
         return getattr(self, _SETTING_FIELD_BY_ALIAS[key]), source
+
+
+# The docket-owned copy of a pod's bound pipeline file lives at this fixed name in the
+# Lead's own workspace -- alongside SOUL.md/AGENTS.md/HEARTBEAT.md -- never at the
+# operator's original path, which can drift or disappear. ``PodSettings.pipeline`` stores
+# only that copy's sha256 hex digest, so a hand-edited or stale copy is detected rather
+# than silently trusted (see core/dispatch.py's ``_blueprint_pipeline``).
+BOUND_PIPELINE_FILENAME = "PIPELINE.yaml"
+
+
+def bound_pipeline_path(project: str) -> Path:
+    """Where a pod's bound pipeline copy lives, if ``PodSettings.pipeline`` is set."""
+    return _cfg.workspace_dir(member_id(project, "lead")) / BOUND_PIPELINE_FILENAME
