@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from tests.conftest import repoint_docket_home
@@ -607,3 +607,82 @@ class TestSweep:
         assert _ap.approval_sweep_expired() == 0
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "pending"
+
+
+class TestBrokenPolicyStoreCli:
+    """CLI surfaces of the fail-closed policy store."""
+
+    _BROKEN: ClassVar[dict[str, object]] = {
+        "id": "zz-broken",
+        "applies_to": ["*"],
+        "hook": "pre_tool_call",
+        "match": {"type": "regex", "pattern": "make\\s+deploy("},
+        "action": "block",
+        "message": "no deploys",
+    }
+
+    def test_validate_flags_uncompilable_regex(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
+        rc = _policies.run_policies("validate")
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "pattern" in captured.err
+
+    def test_policies_test_reports_broken_store_as_deny(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
+        rc = _policies.run_policies("test", args=["pre_tool_call", "implementer", "ls src"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "deny" in out
+        assert "zz-broken.json" in out
+
+
+class TestPoliciesTestToolKind:
+    """--tool picks whether the command classifier applies to the dry-run."""
+
+    _WARN: ClassVar[dict[str, object]] = {
+        "id": "watch-mainpy",
+        "applies_to": ["*"],
+        "hook": "pre_tool_call",
+        "match": {"type": "regex", "pattern": "main\\.py"},
+        "action": "warn",
+        "message": "main.py touched",
+    }
+
+    def test_non_exec_tool_skips_the_classifier(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (oc_dir / "policies" / "watch-mainpy.json").write_text(json.dumps(self._WARN))
+        rc = _policies.run_policies(
+            "test",
+            args=["pre_tool_call", "implementer", 'write path="main.py"', "--tool", "write"],
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "allow" in out
+        assert "watch-mainpy" in out
+        assert "curated allowlist" not in out
+
+    def test_exec_default_still_classifies(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = _policies.run_policies(
+            "test", args=["pre_tool_call", "implementer", "somebinary --flag"]
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "ask" in out
+        assert "curated allowlist" in out
+
+    def test_unknown_tool_errors(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = _policies.run_policies(
+            "test", args=["pre_tool_call", "implementer", "x", "--tool", "bogus"]
+        )
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "bogus" in captured.err
+        assert "bash" in captured.err

@@ -1168,10 +1168,19 @@ policy's JSON; `init` copies the 6 baseline templates
 (block-destructive, prompt-injection, secret-pii-redact, and the three
 high-risk-action-class policies: high-risk-payment, high-risk-deploy,
 high-risk-credentials); `validate \[id|file.json\]` schema-checks one (or
-every) installed policy; `test <hook> <role> <text>` dry-runs the
-evaluator, emitting no traces. Valid `<hook>` values for `test` are
-pre_input, pre_tool_call, and pre_output -- a policy can fire at enqueue
-time, before a tool call, or on a hop's output.
+every) installed policy, including that its regex compiles; `test <hook>
+<role> <text> \[--tool <name>\]` dry-runs the evaluator, emitting no
+traces. Valid `<hook>` values for `test` are pre_input, pre_tool_call,
+and pre_output -- a policy can fire at enqueue time, before a tool call,
+or on a hop's output. For pre_tool_call, `--tool` (default `bash`) names
+the built-in tool being simulated: an exec tool is judged by the command
+classifier plus the policy hook, exactly like the live gate; any other
+kind is judged by the policy hook alone, because the live gate
+classifies exec commands only.
+
+A policy file that fails validation is never silently skipped: every
+call it could have governed fails closed (`block`, attributed to the
+file) until it is fixed or removed, and `docket doctor` reports it.
 
 
 **Aliases:** `policy`

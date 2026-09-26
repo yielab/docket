@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.20.1
+**Version**: 0.21.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -354,6 +354,25 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    implemented and unit-tested but callable only from tests, not the CLI. No argument validates
    every file in `$POLICIES_DIR`; an argument is looked up first as a file path, then as an
    installed policy's `id`. Exit code `1` if any checked file is invalid.
+7. **Policy store integrity — a broken policy fails closed.** One function owns policy validity
+   (`core.policy.validate_policy` over a parsed document), and the evaluator applies the same
+   check on every read: a policy file that cannot be parsed, or that fails validation (missing
+   required fields, unknown hook or action, a `match.type` other than `regex`, an empty or
+   uncompilable pattern) **MUST NOT** be silently skipped. It **MUST** evaluate as a `block`
+   verdict — scoped to the file's declared `hook` and `applies_to` when that much is readable,
+   and to every hook and role when the JSON itself is unreadable — with `PolicyHit.policy_id`
+   naming the broken file and `message` naming the reason, so the existing non-`allow`
+   audit/trace paths attribute the denial to the file. The `--trusted` injection-id skip applies
+   only when the file's `id` is readable and matches; brokenness never widens it. `docket doctor`
+   **MUST** report each broken policy file as an issue.
+8. `docket policies test <hook> <role> "<text>"` **MUST** accept `--tool <name>` (default
+   `bash`): the name is resolved against the built-in tool registry (unknown → error, exit 1,
+   naming the valid tools), an `exec`-kind tool evaluates through
+   `core/tools.py::evaluate_tool_call` (classifier + policy hook, as requirement 6 of
+   "Tool-approval gates" wired for `bash`), and a non-`exec` kind evaluates the declarative hook
+   alone on the given text, reporting that the command classifier does not apply — because the
+   live gate classifies `exec` tools only, and running the classifier on a `write`/`edit` render
+   misreports the live verdict.
 
 ### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
 
@@ -750,7 +769,10 @@ docket policies list                        # MUST list installed policies (id/h
 docket policies show <id>                   # MUST print one installed policy's raw JSON
 docket policies init                        # MUST seed $POLICIES_DIR from the shipped templates
                                              #   (idempotent; same producer first init uses)
-docket policies test <hook> <role> "<text>" # MUST dry-run the evaluator (no trace emitted)
+docket policies test <hook> <role> "<text>" [--tool <name>]
+                                             # MUST dry-run the evaluator (no trace emitted);
+                                             #   --tool picks the built-in tool whose kind decides
+                                             #   whether the command classifier applies (default bash)
 docket policies validate [id|file.json]     # MUST schema-check installed policies, one, or a file
 ```
 
@@ -1133,6 +1155,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.21.0 (2026-09-25)
+
+- Policy engine requirement 7: a policy file that fails validation evaluates as `block` within its declared scope (the whole store when the JSON is unreadable) instead of being silently skipped, attributed to the file; `validate_policy` now compiles the pattern requirement 6 already promised; `docket doctor` gains a guardrail-policies check; requirement 8: `docket policies test --tool <name>` stops the bash command classifier from misreporting non-exec renders (P26-1).
 
 ### Version 0.20.1 (2026-09-25)
 

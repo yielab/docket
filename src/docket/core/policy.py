@@ -2,10 +2,10 @@
 
     { "id": str, "applies_to": ["role"|"*"], "hook": str,
       "match": {"type":"regex","pattern":str}, "action": str, "message": str }
-``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail`` returns
-the full :class:`PolicyHit`, used by callers that must attribute a trip to a specific policy. This
-module itself never emits traces (``policy_test`` is a side-effect-free dry run); callers that need
-a trace record emit it themselves. Reads policy files directly through ``edges/store.py``.
+``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail`` the
+full :class:`PolicyHit` for attribution. A file that fails validation is never silently skipped:
+it evaluates as ``block`` within its readable scope, attributed to the file (fail closed, spec
+requirement 7). Never emits traces itself; callers emit their own records.
 Live-path wiring: ``pre_input`` runs once at task enqueue, not re-evaluated per hop (which would
 re-gate the same task text at every role a ``"*"``-scoped policy applies to); ``pre_output`` runs
 on every hop's real output before it is carried forward or persisted; ``pre_tool_call`` runs
@@ -39,36 +39,42 @@ _RANK: dict[str, int] = {
 _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 
 
-def validate_policy(path: Path) -> str:
-    """Validate one policy file. Return '' if valid, else an error message.
+def _validate_doc(p: dict[str, Any], label: str) -> str:
+    """Validate one parsed policy document; '' if valid, else the error. The single owner of
+    "what a valid policy is": ``validate_policy``, the evaluator's fail-closed check and doctor
+    all call this, so validator and evaluator can never disagree (spec requirement 7)."""
+    required = {"id", "applies_to", "hook", "match", "action"}
+    missing = required - set(p.keys())
+    if missing:
+        return f"{label}: missing fields: {missing}"
+    if p.get("hook") not in VALID_HOOKS:
+        return (
+            f"{label}: unknown hook '{p.get('hook')}' (valid: pre_input, pre_tool_call, pre_output)"
+        )
+    if p.get("action") not in VALID_ACTIONS:
+        return f"{label}: unknown action '{p.get('action')}'"
+    match = p.get("match") or {}
+    if not isinstance(match, dict) or match.get("type") not in ("regex",):
+        return f"{label}: match.type must be 'regex'"
+    pattern = match.get("pattern")
+    if not pattern:
+        return f"{label}: match.pattern is required"
+    try:
+        re.compile(str(pattern), re.IGNORECASE | re.MULTILINE)
+    except re.error as exc:
+        return f"{label}: match.pattern does not compile: {exc}"
+    return ""
 
-    The CLI doesn't call this yet -- `cli/_policies.py`'s `_list()`/`_show()` do their own
-    generic JSON parse, no schema-check. Kept rather than removed: `tests/unit/core/test_policy.py`
-    and `test_gates_policies_approve_deny.py` call it directly as the schema-validity guard over
-    the shipped `high-risk-*.json` templates, real regression coverage a plain JSON parse doesn't
-    give. Left tested-but-unwired rather than adding new CLI surface here."""
+
+def validate_policy(path: Path) -> str:
+    """Validate one policy file: '' if valid, else an error message. Wired into ``docket
+    policies validate`` and shared with the evaluator's fail-closed check via ``_validate_doc``."""
     try:
         with path.open(encoding="utf-8") as f:
             p: dict[str, Any] = json.load(f)
     except Exception as exc:
         return f"Cannot parse {path}: {exc}"
-
-    required = {"id", "applies_to", "hook", "match", "action"}
-    missing = required - set(p.keys())
-    if missing:
-        return f"{path}: missing fields: {missing}"
-    if p.get("hook") not in VALID_HOOKS:
-        return (
-            f"{path}: unknown hook '{p.get('hook')}' (valid: pre_input, pre_tool_call, pre_output)"
-        )
-    if p.get("action") not in VALID_ACTIONS:
-        return f"{path}: unknown action '{p.get('action')}'"
-    match = p.get("match") or {}
-    if not isinstance(match, dict) or match.get("type") not in ("regex",):
-        return f"{path}: match.type must be 'regex'"
-    if not match.get("pattern"):
-        return f"{path}: match.pattern is required"
-    return ""
+    return _validate_doc(p, str(path))
 
 
 def policy_files() -> list[Path]:
@@ -102,12 +108,43 @@ def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False
     best = PolicyHit()
     best_rank = 0
 
+    def consider(action: str, policy_id: str, message: str) -> None:
+        nonlocal best, best_rank
+        rank = _RANK.get(action, 0)
+        if rank > best_rank:
+            best_rank = rank
+            best = PolicyHit(action=action, policy_id=policy_id, message=message)
+
     for path in policy_files():
         try:
             with path.open(encoding="utf-8") as f:
-                p: dict[str, Any] = json.load(f)
+                p: dict[str, Any] | None = json.load(f)
+            if not isinstance(p, dict):
+                p = None
         except Exception:
+            p = None
+
+        # Fail closed on a broken file (security-gates.spec.md, policy engine requirement 7):
+        # a file the validator rejects blocks within its readable scope -- its declared hook
+        # and applies_to when those parse, every hook and role when the JSON itself does not --
+        # attributed to the file so the audit/trace record names what to fix.
+        error = "unreadable JSON" if p is None else _validate_doc(p, path.name)
+        if error:
+            declared_hook = (p or {}).get("hook")
+            hooks = {declared_hook} if declared_hook in VALID_HOOKS else VALID_HOOKS
+            raw_applies = (p or {}).get("applies_to")
+            applies = raw_applies if isinstance(raw_applies, list) and raw_applies else ["*"]
+            if trusted and p is not None and p.get("id") in _INJECTION_IDS:
+                continue
+            if hook in hooks and ("*" in applies or role in applies):
+                consider(
+                    "block",
+                    path.name,
+                    f"policy file {path.name} is broken ({error}); failing closed",
+                )
             continue
+
+        assert p is not None  # a None p always carries an error above
         if p.get("hook") != hook:
             continue
         applies = p.get("applies_to", []) or []
@@ -115,22 +152,13 @@ def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False
             continue
         if trusted and p.get("id") in _INJECTION_IDS:
             continue
-        pattern = (p.get("match") or {}).get("pattern", "")
-        if not pattern:
-            continue
-        try:
-            if re.search(pattern, text, re.IGNORECASE | re.MULTILINE):
-                action = str(p.get("action", "allow"))
-                rank = _RANK.get(action, 0)
-                if rank > best_rank:
-                    best_rank = rank
-                    best = PolicyHit(
-                        action=action,
-                        policy_id=str(p.get("id", "")),
-                        message=str(p.get("message", "")),
-                    )
-        except re.error:
-            continue
+        pattern = str((p.get("match") or {}).get("pattern", ""))
+        if re.search(pattern, text, re.IGNORECASE | re.MULTILINE):
+            consider(
+                str(p.get("action", "allow")),
+                str(p.get("id", "")),
+                str(p.get("message", "")),
+            )
 
     return best
 

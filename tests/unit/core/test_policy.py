@@ -186,3 +186,127 @@ class TestHighRiskTemplatesValid:
             p = _cfg.policy_templates_dir() / f"{name}.json"
             doc = json.loads(p.read_text())
             assert doc.get("class") == "high-risk", f"{name}.json must have class: high-risk"
+
+
+# ── policy store integrity (fail closed) ─────────────────────────────────────
+
+
+def _write_policy(policies_dir: Path, name: str, doc: object) -> Path:
+    f = policies_dir / name
+    f.write_text(doc if isinstance(doc, str) else json.dumps(doc), encoding="utf-8")
+    return f
+
+
+class TestBrokenPolicyFailsClosed:
+    """A policy file that fails validation blocks instead of being silently skipped."""
+
+    def test_uncompilable_regex_blocks_its_hook(self, policies_dir: Path) -> None:
+        """One stray paren must deny the hook it guards, attributed to the file."""
+        _write_policy(
+            policies_dir,
+            "zz-broken.json",
+            {
+                "id": "zz-broken",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "make\\s+deploy("},
+                "action": "block",
+                "message": "no deploys",
+            },
+        )
+        hit = _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src")
+        assert hit.action == "block"
+        assert "zz-broken.json" in hit.policy_id
+        assert "zz-broken.json" in hit.message
+
+    def test_uncompilable_regex_leaves_other_hooks_alone(self, policies_dir: Path) -> None:
+        """The declared hook scopes the fail-closed verdict when it is readable."""
+        _write_policy(
+            policies_dir,
+            "zz-broken.json",
+            {
+                "id": "zz-broken",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "("},
+                "action": "block",
+            },
+        )
+        assert _policy.policy_eval("implementer", "pre_output", "hello world") == "allow"
+
+    def test_unreadable_json_blocks_every_hook(self, policies_dir: Path) -> None:
+        """With nothing readable, the scope is every hook and every role."""
+        _write_policy(policies_dir, "zz-mangled.json", '{"id": "zz", not json')
+        for hook in ("pre_input", "pre_tool_call", "pre_output"):
+            hit = _policy.policy_eval_detail("lead", hook, "hello world")
+            assert hit.action == "block", hook
+            assert "zz-mangled.json" in hit.policy_id
+
+    def test_unknown_action_blocks(self, policies_dir: Path) -> None:
+        """An action typo on a gating policy must not degrade to allow."""
+        _write_policy(
+            policies_dir,
+            "zz-typo.json",
+            {
+                "id": "zz-typo",
+                "applies_to": ["*"],
+                "hook": "pre_output",
+                "match": {"type": "regex", "pattern": "secret"},
+                "action": "blocc",
+            },
+        )
+        assert _policy.policy_eval("tester", "pre_output", "nothing to see") == "block"
+
+    def test_empty_pattern_blocks(self, policies_dir: Path) -> None:
+        _write_policy(
+            policies_dir,
+            "zz-empty.json",
+            {
+                "id": "zz-empty",
+                "applies_to": ["*"],
+                "hook": "pre_input",
+                "match": {"type": "regex", "pattern": ""},
+                "action": "block",
+            },
+        )
+        assert _policy.policy_eval("lead", "pre_input", "a task") == "block"
+
+    def test_broken_scope_respects_applies_to(self, policies_dir: Path) -> None:
+        """A readable applies_to keeps the fail-closed verdict off other roles."""
+        _write_policy(
+            policies_dir,
+            "zz-scoped.json",
+            {
+                "id": "zz-scoped",
+                "applies_to": ["implementer"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "("},
+                "action": "warn",
+            },
+        )
+        assert _policy.policy_eval("implementer", "pre_tool_call", "ls") == "block"
+        assert _policy.policy_eval("lead", "pre_tool_call", "ls") == "allow"
+
+    def test_trusted_skip_never_widens_over_a_broken_file(self, policies_dir: Path) -> None:
+        """trusted=True skips a readable injection id, not an arbitrary broken file."""
+        _write_policy(policies_dir, "zz-mangled.json", "{broken")
+        hit = _policy.policy_eval_detail("lead", "pre_input", "hello", trusted=True)
+        assert hit.action == "block"
+
+
+class TestValidateCompilesRegex:
+    def test_uncompilable_pattern_is_invalid(self, policies_dir: Path) -> None:
+        f = _write_policy(
+            policies_dir,
+            "zz-broken.json",
+            {
+                "id": "zz-broken",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "make\\s+deploy("},
+                "action": "block",
+            },
+        )
+        err = _policy.validate_policy(f)
+        assert err != ""
+        assert "pattern" in err

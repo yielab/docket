@@ -3,15 +3,16 @@
   docket policies list               List installed policies
   docket policies show <id>          Show one policy
   docket policies init               Install baseline policies to $POLICIES_DIR
-  docket policies test <hook> <role> "<text>"   Dry-run the evaluator
+  docket policies test <hook> <role> "<text>" [--tool <name>]   Dry-run the evaluator
   docket policies validate [id|file.json]       Schema-check installed policies, one, or a file
 
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
 docket-owned artefacts read/written directly.
 
-``validate`` wires ``core/policy.py``'s ``validate_policy`` into this CLI surface. ``test``'s
-``pre_tool_call`` case evaluates through ``core/tools.py::evaluate_tool_call`` -- the same
-function ``dispatch_tool`` calls -- so this dry-run cannot drift from a real exec call's verdict.
+``validate`` wires ``core/policy.py``'s ``validate_policy``. ``test``'s ``pre_tool_call`` case
+evaluates an exec-kind tool (``--tool``, default ``bash``) through the live gate's own
+``evaluate_tool_call``; a non-exec ``--tool`` evaluates the declarative hook alone, because the
+live gate classifies exec commands only.
 """
 
 from __future__ import annotations
@@ -41,7 +42,9 @@ def _help() -> int:
     ui.console.print("  docket policies list                        List installed policies")
     ui.console.print("  docket policies show <id>                   Show one policy")
     ui.console.print("  docket policies init                        Install baseline policies")
-    ui.console.print('  docket policies test <hook> <role> "<text>" Dry-run evaluator')
+    ui.console.print(
+        '  docket policies test <hook> <role> "<text>" [--tool <name>]  Dry-run evaluator'
+    )
     ui.console.print("  docket policies validate [id|file.json]     Schema-check policies")
     ui.console.print()
     ui.console.print(f"  Policy directory: {_cfg.POLICIES_DIR}")
@@ -130,19 +133,33 @@ def _init() -> int:
         ui.dim(f"Skipped {skipped} (already present). Delete to reinstall.")
     ui.console.print()
     ui.info(f"Policies active at: {_cfg.POLICIES_DIR}")
-    ui.info('Test: docket policies test pre_tool_call programmer "rm -rf /tmp"')
+    ui.info('Test: docket policies test pre_tool_call implementer "rm -rf /tmp"')
     return 0
 
 
 def _test(args: list[str]) -> int:
-    hook = args[0] if len(args) > 0 else ""
-    role = args[1] if len(args) > 1 else ""
-    text = args[2] if len(args) > 2 else ""
+    rest = list(args)
+    tool_name = "bash"
+    if "--tool" in rest:
+        idx = rest.index("--tool")
+        if idx + 1 >= len(rest):
+            ui.error("--tool requires a tool name")
+            return 1
+        tool_name = rest[idx + 1]
+        del rest[idx : idx + 2]
+    hook = rest[0] if len(rest) > 0 else ""
+    role = rest[1] if len(rest) > 1 else ""
+    text = rest[2] if len(rest) > 2 else ""
     if not hook or not role or not text:
-        ui.error('Usage: docket policies test <hook> <role> "<text>"')
+        ui.error('Usage: docket policies test <hook> <role> "<text>" [--tool <name>]')
         return 1
     if hook not in _VALID_HOOKS:
         ui.error(f"Unknown hook '{hook}'. Valid: {' '.join(_VALID_HOOKS)}")
+        return 1
+    registry = _tools.builtin_registry()
+    builtin = {name: t for name in registry.names() if (t := registry.get(name)) is not None}
+    if hook == "pre_tool_call" and tool_name not in builtin:
+        ui.error(f"Unknown tool '{tool_name}'. Valid: {' '.join(sorted(builtin))}")
         return 1
 
     ui.info("Evaluating policies (dry-run, no traces emitted)...")
@@ -151,14 +168,14 @@ def _test(args: list[str]) -> int:
     policy_id = ""
     policy_action = ""
     action: str
-    if hook == "pre_tool_call":
+    if hook == "pre_tool_call" and builtin[tool_name].kind == "exec":
         # Route through the live gate's own decision function so a `cd`- or
         # otherwise-prefixed command that the command classifier alone would
         # ask on (see security-gates.spec.md "Tool-approval gates" item 1) is
         # reported here exactly as it would be for a real exec tool call.
         verdict = _tools.evaluate_tool_call(
             _tools.Tool(
-                name="bash",
+                name=tool_name,
                 description="",
                 parameters={"required": ["command"]},
                 handler=_unreachable_handler,
@@ -171,6 +188,15 @@ def _test(args: list[str]) -> int:
         reason = verdict.reason
         policy_id = verdict.policy_id
         policy_action = verdict.policy_action
+    elif hook == "pre_tool_call":
+        # The live gate runs the command classifier for exec tools only
+        # (security-gates.spec.md, policy engine requirement 8), so a
+        # write/edit render is judged by the declarative hook alone here.
+        hit = _policy.policy_eval_detail(role, hook, text)
+        action = {"block": "deny", "require_approval": "ask"}.get(hit.action, "allow")
+        reason = f"command classifier skipped: '{tool_name}' is kind={builtin[tool_name].kind}"
+        policy_id = hit.policy_id
+        policy_action = hit.action
     else:
         action = _policy.policy_test(hook, role, text)
 

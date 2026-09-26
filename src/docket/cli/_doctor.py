@@ -20,6 +20,7 @@ from docket import ui
 from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import policy as _pol
 from docket.core import secrets as _secrets
 from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
@@ -353,6 +354,30 @@ def _check_security_gates() -> int:
     else:
         ui.dim("  Workspace isolation: off — docket gates isolate on (needs Docker)")
 
+    return 0
+
+
+def _check_policies() -> int:
+    """Guardrail policy store integrity: flags any file the evaluator would fail closed on,
+    through the same ``core.policy`` validation, so doctor can never call a store healthy that
+    a live turn would block on (security-gates.spec.md, policy engine requirement 7)."""
+    ui.console.print()
+    ui.console.print("[bold]Guardrail policies:[/bold]")
+    files = _pol.policy_files()
+    if not files:
+        ui.dim("  No policies installed — docket policies init")
+        return 0
+    broken = 0
+    for f in files:
+        err = _pol.validate_policy(f)
+        if err:
+            broken += 1
+            ui.console.print(f"[red]✗[/red]   {f.name}: broken — every matching call fails closed")
+            ui.console.print(f"    {err}")
+    if broken:
+        ui.console.print("  Fix or remove the file(s); check with: docket policies validate")
+        return broken
+    ui.success(f"  {len(files)} policy file(s) valid")
     return 0
 
 
@@ -831,6 +856,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_key_hygiene()
     issues += _check_provider_coverage(ids)
     issues += _check_security_gates()
+    issues += _check_policies()
     _check_template_version(ids)
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)

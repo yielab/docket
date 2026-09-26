@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
+import docket.config as _cfg
 from docket.cli import _doctor
 
 SUBJECT = "docket.cli._doctor"
@@ -590,3 +591,28 @@ class TestFullRun:
         # The "no agents" notice is a warn() → stdout (mirrors Bash).
         assert "No project agents found" in captured.out
         assert rc == 0
+
+
+class TestGuardrailPolicies:
+    """Doctor reports a policy file the evaluator would fail closed on."""
+
+    def test_reports_broken_policy_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        pol = _cfg.POLICIES_DIR
+        pol.mkdir(parents=True, exist_ok=True)
+        (pol / "zz-broken.json").write_text('{"id": "zz", not json')
+        rc = _doctor.run_doctor()
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "zz-broken.json" in out
+
+    def test_valid_store_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        rc = _doctor.run_doctor()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "polic" in out.lower()
