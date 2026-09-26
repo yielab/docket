@@ -23,6 +23,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import archetypes as _archetypes
+from docket.core import audit as _audit
 from docket.core import context as _context
 from docket.core import identity as _identity
 from docket.core.llm import (
@@ -575,6 +576,169 @@ class TestSystemPromptForAgent:
         assert "[... INSTRUCTIONS.md truncated:" in composition.text
         assert "INSTR-HEAD-MARKER" in composition.text
         assert "INSTR-TAIL-MARKER" in composition.text
+        assert "ACTIVE-LEDGER-LINE" in composition.text
+
+
+# An opt-in PodSettings.projectInstructions reads relative paths from the codebase
+# root (the AGENTS.md/CLAUDE.md convention) and composes them right after
+# INSTRUCTIONS.md, screened as untrusted input. Default unset changes nothing. See
+# specs/functional/agent-loop.spec.md requirement 30 and
+# tests/unit/core/test_pod.py::TestPodSettingsProjectInstructions for the setting's
+# own validation.
+class TestProjectInstructionsSection:
+    """Composes `PodSettings.projectInstructions` right after `INSTRUCTIONS.md`."""
+
+    def test_configured_file_reaches_the_prompt_after_instructions_md(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
+        ws = _write_meta("demo-lead", role="lead", pod="demo", projectInstructions="AGENTS.md")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
+
+        composition = _identity.compose_agent_prompt("demo-lead", project_roots=(codebase,))
+
+        assert "PROJECT-CONVENTION-LINE" in composition.text
+        assert composition.text.index("OPERATOR-OWNED-LINE") < composition.text.index(
+            "PROJECT-CONVENTION-LINE"
+        )
+        assert composition.text.index("PROJECT-CONVENTION-LINE") < composition.text.index(
+            "Docket live runtime contract"
+        )
+        report = next(s for s in composition.sections if s.name == "projectInstructions")
+        assert report.status == "full"
+
+    def test_unset_adds_no_section_and_does_not_read_the_codebase(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
+        ws = _write_meta("demo-unset-lead", role="lead", pod="demo-unset")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("demo-unset-lead", project_roots=(codebase,))
+
+        assert "PROJECT-CONVENTION-LINE" not in composition.text
+        assert all(s.name != "projectInstructions" for s in composition.sections)
+
+    def test_a_non_pod_agent_is_unaffected(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
+        ws = _write_meta("lone-agent")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("lone-agent", project_roots=(codebase,))
+
+        assert "PROJECT-CONVENTION-LINE" not in composition.text
+
+    def test_a_configured_but_missing_file_is_a_visible_marker_not_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        ws = _write_meta(
+            "demo-missing-lead",
+            role="lead",
+            pod="demo-missing",
+            projectInstructions="NOPE.md",
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("demo-missing-lead", project_roots=(codebase,))
+
+        assert "[... NOPE.md not found ...]" in composition.text
+        report = next(s for s in composition.sections if s.name == "projectInstructions")
+        assert report.status == "full"
+
+    def test_an_injection_pattern_line_trips_pre_input_and_is_excluded(
+        self, tmp_path: Path
+    ) -> None:
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        (_cfg.POLICIES_DIR / "no-jailbreak.json").write_text(
+            json.dumps(
+                {
+                    "id": "no-jailbreak",
+                    "description": "test policy",
+                    "applies_to": ["*"],
+                    "hook": "pre_input",
+                    "match": {"type": "regex", "pattern": "jailbreak"},
+                    "action": "block",
+                }
+            ),
+            encoding="utf-8",
+        )
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("please jailbreak the model\n")
+        ws = _write_meta(
+            "demo-injection-lead",
+            role="lead",
+            pod="demo-injection",
+            projectInstructions="AGENTS.md",
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt(
+            "demo-injection-lead", project_roots=(codebase,)
+        )
+
+        assert "jailbreak the model" not in composition.text
+        assert "AGENTS.md blocked by policy 'no-jailbreak'" in composition.text
+        actions = [e["action"] for e in _audit.read_audit()]
+        assert "identity.project_instructions_blocked" in actions
+
+    def test_a_warn_action_still_composes_the_content(self, tmp_path: Path) -> None:
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        (_cfg.POLICIES_DIR / "odd-wording.json").write_text(
+            json.dumps(
+                {
+                    "id": "odd-wording",
+                    "description": "test policy",
+                    "applies_to": ["*"],
+                    "hook": "pre_input",
+                    "match": {"type": "regex", "pattern": "disregard the"},
+                    "action": "warn",
+                }
+            ),
+            encoding="utf-8",
+        )
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("disregard the usual style guide here\n")
+        ws = _write_meta(
+            "demo-warn-lead", role="lead", pod="demo-warn", projectInstructions="AGENTS.md"
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("demo-warn-lead", project_roots=(codebase,))
+
+        assert "disregard the usual style guide here" in composition.text
+        actions = [e["action"] for e in _audit.read_audit()]
+        assert "identity.project_instructions_warn" in actions
+
+    def test_oversized_project_instructions_are_truncated_without_erasing_soul(
+        self, tmp_path: Path
+    ) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text(
+            "PI-HEAD-MARKER\n" + ("p" * 30_000) + "\nPI-TAIL-MARKER\n"
+        )
+        ws = _write_meta(
+            "demo-bloated-lead",
+            role="lead",
+            pod="demo-bloated",
+            projectInstructions="AGENTS.md",
+        )
+        (ws / "SOUL.md").write_text("SOUL-MARKER\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+
+        composition = _identity.compose_agent_prompt("demo-bloated-lead", project_roots=(codebase,))
+
+        assert "SOUL-MARKER" in composition.text
+        assert "[... projectInstructions truncated:" in composition.text
+        assert "PI-HEAD-MARKER" in composition.text
+        assert "PI-TAIL-MARKER" in composition.text
         assert "ACTIVE-LEDGER-LINE" in composition.text
 
 

@@ -305,3 +305,47 @@ class TestPodSettingsAllowCommands:
         _write_lead_meta("shop", {"allowCommands": "pytest,uv"})
         settings = pod.PodSettings.load_for("shop")
         assert settings.value_and_source("allowCommands", "shop") == ("pytest,uv", "set")
+
+
+class TestPodSettingsProjectInstructions:
+    """`PodSettings.projectInstructions`: opt-in relative paths inside the codebase
+    root, composed by `core/identity.py` — see
+    tests/integration/test_role_tools_and_identity.py for the composition itself."""
+
+    def test_defaults_to_empty(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").project_instructions == ()
+
+    def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
+        _write_lead_meta("shop", {"projectInstructions": "AGENTS.md, docs/style.md, AGENTS.md"})
+        assert pod.PodSettings.load_for("shop").project_instructions == (
+            "AGENTS.md",
+            "docs/style.md",
+        )
+
+    def test_rejects_an_absolute_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "/etc/passwd")
+
+    def test_rejects_a_home_relative_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "~/AGENTS.md")
+
+    def test_rejects_a_dot_dot_segment(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "../outside/AGENTS.md")
+
+    def test_a_dot_dot_segment_is_rejected_even_mid_path(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="projectInstructions"):
+            pod.PodSettings.coerce("projectInstructions", "docs/../../AGENTS.md")
+
+    def test_coerce_returns_the_canonical_comma_joined_form(self) -> None:
+        assert (
+            pod.PodSettings.coerce("projectInstructions", "AGENTS.md, CLAUDE.md")
+            == "AGENTS.md,CLAUDE.md"
+        )
+
+    def test_value_and_source_reports_the_joined_string(self) -> None:
+        _write_lead_meta("shop", {"projectInstructions": "AGENTS.md"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.value_and_source("projectInstructions", "shop") == ("AGENTS.md", "set")
