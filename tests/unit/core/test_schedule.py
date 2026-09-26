@@ -12,6 +12,10 @@ matching minute, doesn't collide with ``@every``/``HH:MM``).
 from __future__ import annotations
 
 import datetime as _dt
+import json
+from pathlib import Path
+
+import pytest
 
 from docket.core import schedule as _sched
 
@@ -146,3 +150,93 @@ class TestCronIsDue:
     def test_cron_does_not_shadow_daily_time(self) -> None:
         now = _dt.datetime(2026, 7, 30, 9, 0, 0, tzinfo=_dt.UTC).timestamp()
         assert _sched.is_schedule_due("09:00", 0.0, now)
+
+
+class TestDescribeSpecError:
+    """`describe_spec_error` names the reason `is_schedule_due` drops silently."""
+
+    def test_recognized_every_spec_has_no_error(self) -> None:
+        assert _sched.describe_spec_error("@every 30m") is None
+
+    def test_recognized_daily_spec_has_no_error(self) -> None:
+        assert _sched.describe_spec_error("09:00") is None
+
+    def test_recognized_cron_spec_has_no_error(self) -> None:
+        assert _sched.describe_spec_error("*/15 9-17 * * 1-5") is None
+
+    def test_bad_every_unit_is_named(self) -> None:
+        reason = _sched.describe_spec_error("@every 3x")
+        assert reason is not None
+        assert "3x" in reason
+
+    def test_garbage_spec_is_named(self) -> None:
+        reason = _sched.describe_spec_error("not a schedule")
+        assert reason is not None
+        assert "not a schedule" in reason
+
+
+class TestScheduleWriter:
+    """`set_schedule`/`unset_schedule`: the writer `docket-schedules.json` lacked."""
+
+    def test_set_schedule_validates_and_persists(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        _sched.set_schedule(path, "shop", "@every 30m")
+        doc = json.loads(path.read_text())
+        assert doc["schedules"] == {"shop": "@every 30m"}
+
+    def test_set_schedule_rejects_unrecognized_spec(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        with pytest.raises(_sched.ScheduleError, match="3x"):
+            _sched.set_schedule(path, "shop", "@every 3x")
+        assert not path.exists()
+
+    def test_set_schedule_preserves_last_run_and_other_projects(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        _sched.set_schedule(path, "shop", "@every 30m")
+        _sched.record_last_run(path, "shop", 1000.0)
+        _sched.set_schedule(path, "other", "09:00")
+        doc = json.loads(path.read_text())
+        assert doc["schedules"] == {"shop": "@every 30m", "other": "09:00"}
+        assert doc["lastRun"] == {"shop": 1000.0}
+
+    def test_unset_schedule_removes_only_that_project(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        _sched.set_schedule(path, "shop", "@every 30m")
+        _sched.set_schedule(path, "other", "09:00")
+        _sched.unset_schedule(path, "shop")
+        doc = json.loads(path.read_text())
+        assert doc["schedules"] == {"other": "09:00"}
+
+    def test_unset_schedule_is_a_no_op_when_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        _sched.unset_schedule(path, "shop")
+        doc = json.loads(path.read_text())
+        assert doc["schedules"] == {}
+
+
+class TestFindScheduleProblems:
+    """`find_schedule_problems`: what `docket doctor` surfaces."""
+
+    def test_no_file_has_no_problems(self, tmp_path: Path) -> None:
+        assert _sched.find_schedule_problems(tmp_path / "docket-schedules.json") == []
+
+    def test_valid_schedules_have_no_problems(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        _sched.set_schedule(path, "shop", "@every 30m")
+        assert _sched.find_schedule_problems(path) == []
+
+    def test_unrecognized_spec_is_reported_by_project_key(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        path.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        problems = _sched.find_schedule_problems(path)
+        assert len(problems) == 1
+        key, reason = problems[0]
+        assert key == "shop"
+        assert "3x" in reason
+
+    def test_malformed_json_is_reported_by_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "docket-schedules.json"
+        path.write_text("{not json")
+        problems = _sched.find_schedule_problems(path)
+        assert len(problems) == 1
+        assert problems[0][0] == str(path)

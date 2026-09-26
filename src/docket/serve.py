@@ -437,6 +437,14 @@ def _check_schedules(now_ts: float) -> None:
     schedules = _sched.load_schedules(cfg.SCHEDULE_FILE)
     last_run_map = _sched.load_last_run(cfg.SCHEDULE_FILE)
     for project, spec in schedules.items():
+        reason = _sched.describe_spec_error(spec)
+        if reason:
+            # `is_schedule_due` would otherwise treat this as silently never-due, forever
+            # -- print once per sweep so an operator running `docket serve` sees the drop
+            # instead of a schedule that quietly never fires (see `docket doctor` for the
+            # equivalent standing report).
+            print(f"[serve] sweep: schedule '{project}' skipped — {reason}")
+            continue
         last_run = last_run_map.get(project, 0.0)
         if not _sched.is_schedule_due(spec, last_run, now_ts):
             continue

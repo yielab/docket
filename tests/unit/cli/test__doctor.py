@@ -668,3 +668,104 @@ class TestGuardrailPolicies:
         out = capsys.readouterr().out
         assert rc == 0
         assert "polic" in out.lower()
+
+
+class TestScheduleConfig:
+    """A bad spec is silently never due -- `_check_schedule_config` names the file,
+    project key, and reason instead."""
+
+    def test_no_file_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _point_config_at(tmp_path / ".docket", monkeypatch)
+        assert _doctor._check_schedule_config() == 0
+
+    def test_bad_spec_is_flagged_by_project_and_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / ".docket"
+        _point_config_at(home, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        issues = _doctor._check_schedule_config()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "shop" in out
+        assert "3x" in out
+
+    def test_valid_schedule_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / ".docket"
+        _point_config_at(home, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 30m"}}))
+        assert _doctor._check_schedule_config() == 0
+
+
+class TestModelRegistryEntries:
+    """A hand-broken `docket-models.json` entry is named, not silently ignored."""
+
+    def test_no_file_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _point_config_at(tmp_path / ".docket", monkeypatch)
+        assert _doctor._check_model_registry_entries() == 0
+
+    def test_hand_broken_entry_is_named(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / ".docket"
+        _point_config_at(home, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        issues = _doctor._check_model_registry_entries()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "default" in out
+        assert "not-a-model-id" in out
+
+
+class TestArchetypeOverlay:
+    """A malformed `docket-roles.json` overlay entry is named, not silently skipped."""
+
+    def test_no_file_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _point_config_at(tmp_path / ".docket", monkeypatch)
+        assert _doctor._check_archetype_overlay() == 0
+
+    def test_broken_role_is_named(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / ".docket"
+        _point_config_at(home, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
+        )
+        issues = _doctor._check_archetype_overlay()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "broken-role" in out
+
+
+class TestDoctorSilentOnThreeFixtures:
+    """`run_doctor()` flags all three fixtures below: a bad schedule, a bad models
+    entry, and a bad archetype overlay."""
+
+    def test_full_run_flags_all_three(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
+        )
+        rc = _doctor.run_doctor(json_out=False)
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "shop" in out and "3x" in out
+        assert "not-a-model-id" in out
+        assert "broken-role" in out

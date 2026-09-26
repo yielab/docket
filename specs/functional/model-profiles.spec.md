@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.8.2
+**Version**: 2.9.0
 **Status**: Complete
 **Last Updated**: 2026-09-21
 
@@ -77,6 +77,15 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
    a non-Anthropic preset stops showing Claude ids in the anchor value `docket models`
    displays. Unknown anchor names or malformed model ids **MUST** be ignored (same tolerance
    as `roles`/`default`).
+5. Requirements 1, 3, and 4 above describe `load_registry` itself, which **MUST** keep
+   resolving silently and without warning — a malformed entry must never crash a live fleet
+   or a routine model resolution. Read-only and separate from that path, `docket doctor`
+   **MUST** run `core.models_policy.find_registry_problems` and report every entry
+   `load_registry` ignored — an unknown `rankAnchors`/`roles` name, a value failing the model
+   id pattern, or an unreadable/malformed registry file — naming the file and a dotted key
+   locator (`rankAnchors.<anchor>`, `roles.<role>`, or `default`) plus the reason. This is a
+   distinct finding from the advisory residual-`profiles:`-key check above and never edits
+   the registry (ROADMAP P26-12).
 
 ### Model intent per agent
 
@@ -394,6 +403,17 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.9.0 (2026-09-26)
+
+- **P26-12: configuration errors are loud.** "User registry overlay" gains requirement 5:
+  `load_registry` itself keeps ignoring a malformed `rankAnchors`/`default`/`roles` entry
+  silently (requirements 1, 3, 4 are unchanged — a live fleet must never crash on a bad
+  registry), but `docket doctor` now runs a separate, read-only check
+  (`core.models_policy.find_registry_problems`) naming the file, a dotted key locator, and
+  the reason for every entry it ignored. See `pod-dispatch.spec.md` v6.13.0 for the
+  companion `docket-schedules.json` writer and `role-archetypes.spec.md` v1.10.0 for the
+  matching `docket-roles.json` overlay check this same card added.
 
 ### Version 2.8.2 (2026-09-21)
 

@@ -234,3 +234,83 @@ def record_last_run(path: Path, project: str, ts: float) -> None:
         return {"schedules": schedules, "lastRun": last_run}
 
     _store.read_modify_write(path, _fn)
+
+
+class ScheduleError(ValueError):
+    """A schedule spec is not a recognized ``@every``/``HH:MM``/cron format."""
+
+
+def describe_spec_error(spec: str) -> str | None:
+    """None if *spec* is a recognized ``@every``/``HH:MM``/cron schedule string, else the
+    reason it is not -- the detail ``is_schedule_due``'s silent ``False`` drops on an
+    unrecognised format, surfaced here for ``docket doctor`` and the config-set writer below."""
+    if parse_interval(spec) is not None:
+        return None
+    if parse_daily_time(spec) is not None:
+        return None
+    if parse_cron(spec) is not None:
+        return None
+    return (
+        f"unrecognized schedule spec {spec!r} "
+        "(expected '@every <N>s|m|h', 'HH:MM', or a 5-field cron expression)"
+    )
+
+
+def set_schedule(path: Path, project: str, spec: str) -> None:
+    """Validate *spec*, then persist ``schedules[project] = spec`` into *path* via
+    ``edges/store.py``'s locked read-modify-write (``lastRun`` untouched). Raises
+    ``ScheduleError`` naming the reason on an unrecognized *spec*, writing nothing."""
+    reason = describe_spec_error(spec)
+    if reason:
+        raise ScheduleError(reason)
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
+        schedules_raw = doc.get("schedules")
+        schedules = dict(schedules_raw) if isinstance(schedules_raw, dict) else {}
+        schedules[project] = spec
+        last_run_raw = doc.get("lastRun")
+        last_run = dict(last_run_raw) if isinstance(last_run_raw, dict) else {}
+        return {"schedules": schedules, "lastRun": last_run}
+
+    _store.read_modify_write(path, _fn)
+
+
+def unset_schedule(path: Path, project: str) -> None:
+    """Remove *project*'s entry from ``schedules`` in *path* (a no-op if absent).
+    ``lastRun`` is left as-is -- harmless dead history for a project no longer scheduled."""
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
+        schedules_raw = doc.get("schedules")
+        schedules = dict(schedules_raw) if isinstance(schedules_raw, dict) else {}
+        schedules.pop(project, None)
+        last_run_raw = doc.get("lastRun")
+        last_run = dict(last_run_raw) if isinstance(last_run_raw, dict) else {}
+        return {"schedules": schedules, "lastRun": last_run}
+
+    _store.read_modify_write(path, _fn)
+
+
+def find_schedule_problems(path: Path) -> list[tuple[str, str]]:
+    """Return ``(key, reason)`` pairs for a malformed schedules file or an unrecognized
+    spec that ``load_schedules``/``is_schedule_due`` silently drop -- for ``docket doctor``.
+    *key* is *path* itself for a file-level problem, else the offending project name."""
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [(str(path), f"unreadable/malformed JSON: {exc}")]
+    if not isinstance(data, dict):
+        return [(str(path), "not a JSON object")]
+    schedules = data.get("schedules", {})
+    if not isinstance(schedules, dict):
+        return [(str(path), "'schedules' is not an object")]
+    problems: list[tuple[str, str]] = []
+    for project, spec in schedules.items():
+        if not isinstance(spec, str):
+            problems.append((str(project), f"non-string spec {spec!r}"))
+            continue
+        reason = describe_spec_error(spec)
+        if reason:
+            problems.append((str(project), reason))
+    return problems

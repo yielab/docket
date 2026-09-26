@@ -32,6 +32,7 @@ from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import pod_provisioning as _pp
+from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
 # Re-exports: this module's public surface (and several tests) reference
@@ -696,6 +697,9 @@ def _pod_config(project: str, extra: list[str]) -> None:
         if key == "pipeline":
             _pod_config_set_pipeline(project, lead_id, value)
             return
+        if key == "schedule":
+            _pod_config_set_schedule(project, lead_id, value)
+            return
         try:
             coerced = pod.PodSettings.coerce(key, value)
         except pod.PodSettingsError as ex:
@@ -723,6 +727,12 @@ def _pod_config(project: str, extra: list[str]) -> None:
             # no pipeline set), so a failed cleanup here never blocks unset.
             with contextlib.suppress(OSError):
                 pod.bound_pipeline_path(project).unlink()
+        if key == "schedule":
+            # Not best-effort: docket-schedules.json, not the meta key just cleared
+            # above, is what the serve sweep actually reads (see
+            # `_pod_config_set_schedule`), so this call must succeed for "unset"
+            # to really stop the schedule from firing.
+            _sched.unset_schedule(_cfg.SCHEDULE_FILE, project)
         audit_log("pod.config", f"project={project} action=unset key={key}")
         ui.success(f"Unset {key} for pod '{project}' — falls back to its default.")
         return
@@ -789,6 +799,32 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
         f"project={project} action=set key=pipeline file={path_str} hash={digest[:12]}",
     )
     ui.success(f"Bound pipeline '{path_str}' (hash {digest[:12]}...) to pod '{project}'.")
+
+
+# Two writers for one logical value, same as `pipeline` above: `docket-schedules.json`
+# (`cfg.SCHEDULE_FILE`) is this schedule's real source of truth -- it is the file
+# `serve.py::_check_schedules` actually reads to fire a dispatch -- while the Lead's meta
+# copy exists only so `config get`/`list` can report it through the same generic
+# `PodSettings.value_and_source` every other setting uses, instead of a bespoke display path.
+def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
+    """``docket pod <project> config set schedule <spec>``: validate *spec*, persist it as
+    this pod's writer into ``docket-schedules.json``, and mirror it into the Lead's meta
+    for display."""
+    try:
+        coerced = pod.PodSettings.coerce("schedule", spec)
+    except pod.PodSettingsError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+
+    try:
+        _sched.set_schedule(_cfg.SCHEDULE_FILE, project, str(coerced))
+    except _sched.ScheduleError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+
+    _fleet.meta_set(lead_id, "schedule", coerced)
+    audit_log("pod.config", f"project={project} action=set key=schedule value={coerced!r}")
+    ui.success(f"Set schedule={coerced} for pod '{project}'.")
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
