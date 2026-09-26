@@ -123,6 +123,16 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     return doc
 
 
+def _dump_yaml_file(path: Path, doc: dict[str, Any]) -> None:
+    """Write *doc* to *path* as YAML, key order preserved (``export_pod``'s writer side
+    of ``_load_yaml_mapping``)."""
+    try:
+        import yaml as _yaml
+    except ImportError:
+        raise PodApplyError("PyYAML not installed -- run: pip install pyyaml") from None
+    path.write_text(_yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+
+
 def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list[str]:
     """Every unit step this pod's roster cannot run against *plan* -- shared by
     ``docket pod <p> config set pipeline`` and this module so the two can never disagree."""
@@ -391,3 +401,78 @@ def apply(plan: ApplyPlan) -> ApplyResult:
         audit_log("pod.apply", f"project={plan.project} dir={plan.directory} items={summary}")
 
     return ApplyResult(project=plan.project, items=plan.items)
+
+
+def _export_roles(project: str, directory: Path) -> None:
+    """Write *project*'s own pod-overlay role entries -- never a built-in, starter, or
+    global-``user`` one -- as ``roles/<name>.yaml``, via the same ``to_wire()`` format
+    ``docket roles show``/``roles/*.yaml`` already share."""
+    registry = _arch.load_registry(project)
+    names = sorted(n for n in registry.role_names() if registry.source_of(n) == f"pod:{project}")
+    if not names:
+        return
+    roles_dir = directory / "roles"
+    roles_dir.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        arch = registry.get(name)
+        assert arch is not None  # name came from this same registry's role_names()
+        _dump_yaml_file(roles_dir / f"{name}.yaml", arch.to_wire())
+
+
+def _export_policies(project: str, directory: Path) -> None:
+    """Copy *project*'s own policy directory's files byte-for-byte as ``policies/<name>.json``
+    -- never a file from the fleet-wide ``$POLICIES_DIR``."""
+    src_dir = _cfg.pod_config_dir(project) / "policies"
+    files = sorted(src_dir.glob("*.json")) if src_dir.is_dir() else []
+    if not files:
+        return
+    dest_dir = directory / "policies"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        (dest_dir / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _export_pipeline(project: str, directory: Path) -> None:
+    """Copy *project*'s bound pipeline copy (if ``PodSettings.pipeline`` is set) as
+    ``pipeline.yaml`` -- the default filename ``apply`` resolves with no explicit
+    ``pod.yaml`` ``pipeline`` key."""
+    src = pod.bound_pipeline_path(project)
+    if not src.is_file():
+        return
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "pipeline.yaml").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _export_manifest(project: str, directory: Path) -> None:
+    """Write ``pod.yaml`` with ``members`` (every non-Lead role this pod's roster has) and
+    ``settings`` (every ``PodSettings`` key whose stored value differs from that model's own
+    default) -- never a ``pipeline`` key (see ``_export_pipeline``'s docstring)."""
+    roster = _dispatch.pod_full_roster(project)
+    members = [role for role, _mid in sorted(roster.items()) if role != "lead"]
+
+    settings_doc = pod.PodSettings.load_for(project)
+    settings_out: dict[str, Any] = {}
+    for key in pod.PodSettings.KEYS:
+        if key == "pipeline":
+            continue  # top-level file, never a `settings` entry (see `_plan_settings`)
+        value, source = settings_doc.value_and_source(key, project)
+        if source == "set" and value is not None:
+            settings_out[key] = value
+
+    manifest: dict[str, Any] = {"members": members}
+    if settings_out:
+        manifest["settings"] = settings_out
+    _dump_yaml_file(directory / "pod.yaml", manifest)
+
+
+def export_pod(project: str, directory: Path) -> None:
+    """Write *project*'s own scope (roles, policies, pipeline, manifest) into *directory*,
+    the same shape ``plan_apply``/``apply`` read back. Global scope is never written; the
+    non-empty-*directory*/``--force`` refusal is the CLI's job (``cli/_pod.py``), not this one's."""
+    if not _pp.pod_member_ids(project):
+        raise PodApplyError(f"no pod found for '{project}'")
+    directory.mkdir(parents=True, exist_ok=True)
+    _export_roles(project, directory)
+    _export_policies(project, directory)
+    _export_pipeline(project, directory)
+    _export_manifest(project, directory)

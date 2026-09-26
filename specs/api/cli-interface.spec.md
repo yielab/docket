@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.34.0
+**Version**: 1.35.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -383,6 +383,12 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   pipeline would resolve against once `members` join, and every setting before writing anything;
   idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
   See `pod-blueprints.spec.md`, "Pod manifests: apply"
+- `export <dir> [--force]`: Write this pod's own scope — pod-overlay `roles/*.yaml`, this pod's
+  own `policies/*.json`, a bound `pipeline.yaml` copy (if any), and a `pod.yaml` naming non-Lead
+  `members` and every non-default `setting` — into `<dir>`, the same shape `apply` reads back.
+  Global scope (the operator's own role overlay, fleet-wide policies, other pods) is never
+  exported. Refuses a non-empty `<dir>` unless `--force`. See `pod-blueprints.spec.md`,
+  "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
 - `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
   own list whether it arrives as one quoted argv item or several ordinary positional words
@@ -958,6 +964,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.35.0 (2026-09-26)
+
+- `docket pod <project> export <dir> [--force]`: new action writing this pod's own scope
+  (`core/pod_apply.py::export_pod`, P27-7) into the same directory shape `apply` reads back —
+  the write direction "Pod manifests: apply" deferred. See `pod-blueprints.spec.md`, "Pod
+  manifests: export", for the exported shape and the round-trip proof.
 
 ### Version 1.34.0 (2026-09-26)
 
