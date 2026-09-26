@@ -588,6 +588,34 @@ class TestEffectivePipelineBlueprint:
             "critic",
         ]
 
+    def test_research_pod_lead_message_names_the_researcher_not_the_implementer(
+        self, pod_home: Path
+    ) -> None:
+        # A research pod has no Implementer -- its Lead must not tell the model
+        # to plan for one. The research blueprint's `lead` step declares its
+        # own `instructions` naming the Researcher, and `_hop_message` honors a
+        # step override for `role: lead` (see role-archetypes.spec.md "Hop
+        # instructions"), so this pipeline's Lead hop message never invents a
+        # role the pod doesn't have.
+        _write_meta("myapp-lead", {"blueprint": "research"})
+        for role in ("researcher", "analyst", "writer", "critic"):
+            _write_meta(f"myapp-{role}")
+
+        spec = _dispatch.effective_pipeline("myapp", None)
+        raw_step_instructions = _pipeline.step_instructions_by_id(spec)
+        lead_instructions = raw_step_instructions.get("lead", "")
+
+        message, _ = _dispatch._hop_message(
+            {"description": "scan the market"},
+            "lead",
+            [],
+            step_instructions=lead_instructions,
+            project="myapp",
+        )
+
+        assert "Researcher" in message
+        assert "Implementer" not in message
+
     def test_software_pod_is_unaffected(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
 

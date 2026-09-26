@@ -206,3 +206,36 @@ class TestAgenticProduct:
 
     def test_description_names_docket_runtime(self) -> None:
         assert "docket-runtime" in bp.get_blueprint("agentic-product").description
+
+
+class TestLeadStepInstructions:
+    """research/content/ops name their own next role on the Lead step, since none of
+    them has an Implementer for the built-in `lead` archetype's generic instruction to
+    point at; software/agentic-product declare no override and keep that generic text."""
+
+    def _lead_step(self, blueprint_name: str) -> _pipeline.Step:
+        pipeline = bp.get_blueprint(blueprint_name).default_pipeline
+        (lead_step,) = [s for s in pipeline.steps if s.id == "lead"]
+        return lead_step
+
+    def test_research_lead_names_the_researcher(self) -> None:
+        step = self._lead_step("research")
+        assert step.instructions is not None
+        assert "Researcher" in step.instructions
+        assert "Implementer" not in step.instructions
+
+    def test_content_lead_names_the_writer(self) -> None:
+        step = self._lead_step("content")
+        assert step.instructions is not None
+        assert "Writer" in step.instructions
+        assert "Implementer" not in step.instructions
+
+    def test_ops_lead_names_the_operator(self) -> None:
+        step = self._lead_step("ops")
+        assert step.instructions is not None
+        assert "Operator" in step.instructions
+        assert "Implementer" not in step.instructions
+
+    @pytest.mark.parametrize("name", ["software", "agentic-product"])
+    def test_software_and_agentic_product_leave_lead_step_unset(self, name: str) -> None:
+        assert self._lead_step(name).instructions is None

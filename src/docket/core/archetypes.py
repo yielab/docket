@@ -255,8 +255,10 @@ def resolve_hop_instruction(archetype: RoleArchetype) -> str:
     """*archetype*'s own `hop_instruction` if declared, else one generated from its
     `gate_contract` (verdict/mechanical/approval); a `none`-kind gate generates none. See
     specs/functional/role-archetypes.spec.md ("Hop instructions")."""
-    # The four built-in roles never reach this: `core/dispatch.py`'s hop-message
-    # builder keeps their pre-existing hardcoded text unconditionally.
+    # `implementer`/`reviewer`/`tester` never reach this: `core/dispatch.py`'s hop-message
+    # builder keeps their own hardcoded text unconditionally. `lead` DOES reach this --
+    # its built-in `hop_instruction` below carries that same fixed text, so this returns
+    # it verbatim absent an overlay.
     if archetype.hop_instruction:
         return archetype.hop_instruction
     gc = archetype.gate_contract
@@ -379,6 +381,14 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # before any budgeting for this role) — a modest budget is declared
         # for completeness/forward-compat, not exercised today.
         token_budget=2000,
+        # `core/dispatch.py`'s `_hop_message` resolves the Lead's instruction through
+        # `resolve_hop_instruction` against this archetype, like any custom role, instead
+        # of holding a separate literal string of its own -- so a global or pod overlay of
+        # `lead` changes the Lead's hop message; a pod with none gets the text below.
+        hop_instruction=(
+            "You are the pod Lead. Decompose this task into a concrete plan for "
+            "the Implementer (you never edit code yourself):"
+        ),
         # "You NEVER edit code, run git, or execute the build" (see
         # `_LEAD_BODY` above) is a real tool absence here, not
         # just an instruction. read/glob/grep stay, so a Lead can still

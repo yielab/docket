@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-26
 
 ## Purpose
 
@@ -95,7 +95,13 @@ This specification does NOT cover:
    assumes a codebase. `research` and `content` gate their final step on the Critic archetype's
    APPROVE/REJECT verdict with a bounded rework edge back to the Writer step; `ops` gates its
    Operator step mechanically (deferring to that member's own `verifyCmd`, mirroring the
-   Implementer's convention) and its Monitor step on human approval.
+   Implementer's convention) and its Monitor step on human approval. Each of the three **MUST**
+   declare `instructions` (`pipeline-format.spec.md`'s "Steps" Requirement 8) on its `lead` step
+   naming that pipeline's own next role (P27-5) — `research`: the Researcher; `content`: the
+   Writer; `ops`: the Operator — instead of the built-in `lead` archetype's generic Implementer
+   text, which none of these three pods has a member for. `software` and `agentic-product` declare
+   no `instructions` on their `lead` step and **MUST** stay byte-identical to
+   `core.pipeline.default_pipeline()`.
 4. `docket init <project>` with **no** `--blueprint` **MUST** resolve to `software`
    (`core.blueprints.DEFAULT_BLUEPRINT`) — omitting the flag and passing `--blueprint software`
    explicitly **MUST** be behaviorally indistinguishable.
@@ -265,6 +271,15 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-26)
+
+- **P27-5: research/content/ops Lead steps name their own next role.** "Built-in blueprints"
+  requirement 3 gains a step-`instructions` clause: each of the three pipelines' `lead` step now
+  declares `instructions` naming that pod's real next role (Researcher/Writer/Operator) instead of
+  inheriting the generic "plan for the Implementer" text the built-in `lead` archetype carries —
+  made possible by `pipeline-format.spec.md` v2.6.0 removing the `role: lead` exemption on step
+  `instructions`. `software` and `agentic-product` are unaffected and stay byte-identical.
 
 ### Version 1.4.0 (2026-09-21)
 
