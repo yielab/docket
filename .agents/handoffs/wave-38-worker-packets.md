@@ -213,3 +213,76 @@ trailers, forbidden central files, docstrings <= 3 lines, run `tests/guards` bef
 - Oracle (from the card): `pytest -q` and `uv run pytest` allow in the configured pod;
   `uv run pytest && git push origin main` still asks; a block policy on pytest still denies;
   another pod still asks. Opaque markers and redirect handling unchanged, pinned.
+
+# Wave 40 worker packets — Phase 26 final wave (D-42)
+
+Base commit: `dbfee35` (Wave 39 closed; all five cards merged, gates green). Six parallel
+workers: P26-9, P26-11, P26-12, P26-14, P26-15, P26-20. P26-10 starts only after P26-9
+merges; P26-17 only after P26-10. All Wave 38/39 shared rules above apply unchanged,
+plus two learned this phase:
+- **COMMIT your worktree on its branch before handing off.** An uncommitted worktree
+  cannot be merged; two workers cost the integrator this in Wave 38.
+- **Spec versions are PRE-ASSIGNED below.** Two same-day bumps to the same version
+  auto-merge with no conflict and corrupt the header silently — three times in Waves
+  38/39. Claim exactly the version your packet names, even though the current header
+  looks like it leaves the next patch free.
+
+## P26-9 — generated instructions agree with the runtime contract
+- Card: full text in `TODO.md` §P26-9 (read only that section).
+- Owns: built-in template strings in `core/archetypes.py`, `core/memory.py::seed_contract`
+  text, `POD_TEMPLATE_VERSION`, owning sections in `specs/functional/workspace-structure.spec.md`
+  (claim **1.10.0**) and `specs/functional/role-archetypes.spec.md` (claim **1.9.0**),
+  structural tests, workspace goldens (regenerate, explain every changed line in the handoff).
+- Do NOT touch: `core/identity.py`, `cli/`, any other spec.
+
+## P26-11 — docket config explain <agent>
+- Card: `TODO.md` §P26-11. Read-only command composing EXISTING functions only
+  (P26-2 composer, P26-3 budget source, P26-4 PodSettings, P26-6 effective_pipeline_source,
+  P26-8 allowCommands, models/policy readers). No second composer, writes nothing.
+- Owns: new `src/docket/cli/_config.py`, its registration in `cli/__init__.py`, a help
+  golden (new golden case is allowed: explain the addition), `specs/data/cli-json-shapes.spec.md`
+  (claim **1.10.0**), unit + integration tests, `docs/commands.md` regeneration.
+- Do NOT touch: `core/` (add nothing there; if a value is unreachable read-only, report it
+  as a finding instead of adding core surface).
+
+## P26-12 — configuration errors are loud; schedules get a writer
+- Card: `TODO.md` §P26-12.
+- Owns: doctor check functions (your own, + wiring lines), the schedule write path in
+  `core/schedule.py`, `PodSettings` routing for `schedule` (one field append, same
+  coordination rule as Wave 39), loud-skip logging in serve sweep call path,
+  `specs/functional/pod-dispatch.spec.md` (claim **6.13.0**),
+  `specs/functional/model-profiles.spec.md` (claim **2.9.0**),
+  `specs/functional/role-archetypes.spec.md` (claim **1.10.0**).
+- Do NOT touch: `core/provider.py`/`core/fleet.py` default-model surface (P26-14 owns it),
+  prune/retention surface (P26-15 owns it), template strings (P26-9 owns them).
+
+## P26-14 — one default model of record
+- Card: `TODO.md` §P26-14.
+- Owns: `core/provider.py`, the default-model read/write in `core/fleet.py` +
+  `cli/_install.py`, migration of the fleet key, `specs/functional/model-profiles.spec.md`
+  (claim **2.10.0** — P26-12 takes 2.9.0; keep both changelog entries when you rebase/merge),
+  tests. Report the `rankAnchors`/display-only prose wording for `docs/CONFIGURATION.md` in
+  your handoff — the integrator applies it (docs/ is forbidden to card branches).
+- Do NOT touch: `core/models_policy.py` loader validation (P26-12 owns the loud-skip there).
+
+## P26-15 — registries stay bounded; traces filed under the pod
+- Card: `TODO.md` §P26-15. Withdrawn item: leave `guardrail_block` action=policy-id alone
+  (contractual, security-gates req. 4).
+- Owns: prune functions in `core/runs.py` / `core/approval.py` / `core/conversations.py`,
+  the serve sweep call, `ToolContext.project` in `edges/adapters/docket_runtime.py`,
+  `dispatch.py:260,1181` trace-path call sites, the stale `config.py:41-44` comment,
+  `specs/functional/pod-dispatch.spec.md` (claim **6.14.0** — P26-12 takes 6.13.0),
+  `specs/functional/audit.spec.md` retention wording (claim **2.10.0**), trace spec section.
+- Do NOT touch: audit-log rotation behaviour itself; `PodSettings`.
+
+## P26-20 — shipped recipes: role + pipeline + policy bundles
+- Card: `TODO.md` §P26-20.
+- Owns: `templates/recipes/` (new, data only: secure-build, research-review, ops-approval),
+  packaging include in `pyproject.toml`, validation tests (default lane) + one end-to-end
+  secure-build dispatch on the fake driver, wheel-content assertion,
+  `specs/functional/pipeline-format.spec.md` shipped-data wording (claim **2.5.0**),
+  `specs/functional/role-archetypes.spec.md` (claim **1.11.0** — P26-9 takes 1.9.0 and
+  P26-12 takes 1.10.0), `specs/functional/workspace-structure.spec.md` shipped-data section
+  (claim **1.11.0** — P26-9 takes 1.10.0).
+- Report the `docs/CONFIGURATION.md` §3 pointer text in your handoff; the integrator adds it.
+- Do NOT touch: any CLI surface (applying a recipe uses existing commands only).
