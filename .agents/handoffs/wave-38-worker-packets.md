@@ -80,3 +80,51 @@ Rules that have cost this project time (apply to every packet):
 - Reproduction to pin: `pod_of('proj-security-reviewer')` must return `proj` when that
   member's meta records pod=proj; a genuinely alien id still refuses.
 - Do NOT touch: `parse_member_id`/`member_id` grammar, provisioning, `cli/`.
+
+---
+
+# Wave 38 batch B (opened after batch A merged at `194806b`)
+
+Both cards touch `core/dispatch.py` and `cli/_pod.py` in DIFFERENT functions. Ownership below is
+at function level and strict; a conflict is resolved by the integrator keeping both blocks.
+
+## P26-4 — pod settings are typed, validated and writable
+- Card: `python3 .agents/skills/docket-roadmap/scripts/card_packet.py P26-4`
+- Owns: a new `PodSettings` Pydantic model (put it in `core/pod.py`), the Lead-meta setting
+  readers in `core/dispatch.py` ONLY (`pod_budget`, `pod_max_rework_cycles`,
+  `_lead_meta_timeout`, `pod_turn_timeout`, `pod_verify_timeout`), a new `config` subcommand in
+  `cli/_pod.py` (its own function; also register it in that module's dispatcher and help), the
+  `--budget` write in `cli/__init__.py` (store a number, not a string), the `pod` Typer
+  docstring + regenerated `docs/commands.md`, `specs/functional/pod-dispatch.spec.md` +
+  `cli-json-shapes.spec.md` (config get --json shape) + changelogs, tests.
+- Do NOT touch in `core/dispatch.py`: anything below the setting readers — especially
+  `dispatch_pod`, `_run_step`, claim/finalize code (P26-19 owns those). Do NOT touch
+  `cli/_pod.py::_pod_dispatch`'s pending/resumable filter.
+- Keys in scope now: `budgetUsd` (float), `maxReworkCycles` (int >= 0), `turnTimeoutS`
+  (int > 0), `verifyTimeoutS` (int > 0). Design the model so later cards can add keys
+  (`approvalMode`, `pipeline`, `allowCommands`) without reshaping.
+- Behaviour contract: `pod <p> config` (get, default) shows effective values + source
+  (set|default); `set <key> <value>` validates and writes through the existing meta writer,
+  audited as `pod.config`; `unset <key>` removes it; invalid value at `set` -> exit 1, meta
+  untouched; an invalid STORED value makes dispatch refuse with key+reason instead of silently
+  defaulting (amend the spec section that today documents the silent fallback). Accept both
+  number and numeric-string in stored meta (existing installs have "5").
+
+## P26-19 — a deterministic dispatch refusal settles the claim; orphans are recoverable
+- Card: `card_packet.py P26-19`
+- Owns in `core/dispatch.py`: the `DispatchError` raise sites reachable INSIDE a claimed task
+  (the cross-pod membership refusal near `_run_step`'s top and any sibling deterministic
+  refusal) and the claim finalize path they must route through; in `cli/_pod.py`: ONLY the
+  pending/resumable computation in `_pod_dispatch` (~lines 542-551). Specs:
+  `pod-dispatch.spec.md` (task state machine / claims section) + changelog. Tests: unit
+  dispatch tests + one integration test.
+- Do NOT touch: the setting readers at the top of dispatch.py (P26-4 owns them), pod_of
+  (P26-18 shipped), orchestrator/pipeline files.
+- RED reproduction (P26-18 closed the original trigger): a pipeline spec with an
+  `agent: <genuinely-alien-member-id>` step still hits the cross-pod refusal mid-task on the
+  base — use that, or an equivalent deterministic refusal you find on the claimed path.
+  Assert on base: the task stays `running` and a follow-up `pipeline run --resume` reports
+  nothing to do. After the fix: the task ends `failed` with the refusal reason persisted, the
+  claim is settled, and `--resume` (with `--resume` counting stale-claimed `running` tasks
+  too) re-runs it from the last persisted hop without a decoy task or CLAIM_STALE_TIMEOUT
+  override. A kill -9 mid-hop must still leave `running` for the stale sweep — pin that.
