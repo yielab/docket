@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import docket.config as _cfg
 from docket.core import identity as I
 from docket.core.models import AgentMeta, Persona
 
@@ -117,3 +120,57 @@ class TestQuarantineScaffolding:
         (tmp_path / "SOUL.md").write_text("# role\n")
         assert I.quarantine_scaffolding(tmp_path) == []
         assert I.quarantine_scaffolding(tmp_path) == []
+
+
+class TestRuntimeWorkspaceContextReporting:
+    """Every available section gets a fit report; a crowded one never erases the rest."""
+
+    def test_every_available_section_reports_full_with_room_to_spare(self, tmp_path: Path) -> None:
+        (tmp_path / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+        (tmp_path / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        (tmp_path / "MEMORY.md").write_text("DURABLE-MEMORY-LINE\n")
+
+        text, sections = I._runtime_workspace_context(tmp_path, "")
+
+        assert [s.name for s in sections] == [
+            "HEARTBEAT.md",
+            "AGENTS.md",
+            "TOOLS.md",
+            "MEMORY.md",
+        ]
+        assert all(s.status == "full" for s in sections)
+        assert "ACTIVE-LEDGER-LINE" in text
+        assert "VERIFY-GATE-LINE" in text
+
+    def test_a_section_that_cannot_fit_does_not_erase_the_ones_behind_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 130, raising=True)
+        (tmp_path / "HEARTBEAT.md").write_text("## Ledger\n" + ("L" * 800) + "\n")
+        (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+        (tmp_path / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        (tmp_path / "MEMORY.md").write_text("DURABLE-MEMORY-LINE\n")
+
+        _text, sections = I._runtime_workspace_context(tmp_path, "")
+
+        # HEARTBEAT alone exceeds the whole budget, so it is truncated -- but that
+        # must not stop AGENTS/TOOLS/MEMORY from each getting their own report.
+        reported = [s.name for s in sections]
+        assert reported == ["HEARTBEAT.md", "AGENTS.md", "TOOLS.md", "MEMORY.md"]
+        assert sections[0].status == "truncated"
+        assert all(s.status == "omitted" for s in sections[1:])
+
+    def test_omitted_sections_leave_a_one_line_marker_when_room_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Even when the whole framed block cannot fit, each section still gets a marker."""
+        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 70, raising=True)
+        (tmp_path / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (tmp_path / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+
+        text, sections = I._runtime_workspace_context(tmp_path, "")
+
+        assert all(s.status == "omitted" for s in sections)
+        assert "[... HEARTBEAT.md omitted:" in text
+        assert "[... AGENTS.md omitted:" in text

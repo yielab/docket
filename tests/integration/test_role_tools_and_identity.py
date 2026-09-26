@@ -471,6 +471,44 @@ class TestSystemPromptForAgent:
         assert "[... MEMORY.md truncated:" in prompt
         assert _context.estimate_tokens(prompt) <= _cfg.CONTEXT_TOKEN_BUDGET
 
+    def test_oversized_soul_does_not_erase_heartbeat_or_tools(self) -> None:
+        """A SOUL.md alone larger than the whole budget must not blank every section."""
+        ws = _write_meta("bloated-soul-agent")
+        (ws / "SOUL.md").write_text("SOUL-HEAD-MARKER\n" + ("s" * 30_000) + "\nSOUL-TAIL-MARKER\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "TOOLS.md").write_text("Run the verify gate: VERIFY-GATE-LINE\n")
+
+        prompt = _identity.system_prompt_for_agent("bloated-soul-agent")
+
+        assert "ACTIVE-LEDGER-LINE" in prompt
+        assert "VERIFY-GATE-LINE" in prompt
+        assert "Docket live runtime contract" in prompt
+        assert "[... SOUL.md truncated:" in prompt
+        assert "SOUL-HEAD-MARKER" in prompt
+        assert "SOUL-TAIL-MARKER" in prompt
+
+    def test_small_workspace_composes_byte_identically_to_base(self) -> None:
+        """Ordinary-sized files never trigger the new truncation/omission machinery."""
+        ws = _write_meta("modest-agent")
+        (ws / "SOUL.md").write_text("# SOUL.md\nYou are the Implementer.\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "AGENTS.md").write_text("AGENT-RULE-LINE\n")
+        (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        (ws / "MEMORY.md").write_text("DURABLE-MEMORY-LINE\n")
+
+        prompt = _identity.system_prompt_for_agent("modest-agent")
+
+        assert "[... " not in prompt
+        assert "omitted:" not in prompt
+        for marker in (
+            "You are the Implementer",
+            "ACTIVE-LEDGER-LINE",
+            "AGENT-RULE-LINE",
+            "VERIFY-GATE-LINE",
+            "DURABLE-MEMORY-LINE",
+        ):
+            assert marker in prompt
+
     def test_persona_reaches_the_prompt(self) -> None:
         ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "🔭"})
         (ws / "SOUL.md").write_text("# SOUL.md\nbody\n")
@@ -560,3 +598,76 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         assert all(m.role != "system" for m in record.messages)
         assert not any("secret identity text" in m.content for m in record.messages)
         assert not any("private active checkpoint" in m.content for m in record.messages)
+
+    def test_composing_the_prompt_emits_one_prompt_composed_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One `prompt_composed` trace event per turn, naming each section's fit."""
+        ws = _write_meta("traced-agent")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
+        (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
+        roots = tmp_path / "code4"
+        roots.mkdir()
+        ctx = ToolContext(
+            agent_id="traced-agent", role="implementer", project="demo", roots=(roots,)
+        )
+        backend = _ScriptedBackend([_final("hi")])
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "prompt_composed":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+
+        _loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:traced-agent:default", "go")
+
+        assert len(events) == 1
+        names = {section["name"] for section in events[0]["sections"]}
+        assert {"SOUL.md", "HEARTBEAT.md", "TOOLS.md"} <= names
+        for section in events[0]["sections"]:
+            assert section["status"] in {"full", "truncated", "omitted"}
+            assert isinstance(section["bytes"], int)
+
+    def test_no_identity_files_means_no_prompt_composed_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No composed prompt means no `prompt_composed` event either."""
+        roots = tmp_path / "code5"
+        roots.mkdir()
+        ctx = ToolContext(
+            agent_id="bare-traced-agent", role="implementer", project="demo", roots=(roots,)
+        )
+        backend = _ScriptedBackend([_final("hi")])
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "prompt_composed":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+
+        _loop.run_agent_turn(
+            backend, builtin_registry(), ctx, "agent:bare-traced-agent:default", "go"
+        )
+
+        assert events == []
