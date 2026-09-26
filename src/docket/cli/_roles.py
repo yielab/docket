@@ -136,7 +136,7 @@ def _add(args: list[str], pod: str = "") -> int:
         return 1
     path = args[0]
     try:
-        doc = _arch.parse_yaml_file(path)
+        doc = _arch.load_role_file(path)
         arch = _arch.add_user_archetype(doc, pod)
     except _arch.ArchetypeError as exc:
         ui.fail(f"Invalid archetype: {exc}")
@@ -153,7 +153,7 @@ def _add(args: list[str], pod: str = "") -> int:
 def _validate(args: list[str]) -> int:
     if args and args[0]:
         try:
-            doc = _arch.parse_yaml_file(args[0])
+            doc = _arch.load_role_file(args[0])
         except _arch.ArchetypeError as exc:
             ui.fail(f"Invalid archetype file: {exc}")
             return 1

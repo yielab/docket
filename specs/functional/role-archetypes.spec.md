@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.17.0
+**Version**: 1.18.0
 **Status**: Implemented. **P27-6** gives a recipe's own role YAML a second consumer,
 `docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
@@ -132,10 +132,14 @@ This specification does NOT cover:
    marker (see `pipeline-format.spec.md` Gates requirement 3). See "Legacy archetype fidelity"
    below for the exact values the reviewer/tester archetypes carry.
 5. `editRights` **MUST** be one of exactly `"none"` | `"read-only"` | `"write"` — a closed enum.
-   `editRights` itself remains descriptive metadata, by design — it is not mechanically derived
-   into a tool denylist, because the mapping is not one-to-one (the `tester` archetype is
-   `"read-only"` yet keeps `bash`, since observing behaviour requires running it; see "Per-role
-   tool sets" below). The genuinely-enforced counterpart is the separate `deniedTools` field —
+   In the canonical (long) wire form, `editRights` remains descriptive metadata, by design — it
+   is not mechanically derived into a tool denylist, because the mapping is not one-to-one (the
+   `tester` archetype is `"read-only"` yet keeps `bash`, since observing behaviour requires
+   running it; see "Per-role tool sets" below). The short form (see "Wire format" below) has no
+   `editRights` key at all: `normalize_role` derives it from `cannot` (`"write"` present ->
+   `"read-only"`, else `"write"`) before the document ever reaches this closed-enum check, so a
+   short-form author cannot state a value that disagrees with their own `cannot` list. The
+   genuinely-enforced counterpart is the separate `deniedTools` field —
    an archetype author declares both independently, and nothing in this schema computes one from
    the other.
 6. `name` **MUST** match `^[a-z][a-z0-9-]*$` (lowercase letters/digits/hyphens, starting with a
@@ -529,6 +533,33 @@ agentsTemplate: |
   Stay within the `${project}` pod.
 ```
 
+A second, short form is also accepted, both by `docket roles add`/`docket roles validate` and by
+`docket pod <p> apply` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
+it (an explicit `kind: role`, or the presence of any of `cannot`/`verdict`/`verify`/`approval`/
+`instructions`/`model`) and normalizes it into the canonical form above (`normalize_role`) before
+`from_wire` ever sees it; a document with none of those keys is already canonical and passes
+through unchanged (`kind: role`, if present, is accepted and stripped either way):
+
+```yaml
+kind: role
+name: security-vetter
+model: strong                        # cheap | strong -- a model id is rejected, naming
+                                      # `docket models set security-vetter <id>` instead
+description: read-only security pass over the implementer's change
+cannot: [write, edit, bash]          # -> deniedTools; editRights is derived ("write" in
+                                      # cannot -> "read-only", else "write") -- no editRights key
+verdict: [APPROVE, REQUEST-CHANGES]  # or verify: true | approval: true | omitted (-> gateContract
+                                      # kind none); more than one of the three is an error
+instructions: security-vetter.md     # optional; default "<name>.md" beside this YAML file
+```
+
+`instructions` names a Markdown file (resolved relative to the short-form YAML's own directory)
+whose content up to an optional literal `## AGENTS` heading line becomes `soulTemplate`; the text
+after that heading becomes `agentsTemplate`, or the built-in starter-library agents prose when the
+heading is absent. The same `${variable}`-style substitution applies to both halves at render
+time. `scope` defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000` when the short form
+omits them — the same defaults `from_wire` already applies to the canonical form.
+
 ### Built-in archetypes (byte-identical to pre-W-6)
 
 | Name | Scope | modelClass | policyRole | gateContract | editRights | tokenBudget | deniedTools |
@@ -608,6 +639,23 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.18.0 (2026-09-26)
+
+- **P28-4: a role file carries only what is enforced, and its prose lives in Markdown.** A
+  short form (`kind: role`, `cannot:`, one of `verdict:`/`verify:`/`approval:`, `model:
+  cheap|strong`, `instructions: <file.md>`) is now accepted alongside the canonical form
+  documented above (see "Wire format"): `core.archetypes.normalize_role` turns it into the
+  canonical wire dict `from_wire` already accepts, and `load_role_file` (the new entry point
+  `docket roles add`/`validate` and `docket pod <p> apply` use in place of the old direct
+  `parse_yaml_file` call) detects and normalizes it transparently. "Archetype schema"
+  requirement 5 is corrected: in the short form there is no `editRights` key to author at all —
+  it is derived from `cannot`, not independently declared. `from_wire` also now accepts and
+  strips an optional top-level `kind: role`, refusing any other `kind` value. The shipped
+  `secure-build` recipe's `security-vetter` role is rewritten in short form, with its prose
+  moved to a sibling `security-vetter.md`; its rendered `SOUL.md`/`AGENTS.md` are unchanged
+  (byte-identical to the prior canonical YAML). Printing the short form back (`roles show`,
+  `export`) is a separate, later card.
 
 ### Version 1.17.0 (2026-09-26)
 

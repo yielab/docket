@@ -171,7 +171,7 @@ def _plan_roles(
     if not roles_dir.is_dir():
         return items, writes, merged
     for role_file in sorted(roles_dir.glob("*.yaml")):
-        doc = _arch.parse_yaml_file(str(role_file))
+        doc = _arch.load_role_file(str(role_file))
         name = str(doc.get("name", "")).strip()
         if not name:
             raise PodApplyError(f"{role_file}: archetype has no top-level 'name'")
