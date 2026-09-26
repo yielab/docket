@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A policy can call a Python predicate the operator applied, never one the agent wrote.**
+  `when: {plugin: <name>, with: {...}}` runs a `@predicate` from `~/.docket/plugins/` or the
+  pod's own `config/plugins/` -- the only two places ever imported; a file in the codebase is
+  invisible until `docket pod <p> apply` copies it with its sha256. An unknown name, a raise, a
+  non-bool return or a call over its budget denies, naming the plugin; every call is audited as
+  `policy.plugin`. `docket plugins list [--pod <p>]` shows name, scope, file and hash. The
+  public API is `docket.plugins` (`PLUGIN_API_VERSION = "1.0.0"`).
+- **Schemas an editor can use, and export in the short form.** `docs/contracts/config-v1/`
+  holds generated JSON Schemas for the four kinds, pinned byte-for-byte and shipped with the
+  package; `docket pod <p> export` now writes short-form YAML (a `.md` beside each role, `kind:`
+  and `name:` on `pod.yaml`) with a `# yaml-language-server: $schema=` header and a `.schemas/`
+  copy, and applying an export plans every item `skip`. The shipped recipes and the
+  configuration guide show only the v1 short form.
 - **Outcomes route the pipeline, and every loop has a bound.** A step's `on:` map sends any
   gate outcome -- a verdict marker, `pass`/`fail` of a verify command -- to `fail`, `stop`, a
   later step or an earlier one; a backward edge needs `max`, and `validate`/`plan` refuse a
