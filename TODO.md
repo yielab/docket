@@ -438,7 +438,7 @@ text, and the pod template version.
 
 ### P26-11 — `docket config explain <agent>`: the effective configuration with provenance
 
-**Status:** TODO · **Size:** M · **Wave:** 40 (after P26-3, P26-4, P26-6, P26-8) · **Spec:**
+**Status:** DONE (merged, worker commit; golden suite grew to 19 cases with config --help; MCP reported as configured server names only — live enumeration would spawn/audit) · **Size:** M · **Wave:** 40 (after P26-3, P26-4, P26-6, P26-8) · **Spec:**
 `cli-json-shapes.spec.md`
 
 **Trigger:** there is no command that answers "what will this agent see and be allowed to do". The

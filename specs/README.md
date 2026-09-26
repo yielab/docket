@@ -168,7 +168,7 @@ Each specification document must include:
 | Runtime Library | 2.2.0 | Implemented (artifact-tested; **not published to any index**) | `docket-runtime` `0.3.0` exclusively owns `docket_runtime/`; its bounded envelope and pinned standard OpenHands SDK/PydanticAI configurations preserve reported usage, sole-chokepoint dispatch, paired identity traces, hash-chained audit, and typed handoff when relevant tools are exclusively Docket-backed; wheel and sdist remain disjoint from `docket` |
 | Harness Mode | 1.1.1 | Implemented | `docket harness run`/`status` — one agent, one turn, to completion, in a caller-owned workspace and home; NDJSON events and one versioned result on stdout, with the published schema under `docs/contracts/harness-v1/` and fixtures under `tests/fixtures/harness-contract/v1/` |
 | MCP Server | 1.5.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra, using the `mcp` 2.x SDK |
-| CLI JSON Shapes | 1.9.0 | Complete | Docket-owned doctor/fleet contract and current snapshot channel provenance |
+| CLI JSON Shapes | 1.10.0 | Complete | Docket-owned doctor/fleet contract and current snapshot channel provenance |
 | docket-meta schema | 3.1.0 | Complete | Pod resource metadata is backed by collision-free allocation and attempt-owned rollback that preserves pre-existing runtime state |
 | Docket Store | 1.0.0 | Implemented | Durability and recovery contract for Docket-owned JSON: a malformed primary never makes a valid backup unusable, and recovery never hides the bytes that explain the incident |
 | Serve Read API | 2.13.1 | Stable | Concurrent pod provisioning serializes one project while different projects share only the short atomic allocation transition |
