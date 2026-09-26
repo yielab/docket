@@ -84,7 +84,7 @@ def test_recipe_pipeline_validates(recipe_dir: Path) -> None:
     ids=lambda p: f"{p.parent.parent.name}/{p.name}",
 )
 def test_recipe_role_validates(role_file: Path) -> None:
-    doc = _arch.parse_yaml_file(str(role_file))
+    doc = _arch.load_role_file(str(role_file))
     name = str(doc.get("name", "")).strip()
     assert name, f"{role_file} has no top-level 'name'"
     assert _arch.validate_archetype_dict(name, doc) == []

@@ -15,10 +15,12 @@ import docket.config as _cfg
 from docket.core.archetypes import (
     BUILTIN_ARCHETYPES,
     STARTER_ARCHETYPES,
+    ArchetypeError,
     GateContract,
     RoleArchetype,
     find_overlay_problems,
     from_wire,
+    normalize_role,
     registry_for_role,
     render,
     resolve_hop_instruction,
@@ -317,3 +319,66 @@ class TestPodDeniedTools:
         narrowed = registry_for_role(builtin_registry(), "implementer", project="")
 
         assert "fetch" in narrowed.names()
+
+
+_SECURITY_VETTER_LONG: dict[str, object] = {
+    "name": "security-vetter",
+    "scope": "pod",
+    "modelClass": "strong",
+    "editRights": "read-only",
+    "description": "read-only security pass over the implementer's change",
+    "tokenBudget": 6000,
+    "deniedTools": ["write", "edit", "bash"],
+    "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
+    "soulTemplate": (
+        "# SOUL.md — ${project} · ${role}\n\n"
+        "You are the **${role}** of the **${project}** pod.\n"
+        "Codebase: ${codebaseOrConfigured} (stack: ${stack}).\n"
+    ),
+    "agentsTemplate": (
+        "# AGENTS.md — ${project} · ${role}\n\n## Red Lines\n\nStay within the `${project}` pod.\n"
+    ),
+}
+
+_SECURITY_VETTER_SHORT: dict[str, object] = {
+    "kind": "role",
+    "name": "security-vetter",
+    "description": "read-only security pass over the implementer's change",
+    "model": "strong",
+    "cannot": ["write", "edit", "bash"],
+    "verdict": ["APPROVE", "REQUEST-CHANGES"],
+}
+
+
+def _write_security_vetter_md(directory: Path) -> None:
+    (directory / "security-vetter.md").write_text(
+        _SECURITY_VETTER_LONG["soulTemplate"]  # type: ignore[operator]
+        + "\n## AGENTS\n\n"
+        + _SECURITY_VETTER_LONG["agentsTemplate"],  # type: ignore[operator]
+        encoding="utf-8",
+    )
+
+
+class TestNormalizeRole:
+    """The short role form (`kind: role`, `cannot:`, one gate key, `instructions: <file.md>`)
+    normalizes into the exact canonical dict `from_wire` already accepts -- see
+    specs/functional/role-archetypes.spec.md ("Wire format")."""
+
+    def test_short_form_round_trips_to_the_same_archetype_as_the_long_form(
+        self, tmp_path: Path
+    ) -> None:
+        _write_security_vetter_md(tmp_path)
+
+        normalized = normalize_role(dict(_SECURITY_VETTER_SHORT), tmp_path)
+
+        assert from_wire("security-vetter", normalized) == from_wire(
+            "security-vetter", _SECURITY_VETTER_LONG
+        )
+
+    def test_verdict_and_verify_together_is_rejected(self, tmp_path: Path) -> None:
+        _write_security_vetter_md(tmp_path)
+        short = dict(_SECURITY_VETTER_SHORT)
+        short["verify"] = True
+
+        with pytest.raises(ArchetypeError):
+            normalize_role(short, tmp_path)

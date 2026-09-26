@@ -62,7 +62,14 @@ MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
 EDIT_RIGHTS: frozenset[str] = frozenset({"none", "read-only", "write"})
 GATE_KINDS: frozenset[str] = frozenset({"none", "verdict", "mechanical", "approval"})
 
+# Presence of any of these on a role document marks it as short form (in addition to an
+# explicit `kind: role`) -- see `normalize_role`/`load_role_file`.
+_ROLE_SHORT_FORM_KEYS: frozenset[str] = frozenset(
+    {"cannot", "verdict", "verify", "approval", "instructions", "model"}
+)
+
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_AGENTS_HEADING_RE = re.compile(r"(?m)^## AGENTS[ \t]*$\n?")
 
 
 class ArchetypeError(ValueError):
@@ -205,6 +212,10 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     propagate (`docket roles add/validate`) or skip-and-continue (`load_registry`)."""
     if not isinstance(doc, dict):
         raise ArchetypeError(f"archetype {name!r}: definition must be a mapping")
+
+    doc_kind = doc.get("kind")
+    if doc_kind is not None and doc_kind != "role":
+        raise ArchetypeError(f"archetype {name!r}: expected kind: role, got kind: {doc_kind!r}")
 
     doc_name = doc.get("name", name)
     if doc_name != name:
@@ -901,6 +912,102 @@ def parse_yaml_file(path: str) -> dict[str, Any]:
     if not isinstance(doc, dict):
         raise ArchetypeError(f"archetype file must be a mapping (got {type(doc).__name__})")
     return doc
+
+
+def _split_instructions_markdown(text: str) -> tuple[str, str | None]:
+    """Split on an optional literal ``## AGENTS`` heading line into (soulTemplate,
+    agentsTemplate); `agentsTemplate` is `None` when the heading is absent -- see
+    role-archetypes.spec.md ("Wire format")."""
+    match = _AGENTS_HEADING_RE.search(text)
+    if match is None:
+        return text.rstrip("\n") + "\n", None
+    soul = text[: match.start()].rstrip("\n") + "\n"
+    agents = text[match.end() :].lstrip("\n")
+    return soul, agents
+
+
+def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
+    """Turn a short-form role document into the canonical wire dict `from_wire` accepts;
+    reads the `instructions` Markdown file (default ``<name>.md``) against *base_dir*.
+    See role-archetypes.spec.md ("Wire format") for the full field mapping."""
+    if not isinstance(short, dict):
+        raise ArchetypeError("role definition must be a mapping")
+
+    doc = dict(short)
+    kind = doc.pop("kind", None)
+    if kind is not None and kind != "role":
+        raise ArchetypeError(f"expected kind: role, got kind: {kind!r}")
+
+    name = str(doc.get("name", ""))
+    canonical: dict[str, Any] = {"name": name}
+
+    if "description" in doc:
+        canonical["description"] = doc.pop("description")
+
+    if "model" in doc:
+        model = doc.pop("model")
+        if model not in MODEL_CLASSES:
+            raise ArchetypeError(
+                f"archetype {name!r}: model must be one of {sorted(MODEL_CLASSES)} "
+                f"(got {model!r}); to pin a model id, run: docket models set {name} <id>"
+            )
+        canonical["modelClass"] = model
+
+    cannot = [str(tool) for tool in doc.pop("cannot", [])]
+    canonical["deniedTools"] = cannot
+    canonical["editRights"] = "read-only" if "write" in cannot else "write"
+
+    gate_keys = [key for key in ("verdict", "verify", "approval") if key in doc]
+    if len(gate_keys) > 1:
+        raise ArchetypeError(
+            f"archetype {name!r}: exactly one of verdict/verify/approval may be set "
+            f"(got {', '.join(gate_keys)})"
+        )
+    if "verdict" in doc:
+        regexes = [str(marker) for marker in doc.pop("verdict")]
+        canonical["gateContract"] = {"kind": "verdict", "regexes": regexes}
+    elif "verify" in doc:
+        doc.pop("verify")
+        canonical["gateContract"] = {"kind": "mechanical"}
+    elif "approval" in doc:
+        doc.pop("approval")
+        canonical["gateContract"] = {"kind": "approval"}
+    else:
+        canonical["gateContract"] = {"kind": "none"}
+
+    instructions = doc.pop("instructions", f"{name}.md")
+    md_path = base_dir / instructions
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ArchetypeError(
+            f"archetype {name!r}: cannot read instructions file {md_path}: {exc}"
+        ) from exc
+    soul, agents = _split_instructions_markdown(text)
+    canonical["soulTemplate"] = soul
+    canonical["agentsTemplate"] = agents if agents is not None else _STARTER_AGENTS_TEMPLATE
+
+    for key in ("scope", "version", "tokenBudget", "toolProfile", "hopInstruction", "policyRole"):
+        if key in doc:
+            canonical[key] = doc.pop(key)
+    canonical.setdefault("scope", "pod")
+    canonical.setdefault("version", 1)
+    canonical.setdefault("tokenBudget", 6000)
+
+    return canonical
+
+
+def load_role_file(path: str) -> dict[str, Any]:
+    """Parse a role YAML file, normalizing the short form into the canonical wire dict
+    `from_wire` accepts; an already-canonical document passes through unchanged (its
+    `kind: role`, if any, stripped either way)."""
+    doc = parse_yaml_file(path)
+    is_short = doc.get("kind") == "role" or any(key in doc for key in _ROLE_SHORT_FORM_KEYS)
+    if not is_short:
+        doc = dict(doc)
+        doc.pop("kind", None)
+        return doc
+    return normalize_role(doc, Path(path).parent)
 
 
 def add_user_archetype(doc: dict[str, Any], project: str = "") -> RoleArchetype:
