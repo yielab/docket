@@ -10,6 +10,22 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-27 (Phase 32 opened / D-48 recorded / ADR 0014) — observability as configuration.**
+  An explicit request the same day (telemetry configurable and adaptable to OpenTelemetry or
+  Langfuse; enough abstraction to add remote destinations simply; destinations as YAML like
+  providers; Langfuse and OpenTelemetry shipped ready, only to be authenticated; no
+  over-sizing) was measured on `0191ffe`: the trace store has one record shape, a closed
+  vocabulary and a subscriber seam with one consumer (`cli/_harness.py::_emit`), but no event
+  for the model call (usage persisted in the session record, latency unmeasured), `trace_ingest`
+  appends past the seam, `task_id` lives only in dispatch payloads, telemetry is configured by
+  five environment variables while every other surface is a `kind:` document, and the store has
+  no owning spec. D-24's cut of the OpenTelemetry SDK stands; what is scheduled is a projection
+  of docket's own vocabulary to OTLP/HTTP with zero dependencies behind `kind: exporter`. Nine
+  cards over Waves 56–59: `llm_call` + trace-store spec; neutral `Span`/`SpanEvent` + policy;
+  `task_id` + ingest through the seam; the exporter document and five built-ins; the `otlp-http`
+  dialect with a wire golden; the bounded pipeline wired in `run_turn` with a live proof;
+  `docket exporters enable` prompting for credentials; `exporters:` in `pod.yaml`; docs and the
+  external verification. Packets in `.agents/handoffs/wave-56-worker-packets.md`.
 - **2026-09-27 (Phase 31 shipped / D-47 recorded / ADR 0013) — recipes are a library of three
   kinds whose scope is derived, and the repository's own standards are read.** An explicit
   request the same day (recipes robust, extensible and maintainable; example recipes for the
