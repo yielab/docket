@@ -366,6 +366,16 @@ class PodSettings(BaseModel):
     # `set` instead of silently doing nothing at dispatch time.
     denied_tools: tuple[str, ...] = Field((), alias="deniedTools")
 
+    # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
+    # last applied, and a sha256 fingerprint of that directory's contents at that moment
+    # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
+    # wrote at least one item -- never by `docket pod <p> config set` (see `RECORDED_KEYS`) and
+    # never carried in a `pod.yaml` `settings` mapping, since both are refused the same way any
+    # key outside `KEYS` already is. `docket config explain <agent>` recomputes the digest
+    # against the still-present directory to report drift.
+    config_source: str = Field("", alias="configSource")
+    config_digest: str = Field("", alias="configDigest", pattern=r"^(|[0-9a-f]{64})$")
+
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
@@ -381,6 +391,12 @@ class PodSettings(BaseModel):
         "mcpServers",
         "deniedTools",
     )
+
+    # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
+    # settable-key path (`coerce`, `config set`'s fallthrough, a `pod.yaml` `settings` mapping)
+    # already refuses them as unknown; `config set` checks this tuple first only to give the
+    # friendlier "written by apply" message instead of "unknown pod setting".
+    RECORDED_KEYS: ClassVar[tuple[str, ...]] = ("configSource", "configDigest")
 
     @field_validator("allow_commands", mode="before")
     @classmethod
@@ -507,10 +523,12 @@ class PodSettings(BaseModel):
 
     @classmethod
     def load_for(cls, project: str) -> PodSettings:
-        """Read and validate one pod Lead's stored settings (see class docs:
-        never catch the raised error to substitute a default)."""
+        """Read and validate one pod Lead's stored settings, ``RECORDED_KEYS`` alongside
+        ``KEYS`` (see class docs: never catch the raised error to substitute a default)."""
         lead_id = member_id(project, "lead")
-        present = {k: v for k in cls.KEYS if (v := _fleet.meta_get(lead_id, k, ""))}
+        present = {
+            k: v for k in (*cls.KEYS, *cls.RECORDED_KEYS) if (v := _fleet.meta_get(lead_id, k, ""))
+        }
         return cls._validated(present)
 
     @classmethod

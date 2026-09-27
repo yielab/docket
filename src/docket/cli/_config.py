@@ -26,6 +26,7 @@ from docket.core import identity as _identity
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
 from docket.core import pod as _pod
+from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import provider as _provider
 from docket.core import tools as _tools
@@ -142,6 +143,24 @@ def _pod_settings_report(settings: _pod.PodSettings, project: str) -> dict[str, 
     return report
 
 
+def _config_of_record_report(settings: _pod.PodSettings | None) -> dict[str, str]:
+    """``configSource``/``configDigest`` (ADR 0012) plus ``drift``: ``"yes"``/``"no"`` when the
+    source directory is still present and its digest is recomputed, ``""`` when there is no
+    recorded source or the directory is gone (drift is then simply unknown, not asserted)."""
+    if settings is None or not settings.config_source:
+        return {"configSource": "", "configDigest": "", "drift": ""}
+    source_dir = Path(settings.config_source)
+    drift = ""
+    if source_dir.is_dir():
+        current = _pod_apply.directory_digest(source_dir)
+        drift = "yes" if current != settings.config_digest else "no"
+    return {
+        "configSource": settings.config_source,
+        "configDigest": settings.config_digest,
+        "drift": drift,
+    }
+
+
 def _provider_report(model: str) -> dict[str, Any]:
     """Where *model* resolves: catalog scope, dialect, base URL, the credential's
     name/source and the exact model row -- the provenance ``resolve_endpoint``
@@ -234,6 +253,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
 
     pod_settings_report = _pod_settings_report(pod_settings, project) if pod_settings else None
     pipeline = {"source": _dispatch.effective_pipeline_source(project)} if project else None
+    config_of_record = _config_of_record_report(pod_settings)
 
     return {
         "id": agent_id,
@@ -264,6 +284,9 @@ def _explain(agent_id: str) -> dict[str, Any]:
         "policies": _policies_for_role(role, project),
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
+        "configSource": config_of_record["configSource"],
+        "configDigest": config_of_record["configDigest"],
+        "drift": config_of_record["drift"],
     }
 
 
@@ -329,6 +352,12 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
 
     if report["pipeline"] is not None:
         ui.console.print(f"  [bold]{'Pipeline:':<16}[/bold] {report['pipeline']['source']}")
+    if report["configSource"]:
+        drift = report["drift"] or "unknown"
+        ui.console.print(
+            f"  [bold]{'Config source:':<16}[/bold] {report['configSource']}"
+            f"  [dim](digest {report['configDigest'][:12]}..., drift: {drift})[/dim]"
+        )
     if report["podSettings"] is not None:
         table = Table(title="Pod dispatch settings")
         table.add_column("KEY", style="bold")

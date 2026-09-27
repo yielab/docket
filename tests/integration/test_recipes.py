@@ -11,6 +11,7 @@ pod-blueprints.spec.md ("Pod manifests: apply").
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -317,9 +318,14 @@ def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict[str
 
 
 def _normalized(report: dict[str, object], project: str) -> dict[str, object]:
-    """Drop *project*'s own name -- an equal-length pod's report should then match exactly."""
+    """Drop *project*'s own name plus each pod's own `configSource`/`configDigest` (a
+    different applied directory per pod, asserted separately by the caller) -- an
+    equal-length pod's report should then match exactly."""
     text = json.dumps(report).replace(project, "PROJECT")
-    return json.loads(text)  # type: ignore[no-any-return]
+    normalized: dict[str, object] = json.loads(text)
+    normalized.pop("configSource", None)
+    normalized.pop("configDigest", None)
+    return normalized
 
 
 def test_export_then_apply_round_trip_matches_config_explain(
@@ -363,6 +369,16 @@ def test_export_then_apply_round_trip_matches_config_explain(
     _pod_apply.apply(_pod_apply.plan_apply(target_project, export_dir))
 
     target_report = _explain_json(f"{target_project}-security-vetter", capsys)
+
+    # Each pod's own configuration-of-record: the source pod was applied from `recipe_dir`,
+    # the target pod from `export_dir` -- different directories, each still `drift: no`
+    # since neither was edited after its own `apply`.
+    assert source_report["configSource"] == str(recipe_dir.resolve())
+    assert source_report["configDigest"] == _pod_apply.directory_digest(recipe_dir)
+    assert source_report["drift"] == "no"
+    assert target_report["configSource"] == str(export_dir.resolve())
+    assert target_report["configDigest"] == _pod_apply.directory_digest(export_dir)
+    assert target_report["drift"] == "no"
 
     assert _normalized(source_report, source_project) == _normalized(target_report, target_project)
 
@@ -439,3 +455,86 @@ def test_export_writes_only_this_pods_own_scope_never_global(
         "members": ["implementer", "security-vetter"],
         "settings": {"approvalMode": "refuse"},
     }
+
+
+# ── configSource/configDigest: the pod's configuration of record (ADR 0012 §2 rule 5) ──
+
+
+def test_apply_records_config_source_and_digest_and_explain_reports_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`apply` records `configSource`/`configDigest`; editing the applied directory afterward
+    makes `config explain --json` report `drift: yes` against the unchanged recorded digest."""
+    project = "recorded"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    recipe_copy = tmp_path / "recipe-copy"
+    shutil.copytree(RECIPES_DIR / "secure-build", recipe_copy)
+
+    _pod_apply.apply(_pod_apply.plan_apply(project, recipe_copy))
+
+    settings = pod.PodSettings.load_for(project)
+    assert settings.config_source == str(recipe_copy.resolve())
+    assert settings.config_digest == _pod_apply.directory_digest(recipe_copy)
+
+    lead_id = pod.member_id(project, "lead")
+    report = _explain_json(lead_id, capsys)
+    assert report["configSource"] == str(recipe_copy.resolve())
+    assert report["configDigest"] == settings.config_digest
+    assert report["drift"] == "no"
+
+    policy_file = recipe_copy / "policies" / "require-approval-secret-writes.yaml"
+    policy_file.write_text(policy_file.read_text(encoding="utf-8") + "\n# edited\n", "utf-8")
+
+    drifted_report = _explain_json(lead_id, capsys)
+    assert drifted_report["configDigest"] == settings.config_digest  # recorded value unchanged
+    assert drifted_report["drift"] == "yes"
+
+    # Written only by `apply` -- `config set` refuses both by name, naming `apply` as the
+    # writer (not the generic "unknown pod setting" message every other unknown key gets).
+    capsys.readouterr()
+    with pytest.raises(typer.Exit) as exc:
+        _pod.dispatch(project, "config", ["set", "configSource", "/tmp/whatever"])
+    assert exc.value.exit_code == 1
+    assert "written by apply" in capsys.readouterr().err
+
+    # A `pod.yaml` `settings` mapping cannot carry them either -- refused the same way any
+    # unknown setting already is, since both are deliberately outside `PodSettings.KEYS`.
+    bad_dir = tmp_path / "bad-recipe"
+    bad_dir.mkdir()
+    (bad_dir / "pod.yaml").write_text(
+        "settings:\n  configDigest: " + "0" * 64 + "\n", encoding="utf-8"
+    )
+    with pytest.raises(_pod_apply.PodApplyError, match="configDigest"):
+        _pod_apply.plan_apply(project, bad_dir)
+
+
+def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`docket pod <p> export` with no argument defaults to `<codebase>/.docket` (ADR 0012 §2
+    rule 5); a non-empty one there still refuses without `--force`."""
+    project = "exportdefault"
+    codebase = tmp_path / "codebase"
+    codebase.mkdir()
+    home = tmp_path / "home" / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    repoint_docket_home(monkeypatch, home)
+    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
+    _pod.build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+
+    default_dir = codebase / ".docket"
+    default_dir.mkdir()
+    (default_dir / "marker.txt").write_text("existing", encoding="utf-8")
+
+    with pytest.raises(typer.Exit) as exc:
+        _pod.dispatch(project, "export", [])
+    assert exc.value.exit_code == 1
+    assert not (default_dir / "pod.yaml").exists()
+
+    _pod.dispatch(project, "export", ["--force"])
+    assert (default_dir / "pod.yaml").is_file()
+
+    # The exported default directory re-applies as a no-op.
+    reapply_plan = _pod_apply.plan_apply(project, default_dir)
+    assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
