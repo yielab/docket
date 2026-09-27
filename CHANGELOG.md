@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A model provider is a `kind: provider` document.** `core/provider.py` holds the catalog:
+  built-in documents under `templates/providers/` (empty until the next card) and the
+  operator's own in `~/.docket/docket-providers.json`, nearest-wins by name. A document names
+  its credentials (`auth.credentials`) and never holds a value; `resolve_endpoint` reads the
+  catalog and the exact model row's limits. A pre-catalog `fleet.json -> providers` block is
+  migrated once on first use (a literal `apiKey` moves into the secret store under
+  `<NAME>_API_KEY`, audited `provider.migrate`), and `docket validate <file>` accepts
+  `kind: provider`.
 - **A policy can call a Python predicate the operator applied, never one the agent wrote.**
   `when: {plugin: <name>, with: {...}}` runs a `@predicate` from `~/.docket/plugins/` or the
   pod's own `config/plugins/` -- the only two places ever imported; a file in the codebase is
