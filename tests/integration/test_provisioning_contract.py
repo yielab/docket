@@ -176,23 +176,58 @@ class TestContractOk:
 
 class TestParseAddArgs:
     def test_empty(self) -> None:
-        assert _parse_add_args([]) == (None, None, None, None)
+        assert _parse_add_args([]) == (None, None, None, None, None, False)
 
     def test_from_flag_space(self) -> None:
-        assert _parse_add_args(["--from", "spec.json"]) == ("spec.json", None, None, None)
+        assert _parse_add_args(["--from", "spec.json"]) == (
+            "spec.json",
+            None,
+            None,
+            None,
+            None,
+            False,
+        )
 
     def test_from_flag_equals(self) -> None:
-        assert _parse_add_args(["--from=spec.yaml"]) == ("spec.yaml", None, None, None)
+        assert _parse_add_args(["--from=spec.yaml"]) == (
+            "spec.yaml",
+            None,
+            None,
+            None,
+            None,
+            False,
+        )
 
     def test_codebase_flag(self) -> None:
-        assert _parse_add_args(["--codebase", "/src/x"]) == (None, "/src/x", None, None)
-        assert _parse_add_args(["--path=/src/y"]) == (None, "/src/y", None, None)
+        assert _parse_add_args(["--codebase", "/src/x"]) == (
+            None,
+            "/src/x",
+            None,
+            None,
+            None,
+            False,
+        )
+        assert _parse_add_args(["--path=/src/y"]) == (None, "/src/y", None, None, None, False)
 
     def test_name_flag(self) -> None:
-        assert _parse_add_args(["--name", "My App"]) == (None, None, "My App", None)
+        assert _parse_add_args(["--name", "My App"]) == (
+            None,
+            None,
+            "My App",
+            None,
+            None,
+            False,
+        )
 
     def test_positional_name_then_path(self) -> None:
-        assert _parse_add_args(["myapp", "/src/myapp"]) == (None, "/src/myapp", "myapp", None)
+        assert _parse_add_args(["myapp", "/src/myapp"]) == (
+            None,
+            "/src/myapp",
+            "myapp",
+            None,
+            None,
+            False,
+        )
 
     def test_flags_win_over_positionals(self) -> None:
         assert _parse_add_args(["pos-name", "--name", "Flag Name"]) == (
@@ -200,15 +235,26 @@ class TestParseAddArgs:
             None,
             "Flag Name",
             None,
+            None,
+            False,
         )
 
     def test_pod_flags_do_not_leak_into_positionals(self) -> None:
-        assert _parse_add_args(["blog", "--pod", "full"]) == (None, None, "blog", None)
+        assert _parse_add_args(["blog", "--pod", "full"]) == (
+            None,
+            None,
+            "blog",
+            None,
+            None,
+            False,
+        )
         assert _parse_add_args(["blog", "/src/blog", "--with", "reviewer,tester"]) == (
             None,
             "/src/blog",
             "blog",
             None,
+            None,
+            False,
         )
 
     def test_blueprint_flag_space(self) -> None:
@@ -217,10 +263,56 @@ class TestParseAddArgs:
             None,
             "research-demo",
             "research",
+            None,
+            False,
         )
 
     def test_blueprint_flag_equals(self) -> None:
-        assert _parse_add_args(["--blueprint=ops"]) == (None, None, None, "ops")
+        assert _parse_add_args(["--blueprint=ops"]) == (
+            None,
+            None,
+            None,
+            "ops",
+            None,
+            False,
+        )
 
     def test_blueprint_flag_does_not_leak_into_positionals(self) -> None:
-        assert _parse_add_args(["myops", "--blueprint", "ops"]) == (None, None, "myops", "ops")
+        assert _parse_add_args(["myops", "--blueprint", "ops"]) == (
+            None,
+            None,
+            "myops",
+            "ops",
+            None,
+            False,
+        )
+
+    def test_recipe_flag_space(self) -> None:
+        assert _parse_add_args(["myops", "--recipe", "secure-build"]) == (
+            None,
+            None,
+            "myops",
+            None,
+            "secure-build",
+            False,
+        )
+
+    def test_recipe_flag_equals(self) -> None:
+        assert _parse_add_args(["--recipe=secure-build"]) == (
+            None,
+            None,
+            None,
+            None,
+            "secure-build",
+            False,
+        )
+
+    def test_no_apply_flag(self) -> None:
+        assert _parse_add_args(["myops", "--no-apply"]) == (
+            None,
+            None,
+            "myops",
+            None,
+            None,
+            True,
+        )

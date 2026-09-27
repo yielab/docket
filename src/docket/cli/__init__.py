@@ -414,6 +414,28 @@ def cmd_init(ctx: typer.Context) -> None:
                              failing the rest of the file -- the command
                              always exits 0, so check the printed summary
                              rather than only the exit code in a script.
+      --recipe <name|dir>   apply a shipped or local recipe directory after
+                             provisioning -- a directory path as given, else a
+                             shipped recipe by name (secure-build,
+                             research-review, ops-approval). An unresolvable
+                             name errors naming the shipped recipe names and
+                             exits 1 before any provisioning. Mutually
+                             exclusive with a present `<location>/.docket/` --
+                             giving both errors naming both sources and exits
+                             1 before any provisioning.
+      --no-apply             provision the pod only, skipping the apply step
+                             for a present `.docket/` or a resolved `--recipe`;
+                             prints the `docket pod <p> apply <dir>` command
+                             that would apply it.
+
+    A repository's own `<location>/.docket/` -- the same directory shape
+    `docket pod <p> apply` reads (roles/*.yaml, policies/*.json,
+    pipeline.yaml, pod.yaml) -- is discovered automatically: every document
+    under it is validated before anything is provisioned, and applied after
+    (unless `--no-apply`) through that same command's plan/apply path. A
+    validation error exits 1 naming the file and field, with nothing
+    provisioned. See specs/functional/pod-blueprints.spec.md, "Pod manifests:
+    apply".
 
     Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
     (or the `path` argument / `--codebase`, in which case you are not

@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -230,6 +230,19 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
 7. Removing a role, policy, member, pipeline binding, or setting stays out of this command's
    scope — `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion
    remain the explicit way to undo what a recipe added.
+8. `docket init` **MUST** discover a present `<location>/.docket/` (the same directory shape and
+   default this section reads) and, before provisioning anything, validate every document under
+   it (`core.config_docs.validate_directory`); any error **MUST** exit 1 naming the offending file
+   and field, with no pod provisioned. After provisioning succeeds, `init` **MUST** plan and apply
+   that directory through this section's own `plan_apply`/`apply` (never a second write path), and
+   the resulting `pod.apply` audit entry is this requirement's, not a duplicate. `docket init
+   --recipe <name|dir>` **MUST** resolve *name|dir* as a directory path if one exists at that
+   location, else a shipped recipe under the recipes directory, and apply it the same way; an
+   unresolvable name **MUST** exit 1 naming the shipped recipe names, before provisioning.
+   `--recipe` together with a present `.docket/` **MUST** exit 1 naming both sources, before
+   provisioning — two sources of record is an ambiguity this command refuses rather than picks
+   between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
+   printing the `docket pod <p> apply <dir>` command that would apply it.
 
 ### Pod manifests: export
 
@@ -376,6 +389,16 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.11.0 (2026-09-27)
+
+- **P30-1: `docket init` discovers, validates, and applies a repository's `.docket/`, or a
+  `--recipe` (ADR 0012, D-46).** "Pod manifests: apply" gains requirement 8: a present
+  `<location>/.docket/` is validated before provisioning and applied after, through the same
+  `plan_apply`/`apply` this section already defines; `core/pod_apply.py` gains `resolve_recipe`
+  for `--recipe <name|dir>`; `--recipe` and a present `.docket/` are mutually exclusive;
+  `--no-apply` provisions only. Nothing but `init` and this section's `apply` ever reads
+  `.docket/` — dispatch, serve, and schedules never do (ADR 0012 §2 rule 1).
 
 ### Version 1.10.0 (2026-09-26)
 
