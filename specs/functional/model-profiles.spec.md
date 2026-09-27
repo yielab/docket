@@ -1,7 +1,9 @@
 # Model Policy Specification
 
-**Version**: 2.15.0
-**Status**: Complete
+**Version**: 2.16.0
+**Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
+above both policy and pin, resolved once per hop and never persisted — see "Model intent per
+agent" requirement 4.
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -103,6 +105,17 @@ feasibility spike remains in ROADMAP and Git history.
 3. Agents predating this field **MUST** have it inferred on read: model equals the role's
    policy model → `policy`, otherwise → `pinned` (so a pre-existing agent is never silently
    moved to a different model). `docket doctor` **MUST** backfill the field persistently.
+4. A pipeline step's own `model` (`pipeline-format.spec.md`'s "Steps" Requirement 10) **MUST**
+   sit above both `policy` and `pinned` resolution, for that one hop only, and **MUST NOT**
+   change `modelSource` or `model` in `.docket-meta.json` — a pinned agent stays pinned, and a
+   policy-following agent keeps following the policy, in both cases entirely unaffected once the
+   hop ends. `core.models_policy.resolve_step_model(value)` **MUST** resolve the literal rank
+   words `cheap`/`strong` against the live rank anchors (`economy`/`standard` respectively, the
+   same table "User registry overlay" requirement 4 already overlays) and **MUST** return any
+   other value unchanged after checking that its `<provider>/…` prefix names a provider present
+   in `core.provider.load_catalog()`; a prefix absent from the catalog **MUST** raise, naming the
+   unknown provider, so `docket pipeline validate`/`plan` can refuse the step before any hop runs
+   (`pod-dispatch.spec.md`'s "Per-hop execution" requirement 5) instead of failing mid-dispatch.
 
 ### Changing the policy (docket models)
 
@@ -507,6 +520,15 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.16.0 (2026-09-27)
+
+- **P30-3: a pipeline step's own model wins for one hop, above policy and pin (ADR 0012 §2 rule
+  6).** New "Model intent per agent" requirement 4 and `core.models_policy.resolve_step_model`:
+  resolves `cheap`/`strong` against the live rank anchors, returns any other value unchanged after
+  confirming its provider is in the catalog, and raises naming the provider when it is not. Never
+  writes `.docket-meta.json` — `modelSource`/`model` keep reporting the agent's own standing
+  resolution; `docket profile`/`config explain` are unaffected.
 
 ### Version 2.15.0 (2026-09-27)
 

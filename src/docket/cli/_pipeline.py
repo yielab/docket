@@ -40,6 +40,7 @@ from docket import ui
 from docket.core import archetypes as _archetypes
 from docket.core import config_docs as _config_docs
 from docket.core import dispatch as _dispatch
+from docket.core import models_policy as _models_policy
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import trace as _trace
@@ -147,6 +148,32 @@ def _print_errors(title: str, errors: list[str]) -> None:
         ui.console.print(f"  [red]✗[/red] {e}")
 
 
+def _iter_all_steps(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
+    """*steps* plus every child of a ``parallel`` group, flattened one level."""
+    out: list[_pipeline.Step] = []
+    for step in steps:
+        if step.parallel:
+            out.extend(step.parallel)
+        else:
+            out.append(step)
+    return out
+
+
+def _step_model_errors(spec: _pipeline.PipelineSpec) -> list[str]:
+    """Every step whose own ``model`` names a provider absent from the catalog --
+    the same "caught before dispatch" posture an unresolvable role/agent target gets.
+    See pod-dispatch.spec.md "Per-hop execution" requirement 5."""
+    errors: list[str] = []
+    for step in _iter_all_steps(spec.steps):
+        if not step.model:
+            continue
+        try:
+            _models_policy.resolve_step_model(step.model)
+        except ValueError as exc:
+            errors.append(f"step {step.id!r}: {exc}")
+    return errors
+
+
 def _validate(args: list[str]) -> int:
     if not args:
         ui.error("Usage: docket pipeline validate <file>")
@@ -156,7 +183,10 @@ def _validate(args: list[str]) -> int:
     if not path.is_file():
         ui.error(f"File not found: {path_str}")
         return 1
-    errors = _pipeline.validate_pipeline(path.read_text(encoding="utf-8"))
+    result = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
+    errors = list(result.errors)
+    if result.spec is not None:
+        errors.extend(_step_model_errors(result.spec))
     if errors:
         _print_errors(f"Pipeline '{path_str}' is invalid:", errors)
         return 1
@@ -186,6 +216,11 @@ def _plan(args: list[str]) -> int:
         )
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
+        return 1
+
+    model_errors = _step_model_errors(effective)
+    if model_errors:
+        _print_errors("Pipeline file is invalid:", model_errors)
         return 1
 
     registry = _archetypes.load_registry()

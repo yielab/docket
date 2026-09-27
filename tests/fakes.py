@@ -77,8 +77,9 @@ class FakeDriver:
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        model: str | None = None,
     ) -> TurnResult:
-        """``on_spawn`` is accepted (per the ``RuntimeDriver`` Protocol's own
+        """``on_spawn``/``model`` are accepted (per the ``RuntimeDriver`` Protocol's own
         signature) and ignored, matching every real driver that backs onto no
         OS process a caller could report a pid for -- this fake never has one
         either. Not recorded in ``calls`` (a 5-tuple, unchanged) since no

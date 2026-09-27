@@ -223,6 +223,7 @@ class RuntimeDriver(Protocol):
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        model: str | None = None,
     ) -> TurnResult:
         """Run one real, costed agent turn. Never raises for ordinary failure modes.
         ``on_spawn`` fires with the process pid immediately after it starts, before
@@ -230,7 +231,9 @@ class RuntimeDriver(Protocol):
         double) may ignore it, so this is purely additive. ``trace_project``/
         ``trace_session_key`` optionally keep an audit stream separate from the
         durable ``session_key``; drivers without an internal trace producer may
-        ignore them."""
+        ignore them. ``model``, when given, wins over *agent_id*'s own configured model
+        for this one call only -- a pipeline step's own override (pipeline-format.spec.md
+        "Steps" Req. 10) -- and is never persisted."""
         ...
 
     def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
