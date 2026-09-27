@@ -10,6 +10,26 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-27 (Phase 31 shipped / D-47 recorded / ADR 0013) — recipes are a library of three
+  kinds whose scope is derived, and the repository's own standards are read.** An explicit
+  request the same day (recipes robust, extensible and maintainable; example recipes for the
+  methodologies practised in agent orchestration; stronger policy and pipeline recipes; AGENTS.md
+  and skills) was measured on `e3a765b`: every recipe part was already optional in `plan_apply`,
+  yet nothing derived or printed what a directory brings, the three shipped recipes were all
+  whole teams, `apply` recorded `configSource` only from a directory that changed something, the
+  recipe policies matched prose where `tool`/`path` predicates existed unused, `AGENTS.md` was
+  read only when an operator named it, and the prompt had no skills section. Seven cards over
+  Waves 53–55 (`dcdc17f` opened; P31-1 `f3aafe3`, P31-5 `366bd0d`, P31-3 `a3ea102`, P31-4
+  `de092d2`, rollup `ffcdbbf`; P31-2 `0d37e8d`, P31-6 `588fa71`; integrator `b4df434`,
+  `ca47804`, `05e7a95`): `summarize_recipe` and `description`; the record on every validated
+  apply; three recipe scopes and `docket recipes list|show` (reversing ADR 0012's "no command"
+  on its own rule of three, 3 → 12); four policy packs and five methodology pipelines over the
+  existing dialect; `AGENTS.md` by default; skills with a prompt index and one `skill` tool;
+  `docs/recipes.md` generated. Integrator findings: worker worktrees were again checked out at a
+  stale base and re-based; running the suite found the `skill` tool's kind missing from
+  `BUILTIN_TOOL_KINDS` and `core/skills.py` missing from the runtime wheel's file list (both
+  closed inside P31-6); a widened span baseline was reverted by splitting the registry builder;
+  a derived one-word `kind` could not tell a methodology from a team and became `brings`.
 - **2026-09-27 (Wave 52, no phase) — Phase 30 follow-ups closed; docs aligned for a newcomer.**
   Integrator alone, one RED test per change, specs first: `load_role_file` treats a
   canonical-only key as canonical whatever `kind:` says and refuses a mixed document

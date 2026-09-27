@@ -566,5 +566,13 @@
     "heading": "◆ PHASE 30 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the team lives in the repo (D-46)",
     "bytes": 19348,
     "sha256": "5bc286ab4619c2918681666cf367b69e7ec04303b251abd661b5db204bc90009"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 31 — COMPLETE (opened 2026-09-27, closed 2026-09-27): recipes as a library, and the repository's standards (D-47)",
+    "bytes": 31744,
+    "sha256": "0c0d1ae31aa0cbd3dc7db84a5dd2e3e113970e62f8333c8e5e76963a05ebe95e"
   }
 ]

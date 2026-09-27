@@ -58,11 +58,19 @@ re-captured from one real run under the `docket` wordmark and the README was reb
 tagline *agent teams as configuration, your rules, in YAML*, with its prose tests rebuilt from
 that README rather than carried forward; reasoning in
 [docs/adr/0012-the-team-lives-in-the-repo.md](docs/adr/0012-the-team-lives-in-the-repo.md).
-**Phase 31 (recipes as a library, and the repository's standards, D-47) opened 2026-09-27**, seven
-cards over Waves 53–55: a recipe's scope derived and shown, `description`, the record on every
-validated apply, three recipe scopes with `docket recipes list|show`, four policy packs and five
-methodology pipelines, `AGENTS.md` by default, skills in the Agent Skills shape with one `skill`
-tool, and `docs/recipes.md` generated from data; reasoning in
+**Phase 31 (recipes as a library, and the repository's standards, D-47) shipped 2026-09-27**, seven
+cards over Waves 53–55 (four Sonnet workers in parallel, then two, then the integrator): a recipe's
+scope is derived from its directory and shown by `validate`, `apply --dry-run`, `init --recipe` and
+the new `docket recipes list|show`; `pod.yaml` gains `description`; `apply` records the source on
+every validated apply; a name resolves against a path, `~/.docket/recipes/`, then the shipped
+library, now twelve recipes of three kinds (teams, four policy packs on structured predicates,
+five methodology pipelines: `tdd`, `spec-first`, `reflexion`, `dual-review`, `frugal`); the
+repository's `AGENTS.md` composes by default as screened project instructions; skills follow the
+Agent Skills shape in three scopes with a prompt index and one `skill` tool through the chokepoint
+(three shipped recipes carry one); `docs/recipes.md` is generated from the recipes and checked in
+CI. Running the suite found two unwired seams inside the phase (the `skill` tool's kind missing
+from `BUILTIN_TOOL_KINDS`; `core/skills.py` absent from the runtime wheel's file list), both
+closed in P31-6; reasoning in
 [docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md](docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md).
 Executable cards live in [TODO.md](TODO.md).
 
