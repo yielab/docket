@@ -208,7 +208,9 @@ by docket, through `edges/store.py`:
   additions like `blueprint`/`workspaceKind`/`workDir` and a pod's allocated
   `portRangeStart`/`portRangeCount`/`scratchDir`
 - **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
-  isolation flags, local provider endpoints
+  isolation flags. Provider endpoints live in `docket-providers.json` (`core/provider.py`,
+  the catalog of `kind: provider` documents) since Phase 29; a legacy `providers` block is
+  migrated out of `fleet.json` on first catalog read
 
 The org-wide default model lives in `~/.docket/docket-models.json`'s `default` field, not
 `fleet.json` — `get_default_model`/`set_default_model` read/write it there. A legacy `fleet.json`

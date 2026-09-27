@@ -258,8 +258,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Requires Python 3.11+, Git, Bash, and a non-streaming OpenAI-compatible chat-completions endpoint
-with function-tool support — hosted (OpenRouter, Vercel AI Gateway) or local (llama.cpp, vLLM, LM
-Studio). Every endpoint is registered explicitly; nothing is guessed.
+with function-tool support — hosted (Anthropic, OpenAI, Google, OpenRouter, Vercel AI Gateway and
+others) or local (llama.cpp, vLLM, LM Studio, Ollama). Fourteen providers ship as readable
+`kind: provider` documents (`docket models provider list`); any other endpoint is registered
+explicitly, and nothing is guessed.
 
 ```bash
 docket models provider add local http://127.0.0.1:8081/v1 \
@@ -297,6 +299,7 @@ configuration with working defaults, and every layer answers one question:
 | What is forbidden or needs a human, everywhere | Policies | drop a `kind: policy` YAML (`when`/`then`) or a JSON file in `~/.docket/policies/` — live on the next call, `docket policies test`/`validate` to check it |
 | What one pod may run unattended | Pod settings | `pod config set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
 | Which model each role uses | Model policy | `docket models set <role> <provider/model>`; pin one agent with `docket profile` |
+| What a provider name means: URL, dialect, model limits, and which credential it uses by name | Provider catalog | `docket models provider add <file.yaml>` (a `kind: provider` document; `export <name>` prints a built-in as a starting point), the key itself via `docket keys add <NAME>` |
 | A proven starting point instead of a blank page | Recipes | `docket pod <p> apply templates/recipes/secure-build` (or `research-review`, `ops-approval`); `docket pod <p> export <dir>` writes a pod back into that shape |
 
 One rule keeps the map honest: **a guarantee is a CLI-managed JSON registry under `~/.docket/`,

@@ -81,7 +81,7 @@ docket doctor                  # System-wide diagnostics (add --fix to apply aut
 
 # Keys, auth & security (see Command Reference for the full surface)
 docket keys setup              # Interactive API key wizard
-docket auth status             # Which provider credentials are stored (docket keys is the store)
+docket keys list               # Which provider credentials are stored (masked)
 docket gates status            # Gate + isolation posture (the tool-call gate is always on)
 docket audit                   # Recent docket-initiated changes
 ```
@@ -103,9 +103,9 @@ daemon and no second config file anywhere else:
 
 ```
 ~/.docket/
-├── fleet.json                     # Agent registration, channel bindings, gate/isolation flags,
-│                                   # provider endpoints
-├── secrets.json                   # Stored provider API keys (0600)
+├── fleet.json                     # Agent registration, channel bindings, gate/isolation flags
+├── docket-providers.json          # Your own kind: provider documents and overrides of built-ins
+├── secrets.json                   # Stored provider API keys (0600), referenced by name
 ├── docket-models.json             # Role→model policy overrides, plus the org default model
 ├── docket-roles.json              # User-defined role archetypes
 ├── docket-conversations.json      # docket's own channel-thread registry

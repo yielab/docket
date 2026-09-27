@@ -36,7 +36,7 @@ time it runs, it creates one **pod** for the current project. There is no separa
 register one first:
 
 ```bash
-docket models provider add local http://127.0.0.1:8081/v1 --model qwen --name "Qwen local" \
+docket models provider add local http://127.0.0.1:8081/v1 --model qwen \
   --ctx 16384 --max-tokens 4096
 docket models preset local          # every role now resolves to local/qwen
 docket init --pod full              # Lead + Implementer + Reviewer + Tester
@@ -47,7 +47,8 @@ noted.
 
 ```text
 ~/.docket/                              DOCKET_HOME: every piece of docket state lives here
-├── fleet.json                          init         agent registry, provider endpoints, flags
+├── fleet.json                          init         agent registry, bindings, flags
+├── docket-providers.json               provider add your kind: provider documents (built-ins ship in the wheel)
 ├── docket-models.json                  init/preset  role -> model policy
 ├── port-allocations.json               first pod    per-pod port range bases
 ├── audit.log                           first change hash-chained record of every mutation
