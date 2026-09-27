@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.44.0
+**Version**: 1.46.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -400,14 +400,15 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   pipeline would resolve against once `members` join, and every setting before writing anything;
   idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
   See `pod-blueprints.spec.md`, "Pod manifests: apply"
-- `export <dir> [--force]`: Write this pod's own scope, every YAML file in the short form with
+- `export [<dir>] [--force]`: Write this pod's own scope, every YAML file in the short form with
   a `# yaml-language-server:` header — pod-overlay `roles/<name>.yaml` (+ paired
   `roles/<name>.md` instructions), this pod's own `policies/<stem>.yaml`, a bound
   `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`, `name`, non-Lead `members`
   and every non-default `setting`, and the four config-v1 JSON Schemas copied into
-  `.schemas/` — into `<dir>`, the same shape `apply` reads back. Global scope (the operator's
+  `.schemas/` — into `<dir>`, the same shape `apply` reads back. `<dir>` defaults to
+  `<codebase>/.docket`, like `apply`. Global scope (the operator's
   own role overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty
-  `<dir>` unless `--force`. See `pod-blueprints.spec.md`,
+  `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
 - `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
@@ -997,6 +998,17 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.46.0 (2026-09-27)
+
+- `docket pod <project> export [<dir>] [--force]`: `<dir>` is now optional, defaulting to
+  `<codebase>/.docket` like `apply`; the non-empty-directory refusal now also covers that
+  default. `docket config explain <agent>` gains `configSource`, `configDigest`, and a
+  recomputed `drift` (`"yes"`/`"no"`/`""` with no recorded source) reporting this pod's
+  configuration of record (P30-2, ADR 0012). See `pod-blueprints.spec.md` 1.12.0, "Pod
+  manifests: apply" requirement 6 and "Pod manifests: export" requirements 1 and 3, and
+  `cli-json-shapes.spec.md` for the exact `docket config explain --json` shape these three
+  fields join.
 
 ### Version 1.44.0 (2026-09-27)
 

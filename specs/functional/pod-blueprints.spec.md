@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.10.0
+**Version**: 1.12.0
 **Status**: Implemented
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -226,7 +226,19 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    write nothing. `--dry-run` **MUST** print the plan and write nothing.
 6. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
    entry naming every planned item and its action; an all-`skip` plan **MUST NOT** write a new
-   audit entry.
+   audit entry. The same successful `apply` **MUST** also record this pod's configuration of
+   record (ADR 0012 §2 rule 5) in its settings: `configSource` (the absolute *dir*) and
+   `configDigest` (`core.pod_apply.directory_digest(dir)` — a sha256 hex digest over the sorted
+   relative paths and bytes of every file `discover_config_paths` returns plus any
+   `plugins/*.py`, excluding the generated `.schemas/`). Both **MUST** be written only here — an
+   all-`skip` plan **MUST NOT** touch either, matching the audit-entry rule above — and **MUST
+   NEVER** be written by `docket pod <p> config set`, which **MUST** refuse both keys naming
+   `apply` as their writer; a `pod.yaml` `settings` mapping carrying either key is refused the
+   same way any key outside the settable set already is (requirement 1). `docket config explain
+   <agent>` reports `configSource`, `configDigest`, and `drift` — `"yes"` when recomputing
+   `directory_digest` against the still-present `configSource` disagrees with the recorded
+   `configDigest`, `"no"` when it agrees, `""` when there is no recorded source or its directory
+   is gone (drift is then unknown, never asserted either way).
 7. Removing a role, policy, member, pipeline binding, or setting stays out of this command's
    scope — `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion
    remain the explicit way to undo what a recipe added.
@@ -238,8 +250,10 @@ directory *onto* a pod; `export` writes one back out, in the same shape, so a po
 configured by hand — or evolved past whatever recipe seeded it — can be reproduced on a second
 machine, the trigger `docket pod <p> apply` itself named as deferred.
 
-1. `docket pod <project> export <dir>` **MUST** write exactly this pod's own scope, in the same
-   directory shape `apply` reads, every YAML file in the **short form** (config-format.spec.md,
+1. `docket pod <project> export [<dir>]` **MUST** write exactly this pod's own scope — *dir*
+   defaults to `<codebase>/.docket/` (the pod Lead's own `codebase` meta, the same default
+   "Pod manifests: apply" requirement 1 reads) when omitted — in the same directory shape
+   `apply` reads, every YAML file in the **short form** (config-format.spec.md,
    "Short-form export") with a leading `# yaml-language-server:` header: `roles/<name>.yaml`
    (this pod's own role overlay entries only —
    `core.archetypes.load_registry(project).source_of(name) == "pod:<project>"` — each rendered
@@ -253,9 +267,11 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    (`core.pod.bound_pipeline_path(project)`, carrying no schema header of its own since it is
    not regenerated) when `PodSettings.pipeline` is set; and a `pod.yaml` manifest with `kind:
    pod` and `name: <project>` written first, then `members` (every non-Lead role this pod's
-   roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every `PodSettings` key
-   whose stored value differs from that model's own default — a key at its default is never
-   written, so a fresh pod exports an empty `settings` mapping). `export` **MUST NOT** write a
+   roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every key in
+   `PodSettings.KEYS` whose stored value differs from that model's own default — a key at its
+   default is never written, so a fresh pod exports an empty `settings` mapping; `configSource`/
+   `configDigest`, outside `KEYS`, are never written here regardless of value — requirement 6
+   above). `export` **MUST NOT** write a
    `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
    resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. `export`
    **MUST** also copy the four published config-v1 JSON Schemas into `<dir>/.schemas/`
@@ -265,8 +281,9 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    (`~/.docket/docket-roles.json`), fleet-wide policies (`~/.docket/policies/`), other pods, and
    this pod's own secrets, sessions, traces, and task queue are all out of scope; only what
    `pod_config_dir(project)` and the bound-pipeline copy hold is written.
-3. `docket pod <project> export <dir>` **MUST** refuse a non-empty *dir* unless `--force` is
-   given, so a stray argument cannot silently overwrite an operator's existing directory; an empty
+3. `docket pod <project> export [<dir>]` **MUST** refuse a non-empty *dir* — including the
+   defaulted `<codebase>/.docket/` — unless `--force` is given, so a stray argument (or an
+   accidental bare `export`) cannot silently overwrite an operator's existing directory; an empty
    or not-yet-existing *dir* always succeeds. `--force` **MUST** proceed and write over any
    same-named file already there. A successful export **MUST** write one `pod.export` audit entry
    naming *project* and *dir*, matching every other pod-scope writer in this module.
@@ -376,6 +393,17 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.12.0 (2026-09-27)
+
+- **P30-2: the pod records its configuration of record; `export` defaults to it (ADR 0012).**
+  "Pod manifests: apply" requirement 6 now also records `configSource`/`configDigest` in the
+  pod's settings after a successful `apply` (`core.pod_apply.directory_digest`, `PodSettings.
+  RECORDED_KEYS`); neither field is ever written by `docket pod <p> config set` or carried in a
+  `pod.yaml` `settings` mapping. "Pod manifests: export" requirements 1 and 3 now default *dir*
+  to `<codebase>/.docket/`, matching `apply`; the non-empty refusal applies to that default too.
+  `docket config explain <agent>` reports `configSource`, `configDigest`, and a recomputed
+  `drift` (see `cli-interface.spec.md` 1.46.0 for the CLI-facing description).
 
 ### Version 1.10.0 (2026-09-26)
 

@@ -708,6 +708,9 @@ def _pod_config(project: str, extra: list[str]) -> None:
         if key == "schedule":
             _pod_config_set_schedule(project, lead_id, value)
             return
+        if key in pod.PodSettings.RECORDED_KEYS:
+            ui.error(f"{key} is written by apply, not by config set")
+            raise typer.Exit(1)
         try:
             coerced = pod.PodSettings.coerce(key, value)
         except pod.PodSettingsError as ex:
@@ -832,15 +835,15 @@ def _pod_apply_cmd(project: str, extra: list[str]) -> None:
 
 
 def _pod_export_cmd(project: str, extra: list[str]) -> None:
-    """``docket pod <project> export <dir> [--force]`` -- write this pod's own scope
-    (`core.pod_apply.export_pod`) into ``<dir>``. Refuses a non-empty ``<dir>`` unless
-    ``--force``; a missing pod exits 1 naming it, with nothing written."""
+    """``docket pod <project> export [<dir>] [--force]`` -- write this pod's own scope into
+    ``<dir>``, defaulting to ``<codebase>/.docket`` like ``apply``. Refuses a non-empty
+    ``<dir>`` unless ``--force``; nothing is written on any refusal."""
     force = "--force" in extra
     rest = [a for a in extra if a != "--force"]
-    if len(rest) != 1:
-        ui.error("Usage: docket pod <project> export <dir> [--force]")
+    if len(rest) > 1:
+        ui.error("Usage: docket pod <project> export [<dir>] [--force]")
         raise typer.Exit(1)
-    directory = Path(rest[0])
+    directory = Path(rest[0]) if rest else _pod_apply_default_dir(project)
 
     if directory.exists() and any(directory.iterdir()) and not force:
         ui.error(f"'{directory}' is not empty. Use --force to overwrite.")

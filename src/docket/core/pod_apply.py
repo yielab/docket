@@ -383,6 +383,27 @@ def _plan_settings(
     return items, writes
 
 
+def directory_digest(directory: Path) -> str:
+    """Sha256 hex digest over the sorted relative paths and bytes of every file
+    `discover_config_paths` returns plus any `plugins/*.py`; the generated `.schemas/` is
+    never hashed. `apply` records this as `configDigest`; `config explain` recomputes it."""
+    from docket.core import config_docs as _config_docs
+
+    paths = list(_config_docs.discover_config_paths(directory))
+    plugins_dir = directory / "plugins"
+    if plugins_dir.is_dir():
+        paths.extend(sorted(plugins_dir.glob("*.py")))
+    ordered = sorted(paths, key=lambda p: p.relative_to(directory).as_posix())
+
+    digest = hashlib.sha256()
+    for path in ordered:
+        digest.update(path.relative_to(directory).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def plan_apply(project: str, directory: Path) -> ApplyPlan:
     """Validate applying *directory* to *project* and return the plan. Read-only:
     no role overlay, policy, member, pipeline, or setting is ever written here."""
@@ -512,6 +533,11 @@ def apply(plan: ApplyPlan) -> ApplyResult:
     if plan.has_changes():
         summary = ";".join(f"{item.kind}:{item.name}:{item.action}" for item in plan.items)
         audit_log("pod.apply", f"project={plan.project} dir={plan.directory} items={summary}")
+        # The configuration-of-record (ADR 0012 §2 rule 5): written only here, after a plan
+        # that changed something, never by `docket pod <p> config set` -- see
+        # `pod.PodSettings.RECORDED_KEYS`.
+        _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))
+        _fleet.meta_set(lead_id, "configDigest", directory_digest(plan.directory))
 
     return ApplyResult(project=plan.project, items=plan.items)
 
