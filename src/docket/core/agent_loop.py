@@ -238,6 +238,7 @@ class AgentLoopResult:
     error: str = ""
     failure_kind: FailureKind | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+    retry_after_s: float | None = None
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -727,6 +728,7 @@ class _TurnState:
         output: str = "",
         error: str = "",
         failure_kind: FailureKind | None = None,
+        retry_after_s: float | None = None,
     ) -> AgentLoopResult:
         return AgentLoopResult(
             ok=ok,
@@ -738,6 +740,7 @@ class _TurnState:
             error=error,
             failure_kind=failure_kind,
             raw=self.last_raw,
+            retry_after_s=retry_after_s,
         )
 
     def cancellation_requested(self) -> bool:
@@ -1396,6 +1399,7 @@ class _TurnState:
                     stop_reason="backend_error",
                     error=response.error,
                     failure_kind=response.failure_kind or "daemon_error",
+                    retry_after_s=response.retry_after_s,
                 ),
             )
 

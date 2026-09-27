@@ -69,6 +69,10 @@ class TurnResult:
     raw: dict[str, Any]  # full parsed backend response (empty when unparseable)
     error: str = ""
     failure_kind: FailureKind | None = None
+    # kw_only: dataclasses moves kw_only fields out of the positional __init__
+    # signature regardless of declaration order, so this stays addable without
+    # breaking the positional call sites the class docstring warns about.
+    retry_after_s: float | None = field(default=None, kw_only=True)
 
 
 # ── provision / teardown ─────────────────────────────────────────────────────

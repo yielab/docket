@@ -330,6 +330,7 @@ class DocketDriver:
             result.raw,
             result.error,
             failure_kind=result.failure_kind,
+            retry_after_s=result.retry_after_s,
         )
 
     def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:

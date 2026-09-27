@@ -1256,6 +1256,7 @@ def _run_hop_turn(
                     "retry_budget": retry_budget,
                     "failure_kind": run_res.failure_kind,
                     "error": run_res.error,
+                    "retry_after_s": run_res.retry_after_s,
                 }
             ),
         )
@@ -1265,7 +1266,16 @@ def _run_hop_turn(
         # (see the module docstring / _touch_claim).
         if ctx.on_retry is not None:
             ctx.on_retry()
-        ctx.do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
+        # The endpoint's own Retry-After (when it named one) can push the wait
+        # past the linear backoff; either way it is capped so one large value
+        # never stalls a hop indefinitely (pod-dispatch.spec.md, "Retries and
+        # the failure-kind taxonomy" requirement 3).
+        ctx.do_sleep(
+            min(
+                max(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt, run_res.retry_after_s or 0.0),
+                _cfg.DISPATCH_RETRY_MAX_WAIT_S,
+            )
+        )
         attempt += 1
     return run_res, attempt
 
