@@ -11,14 +11,12 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 50 (opened 2026-09-27): Phase 30, the team lives in the repo (D-46)
+> ## ▶ ACTIVE BOARD — WAVE 51 (opened 2026-09-27): Phase 30, the team lives in the repo (D-46)
 >
-> Wave 50 runs P30-1, P30-2, P30-3 and P30-4 in parallel (disjoint functions; merge order
-> P30-2, P30-1, P30-3, P30-4), one Sonnet worker per card in an isolated worktree under one
-> integrator; packets in
+> Wave 50 merged 2026-09-27 (P30-1 `418e684`, P30-3 `59e06f6`, P30-2 `60fe2b8`, P30-4
+> `b806fd6`; every gate green at the rollup). Wave 51 is integrator-only: P30-5 (assets from
+> one real run) then P30-6 (README v3 on the tagline, prose tests rebuilt from it). Packets in
 > [.agents/handoffs/wave-50-worker-packets.md](.agents/handoffs/wave-50-worker-packets.md).
-> Wave 51 (P30-5 assets, then P30-6 README) is integrator-only and opens after the Wave 50
-> rollup merges green.
 >
 > **☑ Phase 29 complete (2026-09-27).**
 >
@@ -156,9 +154,9 @@ release source.
 
 
 
-## ▶ WAVE 50 — ACTIVE (opened 2026-09-27): Phase 30, the team lives in the repo (D-46)
+## ▶ WAVE 51 — ACTIVE (opened 2026-09-27): Phase 30, the team lives in the repo (D-46)
 
-**Opened 2026-09-27 (Wave 50 active; Wave 51 queued in this section).** Six cards in two waves.
+**Wave 50 merged 2026-09-27; Wave 51 active (integrator-only).** Six cards in two waves.
 Decision, the directory, the seven best-practice rules, the amended spec rules and the verdict
 table are in [docs/adr/0012-the-team-lives-in-the-repo.md](docs/adr/0012-the-team-lives-in-the-repo.md).
 Worker packets: [.agents/handoffs/wave-50-worker-packets.md](.agents/handoffs/wave-50-worker-packets.md).
@@ -185,9 +183,20 @@ goldens change only where a card lists the lines.
 
 Every card follows the §"How to use this board" definition of done.
 
+**Wave 50 integrator notes (2026-09-27):** the four worker worktrees were checked out at a
+stale `88f184e`; every worker re-based its branch on `9101d44` before starting and the
+integrator verified `git merge-base` for all four. Two spec conflicts (cli-interface 1.45/1.46/1.47,
+pod-blueprints 1.11/1.12) resolved by keeping the higher header and every changelog entry newest
+first. `cli-json-shapes.spec.md` → 1.12.0 (integrator): the `provider` block Phase 29 added and
+the three configuration-of-record fields were missing from the documented `config explain --json`
+shape. **Follow-ups parked (locators only):** `cli/_agents.py::_apply_repo_config` renders the
+apply plan with its own loop instead of sharing `cli/_pod.py::_pod_apply_cmd`'s; `core/archetypes.py::
+load_role_file`'s `is_short` heuristic routes a `kind: role` document that also carries canonical
+fields through `normalize_role` (pre-existing, found by P30-4).
+
 ### P30-1 — `docket init` reads the team from the repo, or from a recipe
 
-**Status:** IN-PROGRESS (@sonnet-p30-1) · **Size:** M · **Wave:** 50 · **Spec:** `pod-blueprints.spec.md` → 1.11.0 ("Pod manifests: apply" gains the `init` paragraph), `cli-interface.spec.md` → 1.45.0 (`docket init --recipe <name|dir>`, `--no-apply`)
+**Status:** DONE (2026-09-27, `418e684`) · **Size:** M · **Wave:** 50 · **Spec:** `pod-blueprints.spec.md` → 1.11.0 ("Pod manifests: apply" gains the `init` paragraph), `cli-interface.spec.md` → 1.45.0 (`docket init --recipe <name|dir>`, `--no-apply`)
 
 **Trigger:** `cli/_agents.py::run_init` provisions from a blueprint and stops; `<codebase>/.docket/`
 is read only by a later `docket pod <p> apply`; `config.recipes_dir()` has no consumer, so a
@@ -233,7 +242,7 @@ on the base because `run_init` never reads the directory.
 
 ### P30-2 — the pod records its configuration of record; `export` defaults to it
 
-**Status:** IN-PROGRESS (@sonnet-p30-2) · **Size:** M · **Wave:** 50 · **Spec:** `pod-blueprints.spec.md` → 1.12.0 ("apply" 6 records source and digest; "export" 1 and 3 default `<dir>`), `cli-interface.spec.md` → 1.46.0 (`pod <p> export [<dir>]`; `config explain` reports `configSource`, `configDigest`, `drift`)
+**Status:** DONE (2026-09-27, `60fe2b8`) · **Size:** M · **Wave:** 50 · **Spec:** `pod-blueprints.spec.md` → 1.12.0 ("apply" 6 records source and digest; "export" 1 and 3 default `<dir>`), `cli-interface.spec.md` → 1.46.0 (`pod <p> export [<dir>]`; `config explain` reports `configSource`, `configDigest`, `drift`)
 
 **Trigger:** `core/pod.py::PodSettings` records a bound pipeline by sha256 (verified on every
 dispatch) but nothing records the directory a pod was configured from; `cli/_pod.py::
@@ -274,7 +283,7 @@ not exist and `export` rejects a missing argument.
 
 ### P30-3 — a pipeline step names its model
 
-**Status:** IN-PROGRESS (@sonnet-p30-3) · **Size:** S · **Wave:** 50 · **Spec:** `pipeline-format.spec.md` → 2.10.0 ("Steps" + "Short form" gain `model`), `pod-dispatch.spec.md` → 6.22.0 (hop execution honours a step `model` for that hop only), `model-profiles.spec.md` → 2.16.0 (resolution: a step override sits above pin and policy, per hop, never persisted)
+**Status:** DONE (2026-09-27, `59e06f6`) · **Size:** S · **Wave:** 50 · **Spec:** `pipeline-format.spec.md` → 2.10.0 ("Steps" + "Short form" gain `model`), `pod-dispatch.spec.md` → 6.22.0 (hop execution honours a step `model` for that hop only), `model-profiles.spec.md` → 2.16.0 (resolution: a step override sits above pin and policy, per hop, never persisted)
 
 **Trigger:** `core/pipeline.py::Step` carries `retries`/`timeout`/`instructions` overrides but no
 `model`; `core/dispatch.py::_run_hop_turn` always runs the member's meta model, so a team cannot
@@ -314,7 +323,7 @@ both fail on the base because `Step` forbids the key (`extra="forbid"`).
 
 ### P30-4 — one field says it: `editRights` retired
 
-**Status:** IN-PROGRESS (@sonnet-p30-4) · **Size:** S · **Wave:** 50 · **Spec:** `role-archetypes.spec.md` → 1.19.0 (wire format: `editRights` accepted and dropped, never written; `deniedTools` is the only capability statement), `cli-interface.spec.md` → 1.47.0 (`roles list` columns)
+**Status:** DONE (2026-09-27, `b806fd6`) · **Size:** S · **Wave:** 50 · **Spec:** `role-archetypes.spec.md` → 1.19.0 (wire format: `editRights` accepted and dropped, never written; `deniedTools` is the only capability statement), `cli-interface.spec.md` → 1.47.0 (`roles list` columns)
 
 **Trigger:** `core/archetypes.py::RoleArchetype.edit_rights` is validated and written by
 `to_wire`, read only by `cli/_roles.py`'s list column; the registry is narrowed by `deniedTools`
@@ -348,7 +357,7 @@ the key.
 
 ### P30-5 — the assets show the team from the repo
 
-**Status:** TODO · **Size:** M · **Wave:** 51 · **Spec:** none (docs assets; `docs/assets/README.md` records the capture)
+**Status:** IN-PROGRESS (@integrator) · **Size:** M · **Wave:** 51 · **Spec:** none (docs assets; `docs/assets/README.md` records the capture)
 
 **Trigger:** `docs/assets/hero.gif` was captured 2026-09-18 before Phases 26–30: its four
 frames show `init`, `dispatch`, the gate and harness mode, none shows a team defined in files,

@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.11.0
+**Version**: 1.12.0
 **Status**: Complete
 **Last Updated**: 2026-09-26
 
@@ -284,6 +284,14 @@ excludes every other configured server, never merely relabels it.
     "maxOutputTokens":    "number | null",
     "issue":              "string (empty when ready)"
   },
+  "provider": {
+    "name":       "string (catalog entry; the bare prefix when absent from the catalog)",
+    "scope":      "built-in | global | \"\" (absent from the catalog)",
+    "dialect":    "string (openai-chat)",
+    "baseUrl":    "string | null",
+    "credential": { "name": "string (may be empty)", "source": "override | env | store | none" },
+    "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "source": "row | none" }
+  },
   "prompt": {
     "budgetTokens": "number",
     "budgetSource": "env | window | default",
@@ -305,7 +313,10 @@ excludes every other configured server, never merely relabels it.
     }
   ],
   "pipeline":    "{ source: string } | null (null for a non-pod agent)",
-  "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)"
+  "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)",
+  "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
+  "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
+  "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
 }
 ```
 
@@ -315,8 +326,9 @@ A pod member with an invalid stored `PodSettings` value (e.g. a hand-edited
 error naming the offending key, exit 1, nothing on stdout — rather than reporting a
 guessed default.
 
-The human-readable (non-`--json`) rendering is unchanged: `scope` is JSON-only, and
-`tools`/`policies` print the same names/columns as before, in the same order.
+The human-readable (non-`--json`) rendering prints `scope` nowhere (JSON-only) and keeps the
+`tools`/`policies` names/columns and order; it adds one `Provider:` line under the model and,
+when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
 ### `docket snapshot` (full output)
 
@@ -428,6 +440,15 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.12.0 (2026-09-27)
+
+- `docket config explain <agent> --json` documents the `provider` block that Phase 29 (P29-6)
+  added — catalog name and scope, dialect, base URL, the credential's name and source, and the
+  exact model row's limits — and gains `configSource`, `configDigest` and `drift` (Phase 30,
+  P30-2, ADR 0012): the directory a pod's team was last applied from, the digest of what was
+  applied, and whether that directory has changed since. The human view gains the matching
+  `Provider:` and `Config source:` lines.
 
 ### Version 1.11.0 (2026-09-26)
 

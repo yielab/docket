@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The team lives in the repo.** A repository's `.docket/` directory (the same shape every
+  shipped recipe and `docket pod <p> export` write: `pod.yaml`, `roles/`, `pipeline.yaml`,
+  `policies/`, `plugins/`) is the team's configuration of record. `docket init` discovers it,
+  validates every document before provisioning anything, and applies it after the pod exists;
+  `docket init --recipe <name|dir>` starts from a shipped or local recipe the same way (mutually
+  exclusive with a present `.docket/`); `--no-apply` provisions only. Nothing is applied without
+  an operator command: dispatch, `serve`, schedules and the harness never read the directory.
+- **A pod knows where its team came from.** `apply` records `configSource` and `configDigest`
+  (written by nothing else; `pod config set` and a `pod.yaml` `settings` mapping refuse them),
+  `docket pod <p> export` defaults to `<codebase>/.docket/` like `apply`, and `docket config
+  explain <agent>` reports the source, the digest and `drift: yes|no`.
+- **A pipeline step names its model.** `model: cheap|strong|<provider>/<id>` on a step, in the
+  canonical and the short form, wins for that hop only and is never written to the agent's
+  metadata; `docket pipeline plan` prints it and `validate`/`plan` refuse an unknown provider
+  naming the step.
+- **One field says what a role may not do.** `editRights` is retired from the role wire
+  format: a stored overlay that still carries it loads and drops it, `roles show` never writes
+  it, `roles list` loses the column, and `docket validate` prints a `note:` for a file that
+  still declares it. `deniedTools` (`cannot` in the short form) is the only capability statement.
 - **`config explain` says where a model goes, and `doctor` checks the provider catalog.**
   `docket config explain <agent> --json` carries a `provider` block (name, scope, dialect, base
   URL, the credential's name and source, the exact model row's limits) and the human view prints
