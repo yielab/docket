@@ -152,7 +152,7 @@ global) — the same three `docket config explain <agent> --json` labels per val
 | Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket roles [--pod <p>]`, `docket pod <p> add <role>` |
-| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); opt-in codebase files via `projectInstructions` | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions AGENTS.md` |
+| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions CONTRIBUTING.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
 
@@ -232,6 +232,7 @@ Edit the agent's workspace files directly. `docket edit <agent-id>` opens them i
 | Project commands, conventions, where things are | `TOOLS.md` (create it for non-implementers) | Sent verbatim. The Implementer's is generated. See the caution below. |
 | Durable facts about the product | `MEMORY.md` | Sent last, so it is the first thing dropped when the budget is tight. |
 | Red lines shared by a role | `AGENTS.md` | Everything except `## Session Startup` is sent. |
+| What the repository tells every coding agent | `AGENTS.md` at the codebase root | Read by default when `projectInstructions` is unset, screened as untrusted (§3.12). |
 | Display name | `docket persona <id> set "Rita"` | Written to meta and rendered between `<!-- docket-persona:begin/end -->` in `SOUL.md`. Never edit that block by hand. |
 
 **What overwrites your edits:**
@@ -583,40 +584,59 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 
 ### 3.10 Start from a recipe
 
-`templates/recipes/<name>/` (inside the installed package; `docket.config.recipes_dir()`) ships
-ready-to-apply role/pipeline/policy bundles for common shapes:
+A recipe is a directory in the same shape as a repository's `.docket/` (§3.11): `pod.yaml`,
+`roles/`, `pipeline.yaml`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
+brings is derived from what the directory holds, never declared**: `docket validate <dir>`,
+`docket pod <p> apply --dry-run`, `docket init --recipe` and `docket recipes show` all print the
+same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Twelve ship
+with docket, of three kinds; the full page, generated from the recipes themselves, is
+[the recipe library](recipes.md).
 
-| Recipe | Adds | Use it for |
+| Kind | Recipes | What `apply` plans on a lean pod |
 |---|---|---|
-| `secure-build` | a custom `security-vetter` role, verdict-gated with one rework cycle | a read-only security pass before an Implementer's change ships |
-| `research-review` | the `researcher`/`analyst`/`writer`/`critic` starter roles | Critic-vetoed research, on a pod you did not create with `--blueprint research` |
-| `ops-approval` | the `operator` starter role, approval-gated | a human sign-off before an operational action runs at all |
-
-Two commands take a recipe by name or by directory, and both resolve the same way: a directory
-path if one exists there, else a shipped recipe by name.
+| Team | `secure-build`, `research-review`, `ops-approval` | roles and members it needs, a pipeline, sometimes a policy |
+| Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval` | policy items only: no roster change, no pipeline change |
+| Methodology | `tdd`, `spec-first`, `reflexion`, `dual-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
 
 ```bash
+docket recipes list                        # every recipe reachable by name, what each brings
+docket recipes show tdd                    # description, summary, the recipe's own README
 docket init --recipe secure-build          # a new pod for this repository, recipe applied after provisioning
-docket pod myapp apply secure-build        # onto a pod that already exists
+docket pod myapp apply git-safety          # a policy pack onto a pod that already exists
 docket pod myapp apply ./team-recipes/ci   # a directory of your own, same shape
 docket pod myapp apply --dry-run           # no argument: <codebase>/.docket/, plan only
 ```
 
+A name resolves in three places, nearest wins: a directory path as given, then your own
+`~/.docket/recipes/<name>/`, then the shipped library. Dropping a directory under
+`~/.docket/recipes/` makes it addressable from `init --recipe` and `apply` with no registration.
+
 `apply` copies the directory's roles into this pod's own overlay (`config/roles.json`),
 validates and binds its `pipeline.yaml` as the pod's default (§3.5), adds the `members` its
-`pod.yaml` names, and copies its policy pack into this pod's own `config/policies/` (§3.6) — the
-same steps you would otherwise do by hand, scoped to this pod alone, validated as a whole before
-anything is written. `--dry-run` shows the plan; re-running is idempotent (an applied recipe plans
-every item `skip`). There is no `docket recipes` command; a recipe is data, not a new surface.
+`pod.yaml` names, copies its policy pack into this pod's own `config/policies/` (§3.6) and its
+skills into `config/skills/` (§3.13) — the same steps you would otherwise do by hand, scoped to
+this pod alone, validated as a whole before anything is written. `--dry-run` shows the plan;
+re-running is idempotent (an applied recipe plans every item `skip`). Every apply records the
+directory as the pod's `configSource` (§3.11), the all-`skip` one included.
 
-`docket pod <p> export <dir>` writes the reverse: this pod's own scope, in the same directory
-shape, so a pod configured by hand (or evolved past the recipe that seeded it) can be checked in
-or applied to a second pod. Every file it writes is in the short form with a
-`# yaml-language-server:` header, resolved against the four `config-v1` JSON Schemas it copies
-into `<dir>/.schemas/` — the same schemas `scripts/gen_config_schemas.py` publishes under
-`docs/contracts/config-v1/`, so an editor gets autocomplete and inline errors on a checked-in
-recipe without installing anything. `docket validate <dir>` checks the whole directory in one
-pass, kind by kind.
+**Compose, then commit.** Recipes are seeds; the repository is where they combine. Apply the
+team you want, then the policy packs security asks for, then write the result back next to the
+code and apply that once so the record names the repo:
+
+```bash
+docket init --recipe tdd
+docket pod myapp apply git-safety
+docket pod myapp apply secrets-guard
+docket pod myapp export --force          # the merged team, in .docket/
+docket pod myapp apply                   # plans every item skip; configSource is now ./.docket
+git add .docket && git commit -m "Add: the myapp agent team"
+```
+
+Two pipelines applied in sequence replace each other (the plan says `replace`); policies and
+roles accumulate. `docket pod <p> export <dir>` writes the reverse of `apply`: this pod's own
+scope, in the same directory shape and the short form, with a `# yaml-language-server:` header
+resolved against the `config-v1` JSON Schemas it copies into `<dir>/.schemas/` (the same schemas
+`scripts/gen_config_schemas.py` publishes under `docs/contracts/config-v1/`).
 
 ### 3.11 Keep the team in the repo
 
@@ -631,6 +651,7 @@ export` writes and every shipped recipe ships:
   pipeline.yaml       kind: pipeline  short form: `- id: role` steps with verify/verdict/approval/on
   policies/*.yaml     kind: policy    when/then; JSON still loads
   plugins/*.py                        hashed predicate plugins (rare)
+  skills/<name>/SKILL.md              Agent Skills: name + description up front, the body read on demand
   .schemas/                           generated JSON Schemas the `# yaml-language-server` headers point at
 ```
 
@@ -699,6 +720,62 @@ Rules worth knowing:
 - **A step may name its model** (`model: cheap|strong|<provider/id>`): it applies to that hop
   only and is never written to the agent's own metadata, so `docket profile` still shows the
   persisted model.
+
+### 3.12 `AGENTS.md`: the instructions your repository already keeps
+
+Many repositories keep an `AGENTS.md` at the root for coding agents (Codex, Copilot, Cursor and
+Claude Code all read it). docket reads it too, by default: when a pod's `projectInstructions`
+setting is unset and the codebase root holds `AGENTS.md`, it is composed into every member's
+system prompt as the project-instructions section, right after `INSTRUCTIONS.md`. It is treated
+as content from the codebase, not from you: screened through the `pre_input` policy hook as
+untrusted (a `block` replaces it with an audited one-line marker), middle-truncated to its budget
+share, and reported as `projectInstructions` in the `prompt_composed` trace event.
+
+```bash
+docket config explain myapp-implementer   # ... Project instr.:   AGENTS.md (default)
+docket pod myapp config set projectInstructions CONTRIBUTING.md,docs/STYLE.md   # an explicit list replaces the default
+docket pod myapp config unset projectInstructions                                # back to the default
+```
+
+An explicit list never adds to the default: name `AGENTS.md` in it if you want both. The
+`AGENTS.md` docket writes inside each agent's private workspace is a different file (a role's
+red lines, §2); the two are composed in different sections. Nested `AGENTS.md` files deeper in
+the tree are not read: a turn has one root.
+
+### 3.13 Skills: instructions an agent pulls on demand
+
+A skill is a directory holding a `SKILL.md` in the Agent Skills shape: YAML front matter with
+`name` (equal to the directory name, `[a-z0-9-]`, up to 64 characters) and `description` (one
+sentence, up to 1024 characters), then the instructions as Markdown, with optional
+`scripts/`, `references/` and `assets/` beside it. docket looks in three places, nearest wins by
+name:
+
+| Scope | Directory | How it gets there |
+|---|---|---|
+| repository | `<codebase>/.docket/skills/<name>/` | committed with the code, read in place |
+| pod | `~/.docket/workspaces/pods/<project>/config/skills/<name>/` | a recipe's `skills/` copied by `apply`; `export` writes it back |
+| global | `~/.docket/skills/<name>/` | you put it there, for every pod on this machine |
+
+Disclosure is progressive, as the shape intends. The system prompt gets a `# Skills` section of
+`- name: description` lines (each description screened through `pre_input` as untrusted, the
+section capped and reported as `skills`), and the body is read only when the agent calls the
+`skill` tool with a name (or a name and a file inside the skill's directory). That tool is a
+built-in of kind `read`, goes through the same chokepoint as every other, and is denied per role
+with `cannot: [skill]` like any other tool. A skill whose front matter is invalid (a `name` that
+does not match its directory, a missing `description`) is skipped and audited once, never raised
+into a turn. `allowed-tools` and other keys are accepted and ignored: a role's denials are the
+only capability statement.
+
+```bash
+mkdir -p .docket/skills/release-checklist
+$EDITOR .docket/skills/release-checklist/SKILL.md     # front matter + the checklist
+docket config explain myapp-implementer                # ... Skills: release-checklist (repo), security-review (pod)
+```
+
+`secure-build` ships one (`security-review`, a concrete review checklist the vetter can pull);
+`tdd` and `spec-first` ship `test-first` and `writing-a-spec`. Instructions from the repository,
+`AGENTS.md` and skills alike, are read live and screened; rules from the repository (roles,
+policies, pipelines, settings) are still applied only by an operator command (§3.11).
 
 ## 4. File reference
 

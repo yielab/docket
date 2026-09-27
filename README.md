@@ -158,11 +158,12 @@ configuration, never a fork:
 | You want to change… | Layer | How |
 | --- | --- | --- |
 | The whole team, versioned with the code | Repository | commit `.docket/` (`pod.yaml`, `roles/`, `pipeline.yaml`, `policies/`); `docket init` applies it, `docket pod <p> apply` re-applies it, `docket pod <p> export` writes it back |
-| A proven starting point instead of a blank page | Recipes | `docket init --recipe secure-build` (or `research-review`, `ops-approval`, or a directory of your own) |
+| A proven starting point instead of a blank page | Recipes | twelve ship, of three kinds: teams (`secure-build`, `research-review`, `ops-approval`), policy packs that change no roster (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology pipelines (`tdd`, `spec-first`, `reflexion`, `dual-review`, `frugal`); `docket recipes list` shows what each brings, derived from its files; `docket init --recipe <name>`, `docket pod <p> apply <name>`, or a directory of your own under `~/.docket/recipes/` |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pipeline validate/plan`; run once with `--file` or bind it as the pod's default for every trigger with `docket pod <p> config set pipeline <file>` |
 | What a kind of agent is, what it is told each hop, which tools it structurally lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket roles add`, globally or `--pod <p>`; a step may name its own `model` |
-| Your own words in front of an agent | Instructions | edit the operator-owned `INSTRUCTIONS.md` (docket never touches it), or opt in your repo's own `AGENTS.md` with `pod config set projectInstructions` |
+| Your own words in front of an agent | Instructions | edit the operator-owned `INSTRUCTIONS.md` (docket never touches it); your repo's own `AGENTS.md` is read by default, screened as untrusted, and `pod config set projectInstructions` names other files instead |
+| Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` (the Agent Skills shape: `name` + `description` in front matter) in `.docket/skills/`, a recipe, or `~/.docket/skills/`; the prompt lists names and descriptions, the `skill` tool reads one through the same chokepoint, deniable per role like any other |
 | What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket policies test`/`validate`; a rare complex rule is a hashed Python predicate the operator applies |
 | What one pod may run unattended | Pod settings | `pod config set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
 | Which model each role uses | Model policy | `docket models set <role> <provider/model>`; pin one agent with `docket profile` |

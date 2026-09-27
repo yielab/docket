@@ -154,13 +154,18 @@ blueprint's own fixed roster instead of trying to combine the two.
 
 There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
-`docket pod <project> add <role>`. For a pre-built role+pipeline+policy bundle instead of composing
-by hand, use a **recipe**: `docket init --recipe secure-build` starts a new pod from one of the
-three shipped ones (`secure-build`, `research-review`, `ops-approval`), and `docket pod <project>
-apply secure-build` applies it onto a pod that already exists. A recipe is the same directory
-shape as a repository's own `.docket/`, which plain `docket init` discovers, validates and applies
-when it is committed next to the code — see [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe)
-and [§3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
+`docket pod <project> add <role>`. For a pre-built shape instead of composing by hand, use a
+**recipe**. Twelve ship with docket, of three kinds: teams (`secure-build`, `research-review`,
+`ops-approval`), policy packs that change no roster (`git-safety`, `no-egress`, `secrets-guard`,
+`prod-approval`), and methodology pipelines that are the practice (`tdd`, `spec-first`,
+`reflexion`, `dual-review`, `frugal`). `docket recipes list` shows what each brings, derived from
+its files; `docket init --recipe tdd` starts a new pod from one, `docket pod <project> apply
+git-safety` applies one onto a pod that already exists, and a directory under
+`~/.docket/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
+a repository's own `.docket/`, which plain `docket init` discovers, validates and applies when it
+is committed next to the code — see [the recipe library](recipes.md),
+[CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe) and
+[§3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
 
 ---
 
@@ -392,9 +397,10 @@ docket init <project> [path] --pod full   # + Reviewer + Tester
 docket init <project> [path] --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
-docket init --recipe <name|dir>          # + a shipped recipe (secure-build | research-review |
-                                         #   ops-approval) or your own directory; a committed
-                                         #   .docket/ is applied by plain `docket init`
+docket recipes list                      # the twelve shipped recipes and your own, what each brings
+docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
+                                         #   your own directory; a committed .docket/ is applied
+                                         #   by plain `docket init`
 docket pod <project> apply [<name|dir>]  # apply .docket/ (default), a recipe name or a directory
 docket pod <project> export [<dir>]      # write the pod's own scope back to .docket/
 docket validate [<dir|file>]             # check every kind: document before applying

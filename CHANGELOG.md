@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A recipe library of three kinds, and a recipe that says what it brings.** Twelve recipes
+  ship: the three teams, four policy packs that change no roster (`git-safety`, `no-egress`,
+  `secrets-guard`, `prod-approval`; every rule stated with the structured `tool`/`path`/`anyOf`
+  predicates rather than free text, and `secure-build`'s and `ops-approval`'s own policies
+  rewritten the same way), and five methodology pipelines that are the practice (`tdd`,
+  `spec-first`, `reflexion`, `dual-review`, `frugal`). What a recipe brings is derived from its
+  directory, never declared: `docket validate <dir>`, `docket pod <p> apply --dry-run`,
+  `docket init --recipe` and the new `docket recipes list|show` print the same summary line.
+  `pod.yaml` gains an optional `description`; a recipe name resolves against a directory path,
+  your own `~/.docket/recipes/<name>/`, then the shipped library; `apply` records the pod's
+  `configSource` after every validated apply, an all-`skip` one included, so composing recipes
+  and applying the exported `.docket/` leaves the record naming the repository. The page
+  `docs/recipes.md` is generated from the recipes and checked in CI.
+- **Skills, in the Agent Skills shape.** `skills/<name>/SKILL.md` (front matter `name` +
+  `description`, the body on demand) is discovered from three scopes, nearest wins by name: the
+  repository's `.docket/skills/`, the pod's own `config/skills/` (a recipe's `skills/` is applied
+  there and exported back), and `~/.docket/skills/`. The system prompt carries a `# Skills` index
+  of screened descriptions; a new built-in `skill` tool of kind `read` returns the body or a file
+  inside the skill's directory through the same chokepoint, deniable per role. `secure-build`
+  ships `security-review`, `tdd` ships `test-first`, `spec-first` ships `writing-a-spec`.
+  `docket config explain` lists the skills an agent sees.
+- **`AGENTS.md` is read by default.** When a pod's `projectInstructions` is unset and the
+  codebase root holds `AGENTS.md`, the file every other coding agent reads is composed as the
+  project-instructions section: screened through `pre_input` as untrusted, capped, reported; an
+  explicit `projectInstructions` list replaces the default. `docket config explain` names the
+  files and their source.
 - **`docket pod <p> apply <name>` takes a shipped recipe by name.** The argument resolves as a
   directory if one exists there, else as one of the shipped recipes (`secure-build`,
   `research-review`, `ops-approval`), exactly as `docket init --recipe` resolves it, so a recipe

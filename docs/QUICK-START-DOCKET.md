@@ -104,7 +104,7 @@ pod for one repository. Two other ways to start:
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
-| a shipped or local recipe | `docket init --recipe secure-build` (or `research-review`, `ops-approval`, or a directory) | the recipe applied onto the default pod |
+| a shipped or local recipe | `docket init --recipe secure-build` (`docket recipes list` shows all twelve, or a directory) | the recipe applied onto the default pod |
 
 Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
@@ -268,6 +268,12 @@ Nothing is applied without that command. Dispatch, `serve`, schedules and the ha
 re-read `.docket/`, and `config explain` shows `drift: yes` once the directory moves on from
 what was applied. A policy in the repo can only add restrictions: it accumulates with your
 global policies under most-restrictive-wins.
+
+**Add one thing later.** A recipe does not have to be a whole team. `docket recipes list` shows
+twelve shipped ones of three kinds: teams, policy packs that change no roster, and methodology
+pipelines. `docket pod myapp apply git-safety` adds two guardrail policies and nothing else;
+`docket pod myapp apply tdd` swaps the route for a test-first one. Apply what you need, then
+`docket pod myapp export --force` writes the merged team back to `.docket/` for the commit.
 
 Pod-level knobs are one command each: `docket pod myapp config set budgetUsd 5`,
 `allowCommands pytest,uv`, `approvalMode refuse`, `maxReworkCycles 2`. Your own words for one

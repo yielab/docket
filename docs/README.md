@@ -36,6 +36,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: org specialists vs project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies and tools |
 | [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
+| [Recipe library](recipes.md) | The twelve shipped recipes (teams, policy packs, methodology pipelines), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals and the audit log |
@@ -56,7 +57,8 @@ explains how a feature is specified before it is built.
 ```bash
 # The team
 docket init                                   # this directory -> a Lead + Implementer pod
-docket init --recipe secure-build             # ... plus a shipped recipe (research-review, ops-approval)
+docket recipes list                           # twelve shipped recipes: teams, policy packs, methodologies
+docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
 docket validate                               # check every document under ./.docket/
 docket pod myapp apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
 docket pod myapp export                       # write the pod's own scope back to ./.docket/
@@ -101,6 +103,7 @@ in your repository:
 ├── roles/<name>.yaml + <name>.md     # kind: role — what a kind of agent is, and its instructions
 ├── pipeline.yaml                     # kind: pipeline — who works, in what order, behind which gates
 ├── policies/*.yaml                   # kind: policy — what is forbidden or needs a human
+├── skills/<name>/SKILL.md            # Agent Skills: listed in the prompt, read on demand with the skill tool
 └── .schemas/                         # JSON Schemas for editor autocompletion (export writes them)
 
 ~/.docket/
@@ -111,13 +114,15 @@ in your repository:
 ├── docket-roles.json                 # your global role overlay
 ├── policies/                         # global policies (most-restrictive wins with a pod's own)
 ├── plugins/                          # operator-scope predicate plugins (rare)
+├── recipes/<name>/                   # your own recipes, addressable by name like the shipped ones
+├── skills/<name>/SKILL.md            # global skills, every pod on this machine
 ├── docket-mcp-servers.json           # external MCP tool servers
 ├── docket-runs.json  docket-schedules.json  docket-conversations.json
 ├── audit.log                         # hash-chained audit log (docket audit verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
 └── workspaces/
     ├── manager/ knowledge/ security/ # the shared org specialists
-    ├── pods/<project>/config/        # this pod's own overlay: roles.json, policies/, plugins/
+    ├── pods/<project>/config/        # this pod's own overlay: roles.json, policies/, plugins/, skills/
     └── projects/<project>-<role>/    # one isolated workspace per pod member
         ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
         ├── INSTRUCTIONS.md           # yours; docket never writes it
