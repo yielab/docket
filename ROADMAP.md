@@ -45,12 +45,18 @@ add/list/show/remove/export` round-trip a document, `Retry-After` is honoured up
 `docket auth` is a removed command and `keys setup` walks the catalog, and `config explain` names
 the provider, its scope and where the credential came from; reasoning in
 [docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md).
-**Phase 30 (the team lives in the repo, D-46) opened 2026-09-27**: a repository's `.docket/`
-directory is the team's configuration of record — `docket init` discovers, validates and applies
-it (or `--recipe`), `apply`/`export` default to it, the pod records its source and digest so
-`config explain` reports drift, a pipeline step may name its `model`, `editRights` is retired,
-then the assets and the README are rebuilt on the tagline *agent teams as configuration, your
-rules, in YAML*; reasoning in
+**Phase 30 (the team lives in the repo, D-46) shipped 2026-09-27**, seven cards over Waves
+50–51 (four Sonnet workers in parallel, then the integrator): a repository's `.docket/` directory
+is the team's configuration of record — `docket init` validates it before provisioning and
+applies it after (or `--recipe <name|dir>`; `--no-apply`), `apply`/`export` default to it, the
+pod records `configSource`/`configDigest` so `config explain` reports drift, nothing is applied
+without an operator command; a pipeline step may name its `model` for that hop only; `editRights`
+is retired; running the product for the new assets found that a recipe's role applied into a pod
+fell to the compiled-in default model on a local fleet (fixed: the archetype resolves in its
+pod's registry, the fallback is the registry default); the three terminal assets were
+re-captured from one real run under the `docket` wordmark and the README was rebuilt on the
+tagline *agent teams as configuration, your rules, in YAML*, with its prose tests rebuilt from
+that README rather than carried forward; reasoning in
 [docs/adr/0012-the-team-lives-in-the-repo.md](docs/adr/0012-the-team-lives-in-the-repo.md).
 Executable cards live in [TODO.md](TODO.md).
 

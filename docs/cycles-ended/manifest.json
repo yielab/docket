@@ -558,5 +558,13 @@
     "heading": "◆ PHASE 29 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the provider catalog (D-45)",
     "bytes": 26930,
     "sha256": "ece7b634b48c1cbd1042b6903146b5d964d0485106d4c6df06bac491162bb65d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 30 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the team lives in the repo (D-46)",
+    "bytes": 19348,
+    "sha256": "5bc286ab4619c2918681666cf367b69e7ec04303b251abd661b5db204bc90009"
   }
 ]

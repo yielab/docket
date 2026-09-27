@@ -10,6 +10,24 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-27 (Phase 30 complete, D-46) — the team lives in the repo.** Seven cards over Waves
+  50–51: P30-1..P30-4 as four parallel Sonnet workers in isolated worktrees, P30-5..P30-7 by the
+  integrator. Shipped: `docket init` validates and applies a repository's `.docket/` (or
+  `--recipe`, `--no-apply`) (P30-1); `apply` records `configSource`/`configDigest`, `export`
+  defaults to `<codebase>/.docket/`, `config explain` reports drift (P30-2); a pipeline step's
+  own `model:` for one hop (P30-3); `editRights` retired (P30-4); assets re-captured from one real
+  run under the docket wordmark (P30-5); README rebuilt on the tagline with its prose tests
+  rebuilt from it, package/site descriptions aligned, configuration guide and quick start
+  updated (P30-6); and a defect found by that real run — a recipe's role applied into a pod
+  resolved to the compiled-in default model on a local fleet and hit the hosted vendor with no
+  key — fixed by resolving the archetype in the pod's registry with the registry default as the
+  fallback, plus the apply plan's `[add]` actions that Rich had been swallowing (P30-7).
+  Integrator findings: the four worker worktrees started at a stale checkout and every worker
+  re-based on the opening commit; `cli-json-shapes.spec.md` had never documented the Phase 29
+  `provider` block; the Wave 50 packet's isolation one-liner left `DOCKET_HOME` empty (fixed).
+  Parked: the `is_short` heuristic in `core/archetypes.py::load_role_file`; `docket init`'s
+  "created with N members" line counts only the blueprint's members, not the recipe's.
+
 - **2026-09-27 (Phase 29 complete, D-45) — the provider catalog.** Seven cards over Waves 47–49,
   one Sonnet worker per card in isolated worktrees under one integrator. Shipped: a provider is a
   `kind: provider` document with a closed `dialect`, named credentials and exact model rows; two
