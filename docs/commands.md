@@ -830,15 +830,20 @@ tester, knowledge) on the cheap model class and reasoning-dense roles
 Subcommands: (bare) show the role->model policy with pricing and why;
 `set <role> <provider/model>` change one role's model, or
 `set default <provider/model>` the fallback; `preset \[name\]` list or
-apply a provider preset (anthropic (default), openai, google,
-openrouter-free (experimental zero-cost router), openrouter, ai-gateway
-(Vercel), local (no API key, priced at $0 (local))); `reset` restore
-built-in defaults (asks for confirmation); `provider add <name>
-<base-url> \[--model ID\] \[--name NAME\] \[--ctx N\] \[--max-tokens N\]`
-register an OpenAI-compatible endpoint so its models can be referenced
-from `set`/`preset` (`--model` sets the model id served there, `--name` a
-friendly label, `--ctx`/`--max-tokens` record context-window/output-token
-limits used by exact-model request preflight and display).
+apply a provider preset from the catalog (anthropic (default), openai,
+google, openrouter-free (experimental zero-cost router), openrouter,
+ai-gateway (Vercel), local (no API key, priced at $0 (local)) among
+others) -- a built-in hosted preset needs only its credential, never a
+separate registration; `reset` restore built-in defaults (asks for
+confirmation); `provider <action>` manage the provider catalog: `add
+<file.yaml>` a `kind: provider` document, or the shortcut `add <name>
+<base-url> \[--model ID\] \[--ctx N\] \[--max-tokens N\] \[--credential NAME\]`
+(registration verifies `<base-url>/models` with the resolved credential
+and classifies the result -- only a transport failure refuses; every
+HTTP status registers, with a warning when it is not a clean 200);
+`list` every provider (name, scope, dialect, base URL, credential);
+`show <name> \[--json\]` one entry; `remove <name>` a global override
+(a built-in with none refuses); `export <name> \[<file>\]` its document.
 
 Policy changes are live: every policy-following agent is re-resolved
 immediately; pinned agents (`docket profile <id> <model>`) are never
@@ -847,16 +852,16 @@ map); delete it or run `reset` to restore built-ins -- `reset` prompts
 `Continue? \[y/N\]` and a non-interactive call that can't answer aborts
 rather than silently resetting the fleet. Applying a preset also writes
 its own economy/standard/premium anchors, re-resolves every
-policy-following agent, and warns if the preset's required key isn't
-stored yet. Unknown models are accepted if well-formed
-(`provider/model`) -- docket has no provider-side catalog to validate
-against, so a bad model id only surfaces the first time an agent
-actually calls the endpoint; pricing shows n/a (or "n/a (bring your own)"
-for an OpenRouter/AI Gateway route other than the explicit free router,
-and "$0 (local)" for a local/ollama/lmstudio provider -- never a
-fabricated dollar figure). Tier names (economy/standard/premium) are
-rejected everywhere a model/role value is expected, including here; an
-invalid model prints the current role policy table alongside the error.
+policy-following agent, and prints a readiness line naming the preset's
+credential as present or missing. Unknown models are accepted if
+well-formed (`provider/model`) -- an id absent from the catalog only
+surfaces the first time an agent actually calls the endpoint; pricing
+shows n/a (or "n/a (bring your own)" for an OpenRouter/AI Gateway route
+other than the explicit free router, and "$0 (local)" for a
+local/ollama/lmstudio provider -- never a fabricated dollar figure).
+Tier names (economy/standard/premium) are rejected everywhere a
+model/role value is expected, including here; an invalid model prints
+the current role policy table alongside the error.
 
 
 **Aliases:** None

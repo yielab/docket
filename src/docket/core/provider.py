@@ -11,33 +11,29 @@ only readers of the catalog's presets and pricing; every other per-provider fact
 credential names, key-format prefixes) derives from this module too, so no module keeps its
 own copy.
 
-`register_local_provider` pings and registers a local endpoint via `save_provider`.
-`migrate_fleet_providers` ports a pre-catalog `fleet.json -> providers` block in once; a literal
-API key there moves into the secret store, referenced by name, never copied into the document.
+`register_provider` verifies a document against its live `/models` route with the resolved
+credential (`edges/adapters/llm.py::probe_models` does the socket work; `verify_endpoint` here
+stays pure) and classifies the result instead of collapsing it to a boolean -- see
+model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4. `migrate_fleet_providers` ports a
+pre-catalog `fleet.json -> providers` block in once; a literal API key there moves into the
+secret store, referenced by name, never copied into the document.
 """
 
 from __future__ import annotations
 
 import os
 import re
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.config as _cfg
 from docket.edges import store as _store
 
-# Defaults match the Qwen3-30B-A3B llama.cpp setup (server on :8080, -c 16384).
-DEFAULT_PROVIDER = "local"
-DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
-DEFAULT_MODEL_ID = "qwen3-30b-a3b"
-DEFAULT_MODEL_NAME = "Qwen3 30B-A3B (local)"
-DEFAULT_CTX = 16384
-DEFAULT_MAX_TOKENS = 8192
+if TYPE_CHECKING:
+    from docket.edges.adapters.llm import ProbeResult
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -519,31 +515,151 @@ def migrate_fleet_providers() -> None:
     _store.read_modify_write(_cfg.FLEET_FILE, _clear)
 
 
-def ping_endpoint(base_url: str, timeout: float = 5.0) -> bool:
-    """Return True if GET <base_url>/models responds (any 2xx/whatever, no error).
+@dataclass(frozen=True)
+class ProviderVerification:
+    """A classified probe of a provider's ``/models`` route (ADR 0011 §4) -- pure, no I/O.
+    ``reachable`` is False only for a transport failure; every HTTP status, including a
+    rejected credential, is reachable and explains itself in ``warning`` instead."""
 
-    Kept as a standalone function so tests can monkeypatch it (no real network in tests).
-    """
-    url = f"{base_url}/models"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout):
-            return True
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
+    reachable: bool
+    status: int | None
+    credential_present: bool
+    credential_name: str
+    advertised: tuple[str, ...]
+    warning: str
+
+
+def verify_endpoint(spec: ProviderSpec, probe: ProbeResult) -> ProviderVerification:
+    """Classify *probe* of *spec*'s ``/models`` route per ADR 0011 §4's table. A transport
+    failure (``probe.status is None``) is the only unreachable outcome; every HTTP status
+    registers, with a warning naming what is not a clean 200."""
+    credential_value, _source = resolve_credential(spec)
+    credential_present = bool(credential_value)
+    credential_name = spec.auth.credentials[0] if spec.auth.credentials else ""
+
+    if probe.status is None:
+        return ProviderVerification(
+            reachable=False,
+            status=None,
+            credential_present=credential_present,
+            credential_name=credential_name,
+            advertised=(),
+            warning=probe.transport_error,
+        )
+
+    known_ids = {row.id for row in spec.models}
+    advertised = tuple(sorted(mid for mid in probe.model_ids if mid not in known_ids))
+
+    warning = ""
+    if probe.status == 200:
+        if advertised:
+            warning = f"endpoint also advertises: {', '.join(advertised)}"
+    elif probe.status in (401, 403):
+        who = credential_name or "a credential"
+        warning = (
+            f"{who} was rejected (HTTP {probe.status})"
+            if credential_present
+            else f"{who} is missing (HTTP {probe.status})"
+        )
+    elif probe.status == 404:
+        warning = "no /models route; capability not verified"
+    else:
+        warning = f"endpoint returned HTTP {probe.status}"
+
+    return ProviderVerification(
+        reachable=True,
+        status=probe.status,
+        credential_present=credential_present,
+        credential_name=credential_name,
+        advertised=advertised,
+        warning=warning,
+    )
 
 
 @dataclass(frozen=True)
-class ProviderRegistration:
-    """Outcome of register_local_provider(). Rendered by cli/_provider.py."""
+class Registration:
+    """Outcome of ``register_provider``. Rendered by ``cli/_provider.py``."""
 
-    name: str
-    base_url: str
-    model_id: str
-    model_name: str
-    ctx: int
-    max_tokens: int
-    reachable: bool
+    spec: ProviderSpec
+    verification: ProviderVerification
     changed: bool
+
+
+def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -> Registration:
+    """Verify *spec* with the resolved credential and classify the result; persist only when
+    reachable (model-profiles.spec.md "Provider readiness" 3). The default probe builds an
+    ``Endpoint`` straight from *spec*, never a saved entry, since nothing is written yet."""
+    if probe is None:
+        from docket.core.llm import Endpoint
+        from docket.edges.adapters.llm import probe_models
+
+        credential_value, _source = resolve_credential(spec)
+        endpoint = Endpoint(
+            base_url=spec.base_url,
+            model_id="x",
+            api_key=credential_value,
+            provider=spec.name,
+            auth_type=spec.auth.type,
+            auth_header=spec.auth.header,
+            headers=tuple(spec.headers.items()),
+        )
+        probe = probe_models(endpoint)
+
+    verification = verify_endpoint(spec, probe)
+    if not verification.reachable:
+        return Registration(spec=spec, verification=verification, changed=False)
+
+    existing = load_catalog().get(spec.name)
+    desired = _with_inherited_identity(spec)
+    changed = existing != desired
+    save_provider(spec)
+
+    from docket.core import audit as _audit
+
+    status_label = str(verification.status) if verification.status is not None else "unreachable"
+    _audit.audit_log("provider.add", f"name={spec.name} scope=global status={status_label}")
+    return Registration(spec=desired, verification=verification, changed=changed)
+
+
+def remove_provider(name: str) -> None:
+    """Remove *name* from the global catalog. A built-in with no global override has nothing
+    to remove -- ``ProviderError`` names the built-in scope rather than silently no-op'ing."""
+    removed = delete_provider(name)
+    if not removed:
+        scope = load_catalog().source_of(name)
+        if scope == "built-in":
+            raise ProviderError(
+                _cfg.PROVIDERS_FILE,
+                "name",
+                f"'{name}' is a built-in provider with no global override -- nothing to remove",
+            )
+        raise ProviderError(_cfg.PROVIDERS_FILE, "name", f"'{name}' is not in the provider catalog")
+
+    from docket.core import audit as _audit
+
+    _audit.audit_log("provider.remove", f"name={name}")
+
+
+def export_provider(name: str) -> str:
+    """Render *name*'s resolved catalog entry as a ``kind: provider`` document -- the inverse
+    of ``load_provider_document``, proven to round-trip (export -> fresh home -> add ->
+    identical ``show --json``)."""
+    spec = load_catalog().get(name)
+    if spec is None:
+        raise ProviderError(_cfg.PROVIDERS_FILE, "name", f"'{name}' is not in the provider catalog")
+
+    try:
+        import yaml as _yaml
+    except ImportError:
+        raise ProviderError(
+            _cfg.PROVIDERS_FILE, "file", "PyYAML not installed -- run: pip install pyyaml"
+        ) from None
+
+    payload = {
+        "kind": "provider",
+        **spec.model_dump(by_alias=True, exclude_defaults=True, exclude_none=True),
+    }
+    return str(_yaml.safe_dump(payload, sort_keys=False))
 
 
 @dataclass(frozen=True)
@@ -620,44 +736,4 @@ def model_readiness(model: str) -> ModelReadiness:
         context_window=endpoint.context_window_tokens,
         max_output=endpoint.max_output_tokens,
         issue="",
-    )
-
-
-def register_local_provider(
-    name: str = DEFAULT_PROVIDER,
-    base_url: str = DEFAULT_BASE_URL,
-    model_id: str = DEFAULT_MODEL_ID,
-    model_name: str = DEFAULT_MODEL_NAME,
-    ctx: int = DEFAULT_CTX,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-) -> ProviderRegistration:
-    """Ping the endpoint and register the provider in docket's own provider catalog. Pure
-    orchestration -- no output. Idempotent: re-running with the same arguments writes nothing.
-    ``model_name`` has no home in the document; kept only so old callers keep compiling."""
-    reachable = ping_endpoint(base_url)
-    changed = False
-    if reachable:
-        desired = _with_inherited_identity(
-            ProviderSpec(
-                name=name,
-                dialect="openai-chat",
-                base_url=base_url,
-                auth=AuthSpec(type="none"),
-                local=True,
-                models=[ModelRow(id=model_id, contextWindow=ctx, maxTokens=max_tokens)],
-            )
-        )
-        existing = load_catalog().get(name)
-        if existing != desired:
-            save_provider(desired)
-            changed = True
-    return ProviderRegistration(
-        name=name,
-        base_url=base_url,
-        model_id=model_id,
-        model_name=model_name,
-        ctx=ctx,
-        max_tokens=max_tokens,
-        reachable=reachable,
-        changed=changed,
     )

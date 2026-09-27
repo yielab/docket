@@ -234,9 +234,15 @@ feasibility spike remains in ROADMAP and Git history.
    base URL and every credential its `auth.credentials` names is present. A built-in hosted
    provider (Anthropic, OpenAI, Google among them) needs only its credential — its base URL is
    the shipped document, not a separate registration.
-3. Registered local providers **MAY** require no bearer credential. Registration **MUST** verify
-   `<base-url>/models` before writing provider state; an unreachable endpoint returns failure and
-   leaves the prior provider registry unchanged.
+3. Registered local providers **MAY** require no bearer credential. Registration **MUST** probe
+   `<base-url>/models` with the resolved credential (`core.provider.verify_endpoint` classifying
+   `edges.adapters.llm.probe_models`'s result) and classify it rather than collapse it to a
+   boolean: a transport failure (DNS, refused, timeout) **MUST** refuse and leave the prior
+   provider catalog unchanged; every HTTP response **MUST** register instead, with a warning when
+   it is not a clean 200 --- 401/403 names the missing or rejected credential, 404 states that
+   `/models` is not served (capability unverified), any other status carries the status, and a 200
+   whose body advertises model ids absent from `models[]` prints them as a suggestion, never
+   writes them. No `--no-verify` flag exists; the classification makes one unnecessary.
 4. Workstation bootstrap **MUST NOT** print a ready heading or continue into project initialization
    when the selected model is unresolved. It **MUST** name the model, explain the missing endpoint
    or credential without exposing a secret, and give the exact public configuration sequence.
@@ -508,6 +514,22 @@ $ docket models
   stays byte-identical to today). This unblocks Azure OpenAI's `api-key` header and a
   multi-workspace Anthropic key's `anthropic-workspace-id` without a second adapter (ADR 0011
   §3), with no new dependency and no change to a `bearer`-auth document's wire behaviour.
+### Version 2.13.0 (2026-09-27)
+
+- **P29-3: registration verifies with the credential, and a provider round-trips through the
+  CLI.** Amended "Provider readiness" 3: registration now probes `<base-url>/models` **with the
+  resolved credential** and classifies the response (ADR 0011 §4) instead of collapsing it to a
+  boolean -- only a transport failure refuses; every HTTP status registers, with a warning when
+  it is not a clean 200 (401/403 names the credential, 404 says the route is unserved, a 200 with
+  unknown ids suggests them without writing them). `core.provider.verify_endpoint` is the pure
+  classifier; `edges.adapters.llm.probe_models` is the one function that opens the socket;
+  `register_provider`/`remove_provider`/`export_provider` replace `register_local_provider`/
+  `ping_endpoint`/`ProviderRegistration`, which are removed along with the `DEFAULT_PROVIDER`/
+  `DEFAULT_BASE_URL`/`DEFAULT_MODEL_ID`/`DEFAULT_MODEL_NAME`/`DEFAULT_CTX`/`DEFAULT_MAX_TOKENS`
+  constants -- the bare `add` shortcut's defaults now come from the built-in `local` document.
+  Closes the CLI/HTTP asymmetry where `docket models provider add`/`list`/`show`/`remove`/
+  `export` existed only as a plan: only `add` (as a single-model shortcut) was reachable before
+  this card.
 
 ### Version 2.12.0 (2026-09-27)
 

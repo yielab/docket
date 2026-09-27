@@ -28,7 +28,6 @@ from docket.cli import _gates, _keys
 from docket.core import approval as _approval
 from docket.core import fleet as _fleet
 from docket.core import memory as _memory
-from docket.core import provider as _provider_core
 from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.audit import read_audit
@@ -157,7 +156,10 @@ class TestRunTurn:
         repoint_docket_home(monkeypatch, tmp_path)
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        monkeypatch.setattr(_provider_core, "ping_endpoint", lambda *args, **kwargs: True)
+        # Registration probes /models through edges/adapters/llm.py; answer "reachable, 200".
+        monkeypatch.setattr(
+            _llm_adapter, "probe_models", lambda *a, **k: _llm_adapter.ProbeResult(status=200)
+        )
 
         runner = CliRunner()
         registered = runner.invoke(
