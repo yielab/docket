@@ -255,6 +255,50 @@ def test_apply_writes_a_recipes_policy_pack_into_the_pods_own_directory(
     assert entries_after == entries_before
 
 
+# ── skills: the Agent Skills shape, applied/exported like any other pod scope ─────────────────
+
+
+def test_secure_build_plans_applies_and_round_trips_its_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``secure-build``'s ``skills/security-review/`` plans ``add``, lands whole in the pod's
+    own ``config/skills/``, exports back byte-for-byte, and re-applying the export plans
+    ``skip`` -- the same additive/idempotent contract every other recipe part already has."""
+    project = "skilled"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    recipe_dir = RECIPES_DIR / "secure-build"
+
+    plan = _pod_apply.plan_apply(project, recipe_dir)
+    skill_items = [i for i in plan.items if i.kind == "skill"]
+    assert [(i.name, i.action) for i in skill_items] == [("security-review", "add")]
+    _pod_apply.apply(plan)
+
+    dest = _cfg.pod_config_dir(project) / "skills" / "security-review" / "SKILL.md"
+    assert dest.is_file()
+    assert dest.read_text(encoding="utf-8") == (
+        recipe_dir / "skills" / "security-review" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    second_plan = _pod_apply.plan_apply(project, recipe_dir)
+    second_skill_items = [i for i in second_plan.items if i.kind == "skill"]
+    assert [(i.name, i.action) for i in second_skill_items] == [("security-review", "skip")]
+    _pod_apply.apply(second_plan)
+    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    assert entries_after == entries_before
+
+    export_dir = tmp_path / "export-skill"
+    _pod_apply.export_pod(project, export_dir)
+    assert (export_dir / "skills" / "security-review" / "SKILL.md").is_file()
+
+    reapply_plan = _pod_apply.plan_apply(project, export_dir)
+    reapply_skill_items = [i for i in reapply_plan.items if i.kind == "skill"]
+    assert [(i.name, i.action) for i in reapply_skill_items] == [("security-review", "skip")]
+
+    summary = _pod_apply.summarize_recipe(recipe_dir)
+    assert summary.skills == 1
+
+
 # ── policy-pack recipes: structured predicates over the call, not text ───────────────────────
 
 

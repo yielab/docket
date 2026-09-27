@@ -777,6 +777,7 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
     "glob": "read",
     "grep": "read",
     "fetch": "read",
+    "skill": "read",
     "write": "write",
     "edit": "write",
     "bash": "exec",

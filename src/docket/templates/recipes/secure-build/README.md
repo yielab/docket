@@ -28,6 +28,10 @@ verdict.
   `cannot: [write, edit, bash]`, `verdict: [APPROVE, REQUEST-CHANGES]`.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
+- `skills/security-review/SKILL.md` — an Agent Skill, applied whole into the pod's own
+  `config/skills/security-review/`; a concrete review checklist (injection points, secrets in
+  the diff, unsafe deserialization, path traversal, dependency changes, auth checks) the
+  vetter reads on demand by calling the `skill` tool with `name: security-review`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
   rewritten on the structured predicates `core/policy.py` already evaluates (Phase 31, D-47) --
   an `anyOf` of `{tool: write, path: '**/.env*'}`, `{tool: edit, path: '**/.env*'}`, and a
@@ -41,4 +45,5 @@ verdict.
 docket pod <project> config unset pipeline
 docket pod <project> remove <project>-security-vetter
 rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
+rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
 ```

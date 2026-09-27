@@ -38,6 +38,7 @@ _RUNTIME_FILES = (
     "core/runtime_driver.py",
     "core/security.py",
     "core/session.py",
+    "core/skills.py",
     "core/tools.py",
     "core/trace.py",
     "edges/__init__.py",

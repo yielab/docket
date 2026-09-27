@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from docket.core import approval as _approval
 from docket.core import policy as _policy
+from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.llm import ToolCall, ToolCallArgumentsError, ToolSpec
 from docket.core.security import classify_command
@@ -443,6 +444,21 @@ def _int_arg(args: dict[str, Any], name: str, default: int = 0) -> int:
     return int(value) if isinstance(value, int | float | str) and str(value).isdigit() else default
 
 
+def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+    """Handler for the ``skill`` built-in: resolve ``name`` and read ``path`` (default
+    ``SKILL.md``) from within that skill's own directory. An unknown name is a failed call
+    naming the known names, never a raise."""
+    from docket.edges.adapters import toolbox
+
+    name = _str_arg(args, "name")
+    discovered = _skills.discover_skills(ctx.project, ctx.roots[0] if ctx.roots else None)
+    skill = discovered.get(name)
+    if skill is None:
+        known = ", ".join(sorted(discovered)) or "(none)"
+        return ToolOutcome(False, error=f"unknown skill {name!r}; known skills: {known}")
+    return toolbox.read_file((skill.directory,), _str_arg(args, "path", "SKILL.md"))
+
+
 def builtin_registry() -> ToolRegistry:
     """The default tool set: read, write, edit, glob, grep, bash, fetch. Handlers are
     imported here (not at module scope) so this module stays importable without the
@@ -593,6 +609,33 @@ def builtin_registry() -> ToolRegistry:
                 ctx.cancellation_check,
             ),
             kind="exec",
+        )
+    )
+
+    registry.register(
+        Tool(
+            name="skill",
+            description=(
+                "Read a discovered skill's full instructions (SKILL.md, or a file inside its "
+                "own directory named by path). See the '# Skills' section of the system "
+                "prompt for the names and one-line descriptions available."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Skill name, e.g. 'security-review'.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "File inside the skill's own directory; default SKILL.md.",
+                    },
+                },
+                "required": ["name"],
+            },
+            handler=_skill_read,
+            kind="read",
         )
     )
 

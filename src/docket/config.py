@@ -49,6 +49,10 @@ POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
 # PLUGINS_DIR: operator-applied predicate plugins (*.py), never a codebase path -- see
 # core/plugins.py::discover, which also reads a pod's own pod_config_dir(project)/"plugins".
 PLUGINS_DIR = Path(os.environ.get("PLUGINS_DIR", DOCKET_HOME / "plugins"))
+# SKILLS_DIR: the operator's own Agent Skills (skills/<name>/SKILL.md), the outermost of the
+# three scopes core/skills.py::discover_skills reads -- see also a codebase's own
+# .docket/skills/ and a pod's own pod_config_dir(project)/"skills".
+SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", DOCKET_HOME / "skills"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
 # RUNS_FILE: the persisted dispatch-run registry — one record per

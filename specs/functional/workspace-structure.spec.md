@@ -1,14 +1,15 @@
 # Workspace Structure Specification
 
-**Version**: 1.12.0
+**Version**: 1.14.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
 requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
 `docket pod <p> sync` — see the same requirement and pod-dispatch.spec.md. P26-20 added
 "Shipped-data templates" below: `templates/recipes/<name>/` ships alongside this spec's own
-`templates/policies/` as read-only package data, neither of which is itself a workspace.
-**Last Updated**: 2026-09-26
+`templates/policies/` as read-only package data, neither of which is itself a workspace. P31-6
+added "Skills scopes": `~/.docket/skills/` and a pod's own `config/skills/`.
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -174,6 +175,18 @@ permission/provisioning rules apply to.
    value, so editing a shipped template after installation never mutates an already-provisioned
    workspace or an already-copied policy.
 
+### Skills scopes (P31-6, ADR 0013 §3 rule 8)
+
+1. `~/.docket/skills/` (`docket.config.SKILLS_DIR`) is the operator's own global Agent Skills
+   directory — writable runtime state docket reads, unlike the read-only `templates/` above. A
+   pod's own `config/skills/` (`docket.config.pod_config_dir(project) / "skills"`) holds one
+   directory per skill a recipe's own `skills/` was applied there (`pod-blueprints.spec.md`,
+   "Pod manifests: apply"/"export"). Both, once written, follow this spec's `700`/`600`
+   permission rules ("Permissions" above) the same way `config/policies/` and `config/plugins/`
+   already do. Discovery order (nearest-wins across a codebase's own `.docket/skills/`, the pod
+   scope, and this global scope) and the `skill` tool are owned by `agent-loop.spec.md`, not
+   here — this spec covers only the two directories' existence and permissions.
+
 ## Interface Contracts
 
 Workspaces are created and repaired through commands, not edited by hand:
@@ -264,6 +277,16 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.14.0 (2026-09-27)
+
+- **P31-6: skills join the on-disk scopes (ADR 0013 §3 rule 8).** New "Skills scopes" section
+  documents `~/.docket/skills/` (`config.SKILLS_DIR`) and a pod's own `config/skills/`
+  (`config.pod_config_dir(project)/"skills"`), each holding one directory per Agent Skill
+  (`SKILL.md` plus optional `scripts/`/`references/`/`assets/`), permissioned `700`/`600` like
+  every other pod-scoped overlay. Discovery order and the `skill` tool live in
+  `agent-loop.spec.md` 1.24.0; how a recipe's `skills/` gets applied/exported into these
+  directories lives in `pod-blueprints.spec.md` 1.18.0.
 
 ### Version 1.12.0 (2026-09-26)
 
