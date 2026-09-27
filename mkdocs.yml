@@ -62,6 +62,7 @@ nav:
       - Quick Start: QUICK-START-DOCKET.md
       - Configuration: CONFIGURATION.md
       - Workflow Guide: WORKFLOW-GUIDE.md
+      - Recipe Library: recipes.md
       - Security (simple): SECURITY-SIMPLE.md
       - Docket (deep dive): DOCKET.md
   - CLI Reference: commands.md

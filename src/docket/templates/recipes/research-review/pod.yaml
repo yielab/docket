@@ -1,3 +1,4 @@
 kind: pod
 name: research-review
+description: Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic's APPROVE/REJECT with one rework cycle back to the Writer.
 members: [researcher, analyst, writer, critic]

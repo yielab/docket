@@ -1,3 +1,4 @@
 kind: pod
 name: ops-approval
+description: An Operator whose action needs an explicit human sign-off before it runs at all, plus a policy that asks on deploy-shaped commands.
 members: [operator]

@@ -148,6 +148,8 @@ bash tests/golden/run.sh verify-all
 
 # CLI reference drift check (docs/commands.md is generated from the Typer registry)
 uv run python scripts/gen_cli_docs.py --check
+# Recipe library drift check (docs/recipes.md is generated from the shipped recipes)
+uv run python scripts/gen_recipe_docs.py --check
 
 # Docs site, strict (a dead link fails the build; mkdocs is not a project dependency)
 uvx --with mkdocs-material --with 'mkdocstrings[python]' mkdocs build --strict
@@ -167,6 +169,7 @@ bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
 uv run python scripts/metrics.py --check            # this doc's metric-drift guard (see above)
 uv run python scripts/gen_cli_docs.py --check       # docs/commands.md drift (CI job `docs`)
+uv run python scripts/gen_recipe_docs.py --check    # docs/recipes.md drift (CI job `docs`)
 uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard (run by the agent lane)
 uv run python scripts/release_journey.py            # exact-wheel first-turn release rehearsal
 ```
@@ -191,6 +194,9 @@ command:
 - `docs/commands.md` is generated from the Typer registry by `scripts/gen_cli_docs.py` and must
   never be hand-edited; put command prose in the command's own help string (`cli/_help.py` or the
   Typer function) and regenerate with `uv run python scripts/gen_cli_docs.py`
+- `docs/recipes.md` is generated from the shipped recipes by `scripts/gen_recipe_docs.py`; put
+  recipe prose in the recipe's own `README.md` and `pod.yaml` `description`, then regenerate with
+  `uv run python scripts/gen_recipe_docs.py`
 - Update README.md if adding major features
 - Keep comments to rationale only (see [Python Conventions](#python-conventions)) — command prose
   belongs in the Typer help strings, not in code comments

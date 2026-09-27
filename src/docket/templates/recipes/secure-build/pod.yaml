@@ -1,3 +1,4 @@
 kind: pod
 name: secure-build
+description: A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle.
 members: [security-vetter]
