@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.46.0
+**Version**: 1.47.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -1012,6 +1012,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.47.0 (2026-09-27)
+
+- `docket roles list` drops the `EDIT` column: `editRights` is retired (Phase 30, D-46, ADR
+  0012 §2 rule 7). `docket roles show`'s wire-format dump no longer prints `editRights` either.
+  See `role-archetypes.spec.md` 1.19.0 for the schema-level change (P30-4).
 
 ### Version 1.46.0 (2026-09-27)
 

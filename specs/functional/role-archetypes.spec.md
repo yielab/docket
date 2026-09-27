@@ -1,7 +1,11 @@
 # Role Archetypes Specification
 
-**Version**: 1.18.0
-**Status**: Implemented. **P27-6** gives a recipe's own role YAML a second consumer,
+**Version**: 1.19.0
+**Status**: Implemented. **P30-4** retires `editRights` (ADR 0012 §2 rule 7): the canonical wire
+form no longer carries it, `from_wire` accepts and silently drops it so every existing overlay or
+recipe role still loads, `docket validate` prints a `note:` for a file that still declares it, and
+`deniedTools` is the archetype schema's only capability statement — see "Archetype schema"
+requirement 5 and "Per-role tool sets" below. **P27-6** gives a recipe's own role YAML a second consumer,
 `docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
 remaining built-in exemption in "Hop
@@ -26,7 +30,8 @@ executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). ROADMAP Phase 17's C-1 (the context
 compiler) added a `tokenBudget` field — see "Archetype schema" and "Context-compiler token
 budget" below. ROADMAP Phase 19's P19-12 added `deniedTools` — see "Archetype schema" and the new
-"Per-role tool sets" section — and, unlike `editRights`, it is genuinely *enforced*:
+"Per-role tool sets" section — and, unlike the now-retired `editRights` (P30-4), it is genuinely
+*enforced*:
 `core.archetypes.registry_for_role` is called by `core/agent_loop.py` once per turn to remove
 those tool names from the registry the model is given, so a denied tool is unreachable, not just
 discouraged. **Wave 17** extended that enforcement to also key on `Tool.kind`, not only literal
@@ -35,7 +40,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -44,7 +49,7 @@ role (`core/archetypes.py`). Before ROADMAP Phase 16 W-6, a pod role was a close
 (`lead`/`implementer`/`reviewer`/`tester`) hardcoded in `core/pod.py`, and every role's identity
 prose (SOUL.md/AGENTS.md) was hand-written Python string-building in `cli/_pod.py`. A fifth role
 was inexpressible without editing both files. This spec documents the registry that replaced
-that closed set: a role's name, scope, model class, identity prose, gate contract, edit rights,
+that closed set: a role's name, scope, model class, identity prose, gate contract,
 and tool profile are now data — built-in archetypes reproduce the four legacy roles
 byte-identical, a starter library ships six more (`researcher`, `analyst`, `writer`, `critic`,
 `operator`, `monitor`), and a user can define or override an archetype via a YAML file
@@ -55,9 +60,10 @@ byte-identical, a starter library ships six more (`researcher`, `analyst`, `writ
 This specification covers:
 
 - The archetype schema: `name`, `version`, `scope`, `modelClass`, `soulTemplate`,
-  `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`, `deniedTools`, and the optional
+  `agentsTemplate`, `gateContract`, `toolProfile`, `deniedTools`, and the optional
   `policyRole`/`description`/`hopInstruction` fields — which are closed typed enums and which are
-  open prose
+  open prose; the retired `editRights` key (P30-4), accepted and dropped wherever it survives in
+  an existing document
 - The `deniedTools` field and `registry_for_role`, the one function that turns it into an
   actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API (ROADMAP Phase 19
   P19-12) — this spec documents the data and that function's contract; `agent-loop.spec.md`
@@ -109,7 +115,7 @@ This specification does NOT cover:
 
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
-   `editRights`, `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
+   `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
    C-1; see "Context-compiler token budget" below). `policyRole`, `description`, `deniedTools`
    (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below), and `hopInstruction` (P26-7; see
    "Hop instructions" below) **MAY** be present (empty/absent is valid for all four); `tokenBudget`
@@ -117,7 +123,8 @@ This specification does NOT cover:
    file that predates this field) and defaults to `6000` when omitted — never a parse error.
    `deniedTools` absent/empty defaults to `()` — no narrower than whatever registry the caller
    hands in. `hopInstruction` absent/empty means "no declared instruction", not "no instruction at
-   all" — see "Hop instructions".
+   all" — see "Hop instructions". A retired `editRights` key (P30-4; see requirement 5) **MAY**
+   still be present on an existing document and **MUST NOT** be rejected.
 2. `scope` **MUST** be one of exactly `"org"` | `"pod"` — a closed enum. Every built-in and
    starter-library archetype shipped today is `"pod"`-scoped (org-scoped archetypes are a valid,
    validated value in the type system, reserved for a future card; none ship yet).
@@ -131,17 +138,15 @@ This specification does NOT cover:
    at the start of every non-blank line of the complete reply and accepts exactly one distinct
    marker (see `pipeline-format.spec.md` Gates requirement 3). See "Legacy archetype fidelity"
    below for the exact values the reviewer/tester archetypes carry.
-5. `editRights` **MUST** be one of exactly `"none"` | `"read-only"` | `"write"` — a closed enum.
-   In the canonical (long) wire form, `editRights` remains descriptive metadata, by design — it
-   is not mechanically derived into a tool denylist, because the mapping is not one-to-one (the
-   `tester` archetype is `"read-only"` yet keeps `bash`, since observing behaviour requires
-   running it; see "Per-role tool sets" below). The short form (see "Wire format" below) has no
-   `editRights` key at all: `normalize_role` derives it from `cannot` (`"write"` present ->
-   `"read-only"`, else `"write"`) before the document ever reaches this closed-enum check, so a
-   short-form author cannot state a value that disagrees with their own `cannot` list. The
-   genuinely-enforced counterpart is the separate `deniedTools` field —
-   an archetype author declares both independently, and nothing in this schema computes one from
-   the other.
+5. `editRights` is **retired** (P30-4, ADR 0012 §2 rule 7): `from_wire` accepts it when a
+   document still carries it and silently drops it — it is never validated as a closed enum and
+   never resurfaces from `to_wire()`, so every pre-retirement overlay, recipe role, or hand-authored
+   YAML file continues to load unchanged. `docket validate` (`cli/_validate.py`) prints a `note:`
+   naming the file when it still declares the key, alongside the pre-existing no-`kind:` note. It
+   was descriptive metadata only — never mechanically derived into a tool denylist, because the
+   mapping was not one-to-one (the `tester` archetype was `"read-only"` yet kept `bash`, since
+   observing behaviour requires running it). `deniedTools` is now the archetype schema's only
+   capability statement; nothing computes it from anything else.
 6. `name` **MUST** match `^[a-z][a-z0-9-]*$` (lowercase letters/digits/hyphens, starting with a
    letter). `version` **MUST** be a positive integer. `soulTemplate`/`agentsTemplate` **MUST NOT**
    be blank.
@@ -151,9 +156,9 @@ This specification does NOT cover:
    exist in a given registry is simply a no-op removal — see "Per-role tool sets"). Per ROADMAP
    Phase 16's explicit anti-overengineering rule: "archetype prose and rosters are
    user-extensible, but gate contracts, edit rights, and scope stay closed typed sets docket can
-   reason about" — `scope`, `modelClass`, `gateContract.kind`, and `editRights` are the closed
-   sets; `name` (which roles exist), `soulTemplate`, `agentsTemplate`, `toolProfile`,
-   `description`, and `deniedTools` are open.
+   reason about" — `scope`, `modelClass`, and `gateContract.kind` are the closed sets that rule
+   describes (`editRights` is retired, requirement 5); `name` (which roles exist),
+   `soulTemplate`, `agentsTemplate`, `toolProfile`, `description`, and `deniedTools` are open.
 8. An archetype definition that violates any of the above **MUST** be rejected with a clear error
    naming the offending field (`ArchetypeError`) — never silently coerced or truncated to a valid
    value.
@@ -264,8 +269,8 @@ This specification does NOT cover:
    the build" / "read-only: no write/edit/exec"); `tester` = `("write", "edit")` (read-only, but
    keeps `bash` — it must actually run the test suite it reports PASS/FAIL on); `implementer` =
    `()` (full-repo). See "Built-in archetypes" below for the full table.
-5. This field is independent of `editRights` (requirement 5 under "Archetype schema") — a user
-   archetype **MAY** set any combination of the two; nothing computes one from the other.
+5. `deniedTools` is the archetype schema's only capability statement (`editRights` is retired,
+   requirement 5 under "Archetype schema") — nothing else computes it or is computed from it.
 6. **`registry_for_role` MUST also narrow by capability, not only by literal name** (ROADMAP Phase
    19/wave 17, P19-10's follow-up — see `mcp-client.spec.md`'s "Wired to the live turn path"). A
    registry handed to `registry_for_role` may contain tools whose name was never known when
@@ -414,7 +419,7 @@ to rediscover the same pitfalls.
    `hop_share`) may thread into that role's hop prompt when the role is dispatched via
    `core/dispatch.py`'s `_hop_message`. This lives on the archetype rather than in a second,
    parallel registry: a role's resource budget is part of its declarative definition, the same as
-   its gate contract or edit rights.
+   its gate contract.
 2. `core/context.py`'s `budget_for_role(role)` **MUST** resolve *role* against the live archetype
    registry (`core/archetypes.py.load_registry()`) and return its `tokenBudget`; a role absent
    from the registry, or one whose `tokenBudget` is non-positive, **MUST** fall back to a fixed
@@ -422,7 +427,7 @@ to rediscover the same pitfalls.
 3. A `tokenBudget` of zero or a negative value **MUST** be rejected by `RoleArchetype.__post_init__`
    (`ArchetypeError`) for any archetype built through the normal constructor path or `from_wire` —
    the same closed-validation treatment `version` already gets. This is orthogonal to the
-   scope/modelClass/gateContract/editRights closed *enums* (`tokenBudget` is an open positive
+   scope/modelClass/gateContract closed *enums* (`tokenBudget` is an open positive
    integer, not a member of a fixed value set) but follows the same "reject, never coerce" rule.
 4. `tokenBudget` **MUST NOT** be validated or interpreted as an exact token count from any real
    model tokenizer — `core/context.py`'s own approximation (bytes ÷ `config.
@@ -475,7 +480,7 @@ to rediscover the same pitfalls.
 
 1. `docket roles list` **MUST** show every registered archetype (built-in, starter, and user —
    including a user override of a built-in/starter name) with its scope, model class, gate
-   contract kind, edit rights, and one-line description.
+   contract kind, and one-line description. It **MUST NOT** show `editRights` (retired, P30-4).
 2. `docket roles show <name>` **MUST** print one archetype's full definition (YAML when PyYAML
    is available, JSON otherwise) or fail with a non-zero exit if `<name>` is not registered.
 3. `docket roles add <file.yaml>` **MUST** validate the file's archetype definition and, on
@@ -507,7 +512,6 @@ name: producer
 version: 1
 scope: pod
 modelClass: cheap
-editRights: write
 toolProfile: content-ops
 description: coordinates content production across writer/critic
 tokenBudget: 6000
@@ -546,8 +550,8 @@ name: security-vetter
 model: strong                        # cheap | strong -- a model id is rejected, naming
                                       # `docket models set security-vetter <id>` instead
 description: read-only security pass over the implementer's change
-cannot: [write, edit, bash]          # -> deniedTools; editRights is derived ("write" in
-                                      # cannot -> "read-only", else "write") -- no editRights key
+cannot: [write, edit, bash]          # -> deniedTools; the sole capability statement
+                                      # (editRights is retired -- no such key to author)
 verdict: [APPROVE, REQUEST-CHANGES]  # or verify: true | approval: true | omitted (-> gateContract
                                       # kind none); more than one of the three is an error
 instructions: security-vetter.md     # optional; default "<name>.md" beside this YAML file
@@ -562,23 +566,23 @@ omits them — the same defaults `from_wire` already applies to the canonical fo
 
 ### Built-in archetypes (byte-identical to pre-W-6)
 
-| Name | Scope | modelClass | policyRole | gateContract | editRights | tokenBudget | deniedTools |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `lead` | pod | cheap | manager | none | none | 2000 | write, edit, bash |
-| `implementer` | pod | strong | programmer | mechanical | write | 8000 | *(none)* |
-| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | read-only | 6000 | write, edit, bash |
-| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | read-only | 4000 | write, edit |
+| Name | Scope | modelClass | policyRole | gateContract | tokenBudget | deniedTools |
+| --- | --- | --- | --- | --- | --- | --- |
+| `lead` | pod | cheap | manager | none | 2000 | write, edit, bash |
+| `implementer` | pod | strong | programmer | mechanical | 8000 | *(none)* |
+| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
+| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | 4000 | write, edit |
 
 ### Starter library
 
-| Name | Scope | modelClass | gateContract | editRights | tokenBudget | deniedTools |
-| --- | --- | --- | --- | --- | --- | --- |
-| `researcher` | pod | strong | none | write | 8000 | *(none)* |
-| `analyst` | pod | strong | none | write | 8000 | *(none)* |
-| `writer` | pod | cheap | none | write | 6000 | *(none)* |
-| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | read-only | 6000 | write, edit, bash |
-| `operator` | pod | strong | mechanical | write | 8000 | *(none)* |
-| `monitor` | pod | cheap | approval | read-only | 4000 | write, edit, bash |
+| Name | Scope | modelClass | gateContract | tokenBudget | deniedTools |
+| --- | --- | --- | --- | --- | --- |
+| `researcher` | pod | strong | none | 8000 | *(none)* |
+| `analyst` | pod | strong | none | 8000 | *(none)* |
+| `writer` | pod | cheap | none | 6000 | *(none)* |
+| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | 6000 | write, edit, bash |
+| `operator` | pod | strong | mechanical | 8000 | *(none)* |
+| `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
 
 ### User overlay file
 
@@ -630,15 +634,30 @@ docket roles validate   # validates the whole live registry
 
 ### Invariants
 
-- `scope`, `modelClass`, `gateContract.kind`, and `editRights` are always one of their closed
+- `scope`, `modelClass`, and `gateContract.kind` are always one of their closed
   enum's values for every archetype the registry returns — `load_registry()` never returns an
   archetype that would fail its own `__post_init__` validation
+- A retired `editRights` key never fails a load: `from_wire` accepts and drops it regardless of
+  its value, and it never resurfaces from `to_wire()`
 - A malformed user-overlay entry never prevents the rest of the registry (built-ins, starter
   library, other user entries) from loading
 - A shipped recipe's role YAML carries no exemption from `from_wire`/`__post_init__`: a recipe
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.19.0 (2026-09-27)
+
+- **P30-4: one field says it -- `editRights` retired (ADR 0012 §2 rule 7).** The canonical wire
+  form no longer carries `editRights`: `RoleArchetype.edit_rights` and the `EDIT_RIGHTS` closed
+  enum are removed, `to_wire()` stops writing the key, and `from_wire` accepts and silently drops
+  it wherever it survives on an existing overlay, recipe role, or hand-authored YAML file, so
+  nothing that already loaded stops loading. `normalize_role` (the short form) stops deriving it
+  from `cannot` -- it never authored the key in the first place. `docket validate`
+  (`cli/_validate.py`) prints a `note:` naming the file when a role document still declares it,
+  alongside the pre-existing no-`kind:` note. `docket roles list` drops the `EDIT` column
+  ("Archetype schema" requirement 5, "CLI surface" requirement 1, "Invariants", built-in/starter
+  tables all corrected). `deniedTools` is now the schema's only capability statement.
 
 ### Version 1.18.0 (2026-09-26)
 

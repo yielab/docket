@@ -600,17 +600,15 @@ branch, so `docket pod <p> add <role>` accepts any name in this registry.
 
 Subcommands:
   list (default)   all archetypes (built-in + user-defined) with source,
-                    scope, model class, gate, edit rights, and
-                    description
+                    scope, model class, gate, and description
   show <name>      the full wire-format definition (YAML, falling back
                     to JSON if PyYAML is missing) -- name, version, scope
                     (org|pod), modelClass (cheap|strong), soulTemplate,
                     agentsTemplate, gateContract
-                    (none|verdict|mechanical|approval), editRights
-                    (none|read-only|write, descriptive only -- not
-                    enforced), toolProfile, tokenBudget, hopInstruction
-                    (this role's hop-message instruction; unset means
-                    "generate one from gateContract" for a gated role)
+                    (none|verdict|mechanical|approval), toolProfile,
+                    tokenBudget, hopInstruction (this role's hop-message
+                    instruction; unset means "generate one from
+                    gateContract" for a gated role)
   add <file.yaml>  registers a new archetype from a standalone YAML file
                     into the user overlay (`~/.docket/docket-roles.json`)
                     -- built-ins are never edited, only shadowed by name

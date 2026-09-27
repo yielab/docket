@@ -1,7 +1,7 @@
 """Role archetypes: versioned, declarative role definitions.
 
 A role archetype is data, not code: name, scope, model class, SOUL/AGENTS prose
-templates, a gate contract, edit rights, a tool profile, and an enforced tool
+templates, a gate contract, a tool profile, and an enforced tool
 denylist. `core/pod.py` resolves pod roles against this registry instead of a
 hardcoded 4-tuple, so a new role is data, never a hardcoded string in
 `core/pod.py`/`cli/_pod.py`.
@@ -59,7 +59,6 @@ from docket.edges import store as _store
 
 SCOPES: frozenset[str] = frozenset({"org", "pod"})
 MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
-EDIT_RIGHTS: frozenset[str] = frozenset({"none", "read-only", "write"})
 GATE_KINDS: frozenset[str] = frozenset({"none", "verdict", "mechanical", "approval"})
 
 # Presence of any of these on a role document marks it as short form (in addition to an
@@ -109,7 +108,7 @@ class GateContract:
 class RoleArchetype:
     """A versioned, declarative role definition. Field names below are Python
     (snake_case); the wire/YAML format uses camelCase (`modelClass`, `soulTemplate`,
-    `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`) — see `from_wire`/`to_wire`."""
+    `agentsTemplate`, `gateContract`, `toolProfile`) — see `from_wire`/`to_wire`."""
 
     name: str
     version: int
@@ -118,7 +117,6 @@ class RoleArchetype:
     soul_template: str  # open prose; $-style variables, see `render`
     agents_template: str  # open prose; $-style variables, see `render`
     gate_contract: GateContract  # closed kind, see GateContract
-    edit_rights: str  # closed: "none" | "read-only" | "write"
     tool_profile: str  # open prose (not enforced; descriptive only)
     # "" = policy role name == this archetype's own name (the extensible case).
     # Non-empty only for the four legacy archetypes, preserving their existing
@@ -160,11 +158,6 @@ class RoleArchetype:
                 f"archetype {self.name!r}: unknown modelClass {self.model_class!r}; "
                 f"valid: {sorted(MODEL_CLASSES)}"
             )
-        if self.edit_rights not in EDIT_RIGHTS:
-            raise ArchetypeError(
-                f"archetype {self.name!r}: unknown editRights {self.edit_rights!r}; "
-                f"valid: {sorted(EDIT_RIGHTS)}"
-            )
         if not self.soul_template.strip():
             raise ArchetypeError(f"archetype {self.name!r}: soulTemplate must not be blank")
         if not self.agents_template.strip():
@@ -191,7 +184,6 @@ class RoleArchetype:
             "soulTemplate": self.soul_template,
             "agentsTemplate": self.agents_template,
             "gateContract": self.gate_contract.to_wire(),
-            "editRights": self.edit_rights,
             "toolProfile": self.tool_profile,
             "tokenBudget": self.token_budget,
         }
@@ -208,8 +200,8 @@ class RoleArchetype:
 
 def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     """Parse one archetype from its camelCase wire form (overlay JSON or a user YAML file).
-    Raises `ArchetypeError` on any missing/invalid field — callers decide whether to
-    propagate (`docket roles add/validate`) or skip-and-continue (`load_registry`)."""
+    Raises `ArchetypeError` on any missing/invalid field. A retired `editRights` key, if
+    present, is accepted and simply never read (ADR 0012)."""
     if not isinstance(doc, dict):
         raise ArchetypeError(f"archetype {name!r}: definition must be a mapping")
 
@@ -252,7 +244,6 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         soul_template=str(doc.get("soulTemplate", "")),
         agents_template=str(doc.get("agentsTemplate", "")),
         gate_contract=gate,
-        edit_rights=str(doc.get("editRights", "")),
         tool_profile=str(doc.get("toolProfile", "")),
         policy_role=str(doc.get("policyRole", "")),
         description=str(doc.get("description", "")),
@@ -384,7 +375,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_SOUL_HEAD + _LEAD_BODY,
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
-        edit_rights="none",
         tool_profile="coordination",
         policy_role="manager",
         description="orchestrates the pod; never edits code",
@@ -414,7 +404,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_SOUL_HEAD + _IMPLEMENTER_BODY,
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="mechanical"),
-        edit_rights="write",
         tool_profile="full-repo",
         policy_role="programmer",
         description="writes code in the project workspace",
@@ -432,7 +421,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_SOUL_HEAD + _REVIEWER_BODY,
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")),
-        edit_rights="read-only",
         tool_profile="read-only",
         policy_role="reviewer",
         description="read-only veto on diffs",
@@ -449,7 +437,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_SOUL_HEAD + _TESTER_BODY,
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("PASS", "FAIL")),
-        edit_rights="read-only",
         tool_profile="read-only-exec",
         policy_role="tester",
         description="behaviour-only PASS/FAIL",
@@ -564,7 +551,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _RESEARCHER_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
-        edit_rights="write",
         tool_profile="research-read-write",
         description="gathers and synthesizes source material",
         token_budget=8000,
@@ -578,7 +564,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _ANALYST_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
-        edit_rights="write",
         tool_profile="data-analysis",
         description="analyzes data/evidence and draws conclusions",
         token_budget=8000,
@@ -592,7 +577,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _WRITER_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
-        edit_rights="write",
         tool_profile="content-authoring",
         description="drafts the pod's content deliverable",
         token_budget=6000,
@@ -606,7 +590,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _CRITIC_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REJECT")),
-        edit_rights="read-only",
         tool_profile="read-only",
         description="vets the pod's output; veto power",
         token_budget=6000,
@@ -621,7 +604,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _OPERATOR_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="mechanical"),
-        edit_rights="write",
         tool_profile="ops-exec",
         description="executes real operational actions",
         token_budget=8000,
@@ -636,7 +618,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         soul_template=_STARTER_SOUL_HEAD + _MONITOR_BODY,
         agents_template=_STARTER_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="approval"),
-        edit_rights="read-only",
         tool_profile="read-only-observability",
         description="observes signals and reports status; no unilateral action",
         token_budget=4000,
@@ -955,7 +936,6 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
 
     cannot = [str(tool) for tool in doc.pop("cannot", [])]
     canonical["deniedTools"] = cannot
-    canonical["editRights"] = "read-only" if "write" in cannot else "write"
 
     gate_keys = [key for key in ("verdict", "verify", "approval") if key in doc]
     if len(gate_keys) > 1:
