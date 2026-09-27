@@ -25,8 +25,10 @@
 > resolving to the compiled-in default on a local fleet) is fixed.
 >
 > No phase is planned. The next card comes from a measured trigger (ROADMAP §4.5), not from
-> this file. Parked follow-ups (locators only): `core/archetypes.py::load_role_file`'s `is_short`
-> heuristic; `docket init`'s "created with N members" count excludes recipe members.
+> this file. The two follow-ups parked at the close (`load_role_file`'s `is_short` heuristic and
+> `docket init`'s member count) were closed 2026-09-27 in Wave 52, together with
+> `docket pod <p> apply <name>` and the newcomer docs pass (see the roadmap changelog). Nothing
+> is parked.
 >
 > **☑ Phase 29 complete (2026-09-27).**
 >

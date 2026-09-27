@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket pod <p> apply <name>` takes a shipped recipe by name.** The argument resolves as a
+  directory if one exists there, else as one of the shipped recipes (`secure-build`,
+  `research-review`, `ops-approval`), exactly as `docket init --recipe` resolves it, so a recipe
+  can be applied onto an existing pod without a path into the installed package.
 - **The team lives in the repo.** A repository's `.docket/` directory (the same shape every
   shipped recipe and `docket pod <p> export` write: `pod.yaml`, `roles/`, `pipeline.yaml`,
   `policies/`, `plugins/`) is the team's configuration of record. `docket init` discovers it,
@@ -201,6 +205,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The docs open with the newcomer path.** The quick start is rebuilt as install → register a
+  model → create the team (recipe, plain, or a committed `.docket/`) → run a task → read the
+  record → export, edit, validate, apply → run unattended, with the terminal output of one real
+  run; the docs index leads with the tagline and a start-here order; the configuration guide
+  gains a complete `.docket/` example and the export→validate→apply loop, states that a broken
+  policy fails closed and that a pod selects its MCP servers; the agent-teams guide drops the
+  retired edit-rights column for the denied-tools one; every recipe README prints a command a
+  user can type; the site navigation lists Configuration and the Workflow guide.
 - **The README carries one pitch: agent teams as configuration, your rules, in YAML.** The
   front door opens with three sections -- the team you define (the `.docket/` directory and a
   role and a pipeline in their short form), the run, and the gate and the record -- each
@@ -246,6 +258,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A canonical role file that says `kind: role` loads as written.** `load_role_file` treated
+  the `kind:` key as proof of the short form and normalized a canonical document, dropping its
+  `deniedTools`/`gateContract`/templates and then failing on a missing `<name>.md`; a document
+  carrying a canonical-only key now passes through, and one mixing both forms is refused naming
+  the keys.
+- **`docket init` counts the members a `.docket/` or `--recipe` added.** The closing `created
+  with N members` line and the id list reported the blueprint roster only; they now report the
+  pod as it stands after the apply step.
 - **A recipe's own role no longer routes to the hosted default on a local fleet.** A role a
   recipe applied into a pod's overlay (`security-vetter`, `model: strong`) was resolved against
   the global role registry only, so it fell to the compiled-in `anthropic/claude-sonnet-4-6`

@@ -58,7 +58,9 @@ Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-implemente
 docket init myapp ~/code/myapp       # lean pod: myapp-lead + myapp-implementer
 docket init myapp ~/code/myapp --pod full        # full pod: + reviewer + tester
 docket init myapp ~/code/myapp --with reviewer   # lean pod + a reviewer
-cd ~/code/myapp && docket init       # same lean pod, id/path/stack derived from the cwd
+cd ~/code/myapp && docket init       # same lean pod, id/path/stack derived from the cwd;
+                                     # a committed .docket/ is validated and applied
+docket init --recipe secure-build    # lean pod + a shipped recipe (or a directory of your own)
 docket pod myapp                     # inspect the pod and its roles
 docket add reviewer --project myapp  # add a role to an existing pod (never creates one)
 docket pod myapp add implementer     # scale out: adds myapp-implementer-2
@@ -77,7 +79,7 @@ Before this was declarative, a pod role was a closed 4-tuple wired into `core/po
 role's identity prose was hand-written string-building in the CLI. Adding a fifth role meant
 editing code. Now every role — including the four legacy ones — is a **role archetype**
 (`core/archetypes.py`): a versioned, declarative record of its scope, model class, identity
-templates, gate contract, edit rights, and tool profile.
+templates, gate contract, denied tools, and tool profile.
 
 ```bash
 docket roles list                 # every registered archetype: built-in, starter, user
@@ -89,22 +91,25 @@ docket roles validate             # dry-run every archetype's schema + template 
 Four **built-in** archetypes reproduce the legacy roles byte-identically. A **starter library**
 ships six more you can drop into any pod without writing a line of YAML:
 
-| Name | Class | Gate | Edit rights |
+| Name | Class | Gate | Denied tools |
 |---|---|---|---|
-| `lead` *(built-in)* | cheap | none | none |
-| `implementer` *(built-in)* | strong | mechanical (`verifyCmd`) | write |
-| `reviewer` *(built-in)* | cheap | verdict (APPROVE / REQUEST-CHANGES) | read-only |
-| `tester` *(built-in)* | cheap | verdict (PASS / FAIL) | read-only |
-| `researcher`, `analyst` *(starter)* | strong | none | write |
-| `writer` *(starter)* | cheap | none | write |
-| `critic` *(starter)* | cheap | verdict (APPROVE / REJECT) | read-only |
-| `operator` *(starter)* | strong | mechanical | write |
-| `monitor` *(starter)* | cheap | approval | read-only |
+| `lead` *(built-in)* | cheap | none | write, edit, bash |
+| `implementer` *(built-in)* | strong | mechanical (`verifyCmd`) | none |
+| `reviewer` *(built-in)* | cheap | verdict (APPROVE / REQUEST-CHANGES) | write, edit, bash |
+| `tester` *(built-in)* | cheap | verdict (PASS / FAIL) | write, edit |
+| `researcher`, `analyst` *(starter)* | strong | none | none |
+| `writer` *(starter)* | cheap | none | none |
+| `critic` *(starter)* | cheap | verdict (APPROVE / REJECT) | write, edit, bash |
+| `operator` *(starter)* | strong | mechanical | none |
+| `monitor` *(starter)* | cheap | approval | write, edit, bash |
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod <project> add researcher`. A user-authored archetype (a standalone YAML file,
 `docket roles add`) can add a brand-new role name or override an existing one — merged into
-`~/.docket/docket-roles.json`, "user wins" by name.
+`~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
+is absent from that role's turn, not merely discouraged: it is the only capability statement a role
+carries (`cannot:` in the short form), and denying a tool denies every tool of its kind, MCP tools
+included.
 
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
@@ -150,8 +155,12 @@ blueprint's own fixed roster instead of trying to combine the two.
 There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
 `docket pod <project> add <role>`. For a pre-built role+pipeline+policy bundle instead of composing
-by hand, the package ships `secure-build`, `research-review`, and `ops-approval` recipes under
-`templates/recipes/` — see [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-shipped-recipe).
+by hand, use a **recipe**: `docket init --recipe secure-build` starts a new pod from one of the
+three shipped ones (`secure-build`, `research-review`, `ops-approval`), and `docket pod <project>
+apply secure-build` applies it onto a pod that already exists. A recipe is the same directory
+shape as a repository's own `.docket/`, which plain `docket init` discovers, validates and applies
+when it is committed next to the code — see [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe)
+and [§3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
 
 ---
 
@@ -383,6 +392,12 @@ docket init <project> [path] --pod full   # + Reviewer + Tester
 docket init <project> [path] --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
+docket init --recipe <name|dir>          # + a shipped recipe (secure-build | research-review |
+                                         #   ops-approval) or your own directory; a committed
+                                         #   .docket/ is applied by plain `docket init`
+docket pod <project> apply [<name|dir>]  # apply .docket/ (default), a recipe name or a directory
+docket pod <project> export [<dir>]      # write the pod's own scope back to .docket/
+docket validate [<dir|file>]             # check every kind: document before applying
 docket pod <project>                     # list members
 docket pod <project> add <role> [--count N]
 docket add <role> [--project <project>] [--count N]  # same, pod inferred from the cwd

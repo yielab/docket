@@ -10,6 +10,16 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-27 (Wave 52, no phase) — Phase 30 follow-ups closed; docs aligned for a newcomer.**
+  Integrator alone, one RED test per change, specs first: `load_role_file` treats a
+  canonical-only key as canonical whatever `kind:` says and refuses a mixed document
+  (role-archetypes 1.20.0); `docket init` counts and lists the members the apply step added
+  (cli-interface 1.48.0); `docket pod <p> apply <name>` resolves a shipped recipe by name through
+  `resolve_recipe` (pod-blueprints 1.13.0). Docs: quick start rebuilt as the install-to-customize
+  path with real output, docs index on the tagline with a start-here order, configuration guide
+  §3.6/§3.7/§3.10/§3.11 re-trued (fail-closed policies, per-pod MCP, recipes by name, a complete
+  `.docket/` example), agent-teams guide on denied tools, recipe READMEs typeable, mkdocs nav.
+  Nothing is parked.
 - **2026-09-27 (Phase 30 complete, D-46) — the team lives in the repo.** Seven cards over Waves
   50–51: P30-1..P30-4 as four parallel Sonnet workers in isolated worktrees, P30-5..P30-7 by the
   integrator. Shipped: `docket init` validates and applies a repository's `.docket/` (or

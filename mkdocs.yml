@@ -60,6 +60,8 @@ nav:
   - Guides:
       - Agent Teams (Pods): AGENT-TEAMS.md
       - Quick Start: QUICK-START-DOCKET.md
+      - Configuration: CONFIGURATION.md
+      - Workflow Guide: WORKFLOW-GUIDE.md
       - Security (simple): SECURITY-SIMPLE.md
       - Docket (deep dive): DOCKET.md
   - CLI Reference: commands.md

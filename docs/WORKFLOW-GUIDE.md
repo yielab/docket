@@ -96,7 +96,10 @@ docket list                 # every pod member shows up like any other agent
 ```
 
 A lean pod is the right default for prototyping and low-risk changes: one owner of completion
-(the Lead) and one doer (the Implementer).
+(the Lead) and one doer (the Implementer). A repository with a committed `.docket/` gets that team
+instead (validated before anything is provisioned, applied after), and `docket init --recipe
+secure-build` starts from a shipped recipe; see
+[Configuration §3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
 
 ### Step 2 — Set a budget cap on the Lead
 
@@ -637,9 +640,11 @@ reviewed and validated before it landed."
 
 ### Pod dispatch settings — `docket pod <project> config`
 
-A pod's dispatch behavior is nine typed keys on the Lead's meta, read/written through one
+A pod's dispatch behavior is eleven typed keys on the Lead's meta, read/written through one
 generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
-`verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`.
+`verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`,
+`mcpServers`, `deniedTools`. A repository's `.docket/pod.yaml` can carry the same keys under
+`settings:`, applied by `docket init` or `docket pod <project> apply`.
 
 ```bash
 docket pod myapp config get                    # every key, with its source (default vs. set)

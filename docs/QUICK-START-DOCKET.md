@@ -1,374 +1,314 @@
-# Quick Start: DOCKET Architecture
+# Quick start: from install to a governed run in ten minutes
 
-**DOCKET = Roles, Autonomy, Context isolation, Knowledge**
-
-Get started with DOCKET-optimized agents in about ten minutes.
+docket runs a team of coding agents that you define in files: a `.docket/` directory next to
+your code names the roles, the order they work in, the gates between them and the rules they
+cannot cross. This page takes you from nothing to one governed run, then shows how to make the
+team yours. Everything below was captured from a real run against a local model; the terminal
+output shown is what docket printed.
 
 > [!WARNING]
-> **Beta / early-stage software.** docket is under active development and not yet at a stable
-> release. The steps below work and are test-backed, but expect rough edges, breaking changes
-> between versions, and the occasional gap between docs and behavior. Verify results against your
-> own install, and treat all cost figures as estimates, not provider bills.
+> **Beta / early-stage software.** The steps work and are test-backed, but expect rough edges
+> and breaking changes between versions. Verify results against your own install, and treat
+> every cost figure as an estimate, not a provider bill.
+
+**You need:** Python 3.11+, Git, Bash, and one OpenAI-compatible chat-completions endpoint with
+function-tool support. The route below uses a local model on `127.0.0.1:8081` (llama.cpp, vLLM,
+LM Studio, Ollama all work); a hosted provider is a two-line variant in step 2.
 
 ---
 
-## Ten-minute release artifact to first governed turn
+## 1. Install
 
-This no-paid-provider route assumes an OpenAI-compatible local model is already listening on
-`127.0.0.1:8081`. The immutable installer below downloads and verifies
+Homebrew:
+
+```bash
+brew tap yielab/docket-cli https://github.com/yielab/docket
+brew install docket-cli
+```
+
+Or the version-pinned installer, which needs no `sudo`. It downloads and verifies
 `https://github.com/yielab/docket/releases/download/v0.2.0-beta.3/docket-v0.2.0-beta.3.tar.gz`
-before extraction; it does not install from a moving branch archive.
+before extracting; it never installs from a moving branch:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.3/install.sh \
   | DOCKET_VERSION=0.2.0-beta.3 bash
 export PATH="$HOME/.local/bin:$PATH"
+docket --version
+```
 
-cd ~/code/myapp
+---
+
+## 2. Register a model
+
+docket never guesses an endpoint. Register the one you have, then point every role at it:
+
+```bash
 docket models provider add local http://127.0.0.1:8081/v1 \
-  --model local-model --ctx 32768 --max-tokens 4096
-docket models preset local                # every role resolves to the local endpoint
-docket init --recipe secure-build         # Lead + Implementer + a read-only security vetter
-docket pod myapp delegate "Create FIRST_TURN.md containing exactly: governed first turn"
-docket pod myapp dispatch
-docket runs list
-docket trace tail myapp    # prints the latest session's tail, then follows it; Ctrl-C to stop
-docket pod myapp export    # writes the team to ./.docket/; commit it and `docket init` reads it next time
+  --model local-model --ctx 16384 --max-tokens 4096
+docket models preset local                # every role now resolves to local/local-model
 ```
 
-`provider add` validates the endpoint before project state is created, and writes a `kind:
-provider` document you can inspect or hand-edit afterward with `docket models provider export
-local`. `--recipe` starts from a shipped team (`secure-build`, `research-review`, `ops-approval`,
-or a directory of your own); with a `.docket/` already committed next to the code, plain
-`docket init` validates and applies it. `runs list` and `trace tail` are the public evidence: the
-run must be terminal and the trace must show the model/tool lifecycle. The local model still needs ordinary OpenAI function-tool
-compatibility; model availability alone does not prove reliable tool use. For hosted or
-mixed-provider setup, see [Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
+`provider add` probes the endpoint before anything else is written, and stores a readable
+`kind: provider` document (`docket models provider export local` prints it). `preset local`
+matters: without it the built-in role policy still routes the Lead and Implementer to a hosted
+model you may have no key for.
+
+Against a small-context local server, also set `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` in your shell;
+the default suits a large hosted model.
+
+**Hosted provider instead?** Store the key by name and pick the preset:
+
+```bash
+docket keys add OPENROUTER_API_KEY         # or ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
+docket models preset openrouter            # anthropic | openai | google | ai-gateway | ...
+```
+
+Fourteen providers ship as documents (`docket models provider list`). Mixed setups, gateways and
+per-role overrides are in [Models, gateways and harnesses](MODEL-GATEWAYS.md).
 
 ---
 
-## What is DOCKET?
+## 3. Create the team
 
-DOCKET is an architecture for autonomous agent teams that:
-- ✅ **Reduces token usage** by isolating each project in its own pod + workspace
-- ✅ **Keeps roles clean** — the Lead orchestrates, the Implementer writes code
-- ✅ **Enforces security** through a read-only reviewer veto + mandatory checklist
-- ✅ **Validates objectively** through behavior-only testing
-- ✅ **Eliminates redundancy** through clear per-role responsibilities
+Go to a repository and start from a shipped recipe. This one adds a read-only security vetter to
+the default Lead + Implementer pod and binds a three-step pipeline with a verify gate:
 
----
-
-## Installation
-
-> **The tool-call gate is always on** and cannot be turned off: exec calls outside the curated
-> allowlist (`rm`, `dd`, `docker`, `systemctl`, …) need an explicit approve/deny before they run.
-> `--no-gates` only records an approval-routing posture flag that nothing on the live turn path
-> reads — see [Security](SECURITY-SIMPLE.md) and `docket gates`.
-
-### Initialize a Project
 ```bash
 cd ~/code/myapp
-docket init
+docket init --recipe secure-build
 ```
 
-On the first run, this also creates the shared workstation foundation and the three org
-specialists (**manager**, **knowledge**, **security**). Each project then gets an isolated pod:
-a **lead** + **implementer** by default. Grow it when the work earns it:
-```bash
-docket add reviewer                   # current pod + reviewer
-docket add tester --project myapp     # explicit pod selection
+```text
+→ Provisioning 'software' pod 'myapp' (lead, implementer)...
+✓   myapp-lead  [lead]  local/local-model
+✓   myapp-implementer  [implementer]  local/local-model
+Apply plan — myapp <- .../templates/recipes/secure-build
+  [add] role: security-vetter
+  [add] policy: require-approval-secret-writes.yaml
+  [add] member: security-vetter
+  [add] pipeline: pipeline.yaml
+✓ Applied 4 change(s) to pod 'myapp' from .../templates/recipes/secure-build.
+
+✓ Pod 'myapp' created with 3 members!
+  - myapp-lead
+  - myapp-implementer
+  - myapp-security-vetter
 ```
 
-The default pod shape is a **blueprint** called `software` (codebase, lead + implementer). For
-non-software work, pick a different one in one step — no codebase is assumed or auto-detected:
-```bash
-docket init my-market-scan --blueprint research  # lead + researcher + analyst + writer + critic
-```
-`docket roles list` shows every role available to compose into a pod (built-in and starter);
-see [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
+The first `init` on a machine also creates the shared foundation (global state, the three org
+specialists `manager`/`knowledge`/`security`, baseline policies). Every later `init` creates one
+pod for one repository. Two other ways to start:
 
-Templates are generated per-pod at `add` time — there is no separate upgrade step.
+| You have | Run | You get |
+| --- | --- | --- |
+| nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
+| a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
+| a shipped or local recipe | `docket init --recipe secure-build` (or `research-review`, `ops-approval`, or a directory) | the recipe applied onto the default pod |
 
----
-
-## Verify Installation
-
-```bash
-docket status               # current project summary
-docket status --all         # global summary by project
-docket list                 # detailed org specialists + agent inventory
-docket pod myapp            # just this project's pod members
-docket doctor               # workstation health check (--fix applies auto-fixes)
-```
-
-**Expected:** `docket list` shows the org specialists (manager, knowledge, security)
-and each project's pod members; `docket pod myapp` shows the pod's lead + implementer;
-`docket doctor` reports them healthy.
-
----
-
-## Assign and Run Work — the payoff
-
-A pod isn't just a list of agents — docket can **actually run** its pipeline,
-**one real agent turn per hop**:
-
-```
-Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
-```
-
-Queue a task, see the queue, then dispatch it:
+Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
 ```bash
-docket pod myapp delegate "Fix the null-token login crash"   # queue a task
-docket pod myapp queue                                        # see it (+ per-task status/cost)
-docket pod myapp dispatch                                     # run the pipeline once, now
+docket pod myapp set-verify myapp-implementer "python3 -m pytest -q"
+docket pipeline plan myapp                # what would run, resolved against the real roster
 ```
 
-Or let docket drive every pod's queue in the background:
-
-```bash
-docket serve --dispatch                                       # autonomous: drain queues each refresh
-```
-
-Each hop is a **real, costed LLM turn**, so dispatch is always explicit (`dispatch`)
-or opt-in (`serve --dispatch`) — never silent. Before each hop docket checks the pod's
-token-based dollar estimate against the Lead's budget cap (`docket profile myapp-lead --budget
-N`); over budget, the task is left **blocked** and the pod auto-pauses instead of running
-(`docket pod myapp queue --retry <task-id>` or `docket profile myapp-lead --resume` un-blocks
-it). Every hop is traced (`docket trace`) for a fully auditable run.
-
-If the pod has a Reviewer or Tester, their hop is **gated**, not advisory: a Reviewer's
-`REQUEST-CHANGES` sends the task back to the Implementer (bounded rework), and a Tester's
-`FAIL` fails the task outright. Give the Implementer a real check with
-`docket pod myapp set-verify myapp-implementer "pytest -v"` and a nonzero exit fails the task
-the same way. See [Agent Teams](AGENT-TEAMS.md) for the full gate breakdown.
-
-> The read-only `docket serve` monitor does **not** dispatch — only `--dispatch` does.
-
-### Next: understand the team model
-This is just the entry point. For the full scope/role model, how big a pod should be,
-and how isolation works, read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket.
-
----
-
-## How It Works
-
-Each pod has its own workspace and per-pod session key, so no worker is ever shared across
-projects — that isolation is what keeps each agent's context (and token count) scoped to a
-single project. For the full before/after picture and the pipeline diagram, see
-**[DOCKET.md](DOCKET.md#overview)** — not repeated here.
-
----
-
-## Key Commands
-
-### Fleet Management
-```bash
-docket list               # Org specialists + pods (with scope)
-docket status --all       # One global row per project
-docket doctor             # Health check (--fix applies auto-fixes)
-docket pod <project>      # Inspect a project's pod and its roles
-docket pod <project> queue # That pod's pending task queue
-```
-
-### Run a Pod's Work
-```bash
-docket pod <project> delegate "<task>"   # Queue a task for the pod
-docket pod <project> queue               # See the pod's queue + per-task status/cost
-docket pod <project> dispatch            # Run the pipeline once (Lead→Implementer→…)
-docket serve --dispatch                  # Background: drive every pod's queue
-```
-
-### Memory Management
-```bash
-docket context <project-id>            # Recent activity, active tasks, context stats
-docket context <project-id> project    # Project view: codebase, stack, memory sections
-docket maintain <project-id> distill   # Summarize memory logs into MEMORY.md, archive originals
-docket maintain <project-id> check     # Health check + auto-fix for one agent's workspace
+```text
+Pipeline plan — myapp
+Source: bound pipeline (hash 45f7aaf31d1f...)
+Pipeline: secure-build
+  [plan] role=lead -> myapp-lead [gate: none]
+  [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]
+  [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]
 ```
 
 ---
 
-## Testing Your Setup
+## 4. Run a task
 
-### Test 1: Project Context
-```bash
-docket context myapp project
-```
-
-**What you should see:**
-- Project metadata (codebase path, stack, model, session key)
-- Active tasks (parsed from HEARTBEAT.md)
-- Memory section headers (from MEMORY.md)
-- Memory-log count and last-active timestamp
-
-### Test 2: Run a Task Through the Pod
-Queue a task and dispatch it — this exercises the real pipeline end to end:
+Queue work, then run the pipeline once. Each hop is one real, costed model turn, so dispatch is
+always explicit:
 
 ```bash
-docket pod myapp delegate "Fix bug: login crashes when token is null"
-docket pod myapp queue          # confirm the task is queued
-docket pod myapp dispatch       # run Lead → Implementer → (Reviewer) → (Tester)
+docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"
+docket pod myapp dispatch
 ```
 
-**Expected workflow (all within one isolated pod, one real agent turn per hop):**
-1. **Lead** decomposes the task and hands off (the Lead never edits code).
-2. **Implementer** runs *inside* the project workspace, writes the change, signals DONE.
-3. **Reviewer** *(if the pod has one)* read-only veto on the diff.
-4. **Tester** *(if the pod has one)* behaviour-only PASS / FAIL.
-5. The task is finalized as done or failed; the queue shows per-task status and estimated cost.
-   There is no closing Lead hop.
+```text
+→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter
+✓   [task-efbd46e7-...] done — 3 hop(s), $0.0000
+```
 
-Each hop is budget-gated against the Lead's cap and traced (`docket trace`), so a run
-is fully auditable. Re-check the queue afterward:
+What happened, hop by hop:
+
+1. **Lead** read the task and wrote a plan. It has no `write`, `edit` or `bash` tool, so it
+   cannot touch the code.
+2. **Implementer** worked in its own git worktree on its own branch, made the change, and the
+   verify command ran. A failing command ends the task as `failed` with a `verification_failed`
+   event; it never reaches the vetter.
+3. **security-vetter** reviewed the diff read-only and ended its reply with `APPROVE`.
+   `REQUEST-CHANGES` would have sent the task back to the Implementer once, then failed it.
+
+The change lives only in the Implementer's worktree until you merge it:
 
 ```bash
-docket pod myapp queue          # status flips to done (failed on a gate, blocked if over budget)
+git worktree list                         # ~/.docket/workspaces/projects/myapp-implementer/worktree
+git -C ~/.docket/workspaces/projects/myapp-implementer/worktree diff
 ```
-
-> **Alternative — Telegram:** once the Lead is wired (`docket wire`), the same queue is
-> reachable from your phone through four commands — `/status`, `/delegate <task>`,
-> `/approve <token>`, `/deny <token>` — nothing else. Telegram is **inbound-only and is
-> not a chat**: plain prose is refused rather than routed to the Lead, and `/delegate`
-> replies with the queued task's id, not the pipeline's output. Read the result back with
-> `docket pod myapp queue`, `docket trace`, or the HTTP control plane — docket never
-> pushes a status update or completion report to the chat on its own.
-
-**Why the Lead stays cheap:** its hop receives only the task description, never prior-hop
-carryover (its declared 2,000-token budget in `docket roles show lead` is not exercised today),
-and its workspace + session key are scoped to this one pod, never a shared cross-project history.
 
 ---
 
-## Pod Roles
+## 5. See what happened
 
-A project pod is created by `docket init` and managed with `docket pod <project>`. By
-default it is a lean **Lead + Implementer**; add a Reviewer and Tester with `--pod full` or
-`--with reviewer,tester`. The org specialists (`manager`, `knowledge`, `security`) are shared and
-created lazily by the first `docket init` — they are not part of any single pod. Full per-role detail
-(capabilities, tools, model class) lives in **[DOCKET.md](DOCKET.md#pod-roles)** and
-**[AGENT-TEAMS.md](AGENT-TEAMS.md)** — the short version: the Lead orchestrates and never edits
-code, the Implementer writes the code, an optional Reviewer is a read-only veto, and an optional
-Tester is instructed to validate behavior only (it has no `write`/`edit` tool, but can still read).
+Every run leaves a record you can read without trusting the model's own summary:
 
-Roles are declarative, not a hardcoded four (`docket roles list`) — a starter library
-(`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`) ships alongside the four
-legacy roles, and `docket init --blueprint <name>` composes several of them into a non-software
-pod shape in one step. See [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
-
----
-
-## Token Savings
-
-Per-pod context isolation is what controls token usage — each agent reads only its own project's
-context instead of one shared, growing cross-project history. We don't quote a fixed percentage;
-read your actual numbers with `docket cost`. See
-[DOCKET.md's Performance Results](DOCKET.md#performance-results) for the mechanism and
-[Known limits](../README.md#known-limits) for why docket
-doesn't project dollar savings.
-
----
-
-## Common Questions
-
-### Q: Will this break my existing agents?
-**A:** No. Templates are generated per-pod by `docket add` and refreshed by
-`docket maintain <id> rebuild`:
-- Org specialists (manager, knowledge, security) are created by the first `docket init`
-- Each project pod (lead + implementer, optionally reviewer/tester) is isolated
-- Another project's setup never touches your project agents
-
-### Q: How do I assign work to a pod?
-**A:** Two ways, same pipeline:
-- **CLI (scriptable, traced):** `docket pod <project> delegate "<task>"` then
-  `docket pod <project> dispatch` (or `docket serve --dispatch` to run queues in the background).
-- **Telegram (mobile-first):** `/delegate <task>` in the wired group queues onto the same
-  Lead → Implementer → (Reviewer) → (Tester) pipeline. It is a command channel, not a chat:
-  plain prose is refused with an "unrecognized command" reply, and `/delegate` hands back a
-  task id rather than the agent's answer — read that with `docket pod <project> queue`.
-
-Either way the agents respond faster (each pod processes only its own context) and use fewer
-tokens (context isolated per project).
-
-### Q: What if I want the old behavior back?
-**A:** `docket maintain <id> rebuild` backs up the current workspace files into a
-`.backup-YYYYMMDD-HHMMSS/` directory before regenerating them. Restore from that backup:
 ```bash
-cd ~/.docket/workspaces/manager
-cp .backup-YYYYMMDD-HHMMSS/SOUL.md SOUL.md
+docket runs list                          # one row per dispatch: state, tasks, error
+docket trace tail myapp                   # the latest session, step by step (Ctrl-C stops watching)
+docket audit                              # every gate decision and operator action
+docket audit verify                       # the audit chain hashes clean
+docket config explain myapp-implementer   # the effective configuration, with where each value came from
 ```
 
-### Q: Can I customize the templates?
-**A:** Yes! Edit the SOUL.md files directly:
-```bash
-docket edit manager    # Opens manager's SOUL.md in $EDITOR
+`config explain` ends with the team's source of record:
+
+```text
+  Pipeline:        bound pipeline (hash 45f7aaf31d1f...)
+  Config source:   .../templates/recipes/secure-build  (digest 441848f22bd2..., drift: no)
 ```
 
-There is nothing to restart — docket has no external daemon or gateway process; the next turn
-picks the edited file up directly.
+A gate looks like this when it fires. Ask docket what it would do with a command before an agent
+tries it:
 
-Which files reach the model, what overwrites your edits, and how to customize roles, pipelines
-and policies are covered in the [Configuration guide](CONFIGURATION.md).
+```bash
+docket policies test pre_tool_call implementer 'git push origin production'
+```
 
-### Q: How do I know it's working?
-**A:** Check token usage:
-1. Dispatch a task through the pod (`docket pod <project> dispatch`, or `/delegate <task>`
-   from a wired Telegram chat)
-2. Run `docket cost <lead-id>` for its measured token counts
-3. Run `docket context <lead-id> show` — recent activity, active tasks, and context stats
-   (log count, last active) for that one agent, never a cross-project blend
+```text
+  Result: ask
+  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes
+  Policy: 'high-risk-deploy' -> require_approval
+```
 
----
-
-## Troubleshooting
-
-Memory/context issues (large context, delayed acknowledgment, a broken memory index), Telegram
-issues, and pod/dispatch issues are all covered in **[troubleshooting.md](troubleshooting.md)** —
-kept in one place rather than duplicated across every doc that touches them.
+In a live run that call waits for `docket approve <token>` (also over HTTP, MCP or Telegram) and
+is denied on timeout with an `approval.deny ... channel=timeout` audit line. The command never
+executes.
 
 ---
 
-## Next Steps
+## 6. Make it yours
 
-1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
-2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
-3. **Monitor cost:** Check measured token usage with `docket cost`
-4. **Review context & distill memory:** `docket context <project> project` / `docket maintain <project> distill` per project
-5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
+Write the team back next to the code, edit it, check it, apply it. This is the whole
+customization loop; every file starts with `kind:` and validates before anything is written:
+
+```bash
+docket pod myapp export                   # writes ./.docket/ (refuses a non-empty one without --force)
+find .docket -type f | sort
+```
+
+```text
+.docket/pipeline.yaml
+.docket/pod.yaml
+.docket/policies/require-approval-secret-writes.yaml
+.docket/roles/security-vetter.md
+.docket/roles/security-vetter.yaml
+```
+
+Three edits most teams make first. Each is one file:
+
+**A rule.** `.docket/policies/no-curl.yaml` — live on the next tool call once applied:
+
+```yaml
+kind: policy
+name: no-curl
+appliesTo: [implementer]
+when: {matches: '\bcurl\b'}
+then: ask
+message: curl needs approval
+```
+
+**The route.** `.docket/pipeline.yaml` — who works, in what order, behind which gate, with how
+much rework. Add `model: cheap` to a step to run that hop on the cheap tier only:
+
+```yaml
+kind: pipeline
+name: secure-build
+steps:
+  - plan: lead
+    model: cheap
+  - build: implementer
+    verify: true
+  - vet: security-vetter
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
+```
+
+**A role.** `.docket/roles/security-vetter.yaml` plus its Markdown. `cannot` is the only
+capability statement: a tool listed there is absent from the role's turn, not merely discouraged:
+
+```yaml
+kind: role
+name: security-vetter
+model: strong
+cannot: [write, edit, bash]
+verdict: [APPROVE, REQUEST-CHANGES]
+instructions: security-vetter.md
+```
+
+Then:
+
+```bash
+docket validate                           # every document under .docket/, invalid files first
+docket pod myapp apply --dry-run          # the plan: add / replace / skip per item
+docket pod myapp apply                    # writes it; a second run plans every item skip
+git add .docket && git commit -m "Add: the myapp agent team"
+```
+
+Nothing is applied without that command. Dispatch, `serve`, schedules and the harness never
+re-read `.docket/`, and `config explain` shows `drift: yes` once the directory moves on from
+what was applied. A policy in the repo can only add restrictions: it accumulates with your
+global policies under most-restrictive-wins.
+
+Pod-level knobs are one command each: `docket pod myapp config set budgetUsd 5`,
+`allowCommands pytest,uv`, `approvalMode refuse`, `maxReworkCycles 2`. Your own words for one
+agent go in its operator-owned `INSTRUCTIONS.md` (`docket edit myapp-implementer`), which docket
+never regenerates. The file-by-file reference, with what reads each file on the live path, is
+[Configuration](CONFIGURATION.md); the shipped recipes and every role are listed by
+`docket roles list` and in [Agent teams](AGENT-TEAMS.md).
+
+---
+
+## 7. Run unattended
+
+```bash
+docket serve --dispatch                   # drain every pod's queue each sweep (loopback by default)
+docket pod myapp config set schedule "@every 30m"   # or a daily HH:MM in UTC, or 5-field cron
+docket pod myapp config set approvalMode refuse     # a gated call fails fast instead of waiting 120 s
+```
+
+`docket serve` also exposes a read API and `POST /dispatch/<project>` for CI. `--telegram`
+adds an inbound-only approval channel with four verbs (`/status`, `/delegate`, `/approve`,
+`/deny`); it is not a chat, and docket never messages first. Schedules, webhooks and the run
+registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
 
 ---
 
 ## Before trusting it with more
 
-Start with the minimum Lead + Implementer pod and add a Reviewer or Tester once a concrete
-quality gate justifies the extra turns. Give the Implementer an objective check with
-`docket pod <id> set-verify <member> "<command>"`, so advancement blocks on a nonzero exit code
-rather than on how confident the model's prose sounds. Keep dispatch explicit before enabling
-schedules or `docket serve --dispatch`, and confirm budgets and approval channels first. Inspect
-the run, trace, token usage and audit chain before accepting a consequential change. Keep docket
-behind your own boundary: `docket serve` binds loopback by default and does not terminate TLS.
+Start with the lean pod and add a reviewer, tester or vetter once a concrete quality gate
+justifies the extra turns. Give the Implementer an objective check with `set-verify`, so
+advancement blocks on an exit code rather than on how confident the prose sounds. Keep dispatch
+explicit before enabling schedules or `serve --dispatch`, and set a budget cap first
+(`docket pod myapp config set budgetUsd 5`; over it, the task is left blocked and the Lead
+paused). Read the run, the trace and the audit chain before accepting a consequential change.
+Keep docket behind your own boundary: `docket serve` binds loopback and does not terminate TLS.
 
-## Resources
+## Where next
 
-- **Agent Teams (Pods):** [AGENT-TEAMS.md](AGENT-TEAMS.md) — the canonical team-model reference
-- **Architecture Deep Dive:** [DOCKET.md](DOCKET.md) — routing, context isolation, dispatch internals
-- **Workflow Guide:** [WORKFLOW-GUIDE.md](WORKFLOW-GUIDE.md) — end-to-end examples
-- **Command Reference:** [commands.md](commands.md) — every command with syntax and options
-- **docket README:** [README.md](../README.md)
-- **Help Command:** `docket help`
-
----
-
-**Questions?** Check the docs or run `docket help`
-
-**Issues?** File at https://github.com/yielab/docket/issues
-
----
-
-**🎉 You're now running DOCKET-optimized agents!**
-
-Typical results (workload-dependent):
-- Lower token usage from per-pod context isolation (measure with `docket cost`)
-- Clean role separation (Lead orchestrates, Implementer codes)
-- Better security (read-only reviewer veto + mandatory checklist)
-- More reliable validation (objective behavior tests)
+- [Agent teams](AGENT-TEAMS.md): roles, pods, blueprints, recipes and how a dispatch is gated
+- [Configuration](CONFIGURATION.md): every file docket creates, what reads it, and the
+  customization recipes by use case
+- [Workflow guide](WORKFLOW-GUIDE.md): end-to-end examples, custom pipelines, schedules, webhooks
+- [Security](SECURITY-SIMPLE.md): the layers, the approval channels, the audit log
+- [Command reference](commands.md) and [Troubleshooting](troubleshooting.md)
+- Issues: https://github.com/yielab/docket/issues

@@ -482,12 +482,12 @@ How policies combine and what they ignore:
 
 - **Precedence.** The most restrictive matching action wins: `block` > `ask` > `redact` >
   `warn` > `allow`.
-- **A broken policy is skipped silently, and that fails open.** A file with bad JSON/YAML or an
-  uncompilable regex is skipped, so a `block` policy with a typo **allows** the call.
-  `docket policies validate` catches a parse error but **not** a bad regex. After every edit, run
+- **A broken policy fails closed.** A file with bad JSON/YAML, an uncompilable regex or an
+  unknown action evaluates as `block` within its readable scope (the hook and roles it declares,
+  or every hook and role when the file itself will not parse), attributed to the file so you know
+  what to fix; `docket doctor` names it before a live turn does. After every edit, run
   `docket policies test` with a string the policy must match, for example
   `docket policies test pre_tool_call implementer "make deploy"`, and confirm the expected result.
-  P26-1 in `TODO.md` makes a broken policy deny instead.
 - **`redact`** uses docket's generic secret redactor, not your pattern.
 - **Ignored fields.** `description` is documentation only.
 
@@ -528,12 +528,18 @@ docket mcp servers add github --env GITHUB_TOKEN=... --timeout 20 -- npx -y @mod
 docket mcp servers list
 ```
 
-The command writes `docket-mcp-servers.json`. Its tools appear in every turn as
+The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
 `mcp__github__<tool>`, gated like built-ins.
 
-- **Read-only roles get none of them.** See §3.6.
-- **Configure, not per agent.** Servers apply to the whole install.
-- **Spawn cost.** Each server is spawned once per turn, about 0.6 s measured.
+- **Declare the kind.** A server is `--kind write` unless you say `--kind read`; nothing can
+  prove a remote tool is read-only, so the declaration is your audited assertion. A role that
+  denies `write`/`edit`/`bash` (§3.6) gets MCP tools only from a server declared `read`.
+  `--tools a,b` limits which of a server's tools register at all.
+- **Servers are per install; a pod picks its own.** `docket pod <p> config set mcpServers
+  github,fs` limits that pod to those servers (`unset` restores every configured one); a name
+  absent from the catalog refuses dispatch loudly. `docket pod <p> config set deniedTools fetch`
+  removes a tool from every role of that pod.
+- **Spawn cost.** Each selected server is spawned once per turn, about 0.6 s measured.
 - **Plaintext env.** `--env` values are stored in plaintext; they are masked only in `list`.
 
 ### 3.8 Run unattended
@@ -575,7 +581,7 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 
 ---
 
-### 3.10 Apply a recipe in one command
+### 3.10 Start from a recipe
 
 `templates/recipes/<name>/` (inside the installed package; `docket.config.recipes_dir()`) ships
 ready-to-apply role/pipeline/policy bundles for common shapes:
@@ -586,14 +592,22 @@ ready-to-apply role/pipeline/policy bundles for common shapes:
 | `research-review` | the `researcher`/`analyst`/`writer`/`critic` starter roles | Critic-vetoed research, on a pod you did not create with `--blueprint research` |
 | `ops-approval` | the `operator` starter role, approval-gated | a human sign-off before an operational action runs at all |
 
-`docket pod <p> apply <dir>` applies one in a single command: it copies the directory's roles into
-this pod's own overlay (`config/roles.json`), validates and binds its `pipeline.yaml` as the pod's
-default (§3.5), and copies its policy pack into this pod's own `config/policies/` (§3.6) — the same
-three steps you would otherwise do by hand, scoped to this pod alone. `--dry-run` shows what would
-change without writing anything; re-running it is idempotent (a recipe already applied is a no-op).
-With no `<dir>` argument it defaults to `<codebase>/.docket/` — an operator-maintained recipe
-checked into the project itself, not one of the shipped ones above. There is no `docket recipes`
-command; a recipe is data, not a new surface.
+Two commands take a recipe by name or by directory, and both resolve the same way: a directory
+path if one exists there, else a shipped recipe by name.
+
+```bash
+docket init --recipe secure-build          # a new pod for this repository, recipe applied after provisioning
+docket pod myapp apply secure-build        # onto a pod that already exists
+docket pod myapp apply ./team-recipes/ci   # a directory of your own, same shape
+docket pod myapp apply --dry-run           # no argument: <codebase>/.docket/, plan only
+```
+
+`apply` copies the directory's roles into this pod's own overlay (`config/roles.json`),
+validates and binds its `pipeline.yaml` as the pod's default (§3.5), adds the `members` its
+`pod.yaml` names, and copies its policy pack into this pod's own `config/policies/` (§3.6) — the
+same steps you would otherwise do by hand, scoped to this pod alone, validated as a whole before
+anything is written. `--dry-run` shows the plan; re-running is idempotent (an applied recipe plans
+every item `skip`). There is no `docket recipes` command; a recipe is data, not a new surface.
 
 `docket pod <p> export <dir>` writes the reverse: this pod's own scope, in the same directory
 shape, so a pod configured by hand (or evolved past the recipe that seeded it) can be checked in
@@ -618,6 +632,48 @@ export` writes and every shipped recipe ships:
   policies/*.yaml     kind: policy    when/then; JSON still loads
   plugins/*.py                        hashed predicate plugins (rare)
   .schemas/                           generated JSON Schemas the `# yaml-language-server` headers point at
+```
+
+A complete, small one. `pod.yaml` names the members to add beyond the Lead + Implementer the
+blueprint provisions, and any pod setting (§3.3, §3.6) to set; the other files are the same short
+forms §3.4, §3.5 and §3.6 describe:
+
+```yaml
+# .docket/pod.yaml
+kind: pod
+name: myapp
+members: [security-vetter]
+settings:
+  budgetUsd: 5
+  allowCommands: pytest,uv
+  approvalMode: refuse
+```
+
+```yaml
+# .docket/pipeline.yaml
+kind: pipeline
+name: secure-build
+steps:
+  - plan: lead
+    model: cheap
+  - build: implementer
+    verify: true
+  - vet: security-vetter
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
+```
+
+`roles/security-vetter.yaml` and `.md` are the `secure-build` recipe's (`export` writes them after
+`init --recipe`); a role of your own is the §3.4 example, and `policies/no-curl.yaml` the §3.6
+one. The loop you run each time the team changes:
+
+```bash
+docket pod myapp export             # first time: write what the pod has now into ./.docket/
+$EDITOR .docket/pipeline.yaml       # change the route, a rule, a role
+docket validate                     # every document, invalid files first, exit 1 on any error
+docket pod myapp apply --dry-run    # the plan: add / replace / skip per item
+docket pod myapp apply              # write it (one pod.apply audit entry when something changed)
+git add .docket && git commit       # the team is versioned with the code
 ```
 
 Three commands read it, and nothing else does:

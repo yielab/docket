@@ -1,152 +1,144 @@
-# docket Documentation
+# docket documentation
 
-**docket** is a Python CLI (Typer + Rich + Pydantic) — a governed runtime and control plane for
-provisioning and isolating **teams** of autonomous coding agents: an isolated per-project pod
-(Lead + Implementer, optionally Reviewer + Tester) for each codebase, not just single agents —
-with role-based model routing, budget guardrails, and every tool call gated through one policy
-chokepoint. docket owns the agent turn loop itself; it has no external daemon dependency, and
-talks through one non-streaming OpenAI-compatible chat-completions adapter. OpenRouter and Vercel
-AI Gateway are built in; other compatible endpoints require explicit registration.
-
-> New here? Start with the [project README](../README.md) for the overview and install steps,
-> then come back for the guides below.
+**docket — agent teams as configuration. Your rules, in YAML.** A repository's `.docket/`
+directory names the roles, the order they work in, the gates between them and the rules they
+cannot cross; `docket init` turns it into an isolated team of agents, `docket pod <p> dispatch`
+runs it one real model turn per hop, and every gate decision lands in a hash-chained audit log.
+docket is a Python CLI that owns the agent turn loop itself. It has no daemon and talks to any
+OpenAI-compatible chat-completions endpoint, hosted or local.
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Animated Docket terminal journey captured from a real run against a local model: provision a pod, dispatch a fix through Lead, Implementer and Reviewer with a verify gate, stop a production push at the tool-call gate, and refuse the same push in non-interactive harness mode" width="720">
+  <img src="assets/hero.gif" alt="Animated docket terminal journey captured from a real run against a local model: provision a pod from a recipe, validate and plan the team, dispatch a fix through Lead, Implementer and a read-only vetter with a verify gate, and verify the audit chain" width="720">
 </p>
 
----
-
 > [!WARNING]
-> **docket is early-stage / beta software.** Features described in these guides are implemented
-> and automated-test-backed, but have not been QA-hardened in production — automated tests catch
-> regressions, they don't replace hands-on verification. Expect rough edges and breaking changes
-> between versions, and **verify anything important against your own install**. All cost
-> and dollar figures are accounting estimates, not your provider's bill — see
+> **docket is early-stage / beta software.** What these guides describe is implemented and
+> automated-test-backed, but not QA-hardened in production. Expect rough edges and breaking
+> changes between versions, and **verify anything important against your own install**. Every
+> cost or dollar figure is an accounting estimate, never your provider's bill; see
 > [Known limits](../README.md#known-limits).
+
+## Start here
+
+1. **[Quick start](QUICK-START-DOCKET.md)**: install, register a model, create the team from a
+   recipe, run one governed task, read the record, then export the team and make it yours.
+2. **[Agent teams](AGENT-TEAMS.md)**: the model behind it. Roles as data, pods per project,
+   blueprints and recipes, and what each gate does during a dispatch.
+3. **[Configuration](CONFIGURATION.md)**: every file docket creates, what reads it on the live
+   path, and the customization recipes: models, instructions, roles, pipelines, policies, tools,
+   unattended runs, and keeping the team in the repo.
 
 ## Guides
 
 | Doc | What it covers |
 |-----|----------------|
-| [Quick Start](QUICK-START-DOCKET.md) | Ten-minute setup: install, provision your first pod, dispatch a governed turn |
-| **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
-| **[Configuration](CONFIGURATION.md)** | **Every file docket creates, globally and per project: what it controls, what reads it on the live path, and recipes for customizing agents, roles, pipelines, policies and tools** |
-| [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
-| [Command Reference](commands.md) | Every command with syntax, options, and examples |
-| [Models, gateways, and harnesses](MODEL-GATEWAYS.md) | Codex/Claude Code/OpenCode portability; OpenRouter and Vercel AI Gateway setup and limits |
-| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
-| [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
-| [Adoption Evidence](ADOPTION-EVIDENCE.md) | Reproducible exact-artifact governance and recovery results, with limits |
+| [Quick start](QUICK-START-DOCKET.md) | Ten minutes from install to a governed run, then the customization loop |
+| [Agent teams (pods)](AGENT-TEAMS.md) | The core model: org specialists vs project pods, the roles, blueprints, recipes and real pipeline dispatch |
+| [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies and tools |
+| [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
+| [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
+| [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
+| [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals and the audit log |
+| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
+| [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Contributor Harness](DEVELOPMENT-HARNESS.md) | Repository context policy for people/agents working *on* docket's own codebase: skill routing, hooks, and token-efficient validation. Not to be confused with `docket harness run` — the CLI's single-agent execution mode for an external caller, covered in [Architecture (DOCKET)](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
-| [Decision records (ADRs)](adr/) | One reasoned architectural decision per file (harness mode, the loop-ownership ruling, egress posture, prioritization, the embeddable substrate, and more) |
-| [Cycles ended](cycles-ended/README.md) | The archive: every closed wave and phase section from the board and roadmap, the roadmap changelog, and old coordinator handoffs — verbatim, hash-verified, never a source of work |
+| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. Not `docket harness run`, which is the CLI's single-agent mode for an external caller |
+| [Decision records (ADRs)](adr/) | One reasoned architectural decision per file |
+| [Cycles ended](cycles-ended/README.md) | The archive of closed waves and phases; verbatim, hash-verified, never a source of work |
 
-For how features are specified before implementation, see the specs under
-[`../specs/`](../specs/) and the [SSD workflow guide](../SSD-WORKFLOW.md).
+Requirements live in [`../specs/`](../specs/); the [SSD workflow guide](../SSD-WORKFLOW.md)
+explains how a feature is specified before it is built.
 
 ---
 
-## Most common commands
+## The commands you use most
 
 ```bash
-# Start a project (also bootstraps shared workstation state on the first run)
-docket init                     # Current directory -> Lead + Implementer pod
-docket add reviewer             # Add an extra role to the current pod
+# The team
+docket init                                   # this directory -> a Lead + Implementer pod
+docket init --recipe secure-build             # ... plus a shipped recipe (research-review, ops-approval)
+docket validate                               # check every document under ./.docket/
+docket pod myapp apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
+docket pod myapp export                       # write the pod's own scope back to ./.docket/
+docket roles list                             # every role: built-in, starter, yours
 
-# Daily use
-docket status                  # Current project summary
-docket status --all            # Global summary by project
-docket list                    # Show all agents
-docket info <id>               # Agent details
-docket context <id> show       # Recent activity and context stats
+# Work
+docket pod myapp delegate "<task>"            # queue a task
+docket pipeline plan myapp                    # what would run, without running it
+docket pod myapp dispatch                     # run the pipeline once, now
+docket serve --dispatch                       # drain every pod's queue in the background
 
-# Pod teams (see Agent Teams guide)
-docket init <project>                      # Provision a pod (Lead + Implementer)
-docket pod <project>                       # Inspect / resize the pod
-docket pod <project> delegate "<task>"     # Queue a task for the pod
-docket pod <project> dispatch              # Run the pod's pipeline once
+# The record
+docket runs list                              # one row per dispatch
+docket trace tail myapp                       # the latest session, step by step
+docket audit && docket audit verify           # gate decisions, and the chain verifies
+docket config explain myapp-implementer       # effective configuration with provenance
+docket cost myapp-lead                        # measured tokens and the labelled estimate
 
-# Configuration
-docket models                  # Role→model policy (set <role> <model>, presets)
-docket profile <id> <model>    # Pin an agent (<provider/model>) or 'default' = policy
-docket profile <id> --budget 5 # Budget cap (USD estimate; a pod's Lead cap gates dispatch)
-docket scope <id> set <key>    # Switch project context
+# Models and keys
+docket models provider add local http://127.0.0.1:8081/v1 --model m --ctx 16384 --max-tokens 4096
+docket models preset local                    # or anthropic | openai | google | openrouter | ai-gateway
+docket models set programmer <provider/model> # one role; `docket profile <id> <model>` pins one agent
+docket keys add OPENROUTER_API_KEY            # stored once by name, never written into a workspace
 
-# Maintenance & health
-docket maintain <id> check     # Health check + auto-fix
-docket cost [id]               # Token usage and cost
-docket doctor                  # System-wide diagnostics (add --fix to apply auto-fixes)
-
-# Keys, auth & security (see Command Reference for the full surface)
-docket keys setup              # Interactive API key wizard
-docket keys list               # Which provider credentials are stored (masked)
-docket gates status            # Gate + isolation posture (the tool-call gate is always on)
-docket audit                   # Recent docket-initiated changes
+# Health
+docket status --all                           # every project at a glance
+docket doctor [--fix]                         # workstation diagnostics and repairs
 ```
 
-Keys are stored once, in `secrets.json` or the `keyring` backend, and resolved from there at the
-point of use — docket no longer writes them out into per-agent workspace `.env` files (`docket
-doctor` flags and, with `--fix`, removes any leftover from that retired path). The `keyring`
-backend stores through `secret-tool`/libsecret when it's available, or refuses honestly rather than
-silently falling back to a weaker store.
-
-See the [Command Reference](commands.md) for the full set.
+The full surface is in the [command reference](commands.md).
 
 ---
 
-## File layout
+## Where things live
 
-Everything docket owns lives under `~/.docket/` (`DOCKET_HOME` to relocate) — there is no external
-daemon and no second config file anywhere else:
+Everything docket owns is under `~/.docket/` (`DOCKET_HOME` relocates it). The team itself lives
+in your repository:
 
 ```
+<your repo>/.docket/                  # the team's configuration of record (commit it)
+├── pod.yaml                          # kind: pod — members to add, settings, optional pipeline file
+├── roles/<name>.yaml + <name>.md     # kind: role — what a kind of agent is, and its instructions
+├── pipeline.yaml                     # kind: pipeline — who works, in what order, behind which gates
+├── policies/*.yaml                   # kind: policy — what is forbidden or needs a human
+└── .schemas/                         # JSON Schemas for editor autocompletion (export writes them)
+
 ~/.docket/
-├── fleet.json                     # Agent registration, channel bindings, gate/isolation flags
-├── docket-providers.json          # Your own kind: provider documents and overrides of built-ins
-├── secrets.json                   # Stored provider API keys (0600), referenced by name
-├── docket-models.json             # Role→model policy overrides, plus the org default model
-├── docket-roles.json              # User-defined role archetypes
-├── docket-conversations.json      # docket's own channel-thread registry
-├── docket-runs.json               # docket's own dispatch run registry
-├── docket-schedules.json          # Cron/interval pipeline schedules
-├── docket-mcp-servers.json        # Configured external MCP tool servers
-├── audit.log                      # Hash-chained audit log (docket audit verify)
-├── traces/                        # Per-session JSONL execution traces
-├── sessions/                      # Durable per-session turn history
-├── approvals/                     # docket's own approval-token store
-├── policies/                      # Installed guardrail policies
+├── fleet.json                        # agent registration, channel bindings, isolation flag
+├── docket-providers.json             # your kind: provider documents; fourteen ship built in
+├── secrets.json                      # stored credentials (0600), referenced by name
+├── docket-models.json                # role -> model policy and the default model
+├── docket-roles.json                 # your global role overlay
+├── policies/                         # global policies (most-restrictive wins with a pod's own)
+├── plugins/                          # operator-scope predicate plugins (rare)
+├── docket-mcp-servers.json           # external MCP tool servers
+├── docket-runs.json  docket-schedules.json  docket-conversations.json
+├── audit.log                         # hash-chained audit log (docket audit verify)
+├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
 └── workspaces/
-    ├── manager/                   # Org specialist: orchestrator (delegation only)
-    ├── knowledge/                 # Org specialist: docs / research
-    ├── security/                  # Org specialist: security audits
-    ├── portfolio-manager/         # Optional org specialist (docket init --portfolio)
-    └── projects/
-        └── <project>-<role>/      # Pod member workspace (e.g. myapp-lead, myapp-implementer)
-            ├── SOUL.md            # Identity + session key (+ optional persona)
-            ├── INSTRUCTIONS.md    # Operator-owned; docket never writes it, composes right
-            │                      # after SOUL.md; survives set-verify/sync/rebuild
-            ├── AGENTS.md          # Session protocol
-            ├── TOOLS.md           # Project commands
-            ├── HEARTBEAT.md       # Durable task ledger (dispatch keeps its own region current)
-            ├── WORKFLOW_AUTO.md   # Runtime-forced startup file: codebase path + resume contract
-            ├── .docket-meta.json  # docket metadata (sessionKey, projectKey, optional persona)
-            ├── memory/            # Daily logs
-            └── workflows/         # Optional: docket-native pipeline YAML (docket pipeline run)
+    ├── manager/ knowledge/ security/ # the shared org specialists
+    ├── pods/<project>/config/        # this pod's own overlay: roles.json, policies/, plugins/
+    └── projects/<project>-<role>/    # one isolated workspace per pod member
+        ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
+        ├── INSTRUCTIONS.md           # yours; docket never writes it
+        ├── .docket-meta.json         # role, codebase, model, verify command, pod settings (Lead)
+        ├── worktree/                 # the Implementer's git worktree on its own branch
+        └── memory/                   # daily logs
 ```
 
-> Org specialists (`manager`, `knowledge`, `security`, and the opt-in `portfolio-manager`) have
-> one shared workspace at `~/.docket/workspaces/<role>/`. Project pod members
-> (`<project>-lead`, `<project>-implementer`, etc.) each get an **isolated** workspace under
-> `projects/` — no role is ever shared between projects.
+Org specialists (`manager`, `knowledge`, `security`, and the opt-in `portfolio-manager`) have one
+shared workspace each. Pod members each get an isolated one; no role is ever shared between
+projects. Which of these files reach a model, and which only look like settings, is the subject
+of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 
 ---
 
 ## Contributing to docs
 
-1. **Accurate over comprehensive** — every example should run against the current CLI
-2. **User-focused** — answer "how do I…", link to the [Command Reference](commands.md) for detail
-3. **Consistent formatting** — follow the existing style
+1. **Accurate over comprehensive.** Every example runs against the current CLI; the terminal
+   output shown was captured from a real run.
+2. **User-focused.** Answer "how do I…" and link to the [command reference](commands.md) for detail.
+3. **One owner per fact.** Adapter versions live in [COMPATIBILITY.md](../COMPATIBILITY.md),
+   requirements in `specs/`, decisions in `adr/`.
 
-For questions, run `docket help` or start with the [Quick Start](QUICK-START-DOCKET.md).
+Questions: `docket help`, or the [Quick start](QUICK-START-DOCKET.md).
