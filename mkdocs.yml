@@ -1,5 +1,5 @@
 site_name: docket
-site_description: A governed agent-fleet runtime and CLI.
+site_description: Governed teams of coding agents that work unattended, with an audit trail you can verify.
 repo_url: https://github.com/yielab/docket
 docs_dir: docs
 site_dir: site

@@ -1,183 +1,133 @@
-"""Positioning / docs truth pass.
+"""README front-door contract.
 
-Machine-readable audit: the public docs must lead with the verified differentiators
-and make no unfalsifiable or savings-claim statements.
-
-Acceptance criteria (from TODO.md):
-  - docs lead with coordinated-context + isolation + governance
-  - the ops/control-plane vs framework contrast line is present
-  - the governed-fleet vs solo-assistant contrast line is present
-  - no dollar-savings claims ("save" / "savings" in a cost context)
-  - suite green
+The README carries one pitch and three heroes -- the team, the gate, the record -- each showing
+its captured asset, naming its limit beside the capability, and ending claims in the command that
+proves them. Every rule here answers to the current README, not to a prior shape of it.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+import pytest
+
 LANE = "truth"
-REASON = "Prevents the public docs from drifting off the verified differentiators (coordinated context, isolation, governance) or reintroducing an unfalsifiable or dollar-savings claim."
-RETIRE_WHEN = "the positioning claims are generated from a single source of truth instead of hand-maintained prose."
+REASON = "Keeps the README on one pitch: three hero sections first and in order, each with its asset, its limit and its proving commands; no self-description the ADRs reject, no stacked feature frames, no dollar-savings claim."
+RETIRE_WHEN = "the README front door is generated from a single source of truth instead of hand-maintained prose."
 
 _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
 CLAUDE_MD = _REPO / "CLAUDE.md"
+
+HERO_HEADINGS = ("## The team", "## The gate", "## The record")
+HERO_ASSETS = {
+    "## The team": "hero.gif",
+    "## The gate": "governance.png",
+    "## The record": "isolation.png",
+}
+# Self-descriptions the ADRs reject: "fleet" implies a scale docket denies, "control plane"
+# implies a dashboard docket refuses to build, "enterprise" a buyer the ADRs scope out, and
+# "factory"/"substrate" are internal strategy words, not product ones.
+FORBIDDEN_SELF_DESCRIPTIONS = (
+    r"\bfleet\b",
+    r"\benterprise\b",
+    r"\bcontrol plane\b",
+    r"\bfactory\b",
+    r"\bsubstrate\b",
+    r"\bcost optimi[sz]ation\b",
+)
+# Frames the front door must not re-grow: a feature list or a guarantee list beside the heroes.
+STACKED_FRAMES = ("## Features", "## Core guarantees", "## Command reference", "## What's next")
 
 
 def _readme() -> str:
     return README.read_text(encoding="utf-8")
 
 
-def _claude() -> str:
-    import pytest
-
-    if not CLAUDE_MD.exists():
-        pytest.skip("CLAUDE.md is not committed to this repo")
-    return CLAUDE_MD.read_text(encoding="utf-8")
+def _sections(text: str) -> list[tuple[str, str]]:
+    """Return (heading, body) for every H2, in document order."""
+    parts = re.split(r"^(## .+)$", text, flags=re.MULTILINE)
+    return [(parts[i].strip(), parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
 
 
-# ── TestNoDollarSavingsClaims ─────────────────────────────────────────────────
+class TestThreeHeroes:
+    def test_heroes_open_the_readme_in_order_then_the_quick_start(self) -> None:
+        headings = [heading for heading, _ in _sections(_readme())]
+        assert tuple(headings[:3]) == HERO_HEADINGS, headings[:4]
+        assert headings[3] == "## Quick start", headings[:4]
+
+    def test_each_hero_shows_its_captured_asset(self) -> None:
+        bodies = dict(_sections(_readme()))
+        for heading, asset in HERO_ASSETS.items():
+            assert asset in bodies[heading], f"{heading} must show docs/assets/{asset}"
+
+    def test_each_hero_names_its_limit_beside_the_capability(self) -> None:
+        bodies = dict(_sections(_readme()))
+        for heading in HERO_HEADINGS:
+            assert re.search(r"\*Limit:\*|not tamper-proof", bodies[heading]), (
+                f"{heading} must state its limit in the same section, not in an appendix"
+            )
+
+    def test_each_hero_ends_claims_in_commands(self) -> None:
+        bodies = dict(_sections(_readme()))
+        for heading in HERO_HEADINGS:
+            commands = re.findall(r"`docket [a-z]", bodies[heading])
+            assert len(commands) >= 2, f"{heading} must name the commands that prove it"
+
+
+class TestOneVoice:
+    def test_no_rejected_self_description(self) -> None:
+        text = _readme()
+        hits = [p for p in FORBIDDEN_SELF_DESCRIPTIONS if re.search(p, text, flags=re.IGNORECASE)]
+        assert hits == [], f"README uses a self-description the ADRs reject: {hits}"
+
+    def test_tamper_proof_appears_only_negated(self) -> None:
+        for match in re.finditer(r"tamper-proof", _readme(), flags=re.IGNORECASE):
+            preceding = _readme()[max(0, match.start() - 4) : match.start()]
+            assert preceding.endswith("not "), (
+                "audit evidence is tamper-evident, never tamper-proof"
+            )
+
+    def test_no_stacked_feature_frames(self) -> None:
+        text = _readme()
+        present = [frame for frame in STACKED_FRAMES if frame in text]
+        assert present == [], f"README re-grew a shed frame: {present}"
+
+    def test_dashboard_is_fed_not_shipped(self) -> None:
+        text = re.sub(r"\s+", " ", _readme().lower())
+        assert "does not ship one" in text
+        for phrase in ("docket dashboard", "the docket ui", "docket's dashboard"):
+            assert phrase not in text, f"README must not position docket as a dashboard: {phrase!r}"
 
 
 class TestNoDollarSavingsClaims:
-    """No unfalsifiable cost-savings marketing language in public docs."""
+    """A forward dollar-savings claim is unfalsifiable here: tokens are measured, dollars estimated."""
 
-    def _check_no_savings_claim(self, text: str, label: str) -> None:
-        lines_with_savings = [
-            (i + 1, line)
-            for i, line in enumerate(text.splitlines())
-            if "saving" in line.lower() or "save money" in line.lower()
-            if not line.strip().startswith("#")  # allow headings that discuss the discipline
-        ]
-        # A line containing "saving" is only banned if it makes a forward claim
-        # (e.g. "saves you $X", "will save costs").
-        # Honest caveats like "treat savings comparisons as directional" are fine.
+    _FORWARD_CLAIMS = (
+        "save you",
+        "saves you",
+        "will save",
+        "can save",
+        "reduces your costs",
+        "cut your costs",
+    )
+
+    def _check(self, text: str, label: str) -> None:
         bad = [
-            (n, ln)
-            for n, ln in lines_with_savings
-            if any(
-                phrase in ln.lower()
-                for phrase in (
-                    "save you",
-                    "saves you",
-                    "will save",
-                    "can save",
-                    "reduces your costs",
-                    "cut your costs",
-                )
-            )
+            (n, line)
+            for n, line in enumerate(text.splitlines(), start=1)
+            if not line.strip().startswith("#")
+            and any(phrase in line.lower() for phrase in self._FORWARD_CLAIMS)
         ]
-        assert bad == [], f"{label}: found dollar-savings claim(s):\n" + "\n".join(
-            f"  line {n}: {ln}" for n, ln in bad
+        assert bad == [], f"{label}: dollar-savings claim(s):\n" + "\n".join(
+            f"  line {n}: {line}" for n, line in bad
         )
 
-    def test_readme_no_savings_claims(self) -> None:
-        self._check_no_savings_claim(_readme(), "README.md")
+    def test_readme(self) -> None:
+        self._check(_readme(), "README.md")
 
-    def test_claude_md_no_savings_claims(self) -> None:
-        self._check_no_savings_claim(_claude(), "CLAUDE.md")
-
-
-# ── TestThreePillarsPresent ───────────────────────────────────────────────────
-
-
-class TestThreePillarsPresent:
-    """The three verified differentiators must appear in the README."""
-
-    def test_coordinated_context_pillar(self) -> None:
-        text = _readme()
-        assert "Lead" in text and ("context" in text or "orchestrat" in text), (
-            "README should mention the Lead-owned context / coordination pillar"
-        )
-
-    def test_isolation_pillar_runtime_resources(self) -> None:
-        text = _readme()
-        assert "port" in text.lower() and (
-            "scratch" in text.lower() or "isolation" in text.lower()
-        ), "README should mention runtime-resource isolation (port ranges / scratch dirs)"
-
-    def test_isolation_pillar_worktree(self) -> None:
-        text = _readme()
-        assert "worktree" in text.lower(), (
-            "README should mention git worktree isolation for Implementers"
-        )
-
-    def test_governance_pillar_approval(self) -> None:
-        text = _readme()
-        assert "approval" in text.lower() and "gate" in text.lower(), (
-            "README should mention approval gates (governance/HITL spine)"
-        )
-
-    def test_governance_pillar_audit(self) -> None:
-        text = _readme()
-        assert "audit" in text.lower(), "README should mention audit log (governance spine)"
-
-
-# ── TestContrastLinesPresent ──────────────────────────────────────────────────
-
-
-class TestContrastLinesPresent:
-    """The explicit competitor contrast lines must appear."""
-
-    def test_ops_control_plane_not_framework_contrast(self) -> None:
-        text = _readme()
-        assert "control plane" in text.lower() and "framework" in text.lower(), (
-            "README must contain the 'ops/control plane, not an agent framework' contrast line"
-        )
-
-    def test_governed_fleet_not_solo_contrast(self) -> None:
-        text = _readme()
-        assert "solo" in text.lower() or "personal assistant" in text.lower(), (
-            "README must contrast a governed fleet with a solo personal assistant"
-        )
-
-    def test_dashboard_feed_not_is_dashboard(self) -> None:
-        text = _readme()
-        # docket feeds dashboards; it is not itself a dashboard
-        assert "dashboard" in text.lower(), (
-            "README should mention the dashboard / read-API positioning"
-        )
-        # Must NOT claim to *be* the dashboard (only to feed one)
-        bad_phrases = ["docket dashboard", "the docket ui", "docket's dashboard"]
-        for phrase in bad_phrases:
-            assert phrase not in text.lower(), (
-                f"README must not position docket as a dashboard UI (found: {phrase!r})"
-            )
-
-
-# ── TestNewFeaturesDocumented ─────────────────────────────────────────────────
-
-
-class TestNewFeaturesDocumented:
-    """Runtime-resource isolation, scheduling/webhook dispatch, and the
-    pipeline validate/plan/run surface are all mentioned in the README."""
-
-    def test_runtime_resources_documented(self) -> None:
-        assert "port" in _readme().lower()
-
-    def test_implementer_worktree_isolation_documented(self) -> None:
-        assert "worktree" in _readme().lower()
-
-    def test_scheduled_dispatch_documented(self) -> None:
-        text = _readme()
-        assert "schedule" in text.lower() or "@every" in text
-
-    def test_webhook_documented(self) -> None:
-        text = _readme()
-        assert "webhook" in text.lower() or "/dispatch/" in text
-
-    def test_validate_documented(self) -> None:
-        text = _readme()
-        assert "validate" in text.lower()
-
-    def test_plan_documented(self) -> None:
-        text = _readme()
-        assert "plan" in text.lower() or "dry-run" in text.lower()
-
-    def test_status_json_documented(self) -> None:
-        text = _readme()
-        assert "/status.json" in text
-
-    def test_metrics_documented(self) -> None:
-        text = _readme()
-        assert "/metrics" in text
+    def test_claude_md(self) -> None:
+        if not CLAUDE_MD.exists():
+            pytest.skip("CLAUDE.md is not committed to this repo")
+        self._check(CLAUDE_MD.read_text(encoding="utf-8"), "CLAUDE.md")

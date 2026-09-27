@@ -182,6 +182,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The README carries one pitch.** The front door now opens with three sections -- the team,
+  the gate, the record -- each showing its captured asset, stating its limit beside the
+  capability and ending in the command that proves it, followed by the quick start. The
+  five-pain intro, the eight guarantees and the sixteen-bullet feature list are folded into
+  those sections or relocated (best practices to the quick start, the tested adapter list to
+  COMPATIBILITY.md, which is now its only owner). The package description and the site
+  description say the same thing. The prose tests that pinned the old headings were rebuilt
+  from the new README's own rules rather than carried forward.
 - **Non-software pods run their blueprint pipeline.** `docket pod <p> dispatch`, `docket pipeline
   plan|run` without `--file`, `POST /dispatch/<p>`, the `serve --dispatch` sweep, schedules and
   Telegram `/delegate` now resolve the Lead's `blueprint` and run that blueprint's full roster and

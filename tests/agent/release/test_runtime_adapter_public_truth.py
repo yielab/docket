@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 LANE = "release"
-REASON = "Prevents the README and COMPATIBILITY docs from naming an adapter configuration that was never tested, or from claiming broader protocol support than the adapters prove."
+REASON = "Prevents COMPATIBILITY.md from naming an adapter configuration that was never tested, keeps the README from pinning a second copy of that list, and rejects broader protocol claims than the adapters prove."
 RETIRE_WHEN = "adapter support claims are generated directly from the tested configuration list instead of hand-written."
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -55,19 +55,22 @@ def test_runtime_spec_records_final_cross_adapter_contract_and_evidence() -> Non
     assert "### Version 2.2.0 (2026-09-01)" in spec
 
 
-def test_readme_and_compatibility_name_only_the_tested_adapter_configurations() -> None:
-    for path in (README, COMPATIBILITY):
-        public = _text(path)
-        assert "OpenHands SDK" in public and "1.44.1" in public, path
-        assert "PydanticAI" in public and "2.37.0" in public, path
-        assert "exclusively Docket-backed" in public, path
-        assert "native/provider tools" in public, path
-        assert "plugins/MCP" in public, path
-        assert "arbitrary framework configurations" in public, path
-
-    readme = _text(README)
-    assert "examples/runtime_adapters.py" in readme
+def test_compatibility_owns_the_tested_adapter_list_and_the_readme_points_at_it() -> None:
     compatibility = _text(COMPATIBILITY)
+    assert "OpenHands SDK" in compatibility and "1.44.1" in compatibility
+    assert "PydanticAI" in compatibility and "2.37.0" in compatibility
+    assert "exclusively Docket-backed" in compatibility
+    assert "native/provider tools" in compatibility
+    assert "plugins/MCP" in compatibility
+    assert "arbitrary framework configurations" in compatibility
+    assert "examples/runtime_adapters.py" in compatibility
+
+    # One owner for the tested list: the README links it and never pins a version copy.
+    readme = _text(README)
+    assert "COMPATIBILITY.md" in readme
+    assert re.search(r"openhands-sdk==|pydantic-ai==", readme) is None, (
+        "adapter versions live in COMPATIBILITY.md only"
+    )
     assert "ACP" in compatibility
     assert "A2A" in compatibility and "OTLP" in compatibility
 

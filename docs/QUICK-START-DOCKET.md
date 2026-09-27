@@ -337,6 +337,16 @@ kept in one place rather than duplicated across every doc that touches them.
 
 ---
 
+## Before trusting it with more
+
+Start with the minimum Lead + Implementer pod and add a Reviewer or Tester once a concrete
+quality gate justifies the extra turns. Give the Implementer an objective check with
+`docket pod <id> set-verify <member> "<command>"`, so advancement blocks on a nonzero exit code
+rather than on how confident the model's prose sounds. Keep dispatch explicit before enabling
+schedules or `docket serve --dispatch`, and confirm budgets and approval channels first. Inspect
+the run, trace, token usage and audit chain before accepting a consequential change. Keep docket
+behind your own boundary: `docket serve` binds loopback by default and does not terminate TLS.
+
 ## Resources
 
 - **Agent Teams (Pods):** [AGENT-TEAMS.md](AGENT-TEAMS.md) — the canonical team-model reference

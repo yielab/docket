@@ -9,7 +9,7 @@ Complete technical guide to docket's DOCKET architecture implementation.
 > but has not been QA-hardened in production. "Validated" in the Implementation Status section
 > means *covered by the automated suite*, not field-proven — verify behavior against your own
 > install. All cost figures are accounting estimates, not provider bills (see the
-> [README's cost limits](../README.md#cost-reporting-and-its-limits)).
+> [README's cost limits](../README.md#the-record)).
 
 ---
 
@@ -158,7 +158,7 @@ driver still needs a real trigger (a paying user who needs a different runtime),
 of the port itself; adding driver discovery, entry points, or a config-selectable backend ahead of
 that would be scope creep, not follow-through. One consequence worth stating plainly: `DocketDriver`
 never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
-[Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#cost-reporting-and-its-limits).
+[Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#the-record).
 
 ### Harness mode: one agent, one turn, for an external caller
 
@@ -1023,7 +1023,7 @@ refreshed by
 ### Q: How much will I save?
 
 **A:** See [Cost Optimization](#cost-optimization) above and
-[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) — the short version
+[Cost reporting and its limits](../README.md#the-record) — the short version
 is: token reduction from isolation is real and measured, but docket reports **measured tokens
 plus a clearly labelled dollar estimate**, never a savings promise.
 

@@ -88,13 +88,16 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
 
     readme = README.read_text(encoding="utf-8")
     lines = readme.splitlines()
-    assert len(lines) <= 500, f"README is overcrowded at {len(lines)} lines"
-    assert len(readme.split()) <= 4_000, "README duplicates detail owned by the public guides"
+    # Ratchet: lower these when the README shrinks; raising them needs a reason in the commit body.
+    assert len(lines) <= 300, f"README is overcrowded at {len(lines)} lines"
+    assert len(readme.split()) <= 2_600, "README duplicates detail owned by the public guides"
 
     required_headings = (
-        "## Features",
+        "## The team",
+        "## The gate",
+        "## The record",
         "## Quick start",
-        "## Best practices",
+        "## Everything above is configuration",
         "## Known limits",
         "## Documentation",
         "## Contributing",
@@ -105,6 +108,8 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
         "## Command reference",
         "## Integrating with a control plane",
         "## What's next",
+        "## Features",
+        "## Core guarantees",
     ):
         assert duplicated_owner not in readme, f"README duplicates {duplicated_owner!r}"
 
