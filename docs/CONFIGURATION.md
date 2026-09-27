@@ -604,6 +604,46 @@ into `<dir>/.schemas/` — the same schemas `scripts/gen_config_schemas.py` publ
 recipe without installing anything. `docket validate <dir>` checks the whole directory in one
 pass, kind by kind.
 
+### 3.11 Keep the team in the repo
+
+A team is a directory named `.docket/` next to the code, in the same shape `docket pod <p>
+export` writes and every shipped recipe ships:
+
+```text
+.docket/
+  pod.yaml            kind: pod       members (roles to add), settings, optional pipeline filename
+  roles/<name>.yaml   kind: role      short form: model, cannot, verdict|verify|approval, instructions
+  roles/<name>.md                     the role's instructions, plain Markdown
+  pipeline.yaml       kind: pipeline  short form: `- id: role` steps with verify/verdict/approval/on
+  policies/*.yaml     kind: policy    when/then; JSON still loads
+  plugins/*.py                        hashed predicate plugins (rare)
+  .schemas/                           generated JSON Schemas the `# yaml-language-server` headers point at
+```
+
+Three commands read it, and nothing else does:
+
+| Moment | Command | What happens |
+|---|---|---|
+| Creating the pod | `docket init` (with `.docket/` present) or `docket init --recipe <name\|dir>` | every document is validated **before** the pod is provisioned (an error exits 1 naming file, line and field, and provisions nothing); after provisioning, the directory is applied exactly as `pod apply` would, with one `pod.apply` audit entry. `--no-apply` provisions only. `--recipe` and a present `.docket/` together are refused: one source of record. |
+| Re-applying after a change | `docket pod <p> apply` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
+| Writing it back | `docket pod <p> export` (defaults to `<codebase>/.docket/`; refuses a non-empty one without `--force`) | the pod's own scope in the short form, ready to commit |
+
+Rules worth knowing:
+
+- **Nothing is applied without an operator command.** Dispatch, `serve`, schedules and the
+  harness never read `.docket/`: an Implementer editing it in its worktree changes nothing until
+  you apply it. `docket config explain <agent>` prints `configSource`, `configDigest` and
+  `drift: yes|no`, so you can see that the directory moved on since it was applied.
+- **A repository cannot loosen your rules.** Its policies land in the pod scope and accumulate
+  with the global ones under the most-restrictive rule; a global `block` stays a block.
+- **A credential value never appears.** Provider documents and policies carry names; keys live in
+  `docket keys`.
+- **Validate from the repo root** with `docket validate` (no argument: `.docket/` when present).
+  Commit `.schemas/` if you want editor autocompletion offline; `export` regenerates it.
+- **A step may name its model** (`model: cheap|strong|<provider/id>`): it applies to that hop
+  only and is never written to the agent's own metadata, so `docket profile` still shows the
+  persisted model.
+
 ## 4. File reference
 
 **Hand-editing.** Docket writes its JSON atomically: a file lock, a `.bak` of the previous

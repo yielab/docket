@@ -201,14 +201,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The README carries one pitch.** The front door now opens with three sections -- the team,
-  the gate, the record -- each showing its captured asset, stating its limit beside the
-  capability and ending in the command that proves it, followed by the quick start. The
-  five-pain intro, the eight guarantees and the sixteen-bullet feature list are folded into
-  those sections or relocated (best practices to the quick start, the tested adapter list to
-  COMPATIBILITY.md, which is now its only owner). The package description and the site
-  description say the same thing. The prose tests that pinned the old headings were rebuilt
-  from the new README's own rules rather than carried forward.
+- **The README carries one pitch: agent teams as configuration, your rules, in YAML.** The
+  front door opens with three sections -- the team you define (the `.docket/` directory and a
+  role and a pipeline in their short form), the run, and the gate and the record -- each
+  showing an asset captured from one real run, stating its limit beside the capability and
+  ending in the command that proves it, followed by the quick start, which now starts from a
+  shipped recipe and ends by writing the team back to the repository. The five-pain intro, the
+  eight guarantees and the sixteen-bullet feature list are folded into those sections or
+  relocated (best practices to the quick start, the tested adapter list to COMPATIBILITY.md,
+  which is now its only owner). The package, module and site descriptions carry the same
+  tagline. The prose tests that pinned the old headings were rebuilt from the new README's own
+  rules rather than carried forward.
 - **Non-software pods run their blueprint pipeline.** `docket pod <p> dispatch`, `docket pipeline
   plan|run` without `--file`, `POST /dispatch/<p>`, the `serve --dispatch` sweep, schedules and
   Telegram `/delegate` now resolve the Lead's `blueprint` and run that blueprint's full roster and
@@ -243,6 +246,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A recipe's own role no longer routes to the hosted default on a local fleet.** A role a
+  recipe applied into a pod's overlay (`security-vetter`, `model: strong`) was resolved against
+  the global role registry only, so it fell to the compiled-in `anthropic/claude-sonnet-4-6`
+  while every other member followed `docket models preset local`; the first dispatch then hit
+  the hosted vendor with no key (HTTP 401). Found by running the product for the new assets.
+  `resolve_role_model` now looks the archetype up in the member's pod registry and an unknown
+  role falls back to the registry's own `default`. `docket pod <p> apply` and `docket init` also
+  print the plan's `[add]`/`[replace]`/`[skip]` actions again; Rich had been reading them as
+  style tags and dropping them.
 - **A `cd` prefix no longer turns an allowed command into an approval.** `cd`, `pwd`, `echo`,
   `true`, `false`, `test` and `[` joined the bash allowlist, so `cd <worktree> && git status`
   runs like `git status`; an unattended implementer hop used to time out three times on exactly

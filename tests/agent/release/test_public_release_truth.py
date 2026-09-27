@@ -89,15 +89,15 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
     readme = README.read_text(encoding="utf-8")
     lines = readme.splitlines()
     # Ratchet: lower these when the README shrinks; raising them needs a reason in the commit body.
-    assert len(lines) <= 300, f"README is overcrowded at {len(lines)} lines"
-    assert len(readme.split()) <= 2_600, "README duplicates detail owned by the public guides"
+    assert len(lines) <= 270, f"README is overcrowded at {len(lines)} lines"
+    assert len(readme.split()) <= 2_400, "README duplicates detail owned by the public guides"
 
     required_headings = (
-        "## The team",
-        "## The gate",
-        "## The record",
+        "## The team you define",
+        "## The run",
+        "## The gate and the record",
         "## Quick start",
-        "## Everything above is configuration",
+        "## Everything is configuration",
         "## Known limits",
         "## Documentation",
         "## Contributing",
@@ -193,7 +193,7 @@ def test_public_commands_and_claims_match_shipped_boundaries() -> None:
             if re.search(pattern, line, flags=re.IGNORECASE):
                 offenders.append(f"{path.relative_to(ROOT)}:{line_number}: {reason}")
 
-    readme = README.read_text(encoding="utf-8").lower()
+    readme = re.sub(r"\s+", " ", README.read_text(encoding="utf-8").lower())
     if "not published to any index" not in readme:
         offenders.append("README.md: runtime package publication limit is missing")
     if "cancel requested" not in readme or "safe checkpoint" not in readme:
@@ -209,12 +209,13 @@ def test_quickstart_has_one_ordered_artifact_to_governed_turn_route() -> None:
     ordered_steps = (
         f"/releases/download/v{version}/",
         "docket models provider add",
-        "docket models set programmer",
-        "docket init",
+        "docket models preset local",
+        "docket init --recipe",
         "docket pod myapp delegate",
         "docket pod myapp dispatch",
         "docket runs list",
         "docket trace",
+        "docket pod myapp export",
     )
     missing = [step for step in ordered_steps if step not in text]
     assert missing == [], f"quickstart is missing release-to-first-turn step(s): {missing}"

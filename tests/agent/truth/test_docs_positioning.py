@@ -1,6 +1,7 @@
 """README front-door contract.
 
-The README carries one pitch and three heroes -- the team, the gate, the record -- each showing
+The README carries one pitch and three heroes -- the team you define, the run, the gate and the
+record -- each showing
 its captured asset, naming its limit beside the capability, and ending claims in the command that
 proves them. Every rule here answers to the current README, not to a prior shape of it.
 """
@@ -20,11 +21,11 @@ _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
 CLAUDE_MD = _REPO / "CLAUDE.md"
 
-HERO_HEADINGS = ("## The team", "## The gate", "## The record")
+HERO_HEADINGS = ("## The team you define", "## The run", "## The gate and the record")
 HERO_ASSETS = {
-    "## The team": "hero.gif",
-    "## The gate": "governance.png",
-    "## The record": "isolation.png",
+    "## The team you define": "hero.gif",
+    "## The run": "isolation.png",
+    "## The gate and the record": "governance.png",
 }
 # Self-descriptions the ADRs reject: "fleet" implies a scale docket denies, "control plane"
 # implies a dashboard docket refuses to build, "enterprise" a buyer the ADRs scope out, and
@@ -65,9 +66,14 @@ class TestThreeHeroes:
     def test_each_hero_names_its_limit_beside_the_capability(self) -> None:
         bodies = dict(_sections(_readme()))
         for heading in HERO_HEADINGS:
-            assert re.search(r"\*Limit:\*|not tamper-proof", bodies[heading]), (
+            assert re.search(r"\*Limit:\*", bodies[heading]), (
                 f"{heading} must state its limit in the same section, not in an appendix"
             )
+
+    def test_the_first_hero_shows_the_files_not_a_list(self) -> None:
+        body = dict(_sections(_readme()))["## The team you define"]
+        for kind in ("kind: role", "kind: pipeline", "kind: pod", "kind: policy"):
+            assert kind in body, f"the first hero must show a {kind} document"
 
     def test_each_hero_ends_claims_in_commands(self) -> None:
         bodies = dict(_sections(_readme()))

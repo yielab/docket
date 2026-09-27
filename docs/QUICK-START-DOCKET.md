@@ -27,20 +27,21 @@ export PATH="$HOME/.local/bin:$PATH"
 cd ~/code/myapp
 docket models provider add local http://127.0.0.1:8081/v1 \
   --model local-model --ctx 32768 --max-tokens 4096
-docket models set default local/local-model
-docket models set manager local/local-model
-docket models set programmer local/local-model
-docket init
+docket models preset local                # every role resolves to the local endpoint
+docket init --recipe secure-build         # Lead + Implementer + a read-only security vetter
 docket pod myapp delegate "Create FIRST_TURN.md containing exactly: governed first turn"
 docket pod myapp dispatch
 docket runs list
 docket trace tail myapp    # prints the latest session's tail, then follows it; Ctrl-C to stop
+docket pod myapp export    # writes the team to ./.docket/; commit it and `docket init` reads it next time
 ```
 
 `provider add` validates the endpoint before project state is created, and writes a `kind:
 provider` document you can inspect or hand-edit afterward with `docket models provider export
-local`. The final two commands are the public evidence: the run must be terminal and the trace
-must show the model/tool lifecycle. The local model still needs ordinary OpenAI function-tool
+local`. `--recipe` starts from a shipped team (`secure-build`, `research-review`, `ops-approval`,
+or a directory of your own); with a `.docket/` already committed next to the code, plain
+`docket init` validates and applies it. `runs list` and `trace tail` are the public evidence: the
+run must be terminal and the trace must show the model/tool lifecycle. The local model still needs ordinary OpenAI function-tool
 compatibility; model availability alone does not prove reliable tool use. For hosted or
 mixed-provider setup, see [Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
 
