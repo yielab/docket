@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Registration verifies with the credential, and a provider round-trips through the CLI.**
+  `docket models provider add <file.yaml>` (or the `add <name> <url> --model <id>
+  [--credential NAME]` shortcut) probes `<url>/models` with the resolved credential and
+  classifies the answer: only a transport failure refuses; 401/403 registers and names the
+  missing or rejected credential; 404 registers and says the route is unserved; a 200 that
+  advertises ids the document lacks prints them as suggestions. `list`, `show [--json]`,
+  `remove` and `export` complete the round trip (`export` -> fresh home -> `add` -> identical
+  `show --json`), and `docket models preset <name>` prints one readiness line naming the
+  credential as present or missing.
+- **A provider can authenticate by header and send static headers.** `auth: {type: header,
+  header: api-key, credentials: [AZURE_KEY]}` sends the credential under that header (Azure
+  OpenAI, a multi-workspace Anthropic key) and `headers:` adds static headers to every request;
+  `Authorization`, `Content-Type` and `Accept` are refused at load. A bearer document's request
+  is byte-identical to before.
 - **Fourteen providers ship as built-in documents, and every table derives from them.**
   `templates/providers/` holds `anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`,
   `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`, `ollama`, `lmstudio` and

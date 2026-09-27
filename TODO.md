@@ -298,7 +298,7 @@ non-`None` on a fresh home (fails on the base).
 
 ### P29-3 — registration verifies with the credential, and a provider round-trips through the CLI
 
-**Status:** IN-PROGRESS (@sonnet-p29-3) · **Size:** M · **Wave:** 49 (after P29-2) · **Spec:** `model-profiles.spec.md` → 2.13.0 ("Provider readiness" 3/4 amended; classification table added), `cli-interface.spec.md` → 1.40.0 (`docket models provider` actions; `preset` no longer requires a block)
+**Status:** DONE (2026-09-27, `a37bb7d`) · **Size:** M · **Wave:** 49 (after P29-2) · **Spec:** `model-profiles.spec.md` → 2.13.0 ("Provider readiness" 3/4 amended; classification table added), `cli-interface.spec.md` → 1.40.0 (`docket models provider` actions; `preset` no longer requires a block)
 
 **Trigger:** the reproduction in this section's header. `ping_endpoint` also performs network I/O
 inside `core/` (side effects belong in `edges/`).
@@ -348,7 +348,7 @@ function only), `cli/_provider.py`, `cli/__init__.py` (`models provider` dispatc
 
 ### P29-4 — a provider can authenticate by header and send static headers
 
-**Status:** IN-PROGRESS (@sonnet-p29-4) · **Size:** S · **Wave:** 49 · **Spec:** `model-profiles.spec.md` → 2.14.0 ("Provider catalog": `auth.type: header`, `auth.header`, `headers`, the reserved-header rule)
+**Status:** DONE (2026-09-27, `00498d1`) · **Size:** S · **Wave:** 49 · **Spec:** `model-profiles.spec.md` → 2.14.0 ("Provider catalog": `auth.type: header`, `auth.header`, `headers`, the reserved-header rule)
 
 **Trigger:** the adapter sends `Authorization: Bearer` or nothing (`OpenAIChatClient._headers`);
 Azure OpenAI authenticates with an `api-key` header and multi-workspace Anthropic keys need
@@ -422,7 +422,7 @@ payload only), `config.py` (the new constant).
 
 ### P29-6 — `config explain` names the provider and its scope, and every doc says the same thing
 
-**Status:** TODO · **Size:** S · **Wave:** 49 (after P29-3 and P29-4) · **Spec:** `model-profiles.spec.md` → 2.15.0 (observability rules), `cli-interface.spec.md` → 1.41.0 (`config explain` provider section; doctor)
+**Status:** IN-PROGRESS (@sonnet-p29-6) · **Size:** S · **Wave:** 49 (after P29-3 and P29-4) · **Spec:** `model-profiles.spec.md` → 2.15.0 (observability rules), `cli-interface.spec.md` → 1.41.0 (`config explain` provider section; doctor)
 
 **Trigger:** `docket config explain` reports the model id and nothing about where it goes;
 `docs/troubleshooting.md` §1 shows an error a CLI user cannot reach; `docs/CONFIGURATION.md`
