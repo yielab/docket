@@ -1,0 +1,8 @@
+kind: policy
+name: no-egress-ask-fetch
+description: Ask before every call to the built-in fetch tool, docket's own inspectable egress path.
+appliesTo: ["*"]
+when:
+  tool: fetch
+then: ask
+message: This call reaches the network through the fetch tool; requires operator approval.

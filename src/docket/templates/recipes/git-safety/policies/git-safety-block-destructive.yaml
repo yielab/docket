@@ -1,0 +1,9 @@
+kind: policy
+name: git-safety-block-destructive
+description: Block practically unrecoverable local git operations run through bash -- force-push, hard reset, forced clean, forced branch delete, forced checkout, and a global config edit.
+appliesTo: ["*"]
+when:
+  tool: bash
+  matches: 'git\s+push\s+(?:\S+\s+)*(?:--force|-f)\b|git\s+reset\s+--hard\b|git\s+clean\s+-f\w*|git\s+branch\s+-D\b|git\s+checkout\s+--\s+\.|git\s+config\s+--global\b'
+then: block
+message: This git command is unattended-unsafe (force-push, hard reset, forced clean, forced branch delete, forced checkout, or a global config change) and is blocked by the git-safety recipe.

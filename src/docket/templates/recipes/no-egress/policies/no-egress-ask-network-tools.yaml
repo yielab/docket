@@ -1,0 +1,9 @@
+kind: policy
+name: no-egress-ask-network-tools
+description: Ask before bash runs a network client directly (curl/wget/nc/ncat/ssh/scp/rsync/ftp).
+appliesTo: ["*"]
+when:
+  tool: bash
+  matches: '\b(?:curl|wget|nc|ncat|ssh|scp|rsync|ftp)\b'
+then: ask
+message: This command reaches the network directly through bash; requires operator approval.

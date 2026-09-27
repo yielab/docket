@@ -1,0 +1,3 @@
+kind: pod
+name: git-safety
+description: Block unattended-unsafe git commands and ask before a push that touches a protected branch.

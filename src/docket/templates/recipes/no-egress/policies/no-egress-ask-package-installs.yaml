@@ -1,0 +1,9 @@
+kind: policy
+name: no-egress-ask-package-installs
+description: Ask before bash installs a package -- every install reaches out to a registry over the network.
+appliesTo: ["*"]
+when:
+  tool: bash
+  matches: 'pip\s+install|pipx\b|uv\s+add|uv\s+pip\s+install|npm\s+install|npx\b|pnpm\s+add|yarn\s+add|cargo\s+add|go\s+get'
+then: ask
+message: This command installs a package, which reaches a registry over the network; requires operator approval.

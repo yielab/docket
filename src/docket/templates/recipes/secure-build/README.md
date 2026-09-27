@@ -29,8 +29,11 @@ verdict.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
-  narrows the Implementer's exec surface for secret-shaped writes regardless of the vetter's
-  own review.
+  rewritten on the structured predicates `core/policy.py` already evaluates (Phase 31, D-47) --
+  an `anyOf` of `{tool: write, path: '**/.env*'}`, `{tool: edit, path: '**/.env*'}`, and a
+  private-key-header `matches` -- so it fires on the call itself rather than the loose
+  "write...env" text match it used to be, and so the Implementer's exec surface for
+  secret-shaped writes still narrows regardless of the vetter's own review.
 
 ## Undo
 

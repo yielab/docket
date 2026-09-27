@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -334,6 +334,41 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    parsed (`core.policy.read_policy`) content, not by raw text, so re-planning a pod's own
    export against itself plans every item `skip`.
 
+### The recipe library
+
+A recipe's scope is derived from what its directory holds, never declared (ADR 0013): a
+`pod.yaml` naming only `members` plans roles/members/pipeline, one holding only `policies/`
+plans policy items only, and `plan_apply` treats every part as optional either way (see "Pod
+manifests: apply" requirement 1). The shipped library groups by what a directory contains, not
+by a declared field:
+
+| Kind | Recipe | What `apply` plans on a lean pod |
+| --- | --- | --- |
+| Team | `secure-build` | roles + members + pipeline + policies |
+| Team | `research-review` | roles + members + pipeline |
+| Team | `ops-approval` | members + pipeline + policies |
+| Policy pack | `git-safety` | policies only |
+| Policy pack | `no-egress` | policies only |
+| Policy pack | `secrets-guard` | policies only |
+| Policy pack | `prod-approval` | policies only |
+
+A policy pack's `pod.yaml` carries `kind: pod`, `name`, and `description` only — no `members`,
+`settings`, or `pipeline` key — so applying one to any pod changes no roster and no dispatch
+step; its guardrails narrow what a role already in that pod's own pipeline may do. Every policy
+pack states its rules with the structured predicates `core/policy.py::_predicate_matches`
+already evaluates (`tool`, `path`, `branch`, `anyOf`), not free text, so a pack's guardrail
+fires on the call itself: `git-safety` blocks force-push, hard reset, forced clean, forced
+branch delete, forced checkout, and a global git config edit, and asks before a push that names
+or is made from a protected branch (`main`/`master`/`production`/`prod`); `no-egress` asks
+before a bash-run network client, a package install, or a `fetch` call; `secrets-guard` blocks a
+write/edit whose path looks like a credential file (`.env`, `.pem`, `.key`, `id_rsa`, `.p12`) or
+whose rendered text carries a private-key header, an AWS access-key id shape, or a bearer-token
+shape, and redacts the same shapes from output; `prod-approval` asks before an implementer or
+operator runs a deploy/production-shaped command, generalising `ops-approval`'s own policy
+beyond the operator role. `secure-build`'s and `ops-approval`'s own policies are stated the same
+way (an `anyOf` of `{tool, path}` pairs plus a `matches` for text; a `tool: bash` predicate
+beside the existing `matches`, respectively) rather than the free-text match either used before.
+
 ## Interface Contracts
 
 ### CLI Command Signatures
@@ -431,6 +466,18 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.15.0 (2026-09-27)
+
+- **Four policy-pack recipes; `secure-build` and `ops-approval` on structured predicates
+  (ADR 0013).** New "The recipe library" section: the twelve-recipe table by kind, and what a
+  lean pod's `apply` plans for each. `git-safety`, `no-egress`, `secrets-guard` and
+  `prod-approval` ship as `templates/recipes/<name>/` directories carrying `policies/` only (no
+  `roles/`, no `pipeline.yaml`, no `members`) -- applying one changes no roster and no dispatch
+  step. `secure-build/policies/require-approval-secret-writes.yaml` and
+  `ops-approval/policies/ops-approval-high-risk.yaml` are rewritten (respectively) onto an
+  `anyOf` of `{tool, path}` pairs plus a `matches`, and a `tool: bash` predicate beside their
+  existing `matches`, so each fires on the call itself rather than free text alone.
 
 ### Version 1.14.0 (2026-09-27)
 

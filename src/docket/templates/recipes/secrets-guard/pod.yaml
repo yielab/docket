@@ -1,0 +1,3 @@
+kind: pod
+name: secrets-guard
+description: Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output.
