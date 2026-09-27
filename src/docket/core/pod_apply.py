@@ -49,7 +49,7 @@ class ApplyItem:
     """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing
     named, and whether applying it would add, replace, or skip (already matches disk)."""
 
-    kind: Literal["role", "policy", "plugin", "member", "pipeline", "setting"]
+    kind: Literal["role", "policy", "plugin", "skill", "member", "pipeline", "setting"]
     name: str
     action: ApplyAction
 
@@ -69,6 +69,16 @@ class _PolicyWrite:
 class _PluginWrite:
     name: str
     source: bytes
+
+
+@dataclass(frozen=True)
+class _SkillWrite:
+    """One skill's complete file set to write into the pod's own ``config/skills/<name>/`` --
+    every relative path (POSIX-separated) inside the skill's own directory paired with its
+    bytes, ``SKILL.md`` included."""
+
+    name: str
+    files: tuple[tuple[str, bytes], ...]
 
 
 @dataclass(frozen=True)
@@ -105,6 +115,7 @@ class ApplyPlan:
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
+    _skill_writes: tuple[_SkillWrite, ...] = field(default=())
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
@@ -426,6 +437,52 @@ def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[
     return items, writes
 
 
+def _directory_files(directory: Path) -> tuple[tuple[str, bytes], ...]:
+    """Every regular file under *directory*, as (posix-relative-path, bytes) pairs, sorted by
+    path -- the shape both the sha256 comparison and the actual write in ``apply`` use."""
+    return tuple(
+        (p.relative_to(directory).as_posix(), p.read_bytes())
+        for p in sorted(p for p in directory.rglob("*") if p.is_file())
+    )
+
+
+def _skill_digest(files: tuple[tuple[str, bytes], ...]) -> bytes:
+    """Sha256 digest over *files*' sorted relative paths and bytes -- the same shape
+    ``directory_digest`` hashes a whole recipe directory with, scoped to one skill."""
+    digest = hashlib.sha256()
+    for rel, data in files:
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.digest()
+
+
+def _plan_skills(directory: Path, project: str) -> tuple[list[ApplyItem], list[_SkillWrite]]:
+    """Plan each ``skills/<name>/`` whole into *project*'s own ``config/skills/<name>/``, by a
+    sha256 over the skill's own sorted relative paths and bytes: an installed copy with the
+    same hash plans ``skip``, any other content or none yet plans ``replace``/``add``."""
+    items: list[ApplyItem] = []
+    writes: list[_SkillWrite] = []
+    skills_dir = directory / "skills"
+    if not skills_dir.is_dir():
+        return items, writes
+    dest_root = _cfg.pod_config_dir(project) / "skills"
+    for skill_dir in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
+        if not (skill_dir / "SKILL.md").is_file():
+            continue
+        name = skill_dir.name
+        source_files = _directory_files(skill_dir)
+        dest = dest_root / name
+        if dest.is_dir() and _skill_digest(_directory_files(dest)) == _skill_digest(source_files):
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if dest.is_dir() else "add"
+            writes.append(_SkillWrite(name=name, files=source_files))
+        items.append(ApplyItem(kind="skill", name=name, action=action))
+    return items, writes
+
+
 def _plan_members(
     project: str,
     member_roles: list[str],
@@ -557,14 +614,17 @@ def _plan_settings(
 
 def directory_digest(directory: Path) -> str:
     """Sha256 hex digest over the sorted relative paths and bytes of every file
-    `discover_config_paths` returns plus any `plugins/*.py`; the generated `.schemas/` is
-    never hashed. `apply` records this as `configDigest`; `config explain` recomputes it."""
+    `discover_config_paths` returns, plus any `plugins/*.py` and any `skills/**` file
+    (never the generated `.schemas/`); `apply` records it as `configDigest`."""
     from docket.core import config_docs as _config_docs
 
     paths = list(_config_docs.discover_config_paths(directory))
     plugins_dir = directory / "plugins"
     if plugins_dir.is_dir():
         paths.extend(sorted(plugins_dir.glob("*.py")))
+    skills_dir = directory / "skills"
+    if skills_dir.is_dir():
+        paths.extend(sorted(p for p in skills_dir.rglob("*") if p.is_file()))
     ordered = sorted(paths, key=lambda p: p.relative_to(directory).as_posix())
 
     digest = hashlib.sha256()
@@ -619,6 +679,8 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     plugin_items, plugin_writes = _plan_plugins(directory, project)
 
+    skill_items, skill_writes = _plan_skills(directory, project)
+
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
 
     pipeline_item, pipeline_write = _plan_pipeline(
@@ -627,7 +689,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     setting_items, setting_writes = _plan_settings(project, raw_settings)
 
-    items = [*role_items, *policy_items, *plugin_items, *member_items]
+    items = [*role_items, *policy_items, *plugin_items, *skill_items, *member_items]
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(setting_items)
@@ -639,6 +701,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _role_writes=tuple(role_writes),
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
+        _skill_writes=tuple(skill_writes),
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),
@@ -679,6 +742,25 @@ def apply(plan: ApplyPlan) -> ApplyResult:
             dest = plugins_dir / plugin_write.name
             dest.write_bytes(plugin_write.source)
             dest.chmod(0o600)
+
+    if plan._skill_writes:
+        skills_dir = _cfg.pod_config_dir(plan.project) / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            _cfg.PODS_DIR.chmod(0o700)
+            skills_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
+            skills_dir.parent.chmod(0o700)  # pod_config_dir(project)
+            skills_dir.chmod(0o700)
+        for skill_write in plan._skill_writes:
+            dest = skills_dir / skill_write.name
+            dest.mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                dest.chmod(0o700)
+            for rel, data in skill_write.files:
+                file_dest = dest / rel
+                file_dest.parent.mkdir(parents=True, exist_ok=True)
+                file_dest.write_bytes(data)
+                file_dest.chmod(0o600)
 
     for member_write in plan._member_writes:
         ok, msg, _fallback = _pp.provision_member(
@@ -775,6 +857,26 @@ def _export_plugins(project: str, directory: Path) -> None:
         (dest_dir / f.name).write_bytes(f.read_bytes())
 
 
+def _export_skills(project: str, directory: Path) -> None:
+    """Copy *project*'s own ``config/skills/`` byte-for-byte into ``skills/<name>/`` -- unlike
+    a role or policy, a skill is not regenerated, since it carries its own files rather than a
+    wire document this module knows how to re-render."""
+    src_dir = _cfg.pod_config_dir(project) / "skills"
+    names = sorted(p.name for p in src_dir.iterdir() if p.is_dir()) if src_dir.is_dir() else []
+    if not names:
+        return
+    dest_root = directory / "skills"
+    for name in names:
+        src = src_dir / name
+        if not (src / "SKILL.md").is_file():
+            continue
+        dest = dest_root / name
+        for rel, data in _directory_files(src):
+            file_dest = dest / rel
+            file_dest.parent.mkdir(parents=True, exist_ok=True)
+            file_dest.write_bytes(data)
+
+
 def _export_pipeline(project: str, directory: Path) -> None:
     """Copy *project*'s bound pipeline copy (if ``PodSettings.pipeline`` is set) as
     ``pipeline.yaml`` -- the default filename ``apply`` resolves with no explicit
@@ -831,6 +933,7 @@ def export_pod(project: str, directory: Path) -> None:
     _export_roles(project, directory)
     _export_policies(project, directory)
     _export_plugins(project, directory)
+    _export_skills(project, directory)
     _export_pipeline(project, directory)
     _export_manifest(project, directory)
     _export_schemas(directory)

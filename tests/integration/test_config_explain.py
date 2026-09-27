@@ -165,7 +165,7 @@ class TestConfigExplainTextUnchangedWithNoPodScope:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         text = _explain_text(pod.member_id("demo", "implementer"), capsys)
-        assert "  Tools allowed: bash, edit, fetch, glob, grep, read, write\n" in text
+        assert "  Tools allowed: bash, edit, fetch, glob, grep, read, skill, write\n" in text
         assert "  Tools denied:  (none)\n" in text
         assert "  MCP servers:   (none configured)\n" in text
 
@@ -174,7 +174,7 @@ class TestConfigExplainTextUnchangedWithNoPodScope:
     ) -> None:
         _seed(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
         text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
-        assert "  Tools allowed: fetch, glob, grep, read\n" in text
+        assert "  Tools allowed: fetch, glob, grep, read, skill\n" in text
         assert "  Tools denied:  bash, edit, write\n" in text
 
 

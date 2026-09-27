@@ -29,6 +29,7 @@ from docket.core import pod as _pod
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import provider as _provider
+from docket.core import skills as _skills
 from docket.core import tools as _tools
 from docket.core.models import AgentKind, AgentMeta
 from docket.edges import store as _store
@@ -209,6 +210,15 @@ def _provider_report(model: str) -> dict[str, Any]:
     }
 
 
+def _skills_report(project: str, roots: tuple[Path, ...]) -> list[dict[str, str]]:
+    """Every skill a live turn's ``# Skills`` prompt section would list: ``name`` and
+    ``scope`` (``codebase | pod | global``), the same three-scope, nearest-wins discovery
+    ``core.identity`` composes from (ADR 0013 §3 rule 8)."""
+    codebase_root = roots[0] if roots else None
+    discovered = _skills.discover_skills(project, codebase_root)
+    return [{"name": name, "scope": discovered[name].scope} for name in sorted(discovered)]
+
+
 def _explain(agent_id: str) -> dict[str, Any]:
     """Compose one agent's effective configuration. Raises ``DispatchError``/
     ``PodSettingsError`` unchanged when this pod's stored settings are invalid --
@@ -258,6 +268,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
         pi_files, pi_source = _identity.project_instruction_files(pod_settings, roots[0])
     else:
         pi_files, pi_source = (), ""
+    skills_report = _skills_report(project, roots)
 
     return {
         "id": agent_id,
@@ -289,6 +300,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
+        "skills": skills_report,
         "configSource": config_of_record["configSource"],
         "configDigest": config_of_record["configDigest"],
         "drift": config_of_record["drift"],
@@ -361,6 +373,9 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
     pi_files, pi_source = project_instructions["files"], project_instructions["source"]
     pi_display = f"{', '.join(pi_files)} ({pi_source})" if pi_source else "none"
     ui.console.print(f"  [bold]{'Project instr.:':<16}[/bold] {pi_display}")
+    skills = report["skills"]
+    skills_display = ", ".join(f"{s['name']} ({s['scope']})" for s in skills) if skills else "none"
+    ui.console.print(f"  [bold]{'Skills:':<16}[/bold] {skills_display}")
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         ui.console.print(

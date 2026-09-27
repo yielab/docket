@@ -424,6 +424,7 @@ class TestRegistry:
             "glob",
             "grep",
             "read",
+            "skill",
             "write",
         ]
 
@@ -435,7 +436,7 @@ class TestRegistry:
     def test_without_narrows_the_set(self) -> None:
         readonly = builtin_registry().without("write", "edit", "bash")
         assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 4
+        assert len(readonly) == 5
 
     def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
         readonly = builtin_registry().without("write")
@@ -445,7 +446,7 @@ class TestRegistry:
     def test_without_kind_narrows_by_capability_not_name(self) -> None:
         """Sibling of `without()`, keyed on `Tool.kind` -- the mechanism `core.archetypes.registry_for_role` uses to exclude a namespaced (e.g. MCP-adapted) tool no name-based denylist could spell out in advance. See that module's docstring for the full reasoning."""
         no_mutation = builtin_registry().without_kind("write", "exec")
-        assert no_mutation.names() == ["fetch", "glob", "grep", "read"]
+        assert no_mutation.names() == ["fetch", "glob", "grep", "read", "skill"]
 
     def test_without_kind_removes_a_non_builtin_tool_of_the_same_kind(self) -> None:
         registry = builtin_registry()
@@ -462,6 +463,44 @@ class TestRegistry:
         assert "mcp__fake__danger" not in narrowed
         assert "write" not in narrowed and "edit" not in narrowed
         assert "read" in narrowed and "bash" in narrowed  # exec-kind untouched
+
+
+class TestSkillTool:
+    """The ``skill`` built-in (ADR 0013 §3 rule 8): read a discovered skill's body on
+    demand, through the same chokepoint and denial path as every other tool."""
+
+    def _write_skill(self, roots: tuple[Path, ...], name: str, body: str) -> None:
+        skill_dir = roots[0] / ".docket" / "skills" / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: One sentence.\n---\n\n{body}\n", encoding="utf-8"
+        )
+
+    def test_reads_a_discovered_skills_body(self, ctx: ToolContext) -> None:
+        self._write_skill(ctx.roots, "security-review", "CHECKLIST-BODY-MARKER")
+
+        res = dispatch_tool(_call("skill", '{"name":"security-review"}'), ctx, builtin_registry())
+
+        assert res.ok
+        assert "CHECKLIST-BODY-MARKER" in res.content
+
+    def test_unknown_skill_name_fails_naming_the_known_names(self, ctx: ToolContext) -> None:
+        self._write_skill(ctx.roots, "security-review", "body")
+
+        res = dispatch_tool(_call("skill", '{"name":"no-such-skill"}'), ctx, builtin_registry())
+
+        assert not res.ok
+        assert "no-such-skill" in res.error
+        assert "security-review" in res.error
+
+    def test_a_denied_skill_tool_is_a_typed_denial_not_executed(self, ctx: ToolContext) -> None:
+        self._write_skill(ctx.roots, "security-review", "body")
+        no_skill = builtin_registry().without("skill")
+
+        res = dispatch_tool(_call("skill", '{"name":"security-review"}'), ctx, no_skill)
+
+        assert res.denied
+        assert res.executed is False
 
 
 class TestSinglePathToExecution:

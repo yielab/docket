@@ -44,6 +44,7 @@ from docket.core import context as _context
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core import policy as _policy
+from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
 from docket.core.models import AgentMeta, Persona
@@ -79,6 +80,11 @@ PROJECT_INSTRUCTIONS_LABEL = "projectInstructions"
 #: agent (Codex, Copilot, Cursor, Claude Code) already reads from a repository. An explicit
 #: setting replaces this default entirely; it is never added alongside it.
 _DEFAULT_PROJECT_INSTRUCTIONS_FILE = "AGENTS.md"
+
+#: The `PromptSectionReport` name for the skills index (ADR 0013 §3 rule 8): a synthesized
+#: `# Skills` block, not a single filename, composed right after `projectInstructions` and
+#: still ahead of the runtime contract.
+SKILLS_LABEL = "skills"
 
 _RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
 _RUNTIME_CONTEXT_NOTE = (
@@ -198,26 +204,36 @@ def compose_system_prompt(
     runtime_context: str = "",
     instructions_text: str = "",
     project_instructions_text: str = "",
+    skills_text: str = "",
 ) -> str:
     """Fold SOUL.md, the live persona, operator instructions, opt-in project
-    instructions, and a runtime contract into one system prompt. Pure — no I/O
-    (``system_prompt_for_agent`` below is the I/O entry point). *soul_text* is passed
+    instructions, the skills index, and a runtime contract into one system prompt. Pure — no
+    I/O (``system_prompt_for_agent`` below is the I/O entry point). *soul_text* is passed
     through ``upsert_persona_block`` unconditionally (idempotent no-op if already
     matching) so the persona reflects *persona* as given, not whatever ``SOUL.md`` had
     on disk. *instructions_text* (already fit to budget by the caller) is placed right
     after the SOUL section; *project_instructions_text* (also pre-fit) is placed right
-    after *instructions_text* and still ahead of the runtime contract.
+    after *instructions_text*; *skills_text* (also pre-fit) is placed right after
+    *project_instructions_text* and still ahead of the runtime contract.
     Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract composes to
     ``""``, which ``core/agent_loop.py`` treats as "no system message this turn" rather
     than sending the model an empty one."""
     effective_soul = upsert_persona_block(soul_text, persona).strip()
     instructions = instructions_text.strip()
     project_instructions = project_instructions_text.strip()
+    skills = skills_text.strip()
     workflow = runtime_contract_text.strip()
     runtime = runtime_context.strip()
     parts = [
         part
-        for part in (effective_soul, instructions, project_instructions, workflow, runtime)
+        for part in (
+            effective_soul,
+            instructions,
+            project_instructions,
+            skills,
+            workflow,
+            runtime,
+        )
         if part
     ]
     return "\n\n---\n\n".join(parts)
@@ -518,6 +534,54 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
     return "\n\n".join(parts)
 
 
+# Sibling of `_screen_project_instructions_file`, same reasoning (a skill's description came
+# from the codebase or the operator's own ~/.docket/skills/, not the operator typing at docket
+# directly -- always trusted=False), kept as its own function so an audited skill-description
+# hit is never confused with a project-instructions one in the audit log.
+def _screen_skill_description(
+    role: str, name: str, description: str
+) -> tuple[str, PromptSectionStatus]:
+    """Screen one skill's description through the `pre_input` policy hook; returns the text to
+    compose (or an audited marker) and its status."""
+    hit = _policy.policy_eval_detail(role, "pre_input", description, trusted=False)
+    if hit.action in ("block", "require_approval"):
+        audit_log(
+            "identity.skill_blocked",
+            f"skill={name!r} policy={hit.policy_id!r} action={hit.action}",
+        )
+        return (
+            f"[... {name} description blocked by policy {hit.policy_id!r} (action={hit.action}) ...]",
+            "omitted",
+        )
+    if hit.action in ("warn", "redact"):
+        audit_log(
+            "identity.skill_warn",
+            f"skill={name!r} policy={hit.policy_id!r} action={hit.action}",
+        )
+    return description, "full"
+
+
+def _skills_raw(agent_id: str, project_roots: tuple[Path, ...]) -> str:
+    """This agent's discoverable skills as a `# Skills` index: one `- <name>: <description>`
+    line per skill, descriptions screened as untrusted input, ending with a line naming the
+    `skill` tool. `""` when none are discoverable -- byte-identical to before skills existed."""
+    project = _pod.pod_of(agent_id) or ""
+    codebase_root = project_roots[0] if project_roots else None
+    discovered = _skills.discover_skills(project, codebase_root)
+    if not discovered:
+        return ""
+    role = _fleet.meta_get(agent_id, "role", "")
+    lines = ["# Skills"]
+    for name in sorted(discovered):
+        description, _status = _screen_skill_description(role, name, discovered[name].description)
+        lines.append(f"- {name}: {description}")
+    lines.append(
+        "Call the `skill` tool with `name` set to one of the names above to read that "
+        "skill's full instructions."
+    )
+    return "\n".join(lines)
+
+
 def load_agent_persona(agent_id: str) -> Persona | None:
     """Read *agent_id*'s persona straight from ``.docket-meta.json`` — the single
     source of truth ``AgentMeta.display_name()`` also reads, never derived from
@@ -565,6 +629,7 @@ def compose_agent_prompt(
     soul_text_raw = _read_workspace_text(ws / SOUL_FILE)
     instructions_raw = _read_workspace_text(ws / INSTRUCTIONS_FILE)
     project_instructions_raw = _project_instructions_raw(agent_id, project_roots)
+    skills_raw = _skills_raw(agent_id, project_roots)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
     persona = load_agent_persona(agent_id)
     has_private_state = any((ws / name).is_file() for name in _RUNTIME_CONTEXT_FILES)
@@ -572,6 +637,7 @@ def compose_agent_prompt(
         soul_text_raw.strip()
         or instructions_raw.strip()
         or project_instructions_raw.strip()
+        or skills_raw.strip()
         or workflow_text.strip()
         or has_private_state
         or (persona is not None and persona.label())
@@ -598,6 +664,16 @@ def compose_agent_prompt(
     project_instructions_text, project_instructions_report = _cap_leading_section(
         project_instructions_raw, remaining_after_instructions, PROJECT_INSTRUCTIONS_LABEL
     )
+    # Skills are fit into whatever room the project-instructions section's own cap left, not a
+    # fresh share of the whole budget -- same reasoning as every section above: SOUL +
+    # INSTRUCTIONS + project instructions + skills together can never exceed the bound the
+    # first of them alone is already held to.
+    remaining_after_project_instructions = max(
+        0, remaining_after_instructions - len(project_instructions_text.encode("utf-8"))
+    )
+    skills_text, skills_report = _cap_leading_section(
+        skills_raw, remaining_after_project_instructions, SKILLS_LABEL
+    )
     runtime_contract = _runtime_startup_contract(project_roots)
     base_prompt = compose_system_prompt(
         soul_text,
@@ -605,6 +681,7 @@ def compose_agent_prompt(
         persona,
         instructions_text=instructions_text,
         project_instructions_text=project_instructions_text,
+        skills_text=skills_text,
     )
     runtime_context, context_reports = _runtime_workspace_context(ws, base_prompt, max_bytes)
     text = compose_system_prompt(
@@ -614,11 +691,13 @@ def compose_agent_prompt(
         runtime_context,
         instructions_text,
         project_instructions_text,
+        skills_text,
     )
     sections = (
         ((soul_report,) if soul_report is not None else ())
         + ((instructions_report,) if instructions_report is not None else ())
         + ((project_instructions_report,) if project_instructions_report is not None else ())
+        + ((skills_report,) if skills_report is not None else ())
         + context_reports
     )
     return PromptComposition(text, sections, budget_tokens, budget_source)

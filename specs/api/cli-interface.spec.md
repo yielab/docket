@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.51.0
+**Version**: 1.52.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -1046,6 +1046,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.52.0 (2026-09-27)
+
+- `docket config explain <agent>` gains `skills`: every skill a live turn's `# Skills` prompt
+  section would list, `name` and its scope (`codebase | pod | global`), one human line
+  (`Skills:          security-review (pod)` / `none`). See `agent-loop.spec.md` 1.24.0 for the
+  composition itself (P31-6, ADR 0013 §3 rule 8) and `cli-json-shapes.spec.md` 1.14.0 for the
+  exact `--json` shape.
 
 ### Version 1.51.0 (2026-09-27)
 

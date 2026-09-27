@@ -425,6 +425,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`$DOCKET_HOME/plugins`",
     ),
     (
+        ("SKILLS_DIR",),
+        "The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads",
+        "`$DOCKET_HOME/skills`",
+    ),
+    (
         ("APPROVALS_DIR",),
         "Where `docket approve`/`deny`'s approval-token store lives",
         "`$DOCKET_HOME/approvals`",

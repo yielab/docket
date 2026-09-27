@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.17.0
+**Version**: 1.18.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -197,7 +197,10 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    default `pipeline.yaml` when that file exists), and `description` (a string; read only for
    display — requirement 9 — and never applied to the pod). An unrecognized top-level `pod.yaml`
    key, a `members`/`settings` value of the wrong type, or a `description` that is not a string,
-   **MUST** be rejected before anything else is read.
+   **MUST** be rejected before anything else is read. *dir* **MAY** also carry an optional
+   `skills/<name>/SKILL.md` directory per skill (P31-6, ADR 0013 §3 rule 8): each `<name>/` is a
+   complete Agent Skill, applied whole into this pod's own `config/skills/<name>/` (see
+   requirement 6's digest and "Pod manifests: export" below).
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
    (`core.config.pod_config_dir(project)/roles.json`), the same target `docket roles add
    --pod <project> <file.yaml>` already writes to — never the global user overlay
@@ -235,8 +238,9 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    pod's configuration of record (ADR 0012 §2 rule 5, amended by ADR 0013 §1 rule 3) in its
    settings: `configSource` (the absolute *dir*) and `configDigest`
    (`core.pod_apply.directory_digest(dir)` — a sha256 hex digest over the sorted relative paths
-   and bytes of every file `discover_config_paths` returns plus any `plugins/*.py`, excluding the
-   generated `.schemas/`), so composing a second recipe onto an already-configured pod — even one
+   and bytes of every file `discover_config_paths` returns plus any `plugins/*.py` and any file
+   under `skills/**`, excluding the generated `.schemas/`), so composing a second recipe onto an
+   already-configured pod — even one
    whose every item plans `skip` — still moves the record to name the directory just applied.
    Both **MUST NEVER** be written by `docket pod <p> config set`, which **MUST** refuse both keys
    naming `apply` as their writer; a `pod.yaml` `settings` mapping carrying either key is refused
@@ -328,7 +332,10 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    `description` (requirement 9 above) is read-only display prose that `apply` never stores on
    the pod, so `export` has nothing to write it back from and **MUST NOT** write a `description`
    key — a round trip through `apply`/`export` drops a recipe's description, unlike every other
-   manifest key. `export`
+   manifest key. `export` **MUST** also copy *project*'s own `config/skills/` directory
+   byte-for-byte into `skills/<name>/SKILL.md` (P31-6) per skill — unlike a role or policy, a
+   skill is not regenerated, since it carries its own files rather than a wire document this
+   module knows how to re-render. `export`
    **MUST** also copy the four published config-v1 JSON Schemas into `<dir>/.schemas/`
    (config-format.spec.md, "Published schemas") so every header resolves without reaching
    outside the export; `apply`/`discover_config_paths` never look under `.schemas/`.
@@ -497,6 +504,21 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.18.0 (2026-09-27)
+
+- **P31-6: skills join the shapes `apply`/`export` carry (ADR 0013 §3 rule 8).** "Pod manifests:
+  apply" requirement 1 gains an optional `skills/<name>/SKILL.md` directory per skill, applied
+  whole into the pod's own `config/skills/<name>/` (`core.pod_apply._plan_skills`, compared by a
+  sha256 over each skill's own sorted relative paths and bytes: an unchanged skill plans `skip`,
+  any other content or none yet plans `replace`/`add`); requirement 6's `configDigest` now also
+  hashes every file under `skills/**`. "Pod manifests: export" requirement 1 gains the mirror
+  write: `config/skills/` copied byte-for-byte into `skills/<name>/SKILL.md` per skill
+  (`_export_skills`) — unlike a role or policy, a skill is not regenerated. `summarize_recipe`'s
+  `skills` count (already landed by P31-1) is now backed by a real applied/exported scope, not
+  just a derived number. See `agent-loop.spec.md` 1.24.0 for the prompt-composition and
+  `skill`-tool side, `workspace-structure.spec.md` 1.14.0 for the on-disk scopes, and
+  `cli-interface.spec.md` 1.52.0 / `cli-json-shapes.spec.md` 1.14.0 for `config explain`.
 
 ### Version 1.17.0 (2026-09-27)
 

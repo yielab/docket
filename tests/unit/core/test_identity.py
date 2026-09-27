@@ -319,3 +319,48 @@ class TestProjectInstructionsDefault:
         )
         assert files == ("CONTRIBUTING.md",)
         assert source == "set"
+
+
+class TestSkillsSection:
+    """A discovered skill composes a `# Skills` index right after project instructions and
+    still ahead of the runtime contract (ADR 0013 §3 rule 8); no skill, no section."""
+
+    def _lead_workspace(self, agent_id: str, project: str) -> Path:
+        ws = _cfg.workspace_dir(agent_id)
+        ws.mkdir(parents=True, exist_ok=True)
+        _store.write_json(
+            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": project}
+        )
+        return ws
+
+    def test_a_discovered_skill_composes_a_named_section(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        project = "skilled-demo"
+        ws = self._lead_workspace("skilled-demo-lead", project)
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        skill_dir = _cfg.pod_config_dir(project) / "skills" / "security-review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: security-review\ndescription: Reviews a diff for security bugs.\n"
+            "---\n\nChecklist body.\n"
+        )
+
+        composition = I.compose_agent_prompt("skilled-demo-lead", project_roots=(codebase,))
+
+        assert "# Skills" in composition.text
+        assert "- security-review: Reviews a diff for security bugs." in composition.text
+        report = next(s for s in composition.sections if s.name == I.SKILLS_LABEL)
+        assert report.status == "full"
+
+    def test_no_discovered_skills_composes_no_section(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        project = "skill-free-demo"
+        ws = self._lead_workspace("skill-free-demo-lead", project)
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = I.compose_agent_prompt("skill-free-demo-lead", project_roots=(codebase,))
+
+        assert "# Skills" not in composition.text
+        assert not any(s.name == I.SKILLS_LABEL for s in composition.sections)

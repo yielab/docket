@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.13.0
+**Version**: 1.14.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -270,6 +270,11 @@ both this pod's `deniedTools` setting and its role's own archetype reports `"pod
 servers/names a live turn would actually see — a pod's own `mcpServers` selection
 excludes every other configured server, never merely relabels it.
 
+`skills` carries its own, three-value scope vocabulary — `"codebase"` (this agent's own
+codebase root's `.docket/skills/`), `"pod"` (this pod's own `config/skills/`), or
+`"global"` (the operator's `~/.docket/skills/`) — nearest wins by name, and only the
+winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
+
 ```json
 {
   "id":        "string",
@@ -318,6 +323,9 @@ excludes every other configured server, never merely relabels it.
     "files":  "array of relative paths (empty when there is nothing to compose)",
     "source": "set | default | \"\" (default: the codebase root's own AGENTS.md, unset and present; set: an explicit PodSettings.projectInstructions list, which replaces the default entirely; \"\": neither)"
   },
+  "skills": [
+    { "name": "string", "scope": "codebase | pod | global" }
+  ],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -333,8 +341,8 @@ guessed default.
 The human-readable (non-`--json`) rendering prints `scope` nowhere (JSON-only) and keeps the
 `tools`/`policies` names/columns and order; it adds one `Provider:` line under the model,
 one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)` /
-`<files> (set)` / `none`), and, when a source is recorded, one `Config source:` line carrying
-the digest prefix and `drift`.
+`<files> (set)` / `none`), one `Skills:` line listing each `name (scope)` (or `none`), and,
+when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
 ### `docket snapshot` (full output)
 
@@ -446,6 +454,14 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.14.0 (2026-09-27)
+
+- `docket config explain <agent> --json` gains `skills`: `[{"name": "...", "scope": "codebase" |
+  "pod" | "global"}]`, every skill a live turn's `# Skills` prompt section would list, in its own
+  three-value scope vocabulary (distinct from the `built-in | global | pod` vocabulary the three
+  resolved-value fields above it use). The human view gains a matching `Skills:` line. See
+  `agent-loop.spec.md` 1.24.0 for the composition-side discovery (P31-6, ADR 0013 §3 rule 8).
 
 ### Version 1.13.0 (2026-09-27)
 

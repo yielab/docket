@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.23.0
+**Version**: 1.24.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -184,7 +184,10 @@ This specification does NOT cover:
 28. `run_agent_turn` **MUST NOT** contain a branch on a specific role's name (e.g.
     `if ctx.role == "reviewer"`) to decide what to narrow — the denylist is data on the
     archetype (see `role-archetypes.spec.md`'s "Per-role tool sets"), and `registry_for_role` is
-    the single, generic function consuming it.
+    the single, generic function consuming it. The built-in tool set this requirement narrows is
+    `read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`, and `skill` (P31-6, ADR 0013 §3
+    rule 8) — a role's `deniedTools` may name any of them, `skill` included, and a denied
+    `skill` tool follows the exact same not-even-advertised refusal path as any other.
 
 ### System prompt composition (ROADMAP Phase 19 P19-12)
 
@@ -227,6 +230,22 @@ This specification does NOT cover:
     an error and never a raise. This section carries no path off the codebase root: `PodSettings`
     refuses an absolute, home-relative, or `..`-containing path at `set`, before a pod even has a
     resolved root to check it against.
+    Right after the opt-in project-instructions section and still ahead of the runtime contract,
+    an optional `# Skills` index (P31-6, ADR 0013 §3 rule 8) lists every skill
+    `core.skills.discover_skills(project, project_roots[0])` resolves — three scopes, nearest
+    wins by name: a codebase's own `.docket/skills/`, this pod's own `config/skills/` (a
+    recipe's own `skills/` applied there), and the operator's `~/.docket/skills/`
+    (`config.SKILLS_DIR`) — as `- <name>: <description>` lines, each description screened through
+    the same `pre_input` hook used for a project-instructions file (`trusted=False`); a skill
+    whose `SKILL.md` frontmatter is invalid, or whose `name` disagrees with its directory, is
+    skipped and audited once (`skills.invalid`) rather than raised into a turn. The section ends
+    with one line telling the model to call the `skill` tool, naming a skill, for its full
+    instructions. No discovered skill composes to no section at all, byte-identical to before
+    skills existed. The `skill` tool (`kind="read"`, parameters `name` required, `path` optional)
+    resolves *name* through the same `discover_skills` call and returns the named file (default
+    `SKILL.md`) read from within that skill's own directory only; an unknown name is a failed
+    call naming the known names, never a raise, and the tool is denied like any other
+    (`deniedTools: [skill]`) after per-role narrowing (requirement 28 above).
     The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
     to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
     manual/external reset path, while the live runtime has already read the state itself. Instead,
@@ -270,7 +289,11 @@ This specification does NOT cover:
     budget remains after `INSTRUCTIONS.md`'s own cap, so `SOUL.md`, `INSTRUCTIONS.md`, and project
     instructions together can never exhaust that room either, and reports its own `PromptSectionReport`
     under the name `projectInstructions` (it is a synthesized block, not a single filename) —
-    never merged into `INSTRUCTIONS.md`'s report. When fitting the private-workspace
+    never merged into `INSTRUCTIONS.md`'s report. The skills index, when non-empty, **MUST**
+    likewise be middle-truncated to at most half of whatever budget remains after the
+    project-instructions section's own cap, so all four together can never exhaust that room
+    either, and reports its own `PromptSectionReport` under the name `skills` (P31-6) — never
+    merged into `projectInstructions`'s report. When fitting the private-workspace
     sections in the priority order above, a section that does not fit in the room left by the
     sections ahead of it **MUST NOT** stop composition of the sections behind it: that section, and
     every later one that also does not fit, each **MUST** still receive their own one-line
@@ -278,7 +301,7 @@ This specification does NOT cover:
     partially fits), so a crowded middle section never silently erases what follows it.
     `run_agent_turn` **MUST** emit exactly one `prompt_composed` trace event per non-empty
     composition, listing every section actually attempted — `SOUL.md`, optional
-    `INSTRUCTIONS.md`, optional `projectInstructions`, plus whichever of
+    `INSTRUCTIONS.md`, optional `projectInstructions`, optional `skills`, plus whichever of
     `HEARTBEAT.md`/`AGENTS.md`/`TOOLS.md`/`MEMORY.md` had
     content — with the bytes included and a `full`/`truncated`/`omitted` status per section, plus
     the resolved
@@ -703,6 +726,21 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.24.0 (2026-09-27)
+
+- **P31-6 gives the system prompt a `# Skills` index and one new built-in tool** (ADR 0013 §3
+  rule 8). Requirement 30 gains an optional skills section composed right after
+  `projectInstructions` and still ahead of the runtime contract, listing every skill
+  `core.skills.discover_skills` resolves across three nearest-wins scopes (a codebase's own
+  `.docket/skills/`, a pod's own `config/skills/`, the operator's `~/.docket/skills/`) as
+  `- <name>: <description>` lines, each description screened through `pre_input` exactly like a
+  project-instructions file; an invalid skill is skipped and audited once (`skills.invalid`),
+  never raised into a turn. No discovered skill composes to no section, byte-identical to before.
+  "Per-role tool narrowing" (requirement 28) now names the full built-in set, including the new
+  `skill` tool (`kind="read"`), which reads a named skill's body on demand and is denied like any
+  other tool after per-role narrowing. See `pod-blueprints.spec.md` 1.18.0, `workspace-structure.
+  spec.md` 1.14.0, `cli-interface.spec.md` 1.52.0, and `cli-json-shapes.spec.md` 1.14.0.
 
 ### Version 1.23.0 (2026-09-27)
 
