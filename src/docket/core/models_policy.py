@@ -48,11 +48,9 @@ _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
 
 def rank_anchors() -> dict[str, str]:
-    """Per-class defaults that seed each role's default model, and the seed values `docket
-    models` displays as "rank anchors" -- NOT a runtime fallback chain; nothing in docket
-    degrades a request to a cheaper model on failure. Computed from the built-in `anthropic`
-    provider's own `anthropic` preset (core/provider.py's catalog), not a hand-kept table, so a
-    later change to that document is the one place these seed values come from."""
+    """Seed values for each rank (what `docket models` shows as "rank anchors"), read from the
+    built-in `anthropic` provider's own preset -- NOT a runtime fallback chain; nothing in
+    docket degrades a request to a cheaper model on failure."""
     spec = _provider.load_catalog().get("anthropic")
     if spec is None:
         return {}
@@ -78,10 +76,9 @@ def is_local_provider(prefix: str) -> bool:
 
 
 def is_marketplace(prefix: str) -> bool:
-    """True for a provider prefix the catalog marks ``marketplace: true`` -- its per-model
-    pricing changes too often for a manual snapshot, so it reports "n/a (bring your own)"
-    instead of a stale or invented number (a stable free router is priced explicitly on its
-    own model row instead)."""
+    """True for a prefix the catalog marks ``marketplace: true``: its per-model pricing
+    changes too often for a snapshot, so it reports "n/a (bring your own)" rather than a
+    stale or invented number."""
     spec = _provider.load_catalog().get(prefix)
     return bool(spec and spec.marketplace)
 

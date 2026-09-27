@@ -1132,8 +1132,8 @@ def cmd_keys(
                             shell-quoted) for every stored key, for
                             `eval "$(docket keys export)"`
       setup                interactive wizard (requires a TTY) through
-                            Anthropic / OpenAI / Google AI / OpenRouter /
-                            Vercel AI Gateway keys one at a time
+                            every credential the provider catalog declares,
+                            in catalog order, one at a time
 
     Stored in `~/.docket/secrets.json` (values, 0600) and
     `secrets.meta.json` (added/rotated timestamps) -- docket-owned JSON,

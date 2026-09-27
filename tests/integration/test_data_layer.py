@@ -183,8 +183,8 @@ class TestFleetConfig:
         assert dumped["newTopLevelKey"] == 42
 
     # Auth-profiles were a daemon-owned concept with no docket-native
-    # replacement -- deleted outright, not moved. See cli/_keys.py's
-    # run_auth for the honest "gone" message this capability now surfaces.
+    # replacement -- deleted outright, not moved. `docket auth` itself is a
+    # removed command now (__main__.py's _REMOVED["auth"]).
 
 
 # ── store ─────────────────────────────────────────────────────────────────────

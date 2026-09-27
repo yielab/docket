@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from tests.conftest import repoint_docket_home
 
+import docket.config as _cfg
 import docket.edges.adapters.system as _system_mod
 from docket.cli import _keys
 from docket.core import provider as _provider
@@ -28,6 +29,13 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / ".docket"
     repoint_docket_home(monkeypatch, home)
     return home
+
+
+def _empty_builtin_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The shipped built-in documents would otherwise be prompted for first.
+    empty = tmp_path / "no-builtins"
+    empty.mkdir()
+    monkeypatch.setattr(_cfg, "PROVIDER_TEMPLATES_DIR", empty)
 
 
 def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
@@ -231,6 +239,7 @@ class TestSetupWalksTheCatalog:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _home(tmp_path, monkeypatch)
+        _empty_builtin_scope(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 
         # Saved in this order; "acorn" sorts first alphabetically but must NOT be asked
@@ -279,6 +288,7 @@ class TestSetupWalksTheCatalog:
         """No built-in provider documents are on disk and none has been registered -- the
         wizard must not crash or prompt against an empty catalog."""
         _home(tmp_path, monkeypatch)
+        _empty_builtin_scope(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 
         def _fail_input(*_a: object, **_k: object) -> str:

@@ -22,12 +22,6 @@ SUBJECT = "docket.core.provider"
 
 _LITERAL_PROVIDER_NAMES = ("anthropic", "openai")
 
-# `cli/_keys.py::_PROVIDER_ENV_VAR` belongs entirely to `run_auth`, which `docket auth` retires
-# as a removed command elsewhere; this table has no other reader and is not owned by this
-# module. Excluded here by exact assigned name so this scan does not fail on a table a
-# different, still-in-flight change already retires outright.
-_PENDING_SIBLING_CARD_DELETIONS = {("cli/_keys.py", "_PROVIDER_ENV_VAR")}
-
 
 class TestNoProviderNameLiteralOutsideTheCatalog:
     """A provider's identity is a document under ``templates/providers/`` plus this module's
@@ -45,23 +39,8 @@ class TestNoProviderNameLiteralOutsideTheCatalog:
             rel = str(path.relative_to(src_root))
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
-            skip_ids: set[int] = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Assign):
-                    names = {t.id for t in node.targets if isinstance(t, ast.Name)}
-                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                    names = {node.target.id}
-                else:
-                    continue
-                if node.value is not None and any(
-                    (rel, n) in _PENDING_SIBLING_CARD_DELETIONS for n in names
-                ):
-                    skip_ids.add(id(node.value))
-
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.Dict, ast.Tuple)):
-                    continue
-                if id(node) in skip_ids:
                     continue
                 elements = node.values if isinstance(node, ast.Dict) else node.elts
                 keys = node.keys if isinstance(node, ast.Dict) else ()

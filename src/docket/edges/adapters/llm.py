@@ -257,12 +257,8 @@ def _classify_http_status(status: int) -> FailureKind:
 
 
 def _retry_after_seconds(headers: Any) -> float | None:
-    """Parse a retryable failure's ``Retry-After`` header into seconds.
-
-    Accepts an integer-seconds form or an HTTP-date, measured as a delta from
-    now and clamped to zero. Absent or unparseable is ``None`` — the caller
-    (``complete``) treats that as "the endpoint named no wait", not zero.
-    """
+    """``Retry-After`` as seconds: integer form, or an HTTP-date as a delta from now clamped
+    to zero. Absent or unparseable is ``None`` ("the endpoint named no wait", not zero)."""
     value = headers.get("Retry-After") if headers is not None else None
     if not value:
         return None

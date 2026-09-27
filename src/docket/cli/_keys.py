@@ -262,12 +262,10 @@ def _keys_setup() -> int:
 
     # Catalog order, not a fixed provider list: every catalog entry (built-in first, then the
     # operator's own) that declares a credential name is prompted for, so a newly cataloged
-    # provider is picked up here without a code change. `getattr` guards a `credential_prefix`
-    # field ProviderSpec does not always define, so this keeps working whether or not that
-    # field is present on a given document.
+    # provider is picked up here without a code change.
     catalog = _provider.load_catalog()
     providers = [
-        (cred, spec.name, getattr(spec, "credential_prefix", ""))
+        (cred, spec.name, spec.credential_prefix)
         for spec in catalog.entries.values()
         for cred in spec.auth.credentials
     ]

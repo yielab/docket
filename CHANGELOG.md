@@ -9,8 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Fourteen providers ship as built-in documents, and every table derives from them.**
+  `templates/providers/` holds `anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`,
+  `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`, `ollama`, `lmstudio` and
+  `local`; presets, prices (with `pricesAsOf`), key-format prefixes, credential names and base
+  URLs are read from the catalog, so `docket models preset anthropic|openai|google` applies
+  without a prior `provider add` and a stored key alone readies a built-in hosted provider. A
+  provider absent from the catalog resolves only under `DOCKET_LLM_BASE_URL`.
+- **A retry waits as long as the provider asked, up to a ceiling.** A retryable HTTP failure
+  carries the endpoint's `Retry-After` (seconds or HTTP-date) through `TurnResult.retry_after_s`;
+  the dispatch backoff is `min(max(2s x attempt, Retry-After), DISPATCH_RETRY_MAX_WAIT_S)`
+  (default 60 s) and the `hop_retry` trace event records it.
 - **A model provider is a `kind: provider` document.** `core/provider.py` holds the catalog:
-  built-in documents under `templates/providers/` (empty until the next card) and the
+  built-in documents under `templates/providers/` and the
   operator's own in `~/.docket/docket-providers.json`, nearest-wins by name. A document names
   its credentials (`auth.credentials`) and never holds a value; `resolve_endpoint` reads the
   catalog and the exact model row's limits. A pre-catalog `fleet.json -> providers` block is
@@ -267,6 +278,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`docket auth`** is a removed command: every `docket auth <anything>` prints the
+  removed-command notice pointing at `docket keys add <NAME>` and `docket models provider add`,
+  and exits 1. `docket keys setup` walks the provider catalog instead of a fixed five-provider
+  list. The `#### docket auth` section left `specs/api/cli-interface.spec.md` (1.42.0).
 - **docket no longer writes an API key into every workspace's `.env` file.** Stored keys are
   resolved only where they are read; `keys add` under the `keyring` backend either stores through
   `secret-tool` or refuses with an honest message instead of silently doing nothing.

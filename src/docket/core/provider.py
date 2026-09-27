@@ -324,16 +324,9 @@ _INHERITABLE_IDENTITY_FIELDS = ("presets", "marketplace", "credential_prefix", "
 
 
 def _with_inherited_identity(spec: ProviderSpec) -> ProviderSpec:
-    """A write that never mentions ``presets``/``marketplace``/``credentialPrefix``/
-    ``pricesAsOf`` is describing an endpoint (base URL, auth, models), not redefining a
-    built-in provider's identity. When *spec* leaves one of those fields unset (pydantic's
-    ``model_fields_set``, not merely default-valued -- a caller that means to clear a preset
-    still can, explicitly) and a built-in of the same name carries it, this inherits it, so
-    registering a local endpoint or migrating a legacy ``fleet.json`` block under a built-in's
-    name does not silently erase presets or pricing the built-in still means. Called both by
-    ``save_provider`` and, before it, by a caller that needs to compare a freshly built spec
-    against one already on disk (``register_local_provider``'s idempotency check) -- otherwise
-    the disk copy's inherited fields would never equal a fresh, uninherited comparison value."""
+    """Fill the identity fields *spec* left unset (``model_fields_set``, so an explicit clear
+    still wins) from the built-in of the same name: an endpoint write under a built-in's name
+    must not erase its presets or pricing. Also applied before an on-disk comparison."""
     missing = [f for f in _INHERITABLE_IDENTITY_FIELDS if f not in spec.model_fields_set]
     if not missing:
         return spec
