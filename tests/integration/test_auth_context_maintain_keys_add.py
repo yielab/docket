@@ -60,6 +60,21 @@ def _run(
     return result.exit_code, result.stdout, result.stderr
 
 
+def _run_removed(args: list[str], home: Path) -> tuple[int, str, str]:
+    """`__main__.py::_REMOVED` only intercepts at the `python -m docket` entry point, not the
+    raw Typer `app` object `_run` above drives through `CliRunner` -- that path reports Click's
+    "no such command" (rc=2) for a retired command instead of the retirement notice. Retired
+    commands (`docket auth`, `docket team`, ...) must be exercised through the real entry point."""
+    import os
+    import subprocess
+
+    env = {**os.environ, "DOCKET_HOME": str(home)}
+    result = subprocess.run(
+        [sys.executable, "-m", "docket", *args], capture_output=True, text=True, env=env
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
 def _setup_agent(
     tmp_path: Path,
     agent_id: str = "test-agent",
@@ -116,31 +131,35 @@ def _setup_bare(tmp_path: Path) -> Path:
 
 
 class TestCmdAuth:
-    def test_status_no_profiles_file(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["auth"], home)
-        assert rc == 0
-        combined = out + err
-        assert "no provider api keys stored" in combined.lower()
+    """`docket auth` is a removed command -- every subcommand, including bare `docket auth`,
+    prints the `_REMOVED` notice and exits 1. See `__main__.py::_REMOVED`."""
 
-    def test_unknown_subcommand_exits_1(self, tmp_path: Path) -> None:
+    def test_bare_auth_is_removed(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["auth", "foobar"], home)
+        rc, out, err = _run_removed(["auth"], home)
         assert rc == 1
         combined = out + err
-        assert "unknown" in combined.lower() or "usage" in combined.lower() or "foobar" in combined
-
-    def test_login_reports_no_docket_native_flow(self, tmp_path: Path) -> None:
-        # There is no daemon to shell out to, so `docket auth login` cannot
-        # degrade to a "binary not found" error -- it must say plainly that
-        # no docket-native replacement exists (see cli/_keys.py's run_auth /
-        # _AUTH_GONE_MESSAGE).
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["auth", "login"], home, env={"PATH": "/nonexistent"})
-        assert rc == 1
-        combined = out + err
-        assert "no docket-native provider-auth flow exists" in combined.lower()
+        assert "docket auth was removed" in combined.lower()
         assert "docket keys add" in combined.lower()
+
+    def test_unknown_subcommand_still_removed(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+        rc, out, err = _run_removed(["auth", "foobar"], home)
+        assert rc == 1
+        combined = out + err
+        assert "docket auth was removed" in combined.lower()
+
+    def test_login_is_removed_not_a_gone_message(self, tmp_path: Path) -> None:
+        # There is no daemon to shell out to, and no docket-native replacement was ever
+        # built -- `docket auth login` is not a live command that reports "gone" any more,
+        # it is a removed command that prints the retirement notice, same as `docket team`.
+        home = _setup_bare(tmp_path)
+        rc, out, err = _run_removed(["auth", "login"], home)
+        assert rc == 1
+        combined = out + err
+        assert "docket auth was removed" in combined.lower()
+        assert "docket keys add" in combined.lower()
+        assert "docket models provider add" in combined.lower()
 
 
 # ---------------------------------------------------------------------------

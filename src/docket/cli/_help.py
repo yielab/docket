@@ -95,7 +95,6 @@ def run_help(topic: str | None = None) -> int:
                         follow the role policy; --budget <USD> sets a spending cap
   {G}models{R}             View/change the role→model policy; switch provider presets
   {G}scope{R}    [id] [a]  Manage session scopes for multi-project isolation
-  {G}auth{R}     <action>  Show which provider credentials are stored (no login flow yet)
   {G}keys{R}     <action>  Manage model credentials and workspace secrets
   {G}validate{R} [dir]     Validate role/pipeline/policy/pod configuration documents
 

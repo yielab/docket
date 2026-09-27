@@ -18,7 +18,6 @@ _docket() {
     'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
-    'auth:Model-provider credential status (no docket-native login flow yet)'
     'models:View and edit the role->model policy -- the single place that decides which model each kind of agent runs on'
     'pod:Manage a project'\''s pod: list members, add/remove a role, set an implementer'\''s verify command, and run its dispatch pipeline'
     'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
@@ -75,7 +74,6 @@ _docket() {
     gates|security)  compadd status enable disable isolate classes ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
-    auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest expire ;;
     policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;

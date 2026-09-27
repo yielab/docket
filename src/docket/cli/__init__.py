@@ -1151,30 +1151,6 @@ def cmd_keys(
 
 
 @app.command(
-    "auth",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def cmd_auth(
-    ctx: typer.Context,
-    sub: str | None = typer.Argument(None),
-) -> None:
-    """Model-provider credential status (no docket-native login flow yet).
-
-    `status` shows which provider API keys are stored; `login`/`key`/`setup`
-    accept `--provider <name>` (default: anthropic) but say plainly that
-    there is no docket-native auth exchange yet -- store a credential with
-    `docket keys add <PROVIDER>_API_KEY` instead (see `docket auth --help`).
-
-    `docket auth status` never writes anything -- read-only. `login`/`key`/
-    `setup`/`choose` all print the same "no docket-native flow" message and
-    exit 1 -- kept as named subcommands only so a pre-Phase-19 script gets an
-    explicit, actionable error instead of "unknown command"."""
-    from docket.cli._keys import run_auth
-
-    raise typer.Exit(run_auth(sub, list(ctx.args)))
-
-
-@app.command(
     "models",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

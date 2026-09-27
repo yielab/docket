@@ -99,7 +99,6 @@ _docket_complete() {
     gates|security)  words="status enable disable isolate classes" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
-    auth)            words="status login key setup" ;;
     trace)           words="tail export ingest expire" ;;
     policies|policy) words="list show init test validate" ;;
     roles|role)      words="list show add validate" ;;
@@ -153,7 +152,6 @@ __ZSH_COMMANDS__
     gates|security)  compadd status enable disable isolate classes ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
-    auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest expire ;;
     policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;

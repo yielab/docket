@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.4.0
+**Version**: 1.6.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -33,7 +33,12 @@ This specification does NOT cover provider key *format* rules (see input-validat
 ### Operations (docket keys)
 
 1. `list` (default) **MUST** show all stored keys with masked values.
-2. `setup` **MUST** run an interactive wizard to set keys.
+2. `setup` **MUST** run an interactive wizard to set keys. It **MUST** prompt for every
+   credential name that a provider catalog document (`core/provider.py::load_catalog`, built-in
+   then the operator's own) declares under `auth.credentials`, in catalog order, using the
+   document's credential-format hint where one is declared. `docket auth` is retired (Phase 29,
+   D-45; see ../api/cli-interface.spec.md), so `setup` is the only interactive path onto these
+   credentials.
 3. `add <KEY_NAME>` **MUST** add a new key and refuse to overwrite an existing one.
 4. `rotate <KEY_NAME>` **MUST** replace an existing value.
 5. `validate [KEY_NAME]` **MUST** check local format rules only; it **MUST NOT** claim a live
@@ -126,6 +131,14 @@ does not.
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-27)
+
+- `setup` (Operations requirement 2) now iterates the provider catalog instead of a hard-coded
+  five-provider tuple: every built-in document that declares `auth.credentials` is prompted for,
+  in catalog order, hinted by the document's credential-format field when present
+  (`cli/_keys.py::_keys_setup`). This is the wizard's only path onto those credentials now that
+  `docket auth` is retired (Phase 29, D-45) -- see ../api/cli-interface.spec.md 1.42.0.
 
 ### Version 1.4.0 (2026-09-25)
 

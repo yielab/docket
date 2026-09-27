@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.39.0
+**Version**: 1.42.0
 **Status**: Complete
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -297,23 +297,17 @@ and matching credentials sync to agent workspaces
 `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`; other syntactically valid uppercase names are allowed
 **Output**: Key status or update confirmation
 **Return**: 0 on success, 1 on missing/invalid arguments or invalid key-name syntax
-**Note**: `keys` is the real model-auth credential store. `docket auth` only reports status and
-explains that no subscription/OAuth login flow exists.
+**Note**: `keys` is the real, and now the only, model-auth credential path. `setup` prompts for
+every built-in provider credential the provider catalog declares, in catalog order (see
+api-keys.spec.md).
 
-#### docket auth
-**Purpose**: Report which provider API-key credentials are stored. Docket has no
-subscription/OAuth-style auth flow, and this command says so plainly rather than faking success. Distinct from
-`docket keys`, which manages the workspace secrets that are the real working credential path.
-**Syntax**: `docket auth [action] [--provider <name>]`
-**Actions**:
-- `status` (default, no subcommand): List which `<PROVIDER>_API_KEY` names are present in
-  docket's own secret store (`core/secrets.py`) and point at `docket keys add` as the real path
-- `login [--provider <name>]`, `key [--provider <name>]`, `setup [--provider <name>]`: **all
-  return exit 1** with a message naming the real working path (`docket keys add
-  <PROVIDER>_API_KEY`) — no docket-native replacement exists yet
-**Options**: `--provider <name>` — which provider's env-var name to report/name in the message; defaults to `anthropic` when omitted.
-**Output**: For `status`, the list of stored provider keys (or a warning that none are stored). For `login`/`key`/`setup`, the honest-gone error message.
-**Return**: 0 for `status`; 1 for `login`/`key`/`setup` (always — there is nothing for them to succeed at)
+`docket auth` (provider API-key status plus honest-gone `login`/`key`/`setup` stubs) was
+**retired** in Phase 29 (D-45) — the provider catalog (`docket models provider add`, above
+`docket keys`) replaced the daemon-era shape that command was reporting the absence of. Running
+`docket auth <anything>` prints a removed-command notice that points at `docket keys add` for
+storing a credential and `docket models provider add` for registering an endpoint. The former
+`status`/`login`/`key`/`setup` actions are dropped outright — no compatibility layer, no
+`--provider` flag. (ROADMAP decision D-45 is the durable retirement record.)
 
 #### docket validate
 **Purpose**: Validate role, pipeline, policy, and pod configuration documents (see
@@ -990,6 +984,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.42.0 (2026-09-27)
+
+- `docket auth` is **retired** (Phase 29, D-45): the `#### docket auth` section is gone, replaced
+  by a removed-command paragraph next to `docket keys` -- every `docket auth <anything>` prints
+  the `_REMOVED` notice and exits 1, with no `status`/`login`/`key`/`setup`/`--provider` survivor.
+  `docket keys`'s note now says `keys` is the only model-auth credential path, and that `setup`
+  walks the provider catalog in catalog order (api-keys.spec.md 1.6.0).
 
 ### Version 1.39.0 (2026-09-26)
 

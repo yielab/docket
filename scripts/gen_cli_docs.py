@@ -100,7 +100,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Session & Context Management", ["scope", "context", "persona"]),
     ("Pod Coordination", ["pod", "pipeline", "roles"]),
     ("Telegram Integration", ["wire", "unwire", "conversations"]),
-    ("Keys & Authentication", ["keys", "auth"]),
+    ("Keys & Authentication", ["keys"]),
     (
         "Utility Commands",
         [

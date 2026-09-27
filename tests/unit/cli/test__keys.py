@@ -18,6 +18,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.edges.adapters.system as _system_mod
 from docket.cli import _keys
+from docket.core import provider as _provider
 from docket.core import secrets as _secrets
 
 SUBJECT = "docket.cli._keys"
@@ -219,6 +220,76 @@ class TestKeyringBackendStores:
 
 
 # ── file backend is unaffected ───────────────────────────────────────────────────
+
+
+class TestSetupWalksTheCatalog:
+    """`docket keys setup` has no hard-coded five-provider tuple -- it prompts for exactly the
+    credential names the provider catalog declares, in catalog order, so a newly cataloged
+    provider needs no code change here. `docket auth` has no such wizard to fall back onto."""
+
+    def test_prompts_in_catalog_order_not_alphabetical(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _home(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        # Saved in this order; "acorn" sorts first alphabetically but must NOT be asked
+        # first -- catalog order is insertion order, not a sort.
+        _provider.save_provider(
+            _provider.ProviderSpec(
+                name="walrus",
+                baseUrl="https://api.walrus.example/v1",
+                auth=_provider.AuthSpec(type="bearer", credentials=["WALRUS_API_KEY"]),
+            )
+        )
+        _provider.save_provider(
+            _provider.ProviderSpec(
+                name="acorn",
+                baseUrl="https://api.acorn.example/v1",
+                auth=_provider.AuthSpec(type="bearer", credentials=["ACORN_API_KEY"]),
+            )
+        )
+
+        prompts: list[str] = []
+        answers = iter(["y", "n"])
+
+        def _fake_input(prompt: str = "") -> str:
+            prompts.append(prompt)
+            return next(answers)
+
+        monkeypatch.setattr("builtins.input", _fake_input)
+        monkeypatch.setattr(
+            _keys._getpass, "getpass", lambda *a, **k: "walrus-secret-value-000000000"
+        )
+
+        rc = _keys.run_keys("setup", [])
+        capsys.readouterr()
+
+        assert rc == 0
+        assert len(prompts) == 2
+        assert "WALRUS_API_KEY" in prompts[0]
+        assert "ACORN_API_KEY" in prompts[1]
+        on_disk = json.loads(_secrets.SECRETS_FILE.read_text())
+        assert on_disk["WALRUS_API_KEY"] == "walrus-secret-value-000000000"
+        assert "ACORN_API_KEY" not in on_disk
+
+    def test_empty_catalog_asks_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """No built-in provider documents are on disk and none has been registered -- the
+        wizard must not crash or prompt against an empty catalog."""
+        _home(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        def _fail_input(*_a: object, **_k: object) -> str:
+            raise AssertionError("setup prompted with an empty catalog")
+
+        monkeypatch.setattr("builtins.input", _fail_input)
+
+        rc = _keys.run_keys("setup", [])
+
+        assert rc == 0
+        assert "No changes made." in capsys.readouterr().out
 
 
 class TestFileBackendUnaffected:
