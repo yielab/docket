@@ -43,6 +43,7 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _RANK_RE = re.compile(r"^(economy|standard|premium)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
 
 
 class ProviderError(Exception):
@@ -66,11 +67,14 @@ class ProviderError(Exception):
 
 
 class AuthSpec(BaseModel):
-    """How a request authenticates against a provider -- names only, never a value."""
+    """How a request authenticates against a provider -- names only, never a value.
+    ``header`` names the request header a ``type: header`` credential rides on (Azure
+    OpenAI's ``api-key``); required exactly when ``type`` is ``"header"``."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    type: Literal["bearer", "none"]
+    type: Literal["bearer", "header", "none"]
+    header: str = ""
     credentials: list[str] = Field(default_factory=list)
 
     @field_validator("credentials")
@@ -80,6 +84,12 @@ class AuthSpec(BaseModel):
             if not _CREDENTIAL_NAME_RE.match(name):
                 raise ValueError(f"'{name}' is not a valid credential name (^[A-Z][A-Z0-9_]*$)")
         return value
+
+    @model_validator(mode="after")
+    def _header_required_for_header_auth(self) -> AuthSpec:
+        if self.type == "header" and not self.header:
+            raise ValueError("auth.header is required when auth.type is 'header'")
+        return self
 
 
 class Price(BaseModel):
@@ -152,7 +162,19 @@ class ProviderSpec(BaseModel):
     prices_as_of: str = Field("", alias="pricesAsOf")
     models: list[ModelRow] = Field(default_factory=list)
     presets: list[Preset] = Field(default_factory=list)
+    headers: dict[str, str] = Field(default_factory=dict)
     note: str = ""
+
+    @field_validator("headers")
+    @classmethod
+    def _no_reserved_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        for key in value:
+            if key.strip().lower() in _RESERVED_HEADERS:
+                raise ValueError(
+                    f"'{key}' is a reserved header name "
+                    "(authorization, content-type, accept are sent by docket itself)"
+                )
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -250,9 +272,9 @@ def load_provider_document(path: str | Path) -> ProviderSpec:
     except ValidationError as exc:
         raise _validation_to_provider_error(p, exc) from exc
 
-    if spec.auth.type == "bearer" and not spec.auth.credentials:
+    if spec.auth.type in ("bearer", "header") and not spec.auth.credentials:
         raise ProviderError(
-            p, "auth.credentials", "bearer auth requires at least one credential name"
+            p, "auth.credentials", f"{spec.auth.type} auth requires at least one credential name"
         )
     if spec.auth.type == "none" and spec.auth.credentials:
         raise ProviderError(p, "auth.credentials", "none auth accepts no credential name")

@@ -168,9 +168,9 @@ class ChatResponse:
 
 @dataclass(frozen=True)
 class Endpoint:
-    """Where to send an exchange, and as whom. ``api_key`` is empty for endpoints that do not
-    authenticate (a local llama.cpp/vLLM server), and is deliberately never logged or included
-    in any ``repr`` docket writes — the adapter's error paths quote the URL but never the key."""
+    """Where to send an exchange, and as whom. ``api_key`` is never logged. ``auth_type``/
+    ``auth_header`` say how it rides the wire (bearer, a named header, or none); ``headers``
+    are additional static headers sent verbatim, as a tuple of pairs to stay hashable."""
 
     base_url: str
     model_id: str
@@ -178,11 +178,9 @@ class Endpoint:
     provider: str = ""
     context_window_tokens: int | None = None
     max_output_tokens: int | None = None
-
-    @property
-    def is_local(self) -> bool:
-        """True for a loopback endpoint (no credential is expected)."""
-        return "127.0.0.1" in self.base_url or "localhost" in self.base_url
+    auth_type: Literal["bearer", "header", "none"] = "bearer"
+    auth_header: str = ""
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 @runtime_checkable

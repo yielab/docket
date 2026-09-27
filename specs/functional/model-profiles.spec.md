@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.12.0
+**Version**: 2.14.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -259,16 +259,22 @@ feasibility spike remains in ROADMAP and Git history.
 ### Provider catalog
 
 1. A provider **MUST** be a `kind: provider` document (ADR 0011; `core.provider.ProviderSpec`):
-   `name`, `dialect` (closed enum, `openai-chat` today), `baseUrl`, `auth` (`type: bearer|none`
-   plus `credentials`, a list of names — never values), `local`, `marketplace`,
-   `credentialPrefix` (a `docket keys validate` format hint, optional), `pricesAsOf`
-   (`YYYY-MM-DD`, required when any model row carries a `price`), `models[]` (`id`,
-   `contextWindow`, `maxTokens`, optional `price: {input, output, cacheRead, cacheWrite}` USD
-   per million tokens), `presets[]` (`name`, `ranks: {economy, standard, premium}` as bare model
-   ids, `note`), and `note`. `core.provider.load_provider_document` **MUST** raise naming the
-   file and field on an unreadable file, bad YAML, a missing `kind`/`name`, an unknown
-   `dialect`/`auth.type`, a credential count that does not match the `auth.type`, a `pricesAsOf`
-   missing while a row carries a `price`, or a malformed `pricesAsOf`/negative price.
+   `name`, `dialect` (closed enum, `openai-chat` today), `baseUrl`, `auth` (`type:
+   bearer|header|none` plus `credentials`, a list of names — never values, and `header`, the
+   request header name a `type: header` credential rides on — required exactly when `type` is
+   `header`), `headers` (a map of additional static header names to values sent verbatim on
+   every request), `local`, `marketplace`, `credentialPrefix` (a `docket keys validate` format
+   hint, optional), `pricesAsOf` (`YYYY-MM-DD`, required when any model row carries a `price`),
+   `models[]` (`id`, `contextWindow`, `maxTokens`, optional `price: {input, output, cacheRead,
+   cacheWrite}` USD per million tokens), `presets[]` (`name`, `ranks: {economy, standard,
+   premium}` as bare model ids, `note`), and `note`. `core.provider.load_provider_document`
+   **MUST** raise naming the file and field on an unreadable file, bad YAML, a missing
+   `kind`/`name`, an unknown `dialect`/`auth.type`, a credential count that does not match the
+   `auth.type` (`header` requires at least one credential name, the same rule as `bearer`), a
+   `headers` key that names `Authorization`, `Content-Type` or `Accept` (case-insensitive —
+   docket sends these itself and refuses a document that tries to override them), a
+   `pricesAsOf` missing while a row carries a `price`, or a malformed `pricesAsOf`/negative
+   price.
 2. The catalog **MUST** merge two scopes, nearest-wins by name: **built-in**
    (`config.PROVIDER_TEMPLATES_DIR`, shipped in the wheel — `anthropic`, `openai`, `google`,
    `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
@@ -299,6 +305,15 @@ feasibility spike remains in ROADMAP and Git history.
    `core.provider.resolve_credential`. A provider absent from the catalog **MUST** fall back to
    "Hosted gateway resolution" unchanged. `client_for` **MUST** dispatch on the entry's `dialect`
    over a closed adapter table and return `None` for a dialect with no adapter.
+6. `resolve_endpoint` **MUST** carry a catalog entry's `auth.type`, `auth.header` and `headers`
+   onto the resulting `core.llm.Endpoint` (`auth_type`, `auth_header`, `headers`). The adapter's
+   `OpenAIChatClient._headers()` **MUST** send `Authorization: Bearer <credential>` only for
+   `auth_type: bearer` with a resolved credential, `<auth_header>: <credential>` only for
+   `auth_type: header` with a resolved credential, and no credential header at all for
+   `auth_type: none` or an unresolved credential — then append `headers` verbatim. This covers
+   Azure OpenAI's `api-key` header and a multi-workspace Anthropic key's
+   `anthropic-workspace-id` without a second adapter (ADR 0011 §3). A `bearer`-auth document's
+   request headers **MUST** stay byte-identical to a provider absent from the catalog.
 
 ### Pricing
 
@@ -475,6 +490,24 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.14.0 (2026-09-27)
+
+- **P29-4: a provider can authenticate by header and send static headers.** `AuthSpec.type`
+  gains `header` (`"bearer" | "header" | "none"`), plus `header: str`, the request header name a
+  `type: header` credential rides on, required exactly when `type` is `header`.
+  `ProviderSpec.headers: dict[str, str]` sends additional static headers verbatim; a document
+  naming `Authorization`, `Content-Type` or `Accept` (case-insensitive) is refused, naming
+  `headers`. `load_provider_document`'s credential-count check now treats `header` the same as
+  `bearer` (at least one credential name). `core.llm.Endpoint` gains `auth_type`, `auth_header`
+  and `headers` (a tuple of pairs, so the frozen dataclass stays hashable) and loses `is_local`
+  (no consumer outside one test). Amended "Provider catalog" requirement 1 (the `auth`/`headers`
+  fields and the new refusal) and added requirement 6 (`resolve_endpoint` fills the three fields
+  from the document; `OpenAIChatClient._headers()` sends the credential under `Authorization:
+  Bearer`, a named header, or not at all, then appends `headers` — a bearer document's request
+  stays byte-identical to today). This unblocks Azure OpenAI's `api-key` header and a
+  multi-workspace Anthropic key's `anthropic-workspace-id` without a second adapter (ADR 0011
+  §3), with no new dependency and no change to a `bearer`-auth document's wire behaviour.
 
 ### Version 2.12.0 (2026-09-27)
 

@@ -319,8 +319,11 @@ class OpenAIChatClient:
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if self.endpoint.api_key:
+        if self.endpoint.auth_type == "bearer" and self.endpoint.api_key:
             headers["Authorization"] = f"Bearer {self.endpoint.api_key}"
+        elif self.endpoint.auth_type == "header" and self.endpoint.api_key:
+            headers[self.endpoint.auth_header] = self.endpoint.api_key
+        headers.update(self.endpoint.headers)
         return headers
 
     def complete(
@@ -457,6 +460,9 @@ def resolve_endpoint(model: str) -> Endpoint | None:
             provider=provider,
             context_window_tokens=exact.context_window if exact else None,
             max_output_tokens=exact.max_tokens if exact else None,
+            auth_type=spec.auth.type,
+            auth_header=spec.auth.header,
+            headers=tuple(spec.headers.items()),
         )
 
     # Absent from the catalog: only DOCKET_LLM_BASE_URL can resolve it, deriving the

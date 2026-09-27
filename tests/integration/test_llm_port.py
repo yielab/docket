@@ -345,6 +345,35 @@ class TestTransport:
         headers = {k.lower(): v for k, v in captured["headers"].items()}
         assert headers["authorization"] == "Bearer sk-secret"
 
+    def test_header_auth_and_static_headers_reach_the_wire(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Azure-style ``api-key`` header auth plus a static header, resolved from a
+        catalog document end to end -- no ``Authorization`` header is sent."""
+        from docket.core import provider as _prov
+
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.setenv("AZURE_KEY", "k")
+        _prov.save_provider(
+            _prov.ProviderSpec(
+                name="azure",
+                baseUrl="https://example.com/v1",
+                auth=_prov.AuthSpec(type="header", header="api-key", credentials=["AZURE_KEY"]),
+                headers={"x-title": "docket"},
+            )
+        )
+        ep = adapter.resolve_endpoint("azure/gpt-4")
+        assert ep is not None
+
+        captured: dict[str, Any] = {}
+        _stub_urlopen(monkeypatch, '{"choices": [{"message": {"content": "x"}}]}', captured)
+        adapter.OpenAIChatClient(ep).complete([llm.user("yo")])
+        headers = {k.lower(): v for k, v in captured["headers"].items()}
+        assert headers["api-key"] == "k"
+        assert headers["x-title"] == "docket"
+        assert "authorization" not in headers
+
     def test_unconfigured_endpoint_fails_without_posting(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -554,7 +583,6 @@ class TestEndpointResolution:
         assert ep.base_url == "http://127.0.0.1:8081/v1"
         assert ep.model_id == "qwen3.6-35b-a3b"
         assert ep.provider == "local"
-        assert ep.is_local is True
 
     def test_stored_provider_resolves_limits_for_the_exact_model(
         self, monkeypatch: pytest.MonkeyPatch
@@ -695,7 +723,7 @@ class TestEndpointResolution:
         written = json.loads(_cfg.PROVIDERS_FILE.read_text())
         local_doc = written["providers"]["local"]
         assert local_doc["baseUrl"] == "http://127.0.0.1:8081/v1"
-        assert local_doc["auth"] == {"type": "none", "credentials": []}
+        assert local_doc["auth"] == {"type": "none", "header": "", "credentials": []}
         assert local_doc["local"] is True
         assert local_doc["models"] == [
             {"id": "/models/qwen.gguf", "contextWindow": 16384, "maxTokens": 8192}
