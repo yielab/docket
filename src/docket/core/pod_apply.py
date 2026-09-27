@@ -160,6 +160,20 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
     return problems
 
 
+def resolve_recipe(name_or_dir: str) -> Path:
+    """*name_or_dir* as a directory path if it resolves to one, else a shipped recipe under
+    ``config.recipes_dir()``. Raises ``PodApplyError`` naming the shipped recipe names when
+    neither resolves -- used by ``docket init --recipe``."""
+    candidate = Path(name_or_dir)
+    if candidate.is_dir():
+        return candidate
+    shipped = _cfg.recipes_dir() / name_or_dir
+    if shipped.is_dir():
+        return shipped
+    names = sorted(p.name for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+    raise PodApplyError(f"unknown recipe {name_or_dir!r}; shipped recipes: {', '.join(names)}")
+
+
 def _plan_roles(
     directory: Path, base_registry: _arch.ArchetypeRegistry, project: str
 ) -> tuple[list[ApplyItem], list[_RoleWrite], dict[str, _arch.RoleArchetype]]:

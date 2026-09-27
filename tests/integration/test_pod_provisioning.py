@@ -9,8 +9,9 @@ import pytest
 import typer
 from tests.conftest import repoint_docket_home
 
-from docket.cli import _pod
+from docket.cli import _agents, _pod
 from docket.core import audit as _audit
+from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod_provisioning as _pp
 
@@ -615,3 +616,82 @@ class TestSetVerifyPreservesOperatorInstructions:
         _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
 
         assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
+
+
+class TestInitReadsRepoConfig:
+    """`docket init` discovers a repository's own `.docket/` (or a `--recipe`), validates it
+    before provisioning, and applies it after (ADR 0012)."""
+
+    def test_valid_docket_dir_is_applied_after_provisioning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+        docket_dir = codebase / ".docket"
+        docket_dir.mkdir(parents=True)
+        (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
+
+        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+
+        assert rc == 0
+        assert "reviewer" in _dispatch.pod_full_roster("demo")
+        assert len([e for e in _audit.read_audit() if e["action"] == "pod.apply"]) == 1
+
+    def test_invalid_docket_dir_provisions_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+        roles_dir = codebase / ".docket" / "roles"
+        roles_dir.mkdir(parents=True)
+        (roles_dir / "bad.yaml").write_text("kind: role\nname: bad\nmodel: bogus\n")
+
+        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+
+        assert rc == 1
+        assert not _pp.pod_member_ids("demo")
+        assert not [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+
+    def test_recipe_flag_provisions_and_applies_a_shipped_recipe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+
+        rc = _agents.run_init(
+            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+        )
+
+        assert rc == 0
+        assert "security-vetter" in _dispatch.pod_full_roster("demo")
+
+    def test_recipe_with_an_existing_docket_dir_is_rejected_before_provisioning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+        docket_dir = codebase / ".docket"
+        docket_dir.mkdir(parents=True)
+        (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
+
+        rc = _agents.run_init(
+            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+        )
+
+        assert rc == 1
+        assert not _pp.pod_member_ids("demo")
+
+    def test_no_apply_skips_applying_a_present_docket_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+        docket_dir = codebase / ".docket"
+        docket_dir.mkdir(parents=True)
+        (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
+
+        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo", "--no-apply"])
+
+        assert rc == 0
+        assert "reviewer" not in _dispatch.pod_full_roster("demo")
+        assert not [e for e in _audit.read_audit() if e["action"] == "pod.apply"]

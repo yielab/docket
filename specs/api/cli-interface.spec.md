@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.44.0
+**Version**: 1.45.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -116,7 +116,7 @@ default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). On the first proj
 also bootstrap the workstation-wide Docket home, shared org specialists, baseline policies, and
 default security posture before provisioning the project. This global foundation is necessary;
 an extra user-facing setup command is not.
-**Syntax**: `docket init [project] [location] [--blueprint <name>] [options]`
+**Syntax**: `docket init [project] [location] [--blueprint <name>] [--recipe <name|dir>] [--no-apply] [options]`
 
 Before the first project is created, workstation bootstrap **MUST** validate that the selected
 model resolves to a callable OpenAI-compatible endpoint. An API key without a compatible endpoint
@@ -142,6 +142,20 @@ endpoint may pass without a key.
   blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
 - `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); an entry
   carrying a `blueprint` field provisions a pod the same way `--blueprint` does interactively
+- `--recipe <name|dir>`: Apply a shipped or local recipe directory after provisioning (ADR 0012,
+  D-46) — resolved as a directory path if one exists at that location, else a shipped recipe
+  under the recipes directory; an unresolvable name fails cleanly (exit 1) naming the shipped
+  recipe names, before any prompt or provisioning. Mutually exclusive with a present
+  `<location>/.docket/`: giving both fails cleanly (exit 1) naming both sources, before
+  provisioning
+- `--no-apply`: Provision the pod only, skipping the apply step for a present `.docket/` or a
+  resolved `--recipe`; prints the `docket pod <p> apply <dir>` command that would apply it
+
+A repository's own `<location>/.docket/` (the same directory shape `docket pod <p> apply` reads,
+see pod-blueprints.spec.md, "Pod manifests: apply") is discovered automatically: `init` validates
+every document under it before provisioning anything, and — unless `--no-apply` is given — applies
+it after provisioning through the same `plan_apply`/`apply` path `docket pod <p> apply` uses. A
+validation error exits 1 naming the file and field, with nothing provisioned.
 **Output**: Creation progress and confirmation with member IDs
 **Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
 or provisioning registered no member — docket's flat convention, see Return Code Convention below)
@@ -997,6 +1011,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.45.0 (2026-09-27)
+
+- `docket init` gains `--recipe <name|dir>` and `--no-apply` (ADR 0012, D-46, P30-1): a present
+  `<location>/.docket/` is now discovered, validated, and applied automatically after
+  provisioning, the same directory shape and path `docket pod <p> apply` already reads (see
+  pod-blueprints.spec.md 1.11.0, "Pod manifests: apply" requirement 8); the readiness rule (a
+  callable endpoint before the first pod) is unchanged.
 
 ### Version 1.44.0 (2026-09-27)
 

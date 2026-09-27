@@ -19,14 +19,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from rich.markup import escape
+
 import docket.config as _cfg
 from docket import ui
 from docket.cli._flags import find_unknown_flag
 from docket.core import blueprints as _bp
+from docket.core import config_docs as _config_docs
 from docket.core import fleet as _fleet
 from docket.core import identity as _identity
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import provider as _provider_catalog
 from docket.core import provisioning as _prov
@@ -57,27 +61,31 @@ _ADD_VALUE_FLAGS = frozenset(
 
 def _parse_add_args(
     all_args: list[str],
-) -> tuple[str | None, str | None, str | None, str | None]:
-    """Extract (from_file, codebase, name, blueprint) from `docket add` args: ``--from``
-    selects declarative mode; codebase/name/blueprint come from flags or bare
-    positionals (codebase is a `workdir` blueprint's working directory instead — see
-    `core/blueprints.py`). Any value given here is trusted, skipping its interactive
-    prompt; unsupplied values return ``None``."""
+) -> tuple[str | None, str | None, str | None, str | None, str | None, bool]:
+    """Extract (from_file, codebase, name, blueprint, recipe, no_apply) from `docket add`
+    args: flags or bare positionals, trusted and skipping their interactive prompt.
+    ``--recipe`` names a directory to apply after provisioning; ``--no-apply`` skips it."""
     from_file: str | None = None
     codebase: str | None = None
     name: str | None = None
     blueprint: str | None = None
+    recipe: str | None = None
+    no_apply = "--no-apply" in all_args
     positionals: list[str] = []
 
     i = 0
     while i < len(all_args):
         arg = all_args[i]
+        if arg == "--no-apply":
+            i += 1
+            continue
         for flag, setter in (
             ("--from", "from"),
             ("--codebase", "cb"),
             ("--path", "cb"),
             ("--name", "nm"),
             ("--blueprint", "bp"),
+            ("--recipe", "rc"),
         ):
             if arg == flag and i + 1 < len(all_args):
                 val = all_args[i + 1]
@@ -104,13 +112,72 @@ def _parse_add_args(
             name = val
         elif setter == "bp":
             blueprint = val
+        elif setter == "rc":
+            recipe = val
 
     if positionals:
         if name is None:
             name = positionals[0]
         if codebase is None and len(positionals) > 1:
             codebase = positionals[1]
-    return from_file, codebase, name, blueprint
+    return from_file, codebase, name, blueprint, recipe, no_apply
+
+
+def _resolve_repo_apply_source(loc_path: Path, cli_recipe: str | None) -> tuple[Path | None, int]:
+    """The directory `docket init` should apply after provisioning -- a present ``.docket/``
+    or a resolved ``--recipe``, mutually exclusive, validated first (ADR 0012). ``(None, 1)``
+    means stop (already printed); ``(None, 0)`` means nothing to apply."""
+    docket_dir = loc_path / ".docket"
+    has_docket_dir = docket_dir.is_dir()
+    if cli_recipe is not None and has_docket_dir:
+        ui.error(f"Both --recipe and an existing '{docket_dir}' were given; use only one.")
+        return None, 1
+
+    apply_source: Path | None = None
+    if cli_recipe is not None:
+        try:
+            apply_source = _pod_apply.resolve_recipe(cli_recipe)
+        except _pod_apply.PodApplyError as exc:
+            ui.error(str(exc))
+            return None, 1
+    elif has_docket_dir:
+        apply_source = docket_dir
+
+    if apply_source is not None:
+        config_errors = _config_docs.validate_directory(apply_source)
+        if config_errors:
+            for config_error in config_errors:
+                ui.console.print(f"[red]{escape(str(config_error))}[/red]")
+            return None, 1
+    return apply_source, 0
+
+
+def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
+    """Plan and apply *apply_source* onto the just-provisioned pod *aid*, printing the plan
+    the way ``docket pod <p> apply`` does; ``--no-apply`` only prints the command that would
+    do it. Called only after provisioning succeeds (ADR 0012)."""
+    if no_apply:
+        ui.console.print()
+        ui.info(f"Skipping apply — run: docket pod {aid} apply {apply_source}")
+        return 0
+
+    try:
+        plan = _pod_apply.plan_apply(aid, apply_source)
+    except _pod_apply.PodApplyError as exc:
+        ui.error(str(exc))
+        return 1
+    ui.header(f"Apply plan — {aid} <- {apply_source}")
+    for item in plan.items:
+        ui.console.print(f"  [{item.action}] {item.kind}: {item.name}")
+    try:
+        result = _pod_apply.apply(plan)
+    except _pod_apply.PodApplyError as exc:
+        ui.error(str(exc))
+        return 1
+    changed = [item for item in result.items if item.action != "skip"]
+    if changed:
+        ui.success(f"Applied {len(changed)} change(s) to pod '{aid}' from {apply_source}.")
+    return 0
 
 
 def run_init(all_args: list[str]) -> int:
@@ -144,7 +211,9 @@ def run_init(all_args: list[str]) -> int:
         if bootstrap_rc != 0:
             return bootstrap_rc
 
-    from_file, cli_codebase, cli_name, cli_blueprint = _parse_add_args(project_args)
+    from_file, cli_codebase, cli_name, cli_blueprint, cli_recipe, no_apply = _parse_add_args(
+        project_args
+    )
 
     if from_file is not None:
         return _cmd_add_declarative(from_file)
@@ -180,6 +249,13 @@ def run_init(all_args: list[str]) -> int:
         ui.error(f"A project or pod '{aid}' already exists.")
         return 1
 
+    # A repository's own `.docket/` is its configuration of record (ADR 0012): discovered,
+    # validated, and (unless `--no-apply`) applied after provisioning; `--recipe` starts from
+    # a shipped or local recipe the same way, mutually exclusive with a present `.docket/`.
+    apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, cli_recipe)
+    if resolve_rc:
+        return resolve_rc
+
     # No codebase to inspect for a workdir blueprint — stack is whatever the
     # operator types (or blank), never auto-detected from marker files.
     detected_stack = "" if is_workdir else _prov.detect_stack(loc_path)
@@ -213,6 +289,11 @@ def run_init(all_args: list[str]) -> int:
     if not created:
         ui.error("Pod provisioning failed — no members were registered.")
         return 1
+
+    if apply_source is not None:
+        apply_rc = _apply_repo_config(aid, apply_source, no_apply)
+        if apply_rc:
+            return apply_rc
 
     lead_id = f"{aid}-lead"
     ui.console.print()
