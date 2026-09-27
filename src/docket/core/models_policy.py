@@ -288,7 +288,9 @@ def find_registry_problems() -> list[tuple[str, str]]:
     return problems
 
 
-def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> str:
+def resolve_role_model(
+    role: str, role_models: dict[str, str] | None = None, *, project: str = ""
+) -> str:
     """Return the effective model for a role (loads registry if not supplied).
 
     ``role`` may be a pod *archetype* name with no row of its own (a
@@ -303,17 +305,18 @@ def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> 
         role_models, _, _ = load_registry()
     if role in role_models:
         return role_models[role]
-    return _resolve_via_archetype_class(role)
+    return _resolve_via_archetype_class(role, project)
 
 
-def _resolve_via_archetype_class(role: str) -> str:
-    """Resolve a model for a role unknown to ``ALL_ROLES`` via its archetype's modelClass."""
+def _resolve_via_archetype_class(role: str, project: str = "") -> str:
+    """Resolve a role outside ``ALL_ROLES`` via its archetype's modelClass, looked up in
+    *project*'s registry; an unknown role falls back to the registry's own default model."""
     from docket.core import archetypes as _arch
 
-    arch = _arch.load_registry().get(role)
+    arch = _arch.load_registry(project).get(role)
+    _, tiers, default_model = load_registry()
     if arch is None:
-        return cfg.DEFAULT_MODEL
-    _, tiers, _ = load_registry()
+        return default_model
     return tiers["economy"] if arch.model_class == "cheap" else tiers["standard"]
 
 

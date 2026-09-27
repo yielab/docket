@@ -538,3 +538,27 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     # The exported default directory re-applies as a no-op.
     reapply_plan = _pod_apply.plan_apply(project, default_dir)
     assert [item.action for item in reapply_plan.items] == ["skip"] * len(reapply_plan.items)
+
+
+def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe's own role, applied into the pod, gets the fleet's model, never the literal."""
+    project = "fixture"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    _cfg.MODEL_REGISTRY_FILE.write_text(
+        json.dumps(
+            {
+                "default": "local/x",
+                "rankAnchors": {"economy": "local/x", "standard": "local/x", "premium": "local/x"},
+                "roles": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _pod_apply.apply(_pod_apply.plan_apply(project, _cfg.recipes_dir() / "secure-build"))
+
+    from docket.core import fleet as _fleet
+
+    assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"

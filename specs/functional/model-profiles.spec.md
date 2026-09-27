@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.16.0
+**Version**: 2.17.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above both policy and pin, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -60,13 +60,20 @@ feasibility spike remains in ROADMAP and Git history.
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only as a per-agent pin.
 4. Each role **MUST** carry a short human-readable WHY string shown by `docket models`.
-5. Resolving a role not in this table **MUST NOT** always collapse straight to `DEFAULT_MODEL`:
+5. Resolving a role not in this table **MUST NOT** collapse to the compiled-in `DEFAULT_MODEL`:
    if the role is a registered pod archetype (ROADMAP Phase 16 W-6; e.g. a starter-library role
-   like `researcher`) whose `modelClass` this table has no named row for, it **MUST** resolve
-   via that `modelClass` against the live rank anchors instead (`economy` for `cheap`,
-   `standard` for `strong`) — see role-archetypes.spec.md. Only a role that is neither a named
-   entry here nor a registered archetype **MUST** fall back to `DEFAULT_MODEL` (no error, either
-   way).
+   like `researcher`, or a recipe's own role applied into a pod's overlay) whose `modelClass`
+   this table has no named row for, it **MUST** resolve via that `modelClass` against the live
+   rank anchors instead (`economy` for `cheap`, `standard` for `strong`) — see
+   role-archetypes.spec.md. The archetype **MUST** be looked up in the registry of the pod the
+   member belongs to (`core.archetypes.load_registry(project)`, which layers the pod's own
+   `config/roles.json` over the global overlay), never the global registry alone, so a role a
+   recipe applied into one pod resolves exactly as a global role would
+   (`core.models_policy.resolve_role_model(role, role_models, project=<pod>)`). Only a role that
+   is neither a named entry here nor a registered archetype in that registry **MUST** fall back
+   to the registry's own `default` model (the one default of record; equal to `DEFAULT_MODEL` on
+   a fresh install) — never to the compiled-in literal while an operator has set another
+   default. No error, either way.
 
 ### User registry overlay
 
@@ -520,6 +527,17 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.17.0 (2026-09-27)
+
+- **"Roles and built-in policy" requirement 5 amended (Phase 30, found by running the product):**
+  a pod-scoped archetype (a recipe's own role applied into `config/roles.json`) was resolved
+  against the global registry only, so `security-vetter` with `model: strong` fell to the
+  compiled-in `DEFAULT_MODEL` (`anthropic/claude-sonnet-4-6`) on a fleet whose preset and rank
+  anchors were `local`, and the hop hit the hosted vendor with no key. `resolve_role_model`
+  gains a keyword-only `project` that `core/pod.py::resolve_member`, `core/pod_apply.py`'s
+  member planning and `docket profile <id> default` pass; the last-resort fallback is the
+  registry's `default` model, not the literal.
 
 ### Version 2.16.0 (2026-09-27)
 

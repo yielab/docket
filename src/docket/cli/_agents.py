@@ -166,9 +166,9 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     except _pod_apply.PodApplyError as exc:
         ui.error(str(exc))
         return 1
-    ui.header(f"Apply plan — {aid} <- {apply_source}")
-    for item in plan.items:
-        ui.console.print(f"  [{item.action}] {item.kind}: {item.name}")
+    from docket.cli._pod import render_apply_plan
+
+    render_apply_plan(plan)
     try:
         result = _pod_apply.apply(plan)
     except _pod_apply.PodApplyError as exc:

@@ -180,7 +180,7 @@ def resolve_member(
     canon = normalize_role(role, project)
     arch = _archetypes.load_registry(project).get(canon)
     assert arch is not None  # normalize_role() already validated membership
-    model = _mp.resolve_role_model(arch.resolved_policy_role, role_models)
+    model = _mp.resolve_role_model(arch.resolved_policy_role, role_models, project=project)
     return PodMember(
         project=project,
         role=canon,

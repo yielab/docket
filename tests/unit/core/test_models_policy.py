@@ -106,3 +106,48 @@ class TestResolveStepModel:
         _point_at(tmp_path, monkeypatch)
         with pytest.raises(ValueError, match="nope"):
             _mp.resolve_step_model("nope/x")
+
+
+class TestResolveRoleModelInPodScope:
+    """A pod-scoped archetype resolves through its pod's registry against the live anchors;
+    an unknown role falls back to the registry's own default, never the compiled-in literal."""
+
+    def _registry_on_local(self, home: Path) -> None:
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.MODEL_REGISTRY_FILE.write_text(
+            json.dumps(
+                {
+                    "default": "local/x",
+                    "rankAnchors": {
+                        "economy": "local/x",
+                        "standard": "local/x",
+                        "premium": "local/x",
+                    },
+                    "roles": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_pod_scoped_archetype_resolves_against_the_live_anchors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import archetypes as _arch
+        from docket.core import config_docs as _config_docs
+
+        home = _point_at(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
+        self._registry_on_local(home)
+        role_file = _cfg.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+        _arch.add_user_archetype(_config_docs.load_document(role_file, kind="role").doc, "p")
+
+        assert _mp.resolve_role_model("security-vetter", project="p") == "local/x"
+
+    def test_unknown_role_falls_back_to_the_registry_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _point_at(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", tmp_path / "docket-roles.json")
+        self._registry_on_local(home)
+
+        assert _mp.resolve_role_model("nobody-here") == "local/x"

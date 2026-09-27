@@ -302,7 +302,7 @@ def _plan_members(
             items.append(ApplyItem(kind="member", name=canon, action="skip"))
             continue
         mid = pod.member_id(project, canon)
-        model = _mp.resolve_role_model(arch.resolved_policy_role, role_models)
+        model = _mp.resolve_role_model(arch.resolved_policy_role, role_models, project=project)
         member = pod.PodMember(
             project=project,
             role=canon,

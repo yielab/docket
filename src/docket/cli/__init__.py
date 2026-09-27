@@ -984,7 +984,9 @@ def cmd_profile(
 
     if model is None:
         role_models, _, _ = _mp.load_registry()
-        policy_model = _mp.resolve_role_model(role, role_models)
+        policy_model = _mp.resolve_role_model(
+            role, role_models, project=_pod_core.pod_of(aid) or ""
+        )
         ui.header(f"Model: {name} ({aid})")
         ui.console.print()
         ui.console.print(f"  [bold]{'Current model:':<18}[/bold] {current}")
@@ -1015,7 +1017,7 @@ def cmd_profile(
 
     if model in ("default", "policy"):
         role_models, _, _ = _mp.load_registry()
-        new_model = _mp.resolve_role_model(role, role_models)
+        new_model = _mp.resolve_role_model(role, role_models, project=_pod_core.pod_of(aid) or "")
         new_src = "policy"
     else:
         try:

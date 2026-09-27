@@ -18,7 +18,7 @@ contract; this file is the map. Read §0 and your own packet only.
 ## 0. Rules for every worker
 
 - **Isolation.** One branch `p30-<N>-<slug>` in your own worktree. Never touch `~/.docket`: every
-  CLI run sets `export W=$(mktemp -d) DOCKET_HOME=$W/.docket` (**never override `HOME`**: it
+  CLI run sets `export W=$(mktemp -d); export DOCKET_HOME=$W/.docket` (two statements: in one `export`, `$W` is still empty; **never override `HOME`**: it
   breaks uv's cache). pytest isolates `DOCKET_HOME` through the autouse fixture in
   `tests/conftest.py` (`_DOCKET_HOME_PATHS`). **Never call a real model endpoint and never probe
   a real vendor host**; the fake driver in `tests/integration/test_recipes.py` and the HTTP fakes
