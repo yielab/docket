@@ -38,6 +38,7 @@ _docket() {
     'completions:Shell completion helpers'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
+    'recipes:List and inspect the recipe library'
     'trace:View agent execution traces'
     'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'
@@ -76,6 +77,7 @@ _docket() {
     models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;
     policies|policy) compadd list show init test validate ;;
+    recipes|recipe)  compadd list show ;;
     roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;

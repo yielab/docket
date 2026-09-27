@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.50.0
+**Version**: 1.51.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -761,6 +761,28 @@ counts and per-file detail)
 **Output**: Plugin listing, or an error naming an unknown/duplicate predicate
 **Return**: 0 on success, 1 on invalid subcommand or a `PluginError`
 
+#### docket recipes
+**Purpose**: List and inspect the recipe library (ADR 0013 §1 rule 5) -- read-only discovery
+over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fetches nothing;
+`docket pod <p> apply`/`docket init --recipe` remain the only writers
+**Syntax**: `docket recipes <subcommand> [args]`
+**Subcommands**:
+- `list [--json]`: Table (NAME, SCOPE, KIND, DESCRIPTION) of every recipe `core.pod_apply.
+  list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before the
+  shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. KIND is
+  derived, never a stored field: `team` when the recipe has both members and a pipeline,
+  `policies` when it has only policies, `pipeline` when it has a pipeline and no policies, else
+  `mixed`. `--json` prints a list of objects carrying `name`, `scope`, `kind`, `directory`,
+  `description`, and every `core.pod_apply.RecipeSummary` count
+- `show <name|dir> [--json]`: Resolve *name|dir* through the same `resolve_recipe` order
+  `docket pod <p> apply` uses and print its scope, directory, derived summary line
+  (`pod-blueprints.spec.md` 1.14.0), and `README.md` body when present; `--json` adds a
+  `readme` field to the same object shape `list --json` prints
+**Output**: Recipe listing, one recipe's detail, or the `resolve_recipe` error naming both
+scopes' recipe names
+**Return**: 0 on success, 1 on invalid subcommand or an unresolvable name, 2 on an unrecognized
+flag
+
 #### docket approve
 **Purpose**: Grant a pending HITL approval token
 **Syntax**: `docket approve <token>`
@@ -1024,6 +1046,18 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.51.0 (2026-09-27)
+
+- **P31-2: `docket recipes list|show`, and the operator's own recipes directory (ADR 0013 §1
+  rules 4-5).** New `docket recipes` command, registered exactly as `docket plugins` is: `list
+  [--json]` (a table of every recipe `core.pod_apply.list_recipes()` returns, its scope, a
+  derived `kind`, and its description) and `show <name|dir> [--json]` (one recipe's scope,
+  directory, derived summary, and README body); an unresolvable name exits 1 naming both
+  `operator:`/`shipped:` recipe lists. `core.pod_apply.resolve_recipe` gains a third scope, the
+  operator's own `config.user_recipes_dir()` (`$DOCKET_HOME/recipes/<name>/`), checked before
+  the shipped library — nearest wins by name. See `pod-blueprints.spec.md` 1.17.0 and
+  `workspace-structure.spec.md` 1.13.0.
 
 ### Version 1.50.0 (2026-09-27)
 

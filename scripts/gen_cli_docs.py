@@ -98,7 +98,7 @@ def _load_aliases_and_removed() -> tuple[dict[str, str], dict[str, tuple[str, ..
 GROUPS: list[tuple[str, list[str]]] = [
     ("Lifecycle Commands", ["list", "init", "add", "status", "info", "delete", "maintain"]),
     ("Session & Context Management", ["scope", "context", "persona"]),
-    ("Pod Coordination", ["pod", "pipeline", "roles"]),
+    ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     ("Telegram Integration", ["wire", "unwire", "conversations"]),
     ("Keys & Authentication", ["keys"]),
     (

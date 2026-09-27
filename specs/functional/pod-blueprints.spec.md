@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -254,9 +254,11 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    and field, with no pod provisioned. After provisioning succeeds, `init` **MUST** plan and apply
    that directory through this section's own `plan_apply`/`apply` (never a second write path), and
    the resulting `pod.apply` audit entry is this requirement's, not a duplicate. `docket init
-   --recipe <name|dir>` **MUST** resolve *name|dir* as a directory path if one exists at that
-   location, else a shipped recipe under the recipes directory, and apply it the same way; an
-   unresolvable name **MUST** exit 1 naming the shipped recipe names, before provisioning.
+   --recipe <name|dir>` **MUST** resolve *name|dir* through `core.pod_apply.resolve_recipe`: a
+   directory path if one exists at that location, else the operator's own
+   `config.user_recipes_dir()/<name|dir>`, else a shipped recipe under `config.recipes_dir()` —
+   three scopes, nearest wins by name (ADR 0013 §1 rule 4) — and apply it the same way; an
+   unresolvable name **MUST** exit 1 naming both scopes' recipe names, before provisioning.
    `--recipe` together with a present `.docket/` **MUST** exit 1 naming both sources, before
    provisioning — two sources of record is an ambiguity this command refuses rather than picks
    between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
@@ -276,6 +278,21 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `config-format.spec.md`) prints this summary after its per-file lines; `docket pod <p> apply`
    and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
    `description` when set, before the plan itself (`cli-interface.spec.md`).
+10. **Recipe listing (ADR 0013 §1 rule 5).** `core.pod_apply.list_recipes()` **MUST** return one
+    `RecipeInfo` (`name`, `scope` — `"operator"` or `"shipped"` — `directory`, `summary`) per
+    name reachable across both scopes `resolve_recipe` reads, sorted by name; a name present in
+    both **MUST** resolve to the operator's own directory, matching requirement 8's resolution
+    order. `docket recipes list [--json]` **MUST** print every entry — name, scope, a derived
+    `kind` (`team` when `summary.members` and `summary.pipeline` are both non-empty, `policies`
+    when only `summary.policies` is non-zero, `pipeline` when `summary.pipeline` is set and
+    `summary.policies` is zero, else `mixed`), and `summary.description` — never a stored
+    `kind` field, matching requirement 9's rule that scope is always derived. `docket recipes
+    show <name|dir> [--json]` **MUST** resolve *name|dir* through the same `resolve_recipe`
+    (an unresolvable name **MUST** exit 1 naming both scopes' recipe names, matching
+    requirement 8) and print that directory's scope (omitted for a bare path outside both
+    scopes), directory, derived summary, and its `README.md` body when the file is present.
+    Neither subcommand **MUST** install, remove, fetch, or write anything — `docket pod <p>
+    apply`/`docket init --recipe` remain the only writers.
 
 ### Pod manifests: export
 
@@ -480,6 +497,18 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.17.0 (2026-09-27)
+
+- **P31-2: the operator's own recipes directory, and a listing (ADR 0013 §1 rules 4-5).**
+  "Pod manifests: apply" requirement 8 gains a third resolution scope: `core.pod_apply.
+  resolve_recipe` now checks a directory path, then the operator's own
+  `config.user_recipes_dir()/<name>` (`DOCKET_HOME/recipes/<name>/`), then the shipped
+  `config.recipes_dir()/<name>` — nearest wins by name — and its unresolvable-name error now
+  names both scopes' recipe lists, not only the shipped one. New requirement 10, "Recipe
+  listing": `core.pod_apply.list_recipes()`/`RecipeInfo` and the new `docket recipes list
+  [--json]`/`docket recipes show <name|dir> [--json]` commands (`cli-interface.spec.md`), a
+  read-only discovery surface over both scopes with no new writer.
 
 ### Version 1.16.0 (2026-09-27)
 

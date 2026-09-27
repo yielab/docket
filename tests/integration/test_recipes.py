@@ -697,3 +697,60 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
     from docket.core import fleet as _fleet
 
     assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"
+
+
+# ── docket recipes: the operator's own recipes directory (ADR 0013 SS1 rule 4-5) ─────────────
+
+
+def test_operator_recipe_is_listed_and_applies_via_pod_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A recipe under the operator's own ``recipes/`` directory is listed with scope
+    ``operator`` alongside every shipped recipe, and resolves by name for
+    ``docket pod <p> apply`` exactly as a shipped one does."""
+    project = "recipefixture"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+
+    mine_dir = _cfg.user_recipes_dir() / "mine"
+    (mine_dir / "policies").mkdir(parents=True)
+    (mine_dir / "policies" / "x.yaml").write_text(
+        "id: x\n"
+        "applies_to: [implementer]\n"
+        "hook: pre_tool_call\n"
+        "match: {type: regex, pattern: 'nope'}\n"
+        "action: block\n",
+        encoding="utf-8",
+    )
+
+    infos = {info.name: info for info in _pod_apply.list_recipes()}
+    assert infos["mine"].scope == "operator"
+    assert infos["mine"].summary.policies == 1
+    for shipped_name in REQUIRED_RECIPES:
+        assert infos[shipped_name].scope == "shipped"
+
+    capsys.readouterr()
+    _pod.dispatch(project, "apply", ["mine", "--dry-run", "--json"])
+    plan = json.loads(capsys.readouterr().out)
+    assert [(item["kind"], item["name"], item["action"]) for item in plan["items"]] == [
+        ("policy", "x.yaml", "add")
+    ]
+
+
+def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``docket recipes show <unknown>`` exits 1, with a message naming both ``operator:``
+    and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod <p> apply``/
+    ``docket init --recipe`` raise."""
+    from docket.cli._recipes import run_recipes
+
+    home = tmp_path / ".docket"
+    repoint_docket_home(monkeypatch, home)
+
+    capsys.readouterr()
+    exit_code = run_recipes(["show", "nope"])
+    err = capsys.readouterr().err
+
+    assert exit_code == 1
+    assert "operator:" in err
+    assert "shipped:" in err
