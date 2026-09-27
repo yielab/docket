@@ -1,9 +1,13 @@
 # Wave 47–49 worker packets — Phase 29, the provider catalog (D-45)
 
-Coordinator: the session that planned Phase 29 on 2026-09-26. **Base commit for Wave 47: the
-commit the integrator records here at activation** (`git log -1 --format=%h -- .agents/handoffs/wave-47-worker-packets.md`
-on `main` until then); Waves 48 and 49 rebase onto the rollup commit that closed the previous
-wave. One card, one Sonnet worker, one isolated worktree each. Decision, the document, the two
+Coordinator: the session that planned Phase 29 on 2026-09-26; activated 2026-09-27 by the
+integrator. **Base commit for Wave 47: the commit that opened it on `main`**
+(`git log -1 --format=%h -- .agents/handoffs/wave-47-worker-packets.md`; Phase 28 closed at
+`56e8d9d` just before it); Waves 48 and 49 rebase onto the rollup commit that closed the previous
+wave. Corrections applied at activation, which override the card text where they differ:
+`pod-dispatch.spec.md` is at 6.20.0 after Phase 28, so P29-5 takes **6.21.0**;
+`config-format.spec.md` exists at 1.1.0, so P29-1 takes 1.2.0 and adds the `provider` arm to
+`core/config_docs.py::load_document`; goldens are 19 cases. One card, one Sonnet worker, one isolated worktree each. Decision, the document, the two
 scopes, the adapter seam, the amended rules and the retired-code table:
 [docs/adr/0011-provider-catalog.md](../../docs/adr/0011-provider-catalog.md). The card
 (`python3 .agents/skills/docket-roadmap/scripts/card_packet.py P29-<N>`) is the contract; this
@@ -18,8 +22,10 @@ file is the map. Read §0 and your own packet only.
 ## 0. Rules for every worker
 
 - **Isolation.** One branch `p29-<N>-<slug>` in your own worktree. Never touch `~/.docket`: every
-  CLI run sets `export W=$(mktemp -d) HOME=$W/home DOCKET_HOME=$W/home/.docket`. pytest already
-  isolates `DOCKET_HOME` through autouse fixtures. **Never call a real model endpoint and never
+  CLI run sets `export W=$(mktemp -d) DOCKET_HOME=$W/.docket` (**never override `HOME`**: it
+  breaks uv's cache). pytest isolates `DOCKET_HOME` through the autouse fixture in
+  `tests/conftest.py`, which moves only the constants listed in `_DOCKET_HOME_PATHS` -- a card
+  that adds a `DOCKET_HOME`-derived path to `config.py` registers it there in the same commit. **Never call a real model endpoint and never
   probe a real vendor host**; the deterministic HTTP fakes in `tests/integration/test_llm_port.py`
   (`_serve` / the `http.server` helpers) and `test_docket_driver.py` are the pattern.
 - **Never `git stash`.** Set work aside with a WIP commit on your branch.
@@ -46,7 +52,8 @@ file is the map. Read §0 and your own packet only.
   regeneration and, for P29-6 only, the four docs its card names. Return the README/CHANGELOG
   line you would add instead of writing it. Never edit `scripts/metrics.py` or
   `scripts/validate-specs.sh`. Never touch `core/pod.py`, `core/archetypes.py`, `core/policy.py`,
-  `core/orchestrator.py`, `core/pod_apply.py` or `core/config_docs.py` (Phases 27/28 own them).
+  `core/orchestrator.py` or `core/pod_apply.py`; `core/config_docs.py` is touched by P29-1 only
+  (the `provider` arm of `load_document` and `KINDS`).
 - **Goldens.** `bash tests/golden/run.sh verify-all` stays byte-identical unless your packet
   names a case; then regenerate only that case and list every changed line with its reason.
 - **Worker gates** before returning:
@@ -56,7 +63,7 @@ file is the map. Read §0 and your own packet only.
   env -u VIRTUAL_ENV uv run pytest -q
   bash tests/golden/run.sh verify-all
   bash scripts/validate-specs.sh
-  env -u VIRTUAL_ENV uv run python scripts/gen_cli_docs.py --check   # if it fails on a missing `click`, say so; the integrator regenerates
+  env -u VIRTUAL_ENV uv run python scripts/gen_cli_docs.py --check   # needs `click`: run `env -u VIRTUAL_ENV uv sync --extra mcp` once in your worktree first
   env -u VIRTUAL_ENV uv run python scripts/maint/comment_lint.py --check <every .py you touched>
   ```
 
@@ -80,7 +87,12 @@ section "Provider catalog" (document fields this card consumes, the two scopes, 
 `docket-providers.json`, the one-shot migration and what it does with a literal `apiKey`); amend
 "Hosted gateway resolution" rule 3 (drop the provider-block-key step); delete "Provider
 registration display fields" and fix the Scope paragraph that says `provider add` writes
-`fleet.json`. `specs/functional/config-format.spec.md` -> 1.2.0 only if it exists on your base.
+`fleet.json`. `specs/functional/config-format.spec.md` -> 1.2.0: `provider` joins the kinds in
+the Scope list and the dispatch rule, its parser is `core/provider.py::load_provider_document`,
+and `docket validate <file>` accepts a provider document. Implementation of that last point:
+`core/config_docs.py` adds `"provider"` to `KINDS` and one `elif effective_kind == "provider"`
+arm in `load_document` that calls `load_provider_document` and maps `ProviderError` to
+`ConfigDocError` the way the role arm maps `ArchetypeError` -- nothing else in that module.
 
 - **Where.** `src/docket/core/provider.py` — rewrite. Keep the module docstring honest (it says
   "Local provider registration"). Model: `ProviderSpec`, `AuthSpec`, `ModelRow` (pydantic,
@@ -93,7 +105,9 @@ registration display fields" and fix the Scope paragraph that says `provider add
   Built-in directory: `config.py` gets `PROVIDER_TEMPLATES_DIR = Path(__file__).parent /
   "templates" / "providers"` next to the policy templates constant (create the directory with a
   `.gitkeep`; P29-2 fills it). `config.py::PROVIDERS_FILE = DOCKET_HOME / "docket-providers.json"`
-  next to `MCP_SERVERS_FILE`.
+  next to `MCP_SERVERS_FILE`, **and** `("PROVIDERS_FILE", "docket-providers.json")` in
+  `tests/conftest.py::_DOCKET_HOME_PATHS` so the autouse isolation moves it (P28-7 did the same
+  for `PLUGINS_DIR`).
 - **Fleet.** `src/docket/core/fleet.py`: delete `add_local_provider` and `get_local_provider`;
   leave `FleetConfig.providers` with a two-line comment: read once by `migrate_fleet_providers`,
   cleared afterwards, removal deferred one release (ADR 0011).
@@ -197,7 +211,8 @@ clause goes; a stored key is sufficient for a built-in hosted provider).
 
 ## P29-5 — a retry waits as long as the provider asked, up to a ceiling
 
-Branch `p29-5-retry-after`. Spec `specs/functional/pod-dispatch.spec.md` -> 6.18.0, section
+Branch `p29-5-retry-after`. Spec `specs/functional/pod-dispatch.spec.md` -> 6.21.0 (the base is
+at 6.20.0; the card text's 6.18.0 predates Phase 28), section
 "Retries and the failure-kind taxonomy": the sleep before retry N is
 `min(max(DISPATCH_RETRY_BACKOFF_S × N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)`; `retryAfter` is
 the endpoint's `Retry-After` on a retryable status, else 0.

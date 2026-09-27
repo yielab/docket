@@ -11,7 +11,16 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-09-26) — Phase 28 complete, Phase 29 planned below
+> ## ▶ ACTIVE BOARD — WAVE 47 (opened 2026-09-27): Phase 29, the provider catalog (D-45)
+>
+> Wave 47 runs P29-1 alone (it defines the document model and the `fleet.json` ->
+> `docket-providers.json` migration every later card builds on), one Sonnet worker in an
+> isolated worktree under one integrator; packets in
+> [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
+> Wave 48 (P29-2, P29-5, P29-7) and Wave 49 (P29-3, P29-4, then P29-6) open only after the
+> previous wave's rollup merges green.
+>
+> **☑ Phase 28 complete (2026-09-26).**
 >
 > **Phase 28 closed 2026-09-26** (ROADMAP D-44, [ADR 0010](docs/adr/0010-config-format-v1-and-extension-points.md)):
 > eight cards over Waves 44–46, one Sonnet worker per card in isolated worktrees under one
@@ -128,16 +137,16 @@ release source.
 ---
 
 
-## ◆ PHASE 29 — PLANNED (2026-09-26): the provider catalog (D-45)
+## ▶ WAVE 47 — ACTIVE (opened 2026-09-27): Phase 29, the provider catalog (D-45)
 
-**Planned 2026-09-26.** Seven cards in three waves. Decision, the document, the two scopes, the
+**Opened 2026-09-27 (Wave 47 active; Waves 48–49 queued in this section).** Seven cards in three waves. Decision, the document, the two scopes, the
 adapter seam, the twelve amended spec rules, the retired-code table and the verdict table are in
 [docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md). Worker packets:
 [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
-**Activation gate:** none on Phases 27/28 (disjoint files); the integrator confirms the batching
-below from function-level contention, records the base commit in the packets file, and puts a
-`## ▶ ACTIVE BOARD — WAVE 47` banner as this file's first H2 with a matching `## ▶ WAVE 47 ...`
-heading over the wave's cards; only then are cards claimable.
+**Activation gate met 2026-09-27:** Phase 28 closed at `56e8d9d`; batching confirmed from the
+function-level ownership below; the packets file records the base commit and the spec versions
+Phase 28 consumed (`pod-dispatch` → 6.21.0 for P29-5, `config-format` → 1.2.0 for P29-1, which
+now also adds the `provider` arm to `load_document`).
 
 **Trigger (explicit request + deterministic regression, 2026-09-26):** provider selection must be
 configurable like roles, policies and pipelines, with abstractions that make agnosticism real, no
@@ -162,7 +171,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P29-1 — a provider is a document, and today's configuration resolves exactly as before
 
-**Status:** TODO · **Size:** M · **Wave:** 47 · **Spec:** `model-profiles.spec.md` → 2.11.0 (new section "Provider catalog"; "Hosted gateway resolution" rule 3 amended; "Provider registration display fields" removed), `config-format.spec.md` → 1.2.0 only if P28-1 has shipped
+**Status:** IN-PROGRESS (@sonnet-p29-1) · **Size:** M · **Wave:** 47 · **Spec:** `model-profiles.spec.md` → 2.11.0 (new section "Provider catalog"; "Hosted gateway resolution" rule 3 amended; "Provider registration display fields" removed), `config-format.spec.md` → 1.2.0 (`kind: provider` joins the envelope; P28-1 shipped)
 
 **Trigger:**
 - `fleet.json → providers` is a loose dict (`core/fleet.py::FleetConfig.providers`, "kept as a
@@ -373,7 +382,7 @@ the one `is_local` test.
 
 ### P29-5 — a retry waits as long as the provider asked, up to a ceiling
 
-**Status:** TODO · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.18.0 ("Retries and the failure-kind taxonomy")
+**Status:** TODO · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.21.0 (6.18–6.20 were consumed by Phases 27–28) ("Retries and the failure-kind taxonomy")
 
 **Trigger:** `core/dispatch.py` sleeps `DISPATCH_RETRY_BACKOFF_S * attempt` (2 s, 4 s) and
 `edges/adapters/llm.py::complete` discards response headers; a 429 with a 60 s window exhausts
