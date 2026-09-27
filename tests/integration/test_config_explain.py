@@ -337,3 +337,41 @@ class TestConfigExplainInvalidPodSettingsRefuses:
             _config.dispatch("explain", [implementer])
         assert exc.value.exit_code == 1
         assert "turnTimeoutS" in capsys.readouterr().err
+
+
+class TestConfigExplainProvider:
+    """`report["provider"]` names the resolved provider's scope, dialect, base URL,
+    credential source and exact model row -- model-profiles.spec.md, "Provider
+    catalog" requirement 7."""
+
+    def test_agent_on_a_global_provider_document(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import provider as _prov
+
+        _seed(tmp_path, monkeypatch)
+        _prov.save_provider(
+            _prov.ProviderSpec(
+                name="bench",
+                baseUrl="http://127.0.0.1:8081/v1",
+                auth=_prov.AuthSpec(type="none"),
+                models=[_prov.ModelRow(id="qwen", contextWindow=16384, maxTokens=4096)],
+            )
+        )
+        lead = pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "model", "bench/qwen")
+
+        report = _explain_json(lead, capsys)
+
+        provider = report["provider"]
+        assert provider["name"] == "bench"
+        assert provider["scope"] == "global"
+        assert provider["dialect"] == "openai-chat"
+        assert provider["baseUrl"] == "http://127.0.0.1:8081/v1"
+        assert provider["credential"] == {"name": "", "source": "none"}
+        assert provider["model"] == {
+            "id": "qwen",
+            "contextWindow": 16384,
+            "maxTokens": 4096,
+            "source": "row",
+        }

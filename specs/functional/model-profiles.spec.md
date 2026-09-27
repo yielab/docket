@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.14.0
+**Version**: 2.15.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -320,6 +320,17 @@ feasibility spike remains in ROADMAP and Git history.
    Azure OpenAI's `api-key` header and a multi-workspace Anthropic key's
    `anthropic-workspace-id` without a second adapter (ADR 0011 §3). A `bearer`-auth document's
    request headers **MUST** stay byte-identical to a provider absent from the catalog.
+7. **Observability.** `docket config explain <agent> --json` **MUST** report, for the agent's
+   resolved model, the provider's name, catalog scope (`"built-in"` / `"global"` / `""` when the
+   provider is absent from the catalog), `dialect`, `baseUrl`, the resolved credential's name and
+   source (`core.provider.resolve_credential`'s `"override"`/`"env"`/`"store"`/`"none"`), and the
+   exact model row's `id`/`contextWindow`/`maxTokens` with a `source` of `"row"` when an exact
+   row matched or `"none"` when it did not — never a credential value. The human-readable render
+   **MUST** show the same provider name, scope and credential source under the model line.
+   `docket doctor` **MUST** report each global provider document (`config.PROVIDERS_FILE`) that
+   fails the validation `core.provider.load_provider_document` applies to a file on disk — naming
+   the file, the provider's name and the failing field — the same way a malformed
+   `docket-roles.json` overlay entry is named, and carry the same list under `--json`.
 
 ### Pricing
 
@@ -496,6 +507,19 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.15.0 (2026-09-27)
+
+- **P29-6: `config explain` names the provider and its scope, and `doctor` names a malformed
+  global document.** Before this, `docket config explain` reported a resolved model id and
+  nothing about where it goes -- an operator had to trace `resolve_endpoint`, `load_catalog` and
+  `resolve_credential` by hand to find out. Added "Provider catalog" requirement 7
+  (observability): `config explain --json` gains a `provider` block (name, scope, dialect,
+  baseUrl, credential name/source, exact model row) built from `resolve_endpoint`,
+  `Catalog.source_of` and `resolve_credential`; a provider absent from the catalog still gets a
+  block, with `scope: ""`. `docket doctor` gains a check over every global provider document,
+  naming the file, provider name and failing field the same way a malformed `docket-roles.json`
+  overlay entry is named, and carries the same list under `--json`.
 
 ### Version 2.14.0 (2026-09-27)
 

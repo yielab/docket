@@ -173,13 +173,37 @@ rather than assuming something is broken.
 
 ### "no endpoint configured for this model"
 **Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
-provider — no `DOCKET_LLM_BASE_URL`, no registered provider entry, and no built-in hosted mapping.
-OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`) have built-in mappings;
-arbitrary hosted provider prefixes do not.
+provider — no `DOCKET_LLM_BASE_URL`, no registered global document, and the provider isn't one of
+the built-in catalog documents (`docket models provider list`). Every built-in document has a
+mapping now — not only OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`), but
+also `anthropic`, `openai`, `google`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
+`ollama`, `lmstudio` and `local` — so this now means an arbitrary hosted prefix outside that set.
 
-**Fix:** for OpenRouter/Vercel, apply the matching preset and store its key. For any other hosted or
-local server, register it first (`docket models provider add <name> <base-url>`). A credential
-authenticates a known endpoint; it cannot supply a missing URL.
+**Fix:** for a built-in provider, apply the matching preset (`docket models preset <name>`) and
+store its credential — no separate registration needed. For any other hosted or local server,
+register it first (`docket models provider add <file.yaml>`, or the shortcut `docket models
+provider add <name> <base-url>`). A credential authenticates a known endpoint; it cannot supply a
+missing URL.
+
+### "⚠ `<CREDENTIAL>` is missing (HTTP 401)" after `provider add`
+**Cause:** registration probes `<base-url>/models` with the resolved credential and classifies
+the response rather than refusing outright — a 401/403 still registers the provider, with this
+warning naming the missing or rejected credential (model-profiles.spec.md, "Provider readiness"
+3). For example:
+
+```
+$ docket models provider add mygw https://api.example.com/v1 --model gpt-4 --credential MYGW_API_KEY
+→ Checking the endpoint is alive: https://api.example.com/v1/models
+→ Registering provider 'mygw'
+✓ Provider wired: mygw  ->  https://api.example.com/v1
+⚠ MYGW_API_KEY is missing (HTTP 401)
+  Store it: docket keys add MYGW_API_KEY
+```
+
+**Fix:** `docket keys add <CREDENTIAL>`, then confirm with `docket models provider show <name>`
+(or `--json`) — it names the resolved scope, dialect, base URL and which credential name the
+provider expects. `docket config explain <agent-id> --json`'s `provider.credential.source` shows
+whether a given agent actually resolved that credential (`env`/`store`) or not (`none`).
 
 ### "cannot reach `<url>`: ..." / "timed out after Ns calling `<url>`"
 **Cause:** the configured endpoint (hosted or local) isn't reachable — wrong URL, the local

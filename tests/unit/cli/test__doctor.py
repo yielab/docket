@@ -16,6 +16,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _doctor
+from docket.edges import store as _store
 
 SUBJECT = "docket.cli._doctor"
 
@@ -748,6 +749,46 @@ class TestArchetypeOverlay:
         out = capsys.readouterr().out
         assert issues == 1
         assert "broken-role" in out
+
+
+class TestProviderCatalog:
+    """A malformed global provider document (docket-providers.json) is named, not
+    silently skipped -- model-profiles.spec.md, "Provider catalog" requirement 7."""
+
+    def test_no_file_is_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _point_config_at(tmp_path / ".docket", monkeypatch)
+        assert _doctor._check_provider_catalog() == 0
+
+    def test_broken_auth_type_is_named(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / ".docket"
+        _point_config_at(home, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _store.write_json(
+            _cfg.PROVIDERS_FILE,
+            {
+                "providers": {
+                    "broken": {
+                        "name": "broken",
+                        "baseUrl": "https://example.com/v1",
+                        "auth": {"type": "oauth"},
+                    }
+                }
+            },
+        )
+        issues = _doctor._check_provider_catalog()
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert str(_cfg.PROVIDERS_FILE) in out
+        assert "auth.type" in out
+
+        json_issues, problems = _doctor._doctor_json_provider_catalog()
+        assert json_issues == 1
+        assert problems == [{"name": "broken", "reason": problems[0]["reason"]}]
+        assert "auth.type" in problems[0]["reason"]
 
 
 class TestPodConfigOverlays:
