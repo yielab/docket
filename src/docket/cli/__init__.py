@@ -1165,15 +1165,20 @@ def cmd_models(ctx: typer.Context) -> None:
     Subcommands: (bare) show the role->model policy with pricing and why;
     `set <role> <provider/model>` change one role's model, or
     `set default <provider/model>` the fallback; `preset [name]` list or
-    apply a provider preset (anthropic (default), openai, google,
-    openrouter-free (experimental zero-cost router), openrouter, ai-gateway
-    (Vercel), local (no API key, priced at $0 (local))); `reset` restore
-    built-in defaults (asks for confirmation); `provider add <name>
-    <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]`
-    register an OpenAI-compatible endpoint so its models can be referenced
-    from `set`/`preset` (`--model` sets the model id served there, `--name` a
-    friendly label, `--ctx`/`--max-tokens` record context-window/output-token
-    limits used by exact-model request preflight and display).
+    apply a provider preset from the catalog (anthropic (default), openai,
+    google, openrouter-free (experimental zero-cost router), openrouter,
+    ai-gateway (Vercel), local (no API key, priced at $0 (local)) among
+    others) -- a built-in hosted preset needs only its credential, never a
+    separate registration; `reset` restore built-in defaults (asks for
+    confirmation); `provider <action>` manage the provider catalog: `add
+    <file.yaml>` a `kind: provider` document, or the shortcut `add <name>
+    <base-url> [--model ID] [--ctx N] [--max-tokens N] [--credential NAME]`
+    (registration verifies `<base-url>/models` with the resolved credential
+    and classifies the result -- only a transport failure refuses; every
+    HTTP status registers, with a warning when it is not a clean 200);
+    `list` every provider (name, scope, dialect, base URL, credential);
+    `show <name> [--json]` one entry; `remove <name>` a global override
+    (a built-in with none refuses); `export <name> [<file>]` its document.
 
     Policy changes are live: every policy-following agent is re-resolved
     immediately; pinned agents (`docket profile <id> <model>`) are never
@@ -1182,16 +1187,16 @@ def cmd_models(ctx: typer.Context) -> None:
     `Continue? [y/N]` and a non-interactive call that can't answer aborts
     rather than silently resetting the fleet. Applying a preset also writes
     its own economy/standard/premium anchors, re-resolves every
-    policy-following agent, and warns if the preset's required key isn't
-    stored yet. Unknown models are accepted if well-formed
-    (`provider/model`) -- docket has no provider-side catalog to validate
-    against, so a bad model id only surfaces the first time an agent
-    actually calls the endpoint; pricing shows n/a (or "n/a (bring your own)"
-    for an OpenRouter/AI Gateway route other than the explicit free router,
-    and "$0 (local)" for a local/ollama/lmstudio provider -- never a
-    fabricated dollar figure). Tier names (economy/standard/premium) are
-    rejected everywhere a model/role value is expected, including here; an
-    invalid model prints the current role policy table alongside the error."""
+    policy-following agent, and prints a readiness line naming the preset's
+    credential as present or missing. Unknown models are accepted if
+    well-formed (`provider/model`) -- an id absent from the catalog only
+    surfaces the first time an agent actually calls the endpoint; pricing
+    shows n/a (or "n/a (bring your own)" for an OpenRouter/AI Gateway route
+    other than the explicit free router, and "$0 (local)" for a
+    local/ollama/lmstudio provider -- never a fabricated dollar figure).
+    Tier names (economy/standard/premium) are rejected everywhere a
+    model/role value is expected, including here; an invalid model prints
+    the current role policy table alongside the error."""
     args = ctx.args
     sub = args[0] if args else "list"
     rest = args[1:]
@@ -1212,7 +1217,12 @@ def cmd_models(ctx: typer.Context) -> None:
     elif sub == "reset":
         _cmd_models_reset()
     elif sub == "provider":
-        _cmd_models_provider(rest)
+        if not rest:
+            ui.error("Usage: docket models provider <add|list|show|remove|export> ...")
+            raise typer.Exit(1)
+        from docket.cli import _provider
+
+        raise typer.Exit(_provider.run_provider(rest[0], rest[1:]))
     else:
         ui.error(
             f"Unknown models subcommand '{sub}'.\n"
@@ -1221,57 +1231,9 @@ def cmd_models(ctx: typer.Context) -> None:
             "  docket models set <role> <model>         # change a role's model\n"
             "  docket models preset [name]              # list or apply a provider preset\n"
             "  docket models reset                      # restore built-in defaults\n"
-            "  docket models provider add <name> <url>  # register a local provider"
+            "  docket models provider add <name> <url>  # register a provider"
         )
         raise typer.Exit(1)
-
-
-def _cmd_models_provider(rest: list[str]) -> None:
-    """Wire `docket models provider add <name> <base-url> [--opts]`."""
-    from docket.cli import _provider
-    from docket.core import provider as _prov
-
-    if len(rest) < 1 or rest[0] != "add":
-        ui.error(
-            "Usage: docket models provider add <name> <base-url> "
-            "[--model ID] [--name NAME] [--ctx N] [--max-tokens N]"
-        )
-        raise typer.Exit(1)
-
-    pos: list[str] = []
-    opts: dict[str, str] = {}
-    i = 1
-    while i < len(rest):
-        tok = rest[i]
-        if tok.startswith("--"):
-            key = tok[2:]
-            if "=" in key:
-                k, v = key.split("=", 1)
-                opts[k] = v
-            else:
-                opts[key] = rest[i + 1] if i + 1 < len(rest) else ""
-                i += 1
-        else:
-            pos.append(tok)
-        i += 1
-
-    name = pos[0] if len(pos) > 0 else _prov.DEFAULT_PROVIDER
-    base_url = pos[1] if len(pos) > 1 else _prov.DEFAULT_BASE_URL
-    model_id = opts.get("model", _prov.DEFAULT_MODEL_ID)
-    # Without an explicit --name, the label must derive from --model, never
-    # carry the shipped "Qwen3 30B-A3B (local)" caption for a different
-    # model. The shipped default model id keeps its shipped display name.
-    default_label = _prov.DEFAULT_MODEL_NAME if model_id == _prov.DEFAULT_MODEL_ID else model_id
-    raise typer.Exit(
-        _provider.run_provider_add(
-            name=name,
-            base_url=base_url,
-            model_id=model_id,
-            model_name=opts.get("name", default_label),
-            ctx=int(opts.get("ctx", _prov.DEFAULT_CTX)),
-            max_tokens=int(opts.get("max-tokens", _prov.DEFAULT_MAX_TOKENS)),
-        )
-    )
 
 
 def _cmd_models_list() -> None:
@@ -1479,6 +1441,12 @@ def _cmd_models_preset(preset: str | None) -> None:
     n = _mp.reapply_role_policy()
     if n:
         ui.console.print(f"  {n} agent(s) updated.")
+
+    readiness = _prov.model_readiness(std)
+    if readiness.credential_present or not readiness.credential_name:
+        ui.console.print(f"  readiness → {std}: ready")
+    else:
+        ui.console.print(f"  readiness → {std}: {readiness.credential_name} missing")
 
     key_name = t.get("key", "")
     if key_name:

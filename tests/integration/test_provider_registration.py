@@ -1,26 +1,31 @@
-"""Local provider registration (models provider add).
+"""Provider registration (`docket models provider add/list/show/remove/export`).
 
-`core.provider.register_local_provider` is the pure ping->register orchestration (no output);
-`cli._provider.run_provider_add` renders it. We assert the resulting `docket-providers.json`
-document, that a re-run is a no-op, and the cli layer's wording. See
-specs/functional/model-profiles.spec.md "Provider catalog" -- the per-model display caption a
-pre-catalog fleet.json block carried was display-only and has no field in the document.
+Registration verifies `<base-url>/models` **with the resolved credential** and classifies the
+result (ADR 0011 §4) instead of collapsing it to a boolean: only a transport failure refuses;
+every HTTP status registers, with a warning when it is not a clean 200.
+`core.provider.verify_endpoint` is the pure classifier; `edges.adapters.llm.probe_models` is the
+one function that opens a socket; `core.provider.register_provider` wires them together and
+persists only when reachable. See specs/functional/model-profiles.spec.md "Provider readiness".
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-from docket.cli import _provider as _cliprov
 from docket.cli import app as _app
 from docket.core import fleet as _fleet
 from docket.core import provider as _prov
+from docket.edges.adapters.llm import ProbeResult
 
 SUBJECT = "docket.core"
 
@@ -35,15 +40,13 @@ _FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    home = tmp_path / ".docket"
-    home.mkdir()
+def _seed(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = root / ".docket"
+    home.mkdir(parents=True)
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
     repoint_docket_home(monkeypatch, home)
-    # Default: the hermetic endpoint edge is reachable; individual rejection tests override it.
-    monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: True)
     return home
 
 
@@ -57,161 +60,184 @@ def _providers(home: Path) -> dict[str, Any]:
     return providers
 
 
-# ── core: pure ping → register orchestration, no output ────────────────────────
+@contextlib.contextmanager
+def _serve(status: int, body: bytes = b'{"data": []}') -> Iterator[str]:
+    """A real local HTTP server answering every GET with *status*/*body* -- the fake-endpoint
+    pattern `tests/unit/edges/adapters/test_fetch.py` uses. Yields its base URL."""
+
+    class _Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:  # quiet the test output
+            pass
+
+        def do_GET(self) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}/v1"
+    finally:
+        srv.shutdown()
+        thread.join(timeout=5)
 
 
-def test_register_local_provider_returns_typed_result(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _seed(tmp_path, monkeypatch)
-    reg = _prov.register_local_provider()
-    assert reg.name == _prov.DEFAULT_PROVIDER
-    assert reg.base_url == _prov.DEFAULT_BASE_URL
-    assert reg.model_id == _prov.DEFAULT_MODEL_ID
-    assert reg.reachable is True
-    assert reg.changed is True  # first write
-    # Pure orchestration — core/ prints nothing.
-    assert capsys.readouterr().out == ""
+# ── core: verify_endpoint is a pure classifier over an injected ProbeResult ────
 
 
-def test_register_local_provider_writes_a_provider_document(
+class TestVerifyEndpointClassification:
+    def test_transport_failure_is_the_only_unreachable_outcome(self) -> None:
+        spec = _prov.ProviderSpec(
+            name="deadend",
+            dialect="openai-chat",
+            base_url="http://127.0.0.1:1/v1",
+            auth=_prov.AuthSpec(type="none"),
+        )
+        verification = _prov.verify_endpoint(
+            spec, ProbeResult(status=None, transport_error="refused")
+        )
+        assert verification.reachable is False
+        assert verification.warning == "refused"
+
+    def test_401_without_a_credential_registers_reachable_and_names_it(self) -> None:
+        spec = _prov.ProviderSpec(
+            name="hosted",
+            dialect="openai-chat",
+            base_url="https://example.test/v1",
+            auth=_prov.AuthSpec(type="bearer", credentials=["HOSTED_API_KEY"]),
+        )
+        verification = _prov.verify_endpoint(spec, ProbeResult(status=401))
+        assert verification.reachable is True
+        assert verification.credential_present is False
+        assert "HOSTED_API_KEY" in verification.warning
+
+
+# ── cli: a local http.server backs every network-shaped assertion ──────────────
+
+
+def test_add_registers_at_401_with_a_warning_naming_the_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """RED on the base: `ping_endpoint`/`register_local_provider` treat any HTTPError
+    (including a 401) as unreachable and refuse with "Provider was not registered"."""
     home = _seed(tmp_path, monkeypatch)
-    _prov.register_local_provider(
-        name="lab",
-        base_url="http://10.0.0.5:1234/v1",
-        model_id="llama-3.3-70b",
-        model_name="Llama 3.3 70B",
-        ctx=32768,
-        max_tokens=4096,
-    )
-    entry = _providers(home)["lab"]
-    assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
-    assert entry["dialect"] == "openai-chat"
-    assert entry["local"] is True
-    assert entry["auth"] == {"type": "none", "credentials": []}
-    assert entry["models"] == [{"id": "llama-3.3-70b", "contextWindow": 32768, "maxTokens": 4096}]
-    # The display-only per-model caption was retired: the document has no home for it.
-    assert "name" not in entry["models"][0]
-    assert "apiKey" not in entry
-    assert "api" not in entry
+    with _serve(401, b'{"error": "no key"}') as base_url:
+        result = _runner.invoke(
+            _app,
+            [
+                "models",
+                "provider",
+                "add",
+                "hosted",
+                base_url,
+                "--model",
+                "m",
+                "--credential",
+                "HOSTED_API_KEY",
+            ],
+        )
+    assert result.exit_code == 0, result.stdout
+    entry = _providers(home)["hosted"]
+    assert entry["baseUrl"] == base_url
+    assert entry["auth"] == {"type": "bearer", "credentials": ["HOSTED_API_KEY"]}
+    assert "HOSTED_API_KEY" in result.stdout
 
 
-def test_register_local_provider_does_not_touch_fleet_json(
+def test_add_refuses_on_transport_failure_and_does_not_persist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    before = (home / "fleet.json").read_text()
-    _prov.register_local_provider()
-    after = (home / "fleet.json").read_text()
-    assert before == after
-
-
-def test_rerun_is_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _seed(tmp_path, monkeypatch)
-    first = _prov.register_local_provider()
-    second = _prov.register_local_provider()
-    assert first.changed is True
-    assert second.changed is False
-
-
-def test_changing_context_window_is_a_real_change(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    assert _prov.register_local_provider(name="local", ctx=8192).changed is True
-    assert _prov.register_local_provider(name="local", ctx=16384).changed is True
-    entry = _providers(home)["local"]
-    assert entry["models"][0]["contextWindow"] == 16384
-
-
-# ── cli: renders the result, wording matches the pre-split flow ────────────────
-
-
-def test_run_provider_add_writes_provider_document(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    rc = _cliprov.run_provider_add()
-    assert rc == 0
-
-    providers = _providers(home)
-    assert set(providers) == {"local"}
-    assert providers["local"]["baseUrl"] == _prov.DEFAULT_BASE_URL
-    assert providers["local"]["models"][0]["id"] == _prov.DEFAULT_MODEL_ID
-
-    captured = capsys.readouterr()
-    out = captured.out + captured.err
-    # Role-split commands are printed as in the script.
-    assert "docket models preset local" in out
-    assert "anthropic/" not in out
-
-
-def test_rerun_is_noop_through_the_cli(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    _cliprov.run_provider_add(model_id="q", model_name="Q")
-    capsys.readouterr()
-
-    before = (home / "docket-providers.json").read_text()
-    _cliprov.run_provider_add(model_id="q", model_name="Q")
-    out = capsys.readouterr().out
-    after = (home / "docket-providers.json").read_text()
-    assert before == after
-    assert "no change" in out
-
-
-def test_ping_failure_is_fail_closed_and_does_not_persist(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    home = _seed(tmp_path, monkeypatch)
-    monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: False)
-
-    rc = _cliprov.run_provider_add()
-    assert rc == 1
-    assert _providers(home) == {}
-    assert not (home / "docket-providers.json").exists()
-    captured = capsys.readouterr()
-    out = captured.out + captured.err
-    assert "Could not reach" in out
-    assert "Provider was not registered" in out
-
-
-def test_run_provider_add_output_order_matches_pre_split_flow(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Checking -> ping -> registering -> success/no-change -> keyless local guidance."""
-    _seed(tmp_path, monkeypatch)
-    _cliprov.run_provider_add()
-    out = capsys.readouterr().out
-    checking_idx = out.index("Checking the endpoint is alive")
-    registering_idx = out.index("Registering provider")
-    wired_idx = out.index("Local provider wired")
-    role_split_idx = out.index("Next — select the reachable local provider")
-    assert checking_idx < registering_idx < wired_idx < role_split_idx
-
-
-def test_run_provider_add_through_the_full_cli_app(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    """The kept negative case: a transport failure is the one outcome that still refuses and
+    leaves the catalog untouched."""
     home = _seed(tmp_path, monkeypatch)
     result = _runner.invoke(
         _app,
-        [
-            "models",
-            "provider",
-            "add",
-            "lab",
-            "http://10.0.0.5:1234/v1",
-            "--model",
-            "llama-3.3-70b",
-        ],
+        ["models", "provider", "add", "deadend", "http://127.0.0.1:1/v1", "--model", "m"],
     )
+    assert result.exit_code == 1
+    assert _providers(home) == {}
+    assert not (home / "docket-providers.json").exists()
+    assert "Could not reach" in result.stderr
+    assert "Provider was not registered" in result.stderr
+
+
+def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _seed(tmp_path, monkeypatch)
+    body = json.dumps({"data": [{"id": "known"}, {"id": "extra-model"}]}).encode()
+    with _serve(200, body) as base_url:
+        result = _runner.invoke(
+            _app, ["models", "provider", "add", "hosted2", base_url, "--model", "known"]
+        )
     assert result.exit_code == 0, result.stdout
-    entry = _providers(home)["lab"]
-    assert entry["models"][0]["id"] == "llama-3.3-70b"
+    assert "extra-model" in result.stdout
+    stored_ids = {row["id"] for row in _providers(home)["hosted2"]["models"]}
+    assert stored_ids == {"known"}  # a suggestion is printed, never written
+
+
+def test_export_then_add_round_trips_through_show_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(tmp_path / "a", monkeypatch)
+    with _serve(200, b'{"data": []}') as base_url:
+        added_a = _runner.invoke(
+            _app,
+            [
+                "models",
+                "provider",
+                "add",
+                "roundtrip",
+                base_url,
+                "--model",
+                "m",
+                "--ctx",
+                "4096",
+                "--max-tokens",
+                "1024",
+            ],
+        )
+        assert added_a.exit_code == 0, added_a.stdout
+        show_a = _runner.invoke(_app, ["models", "provider", "show", "roundtrip", "--json"])
+        assert show_a.exit_code == 0, show_a.stdout
+
+        export_file = tmp_path / "roundtrip.yaml"
+        exported = _runner.invoke(
+            _app, ["models", "provider", "export", "roundtrip", str(export_file)]
+        )
+        assert exported.exit_code == 0, exported.stdout
+        assert export_file.read_text().startswith("kind: provider\n")
+
+        _seed(tmp_path / "b", monkeypatch)
+        added_b = _runner.invoke(_app, ["models", "provider", "add", str(export_file)])
+        assert added_b.exit_code == 0, added_b.stdout
+        show_b = _runner.invoke(_app, ["models", "provider", "show", "roundtrip", "--json"])
+        assert show_b.exit_code == 0, show_b.stdout
+
+    assert json.loads(show_a.stdout) == json.loads(show_b.stdout)
+
+
+def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A built-in hosted preset needs only its credential -- the built-in document is the
+    registration; no separate `provider add` is required for it to apply."""
+    _seed(tmp_path, monkeypatch)
+    result = _runner.invoke(_app, ["models", "preset", "anthropic"])
+    assert result.exit_code == 0, result.stdout
+    assert "ANTHROPIC_API_KEY" in result.stdout
+
+
+def test_remove_refuses_for_a_built_in_with_no_global_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(tmp_path, monkeypatch)
+    result = _runner.invoke(_app, ["models", "provider", "remove", "anthropic"])
+    assert result.exit_code == 1
+    assert "built-in" in result.stderr.lower()
 
 
 # ── the fleet.json → catalog migration ──────────────────────────────────────────

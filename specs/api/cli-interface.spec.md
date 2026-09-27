@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.42.0
+**Version**: 1.43.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -258,18 +258,29 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 **Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket models
-**Purpose**: View and update the role→model policy; switch provider presets
-**Syntax**: `docket models [set <role> <provider/model> | preset <name> | reset]`
+**Purpose**: View and update the role→model policy; switch provider presets; manage the provider
+catalog
+**Syntax**: `docket models [set <role> <provider/model> | preset <name> | provider <action> | reset]`
 **Actions**:
 - (no args): Show the current role→model table (role, model, price, source, why)
 - `set <role> <provider/model>`: Override the model for a specific role
-- `preset <name>`: Switch all roles to a provider preset (`anthropic`, `openai`, `google`,
-  `openrouter`, `openrouter-free`, `ai-gateway`, `local`)
-- `provider add <name> <base-url> [--model ID] [--name LABEL] [--ctx N] [--max-tokens N]`:
-  Register an OpenAI-compatible endpoint and exact-model limits
+- `preset <name>`: Switch all roles to a provider preset from the catalog (`anthropic`, `openai`,
+  `google`, `openrouter`, `openrouter-free`, `ai-gateway`, `local` among others); a built-in
+  hosted preset needs only its credential -- no separate registration -- and applying one prints
+  a readiness line naming that credential as present or missing
+- `provider add <file.yaml>`: Register a `kind: provider` document
+- `provider add <name> <base-url> [--model ID] [--ctx N] [--max-tokens N] [--credential NAME]`:
+  Today's shortcut over the same document; registration probes `<base-url>/models` with the
+  resolved credential and classifies the result (model-profiles.spec.md "Provider readiness" 3)
+  -- only a transport failure refuses; every HTTP status registers, with a warning when it is not
+  a clean 200
+- `provider list`: List every provider (name, scope, dialect, base URL, credential)
+- `provider show <name> [--json]`: Show one provider's resolved entry and scope
+- `provider remove <name>`: Remove a global override; a built-in with none refuses
+- `provider export <name> [<file>]`: Print (or write) the provider as a `kind: provider` document
 - `reset`: Restore built-in defaults
 **Output**: Role→model table or update confirmation
-**Return**: 0 on success, 1 on invalid role or preset
+**Return**: 0 on success, 1 on invalid role, preset, or provider action
 
 #### docket scope
 **Purpose**: Manage session keys for project isolation
@@ -984,6 +995,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.43.0 (2026-09-27)
+
+- `docket models`: added the five `provider` actions (`add <file.yaml>`, the `add <name>
+  <base-url> [--opts]` shortcut, `list`, `show [--json]`, `remove`, `export`), replacing the
+  `add`-only surface. Registration now probes with the resolved credential and classifies the
+  result instead of a boolean; `preset <name>` no longer requires a separately registered block
+  for `anthropic`/`openai`/`google` and prints a readiness line after applying (P29-3).
 
 ### Version 1.42.0 (2026-09-27)
 

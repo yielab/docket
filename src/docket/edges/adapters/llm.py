@@ -27,6 +27,7 @@ import os
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -405,6 +406,62 @@ class OpenAIChatClient:
                 failure_kind="invalid_output",
             )
         return decode_response(data)
+
+
+# ── registration probe ────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """A raw, unclassified probe of a provider's ``/models`` route. ``status`` is ``None``
+    only for a transport failure (DNS, refused, timeout) -- classification into a registration
+    outcome is ``core/provider.py::verify_endpoint``'s job, kept pure and out of this module."""
+
+    status: int | None
+    transport_error: str = ""
+    model_ids: list[str] = field(default_factory=list)
+
+
+def _extract_model_ids(raw_body: str) -> list[str]:
+    """Best-effort ``{"data": [{"id": ...}, ...]}`` extraction. Any other shape yields no ids
+    rather than raising -- this is a suggestion surface, never a hard requirement."""
+    try:
+        data = json.loads(raw_body) if raw_body.strip() else {}
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    rows = data.get("data")
+    if not isinstance(rows, list):
+        return []
+    return [row["id"] for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
+
+
+def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
+    """GET ``<base-url>/models`` with *endpoint*'s own credential headers. Never raises: an
+    ``HTTPError`` yields its status and any ids the body still advertises; a transport
+    failure (``URLError``, timeout, other ``OSError``) yields ``status=None`` with the error."""
+    url = f"{endpoint.base_url.rstrip('/')}/models"
+    request = urllib.request.Request(url, headers=OpenAIChatClient(endpoint)._headers())
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
+            status = resp.status
+            raw_body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as ex:
+        try:
+            raw_body = ex.read().decode("utf-8", errors="replace")
+        except OSError:
+            raw_body = ""
+        return ProbeResult(status=ex.code, model_ids=_extract_model_ids(raw_body))
+    except TimeoutError as ex:
+        return ProbeResult(status=None, transport_error=str(ex) or "timed out")
+    except urllib.error.URLError as ex:
+        return ProbeResult(status=None, transport_error=str(ex.reason))
+    except OSError as ex:
+        return ProbeResult(status=None, transport_error=str(ex))
+
+    model_ids = _extract_model_ids(raw_body) if status == 200 else []
+    return ProbeResult(status=status, model_ids=model_ids)
 
 
 # ── endpoint resolution ───────────────────────────────────────────────────────
