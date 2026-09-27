@@ -1,0 +1,3 @@
+kind: pod
+name: no-egress
+description: Ask before a bash-run network client, package install, or fetch call leaves the workspace.

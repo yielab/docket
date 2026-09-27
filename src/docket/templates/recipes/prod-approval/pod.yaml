@@ -1,0 +1,3 @@
+kind: pod
+name: prod-approval
+description: Ask before an implementer or operator runs a deploy/production-shaped command.

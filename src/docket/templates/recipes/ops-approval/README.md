@@ -32,8 +32,11 @@ requests are denied after `APPROVAL_TIMEOUT` (900s).
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: ops-approval`, `members: [operator]`.
 - `pipeline.yaml` — `lead (assess) -> operator (act, approval gate)`.
-- `policies/ops-approval-high-risk.yaml` — applied into the pod's own policy directory;
-  requires approval for deploy/production shaped commands from the operator role.
+- `policies/ops-approval-high-risk.yaml` — applied into the pod's own policy directory; gained a
+  structured `tool: bash` predicate alongside its `matches` (Phase 31, D-47), so it only
+  evaluates the regex against an actual shell command rather than every `pre_tool_call` hook's
+  rendered text; still requires approval for deploy/production shaped commands from the operator
+  role.
 
 ## Undo
 

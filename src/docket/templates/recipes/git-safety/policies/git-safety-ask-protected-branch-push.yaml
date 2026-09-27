@@ -1,0 +1,15 @@
+kind: policy
+name: git-safety-ask-protected-branch-push
+description: Ask before a git push that names a protected branch, or that runs while the worktree is checked out on one -- the structured `branch` predicate tests the worktree's own current branch, not the command's argument, so this also catches a bare `git push` made from a protected branch.
+appliesTo: ["*"]
+when:
+  tool: bash
+  matches: 'git\s+push\b'
+  anyOf:
+    - matches: '\b(?:main|master|production|prod)\b'
+    - branch: main
+    - branch: master
+    - branch: production
+    - branch: prod
+then: ask
+message: This push names, or is made from, a protected branch (main/master/production/prod) and requires operator approval.
