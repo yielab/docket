@@ -157,7 +157,7 @@ configuration, never a fork:
 
 | You want to change… | Layer | How |
 | --- | --- | --- |
-| The whole team, versioned with the code | Repository | commit `.docket/` (`pod.yaml`, `roles/`, `pipeline.yaml`, `policies/`); `docket init` applies it, `docket pod <p> apply` re-applies it, `docket pod <p> export` writes it back |
+| The whole team, versioned with the code | Repository | commit `.docket/` (`pod.yaml`, `roles/`, `pipeline.yaml`, `policies/`, `skills/`); `docket init` applies it, `docket pod <p> apply` re-applies it, `docket pod <p> export` writes it back |
 | A proven starting point instead of a blank page | Recipes | twelve ship, of three kinds: teams (`secure-build`, `research-review`, `ops-approval`), policy packs that change no roster (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology pipelines (`tdd`, `spec-first`, `reflexion`, `dual-review`, `frugal`); `docket recipes list` shows what each brings, derived from its files; `docket init --recipe <name>`, `docket pod <p> apply <name>`, or a directory of your own under `~/.docket/recipes/` |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pipeline validate/plan`; run once with `--file` or bind it as the pod's default for every trigger with `docket pod <p> config set pipeline <file>` |
@@ -221,7 +221,8 @@ before relying on a model endpoint or MCP server.
 | --- | --- |
 | Install and first governed turn | [Quick start](docs/QUICK-START-DOCKET.md) |
 | Roles, pod shapes, handoffs, gates | [Agent teams](docs/AGENT-TEAMS.md) |
-| Every installed file, every setting, recipes, the team in the repo | [Configuration](docs/CONFIGURATION.md) |
+| Every installed file, every setting, recipes, skills, the team in the repo | [Configuration](docs/CONFIGURATION.md) |
+| The twelve shipped recipes and what each brings | [Recipe library](docs/recipes.md) |
 | Every command and flag | [Command reference](docs/commands.md) |
 | Provider endpoints and coding harnesses | [Models and gateways](docs/MODEL-GATEWAYS.md) |
 | Security posture and deployment limits | [Security model](SECURITY.md) |
