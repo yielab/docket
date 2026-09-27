@@ -7,7 +7,14 @@ integrator. **Base commit for Wave 47: the commit that opened it on `main`**
 wave. Corrections applied at activation, which override the card text where they differ:
 `pod-dispatch.spec.md` is at 6.20.0 after Phase 28, so P29-5 takes **6.21.0**;
 `config-format.spec.md` exists at 1.1.0, so P29-1 takes 1.2.0 and adds the `provider` arm to
-`core/config_docs.py::load_document`; goldens are 19 cases. One card, one Sonnet worker, one isolated worktree each. Decision, the document, the two
+`core/config_docs.py::load_document`; goldens are 19 cases. **Wave 49 corrections** (after
+Wave 48 merged): the built-in documents are `templates/providers/NN-<name>.yaml` (numbered to
+keep the preset order; the document's `name:` is the identity); P29-2 already deleted the
+"registered block" refusal in `_cmd_models_preset`, so P29-3 only adds the readiness line
+there; `core/provider.py::save_provider` applies `_with_inherited_identity` (a global write
+under a built-in's name inherits its presets/prices unless set explicitly), which P29-3's
+`register_provider` must keep calling through `save_provider`; `cli/_keys.py::_keys_setup`
+already walks the catalog. One card, one Sonnet worker, one isolated worktree each. Decision, the document, the two
 scopes, the adapter seam, the amended rules and the retired-code table:
 [docs/adr/0011-provider-catalog.md](../../docs/adr/0011-provider-catalog.md). The card
 (`python3 .agents/skills/docket-roadmap/scripts/card_packet.py P29-<N>`) is the contract; this

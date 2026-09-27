@@ -11,14 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 48 (opened 2026-09-27): Phase 29, the provider catalog (D-45)
+> ## ▶ ACTIVE BOARD — WAVE 49 (opened 2026-09-27): Phase 29, the provider catalog (D-45)
 >
-> Wave 47 (P29-1, the document model and the `fleet.json` -> `docket-providers.json`
-> migration) merged 2026-09-27 at `0be9812`, rollup after it. Wave 48 runs P29-2, P29-5 and
-> P29-7 in parallel (merge order P29-5, P29-7, P29-2), one Sonnet worker per card in an
-> isolated worktree under one integrator; packets in
+> Waves 47 (P29-1, `0be9812`) and 48 (P29-5 `7bfbbe2`, P29-7 `04a0ffd`, P29-2 `d9e05f8`)
+> merged 2026-09-27 with rollups after each. Wave 49 runs P29-4 and P29-3 in parallel (merge
+> order P29-4, P29-3), then P29-6 once both are in; one Sonnet worker per card in an isolated
+> worktree under one integrator; packets in
 > [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
-> Wave 49 (P29-3, P29-4, then P29-6) opens only after the Wave 48 rollup merges green.
+> Phase 29 closes when the Wave 49 rollup merges green.
 >
 > **☑ Phase 28 complete (2026-09-26).**
 >
@@ -137,9 +137,9 @@ release source.
 ---
 
 
-## ▶ WAVE 48 — ACTIVE (opened 2026-09-27): Phase 29, the provider catalog (D-45)
+## ▶ WAVE 49 — ACTIVE (opened 2026-09-27): Phase 29, the provider catalog (D-45)
 
-**Opened 2026-09-27 (Wave 48 active; Wave 47 done; Wave 49 queued in this section).** Seven cards in three waves. Decision, the document, the two scopes, the
+**Opened 2026-09-27 (Wave 49 active; Waves 47–48 done).** Seven cards in three waves. Decision, the document, the two scopes, the
 adapter seam, the twelve amended spec rules, the retired-code table and the verdict table are in
 [docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md). Worker packets:
 [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
@@ -238,7 +238,7 @@ because `docket-providers.json` is never written.
 
 ### P29-2 — the providers docket knows are documents, and every table derives from them
 
-**Status:** IN-PROGRESS (@sonnet-p29-2) · **Size:** M · **Wave:** 48 · **Spec:** `model-profiles.spec.md` → 2.12.0 ("Presets" 1, "Hosted gateway resolution" 2, "Provider readiness" 2, "Pricing" 1/3/4 amended), `api-keys.spec.md` → 1.5.0 ("Propagation" 3 amended)
+**Status:** DONE (2026-09-27, `d9e05f8`) · **Size:** M · **Wave:** 48 · **Spec:** `model-profiles.spec.md` → 2.12.0 ("Presets" 1, "Hosted gateway resolution" 2, "Provider readiness" 2, "Pricing" 1/3/4 amended), `api-keys.spec.md` → 1.5.0 ("Propagation" 3 amended)
 
 **Trigger:** seven tables, seven populations (ADR 0011 evidence row 1); `docket doctor` asks for
 `GROQ_API_KEY` for a model `resolve_endpoint` cannot resolve; `resolve_endpoint("anthropic/…")` is
@@ -298,7 +298,7 @@ non-`None` on a fresh home (fails on the base).
 
 ### P29-3 — registration verifies with the credential, and a provider round-trips through the CLI
 
-**Status:** TODO · **Size:** M · **Wave:** 49 (after P29-2) · **Spec:** `model-profiles.spec.md` → 2.13.0 ("Provider readiness" 3/4 amended; classification table added), `cli-interface.spec.md` → 1.40.0 (`docket models provider` actions; `preset` no longer requires a block)
+**Status:** IN-PROGRESS (@sonnet-p29-3) · **Size:** M · **Wave:** 49 (after P29-2) · **Spec:** `model-profiles.spec.md` → 2.13.0 ("Provider readiness" 3/4 amended; classification table added), `cli-interface.spec.md` → 1.40.0 (`docket models provider` actions; `preset` no longer requires a block)
 
 **Trigger:** the reproduction in this section's header. `ping_endpoint` also performs network I/O
 inside `core/` (side effects belong in `edges/`).
@@ -348,7 +348,7 @@ function only), `cli/_provider.py`, `cli/__init__.py` (`models provider` dispatc
 
 ### P29-4 — a provider can authenticate by header and send static headers
 
-**Status:** TODO · **Size:** S · **Wave:** 49 · **Spec:** `model-profiles.spec.md` → 2.14.0 ("Provider catalog": `auth.type: header`, `auth.header`, `headers`, the reserved-header rule)
+**Status:** IN-PROGRESS (@sonnet-p29-4) · **Size:** S · **Wave:** 49 · **Spec:** `model-profiles.spec.md` → 2.14.0 ("Provider catalog": `auth.type: header`, `auth.header`, `headers`, the reserved-header rule)
 
 **Trigger:** the adapter sends `Authorization: Bearer` or nothing (`OpenAIChatClient._headers`);
 Azure OpenAI authenticates with an `api-key` header and multi-workspace Anthropic keys need
@@ -382,7 +382,7 @@ the one `is_local` test.
 
 ### P29-5 — a retry waits as long as the provider asked, up to a ceiling
 
-**Status:** IN-PROGRESS (@sonnet-p29-5) · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.21.0 (6.18–6.20 were consumed by Phases 27–28) ("Retries and the failure-kind taxonomy")
+**Status:** DONE (2026-09-27, `7bfbbe2`) · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.21.0 (6.18–6.20 were consumed by Phases 27–28) ("Retries and the failure-kind taxonomy")
 
 **Trigger:** `core/dispatch.py` sleeps `DISPATCH_RETRY_BACKOFF_S * attempt` (2 s, 4 s) and
 `edges/adapters/llm.py::complete` discards response headers; a 429 with a 60 s window exhausts
@@ -462,7 +462,7 @@ maps `providers` to `fleet.json`; `docs/MODEL-GATEWAYS.md` documents one-model b
 
 ### P29-7 — `docket auth` is a removed command, and `keys setup` asks for what the catalog needs
 
-**Status:** IN-PROGRESS (@sonnet-p29-7) · **Size:** S · **Wave:** 48 · **Spec:** `cli-interface.spec.md` → 1.42.0 (`docket auth` section removed; removed-command list), `api-keys.spec.md` → 1.6.0 (`setup` iterates the catalog)
+**Status:** DONE (2026-09-27, `04a0ffd`) · **Size:** S · **Wave:** 48 · **Spec:** `cli-interface.spec.md` → 1.42.0 (`docket auth` section removed; removed-command list), `api-keys.spec.md` → 1.6.0 (`setup` iterates the catalog)
 
 **Trigger:** every `docket auth` subcommand answers "gone, use `docket keys add`"
 (`cli/_keys.py::run_auth`); the project's mechanism for that is `__main__.py::_REMOVED`
