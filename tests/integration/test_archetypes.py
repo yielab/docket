@@ -1,6 +1,6 @@
 """`core/archetypes.py` — the declarative role-archetype registry.
 
-Covers: closed-enum rejection (scope/modelClass/editRights/gateContract kind), the built-in and
+Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the user-overlay pattern (mirrors `docket-models.json`:
 built-ins + starter library overlaid by `~/.docket/docket-roles.json`, user wins by name),
 `docket roles` list/show/add/validate, and that reviewer/tester gate-contract data resolved
@@ -55,9 +55,11 @@ class TestClosedEnums:
         with pytest.raises(arch.ArchetypeError, match="modelClass"):
             arch.from_wire("custom", self._base_doc(modelClass="medium"))
 
-    def test_unknown_edit_rights_rejected(self) -> None:
-        with pytest.raises(arch.ArchetypeError, match="editRights"):
-            arch.from_wire("custom", self._base_doc(editRights="sometimes"))
+    def test_edit_rights_is_accepted_and_dropped(self) -> None:
+        # editRights is retired (ADR 0012): any value, even a pre-retirement invalid
+        # one, loads -- and never resurfaces from to_wire().
+        parsed = arch.from_wire("custom", self._base_doc(editRights="sometimes"))
+        assert "editRights" not in parsed.to_wire()
 
     def test_unknown_gate_contract_kind_rejected(self) -> None:
         with pytest.raises(arch.ArchetypeError, match="gate contract kind"):

@@ -87,15 +87,13 @@ def _list(pod: str = "") -> int:
 
     # Data rows use plain print() so archetype names/prose are never parsed as
     # Rich markup (matches cli/_policies.py's convention for the same reason).
-    print(
-        f"  {'NAME':<14} {'SOURCE':<10} {'SCOPE':<5} {'CLASS':<7} {'GATE':<11} {'EDIT':<10} DESCRIPTION"
-    )
+    print(f"  {'NAME':<14} {'SOURCE':<10} {'SCOPE':<5} {'CLASS':<7} {'GATE':<11} DESCRIPTION")
     print(f"  {'─' * 100}")
     for name, arch in registry.items():
         source = registry.source_of(name)
         print(
             f"  {name:<14} {source:<10} {arch.scope:<5} {arch.model_class:<7} "
-            f"{arch.gate_contract.kind:<11} {arch.edit_rights:<10} {arch.description[:40]}"
+            f"{arch.gate_contract.kind:<11} {arch.description[:40]}"
         )
     ui.console.print()
     ui.dim(f"  Built-in: {', '.join(_arch.BUILTIN_ROLE_ORDER)}")

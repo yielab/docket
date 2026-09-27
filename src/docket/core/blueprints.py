@@ -46,9 +46,9 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   ``description`` below).
 
 ``workspace_kind`` is a closed enum (``WORKSPACE_KINDS``) — same discipline
-as ``core/archetypes.py``'s ``scope``/``modelClass``/``gateContract.kind``/
-``editRights``, avoiding an open-ended set of workspace shapes that would
-otherwise need special-casing elsewhere. A blueprint's *roster* references
+as ``core/archetypes.py``'s ``scope``/``modelClass``/``gateContract.kind``,
+avoiding an open-ended set of workspace shapes that would otherwise need
+special-casing elsewhere. A blueprint's *roster* references
 the archetype registry by name (open — any built-in,
 starter-library, or user-defined archetype), exactly like ``core/pod.py``'s
 pre-existing ``DEFAULT_POD_ROLES``/``FULL_POD_ROLES`` tuples already do; this
