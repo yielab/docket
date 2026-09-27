@@ -6,8 +6,8 @@ real run; there are no terminal screenshots and no invented output.
 
 | File | Purpose | Captured scene | Used in |
 | --- | --- | --- | --- |
-| `hero.gif` | Four frames: provision a pod, dispatch a fix with a verify gate and reviewer, stop a production push, refuse it in harness mode | `1-init`, `2-dispatch`, `4-gate`, `5-harness` | Root README and docs index |
-| `isolation.png` | The Implementer's own workspace and git worktree; the operator's checkout stays clean | `3-isolation` | Root README |
+| `hero.gif` | Four frames: provision the team from a shipped recipe and write it back to `.docket/`; validate, plan and queue; dispatch to `done` through Lead, Implementer and the read-only vetter's `APPROVE`; the record (`config explain` with the team's source and `audit verify`) | `1-team`, `2-dispatch`, `5-record` | Root README and docs index |
+| `isolation.png` | The Implementer's own workspace and git worktree; the operator's checkout holds only the exported team | `3-isolation` | Root README |
 | `governance.png` | A high-risk `bash` call held for approval, denied on timeout without executing, and the audit chain verified | `4-gate` | Root README |
 
 The renderer uses the vendored `DejaVuSansMono.ttf` so glyphs and layout do not depend on host font
@@ -22,7 +22,7 @@ real CLI through every scene against a live OpenAI-compatible endpoint (default
 capture root rendered as `~`. It takes about five minutes because the gate scene waits out the
 120-second approval timeout. A local model's output varies run to run, so copy what the new run
 actually printed into the scene lists in the renderer: elide with `⋯`, never reword or invent a
-line. The current scenes were captured on 2026-09-18 against a local 16k-context model.
+line. The current scenes were captured on 2026-09-27 against a local 16k-context model (the `6-harness` transcript is captured but not rendered).
 
 ## Regenerate and verify
 

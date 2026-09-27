@@ -22,6 +22,7 @@ ASSET_DIR = ROOT / "docs" / "assets"
 OUTPUTS = ("hero.gif", "isolation.png", "governance.png")
 FONT_PATH = ASSET_DIR / "DejaVuSansMono.ttf"
 CONTRACT_KEY = "docket-render-contract"
+WORDMARK = "docket"
 
 WIDTH = 1200
 HEIGHT = 700
@@ -113,6 +114,8 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
     draw.rectangle((0, 0, WIDTH, TITLE_HEIGHT), fill=TITLEBAR)
     for x, color in ((28, RED), (52, YELLOW), (76, GREEN)):
         draw.ellipse((x - 7, 17, x + 7, 31), fill=color)
+    # The wordmark sits left of the traffic lights' gap; the scene title stays centred.
+    draw.text((104, 13), WORDMARK, font=REGULAR, fill=TEXT)
     title_width = draw.textlength(title, font=REGULAR)
     draw.text(((WIDTH - title_width) / 2, 13), title, font=REGULAR, fill=MUTED)
 
@@ -126,48 +129,94 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
 # Every scene below is a verbatim transcript of one real run of
 # scripts/maint/capture-doc-journey.sh; docs/assets/README.md records which run. Only
 # three edits are allowed when refreshing it: the capture root becomes "~", "⋯" marks elided
-# lines, and a trailing "# ..." on a "$" line is a reader's note, never captured output.
-_INIT = [
+# lines or path prefixes, and a trailing "# ..." on a "$" line is a reader's note, never
+# captured output.
+_TEAM = [
     "$ docket models preset local",
-    "⋯",
-    "✓ Preset 'local' applied.",
-    "⋯",
-    "✓ Registered local endpoint selected; no API key needed.",
-    "$ docket init",
-    "⋯",
-    "✓ Tool-call gate: always active (policy engine + high-risk command classifier)",
-    "✓ Installed 6 baseline policies",
+    "$ docket init --recipe secure-build",
     "⋯",
     "→ Provisioning 'software' pod 'myapp' (lead, implementer)...",
     "✓   myapp-lead  [lead]  local/local-model",
     "✓   myapp-implementer  [implementer]  local/local-model",
-    "$ docket pod myapp add reviewer",
-    "✓ Added myapp-reviewer [reviewer] local/local-model",
+    "Apply plan — myapp <- ⋯/templates/recipes/secure-build",
+    "  [add] role: security-vetter",
+    "  [add] policy: require-approval-secret-writes.yaml",
+    "  [add] member: security-vetter",
+    "  [add] pipeline: pipeline.yaml",
+    "✓ Applied 4 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
+    "$ docket pod myapp export                  # the team, written back next to the code",
+    "✓ Exported pod 'myapp' to ~/code/myapp/.docket.",
+    "$ find .docket -type f | sort",
+    ".docket/pipeline.yaml",
+    ".docket/pod.yaml",
+    ".docket/policies/require-approval-secret-writes.yaml",
+    ".docket/roles/security-vetter.md",
+    ".docket/roles/security-vetter.yaml",
+]
+
+_PLAN = [
+    "$ docket validate                          # every file starts with kind:",
+    "ok ~/code/myapp/.docket/roles/security-vetter.yaml (role security-vetter)",
+    "ok ~/code/myapp/.docket/policies/require-approval-secret-writes.yaml "
+    "(policy secure-build-secret-writes)",
+    "ok ~/code/myapp/.docket/pipeline.yaml (pipeline secure-build)",
+    "ok ~/code/myapp/.docket/pod.yaml (pod myapp)",
+    "$ docket pipeline plan myapp",
+    "Pipeline plan — myapp",
+    "Source: bound pipeline (hash 45f7aaf31d1f...)",
+    "Pipeline: secure-build",
+    "  [plan] role=lead -> myapp-lead [gate: none]",
+    "  [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]",
+    "  [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]",
     "$ docket pod myapp set-verify myapp-implementer \\",
     "    \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
     "✓ Set verify command for myapp-implementer: "
     "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
+    '$ docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"',
+    "✓ Queued for pod 'myapp': [task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6] Fix calc.add so it "
+    "returns the sum of a and b",
 ]
 
 _DISPATCH = [
-    '$ docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"',
-    "✓ Queued for pod 'myapp': [task-992eeb02-6cef-422d-af5d-339f0511cfcd] Fix calc.add so it "
-    "returns the sum of a and b",
     "$ docket pod myapp dispatch",
-    "→ Dispatching 1 pending task(s) through: lead → implementer → reviewer",
-    "✓   [task-992eeb02-6cef-422d-af5d-339f0511cfcd] done — 3 hop(s), $0.0000",
-    "$ docket trace agent:myapp:task-992eeb02-6cef-422d-af5d-339f0511cfcd",
-    "  2026-09-18T13:02:18  session_start              (lead)",
+    "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
+    "✓   [task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6] done — 3 hop(s), $0.0000",
+    "$ docket trace agent:myapp:task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6",
+    "  2026-09-27T19:47:54  session_start              (lead)",
     "  ⋯",
-    "  2026-09-18T13:02:48  context_composed           (implementer)",
+    "  2026-09-27T19:48:19  tool_result                (lead)  text=## Plan for Implementer",
     "  ⋯",
-    "  2026-09-18T13:03:35  context_composed           (reviewer)",
+    "  2026-09-27T19:48:50  tool_result                (implementer)  text=The fix is complete. "
+    "I changed `calc.add` to return `a + b` instead of `a - b`. The verification gate passes",
     "  ⋯",
-    "  2026-09-18T13:04:41  tool_result                (reviewer)  text=I've reviewed the "
-    "implementation. The change is straightforward and correct:",
+    "  2026-09-27T19:49:07  tool_result                (security-vetter)  text=The `calc.py` "
+    "file now correctly implements `add` with `return a + b`.",
+    "⋯",
+    "- **Secrets:** No credentials or secrets in the file.",
     "⋯",
     "APPROVE",
-    "  2026-09-18T13:04:41  session_end                (lead)  status=done",
+    "  2026-09-27T19:49:07  session_end                (lead)  status=done",
+]
+
+_RECORD = [
+    "$ docket config explain myapp-implementer",
+    "Effective configuration — myapp-implementer",
+    "  Role:            implementer",
+    "  Pod:             myapp",
+    "  Model:           local/local-model  (policy)",
+    "  Endpoint:        http://127.0.0.1:8081/v1  (ready)",
+    "  Provider:        local  (global, openai-chat)",
+    "  Credential:      (none)  (none)",
+    "⋯",
+    "  Tools allowed: bash, edit, fetch, glob, grep, read, write",
+    "⋯",
+    "│ secure-build-secret-writes │ pre_tool_call │ require_approval │",
+    "⋯",
+    "  Pipeline:        bound pipeline (hash 45f7aaf31d1f...)",
+    "  Config source:   ⋯/templates/recipes/secure-build  (digest 441848f22bd2..., drift: no)",
+    "⋯",
+    "$ docket audit verify",
+    "✓ 8 chained line(s) verified clean.",
 ]
 
 _ISOLATION = [
@@ -180,10 +229,11 @@ _ISOLATION = [
     "  Project Scope:     default",
     "⋯",
     "$ git worktree list",
-    "~/code/myapp                                              f5d53b3 [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/worktree  f5d53b3 "
+    "~/code/myapp                                              125d81a [main]",
+    "~/.docket/workspaces/projects/myapp-implementer/worktree  125d81a "
     "[docket/myapp/myapp-implementer]",
-    "$ git status --short                       # your checkout: untouched",
+    "$ git status --short                       # your checkout: only the exported team",
+    "?? .docket/",
     "$ git -C ~/.docket/workspaces/projects/myapp-implementer/worktree diff",
     "⋯",
     "@@ -1,2 +1,2 @@",
@@ -194,57 +244,31 @@ _ISOLATION = [
 
 _GATE = [
     "$ docket policies test pre_tool_call implementer 'git push origin production'",
-    "  Result: require_approval",
+    "  Result: ask",
+    "  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes",
+    "  Policy: 'high-risk-deploy' -> require_approval",
     "$ docket pod myapp delegate \\",
     '    "Publish the fix: run exactly this bash command once and report its output: '
     'git push origin production"',
     "$ docket pod myapp dispatch",
-    "→ Dispatching 1 pending task(s) through: lead → implementer → reviewer",
-    "✓   [task-fdbcb619-28bd-4ad4-b174-6f0e68497d9d] done — 3 hop(s), $0.0000",
+    "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
+    "✓   [task-d4f97e63-0842-4c79-9e44-5e1df1318f8b] done — 3 hop(s), $0.0000",
     "$ docket audit",
     "  ⋯",
-    "  2026-09-18T13:05:15.720Z  demo        tool.ask          tool=bash agent=myapp-implementer "
-    "role=implementer project=myapp-implementer policy_id='high-risk-deploy' "
-    "policy_action='require_approval' ⋯",
-    "  2026-09-18T13:07:15.781Z  demo        approval.deny     "
-    "token=apr-e3d11049-8601-4011-8e9e-46c5e98bb53e project=myapp-implementer channel=timeout",
-    "$ docket trace export myapp | grep '\"deny\"'",
-    '{⋯ "agent_role": "implementer", "event_type": "tool_result", "payload": {"tool": "bash", '
-    '"callId": "c02cuhNC56eQZyNGRL8RLeKSN1pnWKwX", "decision": "deny", "ok": false, '
-    '"executed": false, "denialKind": "approval_timeout", "policyId": "high-risk-deploy", '
-    '"reason": "approval timed out and was denied"}}',
+    "  2026-09-27T19:49:30.146Z  demo        tool.ask          tool=bash agent=myapp-implementer "
+    "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
+    "  2026-09-27T19:51:30.180Z  demo        approval.deny     "
+    "token=apr-e480b929-4092-47c7-a541-4137f438098d project=myapp channel=timeout",
     "$ docket audit verify",
-    "✓ 6 chained line(s) verified clean.",
+    "✓ 8 chained line(s) verified clean.",
 ]
 
-_HARNESS = [
-    "$ export DOCKET_HOME=~/hh DOCKET_LLM_BASE_URL=http://127.0.0.1:8081/v1",
-    "$ docket harness run --workspace ~/code/svc --model local/local-model \\",
-    "    --task 'Run exactly this bash command: git push origin production' \\",
-    "    2>/dev/null | tail -1 | python3 -m json.tool",
-    "{",
-    '    "v": "1.0.0",',
-    '    "token": "run-824ce693-1c71-4333-b781-2ffe641329ea",',
-    '    "status": "blocked",',
-    "    ⋯",
-    '    "blocked": {',
-    '        "tool": "bash",',
-    '        "call_id": "6Kd4UFWbyWfEfzTwkXwD9boT47aFZRiN",',
-    '        "denial_kind": "approval_unavailable",',
-    '        "policy_id": "",',
-    '        "reason": "matches high-risk action class \'prod-deploy\': Production deploys and '
-    'release pushes"',
-    "    },",
-    "    ⋯",
-    '    "run_state": "failed"',
-    "}",
-]
+
+_HERO_TITLES = ("the team you define", "validate, plan, queue", "the run", "the record")
 
 
 def _hero_scenes() -> list[list[str]]:
-    trace_export = _GATE.index("$ docket trace export myapp | grep '\"deny\"'")
-    gate = _GATE[:trace_export] + _GATE[trace_export + 2 :]
-    return [_INIT, _DISPATCH, gate, _HARNESS]
+    return [_TEAM, _PLAN, _DISPATCH, _RECORD]
 
 
 def _render_contract() -> str:
@@ -259,14 +283,16 @@ def _write_assets(target: Path) -> None:
     contract = _render_contract()
     png_info = PngInfo()
     png_info.add_text(CONTRACT_KEY, contract)
-    _terminal("docket — pod isolation", _ISOLATION, height=_fit_height(_ISOLATION)).save(
+    _terminal("pod isolation", _ISOLATION, height=_fit_height(_ISOLATION)).save(
         target / "isolation.png", optimize=True, pnginfo=png_info
     )
-    _terminal("docket — the tool-call gate", _GATE, height=_fit_height(_GATE)).save(
+    _terminal("the tool-call gate", _GATE, height=_fit_height(_GATE)).save(
         target / "governance.png", optimize=True, pnginfo=png_info
     )
 
-    frames = [_terminal("docket — govern agent work", scene) for scene in _hero_scenes()]
+    frames = [
+        _terminal(title, scene) for title, scene in zip(_HERO_TITLES, _hero_scenes(), strict=True)
+    ]
     frames[0].save(
         target / "hero.gif",
         save_all=True,

@@ -41,10 +41,15 @@ seed_repo "$ROOT/code/svc"
 cd "$ROOT/code/myapp" || exit 1
 docket models provider add local "$ENDPOINT" --model local-model --ctx 16384 --max-tokens 4096 \
     >/dev/null 2>&1
-run 1-init.txt docket models preset local
-run 1-init.txt docket init
-run 1-init.txt docket pod myapp add reviewer
-run 1-init.txt "docket pod myapp set-verify myapp-implementer \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\""
+docket models preset local >/dev/null 2>&1
+
+# 1-team: the team comes from a shipped recipe, is written back to .docket/, validated, planned.
+run 1-team.txt docket init --recipe secure-build
+run 1-team.txt docket pod myapp export
+run 1-team.txt "find .docket -type f | sort"
+run 1-team.txt docket validate
+run 1-team.txt docket pipeline plan myapp
+run 1-team.txt "docket pod myapp set-verify myapp-implementer \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\""
 
 run 2-dispatch.txt 'docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"'
 run 2-dispatch.txt docket pod myapp dispatch
@@ -65,7 +70,11 @@ run 4-gate.txt docket audit
 run 4-gate.txt "docket trace export myapp | grep '\"deny\"'"
 run 4-gate.txt docket audit verify
 
-run 5-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket harness run --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"
+# 5-record: what the pod knows about itself after the run.
+run 5-record.txt docket config explain myapp-implementer
+run 5-record.txt docket audit verify
+
+run 6-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket harness run --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"
 
 # Render the capture root as "~" so the transcripts can be copied into the renderer as-is.
 sed -i.bak "s|$ROOT|~|g" "$OUT"/*.txt && rm -f "$OUT"/*.bak
