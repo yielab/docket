@@ -97,6 +97,17 @@ class TestPipelineValidateCli:
         f.write_text(_INVALID_PIPELINE)
         assert run_pipeline("validate", [str(f)]) == 1
 
+    def test_unresolvable_step_model_provider_returns_one_naming_the_step(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        f = tmp_path / "bad-model.pipeline.yaml"
+        f.write_text(_VALID_PIPELINE.replace("gate:", "model: nope/x\n    gate:"))
+        rc = run_pipeline("validate", [str(f)])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "build" in out
+        assert "nope" in out
+
 
 class TestPipelinePlanCli:
     def test_missing_arg_is_an_error(self) -> None:
@@ -144,6 +155,18 @@ class TestPipelinePlanCli:
         assert "Pipeline: sample" in out
         assert "build" in out
         assert f"Source: file '{f}'" in out
+
+    def test_plan_renders_a_step_model_override(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_meta("demo-lead")
+        _write_meta("demo-implementer")
+        f = tmp_path / "with-model.pipeline.yaml"
+        f.write_text(_VALID_PIPELINE.replace("gate:", "model: strong\n    gate:"))
+        rc = run_pipeline("plan", ["demo", "--file", str(f)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "model=strong" in out
 
     def test_default_pipeline_plan_names_the_built_in_source(
         self, capsys: pytest.CaptureFixture[str]

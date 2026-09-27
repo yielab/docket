@@ -568,6 +568,47 @@ class TestStepTargeting:
             Step(id="s1", role="implementer", timeout=0)
 
 
+# ── TestStepModel ─────────────────────────────────────────────────────────────
+
+
+class TestStepModel:
+    """A unit step's own ``model`` override (pipeline-format.spec.md Steps Req. 10):
+    shape-only validation here, and short-form passthrough like ``timeout``/``retries``."""
+
+    def test_step_model_defaults_to_none(self) -> None:
+        assert Step(id="s1", role="implementer").model is None
+
+    def test_step_model_accepts_rank_word(self) -> None:
+        assert Step(id="s1", role="implementer", model="strong").model == "strong"
+
+    def test_step_model_accepts_provider_literal(self) -> None:
+        step = Step(id="s1", role="implementer", model="anthropic/claude-sonnet-4-6")
+        assert step.model == "anthropic/claude-sonnet-4-6"
+
+    def test_step_model_rejects_malformed_literal(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="implementer", model="not-a-rank-or-model-id")
+
+    def test_parallel_group_cannot_declare_model(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="fanout", model="strong", parallel=[Step(id="a", role="implementer")])
+
+    def test_run_step_cannot_declare_model(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="check", run="false", model="strong")
+
+    def test_short_form_carries_model_through(self) -> None:
+        doc = {
+            "name": "p",
+            "steps": [{"id": "plan", "role": "lead"}, {"build": "implementer", "model": "strong"}],
+        }
+        normalized = normalize_pipeline(doc)
+        build = normalized["steps"][1]
+        assert build == {"id": "build", "role": "implementer", "model": "strong"}
+        spec = PipelineSpec.model_validate(normalized)
+        assert spec.steps[1].model == "strong"
+
+
 # ── TestStepInstructions ─────────────────────────────────────────────────────
 
 

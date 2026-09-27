@@ -1,7 +1,11 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.21.0
-**Status**: Complete. **P28-6** adds a new "Conditional steps and command steps" section: a
+**Version**: 6.22.0
+**Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) makes a pipeline step's own `model`
+(`pipeline-format.spec.md`'s "Steps" Requirement 10) load-bearing at hop execution — see
+"Per-hop execution" requirement 5 below; resolution of the `cheap`/`strong` rank words is
+`model-profiles.spec.md`'s concern, applied per hop only, never persisted to `.docket-meta.json`.
+**P28-6** adds a new "Conditional steps and command steps" section: a
 `when`-gated step is evaluated and, on a false predicate, skipped with a `step_skipped` trace
 event and no hop; a `run` step executes its command directly (`command_step` trace event), with
 no agent turn, gated on `core.security.classify_command` before it runs. **P28-5** generalizes "Generalized gate execution": a step's own `on` map
@@ -54,7 +58,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -504,6 +508,20 @@ was seeded once at binding time.)*
    see "Bounded hop prompts") and a `tool_call` trace event before the turn, and a `tool_result`
    (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST** additionally
    emit a `cost_charged` event.
+5. A planned unit whose pipeline step declared its own `model` (`pipeline-format.spec.md`'s
+   "Steps" Requirement 10) **MUST** run that hop on the resolved model instead of the target
+   agent's own policy/pin model — resolution (`cheap`/`strong` via the live rank anchors, else the
+   literal id as given) is `model-profiles.spec.md`'s "Model intent per agent". This resolution
+   **MUST** happen once per hop attempt (`core.dispatch._run_hop_turn`) and **MUST NOT** write
+   `.docket-meta.json`: the member's own persisted `model`/`modelSource` are unchanged before,
+   during and after the hop, so `docket profile`/`config explain` keep reporting the agent's real
+   standing model, never the step's transient override. The override reaches only the production
+   `RuntimeDriver.run_turn` call (`edges.adapters.docket_runtime.DocketDriver`, "Runtime driver
+   resolution" below); an injected five-argument `Runner` test double is unaffected and continues
+   to run its own agent's configured model, since that seam predates and does not carry a `model`
+   parameter. A step `model` literal whose provider is absent from the provider catalog **MUST**
+   be a `docket pipeline validate`/`plan` error naming the step, the same "caught before dispatch"
+   posture an unresolvable `role`/`agent` target already gets.
 
 ### Step-scoped durable runtime history (Wave 20 W20-C4)
 
@@ -1527,6 +1545,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.22.0 (2026-09-27)
+
+- **P30-3: a pipeline step's own `model` wins for that hop only (ADR 0012 §2 rule 6).** New "Per-
+  hop execution" requirement 5: `core.dispatch._run_hop_turn` resolves a planned unit's `model`
+  (`cheap`/`strong`/literal, `model-profiles.spec.md`) once per attempt and passes it to the
+  production `RuntimeDriver.run_turn` call only; `.docket-meta.json` is never written. A step with
+  no `model` is unaffected — hop execution resolves the target's own policy/pin model exactly as
+  before. An unresolvable literal (its provider absent from the catalog) is a `plan`/`validate`
+  error, not a dispatch-time failure.
 
 ### Version 6.21.0 (2026-09-27)
 

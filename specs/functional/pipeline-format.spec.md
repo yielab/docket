@@ -1,8 +1,11 @@
 # Pipeline Format Specification
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
-interpolation. **P28-6** adds two more elements to control flow as bounded data (ADR 0010 §3):
+interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
+declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
+Requirement 10 and "Short form" below; execution and resolution semantics live in
+`pod-dispatch.spec.md` and `model-profiles.spec.md`. **P28-6** adds two more elements to control flow as bounded data (ADR 0010 §3):
 a `when:` predicate that skips a step on a closed vocabulary, and a `run:` command step that
 executes with no agent turn at all — see "Steps" Requirement 9 and the new "Conditional steps
 and command steps" section below. **P27-5** removes this format's one remaining `role: lead` carve-out: a step's own
@@ -33,7 +36,7 @@ edge the short form could already express keeps normalizing to the canonical `re
 byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
 now loads. The canonical form itself, and everything this format's executor and CLI surface read
 beyond the new field, is unchanged.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -203,10 +206,21 @@ This specification does NOT cover:
 9. A unit step **MAY** target `run` (`str`, a shell command) instead of `role`/`agent` —
    declaring `run` alongside either **MUST** be a validation error, the same "exactly one
    target" rule Requirement 2 states for `role`/`agent`. A `run` step (a "command step") **MUST
-   NOT** also declare `gate`, `instructions`, `retries`, or `archetype` — each is a validation
-   error naming the field. It **MAY** still declare `timeout` and `when` (see "Conditional steps
-   and command steps" below). Its exit code is its own outcome; this format does not model a
-   separate `gate` for it (see `pod-dispatch.spec.md` for execution).
+   NOT** also declare `gate`, `instructions`, `retries`, `archetype`, or `model` — each is a
+   validation error naming the field. It **MAY** still declare `timeout` and `when` (see
+   "Conditional steps and command steps" below). Its exit code is its own outcome; this format
+   does not model a separate `gate` for it (see `pod-dispatch.spec.md` for execution).
+10. A unit step **MAY** declare `model` (`str`) — one of the literal rank words `cheap`/`strong`,
+    or a `<provider>/<id>` model literal shaped like any other model id this codebase accepts
+    (a non-empty segment either side of the first `/`). It overrides whatever model this hop's
+    target would otherwise run on, for that hop only (see `pod-dispatch.spec.md`'s "Per-hop
+    execution" and `model-profiles.spec.md`'s "Model intent per agent" for resolution and the
+    never-persisted guarantee). This format validates only the literal's *shape* — whether a
+    `<provider>/<id>` literal's provider actually exists in the provider catalog is a
+    plan/dispatch-time concern, not this format's (the same posture Requirement 5 takes for
+    `archetype`). Omitting it (`None`, the default) means "defer to the role/pin/policy resolution
+    that already applies today". A parallel group **MUST NOT** declare `model` at the group level
+    (only its children may) — same rule as `instructions`.
 
 ### Gates
 
@@ -351,8 +365,8 @@ This specification does NOT cover:
      (below) or an unparsed non-match may still fail on, exactly as the canonical `verdict` gate
      already does.
    - `approval: "<message>"` → `gate: {type: approval, message: "<message>"}`.
-   - `instructions`, `timeout`, `retries` carry straight through to the same-named canonical
-     field.
+   - `instructions`, `timeout`, `retries`, `model` carry straight through to the same-named
+     canonical field.
    - `on: {<label>: {goto: <earlier step id>, max: <n>}}` **MUST**, when the step also carries a
      `verdict` sugar key **and** this is the single bounded backward edge described above, become
      that gate's `rework: {to: <goto>, when: [<label, lowercased>], maxCycles: <n>}`. Because
@@ -604,6 +618,16 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.10.0 (2026-09-27)
+
+- **P30-3: a pipeline step names its model (ADR 0012 §2 rule 6).** `Step` gains `model`
+  (`cheap`/`strong`/`<provider>/<id>`, shape-validated only — see Steps Requirement 10), forbidden
+  on a `parallel` group's own entry and on a `run` command step, carried through the short form
+  like `timeout`/`retries`/`instructions`. Resolution (rank word → live rank anchor, per-hop,
+  never persisted), the unresolvable-provider refusal, and `plan`'s `model=<x>` rendering are
+  `pod-dispatch.spec.md`'s and `model-profiles.spec.md`'s concern; no existing document changes
+  meaning, since a step with no `model` behaves exactly as before.
 
 ### Version 2.9.0 (2026-09-26)
 

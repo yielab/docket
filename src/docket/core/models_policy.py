@@ -317,6 +317,22 @@ def _resolve_via_archetype_class(role: str) -> str:
     return tiers["economy"] if arch.model_class == "cheap" else tiers["standard"]
 
 
+def resolve_step_model(model: str) -> str:
+    """Resolve a pipeline step's own ``model`` (pipeline-format.spec.md "Steps" Req. 10) to a
+    literal ``provider/id`` for one hop. ``cheap``/``strong`` resolve against the live rank
+    anchors (``economy``/``standard``); any other value is returned unchanged once its
+    ``<provider>/...`` prefix is confirmed present in the provider catalog -- raises naming the
+    provider otherwise, so a caller can refuse before any hop runs. See model-profiles.spec.md
+    "Model intent per agent" requirement 4."""
+    if model in ("cheap", "strong"):
+        _, tiers, _ = load_registry()
+        return tiers["economy"] if model == "cheap" else tiers["standard"]
+    provider = model.split("/", 1)[0]
+    if _provider.load_catalog().get(provider) is None:
+        raise ValueError(f"unknown provider {provider!r} in step model {model!r}")
+    return model
+
+
 def is_role(role: str) -> bool:
     return role in ROLE_CLASS
 

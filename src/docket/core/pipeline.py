@@ -20,9 +20,19 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# `Step.model`'s two rank words (see model-profiles.spec.md); any other shape-valid value is
+# a `<provider>/<id>` literal, whose *existence* against the provider catalog is a
+# plan/dispatch-time concern, never this format's -- the same posture `archetype` takes.
+_MODEL_RANKS = frozenset({"cheap", "strong"})
+
 
 def _is_slug(value: str) -> bool:
     return bool(_SLUG_RE.match(value))
+
+
+def _is_model_literal(value: str) -> bool:
+    provider, _sep, model_id = value.partition("/")
+    return bool(provider) and bool(model_id)
 
 
 # ── Gates ──────────────────────────────────────────────────────────────────────
@@ -159,6 +169,12 @@ class Step(BaseModel):
     # (see "Variables" below); `None` means "defer to the role", not "no
     # instruction at all".
     instructions: str | None = None
+    # Overrides the model this hop runs on, for this hop only -- `cheap`/`strong` (resolved
+    # against the live rank anchors) or a `<provider>/<id>` literal. Never persisted to the
+    # target agent's `.docket-meta.json`; see pod-dispatch.spec.md "Per-hop execution" and
+    # model-profiles.spec.md "Model intent per agent". `None` means "defer to the target's
+    # own policy/pin resolution", not "no model".
+    model: str | None = None
     # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
     # step kind, including a `run` command step. `None` means "always run".
     when: When | None = None
@@ -198,6 +214,10 @@ class Step(BaseModel):
                 raise ValueError(
                     f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
                 )
+            if self.model is not None:
+                raise ValueError(
+                    f"step {self.id!r}: a 'parallel' group carries no model of its own"
+                )
             if self.on is not None:
                 raise ValueError(
                     f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
@@ -225,6 +245,7 @@ class Step(BaseModel):
                 ("instructions", self.instructions),
                 ("retries", self.retries),
                 ("archetype", self.archetype),
+                ("model", self.model),
             ):
                 if value is not None:
                     raise ValueError(
@@ -242,6 +263,15 @@ class Step(BaseModel):
             )
         if self.agent is not None and not self.agent.strip():
             raise ValueError(f"step {self.id!r}: 'agent' must not be empty")
+        if (
+            self.model is not None
+            and self.model not in _MODEL_RANKS
+            and not _is_model_literal(self.model)
+        ):
+            raise ValueError(
+                f"step {self.id!r}: 'model' must be 'cheap', 'strong', or a "
+                f"'<provider>/<id>' literal (got {self.model!r})"
+            )
         return self
 
 
@@ -522,12 +552,23 @@ def _format_validation_error(exc: ValidationError) -> list[str]:
 # ── Short form ─────────────────────────────────────────────────────────────────
 #
 # Sugar over the canonical shape above: a step written as `<id>: <role-or-agent>`
-# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`on`/
+# plus optional `verify`/`verdict`/`approval`/`instructions`/`timeout`/`retries`/`model`/`on`/
 # `until`/`max` keys. See specs/functional/pipeline-format.spec.md ("Short form",
 # "Outcome routing").
 
 _STEP_SUGAR_KEYS = frozenset(
-    {"verify", "verdict", "approval", "instructions", "timeout", "retries", "on", "until", "max"}
+    {
+        "verify",
+        "verdict",
+        "approval",
+        "instructions",
+        "timeout",
+        "retries",
+        "model",
+        "on",
+        "until",
+        "max",
+    }
 )
 _BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
 _NO_ON = object()
@@ -677,7 +718,7 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
         return entry
     step: dict[str, Any] = {"id": step_id}
     _assign_target(step, target)
-    for key in ("instructions", "timeout", "retries"):
+    for key in ("instructions", "timeout", "retries", "model"):
         if key in entry:
             step[key] = entry[key]
     gate, on = _build_gate(step_id, entry, seen_ids)

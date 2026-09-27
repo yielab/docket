@@ -52,6 +52,11 @@ class PlannedUnit:
     gate: _pipeline.Gate | None
     retries: int | None
     timeout: int | None
+    # A copy of the step's own `model` override (see `_pipeline.Step.model`), or `None` --
+    # resolved and applied for this hop only by `core/dispatch.py`'s hop-execution call,
+    # never written back to the target's own persisted meta. See
+    # specs/functional/pod-dispatch.spec.md ("Per-hop execution").
+    model: str | None = None
     skipped: bool = False
     # A command step's `when` (dumped by alias: "changed"/"var"/"is"/"memberPresent")
     # and `run` -- `None` for an ordinary role/agent step. See
@@ -159,6 +164,7 @@ def _resolve_unit(
         gate=resolve_gate(step, registry),
         retries=step.retries,
         timeout=step.timeout,
+        model=step.model,
         skipped=skipped,
         when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
         run=step.run,
@@ -211,6 +217,8 @@ def _render_unit(unit: PlannedUnit) -> str:
         gate_label = _gate_label(unit.gate)
         base = f"{target} -> {who} [gate: {gate_label}]"
     base += _render_on_suffix(unit.on)
+    if unit.model:
+        base += f" model={unit.model}"
     if unit.when:
         base += f" when {_render_when(unit.when)}"
     return base

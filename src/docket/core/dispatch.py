@@ -34,6 +34,7 @@ from docket.core import fleet as _fleet
 from docket.core import handoff as _handoff
 from docket.core import memory as _mem
 from docket.core import models as _models
+from docket.core import models_policy as _models_policy
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
@@ -1202,9 +1203,17 @@ def _run_hop_turn(
     """Run this hop's agent turn, retrying only a retryable failure in place (a non-zero
     exit or bad verdict is a real answer and stops here) -- see pod-dispatch.spec.md
     ("Retries and the failure-kind taxonomy"). Returns the total tries made. A step's own
-    ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout."""
+    ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout.
+    A step's own ``model`` (pipeline-format.spec.md "Steps" Req. 10) is resolved once per call
+    and passed to the production driver only, for this hop alone -- see "Per-hop execution"."""
     retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
     hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
+    resolved_model: str | None = None
+    if node.model:
+        try:
+            resolved_model = _models_policy.resolve_step_model(node.model)
+        except ValueError as exc:
+            raise DispatchError(f"step {node.step_id!r}: {exc}") from exc
 
     # Record the production driver's spawned pid as in-flight for
     # `docket runs cancel` — only while the subprocess is actually
@@ -1235,6 +1244,7 @@ def _run_hop_turn(
                 on_spawn=_on_spawn,
                 trace_project=ctx.project,
                 trace_session_key=ctx.session_id,
+                model=resolved_model,
             )
         else:
             run_res = ctx.run(member_id, history_session_key, message, hop_timeout, env)

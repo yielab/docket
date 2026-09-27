@@ -210,6 +210,7 @@ class DocketDriver:
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        model: str | None = None,
     ) -> TurnResult:
         """Run one turn through ``core/agent_loop.py``. Never raises, with one deliberate
         exception: ``self.mcp_loader`` raises ``DispatchError`` when this turn's pod
@@ -222,7 +223,11 @@ class DocketDriver:
         track -- the loop makes HTTP calls in-process -- and the Protocol allows a
         process-less driver to ignore it. ``timeout`` overrides
         ``LoopConfig.wall_clock_timeout_s`` directly, the same per-hop figure ``core/dispatch.py``
-        already resolves, not a second independently-tuned number."""
+        already resolves, not a second independently-tuned number. ``model``, when given, wins
+        over *agent_id*'s own configured model for this call's endpoint only -- a caller (e.g. a
+        pipeline step's own override, resolved to a literal by ``core/dispatch.py`` first) is
+        responsible for handing this a real ``provider/id``, never a rank word; this driver never
+        writes it back to ``.docket-meta.json``."""
         meta, worktree_dir = _load_agent_meta(agent_id)
         if meta is None:
             return TurnResult(
@@ -238,15 +243,15 @@ class DocketDriver:
         if refusal is not None:
             return refusal
 
-        model = meta.model or _cfg.DEFAULT_MODEL
-        backend = self.backend_factory(model)
+        effective_model = model or meta.model or _cfg.DEFAULT_MODEL
+        backend = self.backend_factory(effective_model)
         if backend is None:
             return TurnResult(
                 False,
                 "",
                 0.0,
                 {},
-                f"no endpoint configured for model {model!r}",
+                f"no endpoint configured for model {effective_model!r}",
                 failure_kind="daemon_error",
             )
 

@@ -86,3 +86,23 @@ class TestFindRegistryProblems:
         problems = _mp.find_registry_problems()
         assert len(problems) == 1
         assert problems[0][0] == str(_cfg.MODEL_REGISTRY_FILE)
+
+
+class TestResolveStepModel:
+    """A pipeline step's own ``model`` (pipeline-format.spec.md Steps Req. 10) resolved for
+    one hop -- model-profiles.spec.md's "Model intent per agent" requirement 4."""
+
+    def test_rank_word_resolves_to_the_live_anchor(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _point_at(tmp_path, monkeypatch)
+        _, tiers, _ = _mp.load_registry()
+        assert _mp.resolve_step_model("cheap") == tiers["economy"]
+        assert _mp.resolve_step_model("strong") == tiers["standard"]
+
+    def test_literal_with_unknown_provider_is_refused_by_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _point_at(tmp_path, monkeypatch)
+        with pytest.raises(ValueError, match="nope"):
+            _mp.resolve_step_model("nope/x")

@@ -360,6 +360,34 @@ class TestRunTurn:
         assert result.ok
         assert backend.max_tokens_seen == [64]
 
+    def test_run_turn_model_override_wins_for_this_hop_and_is_never_persisted(self) -> None:
+        # A pipeline step's own `model` (pipeline-format.spec.md Steps Req. 10) resolves
+        # to a literal model id before it ever reaches this driver (core.dispatch's job);
+        # this driver's own contract is just to honor that literal over the member's own
+        # meta model for this call, and to never write it back. See
+        # pod-dispatch.spec.md "Per-hop execution" requirement 5.
+        ws = _write_meta("model-override-agent", model="test/meta-model")
+        backend = _ScriptedBackend([_final_response("done")])
+        seen_models: list[str] = []
+
+        def _factory(model: str) -> _ScriptedBackend:
+            seen_models.append(model)
+            return backend
+
+        result = DocketDriver(backend_factory=_factory).run_turn(
+            "model-override-agent",
+            "agent:model-override-agent:default",
+            "go",
+            60,
+            model="anthropic/claude-opus-4-6",
+        )
+
+        assert result.ok
+        assert seen_models == ["anthropic/claude-opus-4-6"]
+        meta = _store.read_json(_cfg.meta_path("model-override-agent"))
+        assert meta["model"] == "test/meta-model"
+        assert (ws / ".docket-meta.json").exists()
+
     def test_default_driver_reserves_a_tool_free_terminal_response_inside_budget(self) -> None:
         ws = _write_meta("budget-agent")
         (ws / "module.py").write_text("VALUE = 'broken'\n")
