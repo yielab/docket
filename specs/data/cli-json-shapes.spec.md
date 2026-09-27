@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Complete
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -314,6 +314,10 @@ excludes every other configured server, never merely relabels it.
   ],
   "pipeline":    "{ source: string } | null (null for a non-pod agent)",
   "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)",
+  "projectInstructions": {
+    "files":  "array of relative paths (empty when there is nothing to compose)",
+    "source": "set | default | \"\" (default: the codebase root's own AGENTS.md, unset and present; set: an explicit PodSettings.projectInstructions list, which replaces the default entirely; \"\": neither)"
+  },
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -327,8 +331,10 @@ error naming the offending key, exit 1, nothing on stdout — rather than report
 guessed default.
 
 The human-readable (non-`--json`) rendering prints `scope` nowhere (JSON-only) and keeps the
-`tools`/`policies` names/columns and order; it adds one `Provider:` line under the model and,
-when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
+`tools`/`policies` names/columns and order; it adds one `Provider:` line under the model,
+one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)` /
+`<files> (set)` / `none`), and, when a source is recorded, one `Config source:` line carrying
+the digest prefix and `drift`.
 
 ### `docket snapshot` (full output)
 
@@ -440,6 +446,15 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.13.0 (2026-09-27)
+
+- `docket config explain <agent> --json` gains `projectInstructions`: `{"files": [...], "source":
+  "set" | "default" | ""}`, the effective project-instructions files this pod's turns compose and
+  where they came from (P31-5, ADR 0013 §3 rule 7) — `"default"` when `PodSettings.
+  projectInstructions` is unset and the codebase root's own `AGENTS.md` exists, `"set"` for an
+  explicit list (which replaces the default entirely), `""` for neither. The human view gains a
+  matching `Project instr.:` line. See `agent-loop.spec.md` 1.23.0 for the composition-side default.
 
 ### Version 1.12.0 (2026-09-27)
 

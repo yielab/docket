@@ -581,7 +581,9 @@ class TestSystemPromptForAgent:
 
 # An opt-in PodSettings.projectInstructions reads relative paths from the codebase
 # root (the AGENTS.md/CLAUDE.md convention) and composes them right after
-# INSTRUCTIONS.md, screened as untrusted input. Default unset changes nothing. See
+# INSTRUCTIONS.md, screened as untrusted input. Unset with no AGENTS.md at the root
+# changes nothing; unset with one present composes it by default; an explicit setting
+# replaces that default entirely, never adds to it. See
 # specs/functional/agent-loop.spec.md requirement 30 and
 # tests/unit/core/test_pod.py::TestPodSettingsProjectInstructions for the setting's
 # own validation.
@@ -608,17 +610,28 @@ class TestProjectInstructionsSection:
         report = next(s for s in composition.sections if s.name == "projectInstructions")
         assert report.status == "full"
 
-    def test_unset_adds_no_section_and_does_not_read_the_codebase(self, tmp_path: Path) -> None:
+    def test_unset_with_no_agents_md_adds_no_section(self, tmp_path: Path) -> None:
         codebase = tmp_path / "repo"
         codebase.mkdir()
-        (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
         ws = _write_meta("demo-unset-lead", role="lead", pod="demo-unset")
         (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
 
         composition = _identity.compose_agent_prompt("demo-unset-lead", project_roots=(codebase,))
 
-        assert "PROJECT-CONVENTION-LINE" not in composition.text
         assert all(s.name != "projectInstructions" for s in composition.sections)
+
+    def test_unset_composes_the_root_agents_md_by_default(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
+        ws = _write_meta("demo-default-lead", role="lead", pod="demo-default")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = _identity.compose_agent_prompt("demo-default-lead", project_roots=(codebase,))
+
+        assert "PROJECT-CONVENTION-LINE" in composition.text
+        report = next(s for s in composition.sections if s.name == "projectInstructions")
+        assert report.status == "full"
 
     def test_a_non_pod_agent_is_unaffected(self, tmp_path: Path) -> None:
         codebase = tmp_path / "repo"
