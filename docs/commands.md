@@ -748,28 +748,6 @@ a name index; remove clears the keyring entry too.
 
 ---
 
-### auth
-
-**Usage:** `docket auth`
-
-Model-provider credential status (no docket-native login flow yet).
-
-`status` shows which provider API keys are stored; `login`/`key`/`setup`
-accept `--provider <name>` (default: anthropic) but say plainly that
-there is no docket-native auth exchange yet -- store a credential with
-`docket keys add <PROVIDER>_API_KEY` instead (see `docket auth --help`).
-
-`docket auth status` never writes anything -- read-only. `login`/`key`/
-`setup`/`choose` all print the same "no docket-native flow" message and
-exit 1 -- kept as named subcommands only so a pre-Phase-19 script gets an
-explicit, actionable error instead of "unknown command".
-
-
-**Aliases:** None
-
-
----
-
 ## Utility Commands
 
 ### logs
@@ -1556,7 +1534,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `auth`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---
@@ -1580,6 +1558,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `team` | docket team was retired — pods own delegation now, with real execution (the old manager queue was never dispatched). Use: docket pod <project> delegate "<task>"  (was: team delegate "<task>") Use: docket pod <project> queue                (was: team queue) Use: docket pod <project> dispatch              to actually run queued tasks Org-wide portfolio view is initialized automatically by the first docket init. Any old manager TASK_LIST.json from a legacy install is untouched on disk but no longer read by docket. |
 | `wf`, `workflow` | docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator ignored four constructs its own template emitted). Use: docket pipeline validate   (was: workflow <id> validate <name>) Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>) Use: docket pipeline run        to actually execute a pipeline Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer read by docket. |
 | `eval`, `evals` | docket eval was removed — the specialist-role eval harness (tests/evals/) was dead code: it shelled out to the daemon deleted in Phase 19 and skipped silently instead of failing, which is why nobody noticed. There is no replacement command: no CLI entry point runs a single agent turn to call (DocketDriver.run_turn is only reached from pod dispatch and maintain distill), so repointing the harness would mean inventing new surface against a private port, not fixing a bug. tests/evals/ has been deleted; docket doctor no longer prints eval-results hints. |
+| `auth` | docket auth was removed -- store a provider key with: docket keys add <NAME>; register an endpoint with: docket models provider add |
 
 
 ---

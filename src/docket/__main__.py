@@ -105,6 +105,10 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "private port, not fixing a bug.",
         "tests/evals/ has been deleted; docket doctor no longer prints eval-results hints.",
     ),
+    "auth": (
+        "docket auth was removed -- store a provider key with: docket keys add <NAME>; "
+        "register an endpoint with: docket models provider add",
+    ),
 }
 _REMOVED["wf"] = _REMOVED["workflow"]
 _REMOVED["evals"] = _REMOVED["eval"]

@@ -3,10 +3,10 @@
 Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
 docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket models`'s
 display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
-now "rank anchors" with an honest caption; `docket auth login/key/setup` names the real working
-path at rc=1 rather than faking success; a `local` preset prices as "$0 (local)", never a
-fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the dead-end
-guidance strings in cli/_provider.py name commands that actually exist.
+now "rank anchors" with an honest caption; `docket auth` is a removed command that prints the
+retirement notice at rc=1 rather than faking success; a `local` preset prices as "$0 (local)",
+never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
+dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
 Unit tests import `docket.core.models_policy` directly; CLI-surface tests use CliRunner with
 every DOCKET_HOME-derived config constant patched to a temp directory."""
@@ -23,7 +23,6 @@ from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _keys as _keys_mod
 from docket.cli import app as _app
 from docket.core import models_policy as _mp
 
@@ -308,60 +307,57 @@ class TestLocalPresetCli:
         assert "$0.00" not in out
 
 
-class TestAuthProviderGoneHonestly:
-    """`docket auth login/key/setup` has no docket-native replacement; every subcommand must say
-    so plainly (rc=1, naming `docket keys add <PROVIDER>_API_KEY`), never silently no-op or
-    report a fake success. See cli/_keys.py's `_AUTH_GONE_MESSAGE`."""
+def _run_removed(args: list[str], home: Path) -> tuple[int, str, str]:
+    """`docket auth` retirement is enforced by `__main__.py::_REMOVED`, which only intercepts
+    at the `python -m docket` / console-script entry point (see
+    `test_console_script_entry_point.py`'s module docstring) -- invoking the raw Typer `app`
+    through `CliRunner` the way `_run` above does bypasses it entirely (Click reports "no such
+    command", rc=2, not the retirement notice). This drives the real entry point instead."""
+    import subprocess
+    import sys as _sys
 
-    def test_login_reports_gone_not_fake_success(self, tmp_path: Path) -> None:
+    env = {**os.environ, "DOCKET_HOME": str(home)}
+    result = subprocess.run(
+        [_sys.executable, "-m", "docket", *args], capture_output=True, text=True, env=env
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+class TestAuthIsRemoved:
+    """`docket auth` has no docket-native replacement and no compatibility layer: every
+    subcommand -- including bare `docket auth` -- prints the `_REMOVED` retirement notice and
+    exits 1, the same treatment `docket team`/`docket workflow` got. See
+    `__main__.py::_REMOVED["auth"]`; `cli/_keys.py` has no `run_auth` or `--provider` parsing
+    to fall back onto."""
+
+    def test_login_prints_the_removed_notice(self, tmp_path: Path) -> None:
+        from docket.__main__ import _REMOVED
+
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["auth", "login"], home)
+        rc, out, err = _run_removed(["auth", "login"], home)
         assert rc == 1
-        assert "No docket-native provider-auth flow exists" in out + err
-        assert "docket keys add ANTHROPIC_API_KEY" in out + err
+        combined = out + err
+        for line in _REMOVED["auth"]:
+            assert line in combined
+        assert "Traceback" not in combined
 
-    def test_login_names_the_explicit_provider(self, tmp_path: Path) -> None:
+    def test_bare_auth_also_removed(self, tmp_path: Path) -> None:
+        from docket.__main__ import _REMOVED
+
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["auth", "login", "--provider", "openai"], home)
+        rc, out, err = _run_removed(["auth"], home)
         assert rc == 1
-        assert "docket keys add OPENAI_API_KEY" in out + err
+        combined = out + err
+        for line in _REMOVED["auth"]:
+            assert line in combined
 
-    def test_key_subcommand_also_reports_gone(self, tmp_path: Path) -> None:
+    def test_notice_names_both_real_paths(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["auth", "key", "--provider", "openrouter"], home)
+        rc, out, err = _run_removed(["auth", "setup"], home)
         assert rc == 1
-        assert "docket keys add OPENROUTER_API_KEY" in out + err
-
-    def test_setup_subcommand_also_reports_gone(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["auth", "setup", "--provider", "google"], home)
-        assert rc == 1
-        assert "docket keys add GOOGLE_AI_API_KEY" in out + err
-
-    def test_status_lists_stored_keys_not_a_daemon_query(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["auth"], home)
-        assert rc == 0, err
-        assert "No docket-native subscription/OAuth auth exists yet" in out + err
-
-
-class TestExtractProviderHelper:
-    """Direct unit tests for the pure `_extract_provider` parser."""
-
-    def test_default_when_absent(self) -> None:
-        provider, rest = _keys_mod._extract_provider([])
-        assert provider == "anthropic"
-        assert rest == []
-
-    def test_space_form(self) -> None:
-        provider, rest = _keys_mod._extract_provider(["--provider", "openai", "--foo"])
-        assert provider == "openai"
-        assert rest == ["--foo"]
-
-    def test_equals_form(self) -> None:
-        provider, rest = _keys_mod._extract_provider(["--provider=google", "--foo", "bar"])
-        assert provider == "google"
-        assert rest == ["--foo", "bar"]
+        combined = out + err
+        assert "docket keys add" in combined
+        assert "docket models provider add" in combined
 
 
 # ---------------------------------------------------------------------------
