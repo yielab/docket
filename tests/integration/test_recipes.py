@@ -523,6 +523,33 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
         _pod_apply.plan_apply(project, bad_dir)
 
 
+def test_apply_records_config_source_from_every_validated_apply_all_skip_included(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second, byte-identical directory at another path still moves the recorded
+    `configSource`/`configDigest` even though every item plans `skip` -- the record must not
+    stay pointing at the first directory once a second one is applied (ADR 0013 §1 rule 3)."""
+    project = "reconfigured"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+    dir_a = tmp_path / "recipe-a"
+    shutil.copytree(RECIPES_DIR / "secure-build", dir_a)
+    _pod_apply.apply(_pod_apply.plan_apply(project, dir_a))
+
+    dir_b = tmp_path / "recipe-b"
+    shutil.copytree(RECIPES_DIR / "secure-build", dir_b)
+
+    entries_before = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    second_plan = _pod_apply.plan_apply(project, dir_b)
+    assert [item.action for item in second_plan.items] == ["skip"] * len(second_plan.items)
+    _pod_apply.apply(second_plan)
+    entries_after = [e for e in _audit.read_audit() if e["action"] == "pod.apply"]
+    assert entries_after == entries_before  # all-skip: no new audit entry
+
+    settings = pod.PodSettings.load_for(project)
+    assert settings.config_source == str(dir_b.resolve())
+    assert settings.config_digest == _pod_apply.directory_digest(dir_b)
+
+
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

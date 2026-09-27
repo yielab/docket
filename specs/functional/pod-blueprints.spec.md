@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.13.0
+**Version**: 1.14.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -191,11 +191,13 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
    optional `policies/*.json` directory (guardrail policies, the same schema
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
-   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly three
+   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly four
    top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
-   any `docket pod <p> config set <key> <value>` key), and `pipeline` (a filename inside *dir*,
-   default `pipeline.yaml` when that file exists). An unrecognized top-level `pod.yaml` key, or a
-   `members`/`settings` value of the wrong type, **MUST** be rejected before anything else is read.
+   any `docket pod <p> config set <key> <value>` key), `pipeline` (a filename inside *dir*,
+   default `pipeline.yaml` when that file exists), and `description` (a string; read only for
+   display — requirement 9 — and never applied to the pod). An unrecognized top-level `pod.yaml`
+   key, a `members`/`settings` value of the wrong type, or a `description` that is not a string,
+   **MUST** be rejected before anything else is read.
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
    (`core.config.pod_config_dir(project)/roles.json`), the same target `docket roles add
    --pod <project> <file.yaml>` already writes to — never the global user overlay
@@ -229,16 +231,17 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    write nothing. `--dry-run` **MUST** print the plan and write nothing.
 6. A successful `apply` that wrote at least one item **MUST** write exactly one `pod.apply` audit
    entry naming every planned item and its action; an all-`skip` plan **MUST NOT** write a new
-   audit entry. The same successful `apply` **MUST** also record this pod's configuration of
-   record (ADR 0012 §2 rule 5) in its settings: `configSource` (the absolute *dir*) and
-   `configDigest` (`core.pod_apply.directory_digest(dir)` — a sha256 hex digest over the sorted
-   relative paths and bytes of every file `discover_config_paths` returns plus any
-   `plugins/*.py`, excluding the generated `.schemas/`). Both **MUST** be written only here — an
-   all-`skip` plan **MUST NOT** touch either, matching the audit-entry rule above — and **MUST
-   NEVER** be written by `docket pod <p> config set`, which **MUST** refuse both keys naming
-   `apply` as their writer; a `pod.yaml` `settings` mapping carrying either key is refused the
-   same way any key outside the settable set already is (requirement 1). `docket config explain
-   <agent>` reports `configSource`, `configDigest`, and `drift` — `"yes"` when recomputing
+   audit entry. Every successful `apply` — an all-`skip` plan included — **MUST** also record this
+   pod's configuration of record (ADR 0012 §2 rule 5, amended by ADR 0013 §1 rule 3) in its
+   settings: `configSource` (the absolute *dir*) and `configDigest`
+   (`core.pod_apply.directory_digest(dir)` — a sha256 hex digest over the sorted relative paths
+   and bytes of every file `discover_config_paths` returns plus any `plugins/*.py`, excluding the
+   generated `.schemas/`), so composing a second recipe onto an already-configured pod — even one
+   whose every item plans `skip` — still moves the record to name the directory just applied.
+   Both **MUST NEVER** be written by `docket pod <p> config set`, which **MUST** refuse both keys
+   naming `apply` as their writer; a `pod.yaml` `settings` mapping carrying either key is refused
+   the same way any key outside the settable set already is (requirement 1). `docket config
+   explain <agent>` reports `configSource`, `configDigest`, and `drift` — `"yes"` when recomputing
    `directory_digest` against the still-present `configSource` disagrees with the recorded
    `configDigest`, `"no"` when it agrees, `""` when there is no recorded source or its directory
    is gone (drift is then unknown, never asserted either way).
@@ -258,6 +261,21 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    provisioning — two sources of record is an ambiguity this command refuses rather than picks
    between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
    printing the `docket pod <p> apply <dir>` command that would apply it.
+9. **Recipe summary (ADR 0013 §1 rule 1).** A directory's scope is derived from its contents,
+   never a declared field: `core.pod_apply.summarize_recipe(directory)` reads, without needing a
+   project or a role registry, the count of `roles/*.yaml|yml|json`, `policies/*.yaml|yml|json`,
+   `plugins/*.py`, and `skills/*/SKILL.md` directories directly under *directory*; `pod.yaml`'s
+   own `members`/`settings` entry counts (`0` when absent or of the wrong type); the bound
+   pipeline document's own `name` (the file `pod.yaml`'s `pipeline` key names, or `pipeline.yaml`
+   when present and no key names one — the same resolution requirement 1 uses — loaded through
+   `core.pipeline.load_pipeline`; `""` when no pipeline file resolves or it fails to parse); and
+   `pod.yaml`'s own `description` (`""` when absent). `RecipeSummary.render()` **MUST** render
+   every count, always in the same order — `roles`, `policies`, `members`, `pipeline`, `plugins`,
+   `skills`, `settings` — as one line, e.g. `roles 1 · policies 1 · members 1 · pipeline
+   secure-build · plugins 0 · skills 0 · settings 0`. `docket validate <dir>` (see
+   `config-format.spec.md`) prints this summary after its per-file lines; `docket pod <p> apply`
+   and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
+   `description` when set, before the plan itself (`cli-interface.spec.md`).
 
 ### Pod manifests: export
 
@@ -289,7 +307,11 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    `configDigest`, outside `KEYS`, are never written here regardless of value — requirement 6
    above). `export` **MUST NOT** write a
    `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
-   resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. `export`
+   resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. A recipe's own
+   `description` (requirement 9 above) is read-only display prose that `apply` never stores on
+   the pod, so `export` has nothing to write it back from and **MUST NOT** write a `description`
+   key — a round trip through `apply`/`export` drops a recipe's description, unlike every other
+   manifest key. `export`
    **MUST** also copy the four published config-v1 JSON Schemas into `<dir>/.schemas/`
    (config-format.spec.md, "Published schemas") so every header resolves without reaching
    outside the export; `apply`/`discover_config_paths` never look under `.schemas/`.
@@ -409,6 +431,20 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.14.0 (2026-09-27)
+
+- **P31-1: a recipe says what it brings (ADR 0013 §1 rules 1-3).** New "Pod manifests: apply"
+  requirement 9, "Recipe summary": `core.pod_apply.summarize_recipe(directory)` derives a
+  directory's roles/policies/plugins/skills/members/settings counts and its bound pipeline's own
+  `name`, shown by `docket validate`, `docket pod <p> apply`, and `docket init --recipe`/a
+  discovered `.docket/` — never a declared `scope:` field, which stays refused as unknown.
+  Requirement 1's manifest key set gains an optional `description` string, read-only display
+  prose never applied to the pod; `export` (see "Pod manifests: export") cannot write it back,
+  since nothing stores it on the pod. Requirement 6 is amended: `apply` now records
+  `configSource`/`configDigest` after every plan it validated, an all-`skip` plan included, so
+  composing a second, already-matching directory at another path still moves the record — only
+  the `pod.apply` audit entry keeps its "only when something changed" rule.
 
 ### Version 1.13.0 (2026-09-27)
 

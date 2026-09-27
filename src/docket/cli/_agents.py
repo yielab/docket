@@ -166,8 +166,9 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     except _pod_apply.PodApplyError as exc:
         ui.error(str(exc))
         return 1
-    from docket.cli._pod import render_apply_plan
+    from docket.cli._pod import render_apply_header, render_apply_plan
 
+    render_apply_header(aid, apply_source, _pod_apply.summarize_recipe(apply_source))
     render_apply_plan(plan)
     try:
         result = _pod_apply.apply(plan)

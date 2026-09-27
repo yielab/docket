@@ -33,7 +33,7 @@ from docket.core import policy as _policy
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
-_MANIFEST_KEYS = frozenset({"members", "settings", "pipeline", "kind", "name"})
+_MANIFEST_KEYS = frozenset({"members", "settings", "pipeline", "kind", "name", "description"})
 
 ApplyAction = Literal["add", "replace", "skip"]
 
@@ -172,6 +172,113 @@ def resolve_recipe(name_or_dir: str) -> Path:
         return shipped
     names = sorted(p.name for p in _cfg.recipes_dir().iterdir() if p.is_dir())
     raise PodApplyError(f"unknown recipe {name_or_dir!r}; shipped recipes: {', '.join(names)}")
+
+
+@dataclass(frozen=True)
+class RecipeSummary:
+    """What a directory brings, derived from its contents, never a declared field (ADR 0013
+    §1 rule 1). ``pipeline`` is the bound pipeline's own ``name`` (or ``""``); ``description``
+    is ``pod.yaml``'s own optional prose (or ``""``)."""
+
+    roles: int
+    policies: int
+    plugins: int
+    skills: int
+    members: int
+    settings: int
+    pipeline: str
+    description: str
+
+    def render(self) -> str:
+        """One line, every count always shown, in a fixed order."""
+        return (
+            f"roles {self.roles} · policies {self.policies} · members {self.members} · "
+            f"pipeline {self.pipeline} · plugins {self.plugins} · skills {self.skills} · "
+            f"settings {self.settings}"
+        )
+
+
+def _recipe_manifest(directory: Path) -> dict[str, Any]:
+    """*directory*'s ``pod.yaml``, loaded and refined like ``plan_apply`` does, or ``{}`` when
+    absent or unreadable -- ``summarize_recipe`` reads only, it never raises for an invalid
+    manifest (``plan_apply`` is what refuses to apply one)."""
+    manifest_file = directory / "pod.yaml"
+    if not manifest_file.is_file():
+        return {}
+    from docket.core import config_docs as _config_docs
+
+    try:
+        return _config_docs.load_document(manifest_file, kind="pod").doc
+    except _config_docs.ConfigDocError:
+        return {}
+
+
+def _recipe_pipeline_file(directory: Path, pipeline_name: str | None) -> Path | None:
+    """The pipeline file a bare *directory* (no project, no roster) would bind -- the same
+    filename resolution ``_plan_pipeline`` uses before it goes on to validate against a roster."""
+    if pipeline_name:
+        candidate = directory / str(pipeline_name)
+        return candidate if candidate.is_file() else None
+    default_file = directory / "pipeline.yaml"
+    return default_file if default_file.is_file() else None
+
+
+def _config_glob(directory: Path) -> list[Path]:
+    """Every ``*.yaml``/``*.yml``/``*.json`` directly under *directory* -- the same file set
+    ``core.config_docs.discover_config_paths`` counts for ``roles/``/``policies/``."""
+    return [p for pattern in ("*.yaml", "*.yml", "*.json") for p in directory.glob(pattern)]
+
+
+def summarize_recipe(directory: Path) -> RecipeSummary:
+    """Derive what *directory* brings: read-only, independent of any pod or role registry
+    (unlike ``plan_apply``). Used by ``docket validate``, ``docket pod <p> apply``, and
+    ``init --recipe`` so a recipe's scope is always shown the same way, wherever applied."""
+    manifest = _recipe_manifest(directory)
+
+    roles_dir = directory / "roles"
+    roles = len(_config_glob(roles_dir)) if roles_dir.is_dir() else 0
+
+    policies_dir = directory / "policies"
+    policies = len(_config_glob(policies_dir)) if policies_dir.is_dir() else 0
+
+    plugins_dir = directory / "plugins"
+    plugins = len(list(plugins_dir.glob("*.py"))) if plugins_dir.is_dir() else 0
+
+    skills_dir = directory / "skills"
+    skills = (
+        sum(1 for p in skills_dir.iterdir() if p.is_dir() and (p / "SKILL.md").is_file())
+        if skills_dir.is_dir()
+        else 0
+    )
+
+    members_raw = manifest.get("members")
+    members = len(members_raw) if isinstance(members_raw, list) else 0
+    settings_raw = manifest.get("settings")
+    settings = len(settings_raw) if isinstance(settings_raw, dict) else 0
+
+    pipeline_name = manifest.get("pipeline")
+    pipeline_file = _recipe_pipeline_file(
+        directory, pipeline_name if isinstance(pipeline_name, str) else None
+    )
+    pipeline = ""
+    if pipeline_file is not None:
+        result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
+        if result.spec is not None:
+            pipeline = result.spec.name
+
+    description_raw = manifest.get("description")
+    description = description_raw if isinstance(description_raw, str) else ""
+
+    return RecipeSummary(
+        roles=roles,
+        policies=policies,
+        plugins=plugins,
+        skills=skills,
+        members=members,
+        settings=settings,
+        pipeline=pipeline,
+        description=description,
+    )
 
 
 def _plan_roles(
@@ -448,6 +555,9 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     raw_settings = manifest.get("settings", {}) or {}
     if not isinstance(raw_settings, dict):
         raise PodApplyError("pod.yaml: 'settings' must be a mapping")
+    description = manifest.get("description")
+    if description is not None and not isinstance(description, str):
+        raise PodApplyError("pod.yaml: 'description' must be a string")
     pipeline_name = manifest.get("pipeline")
 
     base_registry = _arch.load_registry(project)
@@ -485,9 +595,9 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
 
 def apply(plan: ApplyPlan) -> ApplyResult:
-    """Write every non-``skip`` item in *plan*, in role -> policy -> plugin -> member ->
-    pipeline -> setting order (a member's role must exist before it is provisioned). Audits
-    once as ``pod.apply``, only when at least one item actually changed something."""
+    """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> member -> pipeline
+    -> setting order). Audits ``pod.apply`` only on change; records ``configSource``/
+    ``configDigest`` every time, all-``skip`` included (see below)."""
     lead_id = pod.member_id(plan.project, "lead")
 
     for role_write in plan._role_writes:
@@ -547,11 +657,14 @@ def apply(plan: ApplyPlan) -> ApplyResult:
     if plan.has_changes():
         summary = ";".join(f"{item.kind}:{item.name}:{item.action}" for item in plan.items)
         audit_log("pod.apply", f"project={plan.project} dir={plan.directory} items={summary}")
-        # The configuration-of-record (ADR 0012 §2 rule 5): written only here, after a plan
-        # that changed something, never by `docket pod <p> config set` -- see
-        # `pod.PodSettings.RECORDED_KEYS`.
-        _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))
-        _fleet.meta_set(lead_id, "configDigest", directory_digest(plan.directory))
+
+    # The configuration-of-record (ADR 0012 §2 rule 5): recorded after every plan
+    # `plan_apply` validated, an all-`skip` plan included, so composing a second, identical
+    # directory at another path still moves the record -- never by `docket pod <p> config set`
+    # (see `pod.PodSettings.RECORDED_KEYS`). The audit entry above keeps its own,
+    # narrower "only when something changed" rule.
+    _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))
+    _fleet.meta_set(lead_id, "configDigest", directory_digest(plan.directory))
 
     return ApplyResult(project=plan.project, items=plan.items)
 
