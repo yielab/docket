@@ -1,0 +1,7 @@
+kind: provider
+name: groq
+dialect: openai-chat
+baseUrl: https://api.groq.com/openai/v1
+auth:
+  type: bearer
+  credentials: [GROQ_API_KEY]

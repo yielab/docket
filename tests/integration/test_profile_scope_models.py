@@ -336,17 +336,19 @@ class TestCmdModels:
         assert reg["roles"]["programmer"] == "openai/gpt-4.1-mini"
 
     @pytest.mark.parametrize("preset", ["anthropic", "openai", "google", "local"])
-    def test_preset_without_required_registered_endpoint_fails_without_writing(
+    def test_preset_with_no_separate_registration_now_succeeds(
         self, tmp_path: Path, preset: str
     ) -> None:
+        """anthropic/openai/google/local are built-in catalog documents, so applying one of
+        these presets needs no separate `docket models provider add` first (model-profiles
+        spec, "Presets")."""
         oc_dir = _setup_agent(tmp_path)
 
         rc, out, err = _run(["models", "preset", preset], oc_dir)
 
-        assert rc == 1
-        assert not (oc_dir / "docket-models.json").exists()
-        assert "registered OpenAI-compatible endpoint" in out + err
-        assert "docket models provider add" in out + err
+        assert rc == 0, f"exit {rc}\nstderr: {err}"
+        assert (oc_dir / "docket-models.json").exists()
+        assert f"Preset '{preset}' applied." in out + err
 
     def test_local_preset_selects_the_exact_registered_model(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

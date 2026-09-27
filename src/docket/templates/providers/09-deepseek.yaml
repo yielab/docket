@@ -1,0 +1,7 @@
+kind: provider
+name: deepseek
+dialect: openai-chat
+baseUrl: https://api.deepseek.com/v1
+auth:
+  type: bearer
+  credentials: [DEEPSEEK_API_KEY]

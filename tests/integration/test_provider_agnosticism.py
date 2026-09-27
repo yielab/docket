@@ -73,14 +73,14 @@ class TestRankAnchorsOverride:
             json.dumps({"rankAnchors": {"economy": "not-well-formed", "made-up": "openai/x"}})
         )
         _role_models, tiers, _default = _mp.load_registry()
-        assert tiers == dict(_mp._RANK_ANCHORS)  # untouched — built-ins survive
+        assert tiers == dict(_mp.rank_anchors())  # untouched — built-ins survive
 
     def test_no_registry_file_uses_builtin_anchors(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "does-not-exist.json")
         _role_models, tiers, _default = _mp.load_registry()
-        assert tiers == dict(_mp._RANK_ANCHORS)
+        assert tiers == dict(_mp.rank_anchors())
 
     def test_write_registry_persists_rank_keys(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -124,7 +124,7 @@ class TestPricingHonesty:
         assert warnings == []
 
     def test_openrouter_free_uses_the_capability_aware_free_router(self) -> None:
-        preset = _mp.PRESET_TABLE["openrouter-free"]
+        preset = _mp.preset_table()["openrouter-free"]
         assert {preset[rank] for rank in ("economy", "standard", "premium")} == {
             "openrouter/openrouter/free"
         }
@@ -161,22 +161,22 @@ class TestPricingHonesty:
 
 class TestLocalPreset:
     def test_local_in_known_presets(self) -> None:
-        assert "local" in _mp.KNOWN_PRESETS
-        assert "local" in _mp.PRESET_TABLE
+        assert "local" in _mp.known_presets()
+        assert "local" in _mp.preset_table()
 
     def test_local_preset_needs_no_key(self) -> None:
-        assert _mp.PRESET_TABLE["local"]["key"] == ""
+        assert _mp.preset_table()["local"]["key"] == ""
 
     def test_local_preset_all_ranks_price_zero(self) -> None:
-        t = _mp.PRESET_TABLE["local"]
+        t = _mp.preset_table()["local"]
         for rank in ("economy", "standard", "premium"):
             assert _mp.pricing_label(t[rank]) == "$0 (local)"
 
 
 class TestHostedGatewayPreset:
     def test_ai_gateway_preset_uses_nested_creator_model_ids(self) -> None:
-        assert "ai-gateway" in _mp.KNOWN_PRESETS
-        preset = _mp.PRESET_TABLE["ai-gateway"]
+        assert "ai-gateway" in _mp.known_presets()
+        preset = _mp.preset_table()["ai-gateway"]
         assert preset["key"] == "AI_GATEWAY_API_KEY"
         assert preset["economy"] == "ai-gateway/anthropic/claude-haiku-4.5"
         assert preset["standard"] == "ai-gateway/anthropic/claude-sonnet-4.6"
@@ -185,9 +185,8 @@ class TestHostedGatewayPreset:
             assert _mp.pricing_label(preset[rank]).startswith("n/a (bring your own)")
 
     def test_paid_openrouter_preset_does_not_pin_retired_model_ids(self) -> None:
-        models = {
-            _mp.PRESET_TABLE["openrouter"][rank] for rank in ("economy", "standard", "premium")
-        }
+        table = _mp.preset_table()
+        models = {table["openrouter"][rank] for rank in ("economy", "standard", "premium")}
         assert "openrouter/google/gemini-flash-1.5-8b" not in models
         assert "openrouter/anthropic/claude-3.5-haiku" not in models
         assert "openrouter/anthropic/claude-3-opus" not in models
@@ -291,8 +290,9 @@ class TestLocalPresetCli:
         _register_provider(home, "local", "qwen3-30b-a3b")
         rc, out, err = _run(["models", "preset", "local"], home)
         assert rc == 0, err
-        assert _mp.PRESET_TABLE["local"]["note"] in out
-        assert "docket models provider add" in _mp.PRESET_TABLE["local"]["note"]
+        note = _mp.preset_table()["local"]["note"]
+        assert note in out
+        assert "docket models provider add" in note
 
     def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)

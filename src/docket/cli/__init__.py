@@ -1284,8 +1284,10 @@ def _cmd_models_list() -> None:
     ui.console.print(f"[bold]{fmt.format('ROLE', 'MODEL', 'PRICE', 'SOURCE', 'WHY')}[/bold]")
     ui.console.print(fmt.format("----", "-----", "-----", "------", "---"))
 
+    models_shown: list[str] = []
     for role in _mp.ALL_ROLES:
         m = role_models.get(role, _cfg.DEFAULT_MODEL)
+        models_shown.append(m)
         price = _mp.pricing_label(m)
         # source: 'user' if the registry has an explicit role override, else 'builtin'
         reg_roles: dict[str, str] = {}
@@ -1317,14 +1319,17 @@ def _cmd_models_list() -> None:
         ui.console.print("  (user overrides active)")
     else:
         ui.console.print("  (no user overrides — using built-in defaults)")
-    ui.dim(f"  PRICE column is an estimate from a snapshot (as of {_mp.MODEL_PRICING_AS_OF})")
+    snapshot_dates = {d for m in models_shown if (d := _mp.prices_as_of(m))}
+    if snapshot_dates:
+        snapshot = next(iter(snapshot_dates)) if len(snapshot_dates) == 1 else "various"
+        ui.dim(f"  PRICE column is an estimate from a snapshot (as of {snapshot})")
     ui.console.print()
     ui.console.print("Change: docket models set <role|default> <provider/model>")
     # markup=False: the literal [anthropic|...] must not be parsed as Rich
-    # markup. Derived from KNOWN_PRESETS so a new preset can't silently go
+    # markup. Derived from known_presets() so a new preset can't silently go
     # missing from this line the way `local` once did.
     ui.console.print(
-        f"Preset: docket models preset [{'|'.join(_mp.KNOWN_PRESETS)}]",
+        f"Preset: docket models preset [{'|'.join(_mp.known_presets())}]",
         markup=False,
     )
     ui.console.print(
@@ -1374,6 +1379,7 @@ def _cmd_models_set(key: str, model: str) -> None:
 
 
 def _cmd_models_preset(preset: str | None) -> None:
+    table = _mp.preset_table()
     if preset is None:
         ui.header("Provider presets")
         ui.console.print()
@@ -1382,8 +1388,8 @@ def _cmd_models_preset(preset: str | None) -> None:
             f"[bold]{fmt.format('PRESET', 'COST', 'KEY NEEDED', 'DESCRIPTION')}[/bold]"
         )
         ui.console.print(fmt.format("------", "----", "----------", "-----------"))
-        for p in _mp.KNOWN_PRESETS:
-            t = _mp.PRESET_TABLE[p]
+        for p in _mp.known_presets():
+            t = table[p]
             marker = " (default)" if p == "anthropic" else ""
             ui.console.print(escape(fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"])))
         ui.console.print()
@@ -1395,28 +1401,21 @@ def _cmd_models_preset(preset: str | None) -> None:
         )
         return
 
-    if preset not in _mp.PRESET_TABLE:
-        valid = " ".join(_mp.KNOWN_PRESETS)
+    if preset not in table:
+        valid = " ".join(_mp.known_presets())
         ui.error(f"Unknown preset '{preset}'. Valid: {valid}")
         raise typer.Exit(1)
 
+    # Every preset name in `table` is attached to a catalog entry (built-in or global) by
+    # construction (see `models_policy.presets()`), so `registered` is never None here -- a
+    # direct anthropic/openai/google preset needs no separate "is it registered" gate any more:
+    # the built-in document itself is the registration. `local`'s own resolved entry is still
+    # read below, for its exact selected-model-id special case.
     from docket.core import provider as _prov
 
-    registered = None
-    if preset in ("anthropic", "openai", "google", "local"):
-        registered = _prov.load_catalog().get(preset)
-        if not registered:
-            ui.error(
-                f"Preset '{preset}' has no registered OpenAI-compatible endpoint; "
-                "an API key or coding-tool subscription is not sufficient."
-            )
-            ui.console.print(
-                f"  Register one first: docket models provider add {preset} <base-url> "
-                "--model <model-id> --ctx <tokens> --max-tokens <tokens>"
-            )
-            raise typer.Exit(1)
+    registered = _prov.load_catalog().get(preset)
 
-    t = _mp.PRESET_TABLE[preset]
+    t = table[preset]
     econ, std, prem = t["economy"], t["standard"], t["premium"]
     if preset == "local" and registered is not None and registered.models:
         registered_id = registered.models[0].id.strip()

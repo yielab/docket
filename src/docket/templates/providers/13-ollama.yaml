@@ -1,0 +1,6 @@
+kind: provider
+name: ollama
+dialect: openai-chat
+baseUrl: http://127.0.0.1:11434/v1
+auth: {type: none}
+local: true

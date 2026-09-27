@@ -1,0 +1,15 @@
+kind: provider
+name: ai-gateway
+dialect: openai-chat
+baseUrl: https://ai-gateway.vercel.sh/v1
+auth:
+  type: bearer
+  credentials: [AI_GATEWAY_API_KEY, VERCEL_OIDC_TOKEN]
+marketplace: true
+presets:
+  - name: ai-gateway
+    ranks:
+      economy: anthropic/claude-haiku-4.5
+      standard: anthropic/claude-sonnet-4.6
+      premium: anthropic/claude-opus-4.6
+    note: "Vercel AI Gateway with unified routing and observability."

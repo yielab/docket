@@ -1,0 +1,22 @@
+kind: provider
+name: openai
+dialect: openai-chat
+baseUrl: https://api.openai.com/v1
+auth:
+  type: bearer
+  credentials: [OPENAI_API_KEY]
+credentialPrefix: sk-
+pricesAsOf: "2026-06-11"
+models:
+  - id: gpt-4.1-nano
+    price: {input: 0.10, output: 0.40}
+  - id: gpt-4.1-mini
+    price: {input: 0.40, output: 1.60}
+  - id: gpt-4.1
+    price: {input: 2.00, output: 8.00}
+  - id: gpt-4o
+    price: {input: 2.50, output: 10.00}
+presets:
+  - name: openai
+    ranks: {economy: gpt-4.1-nano, standard: gpt-4.1-mini, premium: gpt-4.1}
+    note: "GPT-4.1 family."

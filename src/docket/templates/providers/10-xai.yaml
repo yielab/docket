@@ -1,0 +1,7 @@
+kind: provider
+name: xai
+dialect: openai-chat
+baseUrl: https://api.x.ai/v1
+auth:
+  type: bearer
+  credentials: [XAI_API_KEY]

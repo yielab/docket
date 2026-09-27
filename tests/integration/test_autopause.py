@@ -346,7 +346,9 @@ class TestEstimateFallback:
     def test_estimate_cost_usd_known_model(self) -> None:
         totals = _utils.CostTotals(input_tokens=1_000_000, output_tokens=1_000_000)
         est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
-        in_rate, out_rate, _cr, _cw = _mp.MODEL_PRICING["anthropic/claude-haiku-4-5"]
+        price = _mp.price_for("anthropic/claude-haiku-4-5")
+        assert price is not None
+        in_rate, out_rate, _cr, _cw = price
         assert est == pytest.approx(in_rate + out_rate)
 
     def test_estimate_cost_usd_unknown_model_returns_none(self) -> None:

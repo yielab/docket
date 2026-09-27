@@ -1,0 +1,25 @@
+kind: provider
+name: openrouter
+dialect: openai-chat
+baseUrl: https://openrouter.ai/api/v1
+auth:
+  type: bearer
+  credentials: [OPENROUTER_API_KEY]
+marketplace: true
+credentialPrefix: sk-or-
+pricesAsOf: "2026-06-11"
+models:
+  - id: openrouter/free
+    price: {input: 0.0, output: 0.0}
+presets:
+  - name: openrouter-free
+    ranks: {economy: openrouter/free, standard: openrouter/free, premium: openrouter/free}
+    note: >-
+      Experimental zero-cost router; model selection and availability can change per call.
+      Free account at openrouter.ai.
+  - name: openrouter
+    ranks:
+      economy: anthropic/claude-haiku-4.5
+      standard: anthropic/claude-sonnet-4.6
+      premium: anthropic/claude-opus-4.6
+    note: "Unified access to 200+ models via one key."

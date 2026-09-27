@@ -285,7 +285,8 @@ def policy_templates_dir() -> Path:
 
 
 # PROVIDER_TEMPLATES_DIR: built-in `kind: provider` documents shipped in the wheel
-# (core/provider.py's Catalog scope "built-in"), empty until a later card fills it.
+# (core/provider.py's Catalog scope "built-in") -- anthropic, openai, google, openrouter,
+# ai-gateway, groq, mistral, deepseek, xai, cerebras, together, ollama, lmstudio, local.
 PROVIDER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "providers"
 
 

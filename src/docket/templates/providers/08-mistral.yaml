@@ -1,0 +1,7 @@
+kind: provider
+name: mistral
+dialect: openai-chat
+baseUrl: https://api.mistral.ai/v1
+auth:
+  type: bearer
+  credentials: [MISTRAL_API_KEY]

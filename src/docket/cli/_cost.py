@@ -139,10 +139,12 @@ def _cmd_cost_all() -> None:
 
     total_cost = 0.0
     runaway: list[str] = []
+    models_shown: list[str] = []
 
     for pid in ids:
         raw = store.read_json(_cfg.meta_path(pid))
         model = str(raw.get("model", _cfg.DEFAULT_MODEL))
+        models_shown.append(model)
         src = model_source(pid)
         budget_raw = raw.get("budgetUsd")
         totals = aggregate_cost(pid)
@@ -183,10 +185,12 @@ def _cmd_cost_all() -> None:
     ui.console.print()
     # Name the real source of recorded usage: docket's durable session store.
     ui.dim(f"  Recorded spend from session data in {_cfg.SESSIONS_DIR}/*/session.json")
-    ui.dim(
-        f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"
-        " — see: docket models"
-    )
+    snapshot_dates = {d for m in models_shown if (d := _mp.prices_as_of(m))}
+    if snapshot_dates:
+        snapshot = next(iter(snapshot_dates)) if len(snapshot_dates) == 1 else "various"
+        ui.dim(
+            f"  Comparative estimates use a price snapshot (as of {snapshot}) — see: docket models"
+        )
     ui.console.print()
 
 
