@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.43.0
+**Version**: 1.44.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -573,6 +573,8 @@ visibility, not shared workspace or session state.
 - Global guardrail policy files, plus every provisioned pod's own `config/` overlay
   (role archetypes and policy files) — a malformed pod-scoped entry is named with the
   pod, not silently skipped
+- Global provider catalog documents (`docket-providers.json`) — a malformed entry is named
+  with the file and the failing field, e.g. an unknown `auth.type`
 **Return**: 0 if healthy, 1 when any issue is flagged
 
 #### docket cost
@@ -995,6 +997,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.44.0 (2026-09-27)
+
+- `docket doctor`'s Checks list gains the global provider catalog (`docket-providers.json`): a
+  malformed entry is named with the file and the failing field, carried the same way under
+  `--json`. See `model-profiles.spec.md` 2.15.0 ("Provider catalog" requirement 7) for this and
+  the matching `config explain --json` `provider` block (P29-6).
 
 ### Version 1.43.0 (2026-09-27)
 

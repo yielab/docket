@@ -37,11 +37,12 @@ docket runs list
 docket trace tail myapp    # prints the latest session's tail, then follows it; Ctrl-C to stop
 ```
 
-`provider add` validates the endpoint before project state is created. The final two commands are
-the public evidence: the run must be terminal and the trace must show the model/tool lifecycle.
-The local model still needs ordinary OpenAI function-tool compatibility; model availability alone
-does not prove reliable tool use. For hosted or mixed-provider setup, see
-[Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
+`provider add` validates the endpoint before project state is created, and writes a `kind:
+provider` document you can inspect or hand-edit afterward with `docket models provider export
+local`. The final two commands are the public evidence: the run must be terminal and the trace
+must show the model/tool lifecycle. The local model still needs ordinary OpenAI function-tool
+compatibility; model availability alone does not prove reliable tool use. For hosted or
+mixed-provider setup, see [Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
 
 ---
 

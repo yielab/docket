@@ -196,7 +196,11 @@ Three layers, from broad to narrow:
 
 | Goal | Command | File written |
 |---|---|---|
-| Register an endpoint (OpenAI-compatible) | `docket models provider add <name> <base-url> --model <id> [--name <label>] [--ctx N] [--max-tokens N]` | `fleet.json` → `providers` |
+| Register an endpoint (OpenAI-compatible) | `docket models provider add <file.yaml>` (a `kind: provider` document), or the shortcut `docket models provider add <name> <base-url> [--model ID] [--ctx N] [--max-tokens N] [--credential NAME]` | `docket-providers.json` → `providers` |
+| List every provider | `docket models provider list` | — (read-only) |
+| Show one provider's resolved entry and scope | `docket models provider show <name> [--json]` | — (read-only) |
+| Remove a global override | `docket models provider remove <name>` | `docket-providers.json` → `providers` |
+| Print or write a provider as a document | `docket models provider export <name> [<file>]` | the given file, or stdout |
 | Point every role at one provider | `docket models preset <anthropic\|openai\|google\|openrouter\|openrouter-free\|ai-gateway\|local>` | `docket-models.json` |
 | Change one role's model | `docket models set <role> <provider/model>` (or `set default …`) | `docket-models.json` → `roles` |
 | Pin one agent, ignoring policy | `docket profile <agent-id> <provider/model>` (`default` un-pins) | that agent's `.docket-meta.json` → `model`, `modelSource: pinned` |
@@ -210,9 +214,12 @@ touched.
 small-context local server, also export `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` (the 30000 default
 suits a large hosted model, and two full tool results overflow a 16k window).
 
-Key lookup order for a provider: `DOCKET_LLM_API_KEY`, then the provider's `apiKey` in `fleet.json`,
-then the `<PROVIDER>_API_KEY` environment variable, then `secrets.json`. `DOCKET_LLM_BASE_URL`
-overrides every endpoint at once, which is handy for tests.
+Credential lookup order, per name in the provider document's `auth.credentials`:
+`DOCKET_LLM_API_KEY`, then that name as an environment variable, then the same name in
+`secrets.json`. A document never holds a credential value — only names. `DOCKET_LLM_BASE_URL`
+overrides every endpoint at once, which is handy for tests. `docket config explain <agent>
+--json` reports which provider, scope and credential source an agent actually resolved to
+(`model-profiles.spec.md`, "Provider catalog").
 
 ### 3.2 Change what an agent is told
 
@@ -607,7 +614,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
-| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}`, `providers{<name>{baseUrl,apiKey,models[{id,contextWindow,maxTokens,…}]}}` | init, `models provider add`, `wire`, `gates` | endpoint resolution (`baseUrl`, `apiKey`, `models[].id/contextWindow/maxTokens`), isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}` | init, `wire`, `gates` | isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `models provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `models provider add/remove/export`. Malformed entries are named by `docket doctor`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
@@ -621,6 +629,13 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket trace`, `metrics`, `/traces` | no. `trace expire` prunes after `TRACE_RETENTION_DAYS`. |
 | `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `approve`/`deny`. |
 | `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket audit`, `audit verify` | **never.** It breaks the hash chain. |
+
+**Built-in provider documents** ship in the wheel at `templates/providers/NN-<name>.yaml`
+(`anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`,
+`xai`, `cerebras`, `together`, `ollama`, `lmstudio`, `local`), not under `~/.docket/`. The
+catalog merges them with `docket-providers.json`, nearest-wins by name — a global write under a
+built-in's name overrides that document but inherits its presets and pricing unless set
+explicitly.
 
 ### Per agent (`~/.docket/workspaces/projects/<pod>-<role>/`)
 
@@ -667,10 +682,6 @@ rest of the original list; what remains below is the honest boundary, not a back
   skips it — and `docket doctor` reports each one with pod (when applicable), file, key and reason
   (a broken *policy* file instead fails closed at evaluation, §3.6). Run doctor after hand-editing
   any registry.
-- **The provider display name derives from `--model`.** `models provider add` without `--name`
-  labels the entry after `--model` (only the shipped default model id keeps its shipped caption).
-  The per-model `name`/`cost`/`reasoning`/`input` fields and the provider block's `api` field are
-  display-only — only `id`, `contextWindow` and `maxTokens` drive request routing.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action
   `tool.warn`), not in traces — so `docket trace`/`metrics` won't show it.
 - **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it

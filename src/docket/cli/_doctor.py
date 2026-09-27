@@ -381,6 +381,48 @@ def _check_provider_coverage(ids: list[str]) -> int:
     return len(missing)
 
 
+def _provider_catalog_problems() -> list[tuple[str, str]]:
+    """Every global provider document that fails `load_provider_document`'s own
+    validation -- `load_catalog` silently skips these at read time. Returns
+    (name, "field: message") pairs. Read-only: never edits the catalog."""
+    from pydantic import ValidationError
+
+    from docket.core.provider import ProviderSpec
+
+    raw = store.read_json(_cfg.PROVIDERS_FILE)
+    providers = raw.get("providers") if isinstance(raw, dict) else None
+    problems: list[tuple[str, str]] = []
+    if not isinstance(providers, dict):
+        return problems
+    for name, block in providers.items():
+        if not isinstance(block, dict):
+            problems.append((str(name), "not a mapping"))
+            continue
+        try:
+            ProviderSpec.model_validate(block)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            field = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
+            problems.append((str(name), f"{field}: {first['msg']}"))
+    return problems
+
+
+def _check_provider_catalog() -> int:
+    """Flag every malformed global provider document -- naming the file, provider
+    name and failing field, the way `_check_archetype_overlay` names a malformed
+    role. Read-only: never edits the catalog."""
+    ui.console.print()
+    ui.console.print("[bold]Provider catalog (docket-providers.json):[/bold]")
+    problems = _provider_catalog_problems()
+    if not problems:
+        ui.success("  All provider documents are well-formed")
+        return 0
+    ui.console.print("[red]✗[/red]   Found malformed docket-providers.json entries:")
+    for name, reason in problems:
+        ui.console.print(f"    {_cfg.PROVIDERS_FILE}: {name}: {reason}")
+    return len(problems)
+
+
 def _check_security_gates() -> int:
     """Approval-routing/isolation posture + the always-on tool-call gate.
 
@@ -898,6 +940,12 @@ def _doctor_json_security() -> dict[str, Any]:
     }
 
 
+def _doctor_json_provider_catalog() -> tuple[int, list[dict[str, str]]]:
+    """Malformed global provider documents, JSON shape of `_check_provider_catalog`."""
+    problems = _provider_catalog_problems()
+    return len(problems), [{"name": name, "reason": reason} for name, reason in problems]
+
+
 def _doctor_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
     """Template/prompt version drift, JSON shape of `_check_template_version`.
     Advisory — never contributes to the issue count."""
@@ -953,6 +1001,9 @@ def _doctor_json() -> dict[str, Any]:
     key_issues, keys_list, missing_keys = _doctor_json_key_hygiene(ids)
     issues += key_issues
 
+    provider_catalog_issues, provider_catalog_problems = _doctor_json_provider_catalog()
+    issues += provider_catalog_issues
+
     security = _doctor_json_security()
     tmpl_results = _doctor_json_template_drift(ids)
 
@@ -970,6 +1021,10 @@ def _doctor_json() -> dict[str, Any]:
             "budget": budget_results,
             "runaway": runaway_results,
             "keyHygiene": {"keys": keys_list, "missingForAgents": missing_keys},
+            "providerCatalog": {
+                "ok": not provider_catalog_problems,
+                "problems": provider_catalog_problems,
+            },
             "securityGates": security,
             "templateDrift": tmpl_results,
         },
@@ -1004,6 +1059,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_runaway(ids, cost)
     _check_key_hygiene()
     issues += _check_provider_coverage(ids)
+    issues += _check_provider_catalog()
     issues += _check_security_gates()
     issues += _check_policies()
     issues += _check_pod_config_overlays()

@@ -31,6 +31,7 @@ from docket.core import provider as _provider
 from docket.core import tools as _tools
 from docket.core.models import AgentKind, AgentMeta
 from docket.edges import store as _store
+from docket.edges.adapters import llm as _llm
 
 _USAGE = "Usage: docket config explain <agent-id> [--json]"
 
@@ -141,6 +142,54 @@ def _pod_settings_report(settings: _pod.PodSettings, project: str) -> dict[str, 
     return report
 
 
+def _provider_report(model: str) -> dict[str, Any]:
+    """Where *model* resolves: catalog scope, dialect, base URL, the credential's
+    name/source and the exact model row -- the provenance ``resolve_endpoint``
+    itself does not report. See model-profiles.spec.md "Provider catalog" 7."""
+    provider_name, _, model_id = model.partition("/")
+    if not model_id:
+        provider_name, model_id = "", model
+
+    catalog = _provider.load_catalog()
+    spec = catalog.get(provider_name) if provider_name else None
+    endpoint = _llm.resolve_endpoint(model)
+
+    if spec is not None:
+        credential_name = spec.auth.credentials[0] if spec.auth.credentials else ""
+        _value, credential_source = _provider.resolve_credential(spec)
+        exact = next((row for row in spec.models if row.id == model_id), None)
+        return {
+            "name": spec.name,
+            "scope": catalog.source_of(provider_name),
+            "dialect": spec.dialect,
+            "baseUrl": spec.base_url,
+            "credential": {"name": credential_name, "source": credential_source},
+            "model": {
+                "id": model_id,
+                "contextWindow": exact.context_window if exact else None,
+                "maxTokens": exact.max_tokens if exact else None,
+                "source": "row" if exact is not None else "none",
+            },
+        }
+
+    return {
+        "name": provider_name,
+        "scope": "",
+        "dialect": "openai-chat",
+        "baseUrl": endpoint.base_url if endpoint else None,
+        "credential": {
+            "name": "",
+            "source": "env" if endpoint is not None and endpoint.api_key else "none",
+        },
+        "model": {
+            "id": model_id,
+            "contextWindow": endpoint.context_window_tokens if endpoint else None,
+            "maxTokens": endpoint.max_output_tokens if endpoint else None,
+            "source": "none",
+        },
+    }
+
+
 def _explain(agent_id: str) -> dict[str, Any]:
     """Compose one agent's effective configuration. Raises ``DispatchError``/
     ``PodSettingsError`` unchanged when this pod's stored settings are invalid --
@@ -153,6 +202,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
     model = str(raw.get("model") or "") or _cfg.DEFAULT_MODEL
     model_source = _mp.agent_model_source(agent_id)
     readiness = _provider.model_readiness(model)
+    provider_report = _provider_report(model)
 
     worktree_dir = str(raw.get("worktreeDir") or "")
     roots = _roots_for(agent_id, meta, worktree_dir)
@@ -198,6 +248,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
             "maxOutputTokens": readiness.max_output,
             "issue": readiness.issue,
         },
+        "provider": provider_report,
         "prompt": {
             "budgetTokens": composition.budget_tokens,
             "budgetSource": composition.budget_source,
@@ -229,6 +280,17 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
     ready = "ready" if endpoint["ready"] else f"NOT ready — {endpoint['issue']}"
     ui.console.print(
         f"  [bold]{'Endpoint:':<16}[/bold] {endpoint['baseUrl'] or '(unresolved)'}  [dim]({ready})[/dim]"
+    )
+    provider = report["provider"]
+    credential = provider["credential"]
+    provider_name = provider["name"] or "(unresolved)"
+    scope = provider["scope"] or "unresolved"
+    ui.console.print(
+        f"  [bold]{'Provider:':<16}[/bold] {provider_name}  [dim]({scope}, {provider['dialect']})[/dim]"
+    )
+    ui.console.print(
+        f"  [bold]{'Credential:':<16}[/bold] {credential['name'] or '(none)'}"
+        f"  [dim]({credential['source']})[/dim]"
     )
     ui.console.print()
 
