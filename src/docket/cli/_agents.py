@@ -296,9 +296,10 @@ def run_init(all_args: list[str]) -> int:
             return apply_rc
 
     lead_id = f"{aid}-lead"
+    members = _pp.pod_member_ids(aid) or created  # includes what `.docket/`/--recipe added
     ui.console.print()
-    ui.success(f"Pod '{aid}' created with {len(created)} members!")
-    for mid in created:
+    ui.success(f"Pod '{aid}' created with {len(members)} members!")
+    for mid in members:
         ui.console.print(f"  - {mid}")
     ui.console.print()
     ui.console.print(f"  docket pod {aid}              # inspect the pod")

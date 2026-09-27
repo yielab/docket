@@ -665,6 +665,21 @@ class TestInitReadsRepoConfig:
         assert rc == 0
         assert "security-vetter" in _dispatch.pod_full_roster("demo")
 
+    def test_created_summary_counts_the_members_the_recipe_added(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+
+        rc = _agents.run_init(
+            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+        )
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "created with 3 members" in out
+        assert "  - demo-security-vetter" in out
+
     def test_recipe_with_an_existing_docket_dir_is_rejected_before_provisioning(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -392,6 +392,35 @@ def _write_security_vetter_md(directory: Path) -> None:
     )
 
 
+class TestLoadRoleFile:
+    """`kind: role` names a document's kind, not its form: a canonical document keeps its
+    canonical fields, and a document mixing both forms is refused naming the clash."""
+
+    def test_canonical_document_with_kind_role_passes_through(self, tmp_path: Path) -> None:
+        from docket.core import archetypes as _arch
+
+        path = tmp_path / "security-vetter.yaml"
+        path.write_text(json.dumps({"kind": "role", **_SECURITY_VETTER_LONG}), encoding="utf-8")
+
+        loaded = _arch.load_role_file(str(path))
+
+        assert from_wire("security-vetter", loaded) == from_wire(
+            "security-vetter", _SECURITY_VETTER_LONG
+        )
+
+    def test_mixed_short_and_canonical_keys_are_refused(self, tmp_path: Path) -> None:
+        from docket.core import archetypes as _arch
+
+        _write_security_vetter_md(tmp_path)
+        path = tmp_path / "security-vetter.yaml"
+        path.write_text(
+            json.dumps({**_SECURITY_VETTER_SHORT, "deniedTools": ["write"]}), encoding="utf-8"
+        )
+
+        with pytest.raises(ArchetypeError, match="deniedTools"):
+            _arch.load_role_file(str(path))
+
+
 class TestNormalizeRole:
     """The short role form (`kind: role`, `cannot:`, one gate key, `instructions: <file.md>`)
     normalizes into the exact canonical dict `from_wire` already accepts -- see

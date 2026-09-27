@@ -138,6 +138,21 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
     assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
 
 
+def test_pod_apply_resolves_a_shipped_recipe_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``docket pod <p> apply secure-build`` applies the shipped recipe, as ``init --recipe``
+    does -- a README can print a command that needs no path into the installed package."""
+    from docket.cli import _pod as _cli_pod
+
+    project = "byname"
+    _seed_fixture_pod(tmp_path, monkeypatch, project)
+
+    _cli_pod.dispatch(project, "apply", ["secure-build"])
+
+    assert "security-vetter" in _dispatch.pod_full_roster(project)
+
+
 def test_apply_with_an_invalid_setting_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

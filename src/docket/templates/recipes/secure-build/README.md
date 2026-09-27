@@ -6,11 +6,11 @@ cycle back to the Implementer on `REQUEST-CHANGES`.
 
 ## Apply it
 
-Against an existing pod `<project>` (with `lead` and `implementer` already provisioned —
-`docket init <project>` or `docket add <project>` gives you that):
+For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
-docket pod <project> apply templates/recipes/secure-build
+docket init --recipe secure-build          # a new pod for the current repository
+docket pod <project> apply secure-build    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`security-vetter`); `apply` validates the

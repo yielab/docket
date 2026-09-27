@@ -472,13 +472,15 @@ Subcommands:
                     `pod.sync`). `INSTRUCTIONS.md` is operator-owned and
                     is never read, written, or diffed by this command --
                     an already-current pod changes nothing.
-  apply \[<dir>\]    \[--dry-run\] \[--json\]. Apply a recipe/manifest
+  apply \[<name|dir>\]  \[--dry-run\] \[--json\]. Apply a recipe/manifest
                     directory (role YAML, `pipeline.yaml`, and a small
                     `pod.yaml` naming `members`/`settings`/`pipeline`) to
                     this pod in one command, composing the same writers
                     `roles add`/`add <role>`/`config set pipeline`/
-                    `config set <key> <value>` already use. `<dir>`
-                    defaults to `<codebase>/.docket`. Validates
+                    `config set <key> <value>` already use. A directory
+                    path if one exists there, else a shipped recipe name
+                    (secure-build, research-review, ops-approval) as
+                    `init --recipe` resolves it; default `<codebase>/.docket`. Validates
                     everything -- roles, the roster the pipeline would
                     resolve against once `members` join, and every
                     setting -- before writing anything; an invalid

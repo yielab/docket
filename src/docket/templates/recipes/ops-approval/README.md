@@ -10,10 +10,11 @@ recipe when you want the same human-in-the-loop discipline on a pod that already
 
 ## Apply it
 
-Against an existing pod `<project>`:
+For a new pod, or onto one that already exists:
 
 ```bash
-docket pod <project> apply templates/recipes/ops-approval
+docket init --recipe ops-approval          # a new pod for the current directory
+docket pod <project> apply ops-approval    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`operator`); `apply` validates the policy

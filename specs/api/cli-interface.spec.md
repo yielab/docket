@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.47.0
+**Version**: 1.48.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -156,7 +156,9 @@ see pod-blueprints.spec.md, "Pod manifests: apply") is discovered automatically:
 every document under it before provisioning anything, and — unless `--no-apply` is given — applies
 it after provisioning through the same `plan_apply`/`apply` path `docket pod <p> apply` uses. A
 validation error exits 1 naming the file and field, with nothing provisioned.
-**Output**: Creation progress and confirmation with member IDs
+**Output**: Creation progress and confirmation with member IDs. The closing `created with N
+members` line and the id list that follows it count every member of the pod as it stands after
+the apply step, so a member a present `.docket/` or `--recipe` added is counted and listed
 **Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
 or provisioning registered no member — docket's flat convention, see Return Code Convention below)
 
@@ -407,10 +409,12 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 - `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
-- `apply [<dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
+- `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
   `pipeline.yaml`, a small `pod.yaml` naming `members`/`settings`/`pipeline`) to this pod in one
   command, composing the same `roles add`/`add <role>`/`config set` writers rather than a new
-  write path; `<dir>` defaults to `<codebase>/.docket`. Validates every role, the roster the
+  write path; the argument resolves as a directory path if one exists there, else as a shipped
+  recipe name, exactly as `docket init --recipe` resolves it (an unresolvable name exits 1
+  naming the shipped recipes); with no argument it defaults to `<codebase>/.docket`. Validates every role, the roster the
   pipeline would resolve against once `members` join, and every setting before writing anything;
   idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
   See `pod-blueprints.spec.md`, "Pod manifests: apply"
@@ -1012,6 +1016,16 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.48.0 (2026-09-27)
+
+- `docket pod <project> apply [<name|dir>]`: the argument resolves a shipped recipe by name
+  when no directory exists at that path, through the same `core.pod_apply.resolve_recipe`
+  `docket init --recipe` uses, so a recipe's own README can print a command with no path into
+  the installed package. See `pod-blueprints.spec.md` 1.13.0.
+- `docket init`'s closing `created with N members` line and member list count the pod as it
+  stands after the apply step: a member added by a present `.docket/` or `--recipe` is counted
+  and listed (it was previously the blueprint roster only).
 
 ### Version 1.47.0 (2026-09-27)
 

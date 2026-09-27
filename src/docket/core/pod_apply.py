@@ -163,7 +163,7 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
 def resolve_recipe(name_or_dir: str) -> Path:
     """*name_or_dir* as a directory path if it resolves to one, else a shipped recipe under
     ``config.recipes_dir()``. Raises ``PodApplyError`` naming the shipped recipe names when
-    neither resolves -- used by ``docket init --recipe``."""
+    neither resolves -- used by ``docket init --recipe`` and ``docket pod <p> apply``."""
     candidate = Path(name_or_dir)
     if candidate.is_dir():
         return candidate

@@ -66,6 +66,11 @@ GATE_KINDS: frozenset[str] = frozenset({"none", "verdict", "mechanical", "approv
 _ROLE_SHORT_FORM_KEYS: frozenset[str] = frozenset(
     {"cannot", "verdict", "verify", "approval", "instructions", "model"}
 )
+# Keys only the canonical wire form carries: their presence makes a document canonical
+# whatever its `kind:` says, and mixing them with the short-form keys above is an error.
+_ROLE_CANONICAL_ONLY_KEYS: frozenset[str] = frozenset(
+    {"modelClass", "deniedTools", "gateContract", "soulTemplate", "agentsTemplate"}
+)
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _AGENTS_HEADING_RE = re.compile(r"(?m)^## AGENTS[ \t]*$\n?")
@@ -1018,11 +1023,17 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
 
 def load_role_file(path: str) -> dict[str, Any]:
     """Parse a role YAML file, normalizing the short form into the canonical wire dict
-    `from_wire` accepts; an already-canonical document passes through unchanged (its
-    `kind: role`, if any, stripped either way)."""
+    `from_wire` accepts; a canonical document (any canonical-only key present) passes through
+    unchanged. `kind: role` is accepted and stripped either way; mixing the two forms is an error."""
     doc = parse_yaml_file(path)
-    is_short = doc.get("kind") == "role" or any(key in doc for key in _ROLE_SHORT_FORM_KEYS)
-    if not is_short:
+    short_keys = sorted(key for key in _ROLE_SHORT_FORM_KEYS if key in doc)
+    canonical_keys = sorted(key for key in _ROLE_CANONICAL_ONLY_KEYS if key in doc)
+    if short_keys and canonical_keys:
+        raise ArchetypeError(
+            f"{path}: mixes the short form ({', '.join(short_keys)}) with the canonical form "
+            f"({', '.join(canonical_keys)}); write one or the other"
+        )
+    if canonical_keys or not (short_keys or doc.get("kind") == "role"):
         doc = dict(doc)
         doc.pop("kind", None)
         return doc

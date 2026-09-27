@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.19.0
+**Version**: 1.20.0
 **Status**: Implemented. **P30-4** retires `editRights` (ADR 0012 §2 rule 7): the canonical wire
 form no longer carries it, `from_wire` accepts and silently drops it so every existing overlay or
 recipe role still loads, `docket validate` prints a `note:` for a file that still declares it, and
@@ -539,10 +539,14 @@ agentsTemplate: |
 
 A second, short form is also accepted, both by `docket roles add`/`docket roles validate` and by
 `docket pod <p> apply` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
-it (an explicit `kind: role`, or the presence of any of `cannot`/`verdict`/`verify`/`approval`/
-`instructions`/`model`) and normalizes it into the canonical form above (`normalize_role`) before
-`from_wire` ever sees it; a document with none of those keys is already canonical and passes
-through unchanged (`kind: role`, if present, is accepted and stripped either way):
+it (the presence of any of `cannot`/`verdict`/`verify`/`approval`/`instructions`/`model`, or an
+explicit `kind: role` with none of the canonical-only keys) and normalizes it into the canonical
+form above (`normalize_role`) before `from_wire` ever sees it. A document carrying any
+canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
+`agentsTemplate`) is canonical and passes through unchanged whatever its `kind:` says — so a
+`docket roles show` dump with `kind: role` added loads as written — and `kind: role` is accepted
+and stripped either way. A document mixing a short-form key with a canonical-only key **MUST** be
+refused naming both sets of keys, never normalized with the canonical keys silently dropped:
 
 ```yaml
 kind: role
@@ -645,6 +649,16 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.20.0 (2026-09-27)
+
+- **`kind: role` names the kind, not the form.** "Wire format", short form: `load_role_file`
+  treats a document carrying any canonical-only key (`modelClass`, `deniedTools`,
+  `gateContract`, `soulTemplate`, `agentsTemplate`) as canonical and passes it through even
+  when it says `kind: role`; a document mixing a short-form key with a canonical-only key is
+  refused naming both. Previously an explicit `kind: role` routed a canonical document through
+  `normalize_role`, which dropped its canonical fields and then failed on the missing
+  `<name>.md` (the `is_short` follow-up parked at the Phase 30 close).
 
 ### Version 1.19.0 (2026-09-27)
 

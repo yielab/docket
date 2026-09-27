@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -183,8 +183,11 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
 <dir>` composes the same writers into one command, once a directory shape becomes common enough
 (a pod reproduced on a second machine) to be worth automating.
 
-1. `docket pod <project> apply [<dir>] [--dry-run] [--json]` **MUST** read *dir* (default
-   `<codebase>/.docket/`, from the pod Lead's own `codebase` meta) as: an optional `roles/*.yaml`
+1. `docket pod <project> apply [<name|dir>] [--dry-run] [--json]` **MUST** read *dir* (default
+   `<codebase>/.docket/`, from the pod Lead's own `codebase` meta; an argument that is not an
+   existing directory resolves as a shipped recipe name through the same `resolve_recipe`
+   requirement 8 gives `docket init --recipe`, and an unresolvable name exits 1 naming the
+   shipped recipes) as: an optional `roles/*.yaml`
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
    optional `policies/*.json` directory (guardrail policies, the same schema
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
@@ -406,6 +409,14 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.13.0 (2026-09-27)
+
+- **`docket pod <p> apply <name|dir>` resolves a shipped recipe by name.** "Pod manifests:
+  apply" requirement 1: an argument that is not an existing directory resolves through the
+  same `core.pod_apply.resolve_recipe` requirement 8 gives `docket init --recipe`, so the
+  shipped recipes are reachable from an existing pod without a path into the installed
+  package. Behaviour for a directory argument and for no argument is unchanged.
 
 ### Version 1.12.0 (2026-09-27)
 

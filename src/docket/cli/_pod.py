@@ -802,18 +802,18 @@ def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
 
 
 def _pod_apply_cmd(project: str, extra: list[str]) -> None:
-    """``docket pod <project> apply [<dir>] [--dry-run] [--json]`` -- plan (`core.pod_apply`)
-    and, unless ``--dry-run``, write a recipe/manifest directory onto this pod. An invalid
-    manifest exits 1 naming the problem, with nothing written."""
+    """``docket pod <project> apply [<name|dir>] [--dry-run] [--json]`` -- plan and, unless
+    ``--dry-run``, write a recipe/manifest directory onto this pod; a bare name resolves to a
+    shipped recipe as ``init --recipe`` does. An invalid manifest exits 1 with nothing written."""
     dry_run = "--dry-run" in extra
     json_out = "--json" in extra
     rest = [a for a in extra if a not in ("--dry-run", "--json")]
     if len(rest) > 1:
-        ui.error("Usage: docket pod <project> apply [<dir>] [--dry-run] [--json]")
+        ui.error("Usage: docket pod <project> apply [<name|dir>] [--dry-run] [--json]")
         raise typer.Exit(1)
-    directory = Path(rest[0]) if rest else _pod_apply_default_dir(project)
 
     try:
+        directory = _pod_apply.resolve_recipe(rest[0]) if rest else _pod_apply_default_dir(project)
         plan = _pod_apply.plan_apply(project, directory)
     except _pod_apply.PodApplyError as ex:
         ui.error(str(ex))

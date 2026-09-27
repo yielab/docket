@@ -11,10 +11,11 @@ review discipline on a pod that already exists and was not created with that blu
 
 ## Apply it
 
-Against an existing pod `<project>`:
+For a new pod, or onto one that already exists:
 
 ```bash
-docket pod <project> apply templates/recipes/research-review
+docket init --recipe research-review          # a new pod for the current directory
+docket pod <project> apply research-review    # onto an existing pod
 ```
 
 `pod.yaml` names the four built-in-archetype members this recipe adds; `apply` validates the
