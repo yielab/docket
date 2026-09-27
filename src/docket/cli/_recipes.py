@@ -21,19 +21,23 @@ from docket.cli._flags import find_unknown_flag
 from docket.core import pod_apply as _pod_apply
 
 
-def _kind_of(summary: _pod_apply.RecipeSummary) -> str:
-    """Derive a one-word kind from what the recipe brings -- never a declared field
-    (ADR 0013 SS1 rule 1)."""
-    has_pipeline = bool(summary.pipeline)
-    has_policies = summary.policies > 0
-    has_members = summary.members > 0
-    if has_members and has_pipeline:
-        return "team"
-    if has_policies and not has_pipeline and not has_members:
-        return "policies"
-    if has_pipeline and not has_policies:
-        return "pipeline"
-    return "mixed"
+def _brings(summary: _pod_apply.RecipeSummary) -> str:
+    """The parts a recipe brings, joined with `+` in summary order -- derived from the
+    directory, never a declared field (ADR 0013 SS1 rule 1); `nothing` for an empty one."""
+    parts = [
+        label
+        for label, present in (
+            ("roles", summary.roles > 0),
+            ("policies", summary.policies > 0),
+            ("members", summary.members > 0),
+            ("pipeline", bool(summary.pipeline)),
+            ("plugins", summary.plugins > 0),
+            ("skills", summary.skills > 0),
+            ("settings", summary.settings > 0),
+        )
+        if present
+    ]
+    return "+".join(parts) if parts else "nothing"
 
 
 def _info_dict(
@@ -42,7 +46,7 @@ def _info_dict(
     return {
         "name": name,
         "scope": scope,
-        "kind": _kind_of(summary),
+        "brings": _brings(summary),
         "directory": directory,
         "description": summary.description,
         "roles": summary.roles,
@@ -67,11 +71,11 @@ def _list(json_out: bool) -> int:
         return 0
     ui.header("Recipe Library")
     ui.console.print()
-    print(f"  {'NAME':<20} {'SCOPE':<10} {'KIND':<10} DESCRIPTION")
-    print(f"  {'-' * 90}")
+    print(f"  {'NAME':<18} {'SCOPE':<9} {'BRINGS':<34} DESCRIPTION")
+    print(f"  {'-' * 100}")
     for info in infos:
         print(
-            f"  {info.name:<20} {info.scope:<10} {_kind_of(info.summary):<10} "
+            f"  {info.name:<18} {info.scope:<9} {_brings(info.summary):<34} "
             f"{info.summary.description}"
         )
     ui.console.print()

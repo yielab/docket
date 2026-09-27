@@ -459,8 +459,60 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return toolbox.read_file((skill.directory,), _str_arg(args, "path", "SKILL.md"))
 
 
+def _skill_tool() -> Tool:
+    """The `skill` built-in: a discovered skill's body or one of its files, read on demand."""
+    return Tool(
+        name="skill",
+        description=(
+            "Read a discovered skill's full instructions (SKILL.md, or a file inside its "
+            "own directory named by path). See the '# Skills' section of the system "
+            "prompt for the names and one-line descriptions available."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Skill name, e.g. 'security-review'.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "File inside the skill's own directory; default SKILL.md.",
+                },
+            },
+            "required": ["name"],
+        },
+        handler=_skill_read,
+        kind="read",
+    )
+
+
+def _fetch_tool(fetch_url: Any) -> Tool:
+    """The `fetch` built-in over *fetch_url*, the edges adapter the registry hands in."""
+    return Tool(
+        name="fetch",
+        description=(
+            "Fetch a URL over HTTP(S). Only domains on the fetch allowlist "
+            "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped and "
+            "time-limited. Network egress is otherwise open for this fleet (see "
+            "security-gates.spec.md) -- this tool exists so reaching the network never "
+            "has to mean reaching for bash + curl/python3/node instead."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "http:// or https:// URL to fetch."},
+                "timeout": {"type": "integer", "description": "Seconds before it is killed."},
+            },
+            "required": ["url"],
+        },
+        handler=lambda args, ctx: fetch_url(_str_arg(args, "url"), _int_arg(args, "timeout")),
+        kind="read",
+    )
+
+
 def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash, fetch. Handlers are
+    """The default tool set: read, write, edit, glob, grep, bash, skill, fetch. Handlers are
     imported here (not at module scope) so this module stays importable without the
     filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one
     point."""
@@ -612,56 +664,7 @@ def builtin_registry() -> ToolRegistry:
         )
     )
 
-    registry.register(
-        Tool(
-            name="skill",
-            description=(
-                "Read a discovered skill's full instructions (SKILL.md, or a file inside its "
-                "own directory named by path). See the '# Skills' section of the system "
-                "prompt for the names and one-line descriptions available."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Skill name, e.g. 'security-review'.",
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "File inside the skill's own directory; default SKILL.md.",
-                    },
-                },
-                "required": ["name"],
-            },
-            handler=_skill_read,
-            kind="read",
-        )
-    )
-
-    registry.register(
-        Tool(
-            name="fetch",
-            description=(
-                "Fetch a URL over HTTP(S). Only domains on the fetch allowlist "
-                "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped and "
-                "time-limited. Network egress is otherwise open for this fleet (see "
-                "security-gates.spec.md) -- this tool exists so reaching the network never "
-                "has to mean reaching for bash + curl/python3/node instead."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "http:// or https:// URL to fetch."},
-                    "timeout": {"type": "integer", "description": "Seconds before it is killed."},
-                },
-                "required": ["url"],
-            },
-            handler=lambda args, ctx: _fetch.fetch_url(
-                _str_arg(args, "url"), _int_arg(args, "timeout")
-            ),
-            kind="read",
-        )
-    )
+    registry.register(_skill_tool())
+    registry.register(_fetch_tool(_fetch.fetch_url))
 
     return registry

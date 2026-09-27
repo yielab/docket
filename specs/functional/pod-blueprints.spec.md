@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.18.0
+**Version**: 1.19.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -278,7 +278,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `pod.yaml`'s own `description` (`""` when absent). `RecipeSummary.render()` **MUST** render
    every count, always in the same order — `roles`, `policies`, `members`, `pipeline`, `plugins`,
    `skills`, `settings` — as one line, e.g. `roles 1 · policies 1 · members 1 · pipeline
-   secure-build · plugins 0 · skills 0 · settings 0`. `docket validate <dir>` (see
+   secure-build · plugins 0 · skills 0 · settings 0` (`pipeline none` when no pipeline resolves). `docket validate <dir>` (see
    `config-format.spec.md`) prints this summary after its per-file lines; `docket pod <p> apply`
    and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
    `description` when set, before the plan itself (`cli-interface.spec.md`).
@@ -287,10 +287,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
     name reachable across both scopes `resolve_recipe` reads, sorted by name; a name present in
     both **MUST** resolve to the operator's own directory, matching requirement 8's resolution
     order. `docket recipes list [--json]` **MUST** print every entry — name, scope, a derived
-    `kind` (`team` when `summary.members` and `summary.pipeline` are both non-empty, `policies`
-    when only `summary.policies` is non-zero, `pipeline` when `summary.pipeline` is set and
-    `summary.policies` is zero, else `mixed`), and `summary.description` — never a stored
-    `kind` field, matching requirement 9's rule that scope is always derived. `docket recipes
+    `brings` (the non-zero summary parts joined with `+` in summary order, e.g. `roles+members+pipeline+policies`; `nothing` for an empty directory) -- never a stored field, matching requirement 9's rule that scope is always derived. `docket recipes
     show <name|dir> [--json]` **MUST** resolve *name|dir* through the same `resolve_recipe`
     (an unresolvable name **MUST** exit 1 naming both scopes' recipe names, matching
     requirement 8) and print that directory's scope (omitted for a bare path outside both
@@ -504,6 +501,14 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.19.0 (2026-09-27)
+
+- **`brings`, not `kind`; `pipeline none`.** Requirement 10's listing derives `brings` (the
+  non-zero summary parts joined with `+`) instead of a one-word `kind` that could not tell a
+  methodology recipe from a team; requirement 9's `render()` prints `pipeline none` when no
+  pipeline resolves, so a policy pack's summary line reads as a sentence. Two skills join the
+  library: `tdd` ships `test-first`, `spec-first` ships `writing-a-spec`.
 
 ### Version 1.18.0 (2026-09-27)
 

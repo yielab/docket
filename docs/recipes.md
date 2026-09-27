@@ -29,9 +29,9 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`reflexion`](#reflexion) | 2 members, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the Tester has the final word. |
 | [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic's APPROVE/REJECT with one rework cycle back to the Writer. |
 | [`secrets-guard`](#secrets-guard) | 3 policies | Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output. |
-| [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
-| [`spec-first`](#spec-first) | 3 members, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
-| [`tdd`](#tdd) | 1 member, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
+| [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
+| [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
+| [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
 
 ## dual-review
 
@@ -145,7 +145,7 @@ docket pod <project> remove <project>-reviewer
 
 Block unattended-unsafe git commands and ask before a push that touches a protected branch.
 
-**Brings:** 2 policies. **Summary line:** `roles 0 · policies 2 · members 0 · pipeline  · plugins 0 · skills 0 · settings 0`
+**Brings:** 2 policies. **Summary line:** `roles 0 · policies 2 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe git-safety
@@ -213,7 +213,7 @@ rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-ask-protected-
 
 Ask before a bash-run network client, package install, or fetch call leaves the workspace.
 
-**Brings:** 3 policies. **Summary line:** `roles 0 · policies 3 · members 0 · pipeline  · plugins 0 · skills 0 · settings 0`
+**Brings:** 3 policies. **Summary line:** `roles 0 · policies 3 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe no-egress
@@ -335,7 +335,7 @@ rm ~/.docket/workspaces/pods/<project>/config/policies/ops-approval-high-risk.ya
 
 Ask before an implementer or operator runs a deploy/production-shaped command.
 
-**Brings:** 1 policy. **Summary line:** `roles 0 · policies 1 · members 0 · pipeline  · plugins 0 · skills 0 · settings 0`
+**Brings:** 1 policy. **Summary line:** `roles 0 · policies 1 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe prod-approval
@@ -485,7 +485,7 @@ docket pod <project> config unset pipeline
 
 Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output.
 
-**Brings:** 3 policies. **Summary line:** `roles 0 · policies 3 · members 0 · pipeline  · plugins 0 · skills 0 · settings 0`
+**Brings:** 3 policies. **Summary line:** `roles 0 · policies 3 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe secrets-guard
@@ -548,7 +548,7 @@ rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-redact-outp
 
 A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle.
 
-**Brings:** 1 role, 1 policy, 1 member, pipeline `secure-build`. **Summary line:** `roles 1 · policies 1 · members 1 · pipeline secure-build · plugins 0 · skills 0 · settings 0`
+**Brings:** 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build`. **Summary line:** `roles 1 · policies 1 · members 1 · pipeline secure-build · plugins 0 · skills 1 · settings 0`
 
 ```bash
 docket init --recipe secure-build
@@ -583,6 +583,10 @@ verdict.
   `cannot: [write, edit, bash]`, `verdict: [APPROVE, REQUEST-CHANGES]`.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
+- `skills/security-review/SKILL.md` — an Agent Skill, applied whole into the pod's own
+  `config/skills/security-review/`; a concrete review checklist (injection points, secrets in
+  the diff, unsafe deserialization, path traversal, dependency changes, auth checks) the
+  vetter reads on demand by calling the `skill` tool with `name: security-review`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
   rewritten on the structured predicates `core/policy.py` already evaluates (Phase 31, D-47) --
   an `anyOf` of `{tool: write, path: '**/.env*'}`, `{tool: edit, path: '**/.env*'}`, and a
@@ -596,13 +600,14 @@ verdict.
 docket pod <project> config unset pipeline
 docket pod <project> remove <project>-security-vetter
 rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
+rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
 ```
 
 ## spec-first
 
 Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate.
 
-**Brings:** 3 members, pipeline `spec-first`. **Summary line:** `roles 0 · policies 0 · members 3 · pipeline spec-first · plugins 0 · skills 0 · settings 0`
+**Brings:** 3 members, 1 skill, pipeline `spec-first`. **Summary line:** `roles 0 · policies 0 · members 3 · pipeline spec-first · plugins 0 · skills 1 · settings 0`
 
 ```bash
 docket init --recipe spec-first
@@ -640,6 +645,7 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
   APPROVE/REJECT verdict, rework -> spec, maxCycles 1) -> `build` (Implementer, gated on its own
   verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES verdict, rework -> build,
   maxCycles 1).
+- `skills/writing-a-spec/SKILL.md` -- the shape of a spec a Critic can approve and an Implementer can build from; listed in the prompt, read on demand with the `skill` tool.
 
 ### Undo
 
@@ -654,7 +660,7 @@ docket pod <project> remove <project>-reviewer
 
 Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists.
 
-**Brings:** 1 member, pipeline `tdd`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline tdd · plugins 0 · skills 0 · settings 0`
+**Brings:** 1 member, 1 skill, pipeline `tdd`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline tdd · plugins 0 · skills 1 · settings 0`
 
 ```bash
 docket init --recipe tdd
@@ -694,6 +700,7 @@ docket pod <project> apply tdd    # onto an existing pod
   (Tester, PASS/FAIL verdict). `check-red`'s command is the literal `python3 -m pytest -q` — the
   pipeline format's `run` field carries no `${var}`-style interpolation (only a step's
   `instructions` does), so edit this line by hand if the project's test runner is something else.
+- `skills/test-first/SKILL.md` -- how to write the one failing test and make it pass without widening scope; listed in the prompt, read on demand with the `skill` tool.
 
 ### Undo
 

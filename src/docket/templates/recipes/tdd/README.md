@@ -33,6 +33,7 @@ docket pod <project> apply tdd    # onto an existing pod
   (Tester, PASS/FAIL verdict). `check-red`'s command is the literal `python3 -m pytest -q` — the
   pipeline format's `run` field carries no `${var}`-style interpolation (only a step's
   `instructions` does), so edit this line by hand if the project's test runner is something else.
+- `skills/test-first/SKILL.md` -- how to write the one failing test and make it pass without widening scope; listed in the prompt, read on demand with the `skill` tool.
 
 ## Undo
 

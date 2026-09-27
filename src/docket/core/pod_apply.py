@@ -213,10 +213,10 @@ class RecipeSummary:
     description: str
 
     def render(self) -> str:
-        """One line, every count always shown, in a fixed order."""
+        """One line, every count always shown, in a fixed order; `pipeline none` when unbound."""
         return (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
-            f"pipeline {self.pipeline} · plugins {self.plugins} · skills {self.skills} · "
+            f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
             f"settings {self.settings}"
         )
 

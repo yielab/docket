@@ -107,7 +107,7 @@ class TestSummarizeRecipe:
         assert summary.pipeline == ""
         assert summary.description == ""
         assert summary.render() == (
-            "roles 0 · policies 1 · members 0 · pipeline  · plugins 0 · skills 0 · settings 0"
+            "roles 0 · policies 1 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0"
         )
 
     def test_plan_apply_rejects_a_declared_scope_key(

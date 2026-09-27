@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.52.0
+**Version**: 1.53.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -767,13 +767,13 @@ over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fe
 `docket pod <p> apply`/`docket init --recipe` remain the only writers
 **Syntax**: `docket recipes <subcommand> [args]`
 **Subcommands**:
-- `list [--json]`: Table (NAME, SCOPE, KIND, DESCRIPTION) of every recipe `core.pod_apply.
+- `list [--json]`: Table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe `core.pod_apply.
   list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before the
-  shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. KIND is
-  derived, never a stored field: `team` when the recipe has both members and a pipeline,
-  `policies` when it has only policies, `pipeline` when it has a pipeline and no policies, else
-  `mixed`. `--json` prints a list of objects carrying `name`, `scope`, `kind`, `directory`,
-  `description`, and every `core.pod_apply.RecipeSummary` count
+  shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. BRINGS is
+  derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
+  summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
+  `nothing` for an empty directory). `--json` prints a list of objects carrying `name`, `scope`,
+  `brings`, `directory`, `description`, and every `core.pod_apply.RecipeSummary` count
 - `show <name|dir> [--json]`: Resolve *name|dir* through the same `resolve_recipe` order
   `docket pod <p> apply` uses and print its scope, directory, derived summary line
   (`pod-blueprints.spec.md` 1.14.0), and `README.md` body when present; `--json` adds a
@@ -1047,6 +1047,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
+### Version 1.53.0 (2026-09-27)
+
+- **`docket recipes list` shows what a recipe brings, not a one-word kind.** The derived
+  column is `BRINGS`: the non-zero summary parts joined with `+` (`roles+members+pipeline+
+  policies`, `policies`, ...), and the JSON field is `brings`. A one-word `kind` could not tell
+  a methodology recipe (members plus a pipeline) from a team, so it was the declared-scope
+  drift ADR 0013 §1 rule 1 refuses, by another name. `summarize_recipe`'s line renders
+  `pipeline none` when no pipeline resolves (`pod-blueprints.spec.md` 1.19.0).
+
 ### Version 1.52.0 (2026-09-27)
 
 - `docket config explain <agent>` gains `skills`: every skill a live turn's `# Skills` prompt
@@ -1060,7 +1069,7 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - **P31-2: `docket recipes list|show`, and the operator's own recipes directory (ADR 0013 §1
   rules 4-5).** New `docket recipes` command, registered exactly as `docket plugins` is: `list
   [--json]` (a table of every recipe `core.pod_apply.list_recipes()` returns, its scope, a
-  derived `kind`, and its description) and `show <name|dir> [--json]` (one recipe's scope,
+  derived `brings` composition, and its description) and `show <name|dir> [--json]` (one recipe's scope,
   directory, derived summary, and README body); an unresolvable name exits 1 naming both
   `operator:`/`shipped:` recipe lists. `core.pod_apply.resolve_recipe` gains a third scope, the
   operator's own `config.user_recipes_dir()` (`$DOCKET_HOME/recipes/<name>/`), checked before

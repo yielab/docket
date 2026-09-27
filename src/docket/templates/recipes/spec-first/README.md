@@ -31,6 +31,7 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
   APPROVE/REJECT verdict, rework -> spec, maxCycles 1) -> `build` (Implementer, gated on its own
   verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES verdict, rework -> build,
   maxCycles 1).
+- `skills/writing-a-spec/SKILL.md` -- the shape of a spec a Critic can approve and an Implementer can build from; listed in the prompt, read on demand with the `skill` tool.
 
 ## Undo
 
