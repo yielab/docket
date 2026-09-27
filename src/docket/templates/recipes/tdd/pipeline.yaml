@@ -1,0 +1,20 @@
+kind: pipeline
+name: tdd
+description: >-
+  Red-green-refactor as pipeline stages: the Implementer writes one failing test and nothing
+  else, a command step machine-checks that it actually fails, the Implementer then makes it
+  pass under its own verify command, and the Tester's PASS/FAIL verdict is the last word.
+steps:
+  - red: implementer
+    instructions: >-
+      Write exactly one new failing test for this task's behavior. Do not change any other
+      file, and do not modify any existing test or implementation code.
+  - id: check-red
+    run: python3 -m pytest -q
+    on:
+      pass: fail
+      fail: green
+  - green: implementer
+    verify: true
+  - test: tester
+    verdict: [PASS, FAIL]

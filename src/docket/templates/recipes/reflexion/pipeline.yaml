@@ -1,0 +1,14 @@
+kind: pipeline
+name: reflexion
+description: >-
+  Reflexion as a pipeline: the Implementer's change is critiqued, and a REQUEST-CHANGES
+  verdict sends it back for another attempt, bounded to two cycles, before the Tester's
+  PASS/FAIL verdict is the final gate.
+steps:
+  - build: implementer
+    verify: true
+  - critique: critic
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 2}}
+  - test: tester
+    verdict: [PASS, FAIL]

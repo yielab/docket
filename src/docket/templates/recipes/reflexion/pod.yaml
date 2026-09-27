@@ -1,0 +1,6 @@
+kind: pod
+name: reflexion
+description: >-
+  Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked
+  before the Tester has the final word.
+members: [critic, tester]

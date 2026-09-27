@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.13.0
+**Version**: 1.16.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -312,6 +312,35 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    parsed (`core.policy.read_policy`) content, not by raw text, so re-planning a pod's own
    export against itself plans every item `skip`.
 
+### The recipe library
+
+`templates/recipes/<name>/` ships more than whole-team recipes: a directory's scope is derived
+from what it contains, never declared (see ADR 0013), so a directory holding only a `pipeline.yaml`
+plus a small `pod.yaml` (`members`, optionally `settings`) already applies as a **methodology**
+recipe — the smallest pipeline that *is* the named practice. `docket validate <dir>`, `docket pod
+<project> apply --dry-run <name|dir>` and `docket init --recipe <name|dir>` all resolve a bare name
+through the same three-scope, nearest-wins lookup "Pod manifests: apply" requirement 8 already
+gives `docket init --recipe` (a directory path as given, else the operator's own
+`~/.docket/recipes/<name>/`, else the shipped library below).
+
+| Kind | Recipe | What `apply` plans on a lean pod |
+| --- | --- | --- |
+| Methodology | `tdd` | members (`tester`); a pipeline: `red` (Implementer writes one failing test) -> `check-red` (a `run` command step routed `on: {pass: fail, fail: green}`, so an unexpectedly passing test fails the task outright) -> `green` (Implementer, its own verify command) -> `test` (Tester, PASS/FAIL) |
+| Methodology | `spec-first` | members (`writer`, `critic`, `reviewer`); a pipeline: `spec` (Writer) -> `approve-spec` (Critic, APPROVE/REJECT, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+| Methodology | `reflexion` | members (`critic`, `tester`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Critic, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) -> `test` (Tester, PASS/FAIL) |
+| Methodology | `dual-review` | members (`reviewer`, `critic`); a pipeline: `build` (Implementer, its own verify command) -> a `parallel` group of a Reviewer and a Critic, each falling back to its own role's default verdict gate |
+| Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+
+Each methodology recipe is expressed only with the dialect that already exists (`verify`,
+`verdict`, `on:` with `max`, `parallel`, `run:`, `model:`, `settings`) — no new pipeline-format or
+pod-manifest field was added to ship these five. Every recipe's own `README.md` names the
+practice, its one-line source idea, what docket's gates make structural about it (as opposed to
+merely advisory), and how to undo it. `tdd`'s `check-red` step runs the literal shell command
+`python3 -m pytest -q`: `pipeline-format.spec.md`'s `run` field carries no `${var}`-style
+interpolation (only a step's own `instructions` does), so it cannot reference a pod's own verify
+command, and the recipe's README says to edit the line by hand for a project whose test runner
+differs.
+
 ## Interface Contracts
 
 ### CLI Command Signatures
@@ -409,6 +438,16 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.16.0 (2026-09-27)
+
+- **P31-4: five methodology recipes join the library (ADR 0013 §2).** New "The recipe library"
+  section names the library's five `Methodology`-kind rows: `tdd`, `spec-first`, `reflexion`,
+  `dual-review`, `frugal` (`templates/recipes/<name>/`), each a `pod.yaml` (`members`, and for
+  `frugal` `settings`) plus a `pipeline.yaml` expressed only with the pipeline dialect that
+  already exists. No `core/` module changed; `tdd`'s `check-red` command step is the first
+  shipped use of an `on:` outcome map on a `run` step (`pipeline-format.spec.md`'s "Conditional
+  steps and command steps").
 
 ### Version 1.13.0 (2026-09-27)
 

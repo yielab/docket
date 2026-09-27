@@ -1,0 +1,6 @@
+kind: pod
+name: dual-review
+description: >-
+  Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change
+  concurrently, and both must pass.
+members: [reviewer, critic]
