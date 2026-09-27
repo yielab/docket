@@ -2575,6 +2575,25 @@ def cmd_plugins(ctx: typer.Context) -> None:
 
 
 @app.command(
+    "recipes",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_recipes(ctx: typer.Context) -> None:
+    """List and inspect the recipe library.
+
+    Subcommands: `list [--json]` prints every recipe reachable by name --
+    the operator's own `~/.docket/recipes/<name>/` before the shipped
+    library, nearest scope wins -- with its derived kind (team/policies/
+    pipeline/mixed) and description. `show <name|dir> [--json]` prints one
+    recipe's description, scope, directory, derived summary, and README
+    body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
+    `docket init --recipe` remain the only writers."""
+    from docket.cli._recipes import run_recipes
+
+    raise typer.Exit(run_recipes(list(ctx.args)))
+
+
+@app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

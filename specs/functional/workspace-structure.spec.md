@@ -1,14 +1,16 @@
 # Workspace Structure Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
 requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
 `docket pod <p> sync` — see the same requirement and pod-dispatch.spec.md. P26-20 added
 "Shipped-data templates" below: `templates/recipes/<name>/` ships alongside this spec's own
-`templates/policies/` as read-only package data, neither of which is itself a workspace.
-**Last Updated**: 2026-09-26
+`templates/policies/` as read-only package data, neither of which is itself a workspace. P31-2
+adds requirement 4: `$DOCKET_HOME/recipes/<name>/`, the operator's own recipes, is *not*
+package data despite living beside the shipped library in `resolve_recipe`'s lookup order.
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -173,6 +175,14 @@ permission/provisioning rules apply to.
    ever a symlink into it — copying (policies) or reading-then-validating (recipes) is always by
    value, so editing a shipped template after installation never mutates an already-provisioned
    workspace or an already-copied policy.
+4. **`$DOCKET_HOME/recipes/<name>/` is operator-owned state, not package data (P31-2, ADR
+   0013 §1 rule 4).** It resolves through `docket.config.user_recipes_dir()`, is writable by the
+   operator (a plain directory drop-in, no registration step), and is never shipped in the wheel
+   — unlike `recipes_dir()`, it does not fall under this section's "package, not workspace"
+   scope, and `docket maintain`/`docket doctor` never touch it. `core.pod_apply.resolve_recipe`
+   checks it before the shipped `recipes_dir()`, so a same-named operator recipe wins; `docket
+   recipes list`/`show` (`cli-interface.spec.md`) is this directory's read-only discovery
+   surface, alongside the shipped library.
 
 ## Interface Contracts
 
@@ -264,6 +274,14 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.13.0 (2026-09-27)
+
+- **P31-2: the operator's own recipes directory (ADR 0013 §1 rule 4).** New requirement 4 in
+  "Shipped-data templates": `$DOCKET_HOME/recipes/<name>/` (`docket.config.user_recipes_dir()`)
+  is operator-owned state, not shipped package data — `core.pod_apply.resolve_recipe` checks it
+  before the shipped `recipes_dir()`, nearest wins by name; `docket recipes list`/`show`
+  (`cli-interface.spec.md` 1.51.0) is its read-only discovery surface.
 
 ### Version 1.12.0 (2026-09-26)
 

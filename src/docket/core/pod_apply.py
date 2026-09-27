@@ -161,17 +161,29 @@ def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list
 
 
 def resolve_recipe(name_or_dir: str) -> Path:
-    """*name_or_dir* as a directory path if it resolves to one, else a shipped recipe under
-    ``config.recipes_dir()``. Raises ``PodApplyError`` naming the shipped recipe names when
-    neither resolves -- used by ``docket init --recipe`` and ``docket pod <p> apply``."""
+    """*name_or_dir* as a directory path, else the operator's own
+    ``config.user_recipes_dir()/<name>``, else a shipped recipe under ``config.recipes_dir()``.
+    Raises ``PodApplyError`` naming both scopes' recipe names when none resolves."""
     candidate = Path(name_or_dir)
     if candidate.is_dir():
         return candidate
+    operator_dir = _cfg.user_recipes_dir()
+    operator_candidate = operator_dir / name_or_dir
+    if operator_candidate.is_dir():
+        return operator_candidate
     shipped = _cfg.recipes_dir() / name_or_dir
     if shipped.is_dir():
         return shipped
-    names = sorted(p.name for p in _cfg.recipes_dir().iterdir() if p.is_dir())
-    raise PodApplyError(f"unknown recipe {name_or_dir!r}; shipped recipes: {', '.join(names)}")
+    operator_names = (
+        sorted(p.name for p in operator_dir.iterdir() if p.is_dir())
+        if operator_dir.is_dir()
+        else []
+    )
+    shipped_names = sorted(p.name for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+    raise PodApplyError(
+        f"unknown recipe {name_or_dir!r}; operator: {', '.join(operator_names)}; "
+        f"shipped: {', '.join(shipped_names)}"
+    )
 
 
 @dataclass(frozen=True)
@@ -279,6 +291,45 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
         pipeline=pipeline,
         description=description,
     )
+
+
+@dataclass(frozen=True)
+class RecipeInfo:
+    """One recipe reachable by name: which scope resolved it (nearest wins, ADR 0013 SS1 rule
+    4), where it lives on disk, and what it brings (``summarize_recipe``)."""
+
+    name: str
+    scope: Literal["operator", "shipped"]
+    directory: Path
+    summary: RecipeSummary
+
+
+def list_recipes() -> list[RecipeInfo]:
+    """Every recipe reachable by name across both scopes, operator recipes winning over a
+    same-named shipped one -- the same resolution order ``resolve_recipe`` applies to a single
+    lookup. Sorted by name; used by ``docket recipes list``/``show``."""
+    by_name: dict[str, RecipeInfo] = {}
+    shipped_dir = _cfg.recipes_dir()
+    if shipped_dir.is_dir():
+        for entry in sorted(shipped_dir.iterdir()):
+            if entry.is_dir():
+                by_name[entry.name] = RecipeInfo(
+                    name=entry.name,
+                    scope="shipped",
+                    directory=entry,
+                    summary=summarize_recipe(entry),
+                )
+    operator_dir = _cfg.user_recipes_dir()
+    if operator_dir.is_dir():
+        for entry in sorted(operator_dir.iterdir()):
+            if entry.is_dir():
+                by_name[entry.name] = RecipeInfo(
+                    name=entry.name,
+                    scope="operator",
+                    directory=entry,
+                    summary=summarize_recipe(entry),
+                )
+    return sorted(by_name.values(), key=lambda info: info.name)
 
 
 def _plan_roles(

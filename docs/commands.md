@@ -633,6 +633,26 @@ crashing a live fleet. See specs/functional/role-archetypes.spec.md.
 
 ---
 
+### recipes
+
+**Usage:** `docket recipes`
+
+List and inspect the recipe library.
+
+Subcommands: `list \[--json\]` prints every recipe reachable by name --
+the operator's own `~/.docket/recipes/<name>/` before the shipped
+library, nearest scope wins -- with its derived kind (team/policies/
+pipeline/mixed) and description. `show <name|dir> \[--json\]` prints one
+recipe's description, scope, directory, derived summary, and README
+body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
+`docket init --recipe` remain the only writers.
+
+
+**Aliases:** None
+
+
+---
+
 ## Telegram Integration
 
 ### wire
@@ -1562,7 +1582,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---
