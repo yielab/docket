@@ -552,6 +552,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`2`",
     ),
     (
+        ("DISPATCH_RETRY_MAX_WAIT_S",),
+        "Ceiling on a retry's sleep, whichever of the linear backoff or the endpoint's own `Retry-After` asked for longer",
+        "`60`",
+    ),
+    (
         ("DISPATCH_TURN_TIMEOUT_S",),
         "`docket serve`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches",
         "unset (no serve-wide override)",

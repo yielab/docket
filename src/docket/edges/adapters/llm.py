@@ -21,11 +21,13 @@ so the caller stays in control of what happens next.
 
 from __future__ import annotations
 
+import email.utils
 import json
 import os
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from docket.core import context as _context
@@ -260,6 +262,30 @@ def _classify_http_status(status: int) -> FailureKind:
     return "daemon_error" if status in _RETRYABLE_STATUS else "nonzero_exit"
 
 
+def _retry_after_seconds(headers: Any) -> float | None:
+    """Parse a retryable failure's ``Retry-After`` header into seconds.
+
+    Accepts an integer-seconds form or an HTTP-date, measured as a delta from
+    now and clamped to zero. Absent or unparseable is ``None`` — the caller
+    (``complete``) treats that as "the endpoint named no wait", not zero.
+    """
+    value = headers.get("Retry-After") if headers is not None else None
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return max(0.0, float(int(value)))
+    except ValueError:
+        pass
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
 class OpenAIChatClient:
     """``ChatBackend`` over an OpenAI-compatible ``/v1/chat/completions``.
 
@@ -339,10 +365,15 @@ class OpenAIChatClient:
                 detail = ex.read().decode("utf-8", errors="replace").strip()
             except OSError:
                 detail = ""
+            failure_kind = _classify_http_status(ex.code)
+            retry_after = (
+                _retry_after_seconds(ex.headers) if failure_kind == "daemon_error" else None
+            )
             return ChatResponse(
                 ok=False,
                 error=f"HTTP {ex.code} from {self.url}: {detail[:500] or ex.reason}",
-                failure_kind=_classify_http_status(ex.code),
+                failure_kind=failure_kind,
+                retry_after_s=retry_after,
             )
         except TimeoutError:
             return ChatResponse(

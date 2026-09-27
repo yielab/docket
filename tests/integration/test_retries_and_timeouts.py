@@ -315,6 +315,65 @@ class TestHopRetryLoop:
             _cfg.DISPATCH_RETRY_BACKOFF_S * 2,
         ]
 
+    def test_retry_after_wins_over_backoff_when_longer(self, tmp_path: Path) -> None:
+        """A daemon_error carrying retry_after_s=7 (e.g. a 429 with Retry-After: 7) waits
+        the full 7s even though the linear backoff for attempt 1 would only be 2s."""
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        runner = _ScriptedRunner(
+            {
+                "implementer": [
+                    _rd.TurnResult(
+                        False, "", 0.0, {}, "boom", failure_kind="daemon_error", retry_after_s=7.0
+                    ),
+                    _rd.TurnResult(True, "done", 0.0, {}),
+                ]
+            }
+        )
+        sleeps: list[float] = []
+        task: dict[str, Any] = {"id": "t9", "description": "work", "status": "pending"}
+        res = _dispatch.dispatch_task(
+            "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
+        )
+        assert res.status == "done"
+        assert sleeps == [7.0]
+
+        events = _trace_events("myapp")
+        retries = [e for e in events if e["event_type"] == "hop_retry"]
+        assert retries[0]["payload"]["retry_after_s"] == 7.0
+
+    def test_retry_after_is_capped_at_the_max_wait_ceiling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retry_after_s far past the ceiling (e.g. a 429 asking for an hour) never
+        stalls a hop past DISPATCH_RETRY_MAX_WAIT_S."""
+        monkeypatch.setattr(_cfg, "DISPATCH_RETRY_MAX_WAIT_S", 60.0)
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        runner = _ScriptedRunner(
+            {
+                "implementer": [
+                    _rd.TurnResult(
+                        False,
+                        "",
+                        0.0,
+                        {},
+                        "boom",
+                        failure_kind="daemon_error",
+                        retry_after_s=3600.0,
+                    ),
+                    _rd.TurnResult(True, "done", 0.0, {}),
+                ]
+            }
+        )
+        sleeps: list[float] = []
+        task: dict[str, Any] = {"id": "t10", "description": "work", "status": "pending"}
+        res = _dispatch.dispatch_task(
+            "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
+        )
+        assert res.status == "done"
+        assert sleeps == [60.0]
+
 
 # ── timeout resolution: turn vs verify, independently settable and applied ────────
 

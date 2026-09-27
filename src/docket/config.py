@@ -154,6 +154,9 @@ DISPATCH_RETRIES_PER_ROLE: dict[str, int] = {
 # DISPATCH_RETRY_BACKOFF_S: linear backoff base — retry attempt N (1-indexed) waits
 # N * this many seconds before the next try.
 DISPATCH_RETRY_BACKOFF_S = float(os.environ.get("DISPATCH_RETRY_BACKOFF_S", "2"))
+# DISPATCH_RETRY_MAX_WAIT_S: ceiling on a retry's sleep, whichever of the linear
+# backoff or the endpoint's own Retry-After asked for longer.
+DISPATCH_RETRY_MAX_WAIT_S = float(os.environ.get("DISPATCH_RETRY_MAX_WAIT_S", "60"))
 
 
 def _optional_int_env(name: str) -> int | None:

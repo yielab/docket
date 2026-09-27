@@ -35,12 +35,14 @@ SUBJECT = "docket.core"
 ENDPOINT = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="test-model")
 
 
-def _http_error(code: int, body: str = "") -> urllib.error.HTTPError:
+def _http_error(
+    code: int, body: str = "", headers: dict[str, str] | None = None
+) -> urllib.error.HTTPError:
     return urllib.error.HTTPError(
         "http://127.0.0.1:8081/v1/chat/completions",
         code,
         "err",
-        {},  # type: ignore[arg-type]
+        headers or {},  # type: ignore[arg-type]
         io.BytesIO(body.encode()),
     )
 
@@ -367,6 +369,19 @@ class TestTransport:
         _raising_urlopen(monkeypatch, _http_error(status, '{"error":{"message":"nope"}}'))
         res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
         assert not res.ok and res.failure_kind == expected
+
+    def test_retry_after_is_parsed_only_on_a_retryable_status(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _raising_urlopen(monkeypatch, _http_error(429, headers={"Retry-After": "7"}))
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        assert res.failure_kind == "daemon_error"
+        assert res.retry_after_s == 7.0
+
+        _raising_urlopen(monkeypatch, _http_error(400, headers={"Retry-After": "7"}))
+        res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
+        assert res.failure_kind == "nonzero_exit"
+        assert res.retry_after_s is None
 
     def test_error_body_is_surfaced(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _raising_urlopen(monkeypatch, _http_error(400, "context length exceeded"))

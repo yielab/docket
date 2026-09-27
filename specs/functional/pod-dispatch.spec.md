@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.20.0
+**Version**: 6.21.0
 **Status**: Complete. **P28-6** adds a new "Conditional steps and command steps" section: a
 `when`-gated step is evaluated and, on a false predicate, skipped with a `step_skipped` trace
 event and no hop; a `run` step executes its command directly (`command_step` trace event), with
@@ -551,15 +551,22 @@ was seeded once at binding time.)*
    as transient and burns budget for nothing.
 3. A retryable failure **MUST** be retried in place, up to a per-role budget
    (`config.DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts — 3 total tries — per
-   role, individually overridable per role via `DISPATCH_RETRIES_<ROLE>` env vars), with linear
-   backoff between attempts (`attempt * DISPATCH_RETRY_BACKOFF_S` seconds, default base 2s).
+   role, individually overridable per role via `DISPATCH_RETRIES_<ROLE>` env vars). The sleep
+   before retry attempt N **MUST** be
+   `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)` seconds
+   (`DISPATCH_RETRY_BACKOFF_S` default base 2s, `DISPATCH_RETRY_MAX_WAIT_S` default ceiling 60s),
+   where `retryAfter` is the failing attempt's endpoint-reported `Retry-After` in seconds
+   (`core.runtime_driver.TurnResult.retry_after_s`) when the failure came from a retryable HTTP
+   status, else `0` — so a linear backoff still applies when the endpoint names no wait, and an
+   endpoint's requested wait still yields to the ceiling rather than sleeping unbounded.
    Exhausting the retry budget **MUST** fall through to the same failed-hop handling as a
    non-retryable failure.
 4. The **total number of tries made** for a hop (1 if it succeeded or failed non-retryably on
    the first attempt; more only for a retried, ultimately-successful-or-exhausted hop) **MUST**
    be persisted on that hop's record as `attempts`.
 5. Every retry attempt (before its backoff sleep) **MUST** emit a `hop_retry` trace event naming
-   the attempt number, the role, the retry budget, and the failure kind that triggered it — and
+   the attempt number, the role, the retry budget, the failure kind that triggered it, and the
+   `retry_after_s` value that failure carried (`null` when the endpoint named none) — and
    **MUST** refresh the task's `claimedAt` (see "Per-hop incremental persistence") before
    sleeping, so a long retry loop is never swept as a stale claim by a concurrent dispatcher.
 
@@ -1520,6 +1527,19 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.21.0 (2026-09-27)
+
+- **P29-5: a retry waits as long as the provider asked, up to a ceiling.** "Retries and the
+  failure-kind taxonomy" requirement 3's backoff formula becomes
+  `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)`, where
+  `retryAfter` comes from `core.runtime_driver.TurnResult.retry_after_s` (new field, parsed from
+  the endpoint's `Retry-After` header by `edges/adapters/llm.py::complete` only on a retryable
+  HTTP status); requirement 5's `hop_retry` trace event gains a `retry_after_s` field. New env
+  var `config.DISPATCH_RETRY_MAX_WAIT_S` (default 60). No behavior change when the endpoint sends
+  no `Retry-After` header: `retryAfter` is then `0` and the formula reduces to the prior linear
+  backoff, still bounded by the new 60s ceiling (unreachable by the existing per-role retry
+  budgets and 2s base at their current defaults).
 
 ### Version 6.20.0 (2026-09-26)
 

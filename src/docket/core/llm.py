@@ -151,6 +151,7 @@ class ChatResponse:
     raw: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     failure_kind: FailureKind | None = None
+    retry_after_s: float | None = None
 
     @property
     def tool_calls(self) -> list[ToolCall]:
