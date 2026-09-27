@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.49.0
+**Version**: 1.50.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -1024,6 +1024,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.50.0 (2026-09-27)
+
+- `docket config explain <agent>` gains `projectInstructions`: the effective project-instructions
+  files and their source (`AGENTS.md` composed by default when unset and present at the codebase
+  root, an operator's explicit list, or none), one human line beside `Config source:`
+  (`Project instr.:   AGENTS.md (default)` / `... (set)` / `none`). See `agent-loop.spec.md`
+  1.23.0 for the default itself (P31-5, ADR 0013 §3 rule 7) and `cli-json-shapes.spec.md` 1.13.0
+  for the exact `--json` shape.
 
 ### Version 1.49.0 (2026-09-27)
 

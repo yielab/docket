@@ -13,7 +13,9 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import identity as I
+from docket.core import pod as _pod
 from docket.core.models import AgentMeta, Persona
+from docket.edges import store as _store
 
 _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
@@ -264,3 +266,56 @@ class TestComposeAgentPromptIsWindowAware:
         assert "VERIFY-GATE-LINE" in composition.text
         assert composition.budget_source == "window"
         assert all(s.status == "full" for s in composition.sections)
+
+
+class TestProjectInstructionsDefault:
+    """An unset `PodSettings.project_instructions` composes the codebase root's own
+    AGENTS.md by default; an explicit setting replaces the default entirely."""
+
+    def _lead_workspace(self, agent_id: str, project: str, **overrides: object) -> Path:
+        ws = _cfg.workspace_dir(agent_id)
+        ws.mkdir(parents=True, exist_ok=True)
+        data: dict[str, object] = {"kind": "project", "role": "lead", "pod": project}
+        data.update(overrides)
+        _store.write_json(_cfg.meta_path(agent_id), data)
+        return ws
+
+    def test_unset_composes_the_root_agents_md_by_default(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("REPO-AGENTS-SENTINEL\n")
+        ws = self._lead_workspace("default-demo-lead", "default-demo")
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = I.compose_agent_prompt("default-demo-lead", project_roots=(codebase,))
+
+        assert "REPO-AGENTS-SENTINEL" in composition.text
+        report = next(s for s in composition.sections if s.name == I.PROJECT_INSTRUCTIONS_LABEL)
+        assert report.status == "full"
+
+        files, source = I.project_instruction_files(
+            _pod.PodSettings.load_for("default-demo"), codebase
+        )
+        assert files == ("AGENTS.md",)
+        assert source == "default"
+
+    def test_an_explicit_setting_replaces_the_default_not_adds_to_it(self, tmp_path: Path) -> None:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        (codebase / "AGENTS.md").write_text("REPO-AGENTS-SENTINEL\n")
+        (codebase / "CONTRIBUTING.md").write_text("REPO-CONTRIBUTING-SENTINEL\n")
+        ws = self._lead_workspace(
+            "explicit-demo-lead", "explicit-demo", projectInstructions="CONTRIBUTING.md"
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+
+        composition = I.compose_agent_prompt("explicit-demo-lead", project_roots=(codebase,))
+
+        assert "REPO-CONTRIBUTING-SENTINEL" in composition.text
+        assert "REPO-AGENTS-SENTINEL" not in composition.text
+
+        files, source = I.project_instruction_files(
+            _pod.PodSettings.load_for("explicit-demo"), codebase
+        )
+        assert files == ("CONTRIBUTING.md",)
+        assert source == "set"

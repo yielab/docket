@@ -74,6 +74,12 @@ INSTRUCTIONS_FILE = "INSTRUCTIONS.md"
 #: `PodSettings` key it reads, not a path on disk.
 PROJECT_INSTRUCTIONS_LABEL = "projectInstructions"
 
+#: The default project-instructions file composed when `PodSettings.project_instructions`
+#: is unset and this file exists at the codebase root -- the convention every other coding
+#: agent (Codex, Copilot, Cursor, Claude Code) already reads from a repository. An explicit
+#: setting replaces this default entirely; it is never added alongside it.
+_DEFAULT_PROJECT_INSTRUCTIONS_FILE = "AGENTS.md"
+
 _RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
 _RUNTIME_CONTEXT_NOTE = (
     "# Runtime-loaded Docket workspace state\n"
@@ -463,15 +469,30 @@ def _screen_project_instructions_file(
     return text, "full"
 
 
-# "" when the setting is unset, this agent has no pod, or no root was resolved -- the
-# default, composing byte-identically to before this section existed. A malformed
-# stored PodSettings value (any key, not just this one) is swallowed here rather than
-# raised: unlike a dispatch entry point reading one named setting on purpose, this runs
-# on every turn's prompt composition, and an unrelated bad pod setting (e.g. a
-# hand-edited turnTimeoutS) must not be able to break composing a prompt at all.
+def project_instruction_files(
+    settings: _pod.PodSettings, root: Path
+) -> tuple[tuple[str, ...], str]:
+    """This pod's effective project-instructions files at *root* and their source: an
+    explicit list (`"set"`), the `AGENTS.md` default (`"default"`), or none (`""`)."""
+    relative_paths = settings.project_instructions
+    if relative_paths:
+        return relative_paths, "set"
+    if (root / _DEFAULT_PROJECT_INSTRUCTIONS_FILE).is_file():
+        return (_DEFAULT_PROJECT_INSTRUCTIONS_FILE,), "default"
+    return (), ""
+
+
+# "" when the setting is unset with no default file present, this agent has no pod, or
+# no root was resolved -- byte-identical to before this section (and before its
+# default) existed. A malformed stored PodSettings value (any key, not just this one)
+# is swallowed here rather than raised: unlike a dispatch entry point reading one named
+# setting on purpose, this runs on every turn's prompt composition, and an unrelated
+# bad pod setting (e.g. a hand-edited turnTimeoutS) must not be able to break composing
+# a prompt at all.
 def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) -> str:
-    """This agent's pod's opt-in project-instructions files, read from the first
-    resolved codebase root and screened as untrusted input; joined into one block."""
+    """This agent's pod's opt-in project-instructions files (explicit, or the AGENTS.md
+    default), read from the first resolved codebase root and screened as untrusted
+    input; joined into one block."""
     project = _pod.pod_of(agent_id)
     if project is None:
         return ""
@@ -479,11 +500,13 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
         settings = _pod.PodSettings.load_for(project)
     except _pod.PodSettingsError:
         return ""
-    relative_paths = settings.project_instructions
-    if not relative_paths or not project_roots:
+    if not project_roots:
+        return ""
+    root = project_roots[0]
+    relative_paths, _source = project_instruction_files(settings, root)
+    if not relative_paths:
         return ""
     role = _fleet.meta_get(agent_id, "role", "")
-    root = project_roots[0]
     parts: list[str] = []
     for rel in relative_paths:
         path = root / rel

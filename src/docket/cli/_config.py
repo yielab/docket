@@ -254,6 +254,10 @@ def _explain(agent_id: str) -> dict[str, Any]:
     pod_settings_report = _pod_settings_report(pod_settings, project) if pod_settings else None
     pipeline = {"source": _dispatch.effective_pipeline_source(project)} if project else None
     config_of_record = _config_of_record_report(pod_settings)
+    if pod_settings is not None and roots:
+        pi_files, pi_source = _identity.project_instruction_files(pod_settings, roots[0])
+    else:
+        pi_files, pi_source = (), ""
 
     return {
         "id": agent_id,
@@ -284,6 +288,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
         "policies": _policies_for_role(role, project),
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
+        "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "configSource": config_of_record["configSource"],
         "configDigest": config_of_record["configDigest"],
         "drift": config_of_record["drift"],
@@ -352,6 +357,10 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
 
     if report["pipeline"] is not None:
         ui.console.print(f"  [bold]{'Pipeline:':<16}[/bold] {report['pipeline']['source']}")
+    project_instructions = report["projectInstructions"]
+    pi_files, pi_source = project_instructions["files"], project_instructions["source"]
+    pi_display = f"{', '.join(pi_files)} ({pi_source})" if pi_source else "none"
+    ui.console.print(f"  [bold]{'Project instr.:':<16}[/bold] {pi_display}")
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         ui.console.print(

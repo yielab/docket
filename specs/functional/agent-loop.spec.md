@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.22.0
+**Version**: 1.23.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -204,12 +204,24 @@ This specification does NOT cover:
     Right after `INSTRUCTIONS.md` and still ahead of the runtime contract, an **opt-in** section
     (P26-17) composes this pod's `PodSettings.projectInstructions` — relative paths inside the
     codebase root, the AGENTS.md/CLAUDE.md convention, unset by default so composition is
-    byte-identical to before this section existed. Each configured path is resolved against the
-    first of `project_roots` (the same containment root a live turn's project tools already use)
-    and, unlike `INSTRUCTIONS.md`, is never trusted: it **MUST** be screened through the
-    `pre_input` policy hook (`trusted=False`) exactly as `core.mcp_tools` already screens an
-    untrusted remote tool description, before it ever reaches the composed text — no second
-    screening path. A `block`/`require_approval` verdict excludes that file's content, replacing
+    byte-identical to before this section existed **when no default file applies**. When
+    `projectInstructions` is unset and `project_roots[0] / "AGENTS.md"` is a file, that file
+    **MUST** compose by default, exactly as an explicitly named file does (P31-5): screened the
+    same way, capped the same way, reported under the same `projectInstructions` name. This is
+    the convention every other coding agent (Codex, Copilot, Cursor, Claude Code) already reads
+    from a repository, so a docket agent reads it too without an operator repeating its name in a
+    pod setting. An explicit `projectInstructions` list **MUST** replace this default entirely —
+    it is never added alongside it — and no root, no `AGENTS.md` file, or an explicit list that
+    omits it composes byte-identically to before this default existed.
+    `core.identity.project_instruction_files(settings, root)` **MUST** be the single function that
+    resolves the effective files and their source (`"set"`/`"default"`/`""`), used by both this
+    composition and `docket config explain`'s report of the same. Each configured (or defaulted)
+    path is resolved against the first of `project_roots` (the same containment root a live turn's
+    project tools already use) and, unlike `INSTRUCTIONS.md`, is never trusted: it **MUST** be
+    screened through the `pre_input` policy hook (`trusted=False`) exactly as `core.mcp_tools`
+    already screens an untrusted remote tool description, before it ever reaches the composed
+    text — no second screening path. Nested `AGENTS.md` files (nearest-to-the-edited-file) are
+    deferred: a turn resolves exactly one root, so only that root's `AGENTS.md` is ever a default. A `block`/`require_approval` verdict excludes that file's content, replacing
     it with an audited one-line marker naming the file and the policy; `warn`/`redact` still
     compose it (audited); a path with no file on disk composes to a visible one-line marker, never
     an error and never a raise. This section carries no path off the codebase root: `PodSettings`
@@ -691,6 +703,20 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.23.0 (2026-09-27)
+
+- **P31-5 makes the unset `projectInstructions` default read of the codebase's own `AGENTS.md`**
+  (ADR 0013 §3 rule 7). Requirement 30's opt-in project-instructions section, previously composed
+  only when `PodSettings.projectInstructions` was explicitly set, now also composes
+  `project_roots[0] / "AGENTS.md"` by default when that file exists and the setting is unset —
+  screened, capped, and reported exactly as an explicitly named file already was. An explicit
+  setting still replaces the default entirely (never adds to it); no root, no `AGENTS.md` file, or
+  an explicit list that omits it composes byte-identically to before this default existed.
+  `core.identity.project_instruction_files(settings, root) -> tuple[tuple[str, ...], str]` is the
+  single function resolving the effective files and their source (`"set"`/`"default"`/`""`), read
+  by both composition and `docket config explain` (see `cli-interface.spec.md` 1.50.0 and
+  `cli-json-shapes.spec.md` 1.13.0). Nested `AGENTS.md` files remain deferred.
 
 ### Version 1.22.0 (2026-09-26)
 
