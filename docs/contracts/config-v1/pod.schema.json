@@ -14,6 +14,18 @@
       "title": "Name",
       "type": "string"
     },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
     "members": {
       "anyOf": [
         {

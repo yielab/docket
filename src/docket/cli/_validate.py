@@ -7,8 +7,9 @@
 ``run_validate(args)`` returns the process exit code. Wires ``core/config_docs.py``'s
 ``load_document``/``discover_config_paths`` -- the same dispatch ``docket roles add/validate``,
 ``docket pipeline validate``, ``docket policies validate``, and ``docket pod <p> apply`` use, so
-one file always means the same thing regardless of which command reads it.
-"""
+one file always means the same thing regardless of which command reads it. A directory target
+also prints a derived ``summary:`` line (``core.pod_apply.summarize_recipe``) plus the recipe's
+own ``description`` when set; a file target prints neither."""
 
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from rich.markup import escape
 
 from docket import ui
 from docket.core import config_docs as _config_docs
+from docket.core import pod_apply as _pod_apply
 
 
 def _target(args: list[str]) -> Path:
@@ -64,4 +66,11 @@ def run_validate(args: list[str]) -> int:
                 "('deniedTools' is the capability statement)"
             )
         ui.console.print(f"ok {path} ({document.kind} {document.name})")
+
+    if not target.is_file():
+        summary = _pod_apply.summarize_recipe(target)
+        ui.console.print(f"summary: {summary.render()}")
+        if summary.description:
+            ui.console.print(escape(summary.description))
+
     return exit_code

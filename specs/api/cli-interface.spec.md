@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.48.0
+**Version**: 1.49.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -345,7 +345,11 @@ subcommand per kind
 - `dir|file` (optional): A directory to validate every document under (default `<cwd>/.docket`
   when it exists, else the current directory), or a single file to validate alone
 **Output**: One line per file — `ok <file> (<kind> <name>)` or its error — invalid files
-printed first, plus one `note:` line per file loaded without a `kind:` key
+printed first, plus one `note:` line per file loaded without a `kind:` key. A directory target
+also prints, after the per-file lines, `summary: <line>` — `core.pod_apply.summarize_recipe`'s
+derived roles/policies/members/pipeline/plugins/skills/settings counts
+(`pod-blueprints.spec.md` 1.14.0) — and the directory's own `description` on its own line when
+its `pod.yaml` sets one; a file target prints neither
 **Return**: 0 if every file is valid, 1 if any file is invalid or the target does not exist
 
 ### Pipeline Commands
@@ -410,14 +414,18 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
-  `pipeline.yaml`, a small `pod.yaml` naming `members`/`settings`/`pipeline`) to this pod in one
-  command, composing the same `roles add`/`add <role>`/`config set` writers rather than a new
-  write path; the argument resolves as a directory path if one exists there, else as a shipped
-  recipe name, exactly as `docket init --recipe` resolves it (an unresolvable name exits 1
-  naming the shipped recipes); with no argument it defaults to `<codebase>/.docket`. Validates every role, the roster the
-  pipeline would resolve against once `members` join, and every setting before writing anything;
-  idempotent (a second run plans every item `skip`); `--dry-run` prints the plan without writing.
-  See `pod-blueprints.spec.md`, "Pod manifests: apply"
+  `pipeline.yaml`, a small `pod.yaml` naming `members`/`settings`/`pipeline`/`description`) to
+  this pod in one command, composing the same `roles add`/`add <role>`/`config set` writers
+  rather than a new write path; the argument resolves as a directory path if one exists there,
+  else as a shipped recipe name, exactly as `docket init --recipe` resolves it (an unresolvable
+  name exits 1 naming the shipped recipes); with no argument it defaults to `<codebase>/.docket`.
+  Validates every role, the roster the pipeline would resolve against once `members` join, and
+  every setting before writing anything; idempotent (a second run plans every item `skip`);
+  `--dry-run` prints the plan without writing. The non-`--json` plan is preceded by a header —
+  `Apply plan — <project> <- <dir>`, the directory's own `description` when set, then
+  `core.pod_apply.summarize_recipe`'s derived summary line — the same header `docket init
+  --recipe`/a discovered `.docket/` prints (`cli/_pod.py::render_apply_header`). See
+  `pod-blueprints.spec.md`, "Pod manifests: apply"
 - `export [<dir>] [--force]`: Write this pod's own scope, every YAML file in the short form with
   a `# yaml-language-server:` header — pod-overlay `roles/<name>.yaml` (+ paired
   `roles/<name>.md` instructions), this pod's own `policies/<stem>.yaml`, a bound
@@ -1016,6 +1024,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.49.0 (2026-09-27)
+
+- **P31-1: a recipe says what it brings.** `docket validate <dir>` prints a derived `summary:`
+  line (and the directory's own `description`, when set) after its per-file lines; a file target
+  is unchanged. `docket pod <project> apply` and `docket init --recipe`/a discovered `.docket/`
+  print the same header — the description (when set) then the summary line — before the plan,
+  through the shared `cli/_pod.py::render_apply_header`. `pod.yaml` gains an optional
+  `description` string. See `pod-blueprints.spec.md` 1.14.0 and `config-format.spec.md` 1.3.0.
 
 ### Version 1.48.0 (2026-09-27)
 

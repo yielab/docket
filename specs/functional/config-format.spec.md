@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -228,6 +228,7 @@ docket validate [dir|file]
 | `pipeline` | pre-existing (Phase 27) |
 | `kind` | this spec — always `pod` for a pod manifest |
 | `name` | this spec — the pod's own name |
+| `description` | P31-1 (ADR 0013 §1 rule 2) — optional prose for a listing; read-only, never applied to the pod |
 
 ### Return Codes
 
@@ -278,6 +279,15 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.3.0 (2026-09-27)
+
+- **P31-1: the pod manifest key set gains `description`.** An optional string on `pod.yaml`
+  (`core.config_docs.PodDocument.description`); a non-string value is refused naming the key,
+  before anything else is read. It is display prose only — read by
+  `core.pod_apply.summarize_recipe` for `docket validate`/`apply`/`init --recipe`'s summary line
+  (`pod-blueprints.spec.md` 1.14.0, "Pod manifests: apply" requirement 9) — never applied to the
+  pod and never written back by `export`. Both published `pod.schema.json` copies regenerated.
 
 ### Version 1.2.0 (2026-09-27)
 

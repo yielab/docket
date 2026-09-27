@@ -792,11 +792,20 @@ def _pod_apply_default_dir(project: str) -> Path:
     return Path(codebase) / ".docket"
 
 
+def render_apply_header(project: str, directory: Path, summary: _pod_apply.RecipeSummary) -> None:
+    """Print ``Apply plan``, the recipe's own ``description`` when set, then its derived
+    summary line -- shown before the plan itself. Shared by ``pod <p> apply`` and ``docket
+    init``/``--recipe`` so the two never render a recipe differently."""
+    ui.header(f"Apply plan — {project} <- {directory}")
+    if summary.description:
+        ui.console.print(escape(summary.description))
+    ui.console.print(f"  {escape(summary.render())}")
+
+
 def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
     """Print an apply plan one item per line. Shared by ``pod <p> apply`` and ``docket init``,
     so the two never render the same plan differently; the action is escaped because Rich
     would otherwise read ``[add]`` as a style tag and drop it."""
-    ui.header(f"Apply plan — {plan.project} <- {plan.directory}")
     for item in plan.items:
         ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")
 
@@ -827,6 +836,7 @@ def _pod_apply_cmd(project: str, extra: list[str]) -> None:
             )
         )
     else:
+        render_apply_header(project, directory, _pod_apply.summarize_recipe(directory))
         render_apply_plan(plan)
 
     if dry_run:

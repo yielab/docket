@@ -111,6 +111,7 @@ class PodDocument(BaseModel):
 
     kind: Literal["pod"]
     name: str
+    description: str | None = None
     members: list[str] | None = None
     settings: dict[str, Any] | None = None
     pipeline: str | None = None
