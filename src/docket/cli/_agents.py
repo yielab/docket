@@ -28,6 +28,7 @@ from docket.core import identity as _identity
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod_provisioning as _pp
+from docket.core import provider as _provider_catalog
 from docket.core import provisioning as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
@@ -123,11 +124,13 @@ def run_init(all_args: list[str]) -> int:
     foundation_missing = not _cfg.FLEET_FILE.is_file()
     if not foundation_missing:
         fleet = _fleet.load_fleet()
+        catalog = _provider_catalog.load_catalog()
+        has_registered_provider = any(scope == "global" for scope in catalog.scopes.values())
         # Provider registration is a supported recovery step before the first
-        # project. Its fleet write must not masquerade as a completed shared
+        # project. A registered provider must not masquerade as a completed shared
         # foundation, while legacy/project-populated fleets keep their
         # established `init` behavior.
-        foundation_missing = bool(fleet.providers) and not fleet.agents
+        foundation_missing = has_registered_provider and not fleet.agents
     if foundation_missing:
         from docket.cli import _install
 

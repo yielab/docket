@@ -1424,9 +1424,11 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.error(f"Unknown preset '{preset}'. Valid: {valid}")
         raise typer.Exit(1)
 
-    registered: dict[str, object] = {}
+    from docket.core import provider as _prov
+
+    registered = None
     if preset in ("anthropic", "openai", "google", "local"):
-        registered = _fleet.get_local_provider(preset) or {}
+        registered = _prov.load_catalog().get(preset)
         if not registered:
             ui.error(
                 f"Preset '{preset}' has no registered OpenAI-compatible endpoint; "
@@ -1440,12 +1442,10 @@ def _cmd_models_preset(preset: str | None) -> None:
 
     t = _mp.PRESET_TABLE[preset]
     econ, std, prem = t["economy"], t["standard"], t["premium"]
-    if preset == "local":
-        models = registered.get("models")
-        if isinstance(models, list) and models and isinstance(models[0], dict):
-            registered_id = str(models[0].get("id") or "").strip()
-            if registered_id:
-                econ = std = prem = f"local/{registered_id}"
+    if preset == "local" and registered is not None and registered.models:
+        registered_id = registered.models[0].id.strip()
+        if registered_id:
+            econ = std = prem = f"local/{registered_id}"
     cost, note = t["cost"], t["note"]
 
     before_roles, _before_tiers, before_default = _mp.load_registry()

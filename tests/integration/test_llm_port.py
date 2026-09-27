@@ -424,6 +424,28 @@ class TestRetryVocabularyStaysAlignedWithDispatch:
             assert adapter._classify_http_status(status) in known
 
 
+def _register_provider(
+    name: str,
+    base_url: str,
+    *,
+    local: bool = False,
+    credentials: tuple[str, ...] = (),
+    models: list[dict[str, object]] | None = None,
+) -> None:
+    """Write *name* into the isolated global provider catalog (docket-providers.json),
+    the document-shaped replacement for monkeypatching ``fleet.get_local_provider``."""
+    from docket.core import provider as _prov
+
+    spec = _prov.ProviderSpec(
+        name=name,
+        baseUrl=base_url,
+        auth=_prov.AuthSpec(type="none" if local else "bearer", credentials=list(credentials)),
+        local=local,
+        models=[_prov.ModelRow(**row) for row in (models or [])],
+    )
+    _prov.save_provider(spec)
+
+
 class TestEndpointResolution:
     def test_stored_keys_enable_both_hosted_gateways_without_global_override(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -435,12 +457,10 @@ class TestEndpointResolution:
         monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
 
         from docket.cli import _keys
-        from docket.core import fleet as _fleet
         from docket.core import secrets as _secrets
 
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
-        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
         monkeypatch.setattr(_keys, "audit_log", lambda *args: None)
         entered = iter(("sk-or-stored", "vercel-stored"))
         monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: next(entered))
@@ -466,22 +486,18 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet,
-            "get_local_provider",
-            lambda name: {
-                "baseUrl": "https://openrouter.ai/api/v1",
-                "apiKey": "local",
-                "models": [
-                    {
-                        "id": "anthropic/claude-sonnet-4.6",
-                        "contextWindow": 1_000_000,
-                        "maxTokens": 128_000,
-                    }
-                ],
-            },
+        _register_provider(
+            "openrouter",
+            "https://openrouter.ai/api/v1",
+            credentials=("OPENROUTER_API_KEY",),
+            models=[
+                {
+                    "id": "anthropic/claude-sonnet-4.6",
+                    "contextWindow": 1_000_000,
+                    "maxTokens": 128_000,
+                }
+            ],
         )
 
         endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
@@ -496,9 +512,6 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
         monkeypatch.setenv("VERCEL_OIDC_TOKEN", "oidc-token")
-        from docket.core import fleet as _fleet
-
-        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
 
         endpoint = adapter.resolve_endpoint("ai-gateway/anthropic/claude-haiku-4.5")
 
@@ -519,11 +532,8 @@ class TestEndpointResolution:
     def test_stored_provider_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet, "get_local_provider", lambda name: {"baseUrl": "http://127.0.0.1:8081/v1"}
-        )
+        _register_provider("local", "http://127.0.0.1:8081/v1", local=True)
         ep = adapter.resolve_endpoint("local/qwen3.6-35b-a3b")
         assert ep is not None
         assert ep.base_url == "http://127.0.0.1:8081/v1"
@@ -535,18 +545,15 @@ class TestEndpointResolution:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet,
-            "get_local_provider",
-            lambda name: {
-                "baseUrl": "http://127.0.0.1:8081/v1",
-                "models": [
-                    {"id": "other", "contextWindow": 32768, "maxTokens": 4096},
-                    {"id": "wanted", "contextWindow": 16384, "maxTokens": 2048},
-                ],
-            },
+        _register_provider(
+            "local",
+            "http://127.0.0.1:8081/v1",
+            local=True,
+            models=[
+                {"id": "other", "contextWindow": 32768, "maxTokens": 4096},
+                {"id": "wanted", "contextWindow": 16384, "maxTokens": 2048},
+            ],
         )
 
         ep = adapter.resolve_endpoint("local/wanted")
@@ -563,15 +570,12 @@ class TestEndpointResolution:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet,
-            "get_local_provider",
-            lambda name: {
-                "baseUrl": "http://127.0.0.1:8081/v1",
-                "models": [{"id": "m", "contextWindow": 16384, "maxTokens": 2048}],
-            },
+        _register_provider(
+            "local",
+            "http://127.0.0.1:8081/v1",
+            local=True,
+            models=[{"id": "m", "contextWindow": 16384, "maxTokens": 2048}],
         )
 
         ep = adapter.resolve_endpoint("local/m")
@@ -585,13 +589,8 @@ class TestEndpointResolution:
     ) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet,
-            "get_local_provider",
-            lambda name: {"baseUrl": "http://127.0.0.1:8081/v1", "apiKey": "local"},
-        )
+        _register_provider("local", "http://127.0.0.1:8081/v1", local=True)
         ep = adapter.resolve_endpoint("local/m")
         assert ep is not None and ep.api_key == ""
 
@@ -599,10 +598,9 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
-        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(
-            _fleet, "get_local_provider", lambda name: {"baseUrl": "https://openrouter.ai/api/v1"}
+        _register_provider(
+            "openrouter", "https://openrouter.ai/api/v1", credentials=("OPENROUTER_API_KEY",)
         )
         ep = adapter.resolve_endpoint("openrouter/some-model")
         assert ep is not None and ep.api_key == "sk-or"
@@ -613,11 +611,9 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
-        from docket.core import fleet as _fleet
         from docket.core import secrets as _secrets
 
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
-        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
         _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
 
         endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")
@@ -625,11 +621,89 @@ class TestEndpointResolution:
         assert endpoint is not None
         assert endpoint.api_key == "sk-or-env"
 
+    def test_migrates_fleet_providers_into_the_catalog_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fleet.json provider block migrates into docket-providers.json once, a literal
+        apiKey moving into the secret store, audited, never appearing in the catalog file."""
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        import docket.config as _cfg
+        from docket.core import audit as _audit
+        from docket.core import secrets as _secrets
+        from docket.edges import store as _store
+
+        _store.write_json(
+            _cfg.FLEET_FILE,
+            {
+                "agents": [],
+                "bindings": [],
+                "providers": {
+                    "local": {
+                        "baseUrl": "http://127.0.0.1:8081/v1",
+                        "apiKey": "local",
+                        "api": "openai-completions",
+                        "models": [
+                            {
+                                "id": "/models/qwen.gguf",
+                                "name": "Qwen (local)",
+                                "reasoning": False,
+                                "input": ["text"],
+                                "cost": {
+                                    "input": 0,
+                                    "output": 0,
+                                    "cacheRead": 0,
+                                    "cacheWrite": 0,
+                                },
+                                "contextWindow": 16384,
+                                "maxTokens": 8192,
+                            }
+                        ],
+                    },
+                    "hosted": {
+                        "baseUrl": "https://api.example.com/v1",
+                        "apiKey": "provider-migration-test-value",
+                        "models": [],
+                    },
+                },
+            },
+        )
+
+        ep = adapter.resolve_endpoint("local//models/qwen.gguf")
+
+        assert ep is not None
+        assert ep.base_url == "http://127.0.0.1:8081/v1"
+        assert ep.api_key == ""
+        assert ep.context_window_tokens == 16384
+        assert ep.max_output_tokens == 8192
+
+        written = json.loads(_cfg.PROVIDERS_FILE.read_text())
+        local_doc = written["providers"]["local"]
+        assert local_doc["baseUrl"] == "http://127.0.0.1:8081/v1"
+        assert local_doc["auth"] == {"type": "none", "credentials": []}
+        assert local_doc["local"] is True
+        assert local_doc["models"] == [
+            {"id": "/models/qwen.gguf", "contextWindow": 16384, "maxTokens": 8192}
+        ]
+        assert "apiKey" not in local_doc
+
+        hosted_doc = written["providers"]["hosted"]
+        assert hosted_doc["auth"]["type"] == "bearer"
+        credential_name = hosted_doc["auth"]["credentials"][0]
+        assert "provider-migration-test-value" not in json.dumps(written)
+        assert _secrets.secret_value(credential_name) == "provider-migration-test-value"
+        assert any(entry["action"] == "provider.migrate" for entry in _audit.read_audit())
+
+        fleet_after = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet_after.get("providers") == {}
+
+        # A second load is a no-op: nothing left in fleet.json to migrate.
+        before = _cfg.PROVIDERS_FILE.read_text()
+        adapter.resolve_endpoint("local//models/qwen.gguf")
+        assert _cfg.PROVIDERS_FILE.read_text() == before
+
     def test_unknown_provider_resolves_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-        from docket.core import fleet as _fleet
-
-        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
         assert adapter.resolve_endpoint("nosuch/model") is None
         assert adapter.client_for("nosuch/model") is None
 

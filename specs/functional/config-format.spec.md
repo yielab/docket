@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -22,8 +22,8 @@ validate` is the one command that checks every kind of file in a directory in on
 This specification covers:
 
 - The envelope: every configuration document starts with `kind:` (one of `role`, `pipeline`,
-  `policy`, `pod`) and `name:`; `load_document(path)` reads the file, resolves its kind, and
-  dispatches to the existing parser for that kind
+  `policy`, `pod`, `provider`) and `name:`; `load_document(path)` reads the file, resolves its
+  kind, and dispatches to the existing parser for that kind
 - The deprecation path for a file with no `kind:` key: it still loads, through the same
   location-based (or caller-stated) inference the pre-v1 world used implicitly, and is marked
   `deprecated=True`
@@ -32,9 +32,10 @@ This specification covers:
 - `docket validate [dir|file]`: validates every document under a directory (or one file) and
   the pod manifest, printing one line per file, invalid files first, exit 1 on the first
   invalid file found
-- The four existing parsers this dispatches to unchanged: `core.archetypes.from_wire`,
-  `core.pipeline.load_pipeline`, `core.policy.validate_policy`, and `core.pod_apply`'s pod
-  manifest key set
+- The five parsers this dispatches to unchanged: `core.archetypes.from_wire`,
+  `core.pipeline.load_pipeline`, `core.policy.validate_policy`, `core.pod_apply`'s pod
+  manifest key set, and (ADR 0011) `core.provider.load_provider_document` for `provider` —
+  the only one with no short-form model (canonical form only)
 - The published `docs/contracts/config-v1/{role,pipeline,policy,pod}.schema.json` JSON
   Schemas, generated from the same short-form Pydantic models that refine a short-form
   document's `ConfigDocError`, and the `# yaml-language-server:`/`.schemas/` convention
@@ -49,11 +50,7 @@ This specification does NOT cover:
 - Wiring JSON Schema validation into `docket validate`'s live path — the published schemas are
   a generated, pinned artifact for external editors/validators, never consulted by
   `load_document` itself
-- The `provider` kind: [ADR 0010](../../docs/adr/0010-config-format-v1-and-extension-points.md)
-  amended by [ADR 0011](../../docs/adr/0011-provider-catalog.md) reserves a fifth kind,
-  `provider`, dispatching to `core.provider.load_provider_document` — that parser does not
-  exist yet (a separate, later phase), so `load_document` does not accept `kind: provider` and
-  `KINDS` does not list it
+- A published JSON Schema or short-form sugar for `provider` — it has neither (see above)
 - Removing or warning-then-erroring the pre-v1 (kind-less) format outright — the deprecation
   note is informational only; nothing currently refuses to load a kind-less file
 - Re-implementing any of the four existing parsers' own structural rules (required fields,
@@ -65,7 +62,8 @@ This specification does NOT cover:
 ### The envelope
 
 1. `core.config_docs.KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy",
-   "pod")`, in that order — the four kinds Phase 27/pre-27 already have real parsers for.
+   "pod", "provider")`, in that order — the four kinds Phase 27/pre-27 already have real
+   parsers for, plus `provider` (ADR 0011, `core.provider.load_provider_document`).
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is close enough
    (`difflib.get_close_matches`), a suggestion.
@@ -92,9 +90,12 @@ This specification does NOT cover:
      this spec's Interface Contracts extend with `kind` and `name`), not a full `plan_apply`
      (which additionally needs a live pod name and registry this stand-alone validation path
      does not have)
+   - `provider` → `core.provider.load_provider_document(path)`; a raised `ProviderError` is
+     mapped to `ConfigDocError(path, str(exc))`, the same refinement the `role` arm applies to
+     an `ArchetypeError`. `provider` has no short-form model (canonical form only).
 2. A parser's own exception or non-empty error string **MUST** be surfaced as a
    `ConfigDocError` naming the file and the parser's own message; this spec does not change what
-   any of the four parsers accepts or rejects.
+   any of the five parsers accepts or rejects.
 3. `core/pod_apply.py::plan_apply`'s manifest read and `_plan_roles`'s per-file role read, and
    `docket roles add`/`validate`, `docket pipeline validate`, and the file-path branch of
    `docket policies validate`, **MUST** all call `load_document` rather than their own prior
@@ -138,7 +139,9 @@ This specification does NOT cover:
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
    `roles/` and `policies/`, plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
-   directly under the directory, when present.
+   directly under the directory, when present. `discover_config_paths` does not look for a
+   provider document by location — `docket validate <file>` naming one directly still loads it
+   (`kind: provider` is enough; `load_document` needs no directory convention to resolve it).
 3. It **MUST** print one line per file — `ok <file> (<kind> <name>)` for a file that loads, or
    its `ConfigDocError` — with every invalid file printed before every valid file, and **MUST**
    exit `1` if any file was invalid, `0` otherwise (matching `docket roles validate`'s and
@@ -186,7 +189,7 @@ This specification does NOT cover:
 ### Python API
 
 ```text
-core.config_docs.KINDS: tuple[str, ...]              # ("role", "pipeline", "policy", "pod")
+core.config_docs.KINDS: tuple[str, ...]     # ("role", "pipeline", "policy", "pod", "provider")
 
 core.config_docs.Document                             # frozen dataclass
     kind: str
@@ -275,6 +278,16 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.2.0 (2026-09-27)
+
+- **P29-1: `provider` joins the envelope.** `KINDS` becomes `("role", "pipeline", "policy",
+  "pod", "provider")`; `load_document` dispatches `kind: provider` to the now-existing
+  `core.provider.load_provider_document`, mapping a raised `ProviderError` to `ConfigDocError`
+  the way the `role` arm maps an `ArchetypeError`. `provider` has no short-form model or
+  published schema — canonical form only, and not part of `discover_config_paths`'s directory
+  scan, but `docket validate <file>` naming one directly loads it. See ADR 0011 and
+  model-profiles.spec.md v2.11.0 "Provider catalog".
 
 ### Version 1.1.0 (2026-09-26)
 

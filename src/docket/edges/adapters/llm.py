@@ -398,18 +398,17 @@ def resolve_endpoint(model: str) -> Endpoint | None:
        override that points every model at one endpoint. Exists for local
        development and for tests that want a stub server without touching
        stored config.
-    2. The stored provider block for ``<provider>``.
-    3. A built-in base URL for a known hosted gateway.
+    2. The provider catalog entry for ``<provider>`` (``core/provider.py``'s
+       ``load_catalog``) — built-in overridden by the operator's own (global), nearest-wins.
+    3. A built-in base URL for a known hosted gateway, only for a provider absent from the
+       catalog.
 
-    The API key falls back through ``DOCKET_LLM_API_KEY``, then the provider
-    block's own non-placeholder key, then the provider credential from the
-    environment, then Docket's central key store. Returns ``None`` when no base URL can be found,
-    so callers report an actionable
+    For a catalog entry, the API key comes from ``core/provider.py``'s ``resolve_credential``
+    (``DOCKET_LLM_API_KEY`` -> environment -> Docket's central key store, per name in
+    ``auth.credentials``). For a provider absent from the catalog, the key falls back through
+    ``DOCKET_LLM_API_KEY``, then the provider's environment credential, then the central key
+    store. Returns ``None`` when no base URL can be found, so callers report an actionable
     "no endpoint configured" rather than posting into the void.
-
-    The stored-config lookup reads docket's own fleet registry
-    (``core/fleet.py``'s ``get_local_provider``) directly -- there is no
-    daemon config file left to have ever pointed at.
     """
     provider, _, model_id = model.partition("/")
     if not model_id:
@@ -418,24 +417,32 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     env_base = os.environ.get("DOCKET_LLM_BASE_URL", "").strip()
     env_key = os.environ.get("DOCKET_LLM_API_KEY", "").strip()
 
-    stored: dict[str, Any] = {}
+    spec = None
     if provider and not env_base:
-        from docket.core import fleet as _fleet
+        from docket.core import provider as _prov
 
-        stored = _fleet.get_local_provider(provider) or {}
+        spec = _prov.load_catalog().get(provider)
 
-    base_url = (
-        env_base
-        or str(stored.get("baseUrl") or "").strip()
-        or _HOSTED_GATEWAY_BASE_URLS.get(provider, "")
-    )
+    if spec is not None:
+        from docket.core import provider as _prov
+
+        api_key, _source = _prov.resolve_credential(spec)
+        exact = next((row for row in spec.models if row.id == model_id), None)
+        return Endpoint(
+            base_url=spec.base_url,
+            model_id=model_id,
+            api_key=api_key,
+            provider=provider,
+            context_window_tokens=exact.context_window if exact else None,
+            max_output_tokens=exact.max_tokens if exact else None,
+        )
+
+    # Absent from the catalog: the pre-catalog hosted-gateway fallback, unchanged.
+    base_url = env_base or _HOSTED_GATEWAY_BASE_URLS.get(provider, "")
     if not base_url:
         return None
 
-    stored_key = str(stored.get("apiKey") or "").strip()
-    if stored_key == "local":
-        stored_key = ""
-    api_key = env_key or stored_key
+    api_key = env_key
     if not api_key and provider:
         credential_names = _PROVIDER_CREDENTIAL_NAMES.get(
             provider, (f"{provider.upper().replace('-', '_')}_API_KEY",)
@@ -452,38 +459,31 @@ def resolve_endpoint(model: str) -> Endpoint | None:
                 if api_key:
                     break
 
-    context_window: int | None = None
-    max_output: int | None = None
-    if not env_base:
-        models = stored.get("models")
-        if isinstance(models, list):
-            exact = next(
-                (
-                    entry
-                    for entry in models
-                    if isinstance(entry, dict) and str(entry.get("id") or "") == model_id
-                ),
-                None,
-            )
-            if exact is not None:
-                raw_window = exact.get("contextWindow")
-                raw_output = exact.get("maxTokens")
-                if isinstance(raw_window, int) and raw_window > 0:
-                    context_window = raw_window
-                if isinstance(raw_output, int) and raw_output > 0:
-                    max_output = raw_output
-
     return Endpoint(
         base_url=base_url,
         model_id=model_id,
         api_key=api_key,
         provider=provider,
-        context_window_tokens=context_window,
-        max_output_tokens=max_output,
+        context_window_tokens=None,
+        max_output_tokens=None,
     )
 
 
+_DIALECTS: dict[str, type[OpenAIChatClient]] = {"openai-chat": OpenAIChatClient}
+
+
 def client_for(model: str) -> OpenAIChatClient | None:
-    """Build a client for ``provider/model-id``, or ``None`` if unresolvable."""
+    """Build a client for ``provider/model-id``, or ``None`` if unresolvable or the
+    resolved provider's ``dialect`` has no adapter in ``_DIALECTS``."""
     endpoint = resolve_endpoint(model)
-    return OpenAIChatClient(endpoint) if endpoint else None
+    if endpoint is None:
+        return None
+    dialect = "openai-chat"
+    if endpoint.provider:
+        from docket.core import provider as _prov
+
+        spec = _prov.load_catalog().get(endpoint.provider)
+        if spec is not None:
+            dialect = spec.dialect
+    client_cls = _DIALECTS.get(dialect)
+    return client_cls(endpoint) if client_cls else None

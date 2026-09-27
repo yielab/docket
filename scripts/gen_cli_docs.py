@@ -450,8 +450,13 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`$DOCKET_HOME/docket-mcp-servers.json`",
     ),
     (
+        ("PROVIDERS_FILE",),
+        "Global provider catalog scope (`docket models provider add`, `core/provider.py`)",
+        "`$DOCKET_HOME/docket-providers.json`",
+    ),
+    (
         ("FLEET_FILE",),
-        "Agent registration, channel bindings, gate/isolation flags, provider endpoints, org default model",
+        "Agent registration, channel bindings, gate/isolation flags, org default model",
         "`$DOCKET_HOME/fleet.json`",
     ),
     (

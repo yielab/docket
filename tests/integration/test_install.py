@@ -21,6 +21,7 @@ import docket.config as _cfg
 from docket.cli import _agents, _install
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _models_policy
+from docket.core import provider as _prov
 from docket.core import secrets as _secrets
 
 SUBJECT = "docket.core"
@@ -63,6 +64,22 @@ def _ok_auth() -> None:
     os.environ["DOCKET_LLM_BASE_URL"] = "http://127.0.0.1:9999/v1"
 
 
+def _register_local_provider(
+    name: str, base_url: str, model_id: str, ctx: int, max_tokens: int
+) -> None:
+    """Write *name* into the isolated global provider catalog -- the document-shaped
+    replacement for ``fleet.add_local_provider``."""
+    _prov.save_provider(
+        _prov.ProviderSpec(
+            name=name,
+            baseUrl=base_url,
+            auth=_prov.AuthSpec(type="none"),
+            local=True,
+            models=[_prov.ModelRow(id=model_id, contextWindow=ctx, maxTokens=max_tokens)],
+        )
+    )
+
+
 def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Empty DOCKET_HOME with a minimal fleet.json (already-initialized path)."""
     home = tmp_path / ".docket"
@@ -78,14 +95,7 @@ def test_provider_only_fleet_still_runs_first_project_foundation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
-    _fleet.add_local_provider(
-        "local",
-        "http://127.0.0.1:8081/v1",
-        "qwen-live-id",
-        "Qwen live",
-        16384,
-        8192,
-    )
+    _register_local_provider("local", "http://127.0.0.1:8081/v1", "qwen-live-id", 16384, 8192)
     bootstrap_calls: list[dict[str, object]] = []
 
     def _stop_after_bootstrap(**kwargs: object) -> int:
@@ -372,14 +382,7 @@ def test_step5_registered_local_endpoint_needs_no_api_key(
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
-    _fleet.add_local_provider(
-        "local",
-        "http://127.0.0.1:8081/v1",
-        "qwen-local",
-        "Qwen local",
-        16384,
-        8192,
-    )
+    _register_local_provider("local", "http://127.0.0.1:8081/v1", "qwen-local", 16384, 8192)
     _models_policy.write_registry(
         {
             "default": "local/qwen-local",

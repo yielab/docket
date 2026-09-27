@@ -18,8 +18,9 @@ from docket.core import archetypes as _archetypes
 from docket.core import pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
+from docket.core import provider as _provider
 
-KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod")
+KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "provider")
 
 _LOCATION_KIND: dict[str, str] = {"roles": "role", "policies": "policy"}
 
@@ -286,6 +287,13 @@ def _validate_pod(path: Path, doc: dict[str, Any]) -> None:
         raise ConfigDocError(path, f"unknown key(s): {', '.join(sorted(unknown))}")
 
 
+def _validate_provider(path: Path) -> None:
+    try:
+        _provider.load_provider_document(path)
+    except _provider.ProviderError as exc:
+        raise ConfigDocError(path, str(exc)) from exc
+
+
 def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     """Read *path*, resolve its kind, and dispatch to the parser that owns it. *kind* is used
     only when the document has no top-level ``kind:`` key and its location does not resolve
@@ -344,6 +352,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_policy(p)
         elif effective_kind == "pod":
             _validate_pod(p, doc)
+        elif effective_kind == "provider":
+            _validate_provider(p)
     except ConfigDocError as exc:
         raise _refine_with_model(p, effective_kind, doc, exc) from exc
 
