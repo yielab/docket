@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`config explain` says where a model goes, and `doctor` checks the provider catalog.**
+  `docket config explain <agent> --json` carries a `provider` block (name, scope, dialect, base
+  URL, the credential's name and source, the exact model row's limits) and the human view prints
+  it under the model line, never a value; `docket doctor` names a malformed global provider
+  document by file and field, in the human pass and under `--json`. The configuration guide,
+  model-gateways page, troubleshooting page and quick start describe the catalog, `export`, the
+  `Retry-After` ceiling and the evaluation-only/beta status Anthropic and Google give their
+  OpenAI-compatible layers.
 - **Registration verifies with the credential, and a provider round-trips through the CLI.**
   `docket models provider add <file.yaml>` (or the `add <name> <url> --model <id>
   [--credential NAME]` shortcut) probes `<url>/models` with the resolved credential and

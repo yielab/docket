@@ -35,14 +35,16 @@ canonical form (each normaliser proven by a round trip), control flow as bounded
 had mislocated), hashed, operator-applied Python predicate plugins for policies that are never
 imported from the codebase, generated JSON Schemas and a short-form `export`; reasoning in
 [docs/adr/0010-config-format-v1-and-extension-points.md](docs/adr/0010-config-format-v1-and-extension-points.md).
-**Phase 29 (the provider catalog, D-45) was planned the same day**, independent of 27/28 in files:
-model providers become `kind: provider` documents in two scopes (built-in in the wheel, global for
-the operator) from which every provider table derives, a closed `dialect` field selects the adapter,
-credentials are referenced by name only, registration verifies *with* the credential (the direct
-`anthropic`/`openai`/`google` presets are unreachable through the CLI today because the ping does
-not), `Retry-After` is honoured, and the `docket auth` stub is retired; reasoning in
-[docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md).
-**No card is claimed until the integrator confirms the batching.** Executable cards live in
+**Phase 29 (the provider catalog, D-45) shipped 2026-09-27**, seven cards over Waves 47–49, one
+Sonnet worker per card under one integrator: model providers are `kind: provider` documents in two
+scopes (fourteen built-in in the wheel, global for the operator) from which every provider table
+derives, a closed `dialect` field selects the adapter, credentials are referenced by name only
+(bearer, a named header, or none, plus static headers), registration verifies *with* the
+credential and classifies the answer (only a transport failure refuses), `provider
+add/list/show/remove/export` round-trip a document, `Retry-After` is honoured up to a 60 s ceiling,
+`docket auth` is a removed command and `keys setup` walks the catalog, and `config explain` names
+the provider, its scope and where the credential came from; reasoning in
+[docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md). Executable cards live in
 [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in

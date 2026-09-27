@@ -550,5 +550,13 @@
     "heading": "◆ PHASE 28 — COMPLETE (opened 2026-09-26, closed 2026-09-26): configuration format v1 and the two extension points (D-44)",
     "bytes": 20002,
     "sha256": "b10778a5585021e25a8213949dcd7508757f06f1c1c8f99f9b8e6e0298f2c39a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 29 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the provider catalog (D-45)",
+    "bytes": 26930,
+    "sha256": "ece7b634b48c1cbd1042b6903146b5d964d0485106d4c6df06bac491162bb65d"
   }
 ]

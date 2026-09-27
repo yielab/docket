@@ -10,6 +10,25 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-09-27 (Phase 29 complete, D-45) — the provider catalog.** Seven cards over Waves 47–49,
+  one Sonnet worker per card in isolated worktrees under one integrator. Shipped: a provider is a
+  `kind: provider` document with a closed `dialect`, named credentials and exact model rows; two
+  scopes (fourteen built-in documents under `templates/providers/`, the operator's own in
+  `docket-providers.json`), nearest-wins, with the pre-catalog `fleet.json` block migrated once
+  (P29-1, P29-2); every preset, price, key-prefix and base-URL table derives from the catalog, so
+  the direct `anthropic`/`openai`/`google` presets apply without a separate registration (P29-2);
+  registration probes `/models` with the resolved credential and classifies the answer, and
+  `provider add <file>|<shortcut>`, `list`, `show`, `remove`, `export` round-trip a document
+  (P29-3); `auth: header` and static `headers` (P29-4); `Retry-After` honoured up to
+  `DISPATCH_RETRY_MAX_WAIT_S` (P29-5); `config explain` reports provider, scope, credential source
+  and row limits, `doctor` reports a malformed global document, docs re-trued (P29-6); `docket
+  auth` retired into the removed-command map and `keys setup` walks the catalog (P29-7).
+  Integrator findings: a global write under a built-in's name must inherit its presets and prices
+  (`_with_inherited_identity`), otherwise registering `local` erased the `local` preset; the
+  registration probe must carry the document's `auth`/`headers` (a seam between P29-3 and P29-4);
+  `cli/_provider.py` crossed the layout guard's 150-line line and gained a unit file. Board
+  section archived to `docs/cycles-ended/todo-waves.md`; packets in
+  `.agents/handoffs/wave-47-worker-packets.md`.
 - **2026-09-26 (Phase 28 complete, D-44) — configuration format v1 and the two extension
   points.** Eight cards over Waves 44–46, one Sonnet worker per card in isolated worktrees under
   one integrator. Shipped: `kind:`/`name:` on every configuration file with `docket validate`

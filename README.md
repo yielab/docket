@@ -330,7 +330,9 @@ the way the limits below describe.
   fleet-scale claim.
 - **Compatible HTTP, not provider SDK parity:** the model adapter uses non-streaming
   `/chat/completions` with function tools. A text-only endpoint can answer text turns but cannot
-  complete tool-dependent work.
+  complete tool-dependent work. Anthropic documents its OpenAI-compatibility layer as intended for
+  evaluation (no prompt caching) and Google documents its Gemini layer as beta; the built-in
+  documents say so in their preset notes.
 - **Network egress is not fully closed:** the `fetch` tool is allowlisted and inspectable, but an
   allowed shell/interpreter can still reach the network. Run untrusted work inside a stronger host
   or container boundary.
