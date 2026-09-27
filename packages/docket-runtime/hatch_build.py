@@ -34,6 +34,7 @@ _RUNTIME_FILES = (
     "core/models.py",
     "core/plugins.py",
     "core/policy.py",
+    "core/provider.py",
     "core/runtime_driver.py",
     "core/security.py",
     "core/session.py",

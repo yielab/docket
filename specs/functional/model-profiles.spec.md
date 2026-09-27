@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Complete
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -23,6 +23,8 @@ This specification covers:
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
 - The built-in provider presets (`docket models preset`), including the free/local path
+- The provider catalog (`core/provider.py`): `kind: provider` documents, the built-in/global
+  scopes, `docket-providers.json`, and the one-shot `fleet.json -> providers` migration
 - Hosted OpenAI-compatible gateway endpoint and credential resolution
 - Removed tier names and the private internal rank-anchor seed table; the one-shot legacy
   `profiles:` registry migration
@@ -35,7 +37,11 @@ Phase 16 W-6) — see role-archetypes.spec.md. This spec covers only the one int
 between the two: how a role with no named row in this policy's table resolves via its
 archetype's `modelClass` instead (see "Roles and built-in policy", requirement 5).
 
-Provider endpoints are Docket-owned first-party configuration: `docket models provider add` writes `fleet.json`, and `edges/adapters/llm.py` resolves that endpoint directly. Compatibility with a retired external runtime is not part of this contract; the dated feasibility spike remains in ROADMAP and Git history.
+Provider endpoints are Docket-owned first-party configuration: `docket models provider add`
+writes `core/provider.py`'s catalog (`~/.docket/docket-providers.json`), and
+`edges/adapters/llm.py` resolves that catalog entry directly — see "Provider catalog" below.
+Compatibility with a retired external runtime is not part of this contract; the dated
+feasibility spike remains in ROADMAP and Git history.
 
 ## Requirements
 
@@ -198,11 +204,13 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
    recognize `openrouter` as `https://openrouter.ai/api/v1` and `ai-gateway` as
    `https://ai-gateway.vercel.sh/v1`. It **MUST** strip only Docket's first provider segment,
    retaining nested gateway model ids.
-3. Credential precedence **MUST** be: `DOCKET_LLM_API_KEY`, a non-placeholder key in the exact
-   registered provider block, the provider's environment credential, then the same credential in
+3. For a provider absent from the catalog, credential precedence **MUST** be:
+   `DOCKET_LLM_API_KEY`, the provider's environment credential, then the same credential in
    Docket's central key store. `openrouter` uses `OPENROUTER_API_KEY`; `ai-gateway` uses
-   `AI_GATEWAY_API_KEY` with `VERCEL_OIDC_TOKEN` as a fallback. The provider-registration
-   placeholder `local` **MUST NOT** mask these fallbacks or be sent as bearer auth.
+   `AI_GATEWAY_API_KEY` with `VERCEL_OIDC_TOKEN` as a fallback. For a provider present in the
+   catalog, `core.provider.resolve_credential` applies the same precedence over its
+   `auth.credentials` names instead — see "Provider catalog" below; a document never holds a
+   credential value, so there is no placeholder-masking step.
 4. `DOCKET_LLM_BASE_URL` remains a process-wide override for tests and local development. It
    **MUST** take endpoint precedence and **MUST NOT** inherit registered context/output limits from
    the endpoint it replaces. Otherwise, an exact registered model row **MUST** retain those limits.
@@ -243,17 +251,38 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 3. `docket init`'s default-model step and `docket models set default` / `preset` / `reset`
    **MUST** write only to the registry — never to `fleet.json`.
 
-### Provider registration display fields
+### Provider catalog
 
-1. `docket models provider add <name> <base-url> --model <id>` given no `--name` **MUST** label
-   the registered model after `<id>`, not a caption unrelated to the selected model. The shipped
-   default model id (`core/provider.py`'s `DEFAULT_MODEL_ID`) is the one id that keeps the shipped
-   "Qwen3 30B-A3B (local)" caption when neither `--model` nor `--name` is given.
-2. The per-model `name`, `cost`, `reasoning` and `input` fields, and the provider block's
-   top-level `api` field, are **display-only** — `edges/adapters/llm.py`'s `resolve_endpoint`
-   reads only `baseUrl`, `apiKey`, `models[].id`, `models[].contextWindow` and
-   `models[].maxTokens` to route a request. Docket **MUST NOT** claim these display-only fields
-   affect endpoint resolution, request routing, or pricing.
+1. A provider **MUST** be a `kind: provider` document (ADR 0011; `core.provider.ProviderSpec`):
+   `name`, `dialect` (closed enum, `openai-chat` today), `baseUrl`, `auth` (`type: bearer|none`
+   plus `credentials`, a list of names — never values), `local`, `models[]` (`id`,
+   `contextWindow`, `maxTokens`), and `note`. `core.provider.load_provider_document` **MUST**
+   raise naming the file and field on an unreadable file, bad YAML, a missing `kind`/`name`, an
+   unknown `dialect`/`auth.type`, or a credential count that does not match the `auth.type`.
+2. The catalog **MUST** merge two scopes, nearest-wins by name: **built-in**
+   (`config.PROVIDER_TEMPLATES_DIR`, shipped in the wheel) and **global**
+   (`config.PROVIDERS_FILE` = `~/.docket/docket-providers.json`, `{"providers": {name: spec}}`,
+   the operator's own registrations and overrides via `docket models provider add`).
+   `core.provider.load_catalog()` **MUST** return the merged result; `Catalog.get(name)` and
+   `Catalog.source_of(name)` (`"built-in"` / `"global"` / `""`) **MUST** read it.
+3. `docket models provider add` **MUST** write a `ProviderSpec` to the global scope through
+   `core.provider.save_provider`, never to `fleet.json`. Re-running with identical arguments
+   **MUST** write nothing (idempotent).
+4. On first `load_catalog()` call, a non-empty `fleet.json` `providers` block **MUST** be ported
+   into the global scope once, then cleared — the same one-shot shape as the `profiles:` →
+   `roles:` and `defaults.model` → registry migrations above. A placeholder `apiKey`
+   (`"local"`/empty) **MUST** become `auth: {type: none}`; a loopback base URL or an all-zero
+   model cost **MUST** set `local: true`; a literal non-placeholder `apiKey` **MUST** be moved
+   into Docket's central secret store under `<NAME>_API_KEY` and referenced by that name in
+   `auth.credentials`, audited as `provider.migrate` — the value **MUST NOT** appear in
+   `docket-providers.json`. The display-only `api`/`name`/`reasoning`/`input` fields a
+   pre-catalog block carried **MUST** be dropped; they have no field in the document (see
+   version 2.11.0 changelog).
+5. `edges/adapters/llm.py`'s `resolve_endpoint` **MUST** resolve a catalog entry's base URL and
+   exact model row directly from the document, and its credential through
+   `core.provider.resolve_credential`. A provider absent from the catalog **MUST** fall back to
+   "Hosted gateway resolution" unchanged. `client_for` **MUST** dispatch on the entry's `dialect`
+   over a closed adapter table and return `None` for a dialect with no adapter.
 
 ### Pricing
 
@@ -427,6 +456,22 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.11.0 (2026-09-27)
+
+- **P29-1: a provider is a document, and today's configuration resolves exactly as before.**
+  Added "Provider catalog": `core/provider.py::ProviderSpec`/`Catalog`/`load_catalog`/
+  `save_provider`/`resolve_credential`, the built-in/global scopes, `docket-providers.json`, and
+  the one-shot `fleet.json -> providers` migration (a literal `apiKey` moves into the secret
+  store, audited `provider.migrate`). Amended "Hosted gateway resolution" rule 3: the
+  "non-placeholder key in the provider block" step is gone — a document never holds a value; a
+  catalog entry resolves its credential through `resolve_credential` instead, over the same
+  precedence. **Removed** "Provider registration display fields": the per-model `name`/`cost`/
+  `reasoning`/`input` fields and the block's `api` field had no field in the new document and no
+  reader — `ProviderSpec.models[]` carries only `id`/`contextWindow`/`maxTokens`. Fixed the
+  Scope paragraph's claim that `provider add` writes `fleet.json`; it writes the catalog.
+  `core/fleet.py::add_local_provider`/`get_local_provider` are removed; `FleetConfig.providers`
+  is read once by the migration, then cleared (removal deferred one release, ADR 0011).
 
 ### Version 2.10.0 (2026-09-26)
 

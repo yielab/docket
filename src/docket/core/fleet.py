@@ -91,12 +91,9 @@ class FleetConfig(BaseModel):
     bindings: list[FleetBinding] = Field(default_factory=list)
     security: FleetSecurity = Field(default_factory=lambda: FleetSecurity())
     defaults: FleetDefaults = Field(default_factory=lambda: FleetDefaults())
-    # Local OpenAI-compatible model endpoints (llama.cpp / LM Studio / vLLM),
-    # registered by `docket models provider` (core/provider.py) and read by
-    # `edges/adapters/llm.py`'s `resolve_endpoint`. Kept as a loose dict (not
-    # a typed sub-model) since its shape is dictated by `core.provider`'s
-    # `local_provider_config` producer and `edges/adapters/llm.py`'s consumer,
-    # not by anything fleet-registry-specific.
+    # Superseded by core/provider.py's catalog (docket-providers.json). Read exactly once by
+    # `core.provider.migrate_fleet_providers` on the first `load_catalog()` call, then cleared;
+    # removal of this field is deferred one release (ADR 0011).
     providers: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -386,31 +383,3 @@ def set_model_both(agent_id: str, model: str) -> None:
     agent's model, so despite the name there is only one write to make.
     """
     meta_set(agent_id, "model", model)
-
-
-def get_local_provider(name: str, cfg: FleetConfig | None = None) -> dict[str, Any] | None:
-    """Return the stored local-provider definition for *name*, or None if absent."""
-    return (cfg or load_fleet()).providers.get(name)
-
-
-def add_local_provider(
-    name: str,
-    base_url: str,
-    model_id: str,
-    model_name: str,
-    ctx: int,
-    max_tokens: int,
-) -> bool:
-    """Register a local (llama.cpp / LM Studio / vLLM) provider in fleet.json.
-
-    Idempotent: returns False when the existing entry already matches.
-    """
-    from docket.core.provider import local_provider_config
-
-    desired = local_provider_config(base_url, model_id, model_name, ctx, max_tokens)
-    cfg = load_fleet()
-    if cfg.providers.get(name) == desired:
-        return False
-    cfg.providers[name] = desired
-    _save_fleet(cfg)
-    return True

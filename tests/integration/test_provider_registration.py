@@ -1,14 +1,10 @@
 """Local provider registration (models provider add).
 
-`core.provider.register_local_provider` is the pure ping->register
-orchestration (no output, returns a ProviderRegistration); `cli._provider.
-run_provider_add` renders it — this is the split enforced by the rule that
-core has no knowledge of terminals. We assert the resulting fleet.json
-`providers` block, that a re-run is a no-op, and that the cli layer prints
-the expected wording.
-
-Local providers are registered in docket's own fleet.json (`core/fleet.py`'s
-`add_local_provider`/`get_local_provider`).
+`core.provider.register_local_provider` is the pure ping->register orchestration (no output);
+`cli._provider.run_provider_add` renders it. We assert the resulting `docket-providers.json`
+document, that a re-run is a no-op, and the cli layer's wording. See
+specs/functional/model-profiles.spec.md "Provider catalog" -- the per-model display caption a
+pre-catalog fleet.json block carried was display-only and has no field in the document.
 """
 
 from __future__ import annotations
@@ -52,35 +48,13 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _providers(home: Path) -> dict[str, Any]:
-    cfg = json.loads((home / "fleet.json").read_text())
+    catalog_file = home / "docket-providers.json"
+    if not catalog_file.is_file():
+        return {}
+    cfg = json.loads(catalog_file.read_text())
     providers = cfg.get("providers", {})
     assert isinstance(providers, dict)
     return providers
-
-
-# ── fleet.json provider shape ────────────────────────────────────────────────────
-
-
-def test_local_provider_config_matches_script() -> None:
-    cfg = _prov.local_provider_config(
-        "http://127.0.0.1:8080/v1", "qwen3-30b-a3b", "Qwen3 30B-A3B (local)", 16384, 8192
-    )
-    assert cfg == {
-        "baseUrl": "http://127.0.0.1:8080/v1",
-        "apiKey": "local",
-        "api": "openai-completions",
-        "models": [
-            {
-                "id": "qwen3-30b-a3b",
-                "name": "Qwen3 30B-A3B (local)",
-                "reasoning": False,
-                "input": ["text"],
-                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-                "contextWindow": 16384,
-                "maxTokens": 8192,
-            }
-        ],
-    }
 
 
 # ── core: pure ping → register orchestration, no output ────────────────────────
@@ -100,9 +74,11 @@ def test_register_local_provider_returns_typed_result(
     assert capsys.readouterr().out == ""
 
 
-def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_register_local_provider_writes_a_provider_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = _seed(tmp_path, monkeypatch)
-    reg = _prov.register_local_provider(
+    _prov.register_local_provider(
         name="lab",
         base_url="http://10.0.0.5:1234/v1",
         model_id="llama-3.3-70b",
@@ -110,36 +86,50 @@ def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         ctx=32768,
         max_tokens=4096,
     )
-    assert reg.changed is True
     entry = _providers(home)["lab"]
     assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
-    assert entry["models"][0]["id"] == "llama-3.3-70b"
-    assert entry["models"][0]["contextWindow"] == 32768
-    assert entry["models"][0]["maxTokens"] == 4096
+    assert entry["dialect"] == "openai-chat"
+    assert entry["local"] is True
+    assert entry["auth"] == {"type": "none", "credentials": []}
+    assert entry["models"] == [{"id": "llama-3.3-70b", "contextWindow": 32768, "maxTokens": 4096}]
+    # The display-only per-model caption was retired: the document has no home for it.
+    assert "name" not in entry["models"][0]
+    assert "apiKey" not in entry
+    assert "api" not in entry
 
 
-def test_other_config_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_register_local_provider_does_not_touch_fleet_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = _seed(tmp_path, monkeypatch)
+    before = (home / "fleet.json").read_text()
     _prov.register_local_provider()
-    cfg = json.loads((home / "fleet.json").read_text())
-    # Unrelated top-level keys survive the providers write.
-    assert cfg["defaults"]["model"] == "anthropic/claude-sonnet-4-6"
-    assert cfg["security"]["gatesEnabled"] is False
+    after = (home / "fleet.json").read_text()
+    assert before == after
 
 
-def test_update_existing_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rerun_is_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _seed(tmp_path, monkeypatch)
-    assert _fleet.add_local_provider("local", "http://a/v1", "m", "M", 8192, 4096) is True
-    # Changing the context window is a real change.
-    assert _fleet.add_local_provider("local", "http://a/v1", "m", "M", 16384, 4096) is True
-    assert _fleet.get_local_provider("local") is not None
-    assert _fleet.get_local_provider("local")["models"][0]["contextWindow"] == 16384  # type: ignore[index]
+    first = _prov.register_local_provider()
+    second = _prov.register_local_provider()
+    assert first.changed is True
+    assert second.changed is False
+
+
+def test_changing_context_window_is_a_real_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _seed(tmp_path, monkeypatch)
+    assert _prov.register_local_provider(name="local", ctx=8192).changed is True
+    assert _prov.register_local_provider(name="local", ctx=16384).changed is True
+    entry = _providers(home)["local"]
+    assert entry["models"][0]["contextWindow"] == 16384
 
 
 # ── cli: renders the result, wording matches the pre-split flow ────────────────
 
 
-def test_run_provider_add_writes_provider_block(
+def test_run_provider_add_writes_provider_document(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     home = _seed(tmp_path, monkeypatch)
@@ -148,13 +138,8 @@ def test_run_provider_add_writes_provider_block(
 
     providers = _providers(home)
     assert set(providers) == {"local"}
-    assert providers["local"] == _prov.local_provider_config(
-        _prov.DEFAULT_BASE_URL,
-        _prov.DEFAULT_MODEL_ID,
-        _prov.DEFAULT_MODEL_NAME,
-        _prov.DEFAULT_CTX,
-        _prov.DEFAULT_MAX_TOKENS,
-    )
+    assert providers["local"]["baseUrl"] == _prov.DEFAULT_BASE_URL
+    assert providers["local"]["models"][0]["id"] == _prov.DEFAULT_MODEL_ID
 
     captured = capsys.readouterr()
     out = captured.out + captured.err
@@ -163,22 +148,17 @@ def test_run_provider_add_writes_provider_block(
     assert "anthropic/" not in out
 
 
-def test_rerun_is_noop(
+def test_rerun_is_noop_through_the_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     home = _seed(tmp_path, monkeypatch)
-    assert _fleet.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is True
-    # Mtime-independent check: the ACL reports no change on identical re-run.
-    assert (
-        _fleet.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is False
-    )
-
-    before = (home / "fleet.json").read_text()
     _cliprov.run_provider_add(model_id="q", model_name="Q")
     capsys.readouterr()
+
+    before = (home / "docket-providers.json").read_text()
     _cliprov.run_provider_add(model_id="q", model_name="Q")
     out = capsys.readouterr().out
-    after = (home / "fleet.json").read_text()
+    after = (home / "docket-providers.json").read_text()
     assert before == after
     assert "no change" in out
 
@@ -188,12 +168,11 @@ def test_ping_failure_is_fail_closed_and_does_not_persist(
 ) -> None:
     home = _seed(tmp_path, monkeypatch)
     monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: False)
-    before = (home / "fleet.json").read_bytes()
 
     rc = _cliprov.run_provider_add()
     assert rc == 1
     assert _providers(home) == {}
-    assert (home / "fleet.json").read_bytes() == before
+    assert not (home / "docket-providers.json").exists()
     captured = capsys.readouterr()
     out = captured.out + captured.err
     assert "Could not reach" in out
@@ -214,61 +193,48 @@ def test_run_provider_add_output_order_matches_pre_split_flow(
     assert checking_idx < registering_idx < wired_idx < role_split_idx
 
 
-# ── cli arg parsing: the label derives from --model, not a hardcoded string ────
+def test_run_provider_add_through_the_full_cli_app(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _seed(tmp_path, monkeypatch)
+    result = _runner.invoke(
+        _app,
+        [
+            "models",
+            "provider",
+            "add",
+            "lab",
+            "http://10.0.0.5:1234/v1",
+            "--model",
+            "llama-3.3-70b",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout
+    entry = _providers(home)["lab"]
+    assert entry["models"][0]["id"] == "llama-3.3-70b"
 
 
-class TestProviderLabelDerivesFromModel:
-    """`docket models provider add` without `--name` must label the entry after
-    `--model`, not the shipped local-default caption (which belongs only to
-    the shipped default model id)."""
+# ── the fleet.json → catalog migration ──────────────────────────────────────────
 
-    def test_label_derives_from_model_flag(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        result = _runner.invoke(
-            _app,
-            [
-                "models",
-                "provider",
-                "add",
-                "lab",
-                "http://10.0.0.5:1234/v1",
-                "--model",
-                "llama-3.3-70b",
-            ],
-        )
-        assert result.exit_code == 0, result.stdout
-        entry = _providers(home)["lab"]
-        assert entry["models"][0]["name"] == "llama-3.3-70b"
 
-    def test_explicit_name_still_wins(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        result = _runner.invoke(
-            _app,
-            [
-                "models",
-                "provider",
-                "add",
-                "lab",
-                "http://10.0.0.5:1234/v1",
-                "--model",
-                "llama-3.3-70b",
-                "--name",
-                "Llama 3.3 70B",
-            ],
-        )
-        assert result.exit_code == 0, result.stdout
-        entry = _providers(home)["lab"]
-        assert entry["models"][0]["name"] == "Llama 3.3 70B"
+def test_fleet_providers_migrate_into_the_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-catalog `fleet.json -> providers` block (`_fleet.load_fleet`'s own shape) still
+    resolves through `load_catalog`, and is ported into the document once."""
+    home = _seed(tmp_path, monkeypatch)
+    fleet_cfg = json.loads((home / "fleet.json").read_text())
+    fleet_cfg["providers"] = {
+        "legacy": {
+            "baseUrl": "http://127.0.0.1:8082/v1",
+            "apiKey": "local",
+            "models": [{"id": "m", "contextWindow": 8192, "maxTokens": 2048}],
+        }
+    }
+    (home / "fleet.json").write_text(json.dumps(fleet_cfg))
 
-    def test_bare_default_add_keeps_the_shipped_label(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        result = _runner.invoke(_app, ["models", "provider", "add"])
-        assert result.exit_code == 0, result.stdout
-        entry = _providers(home)["local"]
-        assert entry["models"][0]["name"] == _prov.DEFAULT_MODEL_NAME
+    catalog = _prov.load_catalog()
+
+    assert catalog.get("legacy") is not None
+    assert catalog.source_of("legacy") == "global"
+    assert _fleet.load_fleet().providers == {}

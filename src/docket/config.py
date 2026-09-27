@@ -281,6 +281,11 @@ def policy_templates_dir() -> Path:
     return templates_dir() / "policies"
 
 
+# PROVIDER_TEMPLATES_DIR: built-in `kind: provider` documents shipped in the wheel
+# (core/provider.py's Catalog scope "built-in"), empty until a later card fills it.
+PROVIDER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "providers"
+
+
 def recipes_dir() -> Path:
     """Shipped role/pipeline/policy recipe bundles (``templates/recipes/<name>/``)."""
     return templates_dir() / "recipes"
@@ -390,6 +395,13 @@ AGENT_LOOP_REQUEST_TIMEOUT_S = int(os.environ.get("AGENT_LOOP_REQUEST_TIMEOUT_S"
 # servers (core/mcp_tools.py's McpServerConfig/McpServerRegistry), written
 # through edges/store.py like every other docket-owned JSON file.
 MCP_SERVERS_FILE = Path(os.environ.get("MCP_SERVERS_FILE", DOCKET_HOME / "docket-mcp-servers.json"))
+
+# ── provider catalog (core/provider.py) ───────────────────────────────────────
+# PROVIDERS_FILE: docket-owned catalog of the operator's own provider registrations and
+# overrides (core/provider.py's ProviderSpec/Catalog, scope "global"), written through
+# edges/store.py like every other docket-owned JSON file. Merged with the built-in scope
+# (PROVIDER_TEMPLATES_DIR above), nearest-wins by name.
+PROVIDERS_FILE = Path(os.environ.get("PROVIDERS_FILE", DOCKET_HOME / "docket-providers.json"))
 # MCP_CLIENT_TIMEOUT_S: default per-call bound (connect+list, or connect+call)
 # used when a server config does not specify its own `timeout`.
 MCP_CLIENT_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_TIMEOUT_S", "10"))

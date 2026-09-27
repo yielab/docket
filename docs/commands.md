@@ -1612,7 +1612,8 @@ No command emits any other exit code today.
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
-| `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, provider endpoints, org default model | `$DOCKET_HOME/fleet.json` |
+| `PROVIDERS_FILE` | Global provider catalog scope (`docket models provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
+| `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
 | `APPROVAL_TIMEOUT` | The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |

@@ -127,7 +127,7 @@ class TestMaintainCheckContextBudget:
     def test_a_registered_large_window_reports_a_window_share(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.core import fleet as _fleet
+        from docket.core import provider as _prov
 
         ws = _make_flat_ws(tmp_path, monkeypatch, agent_id="demo-hosted")
         (ws / "TOOLS.md").write_text("# TOOLS.md\n", encoding="utf-8")
@@ -135,8 +135,14 @@ class TestMaintainCheckContextBudget:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         meta["model"] = "hosted-test/big-model"
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
-        _fleet.add_local_provider(
-            "hosted-test", "http://127.0.0.1:9/v1", "big-model", "Big Model", 200_000, 8_192
+        _prov.save_provider(
+            _prov.ProviderSpec(
+                name="hosted-test",
+                baseUrl="http://127.0.0.1:9/v1",
+                auth=_prov.AuthSpec(type="none"),
+                local=True,
+                models=[_prov.ModelRow(id="big-model", contextWindow=200_000, maxTokens=8_192)],
+            )
         )
 
         rc = _agents.run_maintain("demo-hosted", "check")
