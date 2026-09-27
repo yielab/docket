@@ -89,7 +89,8 @@ def aggregate_cost(agent_id: str) -> CostTotals:
 
 
 def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
-    """Token-based cost estimate for *model*, priced from ``MODEL_PRICING``.
+    """Token-based cost estimate for *model*, priced from the provider catalog
+    (``models_policy.price_for``).
 
     Returns ``None`` when *model* has no pricing entry — callers must not
     silently treat unknown pricing as "$0". This exists **only** as a
@@ -103,7 +104,7 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
     own recorded figure (see cli/_cost.py and the no-unfalsifiable-cost-claims
     discipline in CLAUDE.md/cost-tracking.spec).
     """
-    pricing = _mp.MODEL_PRICING.get(model)
+    pricing = _mp.price_for(model)
     if pricing is None:
         return None
     in_rate, out_rate, cache_read_rate, cache_write_rate = pricing

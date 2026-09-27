@@ -1,0 +1,7 @@
+kind: provider
+name: together
+dialect: openai-chat
+baseUrl: https://api.together.xyz/v1
+auth:
+  type: bearer
+  credentials: [TOGETHER_API_KEY]

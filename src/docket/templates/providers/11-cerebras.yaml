@@ -1,0 +1,7 @@
+kind: provider
+name: cerebras
+dialect: openai-chat
+baseUrl: https://api.cerebras.ai/v1
+auth:
+  type: bearer
+  credentials: [CEREBRAS_API_KEY]

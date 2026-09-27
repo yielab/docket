@@ -45,14 +45,6 @@ def _touch_secrets_meta(name: str, event: str) -> None:
     _secrets.touch_meta(name, event)
 
 
-_KEY_PREFIXES: dict[str, tuple[str, int]] = {
-    "ANTHROPIC_API_KEY": ("sk-ant-", 40),
-    "OPENAI_API_KEY": ("sk-", 40),
-    "GOOGLE_AI_API_KEY": ("AIza", 0),
-    "OPENROUTER_API_KEY": ("sk-or-", 0),
-}
-
-
 def _keyring_active() -> bool:
     """True when the keyring backend is requested and `secret-tool` is on PATH -- the same
     check `core/secrets.py`'s `secret_value()`/`secret_values()` each make locally (no shared
@@ -74,13 +66,17 @@ def _mask_key(value: str) -> str:
 
 
 def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
-    """Return (ok, reason). reason is empty if ok."""
-    if name in _KEY_PREFIXES:
-        prefix, min_len = _KEY_PREFIXES[name]
-        if not value.startswith(prefix):
-            return False, f"should start with '{prefix}'"
-        if min_len and len(value) < min_len:
-            return False, f"too short (< {min_len} chars)"
+    """Return (ok, reason). reason is empty if ok. The prefix hint comes from the catalog
+    entry that declares *name* as one of its ``auth.credentials``."""
+    from docket.core import provider as _prov
+
+    prefix = ""
+    for spec in _prov.load_catalog().entries.values():
+        if name in spec.auth.credentials and spec.credential_prefix:
+            prefix = spec.credential_prefix
+            break
+    if prefix and not value.startswith(prefix):
+        return False, f"should start with '{prefix}'"
     return True, ""
 
 

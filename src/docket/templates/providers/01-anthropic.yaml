@@ -1,0 +1,29 @@
+kind: provider
+name: anthropic
+dialect: openai-chat
+baseUrl: https://api.anthropic.com/v1
+auth:
+  type: bearer
+  credentials: [ANTHROPIC_API_KEY]
+credentialPrefix: sk-ant-
+pricesAsOf: "2026-06-11"
+models:
+  - id: claude-haiku-4-5
+    price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
+  - id: claude-haiku-3-5
+    price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
+  - id: claude-sonnet-4-6
+    contextWindow: 200000
+    maxTokens: 64000
+    price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}
+  - id: claude-sonnet-4-5
+    price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}
+  - id: claude-opus-4-6
+    price: {input: 15.00, output: 75.00, cacheRead: 1.50, cacheWrite: 18.75}
+presets:
+  - name: anthropic
+    ranks: {economy: claude-haiku-4-5, standard: claude-sonnet-4-6, premium: claude-opus-4-6}
+    note: >-
+      Anthropic's OpenAI-compatibility layer. Anthropic documents it as intended to test and
+      compare models, not as a production solution: no prompt caching, `strict` ignored,
+      system messages concatenated. For Claude with caching, a native dialect is a deferred item.

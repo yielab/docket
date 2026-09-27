@@ -7,42 +7,8 @@ import re
 from typing import Any
 
 import docket.config as cfg
+from docket.core import provider as _provider
 from docket.edges import store as _store
-
-# Internal rank anchors: per-class defaults that seed each role's default
-# model, and the seed values `docket models` displays alongside the policy
-# table. NOT a user-facing vocabulary — "economy"/"standard"/"premium" are no
-# longer accepted as model arguments or registry keys. This table is the sole
-# surviving piece of the old tier system, kept private because role-default
-# seeding still reads it. It is NOT a runtime fallback chain — nothing in
-# docket degrades a request to a cheaper model on failure; `docket models`
-# labels it "rank anchors", never "fallback".
-#
-# Registry-overridable: a user's docket-models.json MAY carry a top-level
-# ``rankAnchors`` map (``{"economy": "...", "standard": "...", "premium":
-# "..."}``) that overrides these Anthropic defaults before role defaults are
-# derived — see `load_registry`. This is how a fleet on a non-Anthropic
-# preset stops showing Claude residue in the anchor display.
-_RANK_ANCHORS: dict[str, str] = {
-    "economy": "anthropic/claude-haiku-4-5",
-    "standard": "anthropic/claude-sonnet-4-6",
-    "premium": "anthropic/claude-opus-4-6",
-}
-
-# Provider prefixes that never carry a per-token dollar cost — a local
-# OpenAI-compatible endpoint (llama.cpp / LM Studio / vLLM / Ollama, all of
-# which speak the same /v1 surface `core/provider.py` registers). Priced as
-# "$0 (local)", never "n/a" (there is no missing data — the true cost is
-# zero) and never a fabricated non-zero figure.
-LOCAL_PROVIDERS: tuple[str, ...] = ("local", "ollama", "lmstudio")
-
-# Providers whose per-model pricing docket deliberately does NOT hardcode: a
-# marketplace router (OpenRouter) re-prices per underlying model and account
-# tier, changes often, and isn't something a manual snapshot table can track
-# honestly. Anything under these prefixes that isn't an explicit MODEL_PRICING
-# row (the stable OpenRouter free router below is the exception) reports the informative
-# "unpriced, bring your own" label instead of a stale or invented number.
-UNPRICED_MARKETPLACE_PROVIDERS: tuple[str, ...] = ("openrouter", "ai-gateway")
 
 ALL_ROLES: tuple[str, ...] = (
     "manager",
@@ -80,110 +46,105 @@ MODEL_ALIASES: dict[str, str] = {
 
 _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
-# Pricing snapshot: input, output, cache_read, cache_write (per M tokens).
-# A manual snapshot, not a live price feed. `docket cost` reports real,
-# measured token counts (`core/session.py`'s MeasuredUsage) but never a
-# dollar figure of its own -- this table only powers comparative *estimates*
-# (see CLAUDE.md's standing no-fabricated-dollar-figures rule).
-MODEL_PRICING_AS_OF = "2026-06-11"
-MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
-    "anthropic/claude-haiku-4-5": (0.80, 4.00, 0.08, 1.00),
-    "anthropic/claude-haiku-3-5": (0.80, 4.00, 0.08, 1.00),
-    "anthropic/claude-sonnet-4-6": (3.00, 15.00, 0.30, 3.75),
-    "anthropic/claude-sonnet-4-5": (3.00, 15.00, 0.30, 3.75),
-    "anthropic/claude-opus-4-6": (15.00, 75.00, 1.50, 18.75),
-    "openai/gpt-4.1-nano": (0.10, 0.40, 0.0, 0.0),
-    "openai/gpt-4.1-mini": (0.40, 1.60, 0.0, 0.0),
-    "openai/gpt-4.1": (2.00, 8.00, 0.0, 0.0),
-    "openai/gpt-4o": (2.50, 10.00, 0.0, 0.0),
-    "google/gemini-2.0-flash-lite": (0.075, 0.30, 0.0, 0.0),
-    "google/gemini-2.5-flash": (0.15, 0.60, 0.0, 0.0),
-    "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
-    # OpenRouter's capability-aware free router. The actual model can change
-    # between calls, so only the stable router id is pinned and priced here.
-    "openrouter/openrouter/free": (0.0, 0.0, 0.0, 0.0),
-    # Local OpenAI-compatible endpoint (core/provider.py's DEFAULT_MODEL_ID) —
-    # genuinely zero per-token cost, not an estimate. pricing_label() also
-    # short-circuits on LOCAL_PROVIDERS, so this row is belt-and-suspenders
-    # for any code path that reads MODEL_PRICING directly.
-    "local/qwen3-30b-a3b": (0.0, 0.0, 0.0, 0.0),
-}
 
-KNOWN_PRESETS: tuple[str, ...] = (
-    "anthropic",
-    "openai",
-    "google",
-    "openrouter-free",
-    "openrouter",
-    "ai-gateway",
-    "local",
-)
+def rank_anchors() -> dict[str, str]:
+    """Per-class defaults that seed each role's default model, and the seed values `docket
+    models` displays as "rank anchors" -- NOT a runtime fallback chain; nothing in docket
+    degrades a request to a cheaper model on failure. Computed from the built-in `anthropic`
+    provider's own `anthropic` preset (core/provider.py's catalog), not a hand-kept table, so a
+    later change to that document is the one place these seed values come from."""
+    spec = _provider.load_catalog().get("anthropic")
+    if spec is None:
+        return {}
+    preset = next((p for p in spec.presets if p.name == "anthropic"), None)
+    if preset is None:
+        return {}
+    return {rank: f"anthropic/{model_id}" for rank, model_id in preset.ranks.items()}
 
-PRESET_TABLE: dict[str, dict[str, str]] = {
-    "anthropic": {
-        "economy": "anthropic/claude-haiku-4-5",
-        "standard": "anthropic/claude-sonnet-4-6",
-        "premium": "anthropic/claude-opus-4-6",
-        "key": "ANTHROPIC_API_KEY",
-        "cost": "paid",
-        "note": "Requires an explicitly registered OpenAI-compatible endpoint; key alone is insufficient.",
-    },
-    "openai": {
-        "economy": "openai/gpt-4.1-nano",
-        "standard": "openai/gpt-4.1-mini",
-        "premium": "openai/gpt-4.1",
-        "key": "OPENAI_API_KEY",
-        "cost": "paid",
-        "note": "GPT-4.1 family; requires a registered compatible endpoint before use.",
-    },
-    "google": {
-        "economy": "google/gemini-2.0-flash-lite",
-        "standard": "google/gemini-2.5-flash",
-        "premium": "google/gemini-2.5-flash",
-        "key": "GOOGLE_AI_API_KEY",
-        "cost": "paid",
-        "note": "Requires a registered compatible endpoint; key alone is insufficient.",
-    },
-    "openrouter-free": {
-        "economy": "openrouter/openrouter/free",
-        "standard": "openrouter/openrouter/free",
-        "premium": "openrouter/openrouter/free",
-        "key": "OPENROUTER_API_KEY",
-        "cost": "free",
-        "note": (
-            "Experimental zero-cost router; model selection and availability can change per call. "
-            "Free account at openrouter.ai."
-        ),
-    },
-    "openrouter": {
-        "economy": "openrouter/anthropic/claude-haiku-4.5",
-        "standard": "openrouter/anthropic/claude-sonnet-4.6",
-        "premium": "openrouter/anthropic/claude-opus-4.6",
-        "key": "OPENROUTER_API_KEY",
-        "cost": "paid",
-        "note": "Unified access to 200+ models via one key.",
-    },
-    "ai-gateway": {
-        "economy": "ai-gateway/anthropic/claude-haiku-4.5",
-        "standard": "ai-gateway/anthropic/claude-sonnet-4.6",
-        "premium": "ai-gateway/anthropic/claude-opus-4.6",
-        "key": "AI_GATEWAY_API_KEY",
-        "cost": "paid",
-        "note": "Vercel AI Gateway with unified routing and observability.",
-    },
-    "local": {
-        "economy": "local/qwen3-30b-a3b",
-        "standard": "local/qwen3-30b-a3b",
-        "premium": "local/qwen3-30b-a3b",
-        "key": "",
-        "cost": "free",
-        "note": (
-            "Local OpenAI-compatible endpoint (llama.cpp/LM Studio/vLLM/Ollama) — no API key, "
-            "no per-token cost. Register your endpoint first: docket models provider add "
-            "<name> <base-url>."
-        ),
-    },
-}
+
+def presets() -> list[tuple[str, _provider.Preset]]:
+    """Every ``(provider_name, Preset)`` pair the catalog carries, in catalog order (built-in
+    documents load in filename order; a provider's own ``presets:`` list keeps its declared
+    order) -- the source ``preset_table()``/``known_presets()`` derive from."""
+    catalog = _provider.load_catalog()
+    return [(name, preset) for name, spec in catalog.entries.items() for preset in spec.presets]
+
+
+def is_local_provider(prefix: str) -> bool:
+    """True for a provider prefix the catalog marks ``local: true`` -- a genuinely zero
+    per-token cost (llama.cpp/LM Studio/vLLM/Ollama), never a fabricated non-zero figure."""
+    spec = _provider.load_catalog().get(prefix)
+    return bool(spec and spec.local)
+
+
+def is_marketplace(prefix: str) -> bool:
+    """True for a provider prefix the catalog marks ``marketplace: true`` -- its per-model
+    pricing changes too often for a manual snapshot, so it reports "n/a (bring your own)"
+    instead of a stale or invented number (a stable free router is priced explicitly on its
+    own model row instead)."""
+    spec = _provider.load_catalog().get(prefix)
+    return bool(spec and spec.marketplace)
+
+
+def price_for(model: str) -> tuple[float, float, float, float] | None:
+    """``(input, output, cacheRead, cacheWrite)`` USD-per-MTok for *model*, read from the
+    catalog's own model row, or ``None`` when there is no priced row -- callers must not treat
+    that as "$0" (see ``pricing_label``)."""
+    provider, _, model_id = model.partition("/")
+    spec = _provider.load_catalog().get(provider)
+    if spec is None:
+        return None
+    row = next((r for r in spec.models if r.id == model_id), None)
+    if row is None or row.price is None:
+        return None
+    return (row.price.input, row.price.output, row.price.cache_read, row.price.cache_write)
+
+
+def prices_as_of(model: str) -> str:
+    """The snapshot date of *model*'s provider, or ``""`` when the provider is unknown or
+    carries no ``pricesAsOf`` (never priced, or entirely unpriced)."""
+    provider, _, _model_id = model.partition("/")
+    spec = _provider.load_catalog().get(provider)
+    return spec.prices_as_of if spec else ""
+
+
+def _preset_cost_label(provider_name: str, preset: _provider.Preset) -> str:
+    """ "free"/"paid" for the presets listing -- free when the provider is a local endpoint or
+    the preset's own standard rank prices at $0 (a stable free router); every other preset is a
+    real paid route even where docket does not track its exact per-model price."""
+    if is_local_provider(provider_name):
+        return "free"
+    standard_id = preset.ranks.get("standard", "")
+    price = price_for(f"{provider_name}/{standard_id}") if standard_id else None
+    return "free" if price == (0.0, 0.0, 0.0, 0.0) else "paid"
+
+
+def preset_table() -> dict[str, dict[str, str]]:
+    """Same shape as the old hand-kept preset table: preset name -> economy/standard/premium
+    (full ``provider/model`` ids), ``key`` (the provider's first credential name, or ``""``),
+    ``cost`` and ``note`` -- derived from the catalog instead of duplicated here."""
+    catalog = _provider.load_catalog()
+    table: dict[str, dict[str, str]] = {}
+    for provider_name, preset in presets():
+        spec = catalog.get(provider_name)
+        if spec is None:
+            continue
+        key = spec.auth.credentials[0] if spec.auth.credentials else ""
+        table[preset.name] = {
+            "economy": f"{provider_name}/{preset.ranks.get('economy', '')}",
+            "standard": f"{provider_name}/{preset.ranks.get('standard', '')}",
+            "premium": f"{provider_name}/{preset.ranks.get('premium', '')}",
+            "key": key,
+            "cost": _preset_cost_label(provider_name, preset),
+            "note": preset.note,
+        }
+    return table
+
+
+def known_presets() -> tuple[str, ...]:
+    """Every preset name the catalog carries, in catalog order -- the menu
+    ``docket models preset`` validates against."""
+    return tuple(preset.name for _provider_name, preset in presets())
 
 
 def _init_role_models(tiers: dict[str, str]) -> dict[str, str]:
@@ -196,7 +157,7 @@ def _init_role_models(tiers: dict[str, str]) -> dict[str, str]:
 
 def _init_role_overrides_from_tiers(profiles: dict[str, Any]) -> dict[str, str]:
     """Derive per-role overrides from legacy tier-anchor values (migration helper)."""
-    tiers = dict(_RANK_ANCHORS)
+    tiers = dict(rank_anchors())
     for tier in ("economy", "standard", "premium"):
         m = profiles.get(tier)
         if isinstance(m, str) and _MODEL_ID_RE.match(m):
@@ -258,7 +219,7 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     """
     migrate_legacy_profiles()  # silent, idempotent — see the CLI layer for the warning
 
-    tiers = dict(_RANK_ANCHORS)
+    tiers = dict(rank_anchors())
     default_model = cfg.DEFAULT_MODEL
 
     path = cfg.MODEL_REGISTRY_FILE
@@ -303,10 +264,10 @@ def find_registry_problems() -> list[tuple[str, str]]:
 
     problems: list[tuple[str, str]] = []
 
-    rank_anchors = reg.get("rankAnchors", {})
-    if isinstance(rank_anchors, dict):
-        for anchor, m in rank_anchors.items():
-            if anchor not in _RANK_ANCHORS:
+    raw_rank_anchors = reg.get("rankAnchors", {})
+    if isinstance(raw_rank_anchors, dict):
+        for anchor, m in raw_rank_anchors.items():
+            if anchor not in ("economy", "standard", "premium"):
                 problems.append((f"rankAnchors.{anchor}", "unknown rank anchor"))
             elif not (isinstance(m, str) and _MODEL_ID_RE.match(m)):
                 problems.append((f"rankAnchors.{anchor}", f"not a valid model id: {m!r}"))
@@ -408,10 +369,10 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     #    local endpoint, which is honestly priced at $0, not "unknown").
     if _MODEL_ID_RE.match(model):
         provider = model.split("/", 1)[0]
-        if provider in LOCAL_PROVIDERS:
+        if is_local_provider(provider):
             pass
-        elif model not in MODEL_PRICING:
-            if provider in UNPRICED_MARKETPLACE_PROVIDERS:
+        elif price_for(model) is None:
+            if is_marketplace(provider):
                 warnings.append(
                     f"Model '{model}' routes through a marketplace provider whose per-model "
                     "pricing changes often — docket does not track it; cost will show as "
@@ -439,12 +400,12 @@ def pricing_label(model: str) -> str:
     Never fabricates "$0.00" for unpriced data -- that returns 'n/a' (or a
     marketplace variant); local providers are the one true-$0 case."""
     provider = model.split("/", 1)[0] if "/" in model else model
-    if provider in LOCAL_PROVIDERS:
+    if is_local_provider(provider):
         return "$0 (local)"
-    p = MODEL_PRICING.get(model)
+    p = price_for(model)
     if p is not None:
         return f"${p[0]:.2f}/${p[1]:.2f}"
-    if provider in UNPRICED_MARKETPLACE_PROVIDERS:
+    if is_marketplace(provider):
         return "n/a (bring your own)"
     return "n/a"
 
@@ -510,7 +471,7 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                     reg.setdefault("roles", {})[role] = v
             elif k.startswith("rank."):
                 anchor = k[5:]
-                if anchor in _RANK_ANCHORS:
+                if anchor in ("economy", "standard", "premium"):
                     reg.setdefault("rankAnchors", {})[anchor] = v
 
     path.parent.mkdir(parents=True, exist_ok=True)

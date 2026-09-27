@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -177,8 +177,11 @@ feasibility spike remains in ROADMAP and Git history.
 
 ### Presets (docket models preset)
 
-1. The built-in presets **MUST** include `anthropic` (default), `openai`, `google`,
-   `openrouter-free`, `openrouter`, `ai-gateway`, and `local`.
+1. The built-in presets **MUST** be exactly those the built-in `templates/providers/*.yaml`
+   documents declare (`core.models_policy.known_presets`), and that set **MUST** continue to
+   include `anthropic` (default), `openai`, `google`, `openrouter-free`, `openrouter`,
+   `ai-gateway`, and `local`. A preset menu entry **MUST NOT** require a separate `docket models
+   provider add` first — the document that declares it is its own registration.
 2. The `local` preset **MUST** require no API key (a local OpenAI-compatible endpoint —
    llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket models provider`) and
    **MUST** price its models at `$0 (local)`.
@@ -200,10 +203,11 @@ feasibility spike remains in ROADMAP and Git history.
    `/chat/completions` surface with function tools. A provider/model claim **MUST NOT** imply
    support for streaming, the Responses API, vendor routing options, or a model that lacks tool
    calling.
-2. Without process-wide overrides or a registered provider block, `resolve_endpoint` **MUST**
-   recognize `openrouter` as `https://openrouter.ai/api/v1` and `ai-gateway` as
-   `https://ai-gateway.vercel.sh/v1`. It **MUST** strip only Docket's first provider segment,
-   retaining nested gateway model ids.
+2. Without process-wide overrides, `resolve_endpoint` **MUST** resolve every built-in hosted
+   gateway from its `templates/providers/*.yaml` document — `openrouter` to
+   `https://openrouter.ai/api/v1` and `ai-gateway` to `https://ai-gateway.vercel.sh/v1` among
+   them (the full built-in list is "Provider catalog" below). It **MUST** strip only Docket's
+   first provider segment, retaining nested gateway model ids.
 3. For a provider absent from the catalog, credential precedence **MUST** be:
    `DOCKET_LLM_API_KEY`, the provider's environment credential, then the same credential in
    Docket's central key store. `openrouter` uses `OPENROUTER_API_KEY`; `ai-gateway` uses
@@ -226,9 +230,10 @@ feasibility spike remains in ROADMAP and Git history.
 1. Coding-harness authentication and Docket's runtime model transport **MUST** remain separate:
    Codex, Claude Code, or OpenCode subscriptions **MUST NOT** be treated as reusable provider API
    credentials or as proof that Docket can resolve a model endpoint.
-2. A selected model is ready only when it resolves to an OpenAI-compatible base URL and any
-   credential required by that shipped route is present. A direct Anthropic, OpenAI, or Google key
-   without an explicitly registered compatible base URL **MUST NOT** satisfy readiness.
+2. A selected model is ready when its provider resolves in the catalog (built-in or global) to a
+   base URL and every credential its `auth.credentials` names is present. A built-in hosted
+   provider (Anthropic, OpenAI, Google among them) needs only its credential — its base URL is
+   the shipped document, not a separate registration.
 3. Registered local providers **MAY** require no bearer credential. Registration **MUST** verify
    `<base-url>/models` before writing provider state; an unreachable endpoint returns failure and
    leaves the prior provider registry unchanged.
@@ -255,16 +260,27 @@ feasibility spike remains in ROADMAP and Git history.
 
 1. A provider **MUST** be a `kind: provider` document (ADR 0011; `core.provider.ProviderSpec`):
    `name`, `dialect` (closed enum, `openai-chat` today), `baseUrl`, `auth` (`type: bearer|none`
-   plus `credentials`, a list of names — never values), `local`, `models[]` (`id`,
-   `contextWindow`, `maxTokens`), and `note`. `core.provider.load_provider_document` **MUST**
-   raise naming the file and field on an unreadable file, bad YAML, a missing `kind`/`name`, an
-   unknown `dialect`/`auth.type`, or a credential count that does not match the `auth.type`.
+   plus `credentials`, a list of names — never values), `local`, `marketplace`,
+   `credentialPrefix` (a `docket keys validate` format hint, optional), `pricesAsOf`
+   (`YYYY-MM-DD`, required when any model row carries a `price`), `models[]` (`id`,
+   `contextWindow`, `maxTokens`, optional `price: {input, output, cacheRead, cacheWrite}` USD
+   per million tokens), `presets[]` (`name`, `ranks: {economy, standard, premium}` as bare model
+   ids, `note`), and `note`. `core.provider.load_provider_document` **MUST** raise naming the
+   file and field on an unreadable file, bad YAML, a missing `kind`/`name`, an unknown
+   `dialect`/`auth.type`, a credential count that does not match the `auth.type`, a `pricesAsOf`
+   missing while a row carries a `price`, or a malformed `pricesAsOf`/negative price.
 2. The catalog **MUST** merge two scopes, nearest-wins by name: **built-in**
-   (`config.PROVIDER_TEMPLATES_DIR`, shipped in the wheel) and **global**
-   (`config.PROVIDERS_FILE` = `~/.docket/docket-providers.json`, `{"providers": {name: spec}}`,
-   the operator's own registrations and overrides via `docket models provider add`).
-   `core.provider.load_catalog()` **MUST** return the merged result; `Catalog.get(name)` and
-   `Catalog.source_of(name)` (`"built-in"` / `"global"` / `""`) **MUST** read it.
+   (`config.PROVIDER_TEMPLATES_DIR`, shipped in the wheel — `anthropic`, `openai`, `google`,
+   `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
+   `ollama`, `lmstudio`, `local`) and **global** (`config.PROVIDERS_FILE` =
+   `~/.docket/docket-providers.json`, `{"providers": {name: spec}}`, the operator's own
+   registrations and overrides via `docket models provider add`). `core.provider.load_catalog()`
+   **MUST** return the merged result; `Catalog.get(name)` and `Catalog.source_of(name)`
+   (`"built-in"` / `"global"` / `""`) **MUST** read it. A global write that leaves
+   `presets`/`marketplace`/`credentialPrefix`/`pricesAsOf` unset **MUST** inherit each from a
+   built-in of the same name (`core.provider.save_provider`), so registering a local endpoint or
+   migrating a legacy block under a built-in's name does not erase presets or pricing the
+   built-in still means.
 3. `docket models provider add` **MUST** write a `ProviderSpec` to the global scope through
    `core.provider.save_provider`, never to `fleet.json`. Re-running with identical arguments
    **MUST** write nothing (idempotent).
@@ -286,17 +302,20 @@ feasibility spike remains in ROADMAP and Git history.
 
 ### Pricing
 
-1. Each built-in direct-provider model whose price Docket claims **MUST** have a pricing entry in
-   USD per million tokens, expressed as `input:output:cacheRead:cacheWrite` (the tuple order
-   `MODEL_PRICING` stores and `core.utils.estimate_cost_usd` unpacks). Marketplace gateway
-   models are the explicit exception described in requirement 4.
+1. Each built-in direct-provider model whose price Docket claims **MUST** have a `price` on its
+   catalog row, in USD per million tokens (`input`/`output`/`cacheRead`/`cacheWrite`,
+   `core.provider.Price`), read through `core.models_policy.price_for` and unpacked in that
+   order by `core.utils.estimate_cost_usd`. Marketplace gateway models are the explicit
+   exception described in requirement 4.
 2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
-3. A model whose provider prefix is a recognized local provider (`local`, `ollama`,
-   `lmstudio`) **MUST** report `$0 (local)` — this is the true cost, not a placeholder for
-   missing data, and **MUST NOT** fall through to the generic `n/a` path.
-4. A model routed through a marketplace provider whose per-model pricing docket does not
-   track (`openrouter` or `ai-gateway`, except the explicit `openrouter/openrouter/free`
-   router priced at `$0.00`) **MUST** report a distinct, informative label
+3. A model whose provider the catalog marks `local: true`
+   (`core.models_policy.is_local_provider`) **MUST** report `$0 (local)` — this is the true
+   cost, not a placeholder for missing data, and **MUST NOT** fall through to the generic `n/a`
+   path.
+4. A model routed through a provider the catalog marks `marketplace: true`
+   (`core.models_policy.is_marketplace`; `openrouter` or `ai-gateway` among the built-ins),
+   whose row carries no `price` (the explicit `openrouter/openrouter/free` router priced at
+   `$0.00` is the one exception), **MUST** report a distinct, informative label
    (`n/a (bring your own)`) rather than the plain `n/a` used for an ordinary uncatalogued
    model — docket does not invent a number for pricing that changes per model/account.
 
@@ -456,6 +475,28 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.12.0 (2026-09-27)
+
+- **P29-2: the providers docket knows are documents, and every table derives from them.**
+  `ProviderSpec` gains `presets[]`, `marketplace`, `credentialPrefix`, `pricesAsOf`, and
+  `ModelRow.price`; `src/docket/templates/providers/*.yaml` ships fourteen built-in documents
+  (`anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`,
+  `xai`, `cerebras`, `together`, `ollama`, `lmstudio`, `local`), replacing the hand-kept
+  `KNOWN_PRESETS`/`PRESET_TABLE`/`LOCAL_PROVIDERS`/`UNPRICED_MARKETPLACE_PROVIDERS`/
+  `MODEL_PRICING`/`MODEL_PRICING_AS_OF`/`_RANK_ANCHORS` constants with
+  `core.models_policy.presets`/`preset_table`/`known_presets`/`is_local_provider`/
+  `is_marketplace`/`price_for`/`prices_as_of`/`rank_anchors`, functions over the loaded catalog.
+  Amended "Presets" 1 (the built-in set is what the catalog declares), "Hosted gateway
+  resolution" 2 (every built-in hosted URL is a shipped document), "Provider readiness" 2 (a
+  built-in hosted provider needs only its credential — no separate registration), and "Pricing"
+  1/3/4 (keyed to catalog rows, `local: true`, `marketplace: true`). `edges/adapters/llm.py`'s
+  `_HOSTED_GATEWAY_BASE_URLS` and `core.provider.PROVIDER_CREDENTIAL_NAMES` are gone: a provider
+  absent from the catalog resolves only under `DOCKET_LLM_BASE_URL`, deriving
+  `<PREFIX>_API_KEY`. `cli/_doctor.py`'s `_PROVIDER_KEY` and `cli/_keys.py`'s `_KEY_PREFIXES`
+  are gone too, replaced by catalog reads (`credentialPrefix`, `auth.credentials`). Closes the
+  regression where `docket models preset anthropic|openai|google|local` refused for lack of a
+  separate registration the built-in document now supplies.
 
 ### Version 2.11.0 (2026-09-27)
 

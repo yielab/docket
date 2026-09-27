@@ -117,6 +117,13 @@ class TestMaintainCheckContextBudget:
     ) -> None:
         ws = _make_flat_ws(tmp_path, monkeypatch)
         (ws / "TOOLS.md").write_text("# TOOLS.md\n", encoding="utf-8")
+        # The built-in `anthropic` catalog document carries a real contextWindow for
+        # claude-sonnet-4-6, so `_make_flat_ws`'s default model is a registered row -- swap in
+        # a model absent from every provider's catalog rows to exercise the plain-default path.
+        meta_path = ws / ".docket-meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["model"] = "unregistered-vendor/no-such-model"
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
 
         rc = _agents.run_maintain("demo", "check")
 

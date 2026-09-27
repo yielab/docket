@@ -36,19 +36,19 @@ _STALE_MODELS: dict[str, str] = {
     "anthropic/claude-sonnet-3-5": "anthropic/claude-sonnet-4-6",
 }
 
-_PROVIDER_KEY: dict[str, str] = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_AI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "ai-gateway": "AI_GATEWAY_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-    "xai": "XAI_API_KEY",
-    "cerebras": "CEREBRAS_API_KEY",
-}
-
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
+
+
+def _expected_credential(provider: str) -> str:
+    """The provider's first credential name from the catalog, or ``""`` when *provider* is
+    unknown or needs none -- the single reader both `_check_provider_coverage` and its JSON
+    twin use, replacing the old hand-kept ``_PROVIDER_KEY`` table."""
+    from docket.core import provider as _prov
+
+    spec = _prov.load_catalog().get(provider)
+    if spec is None or not spec.auth.credentials:
+        return ""
+    return spec.auth.credentials[0]
 
 
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
@@ -366,7 +366,7 @@ def _check_provider_coverage(ids: list[str]) -> int:
     for aid in ids:
         model = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
         provider = model.split("/")[0] if "/" in model else ""
-        expected = _PROVIDER_KEY.get(provider, "")
+        expected = _expected_credential(provider)
         if not expected:
             continue
         if expected not in stored:
@@ -880,7 +880,7 @@ def _doctor_json_key_hygiene(
     for aid in ids:
         model = str(store.read_json(_cfg.meta_path(aid)).get("model", ""))
         provider = model.split("/")[0] if "/" in model else ""
-        expected = _PROVIDER_KEY.get(provider, "")
+        expected = _expected_credential(provider)
         if expected and expected not in stored:
             missing_keys.append({"agent": aid, "model": model, "needsKey": expected})
             issues += 1

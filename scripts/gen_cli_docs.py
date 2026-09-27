@@ -372,13 +372,13 @@ def _dispatch_retry_role_names() -> set[str]:
 
 
 def _provider_credential_names() -> set[str]:
-    """Provider API-key env var names, read from the one provider -> credential-name
-    map (core/provider.py, which the llm adapter imports) instead of re-typing them."""
-    from docket.core.provider import PROVIDER_CREDENTIAL_NAMES
+    """Provider API-key env var names, read from the provider catalog (core/provider.py)
+    instead of re-typing them."""
+    from docket.core.provider import load_catalog
 
     names: set[str] = set()
-    for credential_names in PROVIDER_CREDENTIAL_NAMES.values():
-        names.update(credential_names)
+    for spec in load_catalog().entries.values():
+        names.update(spec.auth.credentials)
     return names
 
 
@@ -669,8 +669,18 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
             "OPENROUTER_API_KEY",
             "AI_GATEWAY_API_KEY",
             "VERCEL_OIDC_TOKEN",
+            "GROQ_API_KEY",
+            "MISTRAL_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "XAI_API_KEY",
+            "CEREBRAS_API_KEY",
+            "TOGETHER_API_KEY",
         ),
-        "Per-provider API key, checked when neither `DOCKET_LLM_API_KEY` nor a stored fleet key is set; an unset one is also checked against docket's own secret store (`docket keys add`). An unlisted provider falls back to `<PROVIDER>_API_KEY`",
+        "Per-provider API key, named by a built-in provider document's `auth.credentials` "
+        "(`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
+        "catalog-resolved credential is already present; also checked against docket's own "
+        "secret store (`docket keys add`). A provider absent from the catalog falls back to "
+        "`<PROVIDER>_API_KEY`",
         "unset",
     ),
     (

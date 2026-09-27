@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -50,9 +50,9 @@ This specification does NOT cover provider key *format* rules (see input-validat
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
    need to export the key after `docket keys add`.
 3. Credential presence **MUST NOT** be reported as provider readiness when the selected model has
-   no callable endpoint. In particular, Anthropic/OpenAI/Google keys are stored and masked normally
-   but require an explicitly registered OpenAI-compatible endpoint until Docket ships a native
-   adapter for that provider.
+   no callable endpoint. A built-in hosted provider's base URL comes from its shipped
+   `kind: provider` document (`core.provider`'s catalog), so a stored Anthropic/OpenAI/Google
+   key is sufficient readiness on its own — no separate endpoint registration is required.
 
 ### Backends
 
@@ -126,6 +126,13 @@ does not.
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-27)
+
+- **P29-2: a stored key is sufficient for a built-in hosted provider.** Amended "Propagation"
+  3: the "until Docket ships a native adapter" clause is gone — Anthropic, OpenAI and Google now
+  ship as built-in `kind: provider` documents (model-profiles.spec.md v2.12.0), so their base
+  URL needs no separate registration and a stored credential alone satisfies readiness.
 
 ### Version 1.4.0 (2026-09-25)
 

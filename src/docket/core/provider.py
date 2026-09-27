@@ -1,10 +1,15 @@
 """Provider catalog: the model providers docket knows, as `kind: provider` documents.
 
 A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (never a value),
-and selectable models -- loaded the same way a role or policy is (model-profiles.spec.md
-"Provider catalog"). Two scopes, nearest-wins by name: built-in (`config.PROVIDER_TEMPLATES_DIR`)
-and global (`config.PROVIDERS_FILE`, the operator's own). `edges/adapters/llm.py`'s
-`resolve_endpoint` reads the merged catalog; this module has no knowledge of terminals.
+selectable models with optional pricing, and named presets -- loaded the same way a role or
+policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
+(`config.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
+(`config.PROVIDERS_FILE`, the operator's own). `edges/adapters/llm.py`'s `resolve_endpoint` reads
+the merged catalog; this module has no knowledge of terminals. `core/models_policy.py`'s
+`presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
+only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
+credential names, key-format prefixes) derives from this module too, so no module keeps its
+own copy.
 
 `register_local_provider` pings and registers a local endpoint via `save_provider`.
 `migrate_fleet_providers` ports a pre-catalog `fleet.json -> providers` block in once; a literal
@@ -34,21 +39,10 @@ DEFAULT_MODEL_NAME = "Qwen3 30B-A3B (local)"
 DEFAULT_CTX = 16384
 DEFAULT_MAX_TOKENS = 8192
 
-# Single owner of this table -- edges/adapters/llm.py imports it rather than keeping its own
-# copy, so a provider added here is never silently missing from the request path (or vice
-# versa). Used only for a provider absent from the catalog; a catalog entry names its own
-# credentials in `auth.credentials`. Retired once every hosted provider ships as a built-in
-# catalog document (a later card).
-PROVIDER_CREDENTIAL_NAMES: dict[str, tuple[str, ...]] = {
-    "anthropic": ("ANTHROPIC_API_KEY",),
-    "openai": ("OPENAI_API_KEY",),
-    "google": ("GOOGLE_AI_API_KEY",),
-    "openrouter": ("OPENROUTER_API_KEY",),
-    "ai-gateway": ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"),
-}
-
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_RANK_RE = re.compile(r"^(economy|standard|premium)$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ProviderError(Exception):
@@ -88,14 +82,57 @@ class AuthSpec(BaseModel):
         return value
 
 
+class Price(BaseModel):
+    """USD per million tokens. ``cacheRead``/``cacheWrite`` default to 0 for a provider that
+    never discounts a cache hit -- absence is not the same claim as a priced $0.00 hit, but
+    every provider docket ships a price row for today prices every field explicitly."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    input: float = Field(ge=0)
+    output: float = Field(ge=0)
+    cache_read: float = Field(0.0, alias="cacheRead", ge=0)
+    cache_write: float = Field(0.0, alias="cacheWrite", ge=0)
+
+
 class ModelRow(BaseModel):
-    """One selectable model id and its exact limits (either may be unknown)."""
+    """One selectable model id, its exact limits (either may be unknown), and its optional
+    price -- a model with no ``price`` reports cost as ``n/a`` (or the marketplace/local
+    variant), never a fabricated figure."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
     context_window: int | None = Field(None, alias="contextWindow", gt=0)
     max_tokens: int | None = Field(None, alias="maxTokens", gt=0)
+    price: Price | None = None
+
+
+class Preset(BaseModel):
+    """A named rank triple attached to the provider that defines it -- what
+    `core/models_policy.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
+    ``cost``) that are derived from the owning `ProviderSpec` instead of stored twice."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    ranks: dict[str, str]
+    note: str = ""
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, value: str) -> str:
+        if not _NAME_RE.match(value):
+            raise ValueError(f"'{value}' is not a valid preset name (^[a-z0-9][a-z0-9-]*$)")
+        return value
+
+    @field_validator("ranks")
+    @classmethod
+    def _closed_rank_names(cls, value: dict[str, str]) -> dict[str, str]:
+        for rank in value:
+            if not _RANK_RE.match(rank):
+                raise ValueError(f"'{rank}' is not a valid rank (economy, standard, premium)")
+        return value
 
 
 class ProviderSpec(BaseModel):
@@ -110,7 +147,11 @@ class ProviderSpec(BaseModel):
     base_url: str = Field(alias="baseUrl")
     auth: AuthSpec
     local: bool = False
+    marketplace: bool = False
+    credential_prefix: str = Field("", alias="credentialPrefix")
+    prices_as_of: str = Field("", alias="pricesAsOf")
     models: list[ModelRow] = Field(default_factory=list)
+    presets: list[Preset] = Field(default_factory=list)
     note: str = ""
 
     @model_validator(mode="before")
@@ -136,6 +177,13 @@ class ProviderSpec(BaseModel):
             raise ValueError(f"'{value}' must be an http:// or https:// URL")
         return value
 
+    @field_validator("prices_as_of")
+    @classmethod
+    def _valid_prices_as_of(cls, value: str) -> str:
+        if value and not _DATE_RE.match(value):
+            raise ValueError(f"'{value}' is not a YYYY-MM-DD date")
+        return value
+
     @field_validator("models")
     @classmethod
     def _unique_ids(cls, value: list[ModelRow]) -> list[ModelRow]:
@@ -145,6 +193,12 @@ class ProviderSpec(BaseModel):
                 raise ValueError(f"duplicate model id '{row.id}'")
             seen.add(row.id)
         return value
+
+    @model_validator(mode="after")
+    def _prices_as_of_required_with_a_price(self) -> ProviderSpec:
+        if not self.prices_as_of and any(row.price is not None for row in self.models):
+            raise ValueError("pricesAsOf is required when any model row carries a price")
+        return self
 
 
 def _validation_to_provider_error(path: Path | str, exc: ValidationError) -> ProviderError:
@@ -266,9 +320,33 @@ def load_catalog() -> Catalog:
     return Catalog(entries=entries, scopes=scopes)
 
 
+_INHERITABLE_IDENTITY_FIELDS = ("presets", "marketplace", "credential_prefix", "prices_as_of")
+
+
+def _with_inherited_identity(spec: ProviderSpec) -> ProviderSpec:
+    """A write that never mentions ``presets``/``marketplace``/``credentialPrefix``/
+    ``pricesAsOf`` is describing an endpoint (base URL, auth, models), not redefining a
+    built-in provider's identity. When *spec* leaves one of those fields unset (pydantic's
+    ``model_fields_set``, not merely default-valued -- a caller that means to clear a preset
+    still can, explicitly) and a built-in of the same name carries it, this inherits it, so
+    registering a local endpoint or migrating a legacy ``fleet.json`` block under a built-in's
+    name does not silently erase presets or pricing the built-in still means. Called both by
+    ``save_provider`` and, before it, by a caller that needs to compare a freshly built spec
+    against one already on disk (``register_local_provider``'s idempotency check) -- otherwise
+    the disk copy's inherited fields would never equal a fresh, uninherited comparison value."""
+    missing = [f for f in _INHERITABLE_IDENTITY_FIELDS if f not in spec.model_fields_set]
+    if not missing:
+        return spec
+    builtin = _load_builtin_providers().get(spec.name)
+    if builtin is None:
+        return spec
+    return spec.model_copy(update={f: getattr(builtin, f) for f in missing})
+
+
 def save_provider(spec: ProviderSpec) -> None:
     """Write *spec* into the global catalog (``config.PROVIDERS_FILE``), through
     ``edges/store.py`` -- the sole writer of docket-owned JSON."""
+    spec = _with_inherited_identity(spec)
 
     def _update(current: dict[str, Any]) -> dict[str, Any]:
         providers = current.get("providers")
@@ -479,7 +557,8 @@ def model_readiness(model: str) -> ModelReadiness:
     from docket.edges.adapters import llm as _llm
 
     provider, _, _model_id = model.partition("/")
-    credential_names = PROVIDER_CREDENTIAL_NAMES.get(provider, ())
+    spec = load_catalog().get(provider)
+    credential_names = tuple(spec.auth.credentials) if spec else ()
     credential_name = credential_names[0] if credential_names else ""
     credential_present = any(
         bool(os.environ.get(name, "").strip()) or bool(_secrets.secret_value(name))
@@ -543,13 +622,15 @@ def register_local_provider(
     reachable = ping_endpoint(base_url)
     changed = False
     if reachable:
-        desired = ProviderSpec(
-            name=name,
-            dialect="openai-chat",
-            base_url=base_url,
-            auth=AuthSpec(type="none"),
-            local=True,
-            models=[ModelRow(id=model_id, contextWindow=ctx, maxTokens=max_tokens)],
+        desired = _with_inherited_identity(
+            ProviderSpec(
+                name=name,
+                dialect="openai-chat",
+                base_url=base_url,
+                auth=AuthSpec(type="none"),
+                local=True,
+                models=[ModelRow(id=model_id, contextWindow=ctx, maxTokens=max_tokens)],
+            )
         )
         existing = load_catalog().get(name)
         if existing != desired:

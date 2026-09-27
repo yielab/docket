@@ -349,6 +349,9 @@ def test_step5_detects_existing_credential(
 def test_step5_unresolved_default_fails_before_ready_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`anthropic` is a built-in catalog document with a real base URL, so an unauthenticated
+    default resolves and fails only for the missing credential, never as an unreachable
+    endpoint (model-profiles.spec.md, "Provider readiness")."""
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
 
@@ -356,25 +359,28 @@ def test_step5_unresolved_default_fails_before_ready_claim(
     assert rc == 1
     out = capsys.readouterr().out
     assert "anthropic/claude-sonnet-4-6" in out
-    assert "no callable OpenAI-compatible endpoint" in out
+    assert "ANTHROPIC_API_KEY is required for the resolved endpoint" in out
     assert "docket models provider add" in out
     assert "docket models preset local" in out
     assert "Foundation Ready" not in out
     assert "Continuing with project initialization" not in out
 
 
-def test_step5_direct_anthropic_key_is_not_endpoint_readiness(
+def test_step5_direct_anthropic_key_is_sufficient_endpoint_readiness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """anthropic's built-in document supplies the base URL, so a stored ANTHROPIC_API_KEY
+    alone satisfies readiness (model-profiles.spec.md, "Provider readiness")."""
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
 
     rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert rc == 1
-    assert "ANTHROPIC_API_KEY is present but is not an endpoint" in out
-    assert "Foundation Ready" not in out
+    assert rc == 0
+    assert "Model provider ready" in out
+    assert "ANTHROPIC_API_KEY configured (value hidden)" in out
+    assert "Workstation Foundation Ready" in out
 
 
 def test_step5_registered_local_endpoint_needs_no_api_key(

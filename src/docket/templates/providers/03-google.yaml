@@ -1,0 +1,22 @@
+kind: provider
+name: google
+dialect: openai-chat
+baseUrl: https://generativelanguage.googleapis.com/v1beta/openai
+auth:
+  type: bearer
+  credentials: [GOOGLE_AI_API_KEY]
+credentialPrefix: AIza
+pricesAsOf: "2026-06-11"
+models:
+  - id: gemini-2.0-flash-lite
+    price: {input: 0.075, output: 0.30}
+  - id: gemini-2.5-flash
+    price: {input: 0.15, output: 0.60}
+  - id: gemini-2.5-flash-lite
+    price: {input: 0.10, output: 0.40}
+presets:
+  - name: google
+    ranks: {economy: gemini-2.0-flash-lite, standard: gemini-2.5-flash, premium: gemini-2.5-flash}
+    note: >-
+      Google's Gemini OpenAI-compatibility layer, documented by Google as beta; function
+      calling is supported.

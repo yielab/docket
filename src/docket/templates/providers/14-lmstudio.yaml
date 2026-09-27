@@ -1,0 +1,6 @@
+kind: provider
+name: lmstudio
+dialect: openai-chat
+baseUrl: http://127.0.0.1:1234/v1
+auth: {type: none}
+local: true

@@ -38,7 +38,6 @@ from docket.core.llm import (
     ToolCall,
     ToolSpec,
 )
-from docket.core.provider import PROVIDER_CREDENTIAL_NAMES as _PROVIDER_CREDENTIAL_NAMES
 from docket.core.runtime_driver import FailureKind
 
 # Endpoints that return one of these are worth trying again: an overloaded or
@@ -49,11 +48,6 @@ _RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
 _VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
 _PROTOCOL_OVERHEAD_TOKENS = 16
-
-_HOSTED_GATEWAY_BASE_URLS: dict[str, str] = {
-    "openrouter": "https://openrouter.ai/api/v1",
-    "ai-gateway": "https://ai-gateway.vercel.sh/v1",
-}
 
 
 # ── wire encoding ─────────────────────────────────────────────────────────────
@@ -400,15 +394,16 @@ def resolve_endpoint(model: str) -> Endpoint | None:
        stored config.
     2. The provider catalog entry for ``<provider>`` (``core/provider.py``'s
        ``load_catalog``) — built-in overridden by the operator's own (global), nearest-wins.
-    3. A built-in base URL for a known hosted gateway, only for a provider absent from the
-       catalog.
+    3. ``DOCKET_LLM_BASE_URL`` alone, only for a provider absent from the catalog (every hosted
+       gateway docket knows ships as a built-in catalog document; this step is the one escape
+       hatch left for a provider that is neither).
 
     For a catalog entry, the API key comes from ``core/provider.py``'s ``resolve_credential``
     (``DOCKET_LLM_API_KEY`` -> environment -> Docket's central key store, per name in
     ``auth.credentials``). For a provider absent from the catalog, the key falls back through
-    ``DOCKET_LLM_API_KEY``, then the provider's environment credential, then the central key
-    store. Returns ``None`` when no base URL can be found, so callers report an actionable
-    "no endpoint configured" rather than posting into the void.
+    ``DOCKET_LLM_API_KEY``, then the derived ``<PREFIX>_API_KEY`` environment variable, then the
+    same name in the central key store. Returns ``None`` when no base URL can be found, so
+    callers report an actionable "no endpoint configured" rather than posting into the void.
     """
     provider, _, model_id = model.partition("/")
     if not model_id:
@@ -437,27 +432,20 @@ def resolve_endpoint(model: str) -> Endpoint | None:
             max_output_tokens=exact.max_tokens if exact else None,
         )
 
-    # Absent from the catalog: the pre-catalog hosted-gateway fallback, unchanged.
-    base_url = env_base or _HOSTED_GATEWAY_BASE_URLS.get(provider, "")
+    # Absent from the catalog: only DOCKET_LLM_BASE_URL can resolve it, deriving the
+    # credential's env name from the provider prefix (never a per-provider literal here).
+    base_url = env_base
     if not base_url:
         return None
 
     api_key = env_key
     if not api_key and provider:
-        credential_names = _PROVIDER_CREDENTIAL_NAMES.get(
-            provider, (f"{provider.upper().replace('-', '_')}_API_KEY",)
-        )
-        for name in credential_names:
-            api_key = os.environ.get(name, "").strip()
-            if api_key:
-                break
+        credential_name = f"{provider.upper().replace('-', '_')}_API_KEY"
+        api_key = os.environ.get(credential_name, "").strip()
         if not api_key:
             from docket.core import secrets as _secrets
 
-            for name in credential_names:
-                api_key = _secrets.secret_value(name) or ""
-                if api_key:
-                    break
+            api_key = _secrets.secret_value(credential_name) or ""
 
     return Endpoint(
         base_url=base_url,
