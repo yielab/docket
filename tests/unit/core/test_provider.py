@@ -106,3 +106,18 @@ class TestLoadProviderDocument:
 
         assert excinfo.value.field == "dialect"
         assert "openai-chat" in excinfo.value.valid
+
+    def test_a_reserved_header_name_is_refused(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bad-headers.yaml"
+        doc.write_text(
+            "kind: provider\n"
+            "name: bad\n"
+            "baseUrl: https://example.com/v1\n"
+            "auth: {type: none}\n"
+            "headers: {Authorization: x}\n"
+        )
+
+        with pytest.raises(_provider.ProviderError) as excinfo:
+            _provider.load_provider_document(doc)
+
+        assert excinfo.value.field == "headers"

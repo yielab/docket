@@ -90,7 +90,7 @@ def test_register_local_provider_writes_a_provider_document(
     assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
     assert entry["dialect"] == "openai-chat"
     assert entry["local"] is True
-    assert entry["auth"] == {"type": "none", "credentials": []}
+    assert entry["auth"] == {"type": "none", "header": "", "credentials": []}
     assert entry["models"] == [{"id": "llama-3.3-70b", "contextWindow": 32768, "maxTokens": 4096}]
     # The display-only per-model caption was retired: the document has no home for it.
     assert "name" not in entry["models"][0]
