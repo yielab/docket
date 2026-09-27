@@ -11,14 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 47 (opened 2026-09-27): Phase 29, the provider catalog (D-45)
+> ## ▶ ACTIVE BOARD — WAVE 48 (opened 2026-09-27): Phase 29, the provider catalog (D-45)
 >
-> Wave 47 runs P29-1 alone (it defines the document model and the `fleet.json` ->
-> `docket-providers.json` migration every later card builds on), one Sonnet worker in an
+> Wave 47 (P29-1, the document model and the `fleet.json` -> `docket-providers.json`
+> migration) merged 2026-09-27 at `0be9812`, rollup after it. Wave 48 runs P29-2, P29-5 and
+> P29-7 in parallel (merge order P29-5, P29-7, P29-2), one Sonnet worker per card in an
 > isolated worktree under one integrator; packets in
 > [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
-> Wave 48 (P29-2, P29-5, P29-7) and Wave 49 (P29-3, P29-4, then P29-6) open only after the
-> previous wave's rollup merges green.
+> Wave 49 (P29-3, P29-4, then P29-6) opens only after the Wave 48 rollup merges green.
 >
 > **☑ Phase 28 complete (2026-09-26).**
 >
@@ -137,9 +137,9 @@ release source.
 ---
 
 
-## ▶ WAVE 47 — ACTIVE (opened 2026-09-27): Phase 29, the provider catalog (D-45)
+## ▶ WAVE 48 — ACTIVE (opened 2026-09-27): Phase 29, the provider catalog (D-45)
 
-**Opened 2026-09-27 (Wave 47 active; Waves 48–49 queued in this section).** Seven cards in three waves. Decision, the document, the two scopes, the
+**Opened 2026-09-27 (Wave 48 active; Wave 47 done; Wave 49 queued in this section).** Seven cards in three waves. Decision, the document, the two scopes, the
 adapter seam, the twelve amended spec rules, the retired-code table and the verdict table are in
 [docs/adr/0011-provider-catalog.md](docs/adr/0011-provider-catalog.md). Worker packets:
 [.agents/handoffs/wave-47-worker-packets.md](.agents/handoffs/wave-47-worker-packets.md).
@@ -171,7 +171,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P29-1 — a provider is a document, and today's configuration resolves exactly as before
 
-**Status:** IN-PROGRESS (@sonnet-p29-1) · **Size:** M · **Wave:** 47 · **Spec:** `model-profiles.spec.md` → 2.11.0 (new section "Provider catalog"; "Hosted gateway resolution" rule 3 amended; "Provider registration display fields" removed), `config-format.spec.md` → 1.2.0 (`kind: provider` joins the envelope; P28-1 shipped)
+**Status:** DONE (2026-09-27, `0be9812`) · **Size:** M · **Wave:** 47 · **Spec:** `model-profiles.spec.md` → 2.11.0 (new section "Provider catalog"; "Hosted gateway resolution" rule 3 amended; "Provider registration display fields" removed), `config-format.spec.md` → 1.2.0 (`kind: provider` joins the envelope; P28-1 shipped)
 
 **Trigger:**
 - `fleet.json → providers` is a loose dict (`core/fleet.py::FleetConfig.providers`, "kept as a
@@ -238,7 +238,7 @@ because `docket-providers.json` is never written.
 
 ### P29-2 — the providers docket knows are documents, and every table derives from them
 
-**Status:** TODO · **Size:** M · **Wave:** 48 · **Spec:** `model-profiles.spec.md` → 2.12.0 ("Presets" 1, "Hosted gateway resolution" 2, "Provider readiness" 2, "Pricing" 1/3/4 amended), `api-keys.spec.md` → 1.5.0 ("Propagation" 3 amended)
+**Status:** IN-PROGRESS (@sonnet-p29-2) · **Size:** M · **Wave:** 48 · **Spec:** `model-profiles.spec.md` → 2.12.0 ("Presets" 1, "Hosted gateway resolution" 2, "Provider readiness" 2, "Pricing" 1/3/4 amended), `api-keys.spec.md` → 1.5.0 ("Propagation" 3 amended)
 
 **Trigger:** seven tables, seven populations (ADR 0011 evidence row 1); `docket doctor` asks for
 `GROQ_API_KEY` for a model `resolve_endpoint` cannot resolve; `resolve_endpoint("anthropic/…")` is
@@ -382,7 +382,7 @@ the one `is_local` test.
 
 ### P29-5 — a retry waits as long as the provider asked, up to a ceiling
 
-**Status:** TODO · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.21.0 (6.18–6.20 were consumed by Phases 27–28) ("Retries and the failure-kind taxonomy")
+**Status:** IN-PROGRESS (@sonnet-p29-5) · **Size:** M · **Wave:** 48 · **Spec:** `pod-dispatch.spec.md` → 6.21.0 (6.18–6.20 were consumed by Phases 27–28) ("Retries and the failure-kind taxonomy")
 
 **Trigger:** `core/dispatch.py` sleeps `DISPATCH_RETRY_BACKOFF_S * attempt` (2 s, 4 s) and
 `edges/adapters/llm.py::complete` discards response headers; a 429 with a 60 s window exhausts
@@ -462,7 +462,7 @@ maps `providers` to `fleet.json`; `docs/MODEL-GATEWAYS.md` documents one-model b
 
 ### P29-7 — `docket auth` is a removed command, and `keys setup` asks for what the catalog needs
 
-**Status:** TODO · **Size:** S · **Wave:** 48 · **Spec:** `cli-interface.spec.md` → 1.42.0 (`docket auth` section removed; removed-command list), `api-keys.spec.md` → 1.6.0 (`setup` iterates the catalog)
+**Status:** IN-PROGRESS (@sonnet-p29-7) · **Size:** S · **Wave:** 48 · **Spec:** `cli-interface.spec.md` → 1.42.0 (`docket auth` section removed; removed-command list), `api-keys.spec.md` → 1.6.0 (`setup` iterates the catalog)
 
 **Trigger:** every `docket auth` subcommand answers "gone, use `docket keys add`"
 (`cli/_keys.py::run_auth`); the project's mechanism for that is `__main__.py::_REMOVED`
