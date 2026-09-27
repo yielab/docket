@@ -1,0 +1,6 @@
+kind: pod
+name: tdd
+description: >-
+  Test-driven development as a pipeline: a failing test is written and mechanically confirmed
+  to fail before any implementation exists.
+members: [tester]

@@ -1,0 +1,15 @@
+kind: pipeline
+name: dual-review
+description: >-
+  Independent double review after the build: a Reviewer and a Critic evaluate the same diff
+  concurrently, each gated on its own role's verdict contract, and both must pass before the
+  task is done.
+steps:
+  - build: implementer
+    verify: true
+  - id: reviews
+    parallel:
+      - id: review-code
+        role: reviewer
+      - id: review-risk
+        role: critic

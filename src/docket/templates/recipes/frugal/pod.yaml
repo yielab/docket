@@ -1,0 +1,10 @@
+kind: pod
+name: frugal
+description: >-
+  A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive
+  by policy, not by hoping.
+members: [reviewer]
+settings:
+  budgetUsd: 2
+  maxReworkCycles: 1
+  turnTimeoutS: 600

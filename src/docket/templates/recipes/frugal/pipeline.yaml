@@ -1,0 +1,15 @@
+kind: pipeline
+name: frugal
+description: >-
+  An ordinary build kept cheap: the Lead plans on a cheap-tier model, the Implementer's change
+  is gated on its own verify command, and a Reviewer's cheap-tier APPROVE/REQUEST-CHANGES
+  verdict is the last gate, all under a spend cap and a single bounded rework cycle.
+steps:
+  - plan: lead
+    model: cheap
+  - build: implementer
+    verify: true
+  - review: reviewer
+    model: cheap
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}

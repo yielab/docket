@@ -1,0 +1,20 @@
+kind: pipeline
+name: spec-first
+description: >-
+  A specification is written and approved before any code exists: the Writer drafts it, a
+  Critic gates it APPROVE/REJECT with one bounded rework cycle back to the spec, the
+  Implementer then builds against it under its own verify command, and a Reviewer's
+  APPROVE/REQUEST-CHANGES is the last gate before the task is done.
+steps:
+  - spec: writer
+    instructions: >-
+      Write the specification for this task to a new or existing spec file. Do not write any
+      implementation code yet.
+  - approve-spec: critic
+    verdict: [APPROVE, REJECT]
+    on: {REJECT: {goto: spec, max: 1}}
+  - build: implementer
+    verify: true
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
