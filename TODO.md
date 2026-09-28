@@ -11,15 +11,15 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 56 (Phase 32, D-48) · Phase 31 complete 2026-09-27
+> ## ▶ ACTIVE BOARD — WAVE 57 (Phase 32, D-48) · Wave 56 complete 2026-09-27
 >
 > **Nine cards over Waves 56–59**, one Sonnet worker per card in an isolated worktree under one
 > integrator. Decision, the rules, the verdict table and the test discipline are in
 > [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md). Worker packets:
 > [.agents/handoffs/wave-56-worker-packets.md](.agents/handoffs/wave-56-worker-packets.md).
-> **Activation gate met 2026-09-27:** Phase 31 closed at `3f39484` (README follow-up `0191ffe`);
-> batching confirmed from the function-level ownership in the section below; the packets file
-> records the base commit. **Phase 32 closes when the Wave 59 rollup merges green.**
+> Wave 56 (P32-1 `8576090`, P32-2 `7f6a364`) merged 2026-09-27 with rollup after it. Wave 57 runs
+> P32-3, P32-4 and P32-5 in parallel (merge order P32-4, P32-5, P32-3), one Sonnet worker per card.
+> **Phase 32 closes when the Wave 59 rollup merges green.**
 >
 > **Phase 31 closed 2026-09-27** — see the record below.
 >
@@ -191,15 +191,19 @@ release source.
 
 
 
-## ▶ WAVE 56 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
+## ▶ WAVE 57 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
 
-**Nine cards in four waves** (two Sonnet workers in parallel, then three, then three, then the
-integrator). Decision, the rules, the destination table, the verdict table and the test
-discipline are in [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
+**Opened 2026-09-27 (Wave 57 active; Wave 56 done).** Nine cards in four waves (two Sonnet
+workers in parallel, then three, then three, then the integrator). Decision, the rules, the
+destination table, the verdict table and the test discipline are in
+[docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
 Worker packets: [.agents/handoffs/wave-56-worker-packets.md](.agents/handoffs/wave-56-worker-packets.md).
 **Activation gate met 2026-09-27:** Phase 31 closed at `3f39484`, README follow-up at `0191ffe`;
 batching confirmed from the function-level ownership below; the packets file records the base
-commit. Analysis and plan (gitignored): `internal-docs/observability-export-audit-2026-09-27.es.md`,
+commit. **Wave 56 merged 2026-09-27:** P32-1 at `8576090`, P32-2 at `7f6a364`; full gates green
+(3,153 tests, 31 specs, 19/19 goldens, mypy/ruff/spec-index clean); `specs/README.md` and
+`CONTRIBUTING.md` re-trued. Analysis and plan (gitignored):
+`internal-docs/observability-export-audit-2026-09-27.es.md`,
 `internal-docs/observability-export-plan-2026-09-27.es.md`.
 
 **Trigger (explicit request, 2026-09-27):** observability and telemetry configurable and adaptable
@@ -234,7 +238,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P32-1 — the model call is a trace event
 
-**Status:** TODO · **Size:** M · **Wave:** 56 · **Spec:** new `specs/functional/trace-store.spec.md` → 1.0.0 (the record shape, `EVENT_TYPES` with `llm_call`, redaction, `subscribe`, `trace_ingest`, retention — the owner the store never had; Status "Implemented and live"), `agent-loop.spec.md` → 1.25.0 ("Tracing": one `llm_call` per backend request; Module API: `ChatResponse.latency_ms`, `.model`, `.provider`), `harness-mode.spec.md` → 1.1.2 (event table: `llm_call` appears on stdout like any record; additive)
+**Status:** DONE (2026-09-27, `8576090`) · **Size:** M · **Wave:** 56 · **Spec:** new `specs/functional/trace-store.spec.md` → 1.0.0 (the record shape, `EVENT_TYPES` with `llm_call`, redaction, `subscribe`, `trace_ingest`, retention — the owner the store never had; Status "Implemented and live"), `agent-loop.spec.md` → 1.25.0 ("Tracing": one `llm_call` per backend request; Module API: `ChatResponse.latency_ms`, `.model`, `.provider`), `harness-mode.spec.md` → 1.1.2 (event table: `llm_call` appears on stdout like any record; additive)
 
 **Trigger:** `core/trace.py::EVENT_TYPES` has no event for the model call; usage is persisted
 only through `append_messages(..., usage=)` in `_TurnState.call_backend_and_handle_response`;
@@ -289,7 +293,7 @@ case exists it gains one line per request — list the lines. `docs/commands.md`
 
 ### P32-2 — a neutral span model and the projection
 
-**Status:** TODO · **Size:** M · **Wave:** 56 · **Spec:** new `specs/functional/observability-export.spec.md` → 1.0.0 (Purpose, Scope; Requirements "Span model", "Projection", "Export policy"; Status "Draft — model and projection implemented; no exporter yet"; later cards add sections and bump)
+**Status:** DONE (2026-09-27, `7f6a364`) · **Size:** M · **Wave:** 56 · **Spec:** new `specs/functional/observability-export.spec.md` → 1.0.0 (Purpose, Scope; Requirements "Span model", "Projection", "Export policy"; Status "Draft — model and projection implemented; no exporter yet"; later cards add sections and bump)
 
 **Trigger:** the only consumer of the trace vocabulary outside docket is the harness, which
 forwards raw records. A vendor format written from records directly would put a wire format in

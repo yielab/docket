@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The model's own call is a trace event, and a neutral span model projects it.** Every backend
+  chat-completions exchange (each turn iteration, plus the compaction summarizer's own call) is
+  now a durable `llm_call` trace record carrying model, provider, measured latency and token
+  counts — never a dollar figure. `ChatResponse` gains `model`, `provider`, `latency_ms`;
+  `core/trace.py`'s `EVENT_TYPES` gains the one entry; the store gets its first owning spec,
+  `trace-store.spec.md`. A new, vendor-agnostic layer sits above it: `core/telemetry.py`
+  deterministically projects trace records into a neutral `Span`/`SpanEvent` model (ids derived
+  from the session id, never random) and an `ExportPolicy` decides which event types may leave
+  the host and whether their payload is `metadata` (default, content stripped) or `full`. No
+  destination, wire format, queue, or CLI surface exists yet — see `observability-export.spec.md`
+  and [ADR 0014](docs/adr/0014-observability-export.md).
 - **A recipe library of three kinds, and a recipe that says what it brings.** Twelve recipes
   ship: the three teams, four policy packs that change no roster (`git-safety`, `no-egress`,
   `secrets-guard`, `prod-approval`; every rule stated with the structured `tool`/`path`/`anyOf`
