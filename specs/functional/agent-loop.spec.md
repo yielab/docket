@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.25.0
+**Version**: 1.26.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -553,6 +553,30 @@ This specification does NOT cover:
     measured, but no call here converts them into a dollar figure. See `trace-store.spec.md` for
     the full record shape and event-type list.
 
+### `DocketDriver` (observability export wiring, P32-6)
+
+72. `DocketDriver.run_turn` **MUST** call `core.telemetry.start(core.telemetry.
+    load_enabled_exporters(), edges.adapters.exporters.sink_for)` before running the turn. This
+    call **MUST** be safe to make on every `run_turn` invocation: `start` itself is idempotent
+    (a no-op after the first pipeline is registered in this process), so calling it every turn,
+    rather than tracking "already started" here, is what makes the start lazy without adding new
+    driver state. With every exporter disabled (the shipped default), this **MUST** start no
+    background thread and register no trace subscriber.
+73. `DocketDriver.run_turn` **MUST**, in a `finally` block that covers every return path of the
+    method — including an early return before the turn itself runs (missing agent metadata, a
+    refused sandbox, an unresolved model endpoint) — call `core.telemetry.flush(config.
+    EXPORT_FLUSH_TIMEOUT_S)` and then write `core.telemetry.health()` to `config.
+    EXPORTERS_HEALTH_FILE` through `edges/store.py`. Neither call **MUST** be allowed to make
+    `run_turn` itself raise, matching requirement 18's "never raises for an ordinary failure"
+    contract, and neither **MUST** change `TurnResult`'s content — export health is a side
+    effect, never part of the returned result.
+74. A destination that accepts a connection and never answers **MUST NOT** make `run_turn` take
+    meaningfully longer than `config.EXPORT_FLUSH_TIMEOUT_S` on top of the turn's own time: the
+    `flush` call in requirement 73 bounds its own wait regardless of how long the hung send
+    eventually takes in the background. See `observability-export.spec.md`'s "Pipeline" and "The
+    module-level registry and wiring" sections for `Pipeline`/`start`/`flush`/`close`/`health`'s
+    own requirements.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -745,6 +769,18 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.26.0 (2026-09-27)
+
+- **P32-6 wires the observability export pipeline into `DocketDriver.run_turn`** (ADR 0014). New
+  requirements 72-74: `run_turn` starts `core.telemetry`'s pipeline lazily and idempotently
+  before the turn (a no-op after the first start, and with zero enabled exporters, per
+  `observability-export.spec.md`'s "The module-level registry and wiring" section), and flushes
+  it plus records `core.telemetry.health()` to `config.EXPORTERS_HEALTH_FILE` in a `finally`
+  covering every return path, including the early-return failures requirements 18-19 already
+  describe. A hung destination cannot make a turn take meaningfully longer than
+  `config.EXPORT_FLUSH_TIMEOUT_S` on top of its own time. See `observability-export.spec.md`
+  1.3.0 for `Pipeline`/`start`/`flush`/`close`/`health`'s own contract.
 
 ### Version 1.25.0 (2026-09-27)
 

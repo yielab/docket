@@ -13,6 +13,7 @@ built onto. This module never calls a tool handler directly, nor imports
 
 from __future__ import annotations
 
+import atexit
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ from docket.core import mcp_tools as _mcp
 from docket.core import pod as _pod
 from docket.core import runs as _runs
 from docket.core import session as _session
+from docket.core import telemetry as _telemetry
 from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
@@ -44,10 +46,16 @@ from docket.core.runtime_driver import (
 )
 from docket.core.tools import ToolContext, ToolRegistry, builtin_registry
 from docket.edges import store as _store
+from docket.edges.adapters import exporters as _exporters
 from docket.edges.adapters import llm as _llm
 from docket.edges.adapters import system as _system
 
 __all__ = ["DocketDriver"]
+
+# Runs once per process at import time. `telemetry.close()` is itself a safe no-op when
+# nothing was ever started (see its own docstring), so this is harmless in every test process
+# and CLI invocation that never enables an exporter.
+atexit.register(_telemetry.close)
 
 
 # Reads and validates *only* the mcpServers meta key, through `PodSettings.coerce` --
@@ -228,7 +236,41 @@ class DocketDriver:
         over *agent_id*'s own configured model for this call's endpoint only -- a caller (e.g. a
         pipeline step's own override, resolved to a literal by ``core/dispatch.py`` first) is
         responsible for handing this a real ``provider/id``, never a rank word; this driver never
-        writes it back to ``.docket-meta.json``."""
+        writes it back to ``.docket-meta.json``. Starts the observability export pipeline lazily
+        before the turn and flushes it (recording ``telemetry.health()``) in a ``finally``, so
+        both run on every return path -- see ``_run_turn_body`` for the turn itself."""
+        _telemetry.start(_telemetry.load_enabled_exporters(), _exporters.sink_for)
+        try:
+            return self._run_turn_body(
+                agent_id,
+                session_key,
+                message,
+                timeout,
+                env,
+                trace_project=trace_project,
+                trace_session_key=trace_session_key,
+                trace_task_id=trace_task_id,
+                model=model,
+            )
+        finally:
+            _telemetry.flush(_cfg.EXPORT_FLUSH_TIMEOUT_S)
+            _store.write_json(_cfg.EXPORTERS_HEALTH_FILE, _telemetry.health())
+
+    def _run_turn_body(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None,
+        *,
+        trace_project: str | None,
+        trace_session_key: str | None,
+        trace_task_id: str | None,
+        model: str | None,
+    ) -> TurnResult:
+        """The turn itself, unwrapped from ``run_turn``'s export-pipeline start/flush so that
+        wrapper stays short and this keeps the original, unindented turn logic."""
         meta, worktree_dir = _load_agent_meta(agent_id)
         if meta is None:
             return TurnResult(
