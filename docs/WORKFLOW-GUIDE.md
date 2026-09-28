@@ -246,7 +246,7 @@ Token counts are real and measured. Dollar figures are **not** — docket's own 
 no billed spend, so `docket cost` shows a clearly labelled estimate rather than a number claimed
 as recorded. (The bundled pricing table only powers that estimate and `docket models`' comparative
 display — docket never projects dollar *savings*.) See
-[Cost reporting and its limits](../README.md#the-record).
+[Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 ### Step 10 — Review and commit
 
@@ -779,7 +779,7 @@ docket doctor                   # any alerts?
 These are **token** estimates — the thing docket's routing actually controls. For dollars, read
 the **labelled estimate** with `docket cost`; it depends on your models and current pricing, so we
 don't project it here. See
-[Cost reporting and its limits](../README.md#the-record).
+[Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 A dispatched task is the sum of its hops, each a real costed turn:
 

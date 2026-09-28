@@ -1,9 +1,9 @@
 """README front-door contract.
 
-The README carries one pitch and three heroes -- the team you define, the run, the gate and the
-record -- each showing
-its captured asset, naming its limit beside the capability, and ending claims in the command that
-proves them. Every rule here answers to the current README, not to a prior shape of it.
+The README follows the newcomer's path: install, a first team from defaults or a recipe, what a
+dispatch does, what gates and records it, and only then how to change the team and the map of every
+layer. Each capability section shows its captured asset, names its limit beside the capability, and
+ends claims in the command that proves them. Every rule here answers to the current README.
 """
 
 from __future__ import annotations
@@ -14,19 +14,28 @@ from pathlib import Path
 import pytest
 
 LANE = "truth"
-REASON = "Keeps the README on one pitch: three hero sections first and in order, each with its asset, its limit and its proving commands; no self-description the ADRs reject, no stacked feature frames, no dollar-savings claim."
+REASON = "Keeps the README on one pitch told in the order a newcomer uses docket: the daily loop in the intro, install, a first team, the run, the gate and record, then configuration; each capability section with its asset, its limit and its proving commands; no self-description the ADRs reject, no stacked feature frames, no dollar-savings claim."
 RETIRE_WHEN = "the README front door is generated from a single source of truth instead of hand-maintained prose."
 
 _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
 CLAUDE_MD = _REPO / "CLAUDE.md"
 
-HERO_HEADINGS = ("## The team you define", "## The run", "## The gate and the record")
-HERO_ASSETS = {
-    "## The team you define": "hero.gif",
+PATH_HEADINGS = (
+    "## Quick start",
+    "## Your first team",
+    "## The run",
+    "## The gate and the record",
+    "## Make it yours",
+    "## Everything is configuration",
+)
+CAPABILITY_ASSETS = {
+    "## Your first team": "hero.gif",
     "## The run": "isolation.png",
     "## The gate and the record": "governance.png",
 }
+LIMITED_SECTIONS = ("## The run", "## The gate and the record", "## Make it yours")
+LOOP_COMMANDS = ("`init`", "`delegate`", "`dispatch`", "`export`")
 # Self-descriptions the ADRs reject: "fleet" implies a scale docket denies, "control plane"
 # implies a dashboard docket refuses to build, "enterprise" a buyer the ADRs scope out, and
 # "factory"/"substrate" are internal strategy words, not product ones.
@@ -52,32 +61,40 @@ def _sections(text: str) -> list[tuple[str, str]]:
     return [(parts[i].strip(), parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
 
 
-class TestThreeHeroes:
-    def test_heroes_open_the_readme_in_order_then_the_quick_start(self) -> None:
-        headings = [heading for heading, _ in _sections(_readme())]
-        assert tuple(headings[:3]) == HERO_HEADINGS, headings[:4]
-        assert headings[3] == "## Quick start", headings[:4]
+class TestNewcomerPath:
+    def test_the_intro_names_the_daily_loop(self) -> None:
+        intro = re.split(r"^## ", _readme(), maxsplit=1, flags=re.MULTILINE)[0]
+        missing = [command for command in LOOP_COMMANDS if command not in intro]
+        assert missing == [], f"the intro must walk the daily loop; missing {missing}"
 
-    def test_each_hero_shows_its_captured_asset(self) -> None:
+    def test_sections_follow_the_path_from_install_to_configuration(self) -> None:
+        headings = [heading for heading, _ in _sections(_readme())]
+        assert tuple(headings[: len(PATH_HEADINGS)]) == PATH_HEADINGS, headings[:7]
+
+    def test_the_first_team_starts_from_defaults_or_a_recipe(self) -> None:
+        body = dict(_sections(_readme()))["## Your first team"]
+        assert "`docket init`" in body and "`docket init --recipe" in body
+
+    def test_each_capability_shows_its_captured_asset(self) -> None:
         bodies = dict(_sections(_readme()))
-        for heading, asset in HERO_ASSETS.items():
+        for heading, asset in CAPABILITY_ASSETS.items():
             assert asset in bodies[heading], f"{heading} must show docs/assets/{asset}"
 
-    def test_each_hero_names_its_limit_beside_the_capability(self) -> None:
+    def test_each_capability_names_its_limit_beside_it(self) -> None:
         bodies = dict(_sections(_readme()))
-        for heading in HERO_HEADINGS:
+        for heading in LIMITED_SECTIONS:
             assert re.search(r"\*Limit:\*", bodies[heading]), (
                 f"{heading} must state its limit in the same section, not in an appendix"
             )
 
-    def test_the_first_hero_shows_the_files_not_a_list(self) -> None:
-        body = dict(_sections(_readme()))["## The team you define"]
+    def test_make_it_yours_shows_the_files_not_a_list(self) -> None:
+        body = dict(_sections(_readme()))["## Make it yours"]
         for kind in ("kind: role", "kind: pipeline", "kind: pod", "kind: policy"):
-            assert kind in body, f"the first hero must show a {kind} document"
+            assert kind in body, f"Make it yours must show a {kind} document"
 
-    def test_each_hero_ends_claims_in_commands(self) -> None:
+    def test_each_capability_ends_claims_in_commands(self) -> None:
         bodies = dict(_sections(_readme()))
-        for heading in HERO_HEADINGS:
+        for heading in (*CAPABILITY_ASSETS, "## Make it yours"):
             commands = re.findall(r"`docket [a-z]", bodies[heading])
             assert len(commands) >= 2, f"{heading} must name the commands that prove it"
 

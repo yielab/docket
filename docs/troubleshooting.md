@@ -141,7 +141,7 @@ docket cost  # All agents
 ```
 Token counts here are real and measured; the dollar column is not — docket's own turn loop
 reports no billed spend today. See
-[Cost reporting and its limits](../README.md#the-record).
+[Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 #### 4. **Check the per-turn context footprint**
 `docket maintain <agent-id> check` estimates the tokens re-sent every turn from the files that

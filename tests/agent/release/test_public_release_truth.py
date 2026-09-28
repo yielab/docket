@@ -93,10 +93,11 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
     assert len(readme.split()) <= 2_400, "README duplicates detail owned by the public guides"
 
     required_headings = (
-        "## The team you define",
+        "## Quick start",
+        "## Your first team",
         "## The run",
         "## The gate and the record",
-        "## Quick start",
+        "## Make it yours",
         "## Everything is configuration",
         "## Known limits",
         "## Documentation",
