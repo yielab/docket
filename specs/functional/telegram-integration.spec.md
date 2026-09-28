@@ -121,8 +121,11 @@ blocked policy verdict never default to granting or denying anything.
    `approval_deny` (`channel="telegram"`) followed by `core.dispatch.resolve_waiting_approval` —
    the identical sequence `cli/_approve.py`/`cli/_deny.py` already use. This module never
    reimplements approval state transitions.
-3. **MUST** scope `/status`'s pending-approval listing to the bound agent's own project (a pod
-   Lead's own pod; an org specialist's own agent id) — never another agent's pending approvals.
+3. **MUST** render `/status` from the derived operator inbox (`core.inbox.build_inbox`,
+   `operator-loop.spec.md` requirement area 5), scoped to the bound agent's own project (a pod
+   Lead's own pod; an org specialist's own agent id) — never another agent's tasks or pending
+   approvals. The reply lists needs-you items (waiting/blocked tasks and pending approvals not
+   already carried by a task) first, then failed tasks; it stays plain text.
 4. **MUST** refuse `/delegate` when the bound agent is not a pod Lead (`core.dispatch.
    enqueue_task` requires a pod task queue, which only a Lead has).
 5. **MUST** reply with a usage message (not a silent drop, not a guess) on a recognized verb with

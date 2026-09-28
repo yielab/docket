@@ -403,6 +403,22 @@ class TestToolApprovalsList:
         assert len(_audit_actions("mcp.approvals_list")) == 1
 
 
+class TestToolInbox:
+    def test_returns_the_same_shape_docket_inbox_json_prints(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+        _dispatch.enqueue_task("demo", "ship it")
+        result = _mcp.tool_inbox()
+        assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
+
+    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        (tmp_path / ".docket").mkdir(exist_ok=True)
+        _mcp.tool_inbox()
+        assert len(_audit_actions("mcp.inbox")) == 1
+
+
 class TestToolApprovalsGrantDeny:
     def _seed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
         repoint_docket_home(monkeypatch, tmp_path / ".docket")
@@ -478,11 +494,11 @@ class TestToolApprovalsGrantDeny:
         assert len(_audit_actions("approval.grant")) == 1
 
 
-# ── "every call is audited" — one consolidated pass over all ten tools ──────
+# ── "every call is audited" — one consolidated pass over all eleven tools ───
 
 
 class TestEveryToolCallIsAudited:
-    def test_all_ten_tools_each_write_exactly_one_mcp_audit_entry(
+    def test_all_eleven_tools_each_write_exactly_one_mcp_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
@@ -499,6 +515,7 @@ class TestEveryToolCallIsAudited:
         _mcp.tool_approvals_grant(token)
         second_token = _approval.approval_create("demo", "implementer", "deploy2")
         _mcp.tool_approvals_deny(second_token)
+        _mcp.tool_inbox()
         _mcp.tool_cost()
         _wait_for_terminal_run(dispatch_result["run"])
 

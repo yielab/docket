@@ -22,6 +22,8 @@ This specification covers:
 - The authenticated read-registry endpoints added in R-3 (`/runs`, `/runs/<id>`) and their
   relationship to `POST /dispatch/<project>`
 - The Phase 22 authenticated read endpoints (`GET /tasks/<project>`, `GET /traces/<project>`)
+- `GET /inbox` — the derived operator inbox (`core/inbox.py::build_inbox`), the same shape
+  `docket inbox --json` and `docket mcp serve`'s `inbox` tool return
 - `POST /pods` (Phase 22, P22-5) — provisioning a fresh pod over HTTP
 - The JSON schema for each response
 - The Prometheus metric names and semantics
@@ -35,8 +37,8 @@ and documented in `src/docket/serve.py`.
 
 **API version:** `2`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
-`/health`) require no auth. `/approvals`, `/runs`, `/runs/<id>`, and the write endpoints all
-require `Authorization: Bearer <token>`.
+`/health`) require no auth. `/approvals`, `/inbox`, `/runs`, `/runs/<id>`, and the write endpoints
+all require `Authorization: Bearer <token>`.
 
 ## Structure
 
@@ -55,6 +57,7 @@ of the pod pipeline — the CLI, the serve webhook, a due schedule, or the sweep
 |---|---|---|
 | `GET /runs` | `application/json` | Yes |
 | `GET /runs/<id>` | `application/json` | Yes |
+| `GET /inbox` | `application/json` | Yes |
 
 ...and two more authenticated read endpoints (Phase 22, P22-2/P22-3) — each exposes exactly what a
 `core/` function already returns, no new behaviour:
@@ -123,6 +126,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_cost_usd_total` | gauge | Total cost across all agents (USD). |
 | `docket_gateway_up` | gauge | `1` = gateway active, `0` = inactive. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
+| `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh from `core/inbox.py::build_inbox(now=..., since=None)` on every scrape, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
 | `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`core/tools.py`'s `dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`). Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. Sourced entirely from trace JSONL (see the durability note below). |
 | `docket_policy_hits_total{policy_id,hook,action}` | counter | Guardrail policy hits, by policy id, hook (`pre_input`\|`pre_tool_call`\|`pre_output`) and the policy's own action (`warn`\|`redact`\|`require_approval`\|`block`). The pre_input/pre_output slice comes from trace JSONL; the pre_tool_call slice comes from the audit log and is subject to the rotation caveat below. |
 | `docket_approvals_total{channel,outcome}` | counter | Resolved approvals, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path (`core/approval.py`), never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` (added in 2.4.0) distinguishes a decision made from Tack's board from one made through any other surface. Sourced entirely from the audit log; subject to the rotation caveat below. |
@@ -245,6 +249,32 @@ that wins before the terminal write remains `cancelled` rather than being overwr
 
 **Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns one run
 record (the same shape as one element of `/runs`' array, unwrapped). `404` if the id is unknown.
+
+### GET /inbox
+
+Requires `Authorization: Bearer <token>`. Returns the derived operator inbox — everything across
+every provisioned pod that needs a human, plus recent context — built by
+`core/inbox.py::build_inbox`. An optional `?since=<iso>` query parameter restricts `doneSince` to
+tasks that completed after that timestamp; omitted, `doneSince` lists every terminal task. The
+body is `InboxView` (`core/operator_contract.py`) exactly, `by_alias`:
+
+```json
+{
+  "needsYou": [
+    {"id": "task-1", "pod": "demo", "status": "blocked", "a2aState": "INPUT_REQUIRED", "...": "..."},
+    {"token": "apr-2", "pod": "demo", "role": "lead", "a2aState": "INPUT_REQUIRED", "...": "..."}
+  ],
+  "failed":    [ {"id": "task-3", "pod": "demo", "status": "failed", "a2aState": "FAILED"} ],
+  "doneSince": [ {"id": "task-4", "pod": "demo", "status": "done", "a2aState": "COMPLETED"} ],
+  "running":   [],
+  "next": "2026-09-28T00:00:05+00:00"
+}
+```
+
+`needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task) and `ApprovalView` (a pending approval
+not already carried by a task's `approvalToken`) items; a client distinguishes them by the
+presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket mcp serve`'s
+`inbox` tool for the same state — one assembly function, three surfaces.
 
 ### GET /tasks/&lt;project&gt;
 
@@ -530,6 +560,9 @@ Tack-granted approval must not be indistinguishable from a CI job's.
 - `/metrics` MUST conform to Prometheus text format 0.0.4.
 - `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer token with `401`,
   before touching the run registry.
+- `/inbox` MUST reject a request with no (or an invalid) Bearer token with `401` before building
+  the inbox, and MUST return the byte-identical shape `docket inbox --json` prints for the same
+  pod/approval state (`operator-loop.spec.md` requirement area 5).
 - `/tasks/<project>` and `/traces/<project>` (`GET` and `POST`) and `/dispatch/<project>` MUST
   reject a request with no (or an invalid) Bearer token with `401`, and MUST reject an empty
   project segment or one that fails `core.provisioning.validate_project_id` with `400`, before

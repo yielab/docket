@@ -14,6 +14,7 @@ stdout is reserved for JSON-RPC once `serve` runs. The `mcp` SDK is optional, im
 from __future__ import annotations
 
 import contextlib
+import datetime as _dt
 import sys
 import threading
 from typing import Any
@@ -45,6 +46,7 @@ _TOOL_NAMES: tuple[str, ...] = (
     "approvals_list",
     "approvals_grant",
     "approvals_deny",
+    "inbox",
     "cost",
 )
 
@@ -188,6 +190,16 @@ def tool_approvals_deny(token: str) -> dict[str, Any]:
     return {"ok": True, "token": token, "state": rec["state"]}
 
 
+def tool_inbox(since: str | None = None) -> dict[str, Any]:
+    """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
+    failed/done/running context, and a cursor. Identical shape to `docket serve`'s `GET /inbox`."""
+    _audit("inbox", f"since={since or ''}")
+    from docket.core import inbox as _inbox
+
+    view = _inbox.build_inbox(now=_dt.datetime.now(_dt.UTC).isoformat(), since=since)
+    return view.model_dump(by_alias=True, mode="json")
+
+
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
@@ -217,7 +229,7 @@ def _build_server() -> Any:
     server = MCPServer(
         name="docket",
         instructions=(
-            "docket's control plane: pods, dispatch, runs, approvals, and cost. "
+            "docket's control plane: pods, dispatch, runs, approvals, the inbox, and cost. "
             "Every call is audit-logged; dispatch/delegate/approvals go through the "
             "exact same gates as the docket CLI — nothing here bypasses an approval "
             "or budget check."
@@ -233,6 +245,7 @@ def _build_server() -> Any:
     server.add_tool(tool_approvals_list, name="approvals_list")
     server.add_tool(tool_approvals_grant, name="approvals_grant")
     server.add_tool(tool_approvals_deny, name="approvals_deny")
+    server.add_tool(tool_inbox, name="inbox")
     server.add_tool(tool_cost, name="cost")
     return server
 

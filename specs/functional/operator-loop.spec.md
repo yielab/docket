@@ -30,6 +30,9 @@ This specification covers:
 - The stable digest that matches a tool call to a single-use pre-grant
   (`canonical_args_digest`)
 - The generated JSON Schema documents under `docs/contracts/operator-v1/`
+- How the derived inbox is assembled from live pod/approval state and exposed through every
+  surface (`core/inbox.py`, `cli/_inbox.py`, `docket serve`'s `GET /inbox`, `docket mcp serve`'s
+  `inbox` tool, and Telegram's `/status`)
 
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
@@ -38,7 +41,6 @@ its own card):
   (`core/tools.py`, `core/approval.py`, `core/dispatch.py`)
 - How the Lead's pipeline produces a `TaskBrief` in practice, or how `POST /tasks` and
   `docket pod <p> delegate` accept a pre-brief
-- How the inbox is assembled from live pod/approval/run state (`core/inbox.py`)
 - How an event is actually produced, diffed and delivered to a `kind: channel` destination
   (`core/notify.py`, `edges/adapters/channels/`)
 - How an answer actually resumes a parked `input` pipeline step (`core/answers.py`)
@@ -92,9 +94,51 @@ one from a Lead's reply, and the deterministic resource pre-check, do not.
 
 ### 5. One inbox, derived
 
-**Status: Planned — owned by P34-6.** `InboxView`'s four sections (`needs_you`, `failed`,
-`done_since`, `running`) and its `next` cursor field are defined; `core/inbox.py::build_inbox`,
-the function that populates one from live pod/approval/run state, does not exist yet.
+**Status: Implemented.** `core/inbox.py::build_inbox(*, now, since=None) -> InboxView` is pure:
+it takes the caller's current time and cursor as data and performs no writes and no clock reads
+of its own.
+
+1. `build_inbox` MUST enumerate every project that has at least one registered pod member —
+   every provisioned pod, paused included — not the narrower set `core.dispatch.dispatchable_pods`
+   exposes for dispatch eligibility.
+2. For every pod, `build_inbox` MUST read its task list through `core.dispatch.read_tasks` and
+   sort each task into exactly one of `needsYou`, `failed`, `doneSince` or `running` by its
+   `status`, or omit it (`pending`, `cancelled`):
+   - `needsYou`: any status starting `waiting_` (future-proof beyond today's `waiting_approval`),
+     plus `blocked`.
+   - `failed`: `status == "failed"`.
+   - `doneSince`: `status == "done"` and, when `since` is given, only a task whose timestamp
+     (below) is strictly later than `since`; every `done` task when `since` is omitted.
+   - `running`: `status == "running"`.
+3. `build_inbox` MUST read every pending approval through `core.approval.list_pending` and add
+   one `ApprovalView` to `needsYou` for each **unless** its `context.taskId` is present — an
+   approval already surfaced through its task's `approvalToken` MUST NOT also appear standalone,
+   so nothing needing a decision is ever shown twice.
+4. Each item's `TaskView`/`ApprovalView` MUST carry its `a2aState` via
+   `operator_contract.a2a_state`, passing `blocked_reason`/`failure_kind` from the task's own
+   `blockedReason`/`failureKind` fields.
+5. A task's timestamp, for sorting into `doneSince` and for `InboxView.next`, MUST be
+   `completedAt`, else `startedAt`, else `created` (the caller's `now` only as a last-resort
+   fallback when none is set). An approval's timestamp is its `created` field. `next` MUST be the
+   maximum timestamp seen across every item considered (by parsed instant, not string order,
+   since a task's ISO-with-offset timestamp and an approval's `Z`-suffixed one are not
+   lexicographically comparable), or `None` when nothing was seen.
+6. `docket inbox [--json] [--since <iso>] [--peek]` (`cli/_inbox.py`) MUST render the four
+   sections, `needsYou` first. Without `--peek` and without an explicit `--since`, it MUST
+   advance a durable cursor (`config.INBOX_CURSOR_FILE`, written through `edges/store.py`) to
+   `InboxView.next` after rendering, so a later plain call's `doneSince` only shows tasks that
+   completed after the previous call. `--peek` and an explicit `--since` MUST NOT write the
+   cursor. `--json` MUST emit `InboxView.model_dump(by_alias=True, mode="json")`.
+7. `GET /inbox?since=<iso>` (`serve.py`) MUST require the same `Authorization: Bearer <token>`
+   as `GET /approvals` and return the identical JSON shape `docket inbox --json` prints for the
+   same state.
+8. `docket mcp serve`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`.
+9. `GET /metrics` MUST expose `docket_inbox_items{section="needsYou"|"failed"|"doneSince"|
+   "running"}` as a gauge, one line per section, computed from `build_inbox(now=..., since=None)`.
+10. Telegram's `/status` (`core/telegram.py`) MUST render from `build_inbox`, filtered to the
+    bound agent's own scope (`_approval_scope`, unchanged from `telegram-integration.spec.md`
+    requirement 3) by each item's `pod` field, `needsYou` first, then `failed`; it MUST NOT
+    change the channel's inbound-only or plain-text constraints.
 
 ### 6. Notifications
 

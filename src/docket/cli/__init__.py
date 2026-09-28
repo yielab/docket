@@ -2760,6 +2760,23 @@ def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
     raise typer.Exit(run_deny(approval_id))
 
 
+@app.command(
+    "inbox",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_inbox(ctx: typer.Context) -> None:
+    """List everything across every pod that needs you: waiting/blocked tasks and pending
+    approvals, plus failed/done/running context.
+
+    `docket inbox [--json] [--since <iso>] [--peek]`. A plain call advances a durable cursor so a
+    repeat call's `Done` section only shows newly-terminal tasks; `--peek` reads without
+    advancing it, and `--since <iso>` overrides the stored cursor for one call without touching
+    it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns."""
+    from docket.cli._inbox import run_inbox
+
+    raise typer.Exit(run_inbox(list(ctx.args)))
+
+
 @app.command("help")
 def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     """Show help.
