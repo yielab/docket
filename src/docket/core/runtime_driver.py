@@ -55,6 +55,17 @@ PIPELINE_WORKTREE_ENV = "DOCKET_PIPELINE_WORKTREE"
 # before the tool env is built, and mapped onto ToolContext.approval_mode.
 DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
 
+# Same route as DOCKET_APPROVAL_MODE: a JSON list of single-use pre-grants
+# (``[{"token", "tool", "argsDigest"}, ...]``) a resumed hop carries for the
+# exact calls a human already granted. Popped by DocketDriver into
+# ToolContext.pregrants.
+DOCKET_PREGRANTS = "DOCKET_PREGRANTS"
+
+# Same route again: the ISO UTC deadline a ``park``-mode call's approval
+# record should carry as its own ``expiresAt``. Popped by DocketDriver into
+# ToolContext.approval_expires_at.
+DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
+
 
 @dataclass
 class TurnResult:

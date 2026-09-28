@@ -14,7 +14,7 @@ import pytest
 from docket.core import agent_loop as _loop
 from docket.core.llm import ChatResponse
 from docket.core.tools import Tool as _Tool
-from docket.core.tools import ToolContext, ToolRegistry
+from docket.core.tools import ToolContext, ToolRegistry, ToolResult
 from docket.edges.adapters.toolbox import ToolOutcome
 
 SUBJECT = "docket.core.agent_loop"
@@ -158,3 +158,25 @@ class TestResolveRoleRegistryAndPrompt:
         _narrowed, composition, _specs = _loop._resolve_role_registry_and_prompt(registry, ctx)
         assert composition.text == ""
         assert composition.sections == ()
+
+
+class TestApprovalParkedError:
+    """``approval_parked_error`` owns the wire format the way
+    ``approval_unavailable_error`` owns its own -- one function, one format."""
+
+    def test_renders_every_field_in_the_shared_key_value_shape(self) -> None:
+        result = ToolResult(
+            ok=False,
+            tool="bash",
+            call_id="call-1",
+            decision="deny",
+            denial_kind="approval_parked",
+            reason="require_approval",
+            policy_id="test-ask-echo",
+            approval_token="apr-abc123",
+        )
+        rendered = _loop.approval_parked_error(result)
+        assert rendered == (
+            "approval_parked: tool='bash' call_id='call-1' policy_id='test-ask-echo' "
+            "reason='require_approval' approval_token='apr-abc123'"
+        )

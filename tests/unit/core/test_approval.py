@@ -444,6 +444,86 @@ class TestExpiryStillFailCloses:
         assert swept == 0
         assert _approval.approval_get(apr_token)["state"] == "pending"
 
+    def test_a_records_own_expires_at_wins_over_the_default_timeout(
+        self, approvals_dir: Path
+    ) -> None:
+        """A parked call may carry a short ``expiresAt`` well inside APPROVAL_TIMEOUT;
+        the sweep must honour that record's own deadline, not fall back to the default."""
+        apr_token = _approval.approval_create(
+            "projP", "implementer", "x", expires_at="2000-01-01T00:00:00Z"
+        )
+        swept = _approval.approval_sweep_expired()
+        assert swept == 1
+        assert _approval.approval_get(apr_token)["state"] == "denied"
+
+
+class TestPreGrants:
+    def test_create_pregrant_is_born_granted(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant(
+            "proj", "implementer", "bash", "deadbeef", channel="cli", actor="ops"
+        )
+        record = _approval.approval_get(token)
+        assert record["state"] == "granted"
+        assert record["context"] == {
+            "kind": "pregrant",
+            "tool": "bash",
+            "argsDigest": "deadbeef",
+        }
+
+    def test_create_pregrant_rejects_an_unknown_channel(self, approvals_dir: Path) -> None:
+        with pytest.raises(_approval.ApprovalError):
+            _approval.create_pregrant(
+                "proj", "implementer", "bash", "deadbeef", channel="carrier-pigeon"
+            )
+
+    def test_consume_pregrant_spends_it_exactly_once(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant("proj", "implementer", "bash", "deadbeef", channel="cli")
+        assert _approval.consume_pregrant(token) is True
+        assert _approval.approval_get(token)["consumedAt"]
+        assert _approval.consume_pregrant(token) is False
+
+    def test_consume_pregrant_refuses_an_unknown_token(self, approvals_dir: Path) -> None:
+        assert _approval.consume_pregrant("apr-does-not-exist") is False
+
+    def test_consume_pregrant_refuses_one_past_its_expiry(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant(
+            "proj",
+            "implementer",
+            "bash",
+            "deadbeef",
+            channel="cli",
+            expires_at="2000-01-01T00:00:00Z",
+        )
+        assert _approval.consume_pregrant(token) is False
+        assert "consumedAt" not in _approval.approval_get(token)
+
+    def test_sweep_prunes_an_unconsumed_pregrant_past_its_expiry(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant(
+            "proj",
+            "implementer",
+            "bash",
+            "deadbeef",
+            channel="cli",
+            expires_at="2000-01-01T00:00:00Z",
+        )
+        swept = _approval.approval_sweep_expired()
+        assert swept == 1
+        assert _approval.approval_get(token)["state"] == "denied"
+        assert _approval.consume_pregrant(token) is False
+
+    def test_sweep_leaves_an_unexpired_pregrant_alone(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant("proj", "implementer", "bash", "deadbeef", channel="cli")
+        swept = _approval.approval_sweep_expired()
+        assert swept == 0
+        assert _approval.approval_get(token)["state"] == "granted"
+
+    def test_sweep_leaves_an_already_consumed_pregrant_alone(self, approvals_dir: Path) -> None:
+        token = _approval.create_pregrant("proj", "implementer", "bash", "deadbeef", channel="cli")
+        assert _approval.consume_pregrant(token) is True
+        swept = _approval.approval_sweep_expired()
+        assert swept == 0
+        assert _approval.approval_get(token)["state"] == "granted"
+
 
 class TestPruneResolved:
     def _age_by(self, path: Path, seconds: float) -> None:

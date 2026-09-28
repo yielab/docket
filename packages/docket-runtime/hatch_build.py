@@ -33,6 +33,7 @@ _RUNTIME_FILES = (
     "core/llm.py",
     "core/memory.py",
     "core/models.py",
+    "core/operator_contract.py",
     "core/plugins.py",
     "core/policy.py",
     "core/provider.py",

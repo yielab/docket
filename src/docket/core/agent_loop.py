@@ -49,6 +49,12 @@ reported as ``AgentLoopResult.stop_reason``:
   unaffected and remain recoverable, still bounded by
   ``max_consecutive_tool_denials`` as before — only the specific "nobody could
   answer" case is terminal on its own.
+- ``approval_parked`` — a tool call needed a human decision and
+  ``ToolContext.approval_mode == "park"``, so ``dispatch_tool`` recorded the
+  exact call as a pending approval and ended the turn without waiting on it.
+  Terminal on its own for the same reason as ``approval_unavailable``: there
+  is somebody who *could* eventually answer, but not on this thread, right
+  now — the task resumes elsewhere once a human resolves the token.
 - ``timeout`` — wall-clock budget exceeded, checked between iterations
   (``LoopConfig.wall_clock_timeout_s``). This does not interrupt an in-flight
   HTTP call already underway; ``ChatBackend.complete``'s own per-request
@@ -182,6 +188,7 @@ StopReason = Literal[
     "tool_denials",
     "run_cancelled",
     "approval_unavailable",
+    "approval_parked",
 ]
 
 _FINALIZATION_INSTRUCTION = (
@@ -382,6 +389,16 @@ def approval_unavailable_error(result: ToolResult) -> str:
     return (
         f"approval_unavailable: tool={result.tool!r} call_id={result.call_id!r} "
         f"policy_id={result.policy_id!r} reason={result.reason!r}"
+    )
+
+
+def approval_parked_error(result: ToolResult) -> str:
+    """Render a parked-approval stop in the same key=value shape
+    ``approval_unavailable_error`` uses, so one function owns the format."""
+    return (
+        f"approval_parked: tool={result.tool!r} call_id={result.call_id!r} "
+        f"policy_id={result.policy_id!r} reason={result.reason!r} "
+        f"approval_token={result.approval_token!r}"
     )
 
 
@@ -1664,6 +1681,7 @@ class _TurnState:
         tool_msgs: list[ChatMessage] = []
         batch_cancelled = False
         approval_unavailable: ToolResult | None = None
+        approval_parked: ToolResult | None = None
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
                 self.project,
@@ -1702,6 +1720,8 @@ class _TurnState:
                 batch_cancelled = True
             if result.denial_kind == "approval_unavailable" and approval_unavailable is None:
                 approval_unavailable = result
+            if result.denial_kind == "approval_parked" and approval_parked is None:
+                approval_parked = result
 
         messages.append(assistant_msg)
         messages.extend(tool_msgs)
@@ -1729,6 +1749,16 @@ class _TurnState:
                 ok=False,
                 stop_reason="approval_unavailable",
                 error=approval_unavailable_error(approval_unavailable),
+                failure_kind="invalid_output",
+            )
+        if approval_parked is not None:
+            # Terminal exactly like approval_unavailable above: nobody on
+            # this thread can answer, whether or not somebody elsewhere
+            # eventually does.
+            return self.done(
+                ok=False,
+                stop_reason="approval_parked",
+                error=approval_parked_error(approval_parked),
                 failure_kind="invalid_output",
             )
         denial_limit = self.cfg.max_consecutive_tool_denials
