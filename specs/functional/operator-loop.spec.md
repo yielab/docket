@@ -37,8 +37,9 @@ This specification covers:
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
 
-- How the Lead's pipeline produces a `TaskBrief` in practice, or how `POST /tasks` and
-  `docket pod <p> delegate` accept a pre-brief
+- How `POST /tasks` and `docket pod <p> delegate` accept a pre-brief end-to-end (the CLI/HTTP/MCP
+  surfaces); `core.dispatch.enqueue_task` itself gaining a `brief=` parameter is covered by
+  `pod-dispatch.spec.md`'s "Task brief" section, requirement area 3 above
 - The `ntfy`, `desktop`, `email` and `telegram` dialects' own wire formats — requirement area 6
   below covers the diff/render/delivery framework and the `console`/`webhook`/`command`
   dialects; the remaining four each add one more `edges/adapters/channels/` module and one more
@@ -111,10 +112,15 @@ operator-loop-level contract that section's behaviour must satisfy.
 
 ### 3. The Lead's intake
 
-**Status: Planned — owned by P34-12.** `TaskBrief`, its field validation (a non-empty
-`objective`, and every `resources[]` entry prefixed `secret:`, `path:` or equal to `verify`) and
-the `expectedRiskyActions` alias exist in this module. The pipeline `input` step that produces
-one from a Lead's reply, and the deterministic resource pre-check, do not.
+**Status: Implemented.** `TaskBrief`, its field validation (a non-empty `objective`, and every
+`resources[]` entry prefixed `secret:`, `path:` or equal to `verify`) and the
+`expectedRiskyActions` alias exist in this module, unchanged by this area. `core.handoff
+.parse_brief`/`render_brief`, `HandoffArtifact.brief`, the recipe that produces a brief from a
+Lead's reply (`templates/recipes/intake/`), the deterministic resource pre-check
+(`core.dispatch._check_brief_resources`), the richer per-question schema derived from
+`TaskBrief.questions[]`, and the Implementer's `## Brief` view are all `pod-dispatch.spec.md`'s
+"Task brief" section — this area states the operator-loop-level contract that section's
+behaviour must satisfy, the same split "Park, don't block" (area 2) has with "Parked approvals".
 
 ### 4. Task assignment in a standard shape
 
@@ -283,7 +289,7 @@ in the derived inbox becomes an event on the wire.
 
 ### 7. Answers
 
-**Status: Implemented (generic `input` steps only).** `core/answers.py::answer_task(project,
+**Status: Implemented.** `core/answers.py::answer_task(project,
 task_id, action, content, channel=, actor=)` resumes a parked `input` step: it builds an
 `AnswerResult`, validates *content* against the question's `requestedSchema` via
 `validate_answer`, screens every string value in *content* through
@@ -296,10 +302,11 @@ right here; any other target (or none) reopens it `pending`, carrying a syntheti
 `core.answers.sweep_expired_questions`, run from every `serve --dispatch` sweep, moves an
 unanswered `waiting_input` task past its question's `expiresAt` to `blocked`/
 `blockedReason: "input_expired"` -- never `failed`. Full mechanics: pod-dispatch.spec.md,
-"Operator input steps and answers". Not yet covered here: a richer per-question schema derived
-from the Lead's typed intake brief (`TaskBrief.questions[]`) -- a generic `input` step's
-question always asks a single free-text `answer` property, until a later requirement area
-(the Lead's intake, area 3) wires the brief through.
+"Operator input steps and answers". An `input` step whose `from:` hop carries a Lead intake
+brief with its own `questions[]` asks those specific questions instead of the generic single
+free-text `answer` property (area 3, "The Lead's intake"); `answer_task` and this area's own
+mechanics are otherwise unchanged either way -- the richer schema only changes what
+`validate_answer` checks *content* against, never how an answer resolves or resumes.
 
 ### 8. Telegram (the one amended boundary)
 

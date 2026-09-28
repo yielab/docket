@@ -23,6 +23,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
 | [`frugal`](#frugal) | 1 member, 3 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
+| [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
 | [`no-egress`](#no-egress) | 3 policies | Ask before a bash-run network client, package install, or fetch call leaves the workspace. |
 | [`ops-approval`](#ops-approval) | 1 policy, 1 member, pipeline `ops-approval` | An Operator whose action needs an explicit human sign-off before it runs at all, plus a policy that asks on deploy-shaped commands. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
@@ -207,6 +208,64 @@ docket policies test pre_tool_call implementer "git push origin main" --pod <pro
 ```bash
 rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-block-destructive.yaml
 rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-ask-protected-branch-push.yaml
+```
+
+## intake
+
+The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer.
+
+**Brings:** 1 member, pipeline `intake`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline intake · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe intake
+docket pod <project> apply intake
+```
+
+**Practice:** structured intake / requirements triage before implementation starts.
+
+**Source idea:** an operator who assigns work and walks away benefits most when the Lead
+reasons about the task *before* handing it to the Implementer -- naming what "done" means,
+what it needs, and what it doesn't know yet -- rather than guessing silently or blocking on
+every risky action.
+
+**What docket's gates make structural:** the Lead's first hop ends in exactly one marker.
+`READY` only reaches the Implementer after `_check_brief_resources` confirms every
+`secret:`/`path:`/`verify` resource the brief named is actually present -- a missing one
+blocks the task (`blockedReason: resources`, `AUTH_REQUIRED` in the A2A view) instead of
+letting the Implementer discover it mid-turn. `NEEDS-INPUT` turns the brief's own
+`questions` into a real operator question (one property per question, not a single
+free-text box) and returns to the Lead once they're answered. `REJECT` fails the task
+immediately (`failureKind: rejected`, `REJECTED` in the A2A view) instead of consuming an
+Implementer turn on a task the Lead has already decided not to attempt. The brief is
+optional: a reply with no parseable brief but a `READY` marker still advances exactly as
+before this recipe existed.
+
+### Apply it
+
+For a new pod, or onto one that already has its `lead` and `implementer`:
+
+```bash
+docket init --recipe intake          # a new pod for the current repository
+docket pod <project> apply intake    # onto an existing pod
+```
+
+`pod.yaml` names the one member this recipe adds beyond the lean pod (`reviewer`); `apply`
+validates the roster and `pipeline.yaml` before writing anything, and is safe to run again
+(a second run plans every item `skip`). `--dry-run` prints the plan without writing.
+
+### Files
+
+- `pod.yaml` -- what `apply` reads: `kind: pod`, `name: intake`, `members: [reviewer]`.
+- `pipeline.yaml` -- `lead` (writes a typed brief, `READY`/`NEEDS-INPUT`/`REJECT`) ->
+  `ask` (an operator-input step, only reached on `NEEDS-INPUT`, loops back to `lead` once
+  answered, capped) -> `build` (Implementer, gated on its own verify command) -> `review`
+  (Reviewer, APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 1).
+
+### Undo
+
+```bash
+docket pod <project> config unset pipeline
+docket pod <project> remove <project>-reviewer
 ```
 
 ## no-egress

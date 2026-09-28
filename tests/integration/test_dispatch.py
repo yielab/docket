@@ -29,9 +29,11 @@ from docket.cli import _pod
 from docket.core import answers as _answers
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import operator_contract as _oc
 from docket.core import pipeline as _pipeline
 from docket.core import resources as _res
 from docket.core import runtime_driver as _rd
+from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
@@ -126,6 +128,48 @@ class TestDelegateCliBoundary:
         assert result.exit_code == 1
         assert "501 chars" in result.output
         assert _dispatch.read_tasks("demo") == []
+
+
+class TestEnqueueTaskPreBrief:
+    def test_a_valid_brief_folds_into_the_description_and_is_stored_on_the_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+
+        task = _dispatch.enqueue_task(
+            "demo",
+            "add rate limiting",
+            brief={"objective": "add rate limiting", "acceptance": ["429 after 100 req/min"]},
+        )
+
+        assert "## Pre-brief" in task["description"]
+        assert "429 after 100 req/min" in task["description"]
+        assert task["brief"]["objective"] == "add rate limiting"
+        stored = _dispatch.read_tasks("demo")[0]
+        assert stored["brief"]["objective"] == "add rate limiting"
+
+    def test_an_invalid_brief_raises_and_persists_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+
+        try:
+            _dispatch.enqueue_task("demo", "add rate limiting", brief={"objective": ""})
+        except _dispatch.DispatchError:
+            pass
+        else:
+            raise AssertionError("an empty objective should have raised DispatchError")
+        assert _dispatch.read_tasks("demo") == []
+
+    def test_no_brief_leaves_the_description_and_task_shape_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+
+        task = _dispatch.enqueue_task("demo", "plain task, no brief")
+
+        assert task["description"] == "plain task, no brief"
+        assert "brief" not in task
 
 
 # The pipeline-semantics tests below inject `FakeDriver` (the one
@@ -1589,3 +1633,238 @@ class TestAnswerTaskResumesDispatch:
         assert final["status"] == "failed"
         assert final["hops"][-1]["nextStep"] is None
         assert final["hops"][-1]["role"] == "operator"
+
+
+# ── the Lead's intake: TaskBrief, the intake recipe, resource checks (ADR 0016 §4) ──
+
+
+def _bind_intake_pipeline(project: str) -> None:
+    """Bind the real shipped ``intake`` recipe's pipeline so ``dispatch_pod`` and
+    ``answer_task`` resolve the same steps (see ``_bind_pipeline`` above)."""
+    text = (_cfg.recipes_dir() / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
+    result = _pipeline.load_pipeline(text)
+    assert result.spec is not None, result.errors
+    _bind_pipeline(project, text)
+
+
+_LEAD_NEEDS_INPUT_SENTINEL = "SENTINEL_FIRST_LEAD_HOP"
+_LEAD_READY_SENTINEL = "SENTINEL_SECOND_LEAD_HOP"
+
+_LEAD_NEEDS_INPUT_REPLY = f"""{_LEAD_NEEDS_INPUT_SENTINEL}: I need two decisions before I can start.
+
+```json
+{{"objective": "add a widget", "acceptance": ["widget renders"], "questions": ["Which color?", "Which size?"]}}
+```
+NEEDS-INPUT"""
+
+_LEAD_READY_REPLY = f"""{_LEAD_READY_SENTINEL}: thanks, now I have everything I need.
+
+```json
+{{"objective": "add a widget", "acceptance": ["widget renders", "matches spec"]}}
+```
+READY"""
+
+_LEAD_READY_MISSING_SECRET_REPLY = """Needs one credential.
+
+```json
+{"objective": "call the API", "acceptance": ["call succeeds"], "resources": ["secret:MISSING_KEY"]}
+```
+READY"""
+
+_LEAD_READY_NO_BRIEF_REPLY = "Nothing fancy, just doing it.\nREADY"
+
+_LEAD_REJECT_REPLY = """This should not be attempted.
+
+```json
+{"objective": "delete production", "acceptance": []}
+```
+REJECT"""
+
+
+class _IntakeRunner:
+    """A scripted runner keyed by role, not call order -- the Lead may run more than once
+    (NEEDS-INPUT -> answered -> re-run), so its replies are consumed in order, one per call,
+    while every other role answers the same way every time."""
+
+    def __init__(self, lead_replies: list[str], reviewer_reply: str = "APPROVE") -> None:
+        self._lead_replies = list(lead_replies)
+        self._reviewer_reply = reviewer_reply
+        self.calls: list[tuple[str, str]] = []
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        role = agent_id.rsplit("-", 1)[-1]
+        self.calls.append((role, message))
+        if role == "lead":
+            reply = self._lead_replies.pop(0) if self._lead_replies else "READY"
+            return _rd.TurnResult(True, reply, 0.0, {})
+        if role == "reviewer":
+            return _rd.TurnResult(True, self._reviewer_reply, 0.0, {})
+        return _rd.TurnResult(True, "done", 0.0, {})
+
+
+class TestCheckBriefResources:
+    """Direct, dispatch-free coverage of `_check_brief_resources`'s three resource kinds --
+    the intake-recipe integration tests above exercise `secret:` end to end through a real
+    pipeline; these isolate `path:` and `verify` (and `secret:` again, for symmetry)."""
+
+    def test_an_unconfigured_secret_is_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        brief = _oc.TaskBrief(objective="x", resources=["secret:NOPE"])
+        assert _dispatch._check_brief_resources("demo", brief) == ["secret:NOPE"]
+
+    def test_a_configured_secret_is_not_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _secrets.save_secrets({"YES": "shh"})
+        brief = _oc.TaskBrief(objective="x", resources=["secret:YES"])
+        assert _dispatch._check_brief_resources("demo", brief) == []
+
+    def test_a_missing_path_is_reported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        missing = str(tmp_path / "does-not-exist.txt")
+        brief = _oc.TaskBrief(objective="x", resources=[f"path:{missing}"])
+        assert _dispatch._check_brief_resources("demo", brief) == [f"path:{missing}"]
+
+    def test_an_existing_path_is_not_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        present = tmp_path / "exists.txt"
+        present.write_text("x")
+        brief = _oc.TaskBrief(objective="x", resources=[f"path:{present}"])
+        assert _dispatch._check_brief_resources("demo", brief) == []
+
+    def test_verify_is_missing_with_no_configured_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        brief = _oc.TaskBrief(objective="x", resources=["verify"])
+        assert _dispatch._check_brief_resources("demo", brief) == ["verify"]
+
+    def test_verify_is_not_missing_once_the_implementer_has_a_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set(_pod.pod.member_id("demo", "implementer"), "verifyCmd", "pytest -q")
+        brief = _oc.TaskBrief(objective="x", resources=["verify"])
+        assert _dispatch._check_brief_resources("demo", brief) == []
+
+    def test_a_brief_with_no_resources_has_nothing_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        assert _dispatch._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
+
+
+class TestIntakeRecipeTaskBrief:
+    def test_needs_input_then_ready_reaches_the_implementer_with_a_brief_view(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        task = _dispatch.enqueue_task("demo", "build the widget")
+        runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
+
+        first = _dispatch.dispatch_pod("demo", runner=runner)
+        assert first[0].status == "waiting_input"
+        question = _dispatch.read_tasks("demo")[0]["question"]
+        assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
+        assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
+        assert question["requestedSchema"]["required"] == ["q1", "q2"]
+        assert question["message"] == "The Lead needs answers before starting: add a widget"
+
+        _answers.answer_task(
+            "demo",
+            task["id"],
+            "accept",
+            {"q1": "blue", "q2": "large"},
+            channel="cli",
+            actor="op",
+        )
+
+        final = _dispatch.dispatch_pod("demo", runner=runner)
+        assert final[0].status == "done"
+
+        implementer_messages = [msg for role, msg in runner.calls if role == "implementer"]
+        assert len(implementer_messages) == 1
+        implementer_message = implementer_messages[0]
+        assert "## Brief" in implementer_message
+        assert "widget renders" in implementer_message
+        assert "matches spec" in implementer_message
+        # The READY reply is the *latest* brief-bearing hop -- its own prose preamble is
+        # replaced by "## Brief" entirely. The earlier NEEDS-INPUT hop's prose is still
+        # carried forward as ordinary prior-hop context (unaffected by this feature).
+        assert _LEAD_READY_SENTINEL not in implementer_message
+
+    def test_a_brief_naming_a_missing_secret_blocks_with_resources(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        _dispatch.enqueue_task("demo", "call the API")
+        runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
+
+        results = _dispatch.dispatch_pod("demo", runner=runner)
+
+        assert results[0].status == "blocked"
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "blocked"
+        assert task["blockedReason"] == "resources"
+        assert "secret:MISSING_KEY" in task["reason"]
+        assert _oc.a2a_state("blocked", blocked_reason=task["blockedReason"]) == "AUTH_REQUIRED"
+        # No Implementer hop was ever attempted -- the check happens before that turn.
+        assert [h["role"] for h in task["hops"]] == ["lead"]
+
+    def test_a_configured_secret_is_not_reported_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        _secrets.save_secrets({"MISSING_KEY": "shh"})
+        _dispatch.enqueue_task("demo", "call the API")
+        runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
+
+        results = _dispatch.dispatch_pod("demo", runner=runner)
+
+        assert results[0].status == "done"
+
+    def test_a_reply_with_no_parseable_brief_but_a_ready_marker_still_advances(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        _dispatch.enqueue_task("demo", "do the plain thing")
+        runner = _IntakeRunner([_LEAD_READY_NO_BRIEF_REPLY])
+
+        results = _dispatch.dispatch_pod("demo", runner=runner)
+
+        assert results[0].status == "done"
+        task = _dispatch.read_tasks("demo")[0]
+        assert [h["role"] for h in task["hops"]] == ["lead", "implementer", "reviewer"]
+
+    def test_reject_fails_the_task_as_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=("lead", "implementer", "reviewer"))
+        _bind_intake_pipeline("demo")
+        _dispatch.enqueue_task("demo", "delete production")
+        runner = _IntakeRunner([_LEAD_REJECT_REPLY])
+
+        results = _dispatch.dispatch_pod("demo", runner=runner)
+
+        assert results[0].status == "failed"
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["failureKind"] == "rejected"
+        assert _oc.a2a_state("failed", failure_kind=task["failureKind"]) == "REJECTED"

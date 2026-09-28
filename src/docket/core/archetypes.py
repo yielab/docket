@@ -316,6 +316,7 @@ _LEAD_BODY = (
     "- **You NEVER edit code, run git, or execute the build.** If you are "
     "about to, STOP and delegate to the implementer.\n"
     "- When a decision or a risky action needs the human, say so at the top of your plan: list every assumption and every open question.\n"
+    "- If your pod's pipeline has an intake step, your questions reach the human through it: list them in your brief and end with NEEDS-INPUT.\n"
 )
 
 _IMPLEMENTER_BODY = (

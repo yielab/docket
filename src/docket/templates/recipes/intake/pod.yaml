@@ -1,0 +1,6 @@
+kind: pod
+name: intake
+description: >-
+  The Lead reasons about a task before any code changes: a typed brief, a deterministic
+  resource check, and an operator question when something only a human can answer.
+members: [reviewer]

@@ -45,16 +45,72 @@ the old raw text as ``summary``, every other field at its default).
   ``DROP_ORDER`` accounts for it) so a future producer never needs a schema
   migration, but nothing in dispatch writes it today. Always ``""`` unless a
   caller builds an artifact by hand.
+- ``brief`` — the Lead's typed intake output (``parse_brief``), when its raw
+  reply's last fenced ``json`` block validates as a ``TaskBrief``. ``None``
+  for every other hop, and for a Lead hop with no parseable brief -- a brief
+  is always optional (ADR 0016 §4).
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
-of ``core/dispatch.py`` — the same "leaf" shape as ``core/pipeline.py``.
+of ``core/dispatch.py`` — the same "leaf" shape as ``core/pipeline.py``. It
+does import ``core/operator_contract.py`` (``TaskBrief``), itself an equally
+pure leaf module, for the one shared shape every intake consumer must agree
+on rather than a second, independently-drifting copy of the same fields.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from docket.core.operator_contract import TaskBrief
+
+#: The Lead's typed intake output is the LAST ```json fenced block in its reply -- a
+#: reply may reason in prose first and only commit to the brief at the end.
+_JSON_FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def parse_brief(text: str) -> TaskBrief | None:
+    """The last fenced ```json block in *text* that validates as a ``TaskBrief``, else
+    ``None``. Never raises: an absent fence, invalid JSON, a non-object payload or a
+    schema mismatch all degrade to ``None`` the same way -- a brief is always optional."""
+    matches = _JSON_FENCE_RE.findall(text)
+    if not matches:
+        return None
+    try:
+        data = json.loads(matches[-1])
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        return TaskBrief.model_validate(data)
+    except ValidationError:
+        return None
+
+
+def _render_brief_section(lines: list[str], title: str, items: list[str]) -> None:
+    if not items:
+        return
+    lines.append("")
+    lines.append(f"{title}:")
+    lines.extend(f"- {item}" for item in items)
+
+
+def render_brief(brief: TaskBrief) -> str:
+    """Render *brief*'s fields in a fixed order -- the Implementer's own view of the
+    Lead's intake, and the generic fallback ``HandoffArtifact.render()`` appends."""
+    lines = [f"Objective: {brief.objective}"]
+    _render_brief_section(lines, "Acceptance", brief.acceptance)
+    _render_brief_section(lines, "Context", brief.context)
+    _render_brief_section(lines, "Constraints", brief.constraints)
+    _render_brief_section(lines, "Assumptions", brief.assumptions)
+    _render_brief_section(lines, "Resources", brief.resources)
+    _render_brief_section(lines, "Expected risky actions", brief.expected_risky_actions)
+    _render_brief_section(lines, "Questions", brief.questions)
+    return "\n".join(lines)
 
 
 class HandoffArtifact(BaseModel):
@@ -65,6 +121,9 @@ class HandoffArtifact(BaseModel):
     valuable first. ``summary`` is deliberately absent from it — it is the
     artifact's minimum viable content and is never dropped outright, only
     truncated once ``render()``'s output no longer fits its token budget.
+    ``brief`` is deliberately absent too, for the same reason: a Lead hop's
+    typed intake is never shed by a token-budgeted consumer, only carried
+    forward whole or not at all (see ``core/dispatch.py``'s ``_build_hop_result``).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -77,6 +136,10 @@ class HandoffArtifact(BaseModel):
     #: so a future producer needs no migration, but dispatch writes nothing
     #: here today — always "" unless a caller builds an artifact by hand.
     notes: str = ""
+    #: The Lead's typed intake output, when this hop's raw text parsed as one
+    #: (``parse_brief``) -- ``None`` for every other hop. Never shed: excluded
+    #: from ``DROP_ORDER`` on purpose, the same posture as ``summary``.
+    brief: TaskBrief | None = None
 
     #: Least-valuable-first shedding order for a token-budgeted consumer.
     DROP_ORDER: ClassVar[tuple[str, ...]] = ("notes", "diff_ref", "files_changed", "verdict")
@@ -116,6 +179,8 @@ class HandoffArtifact(BaseModel):
         never reorders itself based on data.
         """
         lines = [self.summary]
+        if self.brief is not None:
+            lines.append(f"Brief:\n{render_brief(self.brief)}")
         if self.verdict is not None:
             lines.append(f"Verdict: {self.verdict}")
         if self.files_changed:

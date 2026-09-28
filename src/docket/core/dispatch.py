@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote as _url_quote
 
+from pydantic import ValidationError as _ValidationError
+
 import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
@@ -43,6 +45,7 @@ from docket.core import pod as _pod
 from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
+from docket.core import secrets as _secrets
 from docket.core import security as _sec
 from docket.core import trace as _trace
 from docket.core import utils as _utils
@@ -184,6 +187,12 @@ class TaskResult:
     # Empty for an ordinary graded hop/gate failure (``_apply_result`` then
     # clears any stale persisted ``failureKind`` instead of writing this).
     failure_kind: str = ""
+    # Only meaningful when status == "blocked" -- a short machine-readable code
+    # (currently only ever "resources", ADR 0016 §4) distinct from `reason`'s free text,
+    # so `operator_contract.a2a_state`'s AUTH_REQUIRED check has something stable to key
+    # on. Empty for every other blocked cause (e.g. budget auto-pause), which `_apply_result`
+    # then falls back to `reason` for, unchanged from before this field existed.
+    blocked_reason: str = ""
 
     @property
     def cost_usd(self) -> float:
@@ -317,13 +326,27 @@ def enqueue_task(
     priority: str = "normal",
     *,
     trusted: bool | None = None,
+    brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Locked read-modify-write, so concurrent ``delegate`` calls cannot clobber each other's
-    task. Raises DispatchError with no Lead workspace or a ``pre_input`` block (nothing
-    persisted). ``trusted`` overrides only this check, never the persisted ``source``."""
+    task. Raises DispatchError with no Lead workspace, an invalid *brief*, or a blocked
+    ``pre_input`` (nothing persisted). ``trusted`` never overrides the persisted ``source``."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
+
+    # *brief*, when given, is a pre-brief the operator already knows: validated as a
+    # TaskBrief (invalid raises DispatchError, nothing persisted), folded into the enqueued
+    # description under its own heading -- so the pre_input screen below covers it like any
+    # other human-sent string, and the Lead's first hop sees it -- and stored on the task's
+    # own `brief` field.
+    parsed_brief: _oc.TaskBrief | None = None
+    if brief is not None:
+        try:
+            parsed_brief = _oc.TaskBrief.model_validate(brief)
+        except _ValidationError as exc:
+            raise DispatchError(f"invalid brief: {exc}") from exc
+        description = f"{description}\n\n## Pre-brief\n{_handoff.render_brief(parsed_brief)}"
 
     task_id = f"task-{_uuid.uuid4()}"
     source = "operator"
@@ -354,6 +377,8 @@ def enqueue_task(
         "claimId": None,
         "claimedAt": None,
     }
+    if parsed_brief is not None:
+        task["brief"] = parsed_brief.model_dump(by_alias=True)
 
     if hit.action == "require_approval":
         action_text = f"pod dispatch — task enqueue for '{project}': {description}"[:1000]
@@ -631,6 +656,52 @@ class _HopComposition:
     truncated: bool = False
 
 
+def _resolve_hop_instructions(
+    role: str, project: str, rework_hop: HopResult | None, step_instructions: str
+) -> str:
+    """This role's own hop instruction text: the step's own override, else a built-in
+    role's fixed text, else a custom role's registry-resolved ``hopInstruction``."""
+    if step_instructions:
+        return step_instructions
+    if role == "implementer":
+        return (
+            "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
+            "above, then implement the change in the workspace."
+            if rework_hop is not None
+            else "You are the Implementer. Implement the change in the workspace."
+        )
+    if role == "reviewer":
+        return (
+            "You are the Reviewer. Review the diff (read-only). Start exactly one "
+            "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
+            "reasons may come before or after that marker line."
+        )
+    if role == "tester":
+        return (
+            "You are the Tester. Validate behaviour only. Start exactly one output "
+            "line with PASS or FAIL (case-insensitive); evidence may come before or "
+            "after that marker line."
+        )
+    # A custom role: its own archetype's `hopInstruction`, or one generated
+    # from its `gateContract` (e.g. a verdict role's marker convention) --
+    # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
+    # role name (absent from the registry) still gets no instruction,
+    # matching today's behavior.
+    archetype = _archetypes.load_registry(project).get(role)
+    return _archetypes.resolve_hop_instruction(archetype) if archetype else ""
+
+
+def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
+    """The most recent prior hop whose artifact carries a Lead intake brief, or ``None`` --
+    the Implementer's own view (``_hop_message``) replaces that one hop's carryover
+    entirely, so only the latest match (not every brief-bearing hop) matters here."""
+    index: int | None = None
+    for i, h in enumerate(prior):
+        if h.artifact is not None and h.artifact.brief is not None:
+            index = i
+    return index
+
+
 def _hop_message(
     task: dict[str, Any],
     role: str,
@@ -672,35 +743,7 @@ def _hop_message(
         )
         return message, comp
 
-    if step_instructions:
-        instructions = step_instructions
-    elif role == "implementer":
-        instructions = (
-            "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
-            "above, then implement the change in the workspace."
-            if rework_hop is not None
-            else "You are the Implementer. Implement the change in the workspace."
-        )
-    elif role == "reviewer":
-        instructions = (
-            "You are the Reviewer. Review the diff (read-only). Start exactly one "
-            "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
-            "reasons may come before or after that marker line."
-        )
-    elif role == "tester":
-        instructions = (
-            "You are the Tester. Validate behaviour only. Start exactly one output "
-            "line with PASS or FAIL (case-insensitive); evidence may come before or "
-            "after that marker line."
-        )
-    else:
-        # A custom role: its own archetype's `hopInstruction`, or one generated
-        # from its `gateContract` (e.g. a verdict role's marker convention) --
-        # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
-        # role name (absent from the registry) still gets no instruction,
-        # matching today's behavior.
-        archetype = _archetypes.load_registry(project).get(role)
-        instructions = _archetypes.resolve_hop_instruction(archetype) if archetype else ""
+    instructions = _resolve_hop_instructions(role, project, rework_hop, step_instructions)
 
     # The role's total token budget, minus what the immutable task
     # description and this role's own fixed instruction footer already cost
@@ -741,6 +784,9 @@ def _hop_message(
         )
 
     last_index = len(prior) - 1
+    # The Implementer's own view of the latest brief-bearing hop (almost always the
+    # Lead's) replaces that hop's carried-forward prose entirely -- see the loop below.
+    latest_brief_index = _latest_brief_hop_index(prior) if role == "implementer" else None
     # Iterate in the original chronological order (oldest first), so message
     # *layout* stays stable and only *content* varies with the budget. Only
     # the per-hop budget is recency-aware: rank counts back
@@ -755,6 +801,23 @@ def _hop_message(
         # the hop's raw output — so the budget bounds the same structured
         # content the next hop actually reasons about.
         assert h.artifact is not None
+        if i == latest_brief_index:
+            # The Implementer sees the Lead's typed brief in place of its prose
+            # preamble -- never both -- so it reasons from the same structured
+            # objective/acceptance/resources a human reviewing the task would.
+            assert h.artifact.brief is not None
+            brief_text = _handoff.render_brief(h.artifact.brief)
+            comp.sections.append(
+                {
+                    "role": h.role,
+                    "original_bytes": len(h.artifact.render().encode("utf-8")),
+                    "sent_bytes": len(brief_text.encode("utf-8")),
+                    "truncated": False,
+                    "dropped_fields": [],
+                }
+            )
+            lines.append(f"## Brief\n{brief_text}\n")
+            continue
         compiled = _ctx.compile_artifact(h.artifact, hop_budget)
         comp.sections.append(
             {
@@ -1500,11 +1563,17 @@ def _build_hop_result(
     diff_ref: str | None = None
     if hop_ok:
         files_changed, diff_ref = _implementer_diff_probe(member_id, role)
+    # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
+    # the Lead role by construction -- any hop's reply can end in one -- but is `None`
+    # for the overwhelming majority that never emit one, `_handoff.parse_brief` failing
+    # closed on anything else.
+    brief = _handoff.parse_brief(hop_output) if hop_ok else None
     artifact = _handoff.HandoffArtifact(
         summary=hop_output,
         verdict=verdict,
         files_changed=files_changed,
         diff_ref=diff_ref,
+        brief=brief,
     )
     return HopResult(
         role=role,
@@ -2101,6 +2170,23 @@ _DEFAULT_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def _brief_from_step(prior: list[HopResult], step_id: str) -> _oc.TaskBrief | None:
+    """The most recent *step_id* hop's parsed brief, or ``None`` -- a plain-text hop, a
+    step that never ran, or a Lead reply with no parseable brief all degrade the same way."""
+    for h in reversed(prior):
+        if h.step_id == step_id and h.artifact is not None and h.artifact.brief is not None:
+            return h.artifact.brief
+    return None
+
+
+def _brief_questions_schema(questions: list[str]) -> dict[str, Any]:
+    """One string property per brief question (``q1``..``qn``, ``title`` = the question
+    text), every one required -- the richer schema an intake brief's own questions earn
+    over the generic single free-text ``answer`` property."""
+    properties = {f"q{i}": {"type": "string", "title": q} for i, q in enumerate(questions, 1)}
+    return {"type": "object", "properties": properties, "required": list(properties)}
+
+
 def _run_input_step(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -2112,7 +2198,16 @@ def _run_input_step(
     Resumed only by ``core.answers.answer_task``. See pod-dispatch.spec.md."""
     assert node.input is not None
     spec = node.input
-    message = spec.message.strip() or f"Operator input requested (from step {spec.from_!r})."
+    # When the `from` step's latest hop carries a Lead intake brief with its own
+    # `questions`, the minted question asks those specific questions instead of one
+    # generic free-text answer (pod-dispatch.spec.md, "Task brief").
+    brief = _brief_from_step(prior, spec.from_)
+    if brief is not None and brief.questions:
+        message = f"The Lead needs answers before starting: {brief.objective}"
+        requested_schema = _brief_questions_schema(brief.questions)
+    else:
+        message = spec.message.strip() or f"Operator input requested (from step {spec.from_!r})."
+        requested_schema = dict(_DEFAULT_INPUT_SCHEMA)
     expires_at: str | None = None
     if spec.expires_hours is not None:
         expires_at = (
@@ -2124,7 +2219,7 @@ def _run_input_step(
         pod=ctx.project,
         step=node.step_id,
         message=message,
-        requested_schema=dict(_DEFAULT_INPUT_SCHEMA),
+        requested_schema=requested_schema,
         created_at=_now(),
         expires_at=expires_at,
     )
@@ -2204,6 +2299,60 @@ def _route_outcome(
     return target_index, f"step {node.step_id!r} outcome {label_upper} routed to {target_str!r}"
 
 
+# A routed-to-fail outcome sets no failure kind today (an ordinary graded gate/hop
+# failure) -- the one named exception is the intake pipeline's own REJECT marker, which
+# maps to the A2A REJECTED state via `operator_contract.a2a_state`. One constant, so the
+# mapping is never hand-built twice (ADR 0016 §4).
+_ROUTE_FAILURE_KINDS: dict[str, str] = {"REJECT": "rejected"}
+
+
+def _check_brief_resources(project: str, brief: _oc.TaskBrief) -> list[str]:
+    """The subset of *brief*'s own ``resources`` entries a deterministic check cannot
+    confirm (unconfigured secret, missing path, no ``verifyCmd``); ``[]`` means every
+    one named is present. Pure, no side effects."""
+    missing: list[str] = []
+    configured_secrets: set[str] | None = None
+    for item in brief.resources:
+        if item.startswith("secret:"):
+            if configured_secrets is None:
+                configured_secrets = _secrets.secrets_keys()
+            if item[len("secret:") :] not in configured_secrets:
+                missing.append(item)
+        elif item.startswith("path:"):
+            if not Path(item[len("path:") :]).exists():
+                missing.append(item)
+        elif item == "verify":
+            implementer_id = pod_full_roster(project).get("implementer")
+            verify_cmd = (
+                str(_fleet.meta_get(implementer_id, "verifyCmd", "") or "")
+                if implementer_id
+                else ""
+            )
+            if not verify_cmd:
+                missing.append(item)
+    return missing
+
+
+def _block_on_missing_resources(
+    ctx: _UnitContext, outcome: _UnitOutcome, result: TaskResult
+) -> bool:
+    """A ``READY`` outcome whose brief names something ``_check_brief_resources`` finds
+    missing blocks *result* and returns ``True``; the caller's own ``break`` stops the
+    pipeline. A brief with nothing missing, or no brief, returns ``False`` unchanged."""
+    if outcome.label.upper() != "READY" or not outcome.hops:
+        return False
+    brief = outcome.hops[-1].artifact.brief if outcome.hops[-1].artifact else None
+    if brief is None:
+        return False
+    missing = _check_brief_resources(ctx.project, brief)
+    if not missing:
+        return False
+    result.status = "blocked"
+    result.blocked_reason = "resources"
+    result.reason = "brief names missing resources: " + ", ".join(missing)
+    return True
+
+
 def _run_pipeline(
     ctx: _UnitContext,
     runtime_steps: tuple[_orch.PlannedNode, ...],
@@ -2215,7 +2364,9 @@ def _run_pipeline(
     """Advance one task through its resolved pipeline until a terminal outcome. Mutates
     *result*/*prior* in place per step (each hop is also observed via *on_hop* -- see
     ``_persist_hop_and_trace``). The only backward moves are a bounded rework cycle and a
-    step's own ``on:`` route, each jumping to a declared target."""
+    step's own ``on:`` route, each jumping to a declared target. A ``READY`` verdict
+    carrying a Lead intake brief (ADR 0016 §4) is checked against
+    ``_check_brief_resources`` before the pipeline is allowed past it."""
     while pipeline_index < len(runtime_steps):
         node = runtime_steps[pipeline_index]
 
@@ -2281,9 +2432,14 @@ def _run_pipeline(
             if next_index < 0:
                 result.status = "failed"
                 result.reason = reason
+                result.failure_kind = _ROUTE_FAILURE_KINDS.get(outcome.label.upper(), "")
+                break
+            if _block_on_missing_resources(ctx, outcome, result):
                 break
             pipeline_index = next_index
             continue
+        if outcome.kind == "advance" and _block_on_missing_resources(ctx, outcome, result):
+            break
         pipeline_index += 1
 
 
@@ -2425,7 +2581,7 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     task["costUsd"] = res.cost_usd
     task["claimId"] = None
     if res.status == "blocked":
-        task["blockedReason"] = res.reason
+        task["blockedReason"] = res.blocked_reason or res.reason
     elif res.status == "waiting_approval":
         task["approvalToken"] = res.approval_token
         task["pendingApprovalIndex"] = res.pending_approval_index
