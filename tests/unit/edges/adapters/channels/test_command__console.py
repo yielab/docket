@@ -83,7 +83,15 @@ class TestSinkFor:
             spec.dialect = dialect  # type: ignore[attr-defined]
             assert channels.sink_for(spec) is module.deliver
 
+    def test_newly_wired_dialects_resolve(self) -> None:
+        from docket.edges.adapters.channels import desktop, email, ntfy
+
+        for dialect, module in (("ntfy", ntfy), ("desktop", desktop), ("email", email)):
+            spec = _ChannelSpecLike({})
+            spec.dialect = dialect  # type: ignore[attr-defined]
+            assert channels.sink_for(spec) is module.deliver
+
     def test_unknown_dialect_returns_none(self) -> None:
         spec = _ChannelSpecLike({})
-        spec.dialect = "ntfy"  # type: ignore[attr-defined]
+        spec.dialect = "unknown_dialect"  # type: ignore[attr-defined]
         assert channels.sink_for(spec) is None
