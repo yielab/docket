@@ -6,7 +6,7 @@ auth:
   type: header
   header: x-honeycomb-team
   credentials: [HONEYCOMB_API_KEY]
-payload: metadata
+privacy: minimal
 enabled: false
 note: >-
   Honeycomb's OTLP/HTTP ingest endpoint (US instance). For the EU instance, override `endpoint`

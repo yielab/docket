@@ -3,7 +3,7 @@ name: phoenix
 dialect: otlp-http
 endpoint: http://127.0.0.1:6006/v1/traces
 auth: {type: none}
-payload: metadata
+privacy: minimal
 enabled: false
 note: >-
   A local Arize Phoenix instance's OTLP/HTTP receiver. Start one with

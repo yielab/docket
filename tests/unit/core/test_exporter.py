@@ -46,10 +46,11 @@ class TestBuiltinCatalog:
             state, missing = _exporter.activation_state(spec, health=None)
             assert (state, missing) == ("disabled", [])
 
-    def test_otel_collector_is_the_only_full_payload_builtin(self) -> None:
+    def test_every_builtin_declares_minimal_privacy(self) -> None:
         catalog = _exporter.load_catalog()
-        full_payload = [name for name, spec in catalog.entries.items() if spec.payload == "full"]
-        assert full_payload == ["otel-collector"]
+        for name, spec in catalog.entries.items():
+            assert spec.privacy_label == "minimal", name
+            assert spec.privacy_classes == frozenset()
 
 
 class TestLoadExporterDocument:
@@ -62,8 +63,9 @@ class TestLoadExporterDocument:
         assert spec.name == "phoenix"
         assert spec.dialect == "otlp-http"
         assert spec.auth.type == "none"
-        assert spec.payload == "metadata"
-        assert spec.payload_max_chars == 2000
+        assert spec.privacy_label == "minimal"
+        assert spec.privacy_classes == frozenset()
+        assert spec.content_max_chars == 4000
         assert spec.enabled is False
         assert spec.resource == {"service.name": "docket"}
 
@@ -125,6 +127,98 @@ class TestNegativeRefusals:
         with pytest.raises(_exporter.ExporterError) as excinfo:
             _exporter.load_exporter_document(doc)
         assert "nope" in str(excinfo.value)
+
+
+class TestPrivacyFields:
+    """`ExporterSpec`'s own privacy/share fields: resolution, refusal, and legacy capture
+    (observability-export.spec.md "Exporter privacy fields", requirements 80-84)."""
+
+    def test_resolves_a_declared_level(self, tmp_path: Path) -> None:
+        doc = tmp_path / "actions.yaml"
+        doc.write_text(
+            "kind: exporter\n"
+            "name: mystery\n"
+            "endpoint: http://127.0.0.1:4318/v1/traces\n"
+            "privacy: actions\n"
+        )
+
+        spec = _exporter.load_exporter_document(doc)
+
+        assert spec.privacy_label == "actions"
+        assert spec.privacy_classes == {"toolArguments", "errors"}
+
+    def test_unset_resolves_to_minimal(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bare.yaml"
+        doc.write_text("kind: exporter\nname: mystery\nendpoint: http://127.0.0.1:4318/v1/traces\n")
+
+        spec = _exporter.load_exporter_document(doc)
+
+        assert spec.privacy_label == "minimal"
+        assert spec.privacy_classes == frozenset()
+
+    def test_privacy_and_share_together_is_refused_naming_both(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bad.yaml"
+        doc.write_text(
+            "kind: exporter\n"
+            "name: mystery\n"
+            "endpoint: http://127.0.0.1:4318/v1/traces\n"
+            "privacy: actions\n"
+            "share: [prompts]\n"
+        )
+
+        with pytest.raises(_exporter.ExporterError) as excinfo:
+            _exporter.load_exporter_document(doc)
+        assert "privacy" in str(excinfo.value)
+        assert "share" in str(excinfo.value)
+
+    def test_unknown_privacy_level_is_refused_naming_the_field(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bad.yaml"
+        doc.write_text(
+            "kind: exporter\n"
+            "name: mystery\n"
+            "endpoint: http://127.0.0.1:4318/v1/traces\n"
+            "privacy: everything\n"
+        )
+
+        with pytest.raises(_exporter.ExporterError) as excinfo:
+            _exporter.load_exporter_document(doc)
+        assert excinfo.value.field == "privacy"
+        assert "minimal" in excinfo.value.valid
+
+    def test_unknown_share_class_is_refused_naming_it(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bad.yaml"
+        doc.write_text(
+            "kind: exporter\n"
+            "name: mystery\n"
+            "endpoint: http://127.0.0.1:4318/v1/traces\n"
+            "share: [secrets]\n"
+        )
+
+        with pytest.raises(_exporter.ExporterError) as excinfo:
+            _exporter.load_exporter_document(doc)
+        assert "secrets" in str(excinfo.value)
+
+    def test_a_global_document_with_the_retired_payload_key_loads_as_minimal(self) -> None:
+        _store.write_json(
+            _cfg.EXPORTERS_FILE,
+            {
+                "exporters": {
+                    "langfuse": {
+                        "kind": "exporter",
+                        "name": "langfuse",
+                        "payload": "full",
+                        "enabled": True,
+                    }
+                }
+            },
+        )
+
+        spec = _exporter.load_catalog().get("langfuse")
+
+        assert spec is not None
+        assert spec.privacy_label == "minimal"
+        assert spec.privacy_classes == frozenset()
+        assert spec.legacy_fields == ["payload"]
 
 
 class TestAuthArity:

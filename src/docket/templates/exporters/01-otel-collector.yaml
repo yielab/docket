@@ -3,10 +3,13 @@ name: otel-collector
 dialect: otlp-http
 endpoint: http://127.0.0.1:4318/v1/traces
 auth: {type: none}
-payload: full
+privacy: minimal
 enabled: false
 note: >-
-  A generic OpenTelemetry Collector on this host, receiving OTLP/HTTP -- the only built-in
-  exporter shipped with payload: full, since traffic never leaves the machine. Run one with
+  A generic OpenTelemetry Collector on this host, receiving OTLP/HTTP. Every built-in ships
+  `privacy: minimal` (ADR 0015 rule 7) -- including this one, since a collector exists to
+  forward to whatever backend its own config names, so "the traffic stays on this host" does
+  not hold the way it does for a loopback destination. Run one with
   `docker run -p 4318:4318 otel/opentelemetry-collector`, then flip enabled: true and point its
-  own config at whatever backend you actually want (Jaeger, Honeycomb, a vendor, ...).
+  own config at whatever backend you actually want (Jaeger, Honeycomb, a vendor, ...); raise
+  `privacy` here only once you have decided what the collector itself is allowed to forward.

@@ -239,7 +239,7 @@ def _exporters_report() -> list[dict[str, Any]]:
                 "state": state,
                 "scope": catalog.source_of(name),
                 "credentialSource": credential_source,
-                "payload": spec.payload,
+                "privacy": spec.privacy_label,
                 "exported": record.get("exported", 0),
                 "dropped": record.get("dropped", 0),
                 "failed": record.get("failed", 0),

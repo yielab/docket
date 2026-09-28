@@ -6,7 +6,7 @@ auth:
   type: basic
   credentials: [LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY]
 aliases: {"session.id": "langfuse.session.id"}
-payload: metadata
+privacy: minimal
 enabled: false
 note: >-
   Langfuse's managed EU cloud endpoint. Override `endpoint` to

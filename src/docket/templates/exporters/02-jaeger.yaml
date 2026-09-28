@@ -3,7 +3,7 @@ name: jaeger
 dialect: otlp-http
 endpoint: http://127.0.0.1:4318/v1/traces
 auth: {type: none}
-payload: metadata
+privacy: minimal
 enabled: false
 note: >-
   A local Jaeger instance's own OTLP/HTTP receiver (its default port is the same 4318 as
