@@ -203,16 +203,27 @@ def _input_part_class(role: str, part: dict[str, Any]) -> str:
     return "prompts"
 
 
+# The part fields that carry free text in the OTel GenAI message shape: a text part's
+# `content`, a `tool_call` part's `arguments`, a `tool_call_response` part's `response`.
+_PART_TEXT_FIELDS: tuple[str, ...] = ("content", "arguments", "response")
+
+
+def _bound_part(part: dict[str, Any], max_chars: int) -> dict[str, Any]:
+    """A copy of *part* with every free-text field cut to *max_chars*."""
+    out = dict(part)
+    for key in _PART_TEXT_FIELDS:
+        value = out.get(key)
+        if isinstance(value, str):
+            out[key] = _truncate(value, max_chars)
+    return out
+
+
 def _filter_part(part: dict[str, Any], cls: str, policy: ExportPolicy) -> dict[str, Any]:
-    """*part* verbatim (its ``content`` truncated) when *cls* is granted; otherwise a
-    withheld marker naming the class that would have carried it."""
+    """*part* with its text fields truncated when *cls* is granted; otherwise a withheld
+    marker naming the class that would have carried it."""
     if not _granted(policy, cls):
         return {"type": "withheld", "class": cls}
-    out = dict(part)
-    content = out.get("content")
-    if isinstance(content, str):
-        out["content"] = _truncate(content, policy.content_max_chars)
-    return out
+    return _bound_part(part, policy.content_max_chars)
 
 
 def _filter_input_messages(messages: Any, policy: ExportPolicy) -> list[dict[str, Any]] | None:
@@ -254,15 +265,9 @@ def _filter_output_messages(messages: Any, policy: ExportPolicy) -> list[dict[st
             continue
         parts = message.get("parts")
         parts = parts if isinstance(parts, list) else []
-        kept: list[dict[str, Any]] = []
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            item = dict(part)
-            content = item.get("content")
-            if isinstance(content, str):
-                item["content"] = _truncate(content, policy.content_max_chars)
-            kept.append(item)
+        kept = [
+            _bound_part(part, policy.content_max_chars) for part in parts if isinstance(part, dict)
+        ]
         out.append({"role": str(message.get("role", "")), "parts": kept})
     return out
 

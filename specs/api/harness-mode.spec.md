@@ -1,6 +1,6 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.1.2
+**Version**: 1.1.3
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4)
 **Last Updated**: 2026-09-27
 
@@ -164,6 +164,12 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
   caller-supplied home.
 
 ## Changelog
+
+### Version 1.1.3 (2026-09-28)
+
+- **Event row note (P33-3).** An `llm_call` record on the event stream may carry the
+  captured-content keys when an enabled exporter asks for them; the schema is unchanged
+  (`additionalProperties: true`).
 
 ### Version 1.1.2 (2026-09-27)
 

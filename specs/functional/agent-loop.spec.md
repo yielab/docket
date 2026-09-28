@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.26.0
+**Version**: 1.27.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -774,6 +774,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.27.0 (2026-09-28)
+
+- **Tracing (P33-3).** Requirement 71 amended: `_trace_llm_call` receives the exact message
+  list sent to the backend and captures content on demand through
+  `core.telemetry.capture_classes()`.
 
 ### Version 1.26.0 (2026-09-27)
 

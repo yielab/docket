@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -284,6 +284,13 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.2.0 (2026-09-28)
+
+- **Captured content (P33-3).** New section "Captured content" (requirements 21-26): an
+  `llm_call` record carries `inputMessages`, `outputMessages`, `systemInstructions` and
+  `systemInstructionsSha256` only for the classes an enabled exporter was granted; with no
+  grant the record is byte-identical to before.
 
 ### Version 1.1.0 (2026-09-27)
 

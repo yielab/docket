@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 61 (Phase 33, D-49) · opened 2026-09-28
+> ## ▶ ACTIVE BOARD — WAVE 62 (Phase 33, D-49) · opened 2026-09-28
 >
 > **Six cards over Waves 60–63**, one Sonnet worker per card in an isolated worktree under one
 > integrator: what a trace destination may see becomes a declared privacy level (`minimal`,
@@ -21,7 +21,7 @@
 > `list`/`show`/`explain`/`doctor`, on the span itself, and in an offline `preview`. Decision
 > and rules: [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 > Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
-> Wave 60 (P33-1) merged 2026-09-28; **Wave 61 (P33-2 ∥ P33-3) is active**. **Phase 33 closes when the Wave 63 rollup merges green.**
+> Waves 60 (P33-1) and 61 (P33-2 ∥ P33-3) merged 2026-09-28; **Wave 62 (P33-4 ∥ P33-5) is active**. **Phase 33 closes when the Wave 63 rollup merges green.**
 >
 > **Phase 32 closed 2026-09-28** (ROADMAP D-48, [ADR 0014](docs/adr/0014-observability-export.md)):
 > nine cards over Waves 56–59, one Sonnet worker per card in an isolated worktree then the
@@ -219,7 +219,7 @@ release source.
 
 ## ▶ WAVES 60–63 — ACTIVE (opened 2026-09-28): Phase 33, export privacy levels (D-49)
 
-**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 active.** Six cards in four waves (one Sonnet worker, then two in
+**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 merged (P33-2 `80ec2e4`, P33-3 `db76762`) with the capture-to-wire seam test already in `tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`; Wave 62 active.** Six cards in four waves (one Sonnet worker, then two in
 parallel, then two, then the integrator). Decision, the class and level tables, the eleven rules
 and the verdict table are in [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
@@ -337,7 +337,7 @@ new root attributes), the spec sections. **Forbidden:** `core/exporter.py`, `cor
 
 ### P33-2 — the exporter document declares its privacy
 
-**Status:** TODO · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `observability-export.spec.md` "Exporter documents" amended + requirements 80–87; `config-format.spec.md` (exporter fields); `workspace-structure.spec.md` only if a template path changes (integrator bumps)
+**Status:** DONE (2026-09-28, `80ec2e4`) · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `observability-export.spec.md` "Exporter documents" amended + requirements 80–87; `config-format.spec.md` (exporter fields); `workspace-structure.spec.md` only if a template path changes (integrator bumps)
 
 **Trigger:** privacy must be configurable from the exporter's own settings (the request);
 `ExporterSpec.payload`/`payloadMaxChars` no longer mean anything after P33-1.
@@ -384,7 +384,7 @@ needs a change), every other `core/telemetry.py` function.
 
 ### P33-3 — the model call records its content when, and only when, a destination asks
 
-**Status:** TODO · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `trace-store.spec.md` new section "Captured content" (the three optional `llm_call` keys, the capture rule, the dedup rule); `agent-loop.spec.md` "Tracing" amended; `harness-mode.spec.md` event row note (additive) (integrator bumps)
+**Status:** DONE (2026-09-28, `db76762`) · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `trace-store.spec.md` new section "Captured content" (the three optional `llm_call` keys, the capture rule, the dedup rule); `agent-loop.spec.md` "Tracing" amended; `harness-mode.spec.md` event row note (additive) (integrator bumps)
 
 **Trigger:** `core/agent_loop.py::_trace_llm_call` records model, provider, tokens and latency,
 never the conversation, so no level can show Langfuse a generation's Input/Output.

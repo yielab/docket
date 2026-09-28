@@ -90,7 +90,7 @@ def _read_call_response(path: str) -> ChatResponse:
     )
 
 
-def _enable_local_exporter(endpoint: str, privacy: str = "full") -> None:
+def _enable_local_exporter(endpoint: str, privacy: str = "full", **extra: Any) -> None:
     """Write a global `kind: exporter` document named "local" -- not a built-in name, so no
     inheritance kicks in -- straight through `edges/store.py`, the same file `core.exporter`
     reads back."""
@@ -106,6 +106,7 @@ def _enable_local_exporter(endpoint: str, privacy: str = "full") -> None:
                     "auth": {"type": "none"},
                     "enabled": True,
                     "privacy": privacy,
+                    **extra,
                 }
             }
         },
@@ -278,6 +279,61 @@ class TestExporterPrivacyGatesToolArguments:
         spans = self._run_a_read_call("minimal-agent", "minimal")
         tool_span = next(s for s in spans if s["name"] == "execute_tool read")
         assert "gen_ai.tool.call.arguments" not in {a["key"] for a in tool_span["attributes"]}
+
+
+class TestCapturedContentReachesTheWire:
+    """The seam between the model call's capture and the projection: a real turn's
+    `llm_call` records, captured on demand, cross the real projection onto the real wire
+    exactly as far as the exporter's own level and `contentMaxChars` allow."""
+
+    def _run(self, agent_id: str, privacy: str) -> tuple[list[dict[str, Any]], str]:
+        ws = _write_meta(agent_id)
+        (ws / "notes.txt").write_text("CANARY-FILE-" + "x" * 300 + "\n")
+        srv, url, handler_cls = _recording_server()
+        try:
+            _enable_local_exporter(url, privacy=privacy, contentMaxChars=100)
+            backend = _ScriptedBackend(
+                [_read_call_response("notes.txt"), _final_response("CANARY-REPLY")]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            task = "CANARY-TASK read notes.txt"
+            result = driver.run_turn(agent_id, f"agent:{agent_id}:default", task, 60)
+            assert result.ok is True
+            deadline = _time.monotonic() + 2.0
+            while len(handler_cls.bodies) < 1 and _time.monotonic() < deadline:
+                _time.sleep(0.02)
+        finally:
+            srv.shutdown()
+        spans = [
+            span
+            for body in handler_cls.bodies
+            for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+        ]
+        return spans, json.dumps(handler_cls.bodies)
+
+    @staticmethod
+    def _attr(span: dict[str, Any], key: str) -> str | None:
+        for attribute in span["attributes"]:
+            if attribute["key"] == key:
+                return str(attribute["value"]["stringValue"])
+        return None
+
+    def test_conversation_exports_the_generation_bounded_per_exporter(self) -> None:
+        spans, _ = self._run("conversation-agent", "conversation")
+        chats = [s for s in spans if s["name"].startswith("gen_ai.chat")]
+        second = json.loads(self._attr(chats[-1], "gen_ai.input.messages") or "[]")
+        user = next(m for m in second if m["role"] == "user")
+        assert "CANARY-TASK" in json.dumps(user)
+        tool_part = next(m for m in second if m["role"] == "tool")["parts"][0]
+        assert tool_part["response"].startswith("CANARY-FILE-")
+        assert len(tool_part["response"].split("…[truncated")[0]) == 100
+        output = self._attr(chats[-1], "gen_ai.output.messages") or ""
+        assert "CANARY-REPLY" in output
+        assert self._attr(chats[-1], "gen_ai.system_instructions") is None
+
+    def test_minimal_sends_no_captured_content(self) -> None:
+        _, wire = self._run("minimal-seam-agent", "minimal")
+        assert "CANARY-" not in wire
 
 
 class TestZeroExportersAndNoExport:

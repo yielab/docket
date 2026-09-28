@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
@@ -394,7 +394,8 @@ document rather than replace it:
     `gen_ai.system_instructions` attribute, class `instructions`, gated by requirement 69; its
     `systemInstructionsSha256` key, when present, **MUST** always become the structural
     `docket.instructions.sha256` attribute regardless of `policy.classes`.
-78. Every text value placed in a content attribute or message part **MUST** be cut to
+78. Every text value placed in a content attribute or message part (a part's `content`,
+    `arguments` and `response`) **MUST** be cut to
     `policy.content_max_chars` characters with the suffix `…[truncated <n> chars]` (*n* the
     number of characters removed) when it exceeds that length, and **MUST** remain a valid
     string once re-encoded as JSON.
@@ -908,6 +909,17 @@ above) are what a live run can actually add over the fixture, and this section r
 instead. The fixture and its golden are unchanged.
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-28)
+
+- **Exporter privacy fields (P33-2) and the capture seam.** New section "Exporter privacy
+  fields" (requirements 80-87): an exporter document declares `privacy` or `share` and
+  `contentMaxChars`; `payload`/`payloadMaxChars` are retired and load as `minimal`, named in
+  `legacy_fields`; every built-in is `minimal`; `core.telemetry.start` builds each pipeline's
+  policy from its document. Requirement 78 now names the three part fields it bounds: the
+  first real capture put tool results in `response` and tool-call arguments in `arguments`,
+  which the projection had not cut to the exporter's own bound (fixed, with a test that runs a
+  real turn onto the real wire).
 
 ### Version 1.6.0 (2026-09-28)
 
