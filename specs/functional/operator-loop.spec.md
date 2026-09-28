@@ -281,6 +281,45 @@ in the derived inbox becomes an event on the wire.
     work, with the CLI dispatch path printing nothing beyond one warning line naming the
     failure count when a delivery failed.
 
+### 6.1 Dialects
+
+**Status: Implemented for `ntfy`, `desktop`, `email`; `telegram` remains planned.** The
+`console`, `webhook`, and `command` dialects are delivered via requirement area 6 items 1-16.
+The three dialects described here add one more module under `edges/adapters/channels/` and one
+more entry to `sink_for` for each.
+
+1. The `ntfy` dialect (`edges/adapters/channels/ntfy.py::deliver`) MUST POST the event title and
+   body to an ntfy.sh server via HTTP. `spec.config["server"]` (default `https://ntfy.sh`,
+   `rstrip("/")` to normalize) and `spec.config["topic"]` are required; `config.topic` MUST be
+   validated non-empty at parse time (requirement area 6 item 5). The request MUST include
+   `Title` and `Priority` headers: `Title: <title>` from `render_text`, and
+   `Priority: high` if the event kind ends with `input_required` or `approval.requested`, else
+   `Priority: default`. When a secret is resolved, the request MUST include
+   `Authorization: Bearer <secret>`. A missing `topic`, a transport failure, or a non-2xx
+   response MUST all report a failed `DeliveryResult` without raising.
+
+2. The `desktop` dialect (`edges/adapters/channels/desktop.py::deliver`) MUST send a native OS
+   notification. On macOS, execute `osascript -e display\ notification …` with the title and
+   body from `render_text`; on all other platforms, execute `notify-send title body`. The binary
+   MUST be located via `shutil.which` first; if missing, return a failed `DeliveryResult` without
+   raising. Execution MUST use `subprocess.run`, never `shell=True`, and a non-zero exit MUST
+   report a failed `DeliveryResult` without raising.
+
+3. The `email` dialect (`edges/adapters/channels/email.py::deliver`) MUST send an SMTP email.
+   `spec.config` MUST contain `host` (non-empty), `port` (default `587`, parsed as integer),
+   `user`, and `to`; a missing field MUST report a failed `DeliveryResult`. The email `Subject`
+   MUST be `[docket] <title>` from `render_text`, and the body MUST be `<body>` unchanged. The
+   connection MUST call `smtplib.SMTP(host, int(port), timeout=timeout)`, followed by
+   `starttls()`, `login(user, secret)`, `send_message(msg)`, and `quit()`. Any exception in
+   this sequence MUST be caught and reported as a failed `DeliveryResult` without raising.
+
+4. All three new dialects MUST use stdlib only — `urllib.request`, `subprocess`, `shutil`,
+   `smtplib`, `email.message`, `json`, `sys`.
+
+5. Content privacy (requirement area 6 item 11) MUST be enforced upstream by `render_text`, not
+   by these modules themselves — they deliver only what they are given, applying no redaction of
+   their own.
+
 ### 7. Answers
 
 **Status: Implemented (generic `input` steps only).** `core/answers.py::answer_task(project,

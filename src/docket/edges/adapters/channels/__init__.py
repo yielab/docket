@@ -2,8 +2,8 @@
 `ChannelSpec`'s `dialect` to its `deliver` function -- the one seam `core/notify.py::flush`
 uses; `core/` never imports this package directly.
 
-Wired here: `console`, `webhook`, `command`. The remaining v1 dialects (`ntfy`, `desktop`,
-`email`, `telegram`) each add one more entry to `_DIALECTS` in a later change.
+Wired here: `console`, `webhook`, `command`, `ntfy`, `desktop`, `email`. The remaining
+v1 dialect (`telegram`) will be added in a later change.
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ from docket.core.operator_contract import CloudEvent
 
 from .command import deliver as _command_deliver
 from .console import deliver as _console_deliver
+from .desktop import deliver as _desktop_deliver
+from .email import deliver as _email_deliver
+from .ntfy import deliver as _ntfy_deliver
 from .webhook import DeliveryResult
 from .webhook import deliver as _webhook_deliver
 
@@ -33,6 +36,9 @@ _DIALECTS: dict[str, Deliver] = {
     "console": _console_deliver,
     "webhook": _webhook_deliver,
     "command": _command_deliver,
+    "ntfy": _ntfy_deliver,
+    "desktop": _desktop_deliver,
+    "email": _email_deliver,
 }
 
 
