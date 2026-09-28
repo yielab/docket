@@ -1563,6 +1563,34 @@ write.
 
 ---
 
+### channels
+
+**Usage:** `docket channels`
+
+Notification/conversation/decision destinations: list, inspect, and enable.
+
+Subcommands: `list \[--json\]` prints every catalog channel's dialect,
+enabled state, capabilities and content level. `show <name> \[--json\]`
+prints one channel's effective document and scope. `enable <name> \[--set
+k=v ...\]` writes only the `enabled` flag plus the overrides given (`--set
+actors=a,b` sets the actors list, `--set secret=NAME` sets the credential
+name, anything else lands in `config`); it refuses without writing when a
+required field the built-in names is still empty (`ntfy` needs a
+non-empty `topic`, `telegram` needs a non-empty `actors`). `disable
+<name>` turns it back off. `add <file.yaml>` and `remove <name>` manage a
+full document; `export <name> \[<file>\]` prints or writes one back out.
+`content <name> \[<level>\] \[--yes\]` shows or changes how much a delivery
+carries (`minimal < actions < conversation`); widening prints the change
+and asks for confirmation on a TTY or refuses off one without `--yes` --
+narrowing never asks. This command does not send anything: delivery is a
+later command.
+
+
+**Aliases:** None
+
+
+---
+
 ## Global Options
 
 ### --debug
@@ -1632,7 +1660,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `channels`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---
@@ -1693,6 +1721,7 @@ No command emits any other exit code today.
 | `PROVIDERS_FILE` | Global provider catalog scope (`docket models provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
 | `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
 | `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
+| `CHANNELS_FILE` | Global channel catalog scope (`core/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |

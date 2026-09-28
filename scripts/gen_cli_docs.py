@@ -119,7 +119,7 @@ GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
     ("Security & Audit", ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox"]),
-    ("Observability Commands", ["runs", "trace", "metrics", "harness", "exporters"]),
+    ("Observability Commands", ["runs", "trace", "metrics", "harness", "exporters", "channels"]),
 ]
 
 _TOC_SLUG_OVERRIDES = {
@@ -468,6 +468,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         ("EXPORTERS_HEALTH_FILE",),
         "Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`)",
         "`$DOCKET_HOME/exporters-health.json`",
+    ),
+    (
+        ("CHANNELS_FILE",),
+        "Global channel catalog scope (`core/channel.py`)",
+        "`$DOCKET_HOME/docket-channels.json`",
     ),
     (
         ("FLEET_FILE",),

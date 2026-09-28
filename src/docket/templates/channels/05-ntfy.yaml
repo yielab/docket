@@ -1,0 +1,15 @@
+kind: channel
+name: ntfy
+dialect: ntfy
+description: >-
+  A push notification to your phone or desktop via ntfy.sh (or a self-hosted ntfy server).
+  Notify only. `enable` refuses while `config.topic` is empty -- pass
+  `--set topic=<your-topic>` (pick one only you know, since anyone who guesses it can read
+  your notifications on the public server).
+capabilities: [notify]
+on: [needs_you, task.failed]
+content: minimal
+config:
+  server: "https://ntfy.sh"
+  topic: ""
+enabled: false

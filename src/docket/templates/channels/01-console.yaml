@@ -1,0 +1,12 @@
+kind: channel
+name: console
+dialect: console
+description: >-
+  The terminal you are already dispatching from. It can notify, converse and decide, since a
+  human at the keyboard is the most trusted actor there is -- no `actors` allow-list is needed
+  here, unlike every other dialect that can converse or decide. This is the only built-in
+  channel enabled by default; every other dialect starts dormant until you turn it on.
+capabilities: [notify, converse, decide]
+on: [needs_you]
+content: minimal
+enabled: true

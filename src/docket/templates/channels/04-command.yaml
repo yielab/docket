@@ -1,0 +1,14 @@
+kind: channel
+name: command
+dialect: command
+description: >-
+  An operator-supplied binary that receives each event as JSON on stdin (see
+  `edges/adapters/system.py`). Notify only -- useful for wiring docket into a paging tool or a
+  shell script docket does not know about. Set `config.command` to the binary's path before
+  enabling.
+capabilities: [notify]
+on: [needs_you]
+content: minimal
+config:
+  command: ""
+enabled: false

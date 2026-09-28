@@ -15,13 +15,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.core import archetypes as _archetypes
+from docket.core import channel as _channel
 from docket.core import exporter as _exporter
 from docket.core import pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import provider as _provider
 
-KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "provider", "exporter")
+KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "provider", "exporter", "channel")
 
 _LOCATION_KIND: dict[str, str] = {"roles": "role", "policies": "policy"}
 
@@ -125,6 +126,7 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "policy": PolicyDocument,
     "pod": PodDocument,
     "exporter": _exporter.ExporterSpec,
+    "channel": _channel.ChannelSpec,
 }
 
 
@@ -305,6 +307,13 @@ def _validate_exporter(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _validate_channel(path: Path) -> None:
+    try:
+        _channel.load_channel_document(path)
+    except _channel.ChannelError as exc:
+        raise ConfigDocError(path, str(exc)) from exc
+
+
 def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     """Read *path*, resolve its kind, and dispatch to the parser that owns it. *kind* is used
     only when the document has no top-level ``kind:`` key and its location does not resolve
@@ -367,6 +376,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_provider(p)
         elif effective_kind == "exporter":
             _validate_exporter(p)
+        elif effective_kind == "channel":
+            _validate_channel(p)
     except ConfigDocError as exc:
         raise _refine_with_model(p, effective_kind, doc, exc) from exc
 
