@@ -35,6 +35,7 @@ from docket.core import answers as _answers
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import interruptions as _interruptions
 from docket.core import models_policy as _mp
 from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
@@ -256,6 +257,10 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_delegate(project, extra)
     elif action == "answer":
         _pod_answer(project, extra)
+    elif action == "explain":
+        _pod_explain(project, extra)
+    elif action == "pregrant":
+        _pod_pregrant(project, extra)
     elif action == "queue":
         _pod_queue(project, extra)
     elif action == "dispatch":
@@ -271,7 +276,8 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "delegate | answer | queue | dispatch | config | sync | apply | export."
+            "delegate | answer | explain | pregrant | queue | dispatch | config | sync | "
+            "apply | export."
         )
         raise typer.Exit(1)
 
@@ -530,6 +536,7 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
         raise typer.Exit(1) from ex
     ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {description}"))
     ui.info(f"Run the pipeline: docket pod {project} dispatch")
+    ui.dim(f"  {_interruption_summary(project)}")
 
 
 def _pod_answer(project: str, extra: list[str]) -> None:
@@ -605,6 +612,112 @@ def _pod_answer(project: str, extra: list[str]) -> None:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
     ui.success(f"Answered task '{task_id}' in pod '{project}' ({action}).")
+
+
+def _caller_default() -> Literal["wait", "park"]:
+    """Same TTY resolution `_pod_dispatch` applies to an unset pod `approvalMode`."""
+    return "wait" if sys.stdin.isatty() else "park"
+
+
+def _interruption_summary(project: str) -> str:
+    """One line for `delegate`'s own summary (ADR 0016 SS10): what could pause this pod's
+    next dispatch before it starts."""
+    items = _interruptions.forecast(project, caller_default=_caller_default())
+    askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
+    if not askers:
+        return _interruptions.NOTHING_WILL_ASK
+    counts: dict[str, int] = {}
+    for i in askers:
+        counts[i.kind] = counts.get(i.kind, 0) + 1
+    parts = [f"{n} {kind.replace('_', ' ')}" for kind, n in sorted(counts.items())]
+    return f"May ask you: {', '.join(parts)} — see: docket pod {project} explain interruptions"
+
+
+def _pod_explain(project: str, extra: list[str]) -> None:
+    """``docket pod <project> explain interruptions [--json]`` — forecast what could pause
+    a task before it is dispatched (ADR 0016 SS10)."""
+    if not pod_member_ids(project):
+        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
+        raise typer.Exit(1)
+    as_json = "--json" in extra
+    topic = next((a for a in extra if a != "--json"), "")
+    if topic != "interruptions":
+        ui.error("Usage: docket pod <project> explain interruptions [--json]")
+        raise typer.Exit(1)
+
+    items = _interruptions.forecast(project, caller_default=_caller_default())
+    if as_json:
+        print(
+            _json.dumps(
+                {
+                    "pod": project,
+                    "interruptions": [
+                        {"kind": i.kind, "description": i.description, "detail": i.detail}
+                        for i in items
+                    ],
+                },
+                indent=2,
+            )
+        )
+        return
+
+    ui.header(f"Interruption forecast — {project}")
+    askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
+    if not askers:
+        ui.console.print(f"  {_interruptions.NOTHING_WILL_ASK}")
+    else:
+        for i in askers:
+            ui.console.print(escape(f"  - {i.description}"))
+    mode_item = next((i for i in items if i.kind == "mode"), None)
+    if mode_item is not None:
+        ui.console.print()
+        ui.dim(f"  {mode_item.description}")
+    always_on = [i for i in items if i.kind == "high_risk_class"]
+    if always_on:
+        ui.dim("  Always enforced, for visibility:")
+        for i in always_on:
+            ui.dim(escape(f"    - {i.description}"))
+    channels = [i for i in items if i.kind == "channel"]
+    if channels:
+        ui.dim("  Will notify:")
+        for i in channels:
+            ui.dim(escape(f"    - {i.description}"))
+
+
+def _pod_pregrant(project: str, extra: list[str]) -> None:
+    """``docket pod <project> pregrant <task-id> "<command>" [--tool bash]`` — a single-use
+    pre-grant for one exact command on one task, ahead of dispatch (ADR 0016 SS10)."""
+    if not pod_member_ids(project):
+        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
+        raise typer.Exit(1)
+    tool = "bash"
+    rest: list[str] = []
+    i = 0
+    while i < len(extra):
+        if extra[i] == "--tool":
+            if i + 1 >= len(extra):
+                ui.error("Missing tool name. Use: --tool bash")
+                raise typer.Exit(1)
+            tool = extra[i + 1]
+            i += 2
+        else:
+            rest.append(extra[i])
+            i += 1
+    if len(rest) < 2:
+        ui.error('Usage: docket pod <project> pregrant <task-id> "<command>" [--tool bash]')
+        raise typer.Exit(1)
+    task_id, command = rest[0], " ".join(rest[1:])
+
+    try:
+        token = _interruptions.record_pregrant(
+            project, task_id, command, tool=tool, channel="cli", actor=_actor()
+        )
+    except _interruptions.InterruptionsError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+    ui.success(
+        escape(f"Pre-granted '{command}' on task '{task_id}' in pod '{project}' (token={token}).")
+    )
 
 
 def _pod_queue(project: str, extra: list[str]) -> None:

@@ -63,7 +63,7 @@ def _find_task(task_id: str, pod: str | None) -> tuple[str, dict[str, Any]] | No
     return None
 
 
-def _render_brief(brief_raw: dict[str, Any]) -> None:
+def _render_brief(brief_raw: dict[str, Any], project: str, task_id: str) -> None:
     try:
         brief = _oc.TaskBrief.model_validate(brief_raw)
     except Exception:
@@ -77,6 +77,7 @@ def _render_brief(brief_raw: dict[str, Any]) -> None:
         ui.console.print("  Expected risky actions:")
         for item in brief.expected_risky_actions:
             ui.console.print(f"    - {item}")
+            ui.dim(f'      Pre-grant: docket pod {project} pregrant {task_id} "{item}"')
 
 
 def _render_answers(answers: list[dict[str, Any]]) -> None:
@@ -133,7 +134,7 @@ def run_chat(args: list[str]) -> int:
 
     brief_raw = task.get("brief")
     if isinstance(brief_raw, dict):
-        _render_brief(brief_raw)
+        _render_brief(brief_raw, project, task_id)
 
     answers_raw = task.get("answers")
     if isinstance(answers_raw, list):

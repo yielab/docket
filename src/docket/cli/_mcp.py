@@ -23,6 +23,7 @@ import docket.config as _cfg
 from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
+from docket.core import interruptions as _interruptions
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import runs as _runs
 from docket.core.audit import audit_log
@@ -50,6 +51,7 @@ _TOOL_NAMES: tuple[str, ...] = (
     "inbox",
     "cost",
     "task_answer",
+    "task_pregrant",
 )
 
 
@@ -208,6 +210,21 @@ def tool_task_answer(
     return {"ok": True, "task": task_id, "project": project, "action": result.action}
 
 
+def tool_task_pregrant(
+    project: str, task_id: str, command: str, tool: str = "bash"
+) -> dict[str, Any]:
+    """Record a single-use pre-grant for one command on one task, ahead of dispatch.
+    Identical to `docket pod <project> pregrant` / `POST /tasks/<task_id>/pregrants`."""
+    _audit("task_pregrant", f"project={project} task={task_id} tool={tool}")
+    try:
+        token = _interruptions.record_pregrant(
+            project, task_id, command, tool=tool, channel="mcp", actor="mcp"
+        )
+    except _interruptions.InterruptionsError as exc:
+        raise McpToolError(str(exc)) from exc
+    return {"ok": True, "token": token, "task": task_id, "project": project}
+
+
 def tool_inbox(since: str | None = None) -> dict[str, Any]:
     """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
     failed/done/running context, and a cursor. Identical shape to `docket serve`'s `GET /inbox`."""
@@ -264,6 +281,7 @@ def _build_server() -> Any:
     server.add_tool(tool_approvals_grant, name="approvals_grant")
     server.add_tool(tool_approvals_deny, name="approvals_deny")
     server.add_tool(tool_task_answer, name="task_answer")
+    server.add_tool(tool_task_pregrant, name="task_pregrant")
     server.add_tool(tool_inbox, name="inbox")
     server.add_tool(tool_cost, name="cost")
     return server

@@ -834,6 +834,30 @@ was seeded once at binding time.)*
    in the serial sweep loop, only without blocking); the foreground TTY `[p]ark and continue`
    prompt key.
 
+### Pre-grants from intake (P34-15, ADR 0016 SS10)
+
+1. **Trigger.** "Parked approvals" above gives a human a pre-grant only *after* an in-turn `ask`
+   has already parked a task. A Lead intake brief's `expectedRiskyActions` (see "Task brief"
+   below) names a command before any hop has run it -- there is nothing yet to grant from.
+2. `core.interruptions.record_pregrant(project, task_id, command, *, tool="bash", channel,
+   actor)` is the write side, callable ahead of any dispatch: it looks *task_id* up in
+   `read_tasks(project)` (refusing one from another pod), collapses whitespace in *command*, and
+   computes `operator_contract.canonical_args_digest(tool, {"command": normalized})` -- the exact
+   digest `core/tools.py`'s park/consume matcher computes for a live call. It then calls
+   `core.approval.create_pregrant(project, "implementer", tool, digest, task_id=task_id,
+   expires_at=<now + this pod's approvalExpiryHours>, channel=channel, actor=actor)` unchanged.
+3. It appends `{"token", "tool", "argsDigest": digest}` to the named task's own `pregrants` list,
+   via `edges.store.read_modify_write(pod_task_list_path(project), ...)` -- the identical shape
+   "Parked approvals" item 7 appends on a live grant, so `_compose_hop` serialises it into
+   `DOCKET_PREGRANTS` on that task's very first hop, not only a re-run after a park. A command
+   pre-granted this way that never actually runs, or runs with different arguments, is simply
+   never consumed -- it expires by the same `approvalExpiryHours` deadline like any other
+   pre-grant, with no other effect on the task.
+4. Non-goal: any change to `core/tools.py`'s matcher, `core/approval.py`'s `create_pregrant`, or
+   the `pregrants` field's shape -- this is a second writer producing the exact same record
+   shape, not a new mechanism. See operator-loop.spec.md, "Seeing it coming, and not being
+   interrupted twice", for the CLI/HTTP/MCP surface and the forecast this pairs with.
+
 ### Operator input steps and answers (P34-10, ADR 0016 SS4/SS8)
 
 1. **Trigger.** `_run_pipeline` reaching a `PlannedUnit` whose `input` is set (see
