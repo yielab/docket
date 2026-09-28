@@ -1,6 +1,6 @@
 # Security: Layered & Convention-Based
 
-**Philosophy:** Security comes from layered defaults — an always-on tool-call gate, agent instructions, an optional read-only reviewer role, and human git review — so that the common cases are covered without extra commands.
+**Philosophy:** Security comes from layered defaults — an always-on tool-call gate, agent instructions, an optional read-only reviewer role, and human git review — so that the common cases are covered without extra commands, and nothing about a run leaves the host until you choose what may.
 
 > **Status / honesty note.** docket runs the agent turn itself (`core/agent_loop.py`), and every
 > tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
@@ -198,10 +198,14 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   entry (`from`, `to`, `host`). Each exported session also carries `docket.privacy`, so the
   destination shows what it was allowed to receive. The retired `payload` field loads as
   `minimal` and can never widen anything.
+- **A running `docket serve` keeps the level it started with.** Export starts once per process,
+  so a change — narrowing included — reaches a long-running `serve --dispatch` only after it
+  restarts. A one-shot `dispatch` or `harness run` picks it up at once. `DOCKET_NO_EXPORT=1`
+  turns export off for one process.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
-  stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24 explicitly cut the OpenTelemetry SDK,
-  and this stays a zero-dependency projection of docket's own trace events, never a second
-  source of truth.
+  stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
+  (D-48), and export stays a zero-dependency projection of docket's own trace events, never a
+  second source of truth.
 - **Never blocks a turn.** The export pipeline is a bounded queue drained by a background
   thread — a slow or unreachable destination drops spans past the bound and records it in that
   exporter's health counters (`docket exporters show <name>`), it never raises into the agent
@@ -270,9 +274,10 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 ## The Audit Log (`docket audit`)
 
-Every gate flip, approval grant/deny, key/model/profile/pod change docket makes writes one line
-to `~/.docket/audit.log` — who, what, when. Secret **values** are never written, only names
-(a key's NAME, a model id, an agent id).
+Every gate flip, approval grant/deny, key/model/profile/pod change, and every exporter added,
+removed, enabled, disabled or given a new privacy level, writes one line to
+`~/.docket/audit.log` — who, what, when. Secret **values** are never written, only names (a
+key's NAME, a model id, an agent id).
 
 ```bash
 docket audit          # last 20 changes
@@ -307,7 +312,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
+**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command.
 
 ---
 
@@ -322,6 +327,8 @@ docket policies list      # installed guardrail policies
 docket doctor             # catches a broken policy file before a live turn does, and more
 docket approve            # list pending approvals in docket's own store
 docket audit verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
+docket exporters list     # every trace destination: on or off, and what it SHARES
+docket exporters preview <name>   # the exact spans it would receive, without sending them
 ```
 
 ---

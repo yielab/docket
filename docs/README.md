@@ -39,7 +39,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Recipe library](recipes.md) | The twelve shipped recipes (teams, policy packs, methodology pipelines), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
-| [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals and the audit log |
+| [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
 | [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
 | [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
@@ -76,6 +76,8 @@ docket trace tail myapp                       # the latest session, step by step
 docket audit && docket audit verify           # gate decisions, and the chain verifies
 docket config explain myapp-implementer       # effective configuration with provenance
 docket cost myapp-lead                        # measured tokens and the labelled estimate
+docket exporters list                         # trace destinations (OpenTelemetry, Langfuse): on/off, SHARES
+docket exporters preview langfuse             # what one would receive, before anything is sent
 
 # Models and keys
 docket models provider add local http://127.0.0.1:8081/v1 --model m --ctx 16384 --max-tokens 4096
@@ -117,6 +119,7 @@ in your repository:
 ├── recipes/<name>/                   # your own recipes, addressable by name like the shipped ones
 ├── skills/<name>/SKILL.md            # global skills, every pod on this machine
 ├── docket-mcp-servers.json           # external MCP tool servers
+├── docket-exporters.json             # your changes to the kind: exporter documents; five ship built in, all off
 ├── docket-runs.json  docket-schedules.json  docket-conversations.json
 ├── audit.log                         # hash-chained audit log (docket audit verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals

@@ -257,6 +257,8 @@ Three guarantees hold on every dispatch:
   `docket profile <project>-lead --resume`.
 - **Traced.** Every hop emits a Phase-8 trace event (`docket trace`), on a per-task session
   `agent:<project>:<task_id>` — so a run is fully auditable, with no manual Telegram relay.
+  An enabled trace exporter sends the same session to OpenTelemetry or Langfuse, at the privacy
+  level you set for it (`docket exporters`).
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
   cross-pod dispatch path** — one pod can never run another pod's agents.
 

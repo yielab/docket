@@ -9,79 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Export privacy levels (Phase 33, D-49, ADR 0015).** Each `kind: exporter` document now
-  says what it shares beyond structure: `privacy: minimal` (the default for every built-in),
-  `actions` (tool arguments, error text), `conversation` (prompts, replies, tool results) or
-  `full` (plus the system prompt), or an exact `share:` list; `contentMaxChars` bounds each
-  value. Content is sent only through an allowlist, filtered per message part, and captured
-  into the local trace only while some exporter grants it. `docket exporters privacy <name>
-  <level>` widens only after listing what starts leaving and to which host (a TTY confirmation,
-  or `--yes`), and records `exporter.privacy` in the audit log; `docket exporters preview <name>`
-  shows what a destination would receive from a real local session, offline. `list` gains
-  `SHARES`, `show` a "Leaves this host" block, and every exported session carries
-  `docket.privacy`. At `conversation` Langfuse now shows each generation's Input/Output and
-  each tool's result, verified live with canaries at three levels. Two leaks under the old
-  default are closed: an approval's command line and error text no longer leave at `minimal`.
-  The `payload` field and `--payload` flag are retired; an old `payload` loads as `minimal`.
-
-- **Langfuse round-trip confirmed live, and a content limit found and documented.** With the
-  operator's own credentials stored, `docket exporters enable langfuse` and a real dispatch
-  produced a trace visually confirmed in Langfuse's own dashboard (session root, `gen_ai.chat`
-  spans, real timing and token counts). Flagged live: the generation's Input/Output read empty.
-  Traced to a closed, spec-mandated attribute set (`observability-export.spec.md` Requirements
-  8-9) and `core/agent_loop.py::_trace_llm_call`, which never records message content — not a
-  delivery or encoding defect. `docs/CONFIGURATION.md` §3.14, `docs/SECURITY-SIMPLE.md`'s Layer
-  6, and `docs/adr/0014-observability-export.md` previously implied `payload: full` would
-  surface prompt/tool content for `gen_ai.chat`/`execute_tool`; corrected — a destination's
-  Input/Output will read empty for both span kinds regardless of `payload` until that content is
-  deliberately, separately wired in.
-- **Observability export verified live and documented (Phase 32, D-48, close).** A real
-  `docket pod` dispatch (4 hops, local model) against a Docker `otel-collector`
-  produced 5 `docket.session` roots, 29 `gen_ai.chat` spans with real measured token counts, and
-  39 `execute_tool` spans, matching `docket trace`'s own 29 `llm_call` lines and a
-  non-zero `exported` health counter — see `observability-export.spec.md`
-  §"External verification". Docs: `docs/CONFIGURATION.md` §3.14, a new Layer 6 in
-  `docs/SECURITY-SIMPLE.md` naming what leaves the host under `metadata` vs `full`, and one
-  README sentence. Langfuse verification stays open, blocked on the operator's own
-  `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`.
-- **`docket exporters` turns a destination on by authenticating, and a recipe can name one.**
-  The bounded export pipeline is wired into every turn: `run_turn` starts it lazily, flushes it
-  on every return path (bounded to `EXPORT_FLUSH_TIMEOUT_S` even if a destination hangs), and
-  writes the health file — zero enabled exporters costs one catalog read and nothing else.
-  `docket exporters list|show|enable|disable|test|add|remove|export` is the CLI surface:
-  `enable` resolves an exporter's declared credentials (prompting on a TTY, refusing and naming
-  `docket keys add <NAME>` off one), probes the endpoint, and on success writes only the minimal
-  override needed — everything else keeps resolving from the built-in. `docket config explain`
-  and `docket doctor` report each exporter's state. A `pod.yaml` may name `exporters:`; `apply`
-  and `docket recipes show` print each one's activation state and never activate one themselves.
-  See `observability-export.spec.md` and [ADR 0014](docs/adr/0014-observability-export.md).
-- **A destination for observability is configuration, and one wire dialect ships built in.**
-  A `kind: exporter` document (`core/exporter.py`) describes where spans go — endpoint, auth
-  (`bearer`/`header`/`basic`/`none`, credential *names* only, never values), `resource`,
-  `aliases`, which event types to send and whether their payload is `metadata` (stripped) or
-  `full`. Five ready-made, disabled-by-default destinations ship in the wheel under
-  `templates/exporters/`: `otel-collector`, `jaeger`, `langfuse`, `honeycomb`, `phoenix` — each
-  needs only an operator to enable it and store its credential. A global override sharing a
-  built-in's name inherits every field it does not itself set. The trace record gains an
-  optional `task_id`, written only when truthy, and `trace_ingest` now notifies subscribers
-  before appending so a live consumer sees a driver-projected session in order.
-  `edges/adapters/exporters/otlp_http.py` is the one shipped wire encoding: deterministic OTLP
-  JSON (sorted attributes, nanosecond timestamps, alias duplication), a transport that retries
-  once on 429/502/503/504 honouring `Retry-After`, and a reachability probe — hand-rolled over
-  stdlib `urllib`, no new dependency. No bounded queue, background sender, or `docket exporters`
-  CLI surface exists yet; see `observability-export.spec.md` and
-  [ADR 0014](docs/adr/0014-observability-export.md).
-- **The model's own call is a trace event, and a neutral span model projects it.** Every backend
-  chat-completions exchange (each turn iteration, plus the compaction summarizer's own call) is
-  now a durable `llm_call` trace record carrying model, provider, measured latency and token
-  counts — never a dollar figure. `ChatResponse` gains `model`, `provider`, `latency_ms`;
-  `core/trace.py`'s `EVENT_TYPES` gains the one entry; the store gets its first owning spec,
-  `trace-store.spec.md`. A new, vendor-agnostic layer sits above it: `core/telemetry.py`
-  deterministically projects trace records into a neutral `Span`/`SpanEvent` model (ids derived
-  from the session id, never random) and an `ExportPolicy` decides which event types may leave
-  the host and whether their payload is `metadata` (default, content stripped) or `full`. No
-  destination, wire format, queue, or CLI surface exists yet — see `observability-export.spec.md`
-  and [ADR 0014](docs/adr/0014-observability-export.md).
+- **Export privacy levels: you choose what leaves, and see it first (Phase 33, D-49, ADR 0015).**
+  Each `kind: exporter` document says what it shares beyond structure: `privacy: minimal` (the
+  default for every built-in), `actions` (tool arguments, error text), `conversation` (prompts,
+  replies, tool results) or `full` (plus the system prompt), or an exact `share:` list;
+  `contentMaxChars` bounds each value. Content leaves only through an allowlist, filtered per
+  message part, and is captured into the local trace only while some enabled exporter grants
+  it, so at `minimal` everywhere the local trace is what it was without exporters.
+  `docket exporters privacy <name> <level>` widens only after listing what starts leaving and to
+  which host (a TTY confirmation, or `--yes`) and records `exporter.privacy` in the audit log;
+  `docket exporters preview <name>` shows what a destination would receive from a real local
+  session, offline. `list` gains `SHARES`, `show` a "Leaves this host" block, and every exported
+  session carries `docket.privacy`. At `conversation`, Langfuse shows each generation's
+  Input/Output and each tool's result, verified live with canaries at three levels; at
+  `minimal` no canary reached the collector, Langfuse or the local trace. Compared with the
+  pre-release `payload: metadata` default, an approval's command line and error text no longer
+  leave at `minimal`. A document still carrying `payload` loads as `minimal`, and `docket doctor`
+  names the command that replaces it. Export pipelines start once per process, so a running
+  `docket serve` applies a level change after a restart.
+- **Traces can go to OpenTelemetry and Langfuse (Phase 32, D-48, ADR 0014).** A destination is
+  a `kind: exporter` document (`core/exporter.py`): endpoint, auth (`bearer`/`header`/`basic`/
+  `none`, credential *names* only, never values), `resource`, `aliases` and which event types to
+  send. Five ship in the wheel under `templates/exporters/`, all disabled: `otel-collector`,
+  `jaeger`, `langfuse`, `honeycomb`, `phoenix`; a global override inherits every field it does
+  not set. The one wire dialect, `otlp-http` (`edges/adapters/exporters/otlp_http.py`), is
+  deterministic OTLP JSON hand-rolled over stdlib `urllib` with a retry on 429/502/503/504 that
+  honours `Retry-After`; D-24's cut of the OpenTelemetry SDK stands. Every turn starts the bounded
+  export pipeline lazily, flushes it on every return path (bounded by `EXPORT_FLUSH_TIMEOUT_S`
+  even if a destination hangs) and writes per-exporter health counters; zero enabled exporters
+  costs one catalog read. `docket exporters list|show|enable|disable|test|add|remove|export` is
+  the CLI surface: `enable` resolves the declared credentials (prompting on a TTY, naming
+  `docket keys add <NAME>` off one), probes the endpoint, and writes only the minimal override.
+  `docket config explain` and `docket doctor` report each exporter; a `pod.yaml` may name
+  `exporters:`, which `apply` and `docket recipes show` report and never activate. Verified live:
+  a 4-hop dispatch against a Docker `otel-collector` produced 5 `docket.session` roots, 29
+  `gen_ai.chat` spans matching `docket trace`'s 29 `llm_call` lines, and 39 `execute_tool`
+  spans; a real dispatch reached Langfuse's own dashboard with timing and token counts. See
+  `observability-export.spec.md` §"External verification".
+- **The model's own call is a trace event.** Every chat-completions exchange (each turn
+  iteration, plus the compaction summarizer's own call) is a durable `llm_call` trace record
+  carrying model, provider, measured latency and token counts, never a dollar figure.
+  `ChatResponse` gains `model`, `provider`, `latency_ms`; the trace record gains an optional
+  `task_id`; the store gets its first owning spec, `trace-store.spec.md`. `core/telemetry.py`
+  projects trace records into a neutral span model with ids derived from the session id, never
+  random, and `trace_ingest` notifies subscribers before appending so a live consumer sees a
+  driver-projected session in order.
 - **A recipe library of three kinds, and a recipe that says what it brings.** Twelve recipes
   ship: the three teams, four policy packs that change no roster (`git-safety`, `no-egress`,
   `secrets-guard`, `prod-approval`; every rule stated with the structured `tool`/`path`/`anyOf`

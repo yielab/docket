@@ -98,7 +98,7 @@ branch. Then whatever gates the team has decide: the verify command's exit code,
 `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is counted, not hoped, and the change
 stays in the worktree until you merge it.
 
-Nothing runs on its own. The same pipeline also runs from a schedule (`@every 30m`, cron), an
+Nothing runs on its own. The same pipeline runs from a schedule (`@every 30m`, cron), an
 authenticated `POST /dispatch/<project>`, the MCP `dispatch` tool, or `docket serve --dispatch`.
 `docket pod <p> config set approvalMode refuse` makes an unattended pod fail fast instead of
 waiting on nobody; `budgetUsd` pauses it on a labelled estimate. `docket harness run` executes one
@@ -117,10 +117,10 @@ Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifi
 whole command line (`git status` passes, `git push origin production` asks), then approval over
 CLI, HTTP, MCP or Telegram, then budget. Fail-closed: an approval nobody answers denies itself,
 and a policy file that no longer parses blocks it. `docket audit verify` checks the hash chain
-over every verdict, approval, execution. `docket trace tail <p>` shows a run step-by-step, also
-projected to any OpenTelemetry or Langfuse endpoint (`kind: exporter`). `docket cost` reports
-measured tokens and a labelled estimate; `/status.json` and `/metrics` feed your own board —
-docket does not ship one.
+over every verdict, approval, execution. `docket trace tail <p>` shows a run step-by-step; a
+`kind: exporter` sends it to OpenTelemetry or Langfuse, structure-only unless widened.
+`docket cost` reports measured tokens and a labelled estimate; `/status.json` and `/metrics`
+feed your own board — docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
 rotation). `fetch` is inspectable, but `bash` still reaches the network through allowlisted

@@ -2,8 +2,8 @@
 
 This guide maps every file docket writes, on the machine and per project, to what it controls,
 how to change it, and what reads it while an agent is actually running. Its focus is the question
-the other guides leave open: **how do I customize my agents, the orchestration between them, and
-what they are allowed to do?**
+the other guides leave open: **how do I customize my agents, the orchestration between them,
+what they are allowed to do, and what of it leaves this machine?**
 
 Everything here was checked against a real install (`docket init --pod full` under a throwaway
 `HOME`, then a real dispatch against a local model) and against the code on the live turn path.
@@ -55,6 +55,8 @@ noted.
 ├── policies/*.yaml                     init         6 baseline guardrail policies (JSON also loads)
 ├── docket-roles.json                   roles add    your custom role archetypes
 ├── docket-mcp-servers.json             mcp servers  external MCP tool servers
+├── docket-exporters.json               exporters    your kind: exporter overrides (built-ins ship in the wheel, all off)
+├── exporters-health.json               first export delivery counters per enabled exporter
 ├── docket-schedules.json               you          dispatch schedules (no CLI writer)
 ├── secrets.json, secrets.meta.json     keys add     stored API keys + timestamps
 ├── docket-runs.json                    dispatch     one record per dispatch invocation
@@ -779,15 +781,25 @@ policies, pipelines, settings) are still applied only by an operator command (§
 
 ### 3.14 Export traces to OpenTelemetry or Langfuse
 
-A destination is a `kind: exporter` YAML document, the same shape as a `kind: provider`
-(§3.1): five built-in templates ship in the wheel (`otel-collector`, `jaeger`, `phoenix` —
-no auth; `honeycomb` — header; `langfuse` — basic), all speaking the same hand-rolled
-`otlp-http` dialect (no OpenTelemetry SDK dependency; D-24 stands). `core/telemetry.py`
-projects each session into a neutral span model (`docket.session` root, `gen_ai.chat` and
-`execute_tool` children, deterministic span/trace ids from the session id) and a background
-pipeline drains it to every enabled exporter — bounded queue, drop-on-full, never raises into a
-turn. Nothing is sent until you run `docket exporters enable`, and a present credential never
-turns an exporter on by itself.
+The record `docket trace` reads can also go to a tool you already run: an OpenTelemetry
+collector, Jaeger, Phoenix, Honeycomb or Langfuse. A destination is a `kind: exporter` YAML
+document, the same shape as a `kind: provider` (§3.1). Five ship in the wheel, all off:
+`otel-collector`, `jaeger` and `phoenix` need no credential, `honeycomb` takes a header key and
+`langfuse` a basic-auth pair. Credentials resolve as a provider's do, from the environment first
+and then from `docket keys add`. Nothing is sent until you run `docket exporters enable`, and a
+present credential never turns an exporter on by itself.
+
+Every turn docket runs (a dispatch hop, a `serve --dispatch` sweep, `docket harness run`) hands
+the records it writes to the local trace, already redacted, to `core/telemetry.py`, which turns
+each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
+their ids derived from the session id so a re-send lands on the same trace. A background
+pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the standard library
+(the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
+queue, counts what it drops, and never raises into a turn. The pipelines start with the first
+turn of a process and keep that set of exporters and levels for its life, so a change made with
+the commands below reaches the next `dispatch` or `harness run` at once and a running
+`docket serve` only after a restart. `DOCKET_NO_EXPORT=1` turns export off for one process;
+`DOCKET_NO_TRACE=1` stops the local write and, with it, the export.
 
 #### What leaves this host: the privacy level
 
@@ -954,13 +966,15 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout}]` | `mcp servers add/remove` | every turn | via command |
+| `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `exporters enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
+| `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `exporters show`, `doctor` | no |
 | `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | you, serve (`lastRun`) | `serve --dispatch` sweep | **yes, the only interface** |
 | `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `keys add/rotate/remove` | endpoint key lookup (after env) | no |
 | `port-allocations.json` | `allocations{pod: base}`, 100 ports each from 3000 | pod create/delete | implementer env `DOCKET_PORT_BASE` | no |
 | `docket-runs.json` | `runs[{id,source,project,state,taskIds,…}]` | every dispatch | `docket runs`, `/runs` | no (never pruned) |
 | `docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram, `conversations set` | Telegram channel | no |
 | `sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no. `maintain sessions` reports sizes. |
-| `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket trace`, `metrics`, `/traces` | no. `trace expire` prunes after `TRACE_RETENTION_DAYS`. |
+| `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket trace`, `metrics`, `/traces`; each record also reaches the enabled exporters as it is written | no. `trace expire` prunes after `TRACE_RETENTION_DAYS`. |
 | `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `approve`/`deny`. |
 | `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket audit`, `audit verify` | **never.** It breaks the hash chain. |
 
@@ -970,6 +984,10 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 catalog merges them with `docket-providers.json`, nearest-wins by name — a global write under a
 built-in's name overrides that document but inherits its presets and pricing unless set
 explicitly.
+
+**Built-in exporter documents** follow the same pattern at `templates/exporters/NN-<name>.yaml`
+(`otel-collector`, `jaeger`, `langfuse`, `honeycomb`, `phoenix`), every one `enabled: false` at
+`privacy: minimal`. `docket-exporters.json` stores only what you changed on top of one.
 
 ### Per agent (`~/.docket/workspaces/projects/<pod>-<role>/`)
 
@@ -1018,6 +1036,18 @@ rest of the original list; what remains below is the honest boundary, not a back
   any registry.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket audit`, action
   `tool.warn`), not in traces — so `docket trace`/`metrics` won't show it.
+- **A running `docket serve` keeps the exporters it started with.** Export pipelines start once
+  per process (§3.14), so `docket exporters enable`, `disable` and `privacy` reach a
+  long-running `serve --dispatch` only after it restarts, and that includes **narrowing**: until
+  the restart, it keeps sending at the old level. Restart it after any change to what leaves.
+- **A destination gets only what was captured while it was allowed to.** Prompts, replies and
+  tool output are recorded only while an enabled exporter grants them (§3.14), so a wider level
+  cannot send an earlier session's conversation, and `preview --level conversation` on that
+  session says so.
+- **One session can show two `docket.session` roots.** When a turn goes quiet long enough for
+  the pipeline's idle flush (a slow model call), the open root is closed and sent; the next
+  record opens it again with the same ids, and some destinations display both. The spans below
+  it are complete. Recorded in `observability-export.spec.md` as an open follow-up.
 - **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it
   is merged into your current branch; an unmerged one is kept and the command to remove it is
   printed.

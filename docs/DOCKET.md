@@ -261,7 +261,12 @@ stores, all under `~/.docket/`:
 - **Traces** (`core/trace.py`, `$TRACES_DIR/<project>/<session_id>.jsonl`) — one append-only file
   per session, one line per observable event (hop starts, tool calls, gate outcomes, retries,
   guardrail trips, budget warnings). `docket trace`/`docket metrics` read this store;
-  `DOCKET_NO_TRACE=1` disables writes.
+  `DOCKET_NO_TRACE=1` disables writes. The same records, as they are written, are also the only
+  input to trace export (`core/telemetry.py`): an enabled `kind: exporter` receives them as
+  OpenTelemetry spans, filtered by its privacy level, so a destination such as Langfuse shows a
+  projection of this store, never a second source of truth. Conversation content (prompts,
+  replies, tool output) enters this store only while some enabled exporter grants it. See
+  [Configuration §3.14](CONFIGURATION.md#314-export-traces-to-opentelemetry-or-langfuse).
 
 These stores do not all go through `edges/store.py`'s locked read-modify-write path — audit and
 trace are exempt by design (line-independent JSONL appends, not a whole-document
@@ -753,6 +758,11 @@ high-risk command classifier — is now **live** on every tool call docket's own
 closing the gap where docket's policy templates existed but nothing inside a running turn ever
 evaluated them.
 
+What leaves the machine is governed separately, and closed by default: every trace exporter
+ships disabled and at `privacy: minimal` (structure only), sharing more is a confirmed command
+recorded in the audit log, and the span projection is an allowlist, so an attribute nobody has
+classified never leaves. SECURITY-SIMPLE.md's Layer 6 has the detail.
+
 ---
 
 ## Cost Optimization
@@ -837,12 +847,32 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Harness mode (`docket harness run`/`docket harness status`) — a versioned, non-interactive
   single-agent entry point for an external caller-owned workspace and `DOCKET_HOME` (see
   [Harness mode](#harness-mode-one-agent-one-turn-for-an-external-caller) above)
+- [x] The configuration contract: `docket config explain` names each effective value and the
+  scope it came from (built-in, global, pod), and `docket doctor` names every entry a loader
+  skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
+- [x] Configuration format v1: every YAML document declares `kind:`, `docket validate` checks it,
+  short forms normalize to the canonical one, pipelines route with `on:` and skip with `when`
+- [x] The provider catalog: model endpoints are `kind: provider` documents, fourteen built in
+  (`docket models provider add|list|show|remove|export`)
+- [x] The team in the repository: `.docket/` is the pod's configuration of record
+  (`docket pod <p> apply|export`, `docket init` applies it), with drift reported by
+  `config explain`
+- [x] Recipes, project instructions and skills: twelve shipped recipes (`docket recipes`), the
+  codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
+- [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
+  (`docket exporters`), five destinations built in, all off
+- [x] Export privacy levels (`minimal`/`actions`/`conversation`/`full`, or an exact `share:`
+  list), shown before sharing (`docket exporters show|preview`) and widened only by a confirmed,
+  audited command (`docket exporters privacy`)
 
 ### Documentation ✅
 
 - [x] Quick Start Guide
 - [x] Agent Teams (Pods) guide
+- [x] Configuration guide (every file, what reads it, and trace export)
 - [x] Workflow Guide
+- [x] Recipe library (generated from the shipped recipes)
+- [x] Models, gateways and harnesses
 - [x] Security Model (Simple)
 - [x] DOCKET Architecture (this doc)
 - [x] Commands Reference
@@ -1047,8 +1077,10 @@ Two optional adapter configurations have installed-artifact coverage:
 
 These claims apply when relevant tools are exclusively Docket-backed. ACP, native/provider tools,
 plugins/MCP added beside an adapter, and arbitrary framework configurations are outside the proof;
-this is not framework-neutral compatibility. A2A and OTLP are not used: both adapters run in
-process, while Docket's JSONL trace already preserves the identity fields tested by the matrix.
+this is not framework-neutral compatibility. The adapters use neither A2A nor OTLP: both run in
+process, and Docket's JSONL trace already preserves the identity fields the matrix tests. Trace
+export (Configuration §3.14) is a separate, operator-enabled projection of that trace from
+docket's own driver, and is not part of the adapter proof.
 Inspect the boundary or copy the lazy constructors from
 [examples/runtime_adapters.py](../examples/runtime_adapters.py).
 

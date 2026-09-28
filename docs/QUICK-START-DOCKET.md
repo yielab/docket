@@ -177,6 +177,20 @@ docket config explain myapp-implementer   # the effective configuration, with wh
   Config source:   .../templates/recipes/secure-build  (digest 441848f22bd2..., drift: no)
 ```
 
+This record stays on the machine. To read it in a tool you already run, such as Langfuse or an
+OpenTelemetry collector, turn on one of the built-in exporters. By default it sends only the
+run's structure (model and tool names, timing, token counts, pass or fail), and
+`docket exporters preview` shows exactly what would leave before you enable it:
+
+```bash
+docket exporters list                     # five built-in destinations, all off
+docket exporters preview langfuse         # what it would receive from your latest session
+docket exporters enable langfuse          # asks for the key, checks the endpoint, then turns it on
+```
+
+Sharing prompts and replies is a separate, confirmed step
+([Configuration §3.14](CONFIGURATION.md#314-export-traces-to-opentelemetry-or-langfuse)).
+
 A gate looks like this when it fires. Ask docket what it would do with a command before an agent
 tries it:
 
@@ -312,8 +326,8 @@ Keep docket behind your own boundary: `docket serve` binds loopback and does not
 ## Where next
 
 - [Agent teams](AGENT-TEAMS.md): roles, pods, blueprints, recipes and how a dispatch is gated
-- [Configuration](CONFIGURATION.md): every file docket creates, what reads it, and the
-  customization recipes by use case
+- [Configuration](CONFIGURATION.md): every file docket creates, what reads it, the
+  customization recipes by use case, and trace export with its privacy levels
 - [Workflow guide](WORKFLOW-GUIDE.md): end-to-end examples, custom pipelines, schedules, webhooks
 - [Security](SECURITY-SIMPLE.md): the layers, the approval channels, the audit log
 - [Command reference](commands.md) and [Troubleshooting](troubleshooting.md)

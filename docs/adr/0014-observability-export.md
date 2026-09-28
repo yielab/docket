@@ -1,5 +1,10 @@
 # ADR 0014 (D-48): observability as configuration — one signal, a neutral span model, destinations as `kind: exporter` documents
 
+> **Amended by [ADR 0015](0015-export-privacy-levels.md) (D-49, 2026-09-28).** The
+> `payload: metadata|full` switch and `payloadMaxChars` wherever they appear below are replaced by
+> a declared privacy level enforced by an attribute allowlist, with content captured on demand.
+> The rest of this decision stands.
+
 **Question:** docket already records everything an agent does: a per-session JSONL trace with a
 closed vocabulary and a fixed record shape (`core/trace.py::trace_event`), a synchronous
 subscriber seam the harness streams through (`trace.subscribe`), measured token counts per

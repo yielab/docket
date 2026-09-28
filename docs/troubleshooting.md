@@ -229,6 +229,51 @@ docket doctor          # look for the flagged stale/aliased model name
 docket doctor --fix    # apply the fix
 ```
 
+## Trace Export
+
+### Traces arrive in Langfuse, but Input and Output are empty
+**Cause:** the exporter is at `privacy: minimal`, the default for every built-in. It sends the
+run's structure (model and tool names, timing, token counts, pass or fail) and none of its
+content, so Langfuse has nothing to put in those columns. This is the intended default, not a
+lost field.
+
+**Fix:** decide what that destination may receive, then widen it deliberately:
+
+```bash
+docket exporters privacy langfuse               # what leaves today
+docket exporters preview langfuse --level conversation   # what would leave, without sending it
+docket exporters privacy langfuse conversation  # lists the new classes and asks
+```
+
+`actions` adds tool arguments and error text; `conversation` adds prompts, replies and tool
+results; `full` adds the system prompt. The next session shows the content. An earlier one
+cannot: content is captured only while an exporter grants it.
+
+### A level change has no effect
+**Cause:** export pipelines start once per process. A running `docket serve --dispatch` keeps
+the exporters and levels it started with, narrowing included.
+
+**Fix:** restart `docket serve` after `docket exporters enable`, `disable` or `privacy`. A
+one-shot `docket pod <p> dispatch` or `docket harness run` picks the change up at once.
+
+### Nothing arrives at the destination
+**Cause:** the exporter is disabled, its credential no longer resolves (then it is skipped
+silently at the start of a turn), or deliveries are failing.
+
+**Fix:** `docket exporters list` shows whether it is enabled; `docket exporters show <name>`
+shows its `exported`/`dropped`/`failed` counters and last error; `docket exporters test <name>`
+re-probes the endpoint without changing anything; `docket doctor` warns about an enabled
+exporter with a failure since its last success. Check that `DOCKET_NO_EXPORT` and
+`DOCKET_NO_TRACE` are unset.
+
+### One session shows two `docket.session` spans
+**Cause:** a known limit. When a turn goes quiet long enough (a slow model call), the pipeline's
+idle flush closes and sends the open session span; the next record reopens it with the same
+ids, and some destinations display both.
+
+**Fix:** none needed; the child spans are complete. It is recorded as an open follow-up in
+`specs/functional/observability-export.spec.md`.
+
 ## Permission Denied Errors
 **Fix:**
 ```bash

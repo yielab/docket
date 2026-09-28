@@ -234,6 +234,13 @@ example (abridged):
   2026-09-18T12:01:41  session_end                (lead)  status=done
 ```
 
+The same session is what a trace exporter sends when you enable one: a `docket.session` span
+with a child span per model call and per tool call, so Langfuse or an OpenTelemetry backend
+shows the pipeline hop by hop. What each span carries depends on the exporter's privacy level,
+structure only by default; `docket exporters preview <name> --session <id>` prints it for this
+exact session before anything is sent
+([Configuration §3.14](CONFIGURATION.md#314-export-traces-to-opentelemetry-or-langfuse)).
+
 ### Step 9 — Check the cost
 
 ```bash

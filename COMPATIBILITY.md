@@ -49,7 +49,9 @@ starter, governance, and recovery fixture results. It is deterministic contract 
 provider or framework benchmarking.
 
 A2A is not used because these configurations integrate with Docket in process. OTLP is not used
-because JSONL trace records preserve project, session, role, call, and decision identity. See the
+by the adapters because JSONL trace records preserve project, session, role, call, and decision
+identity; docket's own trace export (`kind: exporter`) is a separate, operator-enabled
+projection of that trace and is not part of this proof. See the
 [compact adapter example](examples/runtime_adapters.py) for the machine-readable boundary and lazy
 constructors. Neither framework is a dependency of the base `docket-runtime` installation.
 
