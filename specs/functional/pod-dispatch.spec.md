@@ -895,6 +895,78 @@ was seeded once at binding time.)*
    CLI/HTTP/MCP/Telegram answer surfaces, and event delivery for `input_requested` -- all owned
    by later requirement areas (operator-loop.spec.md).
 
+### Task brief (P34-12, ADR 0016 §4)
+
+1. **Parsing.** `core.handoff.parse_brief(text)` reads the **last** fenced ` ```json ` block in
+   *text* and, only if it both parses as JSON and validates as `operator_contract.TaskBrief`,
+   returns it -- any other outcome (no fence, invalid JSON, a non-object payload, a schema
+   mismatch) returns `None`, never raises. `core/dispatch.py`'s `_build_hop_result` calls this on
+   every hop's raw output (`hop_ok` only) and sets the resulting `HandoffArtifact.brief` --- so a
+   brief is not limited to the Lead role by construction, though in practice only a Lead step's
+   own instructions ever produce one. `HandoffArtifact.brief` is excluded from `DROP_ORDER`, the
+   same posture `summary` already has: a token-budgeted consumer never sheds it.
+2. **The recipe's own gate.** `templates/recipes/intake/pipeline.yaml`'s Lead step matches one of
+   `READY`/`NEEDS-INPUT`/`REJECT` with a `passValues` sentinel its pattern can never capture, so
+   every real marker is resolved through the step's own `on:` map (`pipeline-format.spec.md`,
+   "Outcome routing") rather than an unconditional gate-pass advance -- `on: {READY: build,
+   NEEDS-INPUT: ask, REJECT: fail}`. This is a property of that recipe's own YAML, not a new
+   dispatch mechanism: any custom pipeline may use the ordinary pass-value shortcut instead, and
+   requirement 3 below still applies to it identically (see requirement 3's own outcome-kind
+   note).
+3. **The resource pre-check.** `core.dispatch._check_brief_resources(project, brief)` walks the
+   brief's own `resources[]` and returns every entry a deterministic check cannot confirm:
+   `secret:<NAME>` against `core.secrets.secrets_keys()`, `path:<p>` against `Path(p).exists()`,
+   and the literal `verify` against the pod's Implementer having a non-empty `verifyCmd`
+   (`core.fleet.meta_get`). Pure -- no writes, no trace. `_run_pipeline`'s
+   `_block_on_missing_resources` calls it for any outcome labelled `READY` (case-insensitive)
+   that carries a brief, whether that outcome's `kind` is `"advance"` (the label matched the
+   gate's own `passValues`) or `"routed"` (the label matched an `on:` entry, requirement 2's
+   shape) -- both are real shapes a `READY` marker can take depending on how the pipeline authors
+   its gate, and this check applies identically either way. A non-empty result ends the task
+   `blocked`, `TaskResult.blocked_reason = "resources"` (a short code `_apply_result` prefers over
+   `reason`'s free text when persisting `blockedReason`, so `operator_contract.a2a_state`'s
+   `AUTH_REQUIRED` check has something stable to key on), `reason` naming every missing item, with
+   no further hop attempted. A brief naming no `resources[]`, or every one already present, is
+   unaffected -- the pipeline proceeds exactly as an ordinary `READY`/pass outcome would.
+4. **`REJECT` fails with a kind.** `_ROUTE_FAILURE_KINDS = {"REJECT": "rejected"}` is the one
+   place this mapping exists; `_run_pipeline`'s `"routed"`-to-`"fail"` branch (the generic path
+   any pipeline's `on: {<label>: fail}` already reaches) sets `TaskResult.failure_kind` from it,
+   keyed by the matched label uppercased -- `""` (the prior, unchanged behaviour) for every label
+   that is not `"REJECT"`. `operator_contract.a2a_state("failed", failure_kind="rejected")` then
+   resolves to `REJECTED` rather than the generic `FAILED`.
+5. **The question's schema, revisited.** `_run_input_step` (see "Operator input steps and
+   answers" requirement 2) resolves the `from:` step's most recent hop
+   (`core.dispatch._brief_from_step`); when that hop's artifact carries a brief with a non-empty
+   `questions[]`, the minted `Question.requested_schema` has one required string property per
+   question (`q1`..`qn`, `title` = the question's own text, `_brief_questions_schema`) instead of
+   the generic single `answer` property, and `Question.message` is `"The Lead needs answers
+   before starting: <brief.objective>"` instead of the step's own configured `message`/fallback.
+   A step whose `from:` hop has no brief, or a brief with no questions, is unaffected.
+6. **The Implementer's view.** `_hop_message`'s Implementer branch finds the most recent prior
+   hop whose artifact carries a brief (recency, not role -- see requirement 1) and, for that hop
+   only, replaces its usual carried-forward prose (`--- lead output ---\n<compiled text>`) with
+   `## Brief\n<core.handoff.render_brief(brief)>` -- the brief's own fields (objective, acceptance,
+   context, constraints, assumptions, resources, expectedRiskyActions, questions), in that fixed
+   order, never the Lead's raw reply text for that hop. Every other prior hop in the same message
+   (a rework note, or a different role's carryover) is unaffected and still goes through the
+   ordinary token-budget compiler. A reply with no parseable brief is unaffected: the Implementer
+   sees the Lead's prose exactly as before this section existed.
+7. **A pre-brief at enqueue.** `enqueue_task(..., brief: dict | None = None)` validates *brief* as
+   a `TaskBrief` (an invalid one raises `DispatchError`, nothing persisted), folds
+   `core.handoff.render_brief` of it into the enqueued `description` under its own `## Pre-brief`
+   heading **before** the existing `pre_input` gate runs -- so the same screen that covers every
+   other human-sent string at enqueue covers this text too -- and stores the validated brief on
+   the task's own `brief` field (`TaskBrief.model_dump(by_alias=True)`). The Lead's first hop
+   therefore sees the pre-brief as part of its task description without any change to
+   `_hop_message`'s Lead branch.
+8. **The verdict rule is unchanged.** A reply with no parseable brief (`HandoffArtifact.brief is
+   None`) but a valid `READY` (or any other) marker still advances exactly as before this section
+   existed -- a brief is always optional, and requirement 3's check is skipped outright whenever
+   `brief is None`.
+9. Non-goals (this card): making `intake` the default `software` pipeline (deferred, no measured
+   trigger yet); the CLI/HTTP/MCP answer/delegate surfaces that accept `brief=` end-to-end
+   (P34-13); a CLI/HTTP pre-grant surface for a brief's `expectedRiskyActions` (P34-15).
+
 ### Budget gate and auto-pause
 
 1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST**

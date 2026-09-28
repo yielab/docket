@@ -16,7 +16,11 @@ checking the budget after each drop and stopping the moment it fits.
 ``summary`` is never in ``DROP_ORDER`` — it is the artifact's minimum viable
 content — so the worst case is an explicitly *marked* truncation of
 ``summary`` itself (``_truncate_summary``), never a silent drop and never an
-empty section.
+empty section. ``brief`` (a Lead's typed intake, ADR 0016 §4) is excluded from
+``DROP_ORDER`` for the same reason and is carried in full alongside the
+(possibly truncated) ``summary`` in every case, including the worst one —
+``compile_artifact`` reserves room for its own rendered size before truncating
+``summary`` so the total still targets the budget as closely as it can.
 
 **No tokenizer dependency.** A new heavyweight dependency is out of scope
 for this. ``estimate_tokens`` reuses the project's existing,
@@ -59,7 +63,7 @@ from typing import Literal
 
 import docket.config as cfg
 from docket.core import archetypes as _arch
-from docket.core.handoff import HandoffArtifact
+from docket.core.handoff import HandoffArtifact, render_brief
 
 #: Fallback token budget for a role with no archetype in the live registry,
 #: or whose archetype resolves a non-positive ``token_budget`` (defensive —
@@ -241,11 +245,18 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        dishonest. ``dropped_fields`` therefore only ever names a field that
        actually changed the rendered text.
     3. If it still doesn't fit with every droppable (and non-empty) field
-       gone — only ``summary`` left — truncate ``summary`` itself via
-       ``_truncate_summary``, with a visible marker. ``summary`` is never
-       silently dropped: it is the one field ``DROP_ORDER`` deliberately
-       excludes, so the worst case is an explicitly marked truncation, never
-       an empty section.
+       gone — only ``summary`` (and, when set, ``brief``) left — truncate
+       ``summary`` itself via ``_truncate_summary``, with a visible marker.
+       ``summary`` is never silently dropped: it is one of the two fields
+       ``DROP_ORDER`` deliberately excludes, so the worst case is an
+       explicitly marked truncation, never an empty section. ``brief`` is
+       the other field ``DROP_ORDER`` excludes (see ``HandoffArtifact``) —
+       a Lead's typed intake is carried forward whole or not at all, never
+       shed piecemeal like the four droppable fields above, so it is
+       appended in full here too, and the budget handed to
+       ``_truncate_summary`` is reduced by its own rendered size first so
+       the *total* still targets ``budget_tokens`` as closely as it can
+       while never cutting the brief itself.
     """
     rendered = artifact.render()
     original_tokens = estimate_tokens(rendered)
@@ -266,11 +277,14 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
                 rendered, budget_tokens, tokens, original_tokens, tuple(dropped)
             )
 
-    truncated_summary, was_truncated = _truncate_summary(current.summary, budget_tokens)
+    brief_block = f"\nBrief:\n{render_brief(current.brief)}" if current.brief is not None else ""
+    summary_budget = max(budget_tokens - estimate_tokens(brief_block), 0)
+    truncated_summary, was_truncated = _truncate_summary(current.summary, summary_budget)
+    final_text = f"{truncated_summary}{brief_block}"
     return CompiledArtifact(
-        truncated_summary,
+        final_text,
         budget_tokens,
-        estimate_tokens(truncated_summary),
+        estimate_tokens(final_text),
         original_tokens,
         tuple(dropped),
         was_truncated,

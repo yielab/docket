@@ -1,0 +1,48 @@
+kind: pipeline
+name: intake
+description: >-
+  The Lead writes a typed brief before anything else runs -- objective, acceptance,
+  resources, any open question -- and ends with one marker. READY hands off straight to
+  the Implementer (after a deterministic check that every resource the brief named is
+  actually present), NEEDS-INPUT asks the operator the brief's own questions and returns
+  to the Lead once they're answered, REJECT fails the task outright.
+steps:
+  - id: lead
+    role: lead
+    instructions: |-
+      Before doing anything else, write a typed brief for this task and decide if you can start.
+      End your reply with exactly one fenced json code block (the LAST one), for example:
+      ```json
+      {"objective": "add rate limiting", "acceptance": ["429 after 100 req/min"], "resources": ["secret:REDIS_URL"], "questions": []}
+      ```
+      Optional fields: context, constraints, assumptions, questions, resources (secret:NAME, path:P, verify), expectedRiskyActions.
+      Then end with exactly one line: READY, NEEDS-INPUT or REJECT.
+      READY = you have everything you need. NEEDS-INPUT = list what is missing under questions. REJECT = do not attempt this task.
+    # Every real marker this gate ever sees is routed explicitly below -- `passValues`
+    # names a value the pattern can never actually capture, so READY/NEEDS-INPUT/REJECT
+    # all take the `on:` branch instead of an unconditional "pass" advance that would
+    # skip the resource check and the operator-input step below.
+    gate:
+      type: verdict
+      pattern: '^\s*(READY|NEEDS-INPUT|REJECT)\b'
+      passValues: ["__routed_via_on__"]
+    on:
+      READY: build
+      NEEDS-INPUT: ask
+      REJECT: fail
+  # Canonical form (an explicit `id:`), not the `- ask: {input: {...}}` short-form sugar --
+  # PyYAML's default resolver reads a bare, *nested* `on:` key as the boolean `True`, which
+  # the input short-form normaliser does not correct for (only a top-level `on:` does, via
+  # `_fix_on_key`); this step's own `on:` needs the operator's exact `answered`/`declined`
+  # routing, so it is written the form that resolves it correctly.
+  - id: ask
+    input:
+      from: lead
+    on:
+      answered: {goto: lead, max: 3}
+      declined: {goto: lead, max: 3}
+  - build: implementer
+    verify: true
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
