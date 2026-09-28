@@ -45,7 +45,7 @@ Implementers when the work warrants it.
 
 | Pod role | Edits code? | Responsibility | Default model class |
 |----------|:-----------:|----------------|---------------------|
-| **Lead** | **never** | Orchestrates the pod, owns its context/memory + human (Telegram) comms, decomposes work, dispatches to workers | cheap (coordination) |
+| **Lead** | **never** | Orchestrates the pod, owns its context and memory, decomposes work, dispatches to workers; surfaces architectural decisions and risky actions at the top of the plan with assumptions and open questions listed | cheap (coordination) |
 | **Implementer** | **yes** | Runs *inside* the project workspace and writes the code | strong (reasoning-dense) |
 | **Reviewer** *(optional)* | no (read-only) | Veto on the diff — correctness + security gate | cheap |
 | **Tester** *(optional)* | no | Behaviour-only validation: PASS / FAIL | cheap |

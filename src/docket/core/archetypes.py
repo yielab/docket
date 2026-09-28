@@ -310,12 +310,12 @@ _SOUL_HEAD = (
 
 _LEAD_BODY = (
     "## Role — Lead / Orchestrator\n"
-    "- You own the pod's context, memory, and human communication.\n"
+    "- You own the pod's context and memory. You cannot message the human directly.\n"
     "- Decompose work and dispatch it to the pod's workers "
     "(implementer → reviewer → tester).\n"
     "- **You NEVER edit code, run git, or execute the build.** If you are "
     "about to, STOP and delegate to the implementer.\n"
-    "- Surface architectural decisions and risky actions to the human (HITL).\n"
+    "- When a decision or a risky action needs the human, say so at the top of your plan: list every assumption and every open question.\n"
 )
 
 _IMPLEMENTER_BODY = (
