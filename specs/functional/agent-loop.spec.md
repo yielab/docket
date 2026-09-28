@@ -550,8 +550,13 @@ This specification does NOT cover:
     `provider`, `ok`, `finishReason`, `failureKind`, `inputTokens`, `outputTokens`, and
     `cachedTokens`, plus `iteration` for an ordinary task request or `purpose: "compaction"` for
     the summarizer's own call. It **MUST NOT** carry a `cost_usd` value: token counts are
-    measured, but no call here converts them into a dollar figure. See `trace-store.spec.md` for
-    the full record shape and event-type list.
+    measured, but no call here converts them into a dollar figure. Both call sites **MUST** also
+    pass the exact `messages` sent to `backend.complete` for that call, so the event's payload
+    **MAY** additionally carry `inputMessages`, `outputMessages`, `systemInstructions` and
+    `systemInstructionsSha256` per `trace-store.spec.md`'s "Captured content" section — present
+    only for the content classes an enabled exporter has been granted, and absent entirely (with
+    the payload otherwise unchanged) when nothing is granted. See `trace-store.spec.md` for the
+    full record shape and event-type list.
 
 ### `DocketDriver` (observability export wiring, P32-6)
 

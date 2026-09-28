@@ -76,7 +76,7 @@ contract's fields below then take the place of these arguments for wire validati
 | `token` | string | the run token this event belongs to |
 | `seq` | integer | contiguous ascending sequence, starting at 0 |
 | `ts` | string | envelope timestamp |
-| `event` | object | the exact record `core.trace.trace_event` produced for this line; docket's existing trace vocabulary, not a second one. This is additive by design: an `llm_call` record (see `trace-store.spec.md`) appears on stdout exactly like any other event type, and `docs/contracts/harness-v1/schema.json` is unchanged because this field's schema is `additionalProperties: true` |
+| `event` | object | the exact record `core.trace.trace_event` produced for this line; docket's existing trace vocabulary, not a second one. This is additive by design: an `llm_call` record (see `trace-store.spec.md`) appears on stdout exactly like any other event type, and `docs/contracts/harness-v1/schema.json` is unchanged because this field's schema is `additionalProperties: true`. An `llm_call` record's payload may itself carry the optional `inputMessages`/`outputMessages`/`systemInstructions`/`systemInstructionsSha256` keys `trace-store.spec.md`'s "Captured content" section defines; this is the same additive, `additionalProperties: true` field, so a run with no exporter above `minimal` streams byte-identical `llm_call` lines to before those keys existed |
 
 ### `HarnessResult`
 

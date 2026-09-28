@@ -2567,6 +2567,93 @@ class TestLlmCallTrace:
         assert llm_calls[1]["payload"]["ok"] is False
         assert llm_calls[1]["payload"]["failureKind"] == "timeout"
 
+    def test_prompts_and_completions_are_captured_and_redacted_when_granted(
+        self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            _loop._telemetry, "capture_classes", lambda: frozenset({"prompts", "completions"})
+        )
+        session_key = "agent:demo:content"
+        secret_call = '{"text": "leaked-secret@example.com"}'
+        backend = ScriptedBackend([_tool_call_response("c1", "echo", secret_call), _final("ok")])
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert result.ok
+        llm_calls = [e["payload"] for e in events if e["event_type"] == "llm_call"]
+        assert len(llm_calls) == 2
+        first, second = llm_calls
+
+        # No exporter granted "instructions" -- neither call carries it.
+        assert "systemInstructions" not in first
+        assert "systemInstructionsSha256" not in first
+        assert "systemInstructions" not in second
+        assert "systemInstructionsSha256" not in second
+
+        # First call: a tool call was requested; its arguments are redacted in outputMessages,
+        # and inputMessages is only the user's task (no system turn).
+        assert [m["role"] for m in first["inputMessages"]] == ["user"]
+        assert first["outputMessages"] == [
+            {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "tool_call",
+                        "id": "c1",
+                        "name": "echo",
+                        "arguments": '{"text": "[REDACTED]"}',
+                    }
+                ],
+            }
+        ]
+
+        # Second call: inputMessages replays the tool call and its result -- both redacted --
+        # and outputMessages is the final text reply.
+        assert [m["role"] for m in second["inputMessages"]] == ["user", "assistant", "tool"]
+        assistant_turn, tool_turn = second["inputMessages"][1], second["inputMessages"][2]
+        assert assistant_turn["parts"] == [
+            {"type": "tool_call", "id": "c1", "name": "echo", "arguments": '{"text": "[REDACTED]"}'}
+        ]
+        assert tool_turn["parts"] == [
+            {"type": "tool_call_response", "id": "c1", "response": "[REDACTED]"}
+        ]
+        assert second["outputMessages"] == [
+            {"role": "assistant", "parts": [{"type": "text", "content": "ok"}]}
+        ]
+
+    def test_empty_grant_matches_the_capture_disabled_shape(
+        self, ctx: ToolContext, registry: ToolRegistry, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_loop._telemetry, "capture_classes", lambda: frozenset())
+        session_key = "agent:demo:no-content"
+        backend = ScriptedBackend(
+            [_tool_call_response("c1", "echo", '{"text": "hi"}'), _final("ok")]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+        assert result.ok
+        with_capture_path = [
+            json.dumps(e["payload"]) for e in events if e["event_type"] == "llm_call"
+        ]
+
+        # The pre-card call shape: `_trace_llm_call` invoked with no `messages` at all, as
+        # every call site did before this card -- the capture path never runs.
+        baseline_events: list[dict[str, Any]] = []
+        with _trace.subscribe(baseline_events.append):
+            _loop._trace_llm_call(
+                "demo",
+                session_key,
+                "implementer",
+                _tool_call_response("c1", "echo", '{"text": "hi"}'),
+                1,
+            )
+            _loop._trace_llm_call("demo", session_key, "implementer", _final("ok"), 2)
+        baseline = [json.dumps(e["payload"]) for e in baseline_events]
+
+        assert with_capture_path == baseline
+
 
 # ── multi-turn history feeding ───────────────────────────────────────────────
 

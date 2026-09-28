@@ -140,6 +140,39 @@ This specification does NOT cover:
     10). Before this version, `trace_ingest` appended directly and no subscriber ever observed an
     ingested record.
 
+### Captured content
+
+21. An `llm_call` record **MAY** carry four additional optional keys — `inputMessages`,
+    `outputMessages`, `systemInstructions` (each in the OTel GenAI `{"role", "parts"}`
+    conversation shape) and `systemInstructionsSha256` (a hex SHA-256 string) — written only
+    when the caller supplies the exchange's messages and only for the content classes an
+    enabled exporter has been granted (`core.telemetry.capture_classes()`, ADR 0015). A call
+    made with no messages, or with an empty grant, **MUST** produce a payload carrying none of
+    these keys, with the same keys and the same insertion order a payload built before this
+    capability existed would have.
+22. `outputMessages` **MUST** appear only when `"completions"` is granted, and **MUST** render
+    the reply message as one entry: a `text` part for its text (when non-empty) and one
+    `tool_call` part per requested tool call, each carrying `id`, `name` and `arguments`.
+23. `inputMessages` **MUST** appear only when `"prompts"` is granted, **MUST** exclude the
+    system turn entirely, and **MUST** render every remaining message as one `{"role", "parts"}`
+    entry: a `tool`-role message becomes a single `tool_call_response` part (`id`, `response`),
+    an assistant message's requested tool calls become `tool_call` parts, and any other text
+    becomes a `text` part.
+24. `systemInstructions` **MUST** appear only when `"instructions"` is granted and a system
+    message is present in the captured exchange, and then only on the first call recorded for a
+    trace key or a later call whose system text's SHA-256 differs from the last one recorded for
+    that trace key. `systemInstructionsSha256` **MUST** accompany every such call regardless of
+    whether the text itself was repeated, so a reader can always tell whether the instructions
+    changed even when the text was omitted to avoid repeating it.
+25. Every captured text value — a `text` part's `content`, a `tool_call` part's `arguments`, a
+    `tool_call_response` part's `response`, and `systemInstructions` — **MUST** be cut to a fixed
+    4,000-character on-disk bound before the record is handed to `trace_event`, independent of
+    any exporter's own narrower truncation at projection time.
+26. Captured content receives no redaction pass of its own: requirement 7's whole-payload
+    `redact` call, which already runs before every record is stored, is the only scrubbing it
+    receives — a secret-shaped substring anywhere in a captured part is scrubbed exactly as it
+    would be in any other payload field.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.trace`)
