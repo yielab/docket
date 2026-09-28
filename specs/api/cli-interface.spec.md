@@ -796,36 +796,53 @@ flag
 #### docket exporters
 **Purpose**: List, inspect, and enable an observability export destination (`kind: exporter`
 document, `core.exporter`) by authenticating -- the requested experience is "the YAML exists,
-I only put the key" (observability-export.spec.md "Activation")
+I only put the key" (observability-export.spec.md "Activation"); and show or change what an
+exporter shares beyond bare structure, as a confirmed command
+(observability-export.spec.md "Privacy commands and disclosure")
 **Syntax**: `docket exporters <subcommand> [args]`
 **Subcommands**:
-- `list [--json]`: Table (NAME, DIALECT, STATE, CREDENTIALS, SCOPE) of every catalog exporter,
-  state from `core.exporter.activation_state`; `--json` prints the same fields as objects
+- `list [--json]`: Table (NAME, DIALECT, STATE, CREDENTIALS, SCOPE, SHARES) of every catalog
+  exporter, state from `core.exporter.activation_state`, SHARES its `privacy_label`; `--json`
+  prints the same fields as objects (not including SHARES)
 - `show <name> [--json]`: One exporter's effective document (dialect, endpoint, auth, enabled,
-  state, aliases, payload), its scope, and today's health counters; `--json` adds
-  `missingCredentials` and the raw `health` record
-- `enable <name> [--endpoint URL] [--payload metadata|full] [--events ...] [--no-verify]`: For
-  each of *name*'s credentials that resolves to no value, prompts on a TTY and stores it
-  (`docket keys add`'s own storage path), or on a non-TTY names `docket keys add <NAME>` per
-  missing credential and exits 1 writing nothing. Then probes the (possibly overridden)
+  state, aliases, privacy label), its scope, today's health counters, and a "Leaves this host"
+  disclosure of every content class (`core.privacy.describe`: granted or not, its example
+  attributes, and the fixed line naming that credentials and secret-shaped values are never
+  sent); `--json` adds `missingCredentials` and the raw `health` record
+- `enable <name> [--endpoint URL] [--privacy <level>|--share a,b] [--events ...] [--no-verify]
+  [--yes]`: For each of *name*'s credentials that resolves to no value, prompts on a TTY and
+  stores it (`docket keys add`'s own storage path), or on a non-TTY names `docket keys add
+  <NAME>` per missing credential and exits 1 writing nothing. A `--privacy`/`--share` that
+  widens what the exporter shares (`core.exporter.is_widening`) follows the same
+  confirm-or-refuse rule as `docket exporters privacy`. Then probes the (possibly overridden)
   endpoint and classifies it exactly like `docket models provider add`; a transport failure
   exits 1 and writes nothing unless `--no-verify` is given. On success, writes only
   `{kind, name, enabled: true, <overrides given>}` to the global catalog through
   `core.exporter.enable_exporter` -- every other field is inherited from the built-in of the
-  same name at read time -- and prints the endpoint and payload mode, adding a warning that
-  tool arguments and results leave this host when `--payload full`
+  same name at read time -- and prints `shares: <label> (<classes, or "structure only">)`. The
+  retired `--payload metadata|full` flag is no longer accepted
 - `disable <name>`: Flip `enabled` to `false` in the global catalog; stored credentials are
   never touched
 - `test <name>`: Re-probe the endpoint and print the classified result; exit 0 on a clean
   2xx, 1 otherwise
-- `add <file.yaml>`: Register a full `kind: exporter` document, verified like `enable`
+- `add <file.yaml> [--no-verify] [--yes]`: Register a full `kind: exporter` document, verified
+  like `enable`; a document sharing beyond `minimal` follows the same widening rule, compared
+  against any existing catalog entry of the same name
 - `remove <name>`: Remove a global override; a built-in with none refuses naming it as built-in
 - `export <name> [<file>]`: Print (or write) the exporter as a `kind: exporter` document --
   never a credential value, only credential names
-**Output**: Exporter listing, one exporter's detail, or an enable/disable/test/add/remove
-confirmation or refusal
-**Return**: 0 on success, 1 on an unknown exporter, a missing credential, or an unreachable
-endpoint
+- `privacy <name> [<level>|--share a,b] [--max-chars N] [--yes]`: With no level, `--share` or
+  `--max-chars`, prints the same "Leaves this host" disclosure as `show`, writing nothing.
+  Otherwise resolves the requested classes and compares them, via `is_widening`, against the
+  exporter's presently effective classes: a widening prints each newly granted class with one
+  example attribute and the destination host, then asks `y/N` on a TTY or exits 1 off one
+  naming `--yes` and writing nothing (`--yes` skips the confirmation); a narrowing or equal
+  change never asks. Writes only the changed field(s) through `core.exporter.set_privacy` and
+  audits `exporter.privacy` (`name`, `from`, `to`, `host` -- never content)
+**Output**: Exporter listing, one exporter's detail, or an enable/disable/test/add/remove/
+privacy confirmation or refusal
+**Return**: 0 on success, 1 on an unknown exporter, a missing credential, an unreachable
+endpoint, or a refused widening
 
 #### docket approve
 **Purpose**: Grant a pending HITL approval token

@@ -434,6 +434,54 @@ document rather than replace it:
 87. `enable_exporter`/`disable_exporter`'s audit detail, and the CLI's `exporters add` audit
     detail, **MUST** name `privacy=<privacy_label>` in place of the retired `payload=<payload>`.
 
+### Privacy commands and disclosure
+
+88. `core.exporter.set_privacy(name, privacy=None, share=None, content_max_chars=None)` **MUST**
+    refuse a *name* absent from the catalog and **MUST** refuse an invalid `privacy`/`share`
+    value the same way `core.privacy.resolve` does. On success it **MUST** write only the
+    changed key(s) into the global override — the same minimal-patch mould
+    `enable_exporter` uses — and setting `privacy` **MUST** clear a stored `share` to `null`
+    (and vice versa) so the two stay mutually exclusive on disk. Called with all three
+    arguments `None`, it **MUST** make no change and write nothing.
+89. `core.exporter.is_widening(old, new)` **MUST** return `True` exactly when `new` (a
+    `frozenset[str]` of content classes) contains a class absent from `old`, and `False` for an
+    equal or narrower set.
+90. `docket exporters privacy <name>` given no level, no `--share` and no `--max-chars`
+    **MUST** print the same "Leaves this host" disclosure `docket exporters show <name>` prints
+    (one line per `core.privacy.describe` class, granted or not, its example attributes, and
+    the fixed line naming that credentials and secret-shaped values are never sent) and
+    **MUST NOT** write anything.
+91. `docket exporters privacy <name> <level>` or `--share a,b` **MUST** resolve the requested
+    classes through `core.privacy.resolve` and compare them, via `core.exporter.is_widening`,
+    against the exporter's presently effective classes (`spec.privacy_classes`) before writing.
+92. A widening call **MUST** print each newly granted class (present in the requested classes,
+    absent from the current ones) with one example attribute and the destination host (the
+    endpoint's hostname, never the full URL, path or any content), then, on a TTY
+    (`sys.stdin.isatty()`), ask `y/N`; anything but `y` **MUST** refuse and write nothing. Off a
+    TTY, a widening call **MUST** exit `1` naming `--yes`, ask nothing, and write nothing.
+    `--yes` **MUST** skip the confirmation and write directly.
+93. A narrowing or equal call (`is_widening` `False`) **MUST NOT** ask for confirmation, on or
+    off a TTY, and **MUST** write directly.
+94. Every successful `set_privacy` call **MUST** append one `exporter.privacy` audit entry
+    naming `name`, `from` (the previous label), `to` (the new label) and `host` (the endpoint's
+    hostname) — never content.
+95. `docket exporters enable <name> --privacy <level>|--share a,b` **MUST** apply the same
+    widening/confirmation rule (requirements 91–94) before writing, comparing against the
+    exporter's classes before enabling. The retired `--payload metadata|full` flag **MUST NOT**
+    be accepted by `enable` — a document setting `privacy`/`share` is the only way to widen what
+    an exporter shares.
+96. `docket exporters add <file.yaml>` whose resolved document shares beyond `minimal`
+    **MUST** apply the same widening/confirmation rule, comparing against the classes of any
+    existing catalog entry of the same name, or the empty set when there is none.
+97. `docket exporters list` **MUST** gain a `SHARES` column (the exporter's `privacy_label`);
+    `docket exporters enable` **MUST** always print `shares: <label> (<classes, comma-joined,
+    or "structure only">)` in place of the retired payload warning; `docket config explain`
+    **MUST** print the privacy label per exporter and its `--json` form's `exporters` entries
+    **MUST** carry `privacy: {label, classes}` in place of a bare label string; `docket doctor`
+    **MUST** add one informational line (not counted as an issue) per enabled exporter at
+    `conversation`/`full` sharing to a non-loopback host, and one per exporter still carrying a
+    legacy `payload`/`payloadMaxChars` field, naming `docket exporters privacy <name> <level>`.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.privacy`)

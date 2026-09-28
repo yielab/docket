@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -451,6 +452,73 @@ def disable_exporter(name: str) -> ExporterSpec:
     _audit.audit_log(
         "exporter.disabled",
         f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}",
+    )
+    return spec
+
+
+def is_widening(old: frozenset[str], new: frozenset[str]) -> bool:
+    """True when *new* grants a content class *old* does not -- an equal or narrower set of
+    classes returns ``False``. Pure; used by the CLI to decide whether a privacy change needs
+    confirmation."""
+    return not new <= old
+
+
+def set_privacy(
+    name: str,
+    privacy: str | None = None,
+    share: list[str] | None = None,
+    content_max_chars: int | None = None,
+) -> ExporterSpec:
+    """Change *name*'s privacy fields, writing only the changed key(s) (setting ``privacy``
+    clears ``share`` and vice versa). Refuses an unknown name or bad value; audits
+    ``exporter.privacy`` with the old/new label and the endpoint's host, never content."""
+    current = load_catalog().get(name)
+    if current is None:
+        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+
+    old_label = current.privacy_label
+    if privacy is None and share is None and content_max_chars is None:
+        return current
+
+    if privacy is not None or share is not None:
+        try:
+            new_label, _new_classes = _privacy.resolve(privacy, share)
+        except ValueError as exc:
+            raise ExporterError(_cfg.EXPORTERS_FILE, "privacy", str(exc)) from exc
+    else:
+        new_label = old_label
+
+    overrides: dict[str, Any] = {}
+    if privacy is not None:
+        overrides["privacy"] = privacy
+        overrides["share"] = None
+    elif share is not None:
+        overrides["share"] = list(share)
+        overrides["privacy"] = None
+    if content_max_chars is not None:
+        overrides["contentMaxChars"] = content_max_chars
+
+    def _update(current_doc: dict[str, Any]) -> dict[str, Any]:
+        exporters = current_doc.get("exporters")
+        if not isinstance(exporters, dict):
+            exporters = {}
+        entry = dict(exporters.get(name) or {})
+        entry.update(overrides)
+        entry["kind"] = "exporter"
+        entry["name"] = name
+        exporters[name] = entry
+        current_doc["exporters"] = exporters
+        return current_doc
+
+    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    spec = load_catalog().get(name)
+    assert spec is not None  # just written above
+
+    from docket.core import audit as _audit
+
+    host = urlsplit(spec.endpoint).hostname or spec.endpoint
+    _audit.audit_log(
+        "exporter.privacy", f"name={spec.name} from={old_label} to={new_label} host={host}"
     )
     return spec
 

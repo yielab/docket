@@ -199,6 +199,73 @@ class TestConfigExplainExporters:
         assert by_name["langfuse"]["state"] == "enabled"
 
 
+class TestPrivacyCommand:
+    def test_off_tty_widening_exits_1_naming_yes_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED on the base: `docket exporters privacy` does not exist as an action. Once it
+        does, an off-TTY widening call must refuse without touching the global file or the
+        audit log (ADR 0015's fail-closed negative case, mirroring `enable`'s)."""
+        home = _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        before_exists = _cfg.EXPORTERS_FILE.exists()
+        before_audit = read_audit()
+
+        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation"])
+
+        assert result.exit_code == 1
+        assert "--yes" in (result.stdout + result.stderr)
+        assert _cfg.EXPORTERS_FILE.exists() == before_exists
+        assert _global_exporters(home) == {}
+        assert read_audit() == before_audit
+
+    def test_off_tty_with_yes_widens_and_audits_host_not_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation", "--yes"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        entry = _global_exporters(home)["langfuse"]
+        assert entry["privacy"] == "conversation"
+        assert "share" not in entry or entry["share"] is None
+
+        audit_entries = [e for e in read_audit() if e["action"] == "exporter.privacy"]
+        assert len(audit_entries) == 1
+        assert audit_entries[0]["detail"] == (
+            "name=langfuse from=minimal to=conversation host=cloud.langfuse.com"
+        )
+
+    def test_narrowing_never_asks_even_off_a_tty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        widen = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation", "--yes"])
+        assert widen.exit_code == 0, widen.stdout + widen.stderr
+
+        narrow = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "minimal"])
+
+        assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
+        assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
+
+    def test_no_argument_shows_leaves_this_host_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+
+        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse"])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Leaves this host" in result.stdout
+        assert "never: credentials" in result.stdout
+        assert _global_exporters(home) == {}
+
+
 class TestDoctorExporterHealth:
     def test_doctor_warns_naming_exporters_test_on_recorded_failures(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
