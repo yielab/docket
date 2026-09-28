@@ -586,7 +586,9 @@ class TestInboundOnly:
     _SRC = Path(_tg.__file__).resolve().parent.parent  # src/docket/
 
     #: The single legitimate call site: the reply inside `core.telegram.poll_once`.
-    _ALLOWED: ClassVar[set[str]] = {"core/telegram.py"}
+    #: The email dialect also defines a `send_message` -- `smtplib.SMTP.send_message`, an
+    #: unrelated stdlib method name collision, not a path to the Telegram channel.
+    _ALLOWED: ClassVar[set[str]] = {"core/telegram.py", "edges/adapters/channels/email.py"}
 
     def _send_call_sites(self) -> list[str]:
         found: list[str] = []

@@ -279,7 +279,7 @@ class TestCreateWithBrief:
         assert status == 422
         assert _dispatch.read_tasks("demo") == []
 
-    def test_a_valid_brief_is_refused_until_enqueue_task_supports_it(
+    def test_a_valid_brief_is_enqueued_and_stored_on_the_task(
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
@@ -289,9 +289,11 @@ class TestCreateWithBrief:
             {"description": "fix it", "brief": {"objective": "fix the flaky test"}},
             token=token,
         )
-        assert status == 422
-        assert "brief" in body["error"]
-        assert _dispatch.read_tasks("demo") == []
+        assert status == 200
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == 1
+        assert tasks[0]["id"] == body["task"]
+        assert tasks[0]["brief"]["objective"] == "fix the flaky test"
 
     def test_brief_must_be_an_object(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

@@ -325,20 +325,21 @@ class TestPodDelegateBrief:
 
         assert _dispatch.read_tasks("demo") == []
 
-    def test_a_valid_brief_still_exits_nonzero_until_enqueue_task_supports_it(
+    def test_a_valid_brief_is_enqueued_and_stored_on_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`core.dispatch.enqueue_task` has no `brief` parameter yet -- `--brief`
-        refuses rather than silently dropping the loaded document."""
+        """`core.dispatch.enqueue_task` accepts `brief` -- `--brief` passes the
+        validated document through instead of refusing it."""
         _seed_pod(tmp_path, monkeypatch)
         brief_path = tmp_path / "brief.json"
         brief_path.write_text(json.dumps({"objective": "fix the flaky test"}))
-        assert _pod._ENQUEUE_ACCEPTS_BRIEF is False
+        assert _pod._ENQUEUE_ACCEPTS_BRIEF is True
 
-        with pytest.raises(typer.Exit):
-            _pod._pod_delegate("demo", ["--brief", str(brief_path), "fix it"])
+        _pod._pod_delegate("demo", ["--brief", str(brief_path), "fix it"])
 
-        assert _dispatch.read_tasks("demo") == []
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == 1
+        assert tasks[0]["brief"]["objective"] == "fix the flaky test"
 
     def test_delegate_without_brief_is_unaffected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

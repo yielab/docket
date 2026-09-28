@@ -474,8 +474,8 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
 
 def _pod_delegate(project: str, extra: list[str]) -> None:
     """Queue a task: ``docket pod <project> delegate [--priority P] [--brief FILE.json]
-    <task>``. ``--brief`` validates the file as a `TaskBrief`; invalid or not, it exits
-    non-zero and enqueues nothing (see `_ENQUEUE_ACCEPTS_BRIEF`)."""
+    <task>``. ``--brief`` validates the file as a `TaskBrief` and passes it through;
+    an invalid file exits non-zero and enqueues nothing."""
     priority = "normal"
     brief_path: str | None = None
     rest: list[str] = []
@@ -497,6 +497,7 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
             rest.append(extra[i])
             i += 1
 
+    brief: dict[str, Any] | None = None
     if brief_path is not None:
         try:
             raw = _json.loads(Path(brief_path).read_text(encoding="utf-8"))
@@ -504,17 +505,13 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
         except (OSError, _json.JSONDecodeError, ValidationError) as exc:
             ui.error(f"Invalid brief file '{brief_path}': {exc}")
             raise typer.Exit(1) from exc
-        if _ENQUEUE_ACCEPTS_BRIEF:
-            ui.error(
-                "delegate --brief: core.dispatch.enqueue_task now accepts 'brief', but "
-                "this CLI surface has not been updated to pass it through yet."
-            )
-        else:
+        if not _ENQUEUE_ACCEPTS_BRIEF:
             ui.error(
                 "delegate --brief is not yet supported: core.dispatch.enqueue_task has "
                 "no 'brief' parameter."
             )
-        raise typer.Exit(1)
+            raise typer.Exit(1)
+        brief = raw
 
     description = " ".join(rest)
     if not description.strip():
@@ -527,7 +524,7 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
         ui.error(f"Description too long ({len(description)} chars). Limit: 500.")
         raise typer.Exit(1)
     try:
-        task = _dispatch.enqueue_task(project, description, priority)
+        task = _dispatch.enqueue_task(project, description, priority, brief=brief)
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex

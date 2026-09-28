@@ -1087,10 +1087,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         # `brief` (optional): a `TaskBrief` document, the HTTP counterpart of `docket pod
         # <p> delegate --brief`. Validated here regardless, so a malformed one is always
-        # `422` before anything is enqueued; `core.dispatch.enqueue_task` has no `brief`
-        # parameter yet, so a *valid* one is refused too rather than silently dropped —
-        # see `cli/_pod.py::_pod_delegate`'s identical contention note.
+        # `422` before anything is enqueued.
         brief_raw = task_body.get("brief")
+        brief: dict[str, Any] | None = None
         if brief_raw is not None:
             if not isinstance(brief_raw, dict):
                 self._send_json_error("brief must be an object", 400)
@@ -1111,9 +1110,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
                     422,
                 )
                 return
+            brief = brief_raw
 
         try:
-            task = _dispatch.enqueue_task(project, description, priority, trusted=trusted)
+            task = _dispatch.enqueue_task(
+                project, description, priority, trusted=trusted, brief=brief
+            )
         except _dispatch.DispatchError as exc:
             msg = str(exc)
             # enqueue_task raises DispatchError for exactly two reasons: no
