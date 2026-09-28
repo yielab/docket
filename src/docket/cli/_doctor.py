@@ -17,6 +17,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
@@ -421,6 +422,29 @@ def _check_provider_catalog() -> int:
     for name, reason in problems:
         ui.console.print(f"    {_cfg.PROVIDERS_FILE}: {name}: {reason}")
     return len(problems)
+
+
+def _check_exporters() -> int:
+    """Warn for every enabled exporter whose health shows a failure since its last success --
+    `docket exporters test <name>` re-probes; an ok line otherwise. Read-only."""
+    ui.console.print()
+    ui.console.print("[bold]Exporters:[/bold]")
+    catalog = _exporter.load_catalog()
+    enabled = sorted(name for name, spec in catalog.entries.items() if spec.enabled)
+    if not enabled:
+        ui.dim("  No exporters enabled")
+        return 0
+    health = _exporter.read_health()
+    issues = 0
+    for name in enabled:
+        record = health.get(name, {})
+        failed = int(record.get("failed") or 0)
+        if failed > 0:
+            ui.warn(f"  {name}: {failed} failed export(s) — docket exporters test {name}")
+            issues += 1
+        else:
+            ui.success(f"  {name}: healthy")
+    return issues
 
 
 def _check_security_gates() -> int:
@@ -1060,6 +1084,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_key_hygiene()
     issues += _check_provider_coverage(ids)
     issues += _check_provider_catalog()
+    issues += _check_exporters()
     issues += _check_security_gates()
     issues += _check_policies()
     issues += _check_pod_config_overlays()

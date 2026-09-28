@@ -342,6 +342,71 @@ def delete_exporter(name: str) -> None:
     raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
 
 
+def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> ExporterSpec:
+    """Turn *name* on in the global catalog: writes only ``{kind, name, enabled: true,
+    <overrides>}``, the minimal patch a nearest-wins read fills in from the built-in of the
+    same name at load time. Refuses a name absent from the catalog."""
+    if load_catalog().get(name) is None:
+        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+
+    clean = {k: v for k, v in (overrides or {}).items() if k not in ("kind", "name", "enabled")}
+
+    def _update(current: dict[str, Any]) -> dict[str, Any]:
+        exporters = current.get("exporters")
+        if not isinstance(exporters, dict):
+            exporters = {}
+        entry = dict(exporters.get(name) or {})
+        entry.update(clean)
+        entry["kind"] = "exporter"
+        entry["name"] = name
+        entry["enabled"] = True
+        exporters[name] = entry
+        current["exporters"] = exporters
+        return current
+
+    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    spec = load_catalog().get(name)
+    assert spec is not None  # just written above
+
+    from docket.core import audit as _audit
+
+    _audit.audit_log(
+        "exporter.enabled", f"name={spec.name} payload={spec.payload} endpoint={spec.endpoint}"
+    )
+    return spec
+
+
+def disable_exporter(name: str) -> ExporterSpec:
+    """Turn *name* off in the global catalog -- flips ``enabled`` to false, keeping any other
+    stored overrides untouched. Credentials in the secret store are never touched. Refuses a
+    name absent from the catalog."""
+    if load_catalog().get(name) is None:
+        raise ExporterError(_cfg.EXPORTERS_FILE, "name", f"'{name}' is not in the exporter catalog")
+
+    def _update(current: dict[str, Any]) -> dict[str, Any]:
+        exporters = current.get("exporters")
+        if not isinstance(exporters, dict):
+            exporters = {}
+        entry = dict(exporters.get(name) or {})
+        entry["kind"] = "exporter"
+        entry["name"] = name
+        entry["enabled"] = False
+        exporters[name] = entry
+        current["exporters"] = exporters
+        return current
+
+    _store.read_modify_write(_cfg.EXPORTERS_FILE, _update)
+    spec = load_catalog().get(name)
+    assert spec is not None  # just written above
+
+    from docket.core import audit as _audit
+
+    _audit.audit_log(
+        "exporter.disabled", f"name={spec.name} payload={spec.payload} endpoint={spec.endpoint}"
+    )
+    return spec
+
+
 def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]:
     """Resolve every name in ``spec.auth.credentials`` (env first, then the secret store).
     Returns ``(values, source)``: an unresolved name yields ``""``; *source* is

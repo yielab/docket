@@ -104,6 +104,41 @@ def _keys_list() -> int:
     return 0
 
 
+def prompt_and_store(name: str) -> bool:
+    """Prompt for *name* on a hidden line and store it (keyring or plaintext) at 0600, meta
+    and audit touched. Returns ``False`` on an empty/aborted entry or a keyring failure --
+    shared by ``docket keys add`` and ``docket exporters enable``'s credential prompt."""
+    try:
+        value = _getpass.getpass(f"Enter value for {name} (hidden): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        ui.warn("\nAborted.")
+        return False
+
+    if not value:
+        ui.error("Value cannot be empty.")
+        return False
+
+    ok, reason = _validate_key_format(name, value)
+    if not ok:
+        ui.warn(f"Key format warning: {reason}")
+
+    secrets = _load_secrets()
+    if _keyring_active():
+        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
+            ui.error(
+                f"Could not store '{name}' in the OS keyring (secret-tool store failed).\n"
+                "  Not falling back to plaintext storage under DOCKET_SECRETS_BACKEND=keyring."
+            )
+            return False
+        secrets[name] = ""  # index only; the real value lives in the keyring
+    else:
+        secrets[name] = value
+    _save_secrets(secrets)
+    _touch_secrets_meta(name, "added")
+    audit_log("keys.add", name)
+    return True
+
+
 def _keys_add(name: str) -> int:
     if not _re.match(r"^[A-Z][A-Z0-9_]*$", name):
         ui.error(
@@ -116,33 +151,8 @@ def _keys_add(name: str) -> int:
         ui.warn(f"Key '{name}' already exists. Use 'docket keys rotate' to update it.")
         return 1
 
-    try:
-        value = _getpass.getpass(f"Enter value for {name} (hidden): ").strip()
-    except (KeyboardInterrupt, EOFError):
-        ui.warn("\nAborted.")
-        return 0
-
-    if not value:
-        ui.error("Value cannot be empty.")
+    if not prompt_and_store(name):
         return 1
-
-    ok, reason = _validate_key_format(name, value)
-    if not ok:
-        ui.warn(f"Key format warning: {reason}")
-
-    if _keyring_active():
-        if not _system.secret_tool_store(_cfg.KEYRING_SERVICE, name, value):
-            ui.error(
-                f"Could not store '{name}' in the OS keyring (secret-tool store failed).\n"
-                "  Not falling back to plaintext storage under DOCKET_SECRETS_BACKEND=keyring."
-            )
-            return 1
-        secrets[name] = ""  # index only; the real value lives in the keyring
-    else:
-        secrets[name] = value
-    _save_secrets(secrets)
-    _touch_secrets_meta(name, "added")
-    audit_log("keys.add", name)
 
     ui.success(f"Key '{name}' stored.")
     return 0

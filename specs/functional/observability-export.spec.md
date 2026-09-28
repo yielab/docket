@@ -1,17 +1,18 @@
 # Observability Export Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented -- awaiting external verification (P32-9). Model, projection, the
-exporter catalog, the `otlp-http` wire dialect, the bounded queue/background sender, and the
-`run_turn` wiring are all live. `core/telemetry.py` provides the neutral span model, the
-incremental projection, the export policy, and (P32-6) `Pipeline`/the module-level
-`start`/`flush`/`close`/`health` registry; `core/exporter.py` provides the `kind: exporter`
-document, the built-in + global catalog, and pure activation classification;
+exporter catalog, the `otlp-http` wire dialect, the bounded queue/background sender, the
+`run_turn` wiring, and CLI activation (`docket exporters enable/disable/test/add/remove/list/
+show/export`) are all live. `core/telemetry.py` provides the neutral span model, the incremental
+projection, the export policy, and `Pipeline`/the module-level `start`/`flush`/`close`/`health`
+registry; `core/exporter.py` provides the `kind: exporter` document, the built-in + global
+catalog, pure activation classification, and `enable_exporter`/`disable_exporter`;
 `edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport;
 `edges/adapters/exporters/__init__.py` builds a `SpanSink` from a resolved `ExporterSpec`
 (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts the pipeline lazily and
-flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. No `docket exporters`
-CLI surface exists yet (P32-7); `pod.yaml`'s `exporters:` key does not exist yet (P32-8).
+flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. `pod.yaml`'s
+`exporters:` key does not exist yet (P32-8).
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -51,11 +52,14 @@ This specification covers:
 - How `edges/adapters/docket_runtime.py::run_turn` wires the pipeline into a live turn: lazy,
   idempotent start; a `flush` and a `config.EXPORTERS_HEALTH_FILE` write on every return path;
   `atexit`-registered `close`.
+- Turning an exporter on or off by authenticating (`core/exporter.py::enable_exporter`/
+  `disable_exporter`, `docket exporters`, `cli-interface.spec.md` §"docket exporters"): the
+  minimal-write property, the non-TTY refusal, and the audit entries each of `enable`/
+  `disable`/`add`/`remove` writes.
 
 This specification does NOT cover, and each is planned for a later card that will extend this
 document rather than replace it:
 
-- A `docket exporters` command or any other CLI surface (P32-7).
 - `exporters:` as a `pod.yaml` key (P32-8).
 - `task_id` on the trace record itself (`trace-store.spec.md` owns the record shape); this
   module only reads it defensively (`record.get("task_id", "")`), so nothing here changes when
@@ -290,6 +294,32 @@ document rather than replace it:
     `header` -> `(spec.auth.header, values[0])`, `none` -> `None`. An unrecognized `dialect`
     **MUST** raise `ValueError`.
 
+### Activation (CLI)
+
+58. `core.exporter.enable_exporter(name, overrides)` **MUST** refuse a *name* absent from the
+    catalog (built-in or global), and on success **MUST** write only `{kind, name, enabled:
+    true, <overrides>}` to the global catalog file — never the full inherited document — so the
+    rest of the entry keeps resolving from the built-in of the same name at read time
+    (Requirement 25).
+59. `disable_exporter(name)` **MUST** flip only `enabled` to `false` in the global catalog,
+    leaving any other stored override (e.g. a prior `endpoint` override) untouched, and **MUST
+    NOT** remove or alter any credential in the secret store.
+60. `docket exporters enable <name>` **MUST NOT** activate an exporter whose declared
+    credentials do not all resolve (Requirement 29): on a TTY it prompts for and stores each
+    missing one; on a non-TTY it **MUST** exit non-zero naming `docket keys add <NAME>` for
+    every missing credential and **MUST NOT** write the global catalog file at all.
+61. `docket exporters enable`/`add` **MUST** probe the (possibly `--endpoint`-overridden)
+    endpoint and classify it exactly as Requirement 31 describes before writing anything; a
+    `reachable=False` classification **MUST** exit non-zero and **MUST NOT** write the global
+    catalog file, unless the operator passed `--no-verify`.
+62. Enabling, disabling, adding, or removing an exporter **MUST** append one audit entry —
+    `exporter.enabled` / `exporter.disabled` / `exporter.added` / `exporter.removed` — whose
+    detail names the exporter and, for `enabled`/`added`, its `payload` mode and `endpoint`;
+    **MUST NOT** ever include a credential value.
+63. `docket exporters test <name>` **MUST** probe and classify *name*'s endpoint the same way
+    `enable` does, and **MUST NOT** write the global catalog file, the health file, or an audit
+    entry — it is read-only.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.telemetry`)
@@ -413,6 +443,8 @@ def save_exporter(spec: ExporterSpec) -> None: ...
 def delete_exporter(name: str) -> None: ...     # raises ExporterError
 def export_exporter(name: str) -> str: ...      # YAML, never a credential value
 def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]: ...
+def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> ExporterSpec: ...
+def disable_exporter(name: str) -> ExporterSpec: ...   # both raise ExporterError
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
@@ -530,6 +562,20 @@ state, missing = exporter.activation_state(spec, health)
 # LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY.
 ```
 
+### Enabling a destination once its credentials are stored
+
+```python
+from docket.core import exporter
+
+spec = exporter.load_catalog().get("langfuse")
+# ... both credentials are already in the secret store; probe + verify_endpoint
+# already classified the endpoint as reachable ...
+enabled = exporter.enable_exporter("langfuse", {"endpoint": "https://collector.example/traces"})
+enabled.enabled            # True
+# docket-exporters.json now holds exactly {kind, name, enabled: true, endpoint: ...} --
+# aliases, resource, and every other field still resolve from the built-in.
+```
+
 ### Encoding and sending one batch
 
 ```python
@@ -608,6 +654,20 @@ health = telemetry.health()                         # {} when started == 0
   every outcome is a typed result.
 
 ## Changelog
+
+### Version 1.4.0 (2026-09-27)
+
+- Added the "Activation (CLI)" requirements (58-63) and `core.exporter.enable_exporter`/
+  `disable_exporter`: turning an exporter on writes only `{kind, name, enabled: true,
+  <overrides>}` to the global catalog, never the full inherited document; turning one off flips
+  only `enabled`. `docket exporters enable` refuses on a non-TTY with a missing credential,
+  naming `docket keys add <NAME>` per name and writing nothing; it verifies the endpoint the
+  same way Requirement 31 classifies a probe before writing anything. Enabling, disabling,
+  adding, and removing each append one audit entry naming the exporter (never a credential
+  value). `docket exporters test` probes and classifies without writing anything. See
+  `cli-interface.spec.md` 1.54.0 and `cli-json-shapes.spec.md` 1.15.0 for the command surface
+  and JSON shapes this section's requirements back. Written in the same wave as, and merged
+  after, the pipeline wiring added at 1.3.0.
 
 ### Version 1.3.0 (2026-09-27)
 

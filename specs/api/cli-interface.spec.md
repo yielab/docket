@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.53.0
+**Version**: 1.54.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -602,6 +602,8 @@ visibility, not shared workspace or session state.
   pod, not silently skipped
 - Global provider catalog documents (`docket-providers.json`) — a malformed entry is named
   with the file and the failing field, e.g. an unknown `auth.type`
+- Enabled exporters' recorded health (`exporters-health.json`) — a non-zero `failed` count
+  since the exporter's last success is named with `docket exporters test <name>` as the fix
 **Return**: 0 if healthy, 1 when any issue is flagged
 
 #### docket cost
@@ -782,6 +784,40 @@ over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fe
 scopes' recipe names
 **Return**: 0 on success, 1 on invalid subcommand or an unresolvable name, 2 on an unrecognized
 flag
+
+#### docket exporters
+**Purpose**: List, inspect, and enable an observability export destination (`kind: exporter`
+document, `core.exporter`) by authenticating -- the requested experience is "the YAML exists,
+I only put the key" (observability-export.spec.md "Activation")
+**Syntax**: `docket exporters <subcommand> [args]`
+**Subcommands**:
+- `list [--json]`: Table (NAME, DIALECT, STATE, CREDENTIALS, SCOPE) of every catalog exporter,
+  state from `core.exporter.activation_state`; `--json` prints the same fields as objects
+- `show <name> [--json]`: One exporter's effective document (dialect, endpoint, auth, enabled,
+  state, aliases, payload), its scope, and today's health counters; `--json` adds
+  `missingCredentials` and the raw `health` record
+- `enable <name> [--endpoint URL] [--payload metadata|full] [--events ...] [--no-verify]`: For
+  each of *name*'s credentials that resolves to no value, prompts on a TTY and stores it
+  (`docket keys add`'s own storage path), or on a non-TTY names `docket keys add <NAME>` per
+  missing credential and exits 1 writing nothing. Then probes the (possibly overridden)
+  endpoint and classifies it exactly like `docket models provider add`; a transport failure
+  exits 1 and writes nothing unless `--no-verify` is given. On success, writes only
+  `{kind, name, enabled: true, <overrides given>}` to the global catalog through
+  `core.exporter.enable_exporter` -- every other field is inherited from the built-in of the
+  same name at read time -- and prints the endpoint and payload mode, adding a warning that
+  tool arguments and results leave this host when `--payload full`
+- `disable <name>`: Flip `enabled` to `false` in the global catalog; stored credentials are
+  never touched
+- `test <name>`: Re-probe the endpoint and print the classified result; exit 0 on a clean
+  2xx, 1 otherwise
+- `add <file.yaml>`: Register a full `kind: exporter` document, verified like `enable`
+- `remove <name>`: Remove a global override; a built-in with none refuses naming it as built-in
+- `export <name> [<file>]`: Print (or write) the exporter as a `kind: exporter` document --
+  never a credential value, only credential names
+**Output**: Exporter listing, one exporter's detail, or an enable/disable/test/add/remove
+confirmation or refusal
+**Return**: 0 on success, 1 on an unknown exporter, a missing credential, or an unreachable
+endpoint
 
 #### docket approve
 **Purpose**: Grant a pending HITL approval token
@@ -1046,6 +1082,17 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.54.0 (2026-09-27)
+
+- **Added `docket exporters`**: `list`/`show`/`enable`/`disable`/`test`/`add`/`remove`/`export`
+  over the exporter catalog (observability-export.spec.md "Activation"). `enable` prompts for a
+  missing credential on a TTY, else names `docket keys add <NAME>` and refuses writing nothing;
+  a reachable endpoint activates the exporter with a minimal patch document, everything else
+  inherited from the built-in at read time. `docket config explain <agent>` gains an
+  `exporters` array (name, dialect, state, scope, credential source, payload, health counters)
+  and a rendered `Exporters:` block; `docket doctor`'s Checks list gains a per-enabled-exporter
+  health check naming `docket exporters test <name>` on a recorded failure.
 
 ### Version 1.53.0 (2026-09-27)
 
