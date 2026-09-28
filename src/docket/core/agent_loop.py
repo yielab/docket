@@ -136,8 +136,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -145,6 +146,7 @@ import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import context as _context
 from docket.core import identity as _identity
+from docket.core import telemetry as _telemetry
 from docket.core.llm import (
     ChatBackend,
     ChatMessage,
@@ -420,6 +422,84 @@ def _trace_tool_result(
     )
 
 
+# On-disk bound for one captured text/argument/response part (ADR 0015 §2 rule 5). The
+# per-exporter cut applied at projection time is a separate, narrower bound.
+_CONTENT_MAX_CHARS_ON_DISK = 4000
+
+# The last system-instructions SHA-256 recorded per trace key, so `_capture_llm_call_content`
+# writes the text again only when it changes (ADR 0015 §2 rule 5).
+_INSTRUCTIONS_HASH_LOCK = threading.Lock()
+_LAST_INSTRUCTIONS_HASH: dict[str, str] = {}
+
+
+def _clip(text: str) -> str:
+    """Cut *text* to the on-disk content bound, leaving a marker naming what was cut."""
+    if len(text) <= _CONTENT_MAX_CHARS_ON_DISK:
+        return text
+    cut = len(text) - _CONTENT_MAX_CHARS_ON_DISK
+    return f"{text[:_CONTENT_MAX_CHARS_ON_DISK]}…[truncated {cut} chars]"
+
+
+def _messages_to_otel(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
+    """*messages* in the OTel GenAI ``{"role", "parts"}`` shape (ADR 0015 §1): a ``tool``
+    turn becomes one ``tool_call_response`` part, an assistant's requested tool calls become
+    ``tool_call`` parts, and text becomes a ``text`` part."""
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        parts: list[dict[str, Any]] = []
+        if message.role == "tool":
+            parts.append(
+                {
+                    "type": "tool_call_response",
+                    "id": message.tool_call_id,
+                    "response": _clip(message.content),
+                }
+            )
+        else:
+            if message.content:
+                parts.append({"type": "text", "content": _clip(message.content)})
+            for call in message.tool_calls:
+                parts.append(
+                    {
+                        "type": "tool_call",
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": _clip(call.arguments),
+                    }
+                )
+        out.append({"role": message.role, "parts": parts})
+    return out
+
+
+def _capture_llm_call_content(
+    payload: dict[str, Any],
+    trace_key: str,
+    messages: Sequence[ChatMessage],
+    response: ChatResponse,
+) -> None:
+    """Add ``inputMessages``/``outputMessages``/``systemInstructions`` to *payload* for the
+    classes an enabled exporter was granted (ADR 0015 §2 rule 4); a no-op when nothing is
+    granted, so the payload stays exactly what it was before this capture existed."""
+    granted = _telemetry.capture_classes()
+    if not granted:
+        return
+    if "prompts" in granted:
+        payload["inputMessages"] = _messages_to_otel([m for m in messages if m.role != "system"])
+    if "completions" in granted:
+        payload["outputMessages"] = _messages_to_otel([response.message])
+    if "instructions" not in granted:
+        return
+    system_text = next((m.content for m in messages if m.role == "system"), None)
+    if system_text is None:
+        return
+    digest = hashlib.sha256(system_text.encode()).hexdigest()
+    with _INSTRUCTIONS_HASH_LOCK:
+        if _LAST_INSTRUCTIONS_HASH.get(trace_key) != digest:
+            payload["systemInstructions"] = _clip(system_text)
+            _LAST_INSTRUCTIONS_HASH[trace_key] = digest
+    payload["systemInstructionsSha256"] = digest
+
+
 def _trace_llm_call(
     project: str,
     session_key: str,
@@ -429,8 +509,11 @@ def _trace_llm_call(
     *,
     purpose: str = "",
     task_id: str = "",
+    messages: Sequence[ChatMessage] | None = None,
 ) -> None:
-    """One backend chat-completions exchange, measured -- never a cost figure."""
+    """One backend chat-completions exchange, measured -- never a cost figure. *messages*,
+    the exact request sent to ``backend.complete``, is captured only for content classes an
+    enabled exporter has asked for; omitted, the payload is unchanged from before this card."""
     payload: dict[str, Any] = {
         "model": response.model,
         "provider": response.provider,
@@ -445,6 +528,8 @@ def _trace_llm_call(
         payload["iteration"] = iteration
     if purpose:
         payload["purpose"] = purpose
+    if messages is not None:
+        _capture_llm_call_content(payload, session_key, messages, response)
     trace_event(
         project,
         session_key,
@@ -960,6 +1045,7 @@ class _TurnState:
             response,
             purpose="compaction",
             task_id=self.trace_task_id,
+            messages=summary_messages,
         )
         self.last_raw = response.raw
         self.summary_usage = _accumulate(self.summary_usage, response.usage)
@@ -1462,6 +1548,7 @@ class _TurnState:
             response,
             self.iteration,
             task_id=self.trace_task_id,
+            messages=messages,
         )
         self.last_raw = response.raw
         self.total_usage = _accumulate(self.total_usage, response.usage)

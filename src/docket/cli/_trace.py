@@ -87,6 +87,13 @@ def _render_event(r: dict[str, Any]) -> None:
             summary_parts.append(f"in={in_tok or 0}/out={out_tok or 0}")
         if payload.get("ok") is False:
             summary_parts.append(f"failed: {payload.get('failureKind') or 'unknown'}")
+        content_keys = [
+            k
+            for k in ("inputMessages", "outputMessages", "systemInstructions")
+            if payload.get(k) is not None
+        ]
+        if content_keys:
+            summary_parts.append(f"+content({','.join(content_keys)})")
     elif isinstance(payload, dict):
         for k in ("status", "action", "text", "task_id", "pct"):
             v = payload.get(k)
