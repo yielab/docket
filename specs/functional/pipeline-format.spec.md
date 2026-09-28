@@ -436,6 +436,25 @@ This specification does NOT cover:
    `plan`'s rendering of a `run` step and a `when`-bearing step is specified in `pod-dispatch.spec.md`
    (the executor) since this format itself defines no renderer.
 
+### Operator input steps (P34-7: format only, no execution yet)
+
+1. `input` is this format's operator-input step: a pipeline pause that asks the operator a
+   question, exclusive of `role`/`agent`/`run`/`parallel` — one and only one of these five
+   **MUST** be set on any unit step. An `input` step names a prior step as its `from:` source and
+   MAY declare a `message` (the operator question) and `expires_hours` (how long an answer is
+   valid). Its `on:` outcome routing, when present, **MUST** use only keys `answered` or
+   `declined` (case-insensitive) — any other key is a validation error. An `input` step
+   **MUST NOT** declare `gate`, `retries`, `timeout`, `instructions`, or `model`.
+2. `input.from_` (aliased as `from:` in YAML) **MUST** be the id of a step that precedes this
+   one in the pipeline order — a forward or self reference is a validation error naming the
+   step id and the bad source.
+3. `plan` renders an `input` step as `asks the operator (from <source-step-id>)`, the same
+   rendered-once, never-executed posture a `run` step already takes (output shows what *would*
+   run if execution were available, never *that it ran*).
+4. Execution of an `input` step is **NOT YET IMPLEMENTED** (owned by P34-10). The executor
+   raises with the message `"step <id>: an 'input' step cannot run yet — only 'plan' renders it
+   (P34-10 implements execution)"` if an `input` step is ever reached during dispatch.
+
 ## Interface Contracts
 
 This spec defines a Python data model and pure functions in `core/pipeline.py`. The CLI surface

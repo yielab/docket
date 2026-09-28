@@ -285,3 +285,16 @@ class TestRenderPlan:
         plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})  # no reviewer
         text = _orch.render_plan(plan)
         assert "skipped" in text
+
+    def test_input_step_renders_in_plan(self) -> None:
+        spec = _pipeline.PipelineSpec(
+            name="with_input",
+            steps=[
+                _pipeline.Step(id="triage", role="lead"),
+                _pipeline.Step(id="ask", input=_pipeline.InputSpec(from_="triage")),
+            ],
+        )
+        plan = _orch.resolve_plan(spec, {"lead": "demo-lead"})
+        text = _orch.render_plan(plan)
+        assert "[ask]" in text
+        assert "asks the operator (from triage)" in text
