@@ -37,8 +37,10 @@ This specification covers:
 - `ProjectionState` and the incremental `project(record, state)` / `flush_open(state)`
   functions: which trace record types open a span, which close one, which become a span event
   on which span, and the fallback rule for a record type with no explicit case.
-- `ExportPolicy` and `admit(record)`: event-type admission and payload reduction
-  (`metadata`/`full`).
+- `ExportPolicy` and `admit(record)`: event-type admission only, never payload reduction.
+- `core/privacy.py`'s content classes and levels, and `core/telemetry.py`'s allowlist
+  projection (`ATTRIBUTE_CLASSES`, `_STRUCTURAL_KEYS`, per-message-part filtering,
+  `capture_classes()`) that decides what a granted class actually shares (ADR 0015).
 - The `kind: exporter` document (`core/exporter.py`'s `ExporterSpec`/`ExporterAuth`): field
   shape, credential-name validation, and the four authentication types.
 - The built-in + global exporter catalog (`Catalog`, `load_catalog`, `save_exporter`,
@@ -109,8 +111,12 @@ document rather than replace it:
     session root (never on a nested span), named for the record's `event_type`, carrying
     `docket.hop`/`docket.task_id` only when the record supplies them.
 11. Every other trace record type **MUST** become a `SpanEvent` on the innermost span still
-    open for that session, named for the record's `event_type`, with one attribute per scalar
-    (`str`/`int`/`bool`) payload field, each prefixed `docket.`.
+    open for that session, named for the record's `event_type`, carrying one `docket.<key>`
+    attribute for each of that event type's *declared* structural payload keys present with a
+    scalar (`str`/`int`/`bool`) value (`_STRUCTURAL_KEYS`; see "Allowlist projection" below) —
+    an undeclared key **MUST NOT** be forwarded, and an event type's own content key (e.g.
+    `approval_requested`'s `action`, `error`'s `error`) **MUST** instead be gated through the
+    allowlist, never forwarded unconditionally.
 12. A `session_end` record **MUST** close the root span and every span still open for that
     session, each with `status: "unset"`, and **MUST** remove that session's state so nothing
     further is emitted for it.
@@ -124,11 +130,13 @@ document rather than replace it:
 
 15. `ExportPolicy.admit(record)` **MUST** return `None` when `events` is not `None` and the
     record's `event_type` is not a member of it, and **MUST NOT** mutate the input record.
-16. Under `payload="metadata"` (the module's default), `admit` **MUST** drop the payload keys
-    `arguments`, `text`, `content`, `output`, `result`, `prompt`, `messages`, and `summary`, and
-    **MUST** keep every other payload key unchanged.
-17. Under `payload="full"`, `admit` **MUST** keep every payload key, but **MUST** truncate the
-    string form of each key named in requirement 16 to `payload_max_chars` characters.
+16. `admit` **MUST NOT** alter, reduce, or truncate the record's payload for any event type —
+    filtering by `events` is its only effect. Content reduction, when it happens, is applied
+    later, by `project`'s allowlist (see "Allowlist projection" below), never by `admit`.
+17. Because `admit` performs no reduction, `ExportPolicy` carries no `payload`/
+    `payload_max_chars` field (retired). What a policy shares beyond bare structure is instead
+    named by `classes` (a set of content classes) and shown by `label` (see "Privacy classes
+    and levels" below).
 18. `DEFAULT_EVENTS` **MUST** exclude any record type whose payload is expected to carry
     prompt or message content by construction (`context_composed`, `prompt_composed`,
     `session_compaction`, `request_fit`), **MUST** exclude `cost_charged` (an estimate is never
@@ -324,7 +332,87 @@ document rather than replace it:
     `enable` does, and **MUST NOT** write the global catalog file, the health file, or an audit
     entry — it is read-only.
 
+### Privacy classes and levels
+
+64. `core.privacy.CONTENT_CLASSES` **MUST** be the six-tuple `("toolArguments", "errors",
+    "toolResults", "completions", "prompts", "instructions")`, and `LEVELS` **MUST** map
+    `"minimal"` to the empty set and `"actions"`/`"conversation"`/`"full"` to strictly
+    increasing supersets, `"full"` equalling every member of `CONTENT_CLASSES` (ADR 0015 §1).
+65. `core.privacy.resolve(privacy, share)` **MUST** raise `ValueError` when both arguments are
+    given, when `privacy` names a level absent from `LEVELS`, or when `share` contains a class
+    absent from `CONTENT_CLASSES`; **MUST** return `("minimal", frozenset())` when neither
+    argument is given; and **MUST** return the name of the `LEVELS` entry a given `share` set
+    equals, or `"custom"` when it equals none of them.
+66. `core.privacy.describe(classes)` **MUST** return one `(class, granted, attribute_names)`
+    tuple per member of `CONTENT_CLASSES`, in that order, with `granted` `True` exactly for the
+    members of *classes*, for a CLI's "what leaves this host" listing.
+
+### Allowlist projection
+
+67. `ExportPolicy` **MUST** carry `classes: frozenset[str]` (default empty) and `label: str`
+    (default `"minimal"`) in place of the retired `payload`/`payload_max_chars` fields, plus
+    `content_max_chars: int` (default `4000`); `project(record, state, policy=MINIMAL_POLICY)`
+    **MUST** thread *policy* to the handler it dispatches to.
+68. `core.telemetry.ATTRIBUTE_CLASSES` **MUST** map every attribute name a handler can set that
+    is not bare structure to exactly one of `core.privacy.CONTENT_CLASSES`'s members; an
+    attribute absent from this table **MUST** be treated as structure and **MUST** always be
+    forwarded regardless of `policy.classes` (`gen_ai.input.messages` is deliberately absent —
+    requirement 75 governs it per message part instead of as one whole-attribute class).
+69. A content attribute (any attribute named in `ATTRIBUTE_CLASSES`, and each individually
+    filtered message part inside `gen_ai.input.messages`) **MUST** be set only when its class is
+    a member of `policy.classes`, decided through exactly one function, `_granted(policy, cls)`
+    — nothing else in `core/telemetry.py` **MUST** check `policy.classes` directly — and
+    **MUST** be entirely absent (or, for a message part, replaced by the withheld marker of
+    requirement 75) otherwise.
+70. `_handle_generic_event` **MUST** forward only the payload keys declared for that event
+    type's structure (`_STRUCTURAL_KEYS`), never every scalar payload key as before; an event
+    type absent from that table **MUST** forward no keys at all.
+71. `approval_requested`'s `action` payload key **MUST** be exposed as the
+    `docket.approval.action` attribute, class `toolArguments`, gated by requirement 69 — never
+    forwarded as an unconditional `docket.action` attribute the way requirement 11's prior form
+    forwarded it.
+72. `error`'s `error` payload key **MUST** be exposed as the `docket.error.message` attribute,
+    class `errors`, gated by requirement 69 — never forwarded as an unconditional `docket.error`
+    attribute.
+73. `tool_call`'s `arguments` payload key **MUST** be exposed as the
+    `gen_ai.tool.call.arguments` attribute, class `toolArguments`, gated by requirement 69.
+74. `tool_result`'s `text` payload key, or `output` when `text` is absent, **MUST** be exposed
+    as the `gen_ai.tool.call.result` attribute, class `toolResults`, gated by requirement 69.
+75. An `llm_call` record's `inputMessages` payload key, when present, **MUST** become the
+    `gen_ai.input.messages` attribute: one `{"role", "parts"}` object per message, each part
+    kept (its `content` truncated per requirement 78) when its own class is granted, or replaced
+    by `{"type": "withheld", "class": "<class>"}` otherwise. A `system`-role message's parts
+    **MUST** be class `instructions`; a `tool`-role message's parts **MUST** be class
+    `toolResults`; an `assistant`-role message's `tool_call`-type parts **MUST** be class
+    `toolArguments`; every other part **MUST** be class `prompts`.
+76. An `llm_call` record's `outputMessages` payload key **MUST** become the
+    `gen_ai.output.messages` attribute, class `completions`, as a whole (never split per part,
+    since it is one class end to end — ADR 0015 §1) — present in full (parts' `content`
+    truncated per requirement 78) when granted, absent entirely otherwise.
+77. An `llm_call` record's `systemInstructions` payload key **MUST** become the
+    `gen_ai.system_instructions` attribute, class `instructions`, gated by requirement 69; its
+    `systemInstructionsSha256` key, when present, **MUST** always become the structural
+    `docket.instructions.sha256` attribute regardless of `policy.classes`.
+78. Every text value placed in a content attribute or message part **MUST** be cut to
+    `policy.content_max_chars` characters with the suffix `…[truncated <n> chars]` (*n* the
+    number of characters removed) when it exceeds that length, and **MUST** remain a valid
+    string once re-encoded as JSON.
+79. Every root `docket.session` span **MUST** carry `docket.privacy` (the policy's `label`) and
+    `docket.privacy.classes` (its `classes`, comma-joined in sorted order, the empty string for
+    `minimal`).
+
 ## Interface Contracts
+
+### Module API (`docket.core.privacy`)
+
+```python
+CONTENT_CLASSES: tuple[str, ...]   # ("toolArguments", "errors", "toolResults", "completions",
+                                    #  "prompts", "instructions")
+LEVELS: dict[str, frozenset[str]]  # "minimal" | "actions" | "conversation" | "full"
+
+def resolve(privacy: str | None, share: Sequence[str] | None) -> tuple[str, frozenset[str]]: ...
+def describe(classes: frozenset[str]) -> list[tuple[str, bool, tuple[str, ...]]]: ...
+```
 
 ### Module API (`docket.core.telemetry`)
 
@@ -352,18 +440,26 @@ class Span:
 
 class ProjectionState: ...  # opaque; one instance per consumer, never per record
 
-def project(record: dict[str, Any], state: ProjectionState) -> list[Span]: ...
+@dataclass(frozen=True)
+class ExportPolicy:
+    events: frozenset[str] | None = None   # None = admit every event type
+    classes: frozenset[str] = frozenset()  # granted content classes beyond bare structure
+    label: str = "minimal"                 # a privacy level name, or "custom"
+    content_max_chars: int = 4000
+
+    def admit(self, record: dict[str, Any]) -> dict[str, Any] | None: ...
+
+MINIMAL_POLICY: ExportPolicy   # ExportPolicy() -- project's default when no policy is given
+
+def project(
+    record: dict[str, Any], state: ProjectionState, policy: ExportPolicy = MINIMAL_POLICY
+) -> list[Span]: ...
 def flush_open(state: ProjectionState) -> list[Span]: ...
 
 DEFAULT_EVENTS: frozenset[str]
 
-@dataclass(frozen=True)
-class ExportPolicy:
-    events: frozenset[str] | None = None   # None = admit every event type
-    payload: str = "metadata"              # "metadata" | "full"
-    payload_max_chars: int = 4000
-
-    def admit(self, record: dict[str, Any]) -> dict[str, Any] | None: ...
+ATTRIBUTE_CLASSES: dict[str, str]     # non-structural attribute name -> its content class
+def capture_classes() -> frozenset[str]: ...  # union of every started pipeline's granted classes
 
 class SinkOutcome(Protocol):        # structural match to otlp_http.SinkResult's field names
     accepted: int
@@ -544,13 +640,17 @@ for record in records:            # one session's trace_event() records, in orde
 spans.extend(telemetry.flush_open(state))   # closes anything session_end did not
 ```
 
-### Reducing a payload before export
+### Sharing beyond structure, deliberately
 
 ```python
-policy = telemetry.ExportPolicy(events=telemetry.DEFAULT_EVENTS, payload="metadata")
-admitted = policy.admit(record)
+from docket.core import privacy, telemetry
+
+label, classes = privacy.resolve("actions", None)   # ("actions", {"toolArguments", "errors"})
+policy = telemetry.ExportPolicy(events=telemetry.DEFAULT_EVENTS, classes=classes, label=label)
+admitted = policy.admit(record)          # filtered by event type only, payload untouched
 if admitted is not None:
-    send(admitted)   # never carries "arguments", "output", "prompt", ...
+    spans = telemetry.project(admitted, state, policy)
+    # a granted class's content attribute is present; every other content attribute is absent
 ```
 
 ### Checking whether a shipped destination is ready
@@ -639,7 +739,8 @@ health = telemetry.health()                         # {} when started == 0
   **MUST NOT** make a turn's `run_turn` call take meaningfully longer than
   `config.EXPORT_FLUSH_TIMEOUT_S` on top of the turn's own time.
 - Redaction of secret shapes happens once, in `core.trace.trace_event`, before a record is
-  written; this module never re-redacts and never widens what `metadata` mode already dropped.
+  written; this module never re-redacts, and the allowlist only ever narrows what a policy's
+  ungranted classes already withhold, never widens it.
 - `core/exporter.py` **MUST NOT** import anything from `edges/adapters/`; its own probe type
   (`ProbeResult`) is a plain dataclass so the module never needs to. `core/exporter.py` and
   `core/provider.py` are a deliberate duplication, not a shared base — refactoring them to share

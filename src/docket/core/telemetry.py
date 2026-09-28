@@ -64,9 +64,207 @@ class ProjectionState:
     last_ts: dict[str, str] = field(default_factory=dict)
 
 
-_CONTENT_KEYS = frozenset(
-    {"arguments", "text", "content", "output", "result", "prompt", "messages", "summary"}
-)
+@dataclass(frozen=True)
+class ExportPolicy:
+    """What one exporter's pipeline admits and may share. ``admit`` filters by event type
+    only; content reduction happens later, at projection, through an allowlist. ``classes``
+    is the granted content classes beyond bare structure; ``label`` names the level shown."""
+
+    events: frozenset[str] | None = None
+    classes: frozenset[str] = frozenset()
+    label: str = "minimal"
+    content_max_chars: int = 4000
+
+    def admit(self, record: dict[str, Any]) -> dict[str, Any] | None:
+        """``None`` when this record's event type is not admitted; otherwise the record,
+        unmodified -- content reduction is `project`'s job, not this gate's."""
+        event_type = record.get("event_type", "")
+        if self.events is not None and event_type not in self.events:
+            return None
+        return record
+
+
+MINIMAL_POLICY = ExportPolicy()
+
+
+def _granted(policy: ExportPolicy, cls: str) -> bool:
+    """The one function that decides whether a content attribute of class *cls* may be
+    set -- nothing else in this module checks ``policy.classes`` directly."""
+    return cls in policy.classes
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    """Cut *text* to *max_chars*, appending a marker naming how many characters were cut.
+    Never silently drops content, and the result is always a valid string to embed in a
+    JSON attribute (ADR 0015 §2 rule 5)."""
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    cut = len(text) - max_chars
+    return f"{text[:max_chars]}…[truncated {cut} chars]"
+
+
+# Every attribute a handler can emit that is NOT bare structure, mapped to its content
+# class. An attribute absent from this table is structure -- always sent, never gated by
+# `_granted`. `gen_ai.input.messages` is deliberately absent: it mixes classes per message
+# part (ADR 0015 §2 rule 3), enforced by `_input_part_class`/`_filter_part`, not by a single
+# whole-attribute class.
+ATTRIBUTE_CLASSES: dict[str, str] = {
+    "gen_ai.tool.call.arguments": "toolArguments",
+    "docket.approval.action": "toolArguments",
+    "docket.error.message": "errors",
+    "gen_ai.tool.call.result": "toolResults",
+    "gen_ai.output.messages": "completions",
+    "gen_ai.system_instructions": "instructions",
+}
+
+# Per generic event type, the payload keys forwarded as `docket.<key>` structural
+# attributes (never gated -- structure is always sent). Derived from every real
+# `trace_event(`/`_emit_trace(`/`_trace_locked(` call site's payload as of this card; an
+# unlisted key drops rather than forwarding by default (ADR 0015 §2 rule 2). Only
+# scalar (str/int/bool) values are ever forwarded, whether listed here or not -- a list or
+# dict payload value (e.g. `step_skipped`'s `when`) is dropped by that check regardless.
+_STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
+    "context_composed": ("hop", "description_bytes", "total_bytes", "truncated"),
+    "prompt_composed": ("budgetTokens", "budgetSource"),
+    "session_compaction": (
+        "status",
+        "beforeMessageCount",
+        "afterMessageCount",
+        "beforeEstimatedTokens",
+        "afterEstimatedTokens",
+        "groupsSummarized",
+        "summaryRounds",
+        "maxSummaryPromptEstimatedTokens",
+    ),
+    "request_fit": (
+        "purpose",
+        "status",
+        "estimatedInputTokens",
+        "outputReserveTokens",
+        "contextWindowTokens",
+        "estimate",
+    ),
+    "guardrail_check": ("hook", "policy", "action"),
+    "guardrail_block": ("hook", "policy", "action"),
+    "approval_requested": ("token",),
+    "approval_granted": ("token",),
+    "approval_denied": ("token",),
+    "cost_charged": ("role",),
+    "budget_warning": (
+        "action",
+        "status",
+        "reason",
+        "tokenBudget",
+        "measuredTokensUsed",
+        "remainingMeasuredTokens",
+        "normalEstimatedInputTokens",
+        "finalizationEstimatedInputTokens",
+        "outputReserveTokens",
+        "normalProspectiveTokens",
+        "finalizationProspectiveTokens",
+        "estimate",
+    ),
+    "budget_exceeded": ("spent", "cap", "role", "estimated"),
+    "drift_alert": (),
+    "stale_claim": ("task", "claimedAt"),
+    "paused_refused": ("reason",),
+    "approval_required": ("role", "token", "pipelineIndex", "policy"),
+    "approval_resumed": ("task", "token"),
+    "approval_task_denied": ("task", "token"),
+    "run_cancellation_observed": ("run", "source"),
+    "run_cancelled": ("run", "source"),
+    "step_skipped": ("step",),
+    "error": ("run", "source"),
+}
+
+# Per generic event type, the one payload key that carries free-text content instead of
+# structure: (payload key, attribute name, content class). Closes the two leaks ADR 0015
+# names by name: `approval_requested.action` is the command line waiting for a human
+# (toolArguments, like a tool call's own arguments); `error.error` is a run's free-text
+# failure message (errors). `guardrail_*`'s `action` is a verdict, not this -- it stays in
+# `_STRUCTURAL_KEYS` above under the same key name; the two are told apart by event type,
+# never by key name (ADR 0015's "action" collision).
+_GENERIC_CONTENT_ATTRS: dict[str, tuple[str, str, str]] = {
+    "approval_requested": ("action", "docket.approval.action", "toolArguments"),
+    "error": ("error", "docket.error.message", "errors"),
+}
+
+
+def _input_part_class(role: str, part: dict[str, Any]) -> str:
+    """One conversation turn mixes classes (ADR 0015 §2 rule 3): a `tool` role turn is a
+    tool result, an assistant `tool_call` part carries arguments, a `system` turn is
+    instructions -- everything else (user text, assistant text) is a prompt."""
+    if role == "system":
+        return "instructions"
+    if role == "tool":
+        return "toolResults"
+    if role == "assistant" and part.get("type") == "tool_call":
+        return "toolArguments"
+    return "prompts"
+
+
+def _filter_part(part: dict[str, Any], cls: str, policy: ExportPolicy) -> dict[str, Any]:
+    """*part* verbatim (its ``content`` truncated) when *cls* is granted; otherwise a
+    withheld marker naming the class that would have carried it."""
+    if not _granted(policy, cls):
+        return {"type": "withheld", "class": cls}
+    out = dict(part)
+    content = out.get("content")
+    if isinstance(content, str):
+        out["content"] = _truncate(content, policy.content_max_chars)
+    return out
+
+
+def _filter_input_messages(messages: Any, policy: ExportPolicy) -> list[dict[str, Any]] | None:
+    """The conversation sent to the model, one turn per message, each part kept or
+    withheld per its own class (`_input_part_class`). ``None`` when *messages* is not a
+    list, so a caller whose payload never carries one must not assume a list back."""
+    if not isinstance(messages, list):
+        return None
+    filtered: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role", ""))
+        parts = message.get("parts")
+        parts = parts if isinstance(parts, list) else []
+        filtered.append(
+            {
+                "role": role,
+                "parts": [
+                    _filter_part(part, _input_part_class(role, part), policy)
+                    for part in parts
+                    if isinstance(part, dict)
+                ],
+            }
+        )
+    return filtered
+
+
+def _filter_output_messages(messages: Any, policy: ExportPolicy) -> list[dict[str, Any]] | None:
+    """What the model wrote, whole (text and the tool calls it requested are one class,
+    ``completions`` -- ADR 0015 §1). ``None`` when not granted or *messages* is not a list,
+    so the attribute is omitted entirely rather than emitted empty or part-withheld."""
+    if not isinstance(messages, list) or not _granted(policy, "completions"):
+        return None
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        parts = message.get("parts")
+        parts = parts if isinstance(parts, list) else []
+        kept: list[dict[str, Any]] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            item = dict(part)
+            content = item.get("content")
+            if isinstance(content, str):
+                item["content"] = _truncate(content, policy.content_max_chars)
+            kept.append(item)
+        out.append({"role": str(message.get("role", "")), "parts": kept})
+    return out
+
 
 DEFAULT_EVENTS: frozenset[str] = frozenset(
     {
@@ -158,7 +356,7 @@ def _close(open_span: _OpenSpan, trace_id: str, end_ts: str, status: str) -> Spa
     )
 
 
-def _new_root(session_id: str, record: dict[str, Any]) -> _OpenSpan:
+def _new_root(session_id: str, record: dict[str, Any], policy: ExportPolicy) -> _OpenSpan:
     return _OpenSpan(
         span_id=_span_id(session_id, "session", "root"),
         parent_id=None,
@@ -171,26 +369,34 @@ def _new_root(session_id: str, record: dict[str, Any]) -> _OpenSpan:
             "docket.role": str(record.get("agent_role", "")),
             "docket.session_id": session_id,
             "session.id": session_id,
+            "docket.privacy": policy.label,
+            "docket.privacy.classes": ",".join(sorted(policy.classes)),
         },
     )
 
 
-def _ensure_root(state: ProjectionState, session_id: str, record: dict[str, Any]) -> _OpenSpan:
+def _ensure_root(
+    state: ProjectionState, session_id: str, record: dict[str, Any], policy: ExportPolicy
+) -> _OpenSpan:
     stack = state.stacks.setdefault(session_id, [])
     if not stack:
-        stack.append(_new_root(session_id, record))
+        stack.append(_new_root(session_id, record, policy))
     return stack[0]
 
 
-def _handle_session_start(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_session_start(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    _ensure_root(state, session_id, record)
+    _ensure_root(state, session_id, record, policy)
     return []
 
 
-def _handle_llm_call(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_llm_call(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record)
+    root = _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     ts = str(record.get("ts", ""))
     duration_ms = int(record.get("duration_ms") or 0)
@@ -204,6 +410,29 @@ def _handle_llm_call(state: ProjectionState, record: dict[str, Any]) -> list[Spa
         "gen_ai.response.finish_reasons": str(payload.get("finishReason", "")),
         "docket.iteration": iteration if isinstance(iteration, int) else str(iteration),
     }
+    input_messages = _filter_input_messages(payload.get("inputMessages"), policy)
+    if input_messages is not None:
+        attributes["gen_ai.input.messages"] = json.dumps(input_messages)
+    output_messages = _filter_output_messages(payload.get("outputMessages"), policy)
+    if output_messages is not None:
+        attributes["gen_ai.output.messages"] = json.dumps(output_messages)
+    if _granted(policy, "instructions"):
+        instructions = payload.get("systemInstructions")
+        if isinstance(instructions, str) and instructions:
+            attributes["gen_ai.system_instructions"] = _truncate(
+                instructions, policy.content_max_chars
+            )
+        elif isinstance(instructions, list):
+            kept_instructions = [
+                _filter_part(part, "instructions", policy)
+                for part in instructions
+                if isinstance(part, dict)
+            ]
+            if kept_instructions:
+                attributes["gen_ai.system_instructions"] = json.dumps(kept_instructions)
+    instructions_sha = payload.get("systemInstructionsSha256")
+    if instructions_sha:
+        attributes["docket.instructions.sha256"] = str(instructions_sha)
     return [
         Span(
             trace_id=_trace_id(session_id),
@@ -218,12 +447,18 @@ def _handle_llm_call(state: ProjectionState, record: dict[str, Any]) -> list[Spa
     ]
 
 
-def _handle_tool_call(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_tool_call(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record)
+    root = _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
+    attributes: Attributes = {"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id}
+    arguments = payload.get("arguments")
+    if _granted(policy, "toolArguments") and isinstance(arguments, str) and arguments:
+        attributes["gen_ai.tool.call.arguments"] = _truncate(arguments, policy.content_max_chars)
     state.stacks[session_id].append(
         _OpenSpan(
             span_id=_span_id(session_id, "tool_call", call_id),
@@ -232,7 +467,7 @@ def _handle_tool_call(state: ProjectionState, record: dict[str, Any]) -> list[Sp
             start_ts=str(record.get("ts", "")),
             kind="tool_call",
             key=call_id,
-            attributes={"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id},
+            attributes=attributes,
         )
     )
     return []
@@ -246,9 +481,11 @@ def _pop_open_tool(state: ProjectionState, session_id: str, call_id: str) -> _Op
     return None
 
 
-def _handle_tool_result(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_tool_result(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record)
+    root = _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
@@ -270,6 +507,11 @@ def _handle_tool_result(state: ProjectionState, record: dict[str, Any]) -> list[
     policy_id = payload.get("policyId")
     if policy_id:
         attributes["docket.tool.blocked_by"] = str(policy_id)
+    result_text = payload.get("text")
+    if not isinstance(result_text, str):
+        result_text = payload.get("output")
+    if _granted(policy, "toolResults") and isinstance(result_text, str) and result_text:
+        attributes["gen_ai.tool.call.result"] = _truncate(result_text, policy.content_max_chars)
     return [
         Span(
             trace_id=_trace_id(session_id),
@@ -285,9 +527,11 @@ def _handle_tool_result(state: ProjectionState, record: dict[str, Any]) -> list[
     ]
 
 
-def _handle_session_end(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_session_end(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    _ensure_root(state, session_id, record)
+    _ensure_root(state, session_id, record, policy)
     ts = str(record.get("ts", ""))
     stack = state.stacks.pop(session_id, [])
     state.last_ts.pop(session_id, None)
@@ -309,9 +553,11 @@ def _root_attributes(payload: dict[str, Any], record: dict[str, Any]) -> Attribu
     return attributes
 
 
-def _handle_root_event(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_root_event(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record)
+    root = _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     root.events.append(
         SpanEvent(
@@ -323,19 +569,29 @@ def _handle_root_event(state: ProjectionState, record: dict[str, Any]) -> list[S
     return []
 
 
-def _handle_generic_event(state: ProjectionState, record: dict[str, Any]) -> list[Span]:
+def _handle_generic_event(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    _ensure_root(state, session_id, record)
+    _ensure_root(state, session_id, record, policy)
     target = state.stacks[session_id][-1]
     payload = record.get("payload") or {}
+    event_type = str(record.get("event_type", ""))
+    allowed = _STRUCTURAL_KEYS.get(event_type, ())
     attributes: Attributes = {
         f"docket.{key}": value
         for key, value in payload.items()
-        if isinstance(value, str | int | bool)
+        if key in allowed and isinstance(value, str | int | bool)
     }
+    content = _GENERIC_CONTENT_ATTRS.get(event_type)
+    if content is not None:
+        payload_key, attr_name, cls = content
+        value = payload.get(payload_key)
+        if _granted(policy, cls) and isinstance(value, str) and value:
+            attributes[attr_name] = _truncate(value, policy.content_max_chars)
     target.events.append(
         SpanEvent(
-            name=str(record.get("event_type", "")),
+            name=event_type,
             ts=str(record.get("ts", "")),
             attributes=attributes,
         )
@@ -343,7 +599,7 @@ def _handle_generic_event(state: ProjectionState, record: dict[str, Any]) -> lis
     return []
 
 
-_Handler = Callable[[ProjectionState, dict[str, Any]], list[Span]]
+_Handler = Callable[[ProjectionState, dict[str, Any], ExportPolicy], list[Span]]
 
 _SPECIAL: dict[str, _Handler] = {
     "session_start": _handle_session_start,
@@ -366,9 +622,12 @@ def _build_handlers() -> dict[str, _Handler]:
 _HANDLERS: dict[str, _Handler] = _build_handlers()
 
 
-def project(record: dict[str, Any], state: ProjectionState) -> list[Span]:
-    """Incrementally fold one trace record into ``state``, returning the spans it closes.
-    A record whose ``event_type`` is unknown is ignored, never raised on."""
+def project(
+    record: dict[str, Any], state: ProjectionState, policy: ExportPolicy = MINIMAL_POLICY
+) -> list[Span]:
+    """Incrementally fold one trace record into ``state`` under *policy*'s granted content
+    classes, returning the spans it closes. A record whose ``event_type`` is unknown is
+    ignored, never raised on. *policy* defaults to sharing nothing beyond structure."""
     event_type = str(record.get("event_type", ""))
     handler = _HANDLERS.get(event_type)
     if handler is None:
@@ -377,7 +636,7 @@ def project(record: dict[str, Any], state: ProjectionState) -> list[Span]:
     ts = record.get("ts")
     if ts:
         state.last_ts[session_id] = str(ts)
-    return handler(state, record)
+    return handler(state, record, policy)
 
 
 def flush_open(state: ProjectionState) -> list[Span]:
@@ -392,45 +651,6 @@ def flush_open(state: ProjectionState) -> list[Span]:
         if stack:
             closed.append(_close(stack[0], trace_id, ts, "unset"))
     return closed
-
-
-def _reduce_metadata(payload: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in payload.items() if key not in _CONTENT_KEYS}
-
-
-def _reduce_full(payload: dict[str, Any], max_chars: int) -> dict[str, Any]:
-    reduced: dict[str, Any] = {}
-    for key, value in payload.items():
-        if key in _CONTENT_KEYS:
-            text = value if isinstance(value, str) else json.dumps(value)
-            reduced[key] = text[:max_chars]
-        else:
-            reduced[key] = value
-    return reduced
-
-
-@dataclass(frozen=True)
-class ExportPolicy:
-    events: frozenset[str] | None = None
-    payload: str = "metadata"
-    payload_max_chars: int = 4000
-
-    def admit(self, record: dict[str, Any]) -> dict[str, Any] | None:
-        """``None`` when this record's event type is not admitted; otherwise the record
-        with its payload reduced per ``self.payload`` -- never mutates the input."""
-        event_type = record.get("event_type", "")
-        if self.events is not None and event_type not in self.events:
-            return None
-        raw_payload = record.get("payload")
-        payload = raw_payload if isinstance(raw_payload, dict) else {}
-        reduced = (
-            _reduce_full(payload, self.payload_max_chars)
-            if self.payload == "full"
-            else _reduce_metadata(payload)
-        )
-        out = dict(record)
-        out["payload"] = reduced
-        return out
 
 
 # ── Export pipeline: bounded queue, background sender, module registry ──
@@ -536,7 +756,7 @@ class Pipeline:
             if admitted is None:
                 return
             with self._project_lock:
-                spans = project(admitted, self._state)
+                spans = project(admitted, self._state, self._policy)
         except Exception:
             return
         for span in spans:
@@ -579,6 +799,10 @@ class Pipeline:
     def stats(self) -> PipelineStats:
         with self._stats_lock:
             return replace(self._stats)
+
+    @property
+    def policy(self) -> ExportPolicy:
+        return self._policy
 
     def _drain(self) -> None:
         while True:
@@ -687,11 +911,9 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
             if spec.auth.credentials and any(not value for value in values):
                 continue
             sink = sink_for(spec, values)
-            policy = ExportPolicy(
-                events=_events_for(spec),
-                payload=spec.payload,
-                payload_max_chars=spec.payload_max_chars,
-            )
+            # Every started pipeline shares nothing beyond structure until an exporter
+            # document's own privacy fields are wired through here -- a default only narrows.
+            policy = ExportPolicy(events=_events_for(spec), classes=frozenset(), label="minimal")
             _REGISTRY[spec.name] = Pipeline(
                 sink, policy, queue_max=_cfg.EXPORT_QUEUE_MAX, clock=time.monotonic
             )
@@ -725,6 +947,18 @@ def close() -> None:
     for pipeline in pipelines:
         with contextlib.suppress(Exception):
             pipeline.close()
+
+
+def capture_classes() -> frozenset[str]:
+    """Union of the content classes every started pipeline's policy grants -- empty when
+    none is started. A caller uses this to decide what to capture, only on demand, so with
+    every exporter at `minimal` the local trace stays exactly what it is today."""
+    with _REGISTRY_LOCK:
+        pipelines = list(_REGISTRY.values())
+    classes: set[str] = set()
+    for pipeline in pipelines:
+        classes |= pipeline.policy.classes
+    return frozenset(classes)
 
 
 def health() -> dict[str, dict[str, Any]]:
