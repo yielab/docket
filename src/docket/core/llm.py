@@ -152,6 +152,9 @@ class ChatResponse:
     error: str = ""
     failure_kind: FailureKind | None = None
     retry_after_s: float | None = None
+    model: str = ""
+    provider: str = ""
+    latency_ms: int = 0
 
     @property
     def tool_calls(self) -> list[ToolCall]:

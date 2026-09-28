@@ -24,10 +24,11 @@ from __future__ import annotations
 import email.utils
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -337,11 +338,19 @@ class OpenAIChatClient:
         timeout: int = 120,
     ) -> ChatResponse:
         """Send one exchange. Never raises for an endpoint or transport failure."""
+        start = time.perf_counter()
+
+        def _elapsed_ms() -> int:
+            return int((time.perf_counter() - start) * 1000)
+
         if not self.endpoint.base_url:
             return ChatResponse(
                 ok=False,
                 error="no endpoint configured for this model",
                 failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
         payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
         body = json.dumps(payload).encode()
@@ -368,12 +377,18 @@ class OpenAIChatClient:
                 error=f"HTTP {ex.code} from {self.url}: {detail[:500] or ex.reason}",
                 failure_kind=failure_kind,
                 retry_after_s=retry_after,
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
         except TimeoutError:
             return ChatResponse(
                 ok=False,
                 error=f"timed out after {timeout}s calling {self.url}",
                 failure_kind="timeout",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
         except urllib.error.URLError as ex:
             # urlopen wraps a socket timeout in URLError on some platforms, so
@@ -383,15 +398,26 @@ class OpenAIChatClient:
                     ok=False,
                     error=f"timed out after {timeout}s calling {self.url}",
                     failure_kind="timeout",
+                    model=self.endpoint.model_id,
+                    provider=self.endpoint.provider,
+                    latency_ms=_elapsed_ms(),
                 )
             return ChatResponse(
                 ok=False,
                 error=f"cannot reach {self.url}: {ex.reason}",
                 failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
         except OSError as ex:
             return ChatResponse(
-                ok=False, error=f"cannot reach {self.url}: {ex}", failure_kind="daemon_error"
+                ok=False,
+                error=f"cannot reach {self.url}: {ex}",
+                failure_kind="daemon_error",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
 
         try:
@@ -401,14 +427,25 @@ class OpenAIChatClient:
                 ok=False,
                 error=f"endpoint returned non-JSON ({ex}): {raw_body[:200]}",
                 failure_kind="invalid_output",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
         if not isinstance(data, dict):
             return ChatResponse(
                 ok=False,
                 error=f"endpoint returned a {type(data).__name__}, expected an object",
                 failure_kind="invalid_output",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
             )
-        return decode_response(data)
+        return replace(
+            decode_response(data),
+            model=self.endpoint.model_id,
+            provider=self.endpoint.provider,
+            latency_ms=_elapsed_ms(),
+        )
 
 
 # ── registration probe ────────────────────────────────────────────────────────

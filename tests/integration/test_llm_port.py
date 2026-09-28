@@ -1,18 +1,24 @@
 """The chat-completion port and its OpenAI-compatible adapter.
 
-Everything here runs without a network. The transport tests monkeypatch
+Most tests here run without a network: the transport tests monkeypatch
 ``urlopen`` inside the adapter's namespace; the encode/decode tests call
 ``build_payload``/``decode_response`` directly, which is why those two are
 public functions rather than private helpers — the wire shape is the part most
 likely to break against a real server, so it is the part worth pinning.
+``TestLatencyMeasurement`` is the one exception: measuring real elapsed time
+needs a real socket, so it starts a local ``http.server`` on port 0 (never a
+monkeypatch) and stops it in ``finally``.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import time
 import urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 import pytest
@@ -452,6 +458,54 @@ class TestTransport:
             _raising_urlopen(monkeypatch, exc)
             res = adapter.OpenAIChatClient(ENDPOINT).complete([llm.user("x")])
             assert res.ok is False and res.failure_kind is not None
+
+
+class TestLatencyMeasurement:
+    """``latency_ms``/``model``/``provider`` are stamped by ``complete()`` on every return
+    path, over a real socket (a monkeypatched ``urlopen`` returns instantly, which can't
+    prove a measurement)."""
+
+    def test_a_slow_response_measures_at_least_its_own_delay(self) -> None:
+        body = json.dumps({"choices": [{"message": {"content": "hi"}}]}).encode()
+
+        class _SlowHandler(BaseHTTPRequestHandler):
+            def log_message(self, *_args: object) -> None:  # quiet the test output
+                pass
+
+            def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                time.sleep(0.05)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), _SlowHandler)
+        thread = Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            endpoint = Endpoint(
+                base_url=f"http://127.0.0.1:{srv.server_address[1]}/v1",
+                model_id="local-model",
+                provider="local",
+            )
+            res = adapter.OpenAIChatClient(endpoint).complete([llm.user("hi")], timeout=5)
+        finally:
+            srv.shutdown()
+            thread.join(timeout=5)
+
+        assert res.ok
+        assert res.model == "local-model"
+        assert res.provider == "local"
+        assert res.latency_ms >= 50
+
+    def test_a_closed_port_still_reports_a_non_negative_latency(self) -> None:
+        endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="local-model")
+        res = adapter.OpenAIChatClient(endpoint).complete([llm.user("hi")], timeout=5)
+        assert res.ok is False
+        assert res.latency_ms >= 0
 
 
 class TestRetryVocabularyStaysAlignedWithDispatch:

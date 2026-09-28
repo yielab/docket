@@ -28,6 +28,7 @@ _EVENT_COLOR: dict[str, str] = {
     "session_end": "green",
     "tool_call": "cyan",
     "tool_result": "cyan",
+    "llm_call": "bright_blue",
     "cost_charged": "yellow",
     "budget_warning": "yellow",
     "budget_exceeded": "red",
@@ -77,7 +78,16 @@ def _render_event(r: dict[str, Any]) -> None:
     color = _EVENT_COLOR.get(etype, "")
 
     summary_parts: list[str] = []
-    if isinstance(payload, dict):
+    if etype == "llm_call" and isinstance(payload, dict):
+        model = payload.get("model")
+        if model:
+            summary_parts.append(str(model))
+        in_tok, out_tok = payload.get("inputTokens"), payload.get("outputTokens")
+        if in_tok is not None or out_tok is not None:
+            summary_parts.append(f"in={in_tok or 0}/out={out_tok or 0}")
+        if payload.get("ok") is False:
+            summary_parts.append(f"failed: {payload.get('failureKind') or 'unknown'}")
+    elif isinstance(payload, dict):
         for k in ("status", "action", "text", "task_id", "pct"):
             v = payload.get(k)
             if v is not None:
