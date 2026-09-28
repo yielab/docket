@@ -574,5 +574,13 @@
     "heading": "◆ PHASE 31 — COMPLETE (opened 2026-09-27, closed 2026-09-27): recipes as a library, and the repository's standards (D-47)",
     "bytes": 31744,
     "sha256": "0c0d1ae31aa0cbd3dc7db84a5dd2e3e113970e62f8333c8e5e76963a05ebe95e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 32 — COMPLETE (opened 2026-09-27, closed 2026-09-28): observability as configuration (D-48)",
+    "bytes": 46258,
+    "sha256": "95e56c4b71fd607a56863cf95224165ab542f1b2b43e53fb8d025afd13c89b09"
   }
 ]

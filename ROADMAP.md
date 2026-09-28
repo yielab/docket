@@ -72,20 +72,26 @@ CI. Running the suite found two unwired seams inside the phase (the `skill` tool
 from `BUILTIN_TOOL_KINDS`; `core/skills.py` absent from the runtime wheel's file list), both
 closed in P31-6; reasoning in
 [docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md](docs/adr/0013-recipes-as-a-library-and-the-repos-standards.md).
-**Phase 32 (observability as configuration, D-48) is ACTIVE, opened 2026-09-27**, nine cards
-over Waves 56–59 (two, three and three Sonnet workers in parallel, then the integrator): the
-trace gains an `llm_call` event with measured latency and a spec of its own; a neutral
-`Span`/`SpanEvent` model in `core/telemetry.py` projects the existing vocabulary once with
-deterministic ids; a destination is a `kind: exporter` document (built-in + global, closed
-`dialect`, credentials by name) whose dialect selects the one edge module that knows the wire,
-v1 = `otlp-http` over stdlib `urllib`; five ready built-ins (local collector, Jaeger, Langfuse,
-Honeycomb, Phoenix) that `docket exporters enable <name>` authenticates and probes; a bounded
-pipeline that never blocks a turn, started lazily by `run_turn`; `payload: metadata` by default
-so repository content never leaves the host unless the operator says so; `pod.yaml` may name
-destinations; `config explain`/`doctor` read the exporter's own health. D-24's cut of the
-OpenTelemetry SDK stands; reasoning in
+**Phase 32 (observability as configuration, D-48) shipped 2026-09-28**, nine cards over Waves
+56–59 (two, three and three Sonnet workers in parallel, then the integrator): the trace gains an
+`llm_call` event with measured latency and a spec of its own; a neutral `Span`/`SpanEvent` model
+in `core/telemetry.py` projects the existing vocabulary once with deterministic ids; a
+destination is a `kind: exporter` document (built-in + global, closed `dialect`, credentials by
+name) whose dialect selects the one edge module that knows the wire, v1 = `otlp-http` over stdlib
+`urllib`; five ready built-ins (local collector, Jaeger, Langfuse, Honeycomb, Phoenix) that
+`docket exporters enable <name>` authenticates and probes; a bounded pipeline that never blocks a
+turn, started lazily by `run_turn`; `payload: metadata` by default so repository content never
+leaves the host unless the operator says so; `pod.yaml` may name destinations; `config
+explain`/`doctor` read the exporter's own health. Verified live 2026-09-28: a real dispatch
+against a real `otel/opentelemetry-collector` produced real `gen_ai.chat` spans with measured
+token counts, matching `docket trace` and a non-zero `exported` health counter; Langfuse's
+round-trip stays open, named in `observability-export.spec.md` §"External verification" as
+blocked on the operator's own credentials rather than skipped silently. Three independent cards
+across the phase version-bumped the same still-Draft spec from the same base and conflicted on
+merge — reconciled by hand each time, a predictable cost of two workers targeting one Draft
+file, not a process failure. D-24's cut of the OpenTelemetry SDK stands; reasoning in
 [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
-Executable cards live in [TODO.md](TODO.md).
+Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
