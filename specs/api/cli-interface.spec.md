@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.55.0
+**Version**: 1.56.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -1115,6 +1115,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.56.0 (2026-09-28)
+
+- **`docket exporters privacy` and `docket exporters preview`.** The exporters entry gains
+  both actions; `enable` takes `--privacy <level>|--share a,b` and no longer `--payload`;
+  `add` and `enable` follow the widening confirmation rule.
 
 ### Version 1.55.0 (2026-09-27)
 

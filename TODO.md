@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 62 (Phase 33, D-49) · opened 2026-09-28
+> ## ▶ ACTIVE BOARD — WAVE 63 (Phase 33, D-49) · opened 2026-09-28
 >
 > **Six cards over Waves 60–63**, one Sonnet worker per card in an isolated worktree under one
 > integrator: what a trace destination may see becomes a declared privacy level (`minimal`,
@@ -21,7 +21,7 @@
 > `list`/`show`/`explain`/`doctor`, on the span itself, and in an offline `preview`. Decision
 > and rules: [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 > Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
-> Waves 60 (P33-1) and 61 (P33-2 ∥ P33-3) merged 2026-09-28; **Wave 62 (P33-4 ∥ P33-5) is active**. **Phase 33 closes when the Wave 63 rollup merges green.**
+> Waves 60-62 (P33-1..P33-5) merged 2026-09-28; **Wave 63 (P33-6, integrator) is active**. **Phase 33 closes when the Wave 63 rollup merges green.**
 >
 > **Phase 32 closed 2026-09-28** (ROADMAP D-48, [ADR 0014](docs/adr/0014-observability-export.md)):
 > nine cards over Waves 56–59, one Sonnet worker per card in an isolated worktree then the
@@ -219,7 +219,7 @@ release source.
 
 ## ▶ WAVES 60–63 — ACTIVE (opened 2026-09-28): Phase 33, export privacy levels (D-49)
 
-**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 merged (P33-2 `80ec2e4`, P33-3 `db76762`) with the capture-to-wire seam test already in `tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`; Wave 62 active.** Six cards in four waves (one Sonnet worker, then two in
+**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 merged (P33-2 `80ec2e4`, P33-3 `db76762`) with the capture-to-wire seam test already in `tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`; Wave 62 merged (P33-4 `8e7a1bf`, P33-5 `9bcaad4`); Wave 63 active.** Six cards in four waves (one Sonnet worker, then two in
 parallel, then two, then the integrator). Decision, the class and level tables, the eleven rules
 and the verdict table are in [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
@@ -426,7 +426,7 @@ the three spec sections. **Forbidden:** `core/telemetry.py` (call `capture_class
 
 ### P33-4 — widening is a confirmed command; the level is shown everywhere
 
-**Status:** TODO · **Size:** M · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Privacy commands and disclosure" (88–97); `cli-interface.spec.md`, `cli-json-shapes.spec.md` (integrator bumps)
+**Status:** DONE (2026-09-28, `8e7a1bf`) · **Size:** M · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Privacy commands and disclosure" (88–97); `cli-interface.spec.md`, `cli-json-shapes.spec.md` (integrator bumps)
 
 **Trigger:** nothing tells the operator what leaves before or after enabling; a level must be
 chosen consciously (the request).
@@ -472,7 +472,7 @@ base (no `privacy` action). **Gates:** worker gates; `gen_cli_docs.py --check` a
 
 ### P33-5 — see what a destination would receive before sharing it
 
-**Status:** TODO · **Size:** S · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Preview" (98–101); `cli-interface.spec.md` (integrator bumps)
+**Status:** DONE (2026-09-28, `9bcaad4`) · **Size:** S · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Preview" (98–101); `cli-interface.spec.md` (integrator bumps)
 
 **Trigger:** the request asks that the operator *know what they are sharing*; the only proof
 today is opening the destination after the fact.

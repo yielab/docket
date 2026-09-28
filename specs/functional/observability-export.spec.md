@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
@@ -988,6 +988,18 @@ above) are what a live run can actually add over the fixture, and this section r
 instead. The fixture and its golden are unchanged.
 
 ## Changelog
+
+### Version 1.8.0 (2026-09-28)
+
+- **Privacy commands and disclosure (P33-4), preview (P33-5).** New section "Privacy commands
+  and disclosure" (requirements 88-97): `set_privacy`/`is_widening`, `docket exporters privacy`,
+  widening confirmed on a TTY or refused off one without `--yes`, narrowing never asks, the
+  `exporter.privacy` audit entry (name, from, to, host), `enable --privacy|--share`, the retired
+  `--payload` flag, the `SHARES` column, the "Leaves this host" block, `config explain` and
+  `doctor` lines. New section "Preview" (requirements 98-102): `docket exporters preview`
+  projects a local session through the exporter's policy with no socket, write or audit;
+  `--json` is the exact wire document; a session with no captured conversation content says so
+  when the previewed level would share it.
 
 ### Version 1.7.0 (2026-09-28)
 

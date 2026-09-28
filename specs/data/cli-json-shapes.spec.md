@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -489,6 +489,11 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.16.0 (2026-09-28)
+
+- **`config explain --json` exporters entries.** `privacy` is now `{label, classes}` in place
+  of a bare label string.
 
 ### Version 1.15.0 (2026-09-27)
 
