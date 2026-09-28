@@ -174,6 +174,8 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "run_cancellation_observed": ("run", "source"),
     "run_cancelled": ("run", "source"),
     "step_skipped": ("step",),
+    "input_requested": ("task", "step", "questionId"),
+    "input_answered": ("task", "step", "questionId", "action"),
     "error": ("run", "source"),
 }
 

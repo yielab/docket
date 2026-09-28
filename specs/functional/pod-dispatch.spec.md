@@ -834,6 +834,67 @@ was seeded once at binding time.)*
    in the serial sweep loop, only without blocking); the foreground TTY `[p]ark and continue`
    prompt key.
 
+### Operator input steps and answers (P34-10, ADR 0016 SS4/SS8)
+
+1. **Trigger.** `_run_pipeline` reaching a `PlannedUnit` whose `input` is set (see
+   pipeline-format.spec.md, "Operator input steps") runs `_run_input_step` instead of an agent
+   turn: it mints a `Question` (`core.operator_contract`, MCP-elicitation-shaped) from the
+   step's `from:` source, traces `input_requested`, and returns a `waiting_input` outcome. No
+   hop is persisted for this attempt -- the same posture the pre-hop `require_approval` gate's
+   `waiting_approval` already has (see "Parked approvals" above). The task's `question` field
+   carries the minted `Question`, dumped by alias.
+2. **The question's schema.** A generic `input` step (no Lead intake brief attached) asks a
+   single free-text property: `{"type": "object", "properties": {"answer": {"type": "string"}},
+   "required": ["answer"]}`. A richer, per-question schema derived from the Lead's typed intake
+   brief (`TaskBrief.questions[]`) is a later requirement area's job, not this one.
+3. **Resolution.** `core.answers.answer_task(project, task_id, action, content, channel=,
+   actor=)` validates *content* against the question's schema
+   (`operator_contract.validate_answer`), screens every string value in *content* through
+   `core.policy.policy_eval_detail("lead", "pre_input", value, trusted=False)` -- a `block`
+   action raises `AnswerRejected` and writes nothing -- appends the answer to the task's
+   `answers[]`, and resolves the step's own `on:` route (`answered` for `accept`, `declined`
+   for `decline`/`cancel`) exactly the way `_route_outcome` resolves any other routed step's
+   outcome, minus the tracing (this runs outside a live hop, so there is no `_UnitContext`
+   to trace through). Every string value screened is caller-supplied answer content, never the
+   question text itself.
+4. **The synthetic hop.** A resolved answer persists one `HopResult(role="operator",
+   member_id="operator", step_id=<the input step's id>, ok=True, output="answered:
+   <questionId>", next_step=<the resolved route target, or None for an ordinary advance>)`.
+   Its `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real
+   verdict marker, but the same field `_replay_pipeline_position`'s route-counts rebuild already
+   keys a backward/self route by (see the comment at its `hop.next_step` handling); a plain
+   `HandoffArtifact.from_legacy_output` fallback would leave `verdict` `None` there and
+   mis-key every reconstructed route as `"fail"`.
+5. **Terminal routes settle immediately.** A route resolving to `"fail"` (or an `on:` target
+   that names no known step id) moves the task straight to `failed`; one resolving to `"stop"`
+   moves it to `done` -- both settled inside `answer_task` itself, with `completedAt` set and
+   `claimId` cleared, exactly as `_run_pipeline`'s own `"routed"` handling would for a live hop,
+   since answering happens with no live dispatch context to do it for it. Any other target (or
+   no `on:` entry for the label at all) reopens the task `pending`, carrying the synthetic hop's
+   `next_step` for the next claim to follow.
+6. **Resume.** `_replay_pipeline_position` treats the synthetic `operator` hop exactly like any
+   other routed hop: `hop.next_step` (when it names a known step id) becomes the resume
+   position, bumping `route_counts` keyed by `(step_id, hop.artifact.verdict)` when the target is
+   backward or self -- unmodified by this section, since item 4's artifact convention is what
+   makes the existing mechanism apply unchanged. A cap exhausted by that rebuild (see "Parked
+   approvals" and `_route_outcome`'s own cap check, mirrored by `core.answers._resolve_route`)
+   settles the task `failed` on the *next* `answer_task` call that would have routed backward
+   again, not on a live dispatch call.
+7. **The Lead's next hop.** `_hop_message`'s Lead branch appends `\n\n## Operator answers\n`
+   followed by one `Q: <message>\nA: <rendered content>` block per entry in `answers[]`, oldest
+   first, capped near 4,000 characters with `core.context`'s existing truncation marker (never
+   silently cut). `A:` renders an `accept`'s single `answer` property value directly, else
+   `(declined)`/`(cancelled)`/`(no answer)`.
+8. **Expiry.** `core.answers.sweep_expired_questions`, run from `serve.py::_run_sweeps` (every
+   sweep, like `approval.approval_sweep_expired`), moves a `waiting_input` task whose question's
+   `expiresAt` has passed to `blocked`/`blockedReason: "input_expired"` -- never `failed` (fail
+   closed but never fails, item 5 above is unrelated to this rule). No hop was ever persisted
+   for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending` sends the next
+   claim straight back to the same `input` step, which mints a brand new `Question`.
+9. Non-goal (this card): a richer per-question schema from the Lead's typed intake brief, the
+   CLI/HTTP/MCP/Telegram answer surfaces, and event delivery for `input_requested` -- all owned
+   by later requirement areas (operator-loop.spec.md).
+
 ### Budget gate and auto-pause
 
 1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST**
@@ -1411,9 +1472,12 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    **except** a `failureKind: "stale_claim"` failure, which is reclaimable via `--resume` (see
    "Crash recovery") — a `failureKind: "approval_denied"` failure is **never** reclaimable, with
    or without `--resume`.
-5. `blocked` — the pod's budget cap was reached before a hop could run. Not terminal — re-enters
-   `pending` only via `docket pod <project> queue --retry <task-id>` or a pod-wide budget change
-   on the Lead (never automatically, never via a plain dispatch run).
+5. `blocked` — the pod's budget cap was reached before a hop could run, or (ADR 0016, "Operator
+   input steps and answers" below) a parked question's `expiresAt` passed unanswered
+   (`blockedReason: "input_expired"`). Not terminal — re-enters `pending` only via
+   `docket pod <project> queue --retry <task-id>` or a pod-wide budget change on the Lead (never
+   automatically, never via a plain dispatch run). An expired question is never `failed` --
+   `retry_task` accepts any `blockedReason` unchanged.
 6. `waiting_approval` (ROADMAP Phase 15 G-1) — either a require_approval gate fired before a hop
    could run, or (ADR 0016, "Parked approvals" below) a hop's in-turn tool call parked mid-turn
    under `approvalMode: "park"`; either way a real approval record was created and the task is
@@ -1428,6 +1492,11 @@ the archetype-side `tokenBudget` schema this section consumes.)*
 7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
    during execution. Terminal. The task retains its completed and cancelled-hop evidence, records
    `completedAt`, and cannot be reclaimed or overwritten by a late successful response.
+8. `waiting_input` (ADR 0016, "Operator input steps and answers" below) — an `input` step parked
+   the task, waiting on an operator's answer to a minted `Question`. Not terminal — re-enters
+   `pending` only via `core.answers.answer_task` (or moves straight to `blocked`/`failed`/`done`
+   there — see below), never automatically, never via a plain dispatch run, `retry_task`, or
+   `unblock_pod`. Never claimable by any dispatch run, the same posture `waiting_approval` has.
 
 ## Interface Contracts
 
@@ -1472,6 +1541,9 @@ run_cancellation_observed    # once when execution first observes the persisted 
 run_cancelled                # once when execution has fully stopped and terminalizes the run
 step_skipped                  # a `when` predicate was false; the step advanced with no hop
 command_step                  # a `run` step executed (or was refused), carrying its exit code
+input_requested                # an `input` step parked the task, waiting on an operator question
+input_answered                 # `core.answers.answer_task` resumed a parked `input` step
+input_expired                  # an unanswered question passed its deadline (task -> blocked)
 ```
 
 ## Examples

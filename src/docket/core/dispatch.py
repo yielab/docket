@@ -36,6 +36,7 @@ from docket.core import handoff as _handoff
 from docket.core import memory as _mem
 from docket.core import models as _models
 from docket.core import models_policy as _models_policy
+from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
@@ -164,7 +165,9 @@ class TaskResult:
     """Outcome of driving one task through the whole pipeline."""
 
     task_id: str
-    status: str  # "done" | "failed" | "blocked" | "waiting_approval" | "cancelled"
+    status: (
+        str  # "done" | "failed" | "blocked" | "waiting_approval" | "waiting_input" | "cancelled"
+    )
     reason: str = ""
     hops: list[HopResult] = field(default_factory=list)
     # Only meaningful when status == "waiting_approval" — the token the
@@ -172,6 +175,11 @@ class TaskResult:
     # (``_apply_result``) can persist enough to resume correctly on a grant.
     approval_token: str = ""
     pending_approval_index: int | None = None
+    # Only meaningful when status == "waiting_input" -- the minted ``Question``
+    # (operator_contract, dumped by alias), so the caller (``_apply_result``) can
+    # persist it for `core.answers.answer_task` to resolve later. See
+    # pod-dispatch.spec.md ("Operator input steps and answers").
+    question: dict[str, Any] | None = None
     # Only meaningful when status == "failed" -- see RESUMABLE_FAILURE_KINDS.
     # Empty for an ordinary graded hop/gate failure (``_apply_result`` then
     # clears any stale persisted ``failureKind`` instead of writing this).
@@ -656,6 +664,9 @@ def _hop_message(
                 _archetypes.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
             )
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
+        answers_block = _render_operator_answers(task)
+        if answers_block:
+            message = f"{message}\n\n## Operator answers\n{answers_block}"
         comp = _HopComposition(
             description_bytes=len(desc.encode("utf-8")), total_bytes=len(message.encode("utf-8"))
         )
@@ -761,6 +772,51 @@ def _hop_message(
     message = "\n".join(lines)
     comp.total_bytes = len(message.encode("utf-8"))
     return message, comp
+
+
+# Rough character budget for the Lead's "## Operator answers" section, expressed here as a
+# token budget for `_ctx._truncate_summary`, which only ever bounds bytes -- ASCII text keeps
+# the two close enough for a "capped near N characters" guarantee, never an exact one.
+_ANSWERS_CHAR_BUDGET = 4000
+
+
+def _render_answer_value(entry: dict[str, Any]) -> str:
+    """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
+    ``accept``, else a plain marker -- see ``core.answers.answer_task``."""
+    action = str(entry.get("action", ""))
+    if action == "accept":
+        content = entry.get("content")
+        content = content if isinstance(content, dict) else {}
+        if list(content.keys()) == ["answer"]:
+            return str(content["answer"])
+        return _json.dumps(content, sort_keys=True)
+    if action == "decline":
+        return "(declined)"
+    if action == "cancel":
+        return "(cancelled)"
+    return "(no answer)"
+
+
+def _render_operator_answers(task: dict[str, Any]) -> str:
+    """Render ``answers[]`` as ``Q: ...\\nA: ...`` blocks, oldest first, capped near
+    ``_ANSWERS_CHAR_BUDGET`` characters with a visible truncation marker. Empty when the task
+    carries no answers yet."""
+    answers_raw = task.get("answers")
+    if not isinstance(answers_raw, list) or not answers_raw:
+        return ""
+    blocks = [
+        f"Q: {str(entry.get('message', '')).strip()}\nA: {_render_answer_value(entry)}"
+        for entry in answers_raw
+        if isinstance(entry, dict)
+    ]
+    if not blocks:
+        return ""
+    from docket.core import context as _ctx
+
+    text = "\n\n".join(blocks)
+    budget_tokens = _ANSWERS_CHAR_BUDGET // _cfg.CONTEXT_BYTES_PER_TOKEN
+    capped, _truncated = _ctx._truncate_summary(text, budget_tokens)
+    return capped
 
 
 def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
@@ -1044,6 +1100,8 @@ class _UnitOutcome:
     approval_token: str = ""
     pending_approval_index: int | None = None
     label: str = ""
+    # Only set for kind == "waiting_input" -- the minted Question, dumped by alias.
+    question: dict[str, Any] | None = None
 
 
 @dataclass
@@ -2036,6 +2094,54 @@ def _command_outcome_label(output: str, passed: bool) -> str:
     return "pass" if passed else "fail"
 
 
+_DEFAULT_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}},
+    "required": ["answer"],
+}
+
+
+def _run_input_step(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    prior: list[HopResult],
+    index_for_context: int,
+) -> _UnitOutcome:
+    """Park the task for an operator question minted from *node.input*, trace
+    ``input_requested``, and stop ``waiting_input`` -- no hop persisted for this attempt.
+    Resumed only by ``core.answers.answer_task``. See pod-dispatch.spec.md."""
+    assert node.input is not None
+    spec = node.input
+    message = spec.message.strip() or f"Operator input requested (from step {spec.from_!r})."
+    expires_at: str | None = None
+    if spec.expires_hours is not None:
+        expires_at = (
+            _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=spec.expires_hours)
+        ).isoformat()
+    question = _oc.Question(
+        id=_oc.new_question_id(),
+        task_id=ctx.task_id,
+        pod=ctx.project,
+        step=node.step_id,
+        message=message,
+        requested_schema=dict(_DEFAULT_INPUT_SCHEMA),
+        created_at=_now(),
+        expires_at=expires_at,
+    )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        node.step_id,
+        "input_requested",
+        _json.dumps({"task": ctx.task_id, "step": node.step_id, "questionId": question.id}),
+    )
+    return _UnitOutcome(
+        kind="waiting_input",
+        reason=f"awaiting operator answer for step {node.step_id!r} (question={question.id})",
+        question=question.model_dump(by_alias=True),
+    )
+
+
 def _route_outcome(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -2121,19 +2227,7 @@ def _run_pipeline(
         elif node.run is not None:
             outcome = _run_command_step(ctx, node, prior, pipeline_index)
         elif node.input is not None:
-            hop = HopResult(
-                role=node.step_id,
-                member_id="",
-                ok=False,
-                output="",
-                error=f"step {node.step_id!r}: an 'input' step cannot run yet — only 'plan' renders it (P34-10 implements execution)",
-                step_id=node.step_id,
-            )
-            outcome = _UnitOutcome(
-                kind="failed",
-                hops=[hop],
-                reason=f"step {node.step_id!r}: an 'input' step cannot run yet — only 'plan' renders it (P34-10 implements execution)",
-            )
+            outcome = _run_input_step(ctx, node, prior, pipeline_index)
         else:
             rework_hop = pending_rework_by_index.pop(pipeline_index, None)
             outcome = _execute_unit(
@@ -2158,6 +2252,11 @@ def _run_pipeline(
             result.reason = outcome.reason
             result.approval_token = outcome.approval_token
             result.pending_approval_index = outcome.pending_approval_index
+            break
+        if outcome.kind == "waiting_input":
+            result.status = "waiting_input"
+            result.reason = outcome.reason
+            result.question = outcome.question
             break
         if outcome.kind == "failed":
             result.status = "failed"
@@ -2316,9 +2415,10 @@ def dispatch_task(
 
 def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     """Fold a TaskResult back onto the stored task dict (terminal state; pod-dispatch.spec.md,
-    "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval`` are never
-    rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
-    ``resolve_waiting_approval``. Stays pure -- HEARTBEAT.md sync lives in ``_finalize_task``."""
+    "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
+    are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
+    ``resolve_waiting_approval``/``core.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
+    lives in ``_finalize_task``."""
     task["status"] = res.status
     task["reason"] = res.reason
     task["hops"] = [_hop_record(h) for h in res.hops]
@@ -2329,6 +2429,8 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     elif res.status == "waiting_approval":
         task["approvalToken"] = res.approval_token
         task["pendingApprovalIndex"] = res.pending_approval_index
+    elif res.status == "waiting_input":
+        task["question"] = res.question
     else:
         task["completedAt"] = _now()
         if res.failure_kind:
@@ -2345,7 +2447,10 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     ``pending`` always is; a ``failed`` task tagged with a RESUMABLE_FAILURE_KINDS reason only
     when *resume* is set (a swept crash, or a settled deterministic refusal -- neither waited
     out for staleness here, since a refusal's claim was already cleanly settled, not crashed);
-    ``waiting_approval`` never."""
+    ``waiting_approval``/``waiting_input`` never -- neither status is ``pending`` or ``failed``,
+    so both are already excluded by construction; a parked question re-enters only through
+    ``core.answers.answer_task`` (-> ``pending``) or expiry (-> ``blocked``, retried like any
+    other blocked task)."""
     status = t.get("status")
     if status == "pending":
         return True
@@ -2536,9 +2641,9 @@ def _sweep_stale_claims(project: str) -> None:
 
 
 def retry_task(project: str, task_id: str) -> bool:
-    """Un-block a single ``blocked`` task: a locked ``blocked`` -> ``pending`` flip. The only
-    other re-entry path is a pod-wide budget change (``unblock_pod``). Returns False if the
-    task doesn't exist or isn't currently blocked."""
+    """Un-block a single ``blocked`` task: a locked ``blocked`` -> ``pending`` flip, whatever
+    its ``blockedReason`` (including ``"input_expired"``). The only other re-entry path is a
+    pod-wide budget change (``unblock_pod``). Returns False if not found/not blocked."""
     found = False
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:

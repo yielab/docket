@@ -220,11 +220,23 @@ about itself, and what docket refuses to write or activate.
 
 ### 7. Answers
 
-**Status: Planned — owned by P34-10.** `Question`, `QuestionSchema`,
-`validate_requested_schema` and `AnswerResult`/`validate_answer` are defined and enforce the MCP
-elicitation subset (a flat object of primitive properties, `accept`/`decline`/`cancel`); no
-`core/answers.py::answer_task` exists yet to resume a parked `input` step with a validated
-answer.
+**Status: Implemented (generic `input` steps only).** `core/answers.py::answer_task(project,
+task_id, action, content, channel=, actor=)` resumes a parked `input` step: it builds an
+`AnswerResult`, validates *content* against the question's `requestedSchema` via
+`validate_answer`, screens every string value in *content* through
+`core.policy.policy_eval_detail("lead", "pre_input", value, trusted=False)` (a `block` raises
+`AnswerRejected` and writes nothing), appends the answer to the task's `answers[]`, and resolves
+the step's own `on:` route -- a terminal `fail`/`stop` target settles the task `failed`/`done`
+right here; any other target (or none) reopens it `pending`, carrying a synthetic
+`role="operator"` hop whose `nextStep` the resume builder follows on the next claim, with
+`route_counts` rebuilt from that same persisted field exactly as any other routed hop's.
+`core.answers.sweep_expired_questions`, run from every `serve --dispatch` sweep, moves an
+unanswered `waiting_input` task past its question's `expiresAt` to `blocked`/
+`blockedReason: "input_expired"` -- never `failed`. Full mechanics: pod-dispatch.spec.md,
+"Operator input steps and answers". Not yet covered here: a richer per-question schema derived
+from the Lead's typed intake brief (`TaskBrief.questions[]`) -- a generic `input` step's
+question always asks a single free-text `answer` property, until a later requirement area
+(the Lead's intake, area 3) wires the brief through.
 
 ### 8. Telegram (the one amended boundary)
 

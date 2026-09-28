@@ -26,6 +26,7 @@ from tests.fakes import FakeDriver
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import answers as _answers
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pipeline as _pipeline
@@ -1426,3 +1427,165 @@ class TestPodDispatchCliPrologue:
         result = CliRunner().invoke(app, ["pod", "rsch", "dispatch"])
 
         assert "through: lead → researcher → analyst → writer → critic" in result.output
+
+
+# ── operator `input` steps execute: park, answer, resume (ADR 0016 SS4/SS8) ──
+
+_ASK_PIPELINE_YAML = """\
+name: ask
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+  - id: implementer
+    role: implementer
+"""
+
+_ASK_DECLINE_CAP_PIPELINE_YAML = """\
+name: ask-decline-cap
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+    on:
+      declined:
+        goto: lead
+        max: 1
+  - id: implementer
+    role: implementer
+"""
+
+
+def _ask_spec(on: dict[str, Any] | None = None) -> _pipeline.PipelineSpec:
+    """Lead, then an `input` step asking about the Lead's own output, then Implementer."""
+    return _pipeline.PipelineSpec(
+        name="ask",
+        steps=[
+            _pipeline.Step(id="lead", role="lead"),
+            _pipeline.Step(id="ask", input=_pipeline.InputSpec(from_="lead"), on=on),
+            _pipeline.Step(id="implementer", role="implementer"),
+        ],
+    )
+
+
+def _bind_pipeline(project: str, text: str) -> None:
+    """Bind *text* as *project*'s own pipeline, so ``answer_task``'s own
+    ``effective_pipeline(project, None)`` resolves the same steps a test's own
+    ``dispatch_pod`` call ran through."""
+    import hashlib
+
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    path = _pod.pod.bound_pipeline_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
+
+
+class TestOperatorInputStepsPark:
+    def test_reaching_an_input_step_parks_with_no_hop_and_a_default_schema(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "needs a decision")
+
+        results = _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+
+        assert len(results) == 1
+        assert results[0].status == "waiting_input"
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "waiting_input"
+        # Only the Lead's real hop is persisted -- the park itself leaves no hop, the same
+        # posture as the pre-hop require_approval gate's `waiting_approval`.
+        assert [h["role"] for h in task["hops"]] == ["lead"]
+        question = task["question"]
+        assert question["step"] == "ask"
+        assert question["requestedSchema"]["properties"] == {"answer": {"type": "string"}}
+        assert question["requestedSchema"]["required"] == ["answer"]
+
+        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+        events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
+        requested = [e for e in events if e["event_type"] == "input_requested"]
+        assert len(requested) == 1
+        assert requested[0]["payload"]["step"] == "ask"
+        assert requested[0]["payload"]["questionId"] == question["id"]
+
+    def test_a_waiting_input_task_is_never_reclaimed_by_a_plain_dispatch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "needs a decision")
+        _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+
+        for _ in range(3):
+            assert _dispatch.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec()) == []
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+
+
+class TestAnswerTaskResumesDispatch:
+    """An answered `input` step's synthetic hop carries its own `nextStep`, so the resume
+    builder (and its `route_counts` rebuild) continues correctly across a resume boundary."""
+
+    def test_an_accepted_answer_resumes_straight_through_to_done(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _bind_pipeline("demo", _ASK_PIPELINE_YAML)
+        task = _dispatch.enqueue_task("demo", "needs a decision")
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+
+        result = _answers.answer_task(
+            "demo", task["id"], "accept", {"answer": "go ahead"}, channel="cli", actor="op"
+        )
+        assert result.action == "accept"
+
+        parked = _dispatch.read_tasks("demo")[0]
+        assert parked["status"] == "pending"
+        assert parked["answers"][0]["content"] == {"answer": "go ahead"}
+        assert [h["role"] for h in parked["hops"]] == ["lead", "operator"]
+        assert parked["hops"][-1]["nextStep"] is None  # no `on:` route -- ordinary advance
+
+        # The crash/resume boundary: a fresh `dispatch_pod` call (as `serve --dispatch`'s
+        # next sweep would make) claims the re-opened task and must continue past `ask`
+        # straight to `implementer`, never re-asking.
+        final_results = _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        assert final_results[0].status == "done"
+        final = _dispatch.read_tasks("demo")[0]
+        assert [h["role"] for h in final["hops"]] == ["lead", "operator", "implementer"]
+
+    def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`max: 1` -- proves `route_counts` is rebuilt from the persisted hop's `nextStep`
+        on resume: the second decline, a brand new `answer_task` call, must still see it."""
+        _seed_pod(tmp_path, monkeypatch)
+        _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
+        task = _dispatch.enqueue_task("demo", "needs a decision")
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+
+        _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
+        after_first = _dispatch.read_tasks("demo")[0]
+        assert after_first["status"] == "pending"
+        assert after_first["hops"][-1]["nextStep"] == "lead"
+
+        # Resume: replays back to `lead`, re-runs it (a fresh hop), reaches `ask` again and
+        # parks with a brand new question -- `route_counts` for ("ask", "declined") is now 1,
+        # rebuilt purely from the first operator hop's own persisted `nextStep`.
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        reparked = _dispatch.read_tasks("demo")[0]
+        assert reparked["status"] == "waiting_input"
+        assert [h["role"] for h in reparked["hops"]] == ["lead", "operator", "lead"]
+
+        # A second decline exhausts the `max: 1` budget -- `answer_task` settles the task
+        # `failed` right here (no live dispatch context exists to do it for it).
+        _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
+        final = _dispatch.read_tasks("demo")[0]
+        assert final["status"] == "failed"
+        assert final["hops"][-1]["nextStep"] is None
+        assert final["hops"][-1]["role"] == "operator"
