@@ -116,6 +116,7 @@ class PodDocument(BaseModel):
     members: list[str] | None = None
     settings: dict[str, Any] | None = None
     pipeline: str | None = None
+    exporters: list[str] | None = None
 
 
 _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {

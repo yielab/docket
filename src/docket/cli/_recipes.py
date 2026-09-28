@@ -18,6 +18,7 @@ from rich.markup import escape
 
 from docket import ui
 from docket.cli._flags import find_unknown_flag
+from docket.cli._pod import render_exporter_states
 from docket.core import pod_apply as _pod_apply
 
 
@@ -108,6 +109,7 @@ def _show(name_or_dir: str, json_out: bool) -> int:
         ui.console.print(f"  scope: {scope}")
     ui.console.print(f"  directory: {directory}")
     ui.console.print(f"  {escape(summary.render())}")
+    render_exporter_states(summary.exporters)
     if readme_body:
         ui.console.print()
         ui.console.print(escape(readme_body))

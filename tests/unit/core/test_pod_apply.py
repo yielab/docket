@@ -125,3 +125,77 @@ class TestSummarizeRecipe:
             _pod_apply.plan_apply(project, recipe_dir)
 
         assert not _cfg.pod_config_dir(project).exists()
+
+
+class TestRecipeExporters:
+    """A recipe may name an observability destination without carrying one (ADR 0014 rule
+    7): `apply` records the names and reports state, and never activates or writes an
+    exporter document. See `tests/integration/test_recipes.py` for the end-to-end CLI path."""
+
+    def test_summarize_recipe_reads_and_renders_the_declared_names(self, tmp_path: Path) -> None:
+        (tmp_path / "pod.yaml").write_text(
+            "kind: pod\nname: x\nexporters: [langfuse]\n", encoding="utf-8"
+        )
+
+        summary = _pod_apply.summarize_recipe(tmp_path)
+
+        assert summary.exporters == ("langfuse",)
+        assert summary.render() == (
+            "roles 0 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · "
+            "settings 0 · exporters langfuse"
+        )
+
+    def test_apply_records_the_names_and_writes_no_exporter_document(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = "observed"
+        _seed_fixture_pod(tmp_path, monkeypatch, project)
+        recipe_dir = tmp_path / "recipe"
+        recipe_dir.mkdir()
+        (recipe_dir / "pod.yaml").write_text(
+            "kind: pod\nname: x\nexporters: [langfuse]\n", encoding="utf-8"
+        )
+
+        plan = _pod_apply.plan_apply(project, recipe_dir)
+        assert plan.exporters == ("langfuse",)
+        assert all(item.action == "skip" for item in plan.items)
+
+        result = _pod_apply.apply(plan)
+
+        assert result.exporters == ("langfuse",)
+        assert pod.PodSettings.load_for(project).exporters == ("langfuse",)
+        assert not _cfg.EXPORTERS_FILE.exists()
+
+    def test_plan_apply_rejects_a_credential_shaped_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = "shaped"
+        _seed_fixture_pod(tmp_path, monkeypatch, project)
+        recipe_dir = tmp_path / "recipe"
+        recipe_dir.mkdir()
+        (recipe_dir / "pod.yaml").write_text(
+            "kind: pod\nname: x\nexporters:\n  - endpoint: https://example.test\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
+            _pod_apply.plan_apply(project, recipe_dir)
+
+        assert not _cfg.EXPORTERS_FILE.exists()
+        assert pod.PodSettings.load_for(project).exporters == ()
+
+    def test_plan_apply_rejects_an_unknown_exporter_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = "unknownexp"
+        _seed_fixture_pod(tmp_path, monkeypatch, project)
+        recipe_dir = tmp_path / "recipe"
+        recipe_dir.mkdir()
+        (recipe_dir / "pod.yaml").write_text(
+            "kind: pod\nname: x\nexporters: [nope]\n", encoding="utf-8"
+        )
+
+        with pytest.raises(_pod_apply.PodApplyError, match="exporters"):
+            _pod_apply.plan_apply(project, recipe_dir)
+
+        assert pod.PodSettings.load_for(project).exporters == ()

@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.19.0
+**Version**: 1.20.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -191,13 +191,16 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
    optional `policies/*.json` directory (guardrail policies, the same schema
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
-   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly four
+   `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly five
    top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
    any `docket pod <p> config set <key> <value>` key), `pipeline` (a filename inside *dir*,
-   default `pipeline.yaml` when that file exists), and `description` (a string; read only for
-   display — requirement 9 — and never applied to the pod). An unrecognized top-level `pod.yaml`
-   key, a `members`/`settings` value of the wrong type, or a `description` that is not a string,
-   **MUST** be rejected before anything else is read. *dir* **MAY** also carry an optional
+   default `pipeline.yaml` when that file exists), `description` (a string; read only for
+   display — requirement 9 — and never applied to the pod), and `exporters` (a list of
+   observability-destination names — requirement 11 — reported, never activated). An
+   unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
+   `description` that is not a string, or an `exporters` entry that is not a plain string naming
+   a catalog exporter, **MUST** be rejected before anything else is read. *dir* **MAY** also carry
+   an optional
    `skills/<name>/SKILL.md` directory per skill (P31-6, ADR 0013 §3 rule 8): each `<name>/` is a
    complete Agent Skill, applied whole into this pod's own `config/skills/<name>/` (see
    requirement 6's digest and "Pod manifests: export" below).
@@ -275,10 +278,14 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    pipeline document's own `name` (the file `pod.yaml`'s `pipeline` key names, or `pipeline.yaml`
    when present and no key names one — the same resolution requirement 1 uses — loaded through
    `core.pipeline.load_pipeline`; `""` when no pipeline file resolves or it fails to parse); and
-   `pod.yaml`'s own `description` (`""` when absent). `RecipeSummary.render()` **MUST** render
-   every count, always in the same order — `roles`, `policies`, `members`, `pipeline`, `plugins`,
-   `skills`, `settings` — as one line, e.g. `roles 1 · policies 1 · members 1 · pipeline
-   secure-build · plugins 0 · skills 0 · settings 0` (`pipeline none` when no pipeline resolves). `docket validate <dir>` (see
+   `pod.yaml`'s own `description` (`""` when absent); and `pod.yaml`'s own `exporters` list,
+   filtered to string entries only (unvalidated against the catalog — that check is
+   requirement 11's, `plan_apply`'s job, not this read-only summary's). `RecipeSummary.render()`
+   **MUST** render every count, always in the same order — `roles`, `policies`, `members`,
+   `pipeline`, `plugins`, `skills`, `settings` — as one line, e.g. `roles 1 · policies 1 ·
+   members 1 · pipeline secure-build · plugins 0 · skills 0 · settings 0` (`pipeline none` when
+   no pipeline resolves), with `· exporters <name>[, <name>...]` appended only when the recipe
+   names at least one (e.g. `... · settings 0 · exporters langfuse`). `docket validate <dir>` (see
    `config-format.spec.md`) prints this summary after its per-file lines; `docket pod <p> apply`
    and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
    `description` when set, before the plan itself (`cli-interface.spec.md`).
@@ -294,6 +301,31 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
     scopes), directory, derived summary, and its `README.md` body when the file is present.
     Neither subcommand **MUST** install, remove, fetch, or write anything — `docket pod <p>
     apply`/`docket init --recipe` remain the only writers.
+11. **Recipe exporters (ADR 0014 rule 7): a recipe may name a destination, never carry one.**
+    `pod.yaml`'s optional `exporters` list names zero or more observability destinations by their
+    `core.exporter.load_catalog()` name. `plan_apply` **MUST** validate every entry before
+    anything else is written: an entry that is not a plain string matching the exporter name
+    shape (`^[a-z0-9][a-z0-9-]*$`) — a document, a URL, or a credential-shaped string included —
+    **MUST** be rejected naming `exporters` and the offending entry, and an entry that does not
+    resolve in the live catalog **MUST** be rejected the same way naming the unknown name. A
+    validated list **MUST** be recorded under `core.pod.PodSettings`'s `exporters` key — a
+    recorded key exactly like `configSource`/`configDigest` (requirement 6): written only by
+    `apply`, on every successful `plan_apply`-validated run (an all-`skip` plan included, and
+    overwriting rather than merging with what a prior apply recorded), and refused by `docket pod
+    <p> config set exporters` naming `apply` as its writer. `apply` **MUST NOT** write to
+    `docket-exporters.json` or otherwise change any exporter's `enabled` state — activation stays
+    global, one operator's command (D-22), never a side effect of applying a team's configuration.
+    `apply` (and therefore `init --recipe`/a discovered `.docket/`) **MUST** print, after the
+    plan, one line per named exporter — its state from `core.exporter.activation_state` (called
+    with `health=None`: this read-only listing does not consult `exporters-health.json`) and,
+    unless already `enabled`, the exact `docket exporters enable <name>` command — e.g. `exporter
+    langfuse: disabled -> docket exporters enable langfuse` or `exporter otel-collector: enabled`.
+    `export_pod` **MUST** write this pod's recorded `exporters` list back into `pod.yaml` (see
+    "Pod manifests: export" below) when at least one is set — unlike `configSource`/
+    `configDigest`, which describe provenance and are never written back, `exporters` is part of
+    what a recipe declares and round-trips like `members`. `docket recipes show <name|dir>`
+    **MUST** print the same per-name state lines, from the directory's own declared list
+    (requirement 9), without requiring a project.
 
 ### Pod manifests: export
 
@@ -319,11 +351,13 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    (`core.pod.bound_pipeline_path(project)`, carrying no schema header of its own since it is
    not regenerated) when `PodSettings.pipeline` is set; and a `pod.yaml` manifest with `kind:
    pod` and `name: <project>` written first, then `members` (every non-Lead role this pod's
-   roster has, `core.dispatch.pod_full_roster(project)`) and `settings` (every key in
+   roster has, `core.dispatch.pod_full_roster(project)`), `settings` (every key in
    `PodSettings.KEYS` whose stored value differs from that model's own default — a key at its
    default is never written, so a fresh pod exports an empty `settings` mapping; `configSource`/
    `configDigest`, outside `KEYS`, are never written here regardless of value — requirement 6
-   above). `export` **MUST NOT** write a
+   above), and `exporters` (this pod's recorded `exporters` list, requirement 11, written only
+   when non-empty — unlike `configSource`/`configDigest`, this key round-trips like `members`).
+   `export` **MUST NOT** write a
    `pipeline` key inside `pod.yaml`: the default `pipeline.yaml` filename `apply` already
    resolves makes one redundant, matching every shipped recipe's own `pod.yaml`. A recipe's own
    `description` (requirement 9 above) is read-only display prose that `apply` never stores on
@@ -501,6 +535,22 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.20.0 (2026-09-27)
+
+- **P32-8: a recipe names its destinations (ADR 0014 rule 7).** New requirement 11: `pod.yaml`
+  gains an optional `exporters: [<name>, ...]` list, validated against
+  `core.exporter.load_catalog()` by `plan_apply` (a non-string, malformed-shaped, or unknown
+  name is refused naming `exporters`, before anything else is written); recorded under
+  `core.pod.PodSettings`'s new `exporters` key exactly like `configSource`/`configDigest`
+  (requirement 6) — written only by `apply`, refused by `config set`. `apply`/`init --recipe`
+  print one line per name from `core.exporter.activation_state` (`health=None`) after the plan,
+  and `docket recipes show` prints the same lines from the directory's own declared list;
+  neither activates anything or writes `docket-exporters.json`. `summarize_recipe` (requirement
+  9) reads the declared list and `RecipeSummary.render()` appends `· exporters <name>, ...` when
+  non-empty. `export_pod` (requirement 1, "Pod manifests: export") writes the recorded list back
+  into `pod.yaml` when set, unlike the provenance-only `configSource`/`configDigest`. See
+  `config-format.spec.md` 1.5.0 and `cli-interface.spec.md` for the manifest-key and CLI sides.
 
 ### Version 1.19.0 (2026-09-27)
 
