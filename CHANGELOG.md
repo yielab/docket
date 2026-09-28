@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A destination for observability is configuration, and one wire dialect ships built in.**
+  A `kind: exporter` document (`core/exporter.py`) describes where spans go — endpoint, auth
+  (`bearer`/`header`/`basic`/`none`, credential *names* only, never values), `resource`,
+  `aliases`, which event types to send and whether their payload is `metadata` (stripped) or
+  `full`. Five ready-made, disabled-by-default destinations ship in the wheel under
+  `templates/exporters/`: `otel-collector`, `jaeger`, `langfuse`, `honeycomb`, `phoenix` — each
+  needs only an operator to enable it and store its credential. A global override sharing a
+  built-in's name inherits every field it does not itself set. The trace record gains an
+  optional `task_id`, written only when truthy, and `trace_ingest` now notifies subscribers
+  before appending so a live consumer sees a driver-projected session in order.
+  `edges/adapters/exporters/otlp_http.py` is the one shipped wire encoding: deterministic OTLP
+  JSON (sorted attributes, nanosecond timestamps, alias duplication), a transport that retries
+  once on 429/502/503/504 honouring `Retry-After`, and a reachability probe — hand-rolled over
+  stdlib `urllib`, no new dependency. No bounded queue, background sender, or `docket exporters`
+  CLI surface exists yet; see `observability-export.spec.md` and
+  [ADR 0014](docs/adr/0014-observability-export.md).
 - **The model's own call is a trace event, and a neutral span model projects it.** Every backend
   chat-completions exchange (each turn iteration, plus the compaction summarizer's own call) is
   now a durable `llm_call` trace record carrying model, provider, measured latency and token

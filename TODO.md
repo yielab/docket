@@ -11,14 +11,15 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 57 (Phase 32, D-48) · Wave 56 complete 2026-09-27
+> ## ▶ ACTIVE BOARD — WAVE 58 (Phase 32, D-48) · Wave 57 complete 2026-09-27
 >
 > **Nine cards over Waves 56–59**, one Sonnet worker per card in an isolated worktree under one
 > integrator. Decision, the rules, the verdict table and the test discipline are in
 > [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md). Worker packets:
 > [.agents/handoffs/wave-56-worker-packets.md](.agents/handoffs/wave-56-worker-packets.md).
-> Wave 56 (P32-1 `8576090`, P32-2 `7f6a364`) merged 2026-09-27 with rollup after it. Wave 57 runs
-> P32-3, P32-4 and P32-5 in parallel (merge order P32-4, P32-5, P32-3), one Sonnet worker per card.
+> Wave 56 (P32-1 `8576090`, P32-2 `7f6a364`) and Wave 57 (P32-4 `96680d9`, P32-5 `8dc5c45`,
+> P32-3 `235db20`) merged 2026-09-27 with a rollup after each. Wave 58 runs P32-6, P32-7 and
+> P32-8 in parallel, one Sonnet worker per card, merge order P32-6, P32-7, P32-8.
 > **Phase 32 closes when the Wave 59 rollup merges green.**
 >
 > **Phase 31 closed 2026-09-27** — see the record below.
@@ -191,17 +192,22 @@ release source.
 
 
 
-## ▶ WAVE 57 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
+## ▶ WAVE 58 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
 
-**Opened 2026-09-27 (Wave 57 active; Wave 56 done).** Nine cards in four waves (two Sonnet
+**Opened 2026-09-27 (Wave 58 active; Waves 56-57 done).** Nine cards in four waves (two Sonnet
 workers in parallel, then three, then three, then the integrator). Decision, the rules, the
 destination table, the verdict table and the test discipline are in
 [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
 Worker packets: [.agents/handoffs/wave-56-worker-packets.md](.agents/handoffs/wave-56-worker-packets.md).
 **Activation gate met 2026-09-27:** Phase 31 closed at `3f39484`, README follow-up at `0191ffe`;
 batching confirmed from the function-level ownership below; the packets file records the base
-commit. **Wave 56 merged 2026-09-27:** P32-1 at `8576090`, P32-2 at `7f6a364`; full gates green
-(3,153 tests, 31 specs, 19/19 goldens, mypy/ruff/spec-index clean); `specs/README.md` and
+commit. **Wave 56 merged 2026-09-27:** P32-1 at `8576090`, P32-2 at `7f6a364`. **Wave 57 merged
+2026-09-27:** P32-4 at `96680d9`, P32-5 at `8dc5c45` (their independent `observability-export.spec.md`
+bumps from the same 1.0.0 base were reconciled by hand into one sequential 1.1.0 -> 1.2.0
+history, requirements renumbered 19-43), P32-3 at `235db20` (also fixed a real regression in
+the shared `tests/fakes.py::FakeDriver.run_turn`, which needed the new `trace_task_id` kwarg
+once `core/dispatch.py` started passing it unconditionally). Full gates green after each rollup
+(3,191 tests, 31 specs, 19/19 goldens, mypy/ruff/spec-index clean); `specs/README.md` and
 `CONTRIBUTING.md` re-trued. Analysis and plan (gitignored):
 `internal-docs/observability-export-audit-2026-09-27.es.md`,
 `internal-docs/observability-export-plan-2026-09-27.es.md`.
@@ -358,7 +364,7 @@ import fails). **Gates:** worker gates; no goldens; `comment_lint` on the new mo
 
 ### P32-3 — `task_id` on the record; the ingestion bridge notifies the seam
 
-**Status:** TODO · **Size:** S · **Wave:** 57 (after the Wave 56 rollup) · **Spec:** `trace-store.spec.md` → 1.1.0 (record gains optional `task_id`; `trace_ingest` MUST notify subscribers), `pod-dispatch.spec.md` → 6.23.0 (hop records carry the task id), `serve-read-api.spec.md` → 2.13.2 (`/traces` lines may carry `task_id`; additive)
+**Status:** DONE (2026-09-27, `235db20`) · **Size:** S · **Wave:** 57 (after the Wave 56 rollup) · **Spec:** `trace-store.spec.md` → 1.1.0 (record gains optional `task_id`; `trace_ingest` MUST notify subscribers), `pod-dispatch.spec.md` → 6.23.0 (hop records carry the task id), `serve-read-api.spec.md` → 2.13.2 (`/traces` lines may carry `task_id`; additive)
 
 **Trigger:** `core/dispatch.py` passes `context={"taskId": ...}` into the hop and
 `docket_runtime.py::run_turn` receives `trace_project`/`trace_session_key` but no task id, so
@@ -400,7 +406,7 @@ call site only); the three specs. **Forbidden:** `core/dispatch.py` beyond that 
 
 ### P32-4 — `kind: exporter`: the document, the catalog, the built-ins
 
-**Status:** TODO · **Size:** M · **Wave:** 57 · **Spec:** `observability-export.spec.md` → 1.1.0 (new sections "Exporter documents", "Catalog and scopes", "Activation state", "Health file"), `config-format.spec.md` → 1.4.0 (`exporter` joins the envelope kinds), `workspace-structure.spec.md` → 1.15.0 (`docket-exporters.json`, `exporters-health.json`)
+**Status:** DONE (2026-09-27, `96680d9`) · **Size:** M · **Wave:** 57 · **Spec:** `observability-export.spec.md` → 1.1.0 (new sections "Exporter documents", "Catalog and scopes", "Activation state", "Health file"), `config-format.spec.md` → 1.4.0 (`exporter` joins the envelope kinds), `workspace-structure.spec.md` → 1.15.0 (`docket-exporters.json`, `exporters-health.json`)
 
 **Trigger:** telemetry is configured by five environment variables (`TRACES_DIR`,
 `DOCKET_NO_TRACE`, `TRACE_RETENTION_DAYS`, `AUDIT_LOG_MAX_BYTES`, `METRICS_WINDOW`) and nothing
@@ -480,7 +486,7 @@ gates including `gen_config_schemas.py --check`; no goldens.
 
 ### P32-5 — the `otlp-http` dialect
 
-**Status:** TODO · **Size:** M · **Wave:** 57 · **Spec:** `observability-export.spec.md` → 1.2.0 (new section "The otlp-http dialect": encoding rules, auth, timeout, retry, the wire golden)
+**Status:** DONE (2026-09-27, `8dc5c45`) · **Size:** M · **Wave:** 57 · **Spec:** `observability-export.spec.md` → 1.2.0 (new section "The otlp-http dialect": encoding rules, auth, timeout, retry, the wire golden)
 
 **Trigger:** no module in docket knows OTLP; D-19 rents protocols through one adapter module
 each (`edges/adapters/llm.py` for chat completions) and the runtime library allows no new
