@@ -2654,6 +2654,28 @@ class TestLlmCallTrace:
 
         assert with_capture_path == baseline
 
+    @pytest.mark.parametrize("granted", [frozenset({"toolResults"}), frozenset()])
+    def test_tool_result_text_is_captured_only_when_granted(
+        self,
+        ctx: ToolContext,
+        registry: ToolRegistry,
+        monkeypatch: pytest.MonkeyPatch,
+        granted: frozenset[str],
+    ) -> None:
+        monkeypatch.setattr(_loop._telemetry, "capture_classes", lambda: granted)
+        backend = ScriptedBackend(
+            [_tool_call_response("c1", "echo", '{"text": "echoed-back"}'), _final("ok")]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:tool-text", "go")
+        assert result.ok
+        (payload,) = [e["payload"] for e in events if e["event_type"] == "tool_result"]
+        if granted:
+            assert "echoed-back" in payload["text"]
+        else:
+            assert "text" not in payload
+
 
 # ── multi-turn history feeding ───────────────────────────────────────────────
 

@@ -782,35 +782,119 @@ policies, pipelines, settings) are still applied only by an operator command (§
 A destination is a `kind: exporter` YAML document, the same shape as a `kind: provider`
 (§3.1): five built-in templates ship in the wheel (`otel-collector`, `jaeger`, `phoenix` —
 no auth; `honeycomb` — header; `langfuse` — basic), all speaking the same hand-rolled
-`otlp-http` dialect (no OpenTelemetry SDK dependency; D-24 stands). Every dispatch hop already
-emits an `llm_call` trace event; `core/telemetry.py` projects the whole session into a neutral
-span model (`docket.session` root, `gen_ai.chat` and `execute_tool` children, deterministic
-span/trace ids from the session id) and a background pipeline drains it to every enabled
-exporter — bounded queue, drop-on-full, never raises into a turn.
+`otlp-http` dialect (no OpenTelemetry SDK dependency; D-24 stands). `core/telemetry.py`
+projects each session into a neutral span model (`docket.session` root, `gen_ai.chat` and
+`execute_tool` children, deterministic span/trace ids from the session id) and a background
+pipeline drains it to every enabled exporter — bounded queue, drop-on-full, never raises into a
+turn. Nothing is sent until you run `docket exporters enable`, and a present credential never
+turns an exporter on by itself.
+
+#### What leaves this host: the privacy level
+
+Each exporter document declares what it shares beyond bare structure (ADR 0015). Structure —
+model and tool names, timing, measured token counts, pass/fail, ids — is always sent. Content is
+split into six classes, and a level is a named set of them:
+
+| `privacy:` | Adds | The destination sees |
+|---|---|---|
+| `minimal` (default, every built-in) | nothing | structure only; Input/Output columns stay empty |
+| `actions` | `toolArguments`, `errors` | what the agent did: tool arguments (`gen_ai.tool.call.arguments`), an approval's command line, error text |
+| `conversation` | + `toolResults`, `completions`, `prompts` | what was said and read: `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.tool.call.result` |
+| `full` | + `instructions` | also the system prompt (`gen_ai.system_instructions`), sent once per session and again only when it changes |
+
+Or name the classes exactly: `share: [completions, toolArguments]`. `contentMaxChars` (default
+4000) cuts every content value, keeping JSON intact. The attribute names are the OpenTelemetry
+GenAI ones, which Langfuse reads natively as a generation's Input/Output. Credentials and
+secret-shaped values are redacted before anything is written, at every level.
+
+Three rules keep the level honest. The projection is an **allowlist**: an attribute leaves only
+when its class is granted, so a new trace field stays home until someone classifies it. A
+conversation is filtered **per part**: sharing `prompts` sends your task and the model's text
+but replaces a tool result inside it with `{"type": "withheld", "class": "toolResults"}`.
+And content is **captured only on demand**: prompts, replies and tool output enter the local
+trace only while some enabled exporter grants them, so at `minimal` everywhere the local trace
+is exactly what it was without exporters.
+
+#### Choosing a level
+
+Widening is a command, not an edit you can make by accident. It lists what starts leaving and
+where, and asks; off a TTY it refuses unless you pass `--yes`. Narrowing never asks. Both are
+written to the audit log as `exporter.privacy name=… from=… to=… host=…`. Real transcripts from
+this machine:
+
+```bash
+$ docket exporters privacy langfuse conversation
+⚠ 'langfuse' will widen from 'minimal' to 'conversation':
+    + toolArguments  (e.g. gen_ai.tool.call.arguments)
+    + errors  (e.g. docket.error.message)
+    + toolResults  (e.g. gen_ai.tool.call.result)
+    + completions  (e.g. gen_ai.output.messages)
+    + prompts  (e.g. gen_ai.input.messages)
+  destination: cloud.langfuse.com
+✗ Error: Refusing to widen 'langfuse' off a TTY without --yes.
+
+$ docket exporters show langfuse
+  ...
+  privacy       conversation
+
+  Leaves this host:
+    ✓ toolArguments  (gen_ai.tool.call.arguments, docket.approval.action)
+    ✓ errors  (docket.error.message)
+    ✓ toolResults  (gen_ai.tool.call.result)
+    ✓ completions  (gen_ai.output.messages)
+    ✓ prompts  (gen_ai.input.messages)
+    ✗ instructions  (gen_ai.system_instructions)
+    never: credentials, secret-shaped values (redacted)
+```
+
+`docket exporters preview <name>` shows what a destination would receive from a real local
+session (the newest, or `--session <id>`) before anything is sent: every span, every attribute
+with its class, and a footer counting them. `--level`/`--share` try another level without
+writing it; `--json` prints the exact wire document. It opens no socket and writes nothing.
+Because content is captured only on demand, a session recorded at `minimal` holds no
+conversation to preview at `conversation`; the footer says so rather than showing less than a
+later session would send.
+
+```bash
+$ docket exporters preview langfuse
+Preview: langfuse  (session agent:harness-e262ed07e5a2:default)
+  privacy: actions   shares: errors, toolArguments
+
+  execute_tool read
+    gen_ai.tool.name [structure]  read
+    gen_ai.tool.call.arguments [toolArguments]  {"path": "notes.txt"}
+    docket.tool.ok [structure]  True
+  ...
+  spans: 4
+  attributes:
+    structure: 21
+    toolArguments: 1
+    ...
+  bytes: 2934
+```
+
+The level also travels with the data: every `docket.session` root span carries
+`docket.privacy` and `docket.privacy.classes`, so the destination shows what it was allowed to
+receive. `docket exporters list` has a `SHARES` column, `docket config explain` prints the level
+per exporter, and `docket doctor` notes any exporter sharing `conversation` or `full` with a host
+that is not this machine.
+
+#### Turning a destination on
 
 `enable` resolves the credential (a TTY prompt, or a refusal naming `docket keys add <NAME>`
 when there is none), probes the endpoint with it, and classifies the result before writing
 anything. A transport failure refuses the enable; a reachable-but-unauthenticated endpoint still
-enables, because only a transport failure is disqualifying. Real transcripts from this machine,
-all three auth kinds:
+enables, because only a transport failure is disqualifying. `enable --privacy <level>` (or
+`--share a,b`) sets the level in the same step, under the same confirmation rule.
 
 ```bash
-# auth: none -- otel-collector, running locally in Docker, no credential needed
-$ docket exporters enable otel-collector
-✓ Exporter enabled: otel-collector  ->  http://127.0.0.1:4318/v1/traces
-  scope: global  payload: full
-⚠ tool arguments and results leave this host
+$ docket exporters enable langfuse --privacy actions --yes
+✓ Exporter enabled: langfuse  ->  https://cloud.langfuse.com/api/public/otel/v1/traces
+  scope: global  shares: actions (errors, toolArguments)
 
-# auth: header -- honeycomb, no key stored yet
-$ docket exporters enable honeycomb
+$ docket exporters enable honeycomb          # no key stored yet
 ✗ Error: Exporter 'honeycomb' needs credentials that are not set:
   docket keys add HONEYCOMB_API_KEY
-
-# auth: basic -- langfuse, no keys stored yet
-$ docket exporters enable langfuse
-✗ Error: Exporter 'langfuse' needs credentials that are not set:
-  docket keys add LANGFUSE_PUBLIC_KEY
-  docket keys add LANGFUSE_SECRET_KEY
 ```
 
 Store the missing credential(s) with `docket keys add <NAME>` (prompts, never take a value as an
@@ -818,32 +902,20 @@ argument) and re-run `enable` -- it re-probes with the stored credential before 
 
 | Command | Effect |
 |---|---|
-| `docket exporters list [--json]` | Every built-in and global exporter, dialect, activation state, required credentials, scope |
-| `docket exporters show <name> [--json]` | One exporter's full spec plus its health counters: `exported`/`dropped`/`failed` |
-| `docket exporters enable <name> [--endpoint URL] [--payload metadata\|full] [--events ...] [--no-verify]` | Resolves credentials, probes, writes a minimal global override (never the whole inherited document) |
+| `docket exporters list [--json]` | Every built-in and global exporter, dialect, activation state, required credentials, scope, `SHARES` |
+| `docket exporters show <name> [--json]` | One exporter's effective document, health counters (`exported`/`dropped`/`failed`) and the "Leaves this host" block |
+| `docket exporters enable <name> [--endpoint URL] [--privacy <level>\|--share a,b] [--events ...] [--no-verify] [--yes]` | Resolves credentials, probes, writes a minimal global override (never the whole inherited document) |
+| `docket exporters privacy <name> [<level>\|--share a,b] [--max-chars N] [--yes]` | Without a level, prints what leaves; otherwise changes it, confirming a widening |
+| `docket exporters preview <name> [--session <id>] [--level <level>\|--share a,b] [--json]` | What the destination would receive from a local session; no network, no write |
 | `docket exporters disable <name>` | Writes `enabled: false` to the override, nothing else |
 | `docket exporters test <name>` | Re-probes the currently-configured endpoint without changing anything |
-| `docket exporters add <file.yaml>` | Registers a new `kind: exporter` document (a self-hosted or vendor endpoint the built-ins don't cover) |
+| `docket exporters add <file.yaml> [--yes]` | Registers a new `kind: exporter` document; one above `minimal` follows the widening rule |
 | `docket exporters remove <name>` | Removes a global override; a built-in reverts to its shipped defaults instead of disappearing |
 | `docket exporters export <name> [<file>]` | Writes the effective document back out, short-form YAML |
 
-`payload` governs what a span carries, not whether it is sent: `metadata` (the default, and every
-built-in except `otel-collector`) strips `arguments`/`text`/`content`/`output`/`result`/`prompt`/
-`messages`/`summary` from a trace record's payload before it is projected; `full` keeps them,
-truncated to a capped length. **This does not currently affect the two span kinds a destination
-like Langfuse renders as a generation or a tool call:** `gen_ai.chat` (`llm_call`) carries only
-`gen_ai.system`/`gen_ai.request.model`/`gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens`/
-`gen_ai.response.finish_reasons`/`docket.iteration`, and `execute_tool <name>` carries only
-`gen_ai.tool.name`/`gen_ai.tool.call.id`/`docket.tool.ok` — neither ever includes the model's
-prompt/completion text or a tool's arguments/output, at either payload setting, because docket's
-own `llm_call` trace event never captures message content in the first place (measured tokens
-and latency only) and the two spans' attribute sets are closed by
-`observability-export.spec.md`'s Requirements 8-9. A destination's own "Input"/"Output" columns
-will read empty for these two span kinds until that content is deliberately wired in — expect
-token counts, timing, tool names and pass/fail, not conversation content, from any exporter
-today. `otel-collector` still ships `payload: full` because that traffic never leaves the
-machine, and `full` is not inert everywhere: it still applies to the handful of other trace event
-types whose payload happens to carry a `metadata`-stripped field as a session-root event.
+The retired `payload`/`payloadMaxChars` fields still load, always as `minimal` — they never
+widen what an exporter shares — and `docket doctor` names the `docket exporters privacy` command
+that replaces them.
 
 A pod names the destinations it wants in `pod.yaml`'s `exporters:` list (validated against the
 live catalog by `apply`/`validate`/`init --recipe`; unknown names refuse before anything is
@@ -856,15 +928,14 @@ destination in a recipe documents intent without silently starting to ship data 
 exporters: [otel-collector, langfuse]
 ```
 
-**Live proof, this machine, 2026-09-28:** a real `docket pod rack-cli dispatch` (4 hops: lead ->
-implementer -> reviewer -> tester) against the local llama.cpp endpoint, with `otel-collector`
-enabled and an `otel/opentelemetry-collector` container (`debug` exporter) receiving on 4318 --
-the collector logged 5 `docket.session` roots, 29 `gen_ai.chat` spans with real measured token
-counts (e.g. `in=2467/out=63`), and 39 `execute_tool` spans (`read`/`grep`/`glob`); `docket trace
-<session>` showed the same 29 `llm_call` lines; `docket exporters show otel-collector` reported
-`health exported=71 dropped=0 failed=0`. Full detail: `specs/functional/observability-export.spec.md`
-§"External verification". Langfuse needs the operator's own `LANGFUSE_PUBLIC_KEY`/
-`LANGFUSE_SECRET_KEY` -- the refusal transcript above is what this machine can show without them.
+**Live proof, this machine, 2026-09-28:** one real `docket harness run` turn per level against
+the local llama.cpp endpoint, with `otel-collector` (a local `otel/opentelemetry-collector`,
+`debug` exporter) and `langfuse` both enabled at that level, a unique canary in the task and
+another in the file the agent read. `minimal`: no canary in the collector log, in Langfuse, in
+`preview --json` or even in the local trace; Langfuse's Input/Output empty. `actions`: tool
+spans carried `{"path": "notes.txt"}`, still no canary. `conversation`: Langfuse showed each
+generation's Input and Output and the `read` tool's result, both canaries present. Full detail:
+`specs/functional/observability-export.spec.md` §"External verification".
 
 ## 4. File reference
 

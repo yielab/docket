@@ -92,8 +92,8 @@ merge — reconciled by hand each time, a predictable cost of two workers target
 file, not a process failure. D-24's cut of the OpenTelemetry SDK stands; reasoning in
 [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
 Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
-**Phase 33 (export privacy levels, D-49) is ACTIVE, opened 2026-09-28**, six cards over Waves
-60–63 (one Sonnet worker, then two, two, then the integrator), triggered by the live Langfuse
+**Phase 33 (export privacy levels, D-49) shipped 2026-09-28** (opened and closed the same day), six
+cards over Waves 60–63 (one Sonnet worker, then two, two, then the integrator), triggered by the live Langfuse
 run: every generation's Input/Output was empty, `payload: full` changed nothing a destination
 renders, and the `metadata` denylist already let an approval's command line and run error text
 leave the host. What a destination may see becomes a set of content classes (`toolArguments`,
@@ -105,7 +105,10 @@ confirmed, audited command; the level shows in `list`/`show`/`explain`/`doctor`,
 span, and in an offline `docket exporters preview`. Content uses the OTel GenAI `Opt-In`
 attribute names, which Langfuse reads natively; reasoning in
 [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
-Executable cards live in [TODO.md](TODO.md).
+Verified live at `minimal`/`actions`/`conversation` against a local collector and Langfuse with
+canaries (none at `minimal`); that run found `tool_result` never recording its output and fixed
+it. Follow-up recorded, not scheduled: the pipeline's idle flush can emit a session's root span
+twice. Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's

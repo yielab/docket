@@ -9132,3 +9132,309 @@ failed=0`. Full detail in the spec's "External verification" section.
 
 **Acceptance:** every gate in §"How to use this board" green on `main`; the two live transcripts
 pasted into the spec's "External verification"; `docket exporters list` golden added.
+## ◆ PHASE 33 — COMPLETE (opened 2026-09-28, closed 2026-09-28): export privacy levels (D-49)
+
+**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 merged (P33-2 `80ec2e4`, P33-3 `db76762`) with the capture-to-wire seam test already in `tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`; Wave 62 merged (P33-4 `8e7a1bf`, P33-5 `9bcaad4`); Wave 63 (P33-6) closed the phase: docs, live proof at three levels, the `tool_result` capture fix.** Six cards in four waves (one Sonnet worker, then two in
+parallel, then two, then the integrator). Decision, the class and level tables, the eleven rules
+and the verdict table are in [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
+Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
+**Activation gate met 2026-09-28:** Phase 32 closed at `5f53e52`, the Langfuse follow-up at
+`940c3cd`; batching below is by function-level ownership.
+
+**Trigger (explicit request + live evidence, 2026-09-28):** a real dispatch exported to Langfuse
+rendered every generation's Input/Output as `null`/`undefined`; the operator asked for privacy
+levels that are solid, configurable from the exporter's own settings, chosen consciously and
+evident, so they know what they share and can turn it off. Measured at `940c3cd`: `payload:
+full` changes nothing a destination renders (`gen_ai.chat`/`execute_tool` attribute sets are
+closed; `core/agent_loop.py::_trace_llm_call` records no content); `payload: metadata` is a
+denylist of eight key names (`core/telemetry.py::_CONTENT_KEYS`), so `approval_requested.action`
+(a command line) and `error.error` (free text) already reach every enabled destination through
+`_handle_generic_event`; nothing shows the operator what leaves. OTel GenAI semantic conventions
+make content `Opt-In` and name the attributes; Langfuse reads those names natively.
+
+**Spec ownership rule (the Phase 32 lesson, applied up front):** three Phase 32 merges conflicted
+because parallel cards bumped the same spec from the same base. In this phase **workers add
+requirements under their own new section heading in a pre-assigned number range and do not
+touch `**Version**`, `**Status**` or the changelog**; the integrator bumps each spec once per
+rollup. Ranges in `observability-export.spec.md` (last requirement today: 63): P33-1 64–79,
+P33-2 80–87, P33-4 88–97, P33-5 98–101. P33-3 owns its sections in `trace-store.spec.md` and
+`agent-loop.spec.md`.
+
+**Test rule (ADR 0015):** one RED behavioural test per card in the module's `SUBJECT` file; a
+negative case only for a fail-closed property (P33-1 canary under `minimal`, P33-3 byte-identical
+record with no exporter above `minimal`, P33-4 widening off a TTY without `--yes`). Existing
+tests, goldens and specs are the no-change oracle except where a card lists the change. No
+worker probes a real vendor host or a real model endpoint.
+
+| Wave | Cards | Hot file and function ownership |
+| --- | --- | --- |
+| 60 | P33-1 | `core/privacy.py` (new), `core/telemetry.py` (`ExportPolicy`, `project`, every `_handle_*`, `_new_root`, `capture_classes`, the one `ExportPolicy(...)` line in `start`), `tests/unit/core/test_privacy.py` (new), `tests/unit/core/test_telemetry.py`, `tests/fixtures/otlp-v1/` (two root attributes) |
+| 61 | P33-2 ∥ P33-3 | `core/exporter.py::ExporterSpec` + audit detail lines, `core/telemetry.py::start` (policy from spec), `templates/exporters/*.yaml`, exporter schema (both copies), `cli/_exporters.py` + `cli/_config.py::_exporters_report` (`payload` readers only) → P33-2; `core/agent_loop.py::_trace_llm_call` + its two call sites, `cli/_trace.py::_render_event` (llm_call line only) → P33-3 |
+| 62 | P33-4 ∥ P33-5 | `cli/_exporters.py` (`_run_list`, `_run_show`, `_run_enable`, `_run_add`, new `_run_privacy`), `cli/_config.py::_explain` renderer line, `cli/_doctor.py::_check_exporters`, `core/exporter.py::set_privacy` (new), `exporters list` golden → P33-4; `cli/_exporters_preview.py` (new), one `run_exporters` handler entry → P33-5 (the handler dict, usage text and `cli/__init__.py` exporters help are shared lines: the integrator reconciles) |
+| 63 | P33-6 | integrator: seam test, docs, live proof at three levels, canary on the real wire, rollups, archive |
+
+Every card follows the §"How to use this board" definition of done.
+
+### P33-1 — what may leave is a class; the projection is an allowlist
+
+**Status:** DONE (2026-09-28, `1890420`) · **Size:** M · **Wave:** 60 · **Spec:** `observability-export.spec.md` new sections "Privacy classes and levels" and "Allowlist projection" (requirements 64–79); requirements 11, 16 and 17 amended in place (integrator bumps the version)
+
+**Trigger:** `core/telemetry.py::_CONTENT_KEYS` is a denylist; `_handle_generic_event` forwards
+every scalar as `docket.<key>`, so `approval_requested.action` and `error.error` leave under the
+default `metadata`; no handler can emit prompt/tool content at any setting.
+
+**Goal:**
+- `core/privacy.py` (new, pure data, imports nothing from `core/` but `typing`):
+  `CONTENT_CLASSES = ("toolArguments", "errors", "toolResults", "completions", "prompts",
+  "instructions")`; `LEVELS: dict[str, frozenset[str]]` with `minimal` = ∅, `actions` =
+  {toolArguments, errors}, `conversation` = actions ∪ {toolResults, completions, prompts},
+  `full` = all six; `resolve(privacy: str | None, share: Sequence[str] | None) ->
+  tuple[str, frozenset[str]]` returning the label (`minimal`…`full`, or `custom` for a `share`
+  list that equals no level) and the class set, raising `ValueError` on an unknown level, an
+  unknown class, or both arguments given; `describe(classes) -> list[tuple[str, bool, tuple[str,
+  ...]]]` (class, granted, attribute names) for the CLI.
+- `core/telemetry.py`: `ExportPolicy(events, classes: frozenset[str] = frozenset(),
+  label: str = "minimal", content_max_chars: int = 4000)`; `admit` filters by event only and
+  never rewrites the payload. `project(record, state, policy=MINIMAL_POLICY)` threads the policy
+  to handlers; `ATTRIBUTE_CLASSES: dict[str, str]` maps every attribute any handler can emit to
+  `structure` or one content class, and one helper (`_granted(policy, cls)`) is the only way a
+  content attribute is set. `_handle_tool_call` adds `gen_ai.tool.call.arguments` (toolArguments);
+  `_handle_tool_result` adds `gen_ai.tool.call.result` from `text`/`output` (toolResults);
+  `_handle_llm_call` adds `gen_ai.input.messages`, `gen_ai.output.messages`,
+  `gen_ai.system_instructions` from the payload keys `inputMessages`, `outputMessages`,
+  `systemInstructions` (written by P33-3; read defensively, absent today) and always
+  `docket.instructions.sha256` when `systemInstructionsSha256` is present. Input messages are
+  filtered **per part** (ADR 0015 rule 3): a `tool` role turn needs toolResults, an assistant
+  `tool_call` part's arguments need toolArguments, a `system` turn needs instructions; a withheld
+  part becomes `{"type": "withheld", "class": "<class>"}`. Every text part and every content
+  attribute is cut to `content_max_chars` with the suffix `…[truncated <n> chars]`, JSON
+  structure kept; message attributes are JSON strings.
+- `_handle_generic_event` forwards only the keys in a per-event table `_STRUCTURAL_KEYS`
+  (derive it from the call sites: `guardrail_*` → `hook`, `policy`, `action`; `approval_*` →
+  `token`; `error` → `run`, `source`; budget/stale/paused/cancel events → their counters and
+  ids; unlisted keys drop). `approval_requested.action` becomes `docket.approval.action`
+  (toolArguments); `error.error` becomes `docket.error.message` (errors).
+- `_new_root` gains `docket.privacy` (the policy label) and `docket.privacy.classes`
+  (comma-joined, sorted, `""` for minimal).
+- `capture_classes() -> frozenset[str]`: the union of the classes of the started pipelines'
+  policies (empty when none is started). `start` builds `ExportPolicy(events=..., classes=
+  frozenset(), label="minimal")` until P33-2 wires the document — the interim state narrows,
+  never widens.
+- Remove `_CONTENT_KEYS`, `_reduce_metadata`, `_reduce_full`.
+
+**Non-goals:** the exporter document fields (P33-2); capturing model content (P33-3); any CLI.
+
+**Owns:** `core/privacy.py` (new), `core/telemetry.py` (the functions named in the wave table),
+`tests/unit/core/test_privacy.py` (new, `SUBJECT = docket.core.privacy`),
+`tests/unit/core/test_telemetry.py`, `tests/fixtures/otlp-v1/dispatch-3-hops.json` (only the two
+new root attributes), the spec sections. **Forbidden:** `core/exporter.py`, `core/agent_loop.py`,
+`cli/`, `edges/`, `tests/fixtures/traces/`.
+
+**Acceptance:**
+- Fixture: every member of `core.trace.EVENT_TYPES` gets a synthetic record whose every string
+  payload field is `CANARY-<event>-<key>`, plus an `llm_call` carrying `inputMessages` (system,
+  user, assistant-with-tool-call, tool turns), `outputMessages`, `systemInstructions`, each part
+  a distinct canary. Action: project and flush under each level and under each single-class
+  `share`, then `otlp_http.encode`. Result: under `minimal` the encoded bytes contain no
+  `CANARY-`; under each policy every canary found sits in an attribute whose
+  `ATTRIBUTE_CLASSES` class is granted, and every granted class's canary is present. Oracle: a
+  substring search over the encoded JSON, not the handler's own return value.
+- `share: [prompts]` exports the user/assistant text of `gen_ai.input.messages` and a
+  `withheld` part (class `toolResults`) in place of the tool turn's content.
+- The committed wire golden differs from its base only by `docket.privacy: "minimal"` and
+  `docket.privacy.classes: ""` on the root; P32-2's and P32-5's other assertions hold unchanged.
+- A 10,000-character part under `content_max_chars=4000` exports as 4,000 characters plus the
+  marker, and the attribute still parses as JSON.
+
+**RED test:** the canary case in `tests/unit/core/test_telemetry.py` fails on the base
+(`approval_requested`'s and `error`'s canaries appear under `metadata`). **Gates:** worker gates;
+`tests/golden/run.sh verify-all` unchanged (no CLI output moves).
+
+### P33-2 — the exporter document declares its privacy
+
+**Status:** DONE (2026-09-28, `80ec2e4`) · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `observability-export.spec.md` "Exporter documents" amended + requirements 80–87; `config-format.spec.md` (exporter fields); `workspace-structure.spec.md` only if a template path changes (integrator bumps)
+
+**Trigger:** privacy must be configurable from the exporter's own settings (the request);
+`ExporterSpec.payload`/`payloadMaxChars` no longer mean anything after P33-1.
+
+**Goal:**
+- `core/exporter.py::ExporterSpec`: `privacy: Literal["minimal","actions","conversation","full"]
+  | None = None`, `share: list[str] | None = None`, `content_max_chars: int = Field(4000,
+  alias="contentMaxChars", gt=0, le=100_000)`; a model validator calls `core.privacy.resolve`
+  (both set → refused naming both; unknown level/class → refused naming it); `privacy_label` and
+  `privacy_classes` properties (unset = `minimal`). `payload`/`payloadMaxChars` removed; a stored
+  document still carrying `payload` loads as `minimal` and `legacy_fields` names it (never a wider
+  level; ADR 0015 rule 7).
+- Every file in `templates/exporters/` declares `privacy: minimal` (including `otel-collector`,
+  whose `payload: full` goes; its `note` says why: a collector forwards). Schemas regenerated
+  (`scripts/gen_config_schemas.py`, both copies).
+- `core/telemetry.py::start` builds `ExportPolicy(events=..., classes=spec.privacy_classes,
+  label=spec.privacy_label, content_max_chars=spec.content_max_chars)`.
+- Every reader of `spec.payload` moves to `privacy_label` (`cli/_exporters.py` show/enable
+  lines, `cli/_config.py::_exporters_report` key `privacy` replacing `payload`, the audit detail
+  strings in `core/exporter.py`), with no new UX (P33-4 owns that).
+
+**Non-goals:** the `privacy` command, confirmation, `SHARES`, preview (P33-4/P33-5); capture
+(P33-3).
+
+**Owns:** `core/exporter.py` (`ExporterSpec`, the audit detail lines), `core/telemetry.py::start`
+(the one constructor call), `templates/exporters/*.yaml`, the exporter schema (both copies),
+`cli/_exporters.py` and `cli/_config.py` (the `payload` readers only), `tests/unit/core/test_exporter.py`,
+`tests/integration/test_otlp_export.py` (only where it sets `payload`), the spec text.
+**Forbidden:** `core/agent_loop.py`, `core/privacy.py` (read it; return a contention note if it
+needs a change), every other `core/telemetry.py` function.
+
+**Acceptance:**
+- `docket validate` accepts `privacy: conversation`, accepts `share: [toolArguments]`, refuses
+  both together, refuses `privacy: everything` and `share: [secrets]`, each naming the field.
+- A global document `{kind: exporter, name: langfuse, payload: full, enabled: true}` in
+  `docket-exporters.json` resolves to label `minimal`, classes ∅, and `legacy_fields == ["payload"]`.
+- With a local `http.server` sink and `privacy: actions`, one real `run_turn` through the fake
+  backend exports a span whose attributes include `gen_ai.tool.call.arguments`; the same with the
+  document at `minimal` exports none (integration, `tests/integration/test_otlp_export.py`).
+- `docket exporters list` golden unchanged; every built-in validates.
+
+**RED test:** the `privacy: actions` integration case fails on the base (policy still minimal).
+**Gates:** worker gates including `gen_config_schemas.py --check`.
+
+### P33-3 — the model call records its content when, and only when, a destination asks
+
+**Status:** DONE (2026-09-28, `db76762`) · **Size:** M · **Wave:** 61 (after the Wave 60 rollup) · **Spec:** `trace-store.spec.md` new section "Captured content" (the three optional `llm_call` keys, the capture rule, the dedup rule); `agent-loop.spec.md` "Tracing" amended; `harness-mode.spec.md` event row note (additive) (integrator bumps)
+
+**Trigger:** `core/agent_loop.py::_trace_llm_call` records model, provider, tokens and latency,
+never the conversation, so no level can show Langfuse a generation's Input/Output.
+
+**Goal:**
+- `_trace_llm_call(..., messages: Sequence[ChatMessage] | None = None)`; both call sites
+  (`_TurnState.call_backend_and_handle_response` and the compaction summarizer) pass the exact
+  list sent to `backend.complete`. With `granted = telemetry.capture_classes()`:
+  `completions` ∈ granted → `outputMessages` (the reply: text parts + `tool_call` parts with id,
+  name, arguments); `prompts` ∈ granted → `inputMessages` without the system turn (OTel shape:
+  `{"role", "parts": [...]}`; tool turns as `tool_call_response` parts; P33-1 withholds the parts
+  of classes an exporter was not granted); `instructions` ∈ granted → `systemInstructions` (the system
+  turn's text) on the session's first call and whenever its SHA-256 differs from the last one
+  recorded for that trace key, and `systemInstructionsSha256` whenever any content is captured.
+  Parts cut to 4,000 characters here too (the bound on disk); the per-exporter cut is P33-1's.
+- Empty `granted` → the payload is byte-identical to today's (no key added, no JSON reordering).
+- `cli/_trace.py::_render_event`: an `llm_call` line with captured content ends in
+  `+content(<keys>)`; nothing changes otherwise.
+
+**Non-goals:** filtering per exporter (P33-1 does it at projection); any exporter field (P33-2).
+
+**Owns:** `core/agent_loop.py::_trace_llm_call` and its two call lines, a module-level helper for
+the message shape, `cli/_trace.py::_render_event` (the `llm_call` branch), `tests/integration/test_agent_loop.py::TestLlmCallTrace`,
+the three spec sections. **Forbidden:** `core/telemetry.py` (call `capture_classes()` only),
+`core/exporter.py`, `edges/`, `core/session.py`.
+
+**Acceptance:**
+- With `capture_classes` returning ∅ (no pipeline started), a two-iteration turn through the
+  fake backend writes `llm_call` records byte-identical to the base branch's for the same input.
+- Monkeypatching `capture_classes` to `{"prompts","completions"}`: the second call's record
+  holds `inputMessages` (user, assistant with a tool call, tool turn) and `outputMessages`, no
+  `systemInstructions`; a secret-shaped string in a tool result arrives redacted (`redact` at
+  write). With `{"instructions"}` the first call records `systemInstructions` and the second
+  does not (same hash), both carry the hash.
+- `docket trace <session>` shows `+content(inputMessages,outputMessages)` on those lines.
+
+**RED test:** the `{"prompts","completions"}` case in `TestLlmCallTrace` fails on the base.
+**Gates:** worker gates; the `docket trace` golden unchanged (its fixture has no content).
+
+### P33-4 — widening is a confirmed command; the level is shown everywhere
+
+**Status:** DONE (2026-09-28, `8e7a1bf`) · **Size:** M · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Privacy commands and disclosure" (88–97); `cli-interface.spec.md`, `cli-json-shapes.spec.md` (integrator bumps)
+
+**Trigger:** nothing tells the operator what leaves before or after enabling; a level must be
+chosen consciously (the request).
+
+**Goal:**
+- `core/exporter.py::set_privacy(name, privacy=None, share=None, content_max_chars=None) ->
+  ExporterSpec`: writes only the changed keys into the global override (the `enable_exporter`
+  mould), returns the effective spec; `is_widening(old, new) -> bool` (new classes ⊄ old).
+- `docket exporters privacy <name> [<level>|--share a,b] [--max-chars N] [--yes]`: no argument
+  prints the "Leaves this host" block; a widening prints each newly granted class with one example
+  attribute and the destination host, then asks on a TTY (`y/N`) and, off a TTY, exits 1 naming
+  `--yes` and writes nothing; narrowing never asks. `enable --privacy <level>|--share` follows the
+  same rule. `add <file>` with a document above `minimal` follows it too.
+- Audit `exporter.privacy` with `name`, `from`, `to`, `host` (never content).
+- `exporters list`: a `SHARES` column (label). `show`: "Leaves this host" (`core.privacy.describe`:
+  ✓/✗ per class, its attributes, and "never: credentials, secret-shaped values (redacted)").
+  `enable` always prints `shares: <label> (<classes or "structure only">)`. `config explain`
+  prints the label per exporter; `--json` carries `privacy: {label, classes}`. `doctor` adds an
+  informational line for `conversation`/`full` to a non-loopback host, and one per legacy
+  `payload` field naming `docket exporters privacy <name> <level>`.
+
+**Non-goals:** preview (P33-5); any projection change.
+
+**Owns:** `cli/_exporters.py` (`_run_list`, `_run_show`, `_run_enable`, `_run_add`, new
+`_run_privacy`, one handler entry), `cli/__init__.py` (the exporters help text),
+`cli/_config.py::_explain` renderer, `cli/_doctor.py::_check_exporters`,
+`core/exporter.py::set_privacy`/`is_widening` (new), `tests/unit/cli/test__exporters.py`,
+`tests/integration/test_exporters_cli.py`, the `exporters list` golden, `docs/commands.md`
+(regenerated), the spec sections. **Forbidden:** `core/telemetry.py`, `core/privacy.py`,
+`cli/_exporters_preview.py`.
+
+**Acceptance:**
+- Off a TTY, `docket exporters privacy langfuse conversation` exits 1 naming `--yes`, and the
+  global file and audit log are byte-identical before and after; with `--yes` it exits 0, the
+  override holds `privacy: conversation` only, and one `exporter.privacy` entry names
+  `from=minimal to=conversation host=cloud.langfuse.com`.
+- `docket exporters privacy langfuse minimal` after that never asks and audits the narrowing.
+- `list` shows `SHARES`; `show langfuse` lists every class with ✓/✗; the `list` golden changes
+  by exactly the new column (listed line by line).
+
+**RED test:** the off-TTY widening case in `tests/integration/test_exporters_cli.py` fails on the
+base (no `privacy` action). **Gates:** worker gates; `gen_cli_docs.py --check` after regeneration.
+
+### P33-5 — see what a destination would receive before sharing it
+
+**Status:** DONE (2026-09-28, `9bcaad4`) · **Size:** S · **Wave:** 62 (after the Wave 61 rollup) · **Spec:** `observability-export.spec.md` new section "Preview" (98–101); `cli-interface.spec.md` (integrator bumps)
+
+**Trigger:** the request asks that the operator *know what they are sharing*; the only proof
+today is opening the destination after the fact.
+
+**Goal:** `cli/_exporters_preview.py` (new): `docket exporters preview <name> [--session <id>]
+[--level <level>|--share a,b] [--json]`. It reads the named local session (default: the newest
+trace under `TRACES_DIR`), projects every record through that exporter's `ExportPolicy` (or the
+overriding `--level`/`--share`, which is never written), and prints, per span, its name and each
+attribute with its class, content shown to 200 characters; a footer counts spans, attributes per
+class and total bytes. `--json` prints the exact `otlp_http.encode` document. No network call, no
+write, no audit.
+
+**Non-goals:** changing the policy (P33-4); capture (P33-3).
+
+**Owns:** `cli/_exporters_preview.py` (new), one `run_exporters` handler entry,
+`tests/integration/test_exporters_cli.py` (a new class), the spec section. **Forbidden:**
+`core/`, `edges/`, every other function in `cli/_exporters.py`.
+
+**Acceptance:**
+- With a seeded session containing a canary in a tool argument, `preview langfuse` (minimal)
+  prints no canary and a footer with zero content attributes; `preview langfuse --level actions`
+  prints the canary under `gen_ai.tool.call.arguments [toolArguments]`; the global file, the
+  health file and the audit log are unchanged after both.
+- `--json` output equals `otlp_http.encode` of the same projection (byte comparison).
+
+**RED test:** the minimal/actions pair fails on the base (no `preview` action). **Gates:**
+worker gates.
+
+### P33-6 — docs, live proof at three levels, close (integrator)
+
+**Status:** DONE (2026-09-28) · **Size:** M · **Wave:** 63 (after the Wave 62 rollup) · **Spec:** `observability-export.spec.md` → final version, Status "Implemented and live", "External verification" gains a "Privacy levels" subsection; `specs/README.md` rows for every bumped spec
+
+**Goal:**
+- The seam test ADR 0015 assigns the integrator: the real `_trace_llm_call` (P33-3) into the
+  real projection (P33-1) under `conversation`, asserting the generation carries both message
+  attributes and under `share: [prompts]` a `withheld` tool part.
+- Live proof on this machine, one real dispatch per level, with a unique canary in the delegated
+  task and in a file the agent reads: `minimal` — the collector's debug log and Langfuse show no
+  canary, Input/Output empty; `actions` — tool spans show arguments, no file contents;
+  `conversation` — Langfuse generations show Input/Output and tool results. `preview` run before
+  each and matched against what arrived.
+- Docs: `docs/CONFIGURATION.md` §3.14 rewritten around the level table and the three commands
+  (`privacy`, `preview`, `enable --privacy`); `docs/SECURITY-SIMPLE.md` Layer 6 around classes;
+  the README "gate and record" sentence only if its claim moves; `CHANGELOG.md`;
+  `docs/commands.md` regenerated.
+- Board: rollups, `scripts/metrics.py --check` re-measured, `split_board.py archive`, ROADMAP
+  status line and D-49 row re-trued.
+
+**Acceptance:** every gate in §"How to use this board" green on `main`; the three live results
+recorded in the spec with dates; no canary found at `minimal` in either destination.

@@ -582,5 +582,13 @@
     "heading": "◆ PHASE 32 — COMPLETE (opened 2026-09-27, closed 2026-09-28): observability as configuration (D-48)",
     "bytes": 46258,
     "sha256": "95e56c4b71fd607a56863cf95224165ab542f1b2b43e53fb8d025afd13c89b09"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 33 — COMPLETE (opened 2026-09-28, closed 2026-09-28): export privacy levels (D-49)",
+    "bytes": 23540,
+    "sha256": "77fbc87e0d5621438d9fe99bd166990aa12c17084ae895e4b53f3976d02d92de"
   }
 ]

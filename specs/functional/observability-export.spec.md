@@ -1,15 +1,14 @@
 # Observability Export Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
-exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
-are all live and verified against a real dispatch, a real OpenTelemetry Collector, and a real
-Langfuse round-trip visually confirmed in its dashboard (see "External verification"). **A known
-limit, found in that same verification:** `gen_ai.chat`/`execute_tool` spans carry only
-structural facts (model/tool name, ok/fail, timing, measured token counts) at either `payload`
-setting — a destination's Input/Output fields read empty for both, by the closed attribute sets
-Requirements 8-9 specify, because `llm_call` itself never records message content. `core/telemetry.py` provides the neutral span
+exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
+`exporters:` key and the privacy levels (ADR 0015) are all live, verified against a real
+OpenTelemetry Collector and a real Langfuse project at `minimal`, `actions` and `conversation`
+(see "External verification"). A destination receives structure only unless the exporter's own
+document grants a content class; at `conversation` Langfuse shows each generation's Input and
+Output and each tool's result. `core/telemetry.py` provides the neutral span
 model, the incremental projection, the export policy, and `Pipeline`/the module-level
 `start`/`flush`/`close`/`health` registry; `core/exporter.py` provides the `kind: exporter`
 document, the built-in + global catalog, pure activation classification, and
@@ -987,7 +986,51 @@ event *shapes* (the same `event_type`/`payload` keys the fixture already models,
 above) are what a live run can actually add over the fixture, and this section records that
 instead. The fixture and its golden are unchanged.
 
+### Privacy levels -- live, 2026-09-28
+
+One real `docket harness run` turn per level against the local llama.cpp endpoint, each in a
+fresh `DOCKET_HOME` with `otel-collector` (local container, `debug` exporter, `detailed`) and
+`langfuse` (the operator's project) both enabled at that level by `docket exporters enable
+<name> --privacy <level> --yes`. The task carried a unique `CANARY-TASK-<level>-<hex>` and the
+file the agent was told to read held a unique `CANARY-FILE-<level>-<hex>`. After each turn,
+`docket exporters preview langfuse` and `--json`, the collector's log since the turn began, and
+the trace read back through Langfuse's public API (`/api/public/traces/<id>`) were searched for
+both canaries. Every run: `result: ok`, `exported=4 dropped=0 failed=0` on both exporters.
+
+| Level | Collector | Langfuse | `preview --json` | Local trace |
+|---|---|---|---|---|
+| `minimal` | 0 / 0 | 0 / 0; every observation's Input/Output empty | 0 / 0 | no file canary (nothing captured) |
+| `actions` | 0 / 0; `gen_ai.tool.call.arguments: {"path": "notes.txt"}` present | 0 / 0; the `read` TOOL has input, generations empty | 0 / 0 | — |
+| `conversation` | task and file canaries present, incl. `gen_ai.tool.call.result` | both present; both GENERATIONs have Input and Output, the `read` TOOL has input and output | both present | — |
+
+(task canary / file canary; "present" = found at least once.) Both destinations carried
+`docket.privacy`/`docket.privacy.classes` on the session root. `preview` matched what arrived:
+the same canaries in every case.
+
+**Found by this run and fixed before recording it:** the first `conversation` run showed
+Langfuse's `read` TOOL with no output. `_handle_tool_result` reads a `text` key the live loop's
+`_trace_tool_result` never wrote (P33-1's canary suite used synthetic records that had one),
+so `toolResults` on a tool span was machinery with no live producer. `tool_result` now records
+its output on demand (`trace-store.spec.md` requirement 27) and the wire seam test
+(`tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`) asserts it; the
+`conversation` and `minimal` runs in the table are the re-runs on the fixed code.
+
+**Found, not fixed (Phase 32 behaviour, outside this phase):** a session whose model call pauses
+long enough for the pipeline's idle flush (`Pipeline._drain` calling `flush_open`) closes its
+`docket.session` root early; the next record re-creates the root with the same span id, so the
+destination receives two `docket.session` spans for one session (Langfuse lists both). It does
+not affect what content is shared.
+
 ## Changelog
+
+### Version 1.9.0 (2026-09-28)
+
+- **Phase 33 closes; privacy levels verified live.** Status rewritten: the known limit recorded
+  in 1.5.1 (Input/Output empty at any setting) is gone. "External verification" gains "Privacy
+  levels": one real turn per level into the local collector and Langfuse, canaries in the task
+  and in a file, none at `minimal`, arguments only at `actions`, the conversation and tool
+  results at `conversation`; the run found and fixed `tool_result` never recording its output,
+  and recorded the idle-flush duplicate root span as a Phase 32 follow-up.
 
 ### Version 1.8.0 (2026-09-28)
 

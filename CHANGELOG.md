@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Export privacy levels (Phase 33, D-49, ADR 0015).** Each `kind: exporter` document now
+  says what it shares beyond structure: `privacy: minimal` (the default for every built-in),
+  `actions` (tool arguments, error text), `conversation` (prompts, replies, tool results) or
+  `full` (plus the system prompt), or an exact `share:` list; `contentMaxChars` bounds each
+  value. Content is sent only through an allowlist, filtered per message part, and captured
+  into the local trace only while some exporter grants it. `docket exporters privacy <name>
+  <level>` widens only after listing what starts leaving and to which host (a TTY confirmation,
+  or `--yes`), and records `exporter.privacy` in the audit log; `docket exporters preview <name>`
+  shows what a destination would receive from a real local session, offline. `list` gains
+  `SHARES`, `show` a "Leaves this host" block, and every exported session carries
+  `docket.privacy`. At `conversation` Langfuse now shows each generation's Input/Output and
+  each tool's result, verified live with canaries at three levels. Two leaks under the old
+  default are closed: an approval's command line and error text no longer leave at `minimal`.
+  The `payload` field and `--payload` flag are retired; an old `payload` loads as `minimal`.
+
 - **Langfuse round-trip confirmed live, and a content limit found and documented.** With the
   operator's own credentials stored, `docket exporters enable langfuse` and a real dispatch
   produced a trace visually confirmed in Langfuse's own dashboard (session root, `gen_ai.chat`

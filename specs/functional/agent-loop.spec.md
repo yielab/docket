@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.27.0
+**Version**: 1.28.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -555,8 +555,10 @@ This specification does NOT cover:
     **MAY** additionally carry `inputMessages`, `outputMessages`, `systemInstructions` and
     `systemInstructionsSha256` per `trace-store.spec.md`'s "Captured content" section — present
     only for the content classes an enabled exporter has been granted, and absent entirely (with
-    the payload otherwise unchanged) when nothing is granted. See `trace-store.spec.md` for the
-    full record shape and event-type list.
+    the payload otherwise unchanged) when nothing is granted. Likewise every `tool_result` event
+    **MUST** be given the text fed back to the model, recorded as `text` only while
+    `toolResults` is granted (`trace-store.spec.md` requirement 27). See `trace-store.spec.md`
+    for the full record shape and event-type list.
 
 ### `DocketDriver` (observability export wiring, P32-6)
 
@@ -774,6 +776,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.28.0 (2026-09-28)
+
+- **Requirement 71: `tool_result` output on demand.** The loop passes each tool's output to
+  its `tool_result` trace, recorded only while an exporter grants `toolResults`.
 
 ### Version 1.27.0 (2026-09-28)
 

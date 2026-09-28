@@ -178,20 +178,26 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   Nothing is sent anywhere until an operator runs `docket exporters enable <name>`, which
   resolves a credential (prompted, never a CLI argument), probes the real endpoint, and only
   then writes the minimal override that turns it on.
-- **Only structural facts travel today, whatever `payload` says.** A model-call span
-  (`gen_ai.chat`) and a tool span (`execute_tool <name>`) — the two kinds a destination like
-  Langfuse renders as a generation or a tool call — carry only tool/model name, ok/fail, timing,
-  measured token counts and span/trace ids. Neither ever carries the actual prompt, completion,
-  or a tool's arguments/output: docket's own `llm_call` trace event never records message
-  content, by design (measured tokens and latency only), so there is no content for either
-  payload setting to include. Expect a destination's "Input"/"Output" fields to read empty for
-  these two span kinds regardless of `payload`. `payload` still governs the small number of
-  other trace event types whose payload happens to carry a `metadata`-stripped field (`arguments`,
-  `text`, `content`, `output`, `result`, `prompt`, `messages`, `summary`): `metadata` (the
-  default, and every built-in except `otel-collector`) drops those fields before export; `full`
-  keeps them, truncated to a capped length (`payload_max_chars`, default 4000). `otel-collector`
-  is the one built-in shipped with `payload: full`, because that traffic stays on this machine;
-  every other built-in ships `metadata`.
+- **Structure only, unless you choose more.** Each exporter declares a privacy level:
+  `minimal` (the default for every built-in) sends model and tool names, timing, measured token
+  counts, pass/fail and ids, and nothing a person wrote or read. `actions` adds tool arguments
+  and error text; `conversation` adds prompts, replies and tool results; `full` adds the system
+  prompt. `share: [...]` names the classes exactly. `docket exporters show <name>` lists what
+  leaves ("Leaves this host"), and `docket exporters preview <name>` shows the exact spans a real
+  local session would send, without sending them.
+- **An allowlist, not a filter.** A span attribute leaves only when its class is granted, so a
+  trace field nobody has classified stays home. A conversation is filtered part by part:
+  sharing `prompts` does not carry a tool result inside it. Credentials and secret-shaped
+  values are redacted before anything is written, at every level.
+- **Captured only when asked for.** Prompts, replies and tool output enter the local trace only
+  while an enabled exporter grants them; with every exporter at `minimal`, the local trace holds
+  no more than it did before exporters existed.
+- **Widening is deliberate and recorded.** `docket exporters privacy <name> <level>` (or
+  `enable --privacy`) lists each newly shared class and the destination host and asks; off a TTY
+  it refuses without `--yes`. Narrowing never asks. Every change is an `exporter.privacy` audit
+  entry (`from`, `to`, `host`). Each exported session also carries `docket.privacy`, so the
+  destination shows what it was allowed to receive. The retired `payload` field loads as
+  `minimal` and can never widen anything.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
   stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24 explicitly cut the OpenTelemetry SDK,
   and this stays a zero-dependency projection of docket's own trace events, never a second

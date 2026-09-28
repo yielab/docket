@@ -90,7 +90,7 @@ def _read_call_response(path: str) -> ChatResponse:
     )
 
 
-def _enable_local_exporter(endpoint: str, privacy: str = "full", **extra: Any) -> None:
+def _enable_local_exporter(endpoint: str, privacy: str | None = "full", **extra: Any) -> None:
     """Write a global `kind: exporter` document named "local" -- not a built-in name, so no
     inheritance kicks in -- straight through `edges/store.py`, the same file `core.exporter`
     reads back."""
@@ -286,12 +286,14 @@ class TestCapturedContentReachesTheWire:
     `llm_call` records, captured on demand, cross the real projection onto the real wire
     exactly as far as the exporter's own level and `contentMaxChars` allow."""
 
-    def _run(self, agent_id: str, privacy: str) -> tuple[list[dict[str, Any]], str]:
+    def _run(
+        self, agent_id: str, privacy: str | None, **extra: Any
+    ) -> tuple[list[dict[str, Any]], str]:
         ws = _write_meta(agent_id)
         (ws / "notes.txt").write_text("CANARY-FILE-" + "x" * 300 + "\n")
         srv, url, handler_cls = _recording_server()
         try:
-            _enable_local_exporter(url, privacy=privacy, contentMaxChars=100)
+            _enable_local_exporter(url, privacy=privacy, contentMaxChars=100, **extra)
             backend = _ScriptedBackend(
                 [_read_call_response("notes.txt"), _final_response("CANARY-REPLY")]
             )
@@ -330,6 +332,19 @@ class TestCapturedContentReachesTheWire:
         output = self._attr(chats[-1], "gen_ai.output.messages") or ""
         assert "CANARY-REPLY" in output
         assert self._attr(chats[-1], "gen_ai.system_instructions") is None
+        tool_span = next(s for s in spans if s["name"] == "execute_tool read")
+        result_text = self._attr(tool_span, "gen_ai.tool.call.result") or ""
+        assert result_text.startswith("CANARY-FILE-")
+
+    def test_share_prompts_withholds_the_tool_turn(self) -> None:
+        spans, wire = self._run("prompts-agent", None, share=["prompts"])
+        chats = [s for s in spans if s["name"].startswith("gen_ai.chat")]
+        second = json.loads(self._attr(chats[-1], "gen_ai.input.messages") or "[]")
+        tool_turn = next(m for m in second if m["role"] == "tool")
+        assert tool_turn["parts"] == [{"type": "withheld", "class": "toolResults"}]
+        assert "CANARY-TASK" in wire
+        assert "CANARY-FILE-" not in wire
+        assert "CANARY-REPLY" not in wire
 
     def test_minimal_sends_no_captured_content(self) -> None:
         _, wire = self._run("minimal-seam-agent", "minimal")

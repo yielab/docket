@@ -398,7 +398,10 @@ def _trace_tool_result(
     policy_id: str = "",
     reason: str = "",
     task_id: str = "",
+    output: str | None = None,
 ) -> None:
+    """One tool outcome; *output*, the text fed back to the model, is recorded as ``text``
+    only when an enabled exporter grants ``toolResults``."""
     payload: dict[str, Any] = {
         "tool": tool,
         "callId": call_id,
@@ -412,6 +415,8 @@ def _trace_tool_result(
         payload["policyId"] = policy_id
     if reason:
         payload["reason"] = reason
+    if output is not None and "toolResults" in _telemetry.capture_classes():
+        payload["text"] = _clip(output)
     trace_event(
         project,
         session_key,
@@ -1672,6 +1677,7 @@ class _TurnState:
             result = dispatch_tool(call, self.ctx, self.registry)
             if result.denial_kind != "run_cancelled":
                 self.tool_calls_executed += 1
+            tool_output = result.as_tool_output()
             _trace_tool_result(
                 self.project,
                 self.trace_key,
@@ -1685,12 +1691,13 @@ class _TurnState:
                 result.policy_id,
                 result.reason,
                 task_id=self.trace_task_id,
+                output=tool_output,
             )
             if result.denial_kind is not None and not result.executed:
                 self.consecutive_denial_kinds.append(result.denial_kind)
             elif result.decision == "allow" and result.executed:
                 self.consecutive_denial_kinds.clear()
-            tool_msgs.append(tool_result(call, result.as_tool_output()))
+            tool_msgs.append(tool_result(call, tool_output))
             if result.denial_kind == "run_cancelled" or self.cancellation_requested():
                 batch_cancelled = True
             if result.denial_kind == "approval_unavailable" and approval_unavailable is None:

@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -172,6 +172,10 @@ This specification does NOT cover:
     `redact` call, which already runs before every record is stored, is the only scrubbing it
     receives — a secret-shaped substring anywhere in a captured part is scrubbed exactly as it
     would be in any other payload field.
+27. A `tool_result` record **MUST** carry a `text` key — the tool output fed back to the model,
+    cut to the same 4,000-character bound — only when `"toolResults"` is granted; with no such
+    grant its payload **MUST** carry no `text` key. (Found by the live privacy proof: the
+    projection's `gen_ai.tool.call.result` read a `text` key that the live loop never wrote.)
 
 ## Interface Contracts
 
@@ -284,6 +288,13 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.3.0 (2026-09-28)
+
+- **`tool_result` captures its output on demand.** Requirement 27: `text` appears only while an
+  exporter grants `toolResults`. The live proof at `conversation` showed Langfuse's tool
+  observation with no output because `_trace_tool_result` never recorded one; every earlier
+  test fed synthetic records that already had it.
 
 ### Version 1.2.0 (2026-09-28)
 

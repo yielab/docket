@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (49 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (50 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-09-28 | ◆ PHASE 33 — COMPLETE (opened 2026-09-28, closed 2026-09-28): export privacy levels (D-49) | `todo-waves.md` | 23,540 |
 | 2026-09-27 | ◆ PHASE 29 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the provider catalog (D-45) | `todo-waves.md` | 26,930 |
 | 2026-09-27 | ◆ PHASE 30 — COMPLETE (opened 2026-09-27, closed 2026-09-27): the team lives in the repo (D-46) | `todo-waves.md` | 19,348 |
 | 2026-09-27 | ◆ PHASE 31 — COMPLETE (opened 2026-09-27, closed 2026-09-27): recipes as a library, and the repository's standards (D-47) | `todo-waves.md` | 31,744 |
