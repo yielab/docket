@@ -1052,6 +1052,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if rest.endswith("/answer"):
             self._handle_post_task_answer(rest[: -len("/answer")])
             return
+        if rest.endswith("/pregrants"):
+            self._handle_post_task_pregrant(rest[: -len("/pregrants")])
+            return
         project = rest
         if not project:
             self._send_json_error("Missing project", 400)
@@ -1203,6 +1206,52 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         view = _task_answer_view(project, task).model_dump(by_alias=True, mode="json")
         self._send(json.dumps(view).encode(), "application/json")
+
+    def _handle_post_task_pregrant(self, task_id: str) -> None:
+        """`POST /tasks/<id>/pregrants` -- the HTTP counterpart of `docket pod <p> pregrant`.
+        Body: `{"pod", "command", "tool"?, "actor"?}`; the channel is always `"http"`."""
+        if not task_id:
+            self._send_json_error("Missing task id", 400)
+            return
+        raw = self._read_body()
+        if raw is None:
+            return
+        try:
+            body: Any = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(body, dict):
+            self._send_json_error("Request body must be a JSON object", 400)
+            return
+
+        project = body.get("pod")
+        if not isinstance(project, str) or not project:
+            self._send_json_error("pod is required", 400)
+            return
+        if self._reject_bad_project_id(project):
+            return
+        command = body.get("command")
+        if not isinstance(command, str) or not command.strip():
+            self._send_json_error("command is required", 400)
+            return
+        tool_raw = body.get("tool")
+        tool = tool_raw if isinstance(tool_raw, str) and tool_raw else "bash"
+        actor_raw = body.get("actor")
+        actor = actor_raw if isinstance(actor_raw, str) and actor_raw else "http"
+
+        from docket.core import interruptions as _interruptions
+
+        try:
+            token = _interruptions.record_pregrant(
+                project, task_id, command, tool=tool, channel="http", actor=actor
+            )
+        except _interruptions.InterruptionsError as exc:
+            self._send_json_error(str(exc), 404)
+            return
+
+        resp = {"ok": True, "token": token, "task": task_id, "pod": project}
+        self._send(json.dumps(resp).encode(), "application/json")
 
     def _handle_post_dispatch(self, path: str) -> None:
         if not self._check_auth():

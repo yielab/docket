@@ -21,6 +21,7 @@ from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import interruptions as _interruptions
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.core.policy import install_policies
 from docket.edges.adapters import docket_runtime as _dr
@@ -351,3 +352,123 @@ class TestPodDelegateBrief:
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == 1
         assert tasks[0]["description"] == "fix it"
+
+
+class TestDelegateInterruptionSummary:
+    """`delegate`'s own one-line forecast, printed after queuing (ADR 0016 SS10)."""
+
+    def test_a_clean_pod_says_nothing_will_ask(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        capsys.readouterr()
+
+        _pod._pod_delegate("demo", ["fix", "it"])
+
+        assert _interruptions.NOTHING_WILL_ASK in capsys.readouterr().out
+
+    def test_a_role_gate_is_named_in_the_summary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        capsys.readouterr()
+
+        _pod._pod_delegate("demo", ["fix", "it"])
+
+        out = capsys.readouterr().out
+        assert "May ask you:" in out
+        assert "explain interruptions" in out
+
+
+class TestPodExplain:
+    """``docket pod <p> explain interruptions [--json]`` (ADR 0016 SS10)."""
+
+    def test_no_pod_is_an_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        with pytest.raises(typer.Exit):
+            _pod._pod_explain("nope", ["interruptions"])
+
+    def test_missing_topic_is_a_usage_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        with pytest.raises(typer.Exit):
+            _pod._pod_explain("demo", [])
+
+    def test_a_clean_pod_prints_nothing_will_ask(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        capsys.readouterr()
+
+        _pod._pod_explain("demo", ["interruptions"])
+
+        assert _interruptions.NOTHING_WILL_ASK in capsys.readouterr().out
+
+    def test_a_role_gate_is_listed_with_the_park_posture(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        capsys.readouterr()
+
+        _pod._pod_explain("demo", ["interruptions"])
+
+        out = capsys.readouterr().out
+        assert "requireApprovalRoles" in out
+        assert "approvalMode resolves to" in out
+
+    def test_json_output_shape(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+        capsys.readouterr()
+
+        _pod._pod_explain("demo", ["interruptions", "--json"])
+
+        body = json.loads(capsys.readouterr().out)
+        assert body["pod"] == "demo"
+        kinds = {item["kind"] for item in body["interruptions"]}
+        assert "role_gate" in kinds
+        assert "mode" in kinds
+
+
+class TestPodPregrant:
+    """``docket pod <p> pregrant <task-id> "<command>" [--tool bash]`` (ADR 0016 SS10)."""
+
+    def test_usage_error_with_no_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it")
+        with pytest.raises(typer.Exit):
+            _pod._pod_pregrant("demo", [task["id"]])
+
+    def test_unknown_task_is_refused(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        with pytest.raises(typer.Exit):
+            _pod._pod_pregrant("demo", ["no-such-task", "git", "push", "origin", "main"])
+
+    def test_records_a_pregrant_on_the_named_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it")
+
+        _pod._pod_pregrant("demo", [task["id"], "git", "push", "origin", "main"])
+
+        stored = _dispatch.read_tasks("demo")[0]
+        assert len(stored["pregrants"]) == 1
+        assert stored["pregrants"][0]["tool"] == "bash"
+        assert "Pre-granted" in capsys.readouterr().out
+
+    def test_tool_flag_is_honoured(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it")
+
+        _pod._pod_pregrant("demo", ["--tool", "write", task["id"], "some", "content"])
+
+        stored = _dispatch.read_tasks("demo")[0]
+        assert stored["pregrants"][0]["tool"] == "write"

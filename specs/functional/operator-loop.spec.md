@@ -33,6 +33,8 @@ This specification covers:
 - How the derived inbox is assembled from live pod/approval state and exposed through every
   surface (`core/inbox.py`, `cli/_inbox.py`, `docket serve`'s `GET /inbox`, `docket mcp serve`'s
   `inbox` tool, and Telegram's `/status`)
+- The interruption forecast and the CLI/HTTP/MCP pre-grant surface (`core/interruptions.py`,
+  `docket pod <p> explain interruptions`, `docket pod <p> pregrant`)
 
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
@@ -46,7 +48,6 @@ its own card):
   `sink_for` entry in a later requirement area
 - How an answer actually resumes a parked `input` pipeline step (`core/answers.py`)
 - The Telegram channel amendment (`core/telegram.py`, `telegram-integration.spec.md`)
-- The interruption forecast and CLI/HTTP pre-grant surface (`core/interruptions.py`)
 
 ## Requirements
 
@@ -355,10 +356,71 @@ scope here.
 
 ### 9. Seeing it coming, and not being interrupted twice
 
-**Status: Planned — owned by P34-15.** `canonical_args_digest` is the digest this area's
-pre-grant matcher will use (the same function `core/tools.py`'s `park` branch uses, so a
-CLI-issued pre-grant and an in-turn parked approval are matched identically); the forecast
-function and CLI/HTTP surface do not exist yet.
+**Status: Implemented.** `core/interruptions.py::forecast(project, *, caller_default="wait") ->
+list[Interruption]` derives, from *project*'s own effective configuration, everything that could
+pause a task and wait on a human -- without ever running a live dispatch.
+
+1. `forecast` MUST derive its `Interruption` items from exactly these sources, matching what a
+   live dispatch would actually evaluate:
+   - this pod's own effective `require_approval` policies (`core.policy.policy_files(project)` +
+     `core.policy.read_policy` -- the identical loader `docket policies test --pod` uses), kind
+     `"policy"`, naming the policy id and its pattern (`match.pattern`, or `when.matches` when the
+     canonical document carries no top-level `match`);
+   - `core.security.HIGH_RISK_PATTERNS`, kind `"high_risk_class"` -- the same classes
+     `classify_command` enforces unconditionally on every bash call. Shown for visibility, never
+     counted toward "nothing will ask" (item 3 below): they are a docket-wide invariant, not this
+     pod's own configuration, and already have their own listing (`docket gates classes`);
+   - the resolved pipeline's (`core.dispatch.effective_pipeline(project, None)`) own
+     `ApprovalGate` and `input` steps, one level into a `parallel` group, kind `"pipeline_gate"`;
+   - the pod's `requireApprovalRoles` (Lead meta, comma-split, lower-cased), kind `"role_gate"`;
+   - the resolved `approvalMode` (`core.dispatch.pod_approval_mode(project,
+     caller_default=caller_default)`) and `approvalExpiryHours`
+     (`core.pod.PodSettings.load_for(project)`), kind `"mode"` -- context for how an ask would be
+     handled, never itself something that asks;
+   - every enabled `kind: channel` document (`core.channel.load_catalog()`) whose capabilities
+     include `notify`, kind `"channel"`.
+2. `docket pod <p> explain interruptions [--json]` MUST render the forecast: the
+   `"policy"`/`"pipeline_gate"`/`"role_gate"` items (the ones that can actually pause a task) as
+   the headline list, the resolved `approvalMode`/expiry as one context line, and the high-risk
+   classes and enabled notifying channels each in their own labelled section, shown regardless of
+   whether the headline is empty. With `--json`, it MUST print exactly `{"pod": <project>,
+   "interruptions": [{"kind", "description", "detail"}, ...]}` and nothing else.
+3. When the headline list (`"policy"`/`"pipeline_gate"`/`"role_gate"`) is empty, `explain
+   interruptions` MUST print `Nothing in this pod will ask you.` in place of that list.
+4. `docket pod <p> delegate` MUST print one additional summary line after queuing:
+   `Nothing in this pod will ask you.` when the same headline list is empty, else `May ask you:
+   <n> <kind>, ... — see: docket pod <project> explain interruptions` (kinds sorted, counts
+   grouped by kind with `_` rendered as a space, no further grammar).
+5. `docket pod <p> pregrant <task-id> "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
+   (body `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id,
+   command, tool="bash")` MUST each call `core.interruptions.record_pregrant(project, task_id,
+   command, tool=tool, channel=<"cli"|"http"|"mcp">, actor=<...>)`, which:
+   - refuses (raising `InterruptionsError`, rendered as CLI exit 1 / HTTP 404 / an MCP
+     `McpToolError`) when *task_id* is not present in *project*'s own `read_tasks` -- a pre-grant
+     never crosses pods;
+   - collapses internal whitespace in *command* before digesting it (`" ".join(command.split())`)
+     -- the honest limit ADR 0016 §10 states: a model that rephrases the command is asked again
+     regardless;
+   - computes `args_digest = core.operator_contract.canonical_args_digest(tool, {"command":
+     normalized})` -- the identical digest `core/tools.py`'s park/consume matcher computes for a
+     live `bash` call, so a CLI-issued pre-grant and an in-turn parked approval are matched
+     identically;
+   - calls `core.approval.create_pregrant(project, "implementer", tool, args_digest,
+     task_id=task_id, expires_at=<now + this pod's approvalExpiryHours, ISO UTC>,
+     channel=channel, actor=actor)` unchanged, then appends `{"token", "tool", "argsDigest":
+     args_digest}` to the task's own `pregrants` list (`edges.store.read_modify_write` on
+     `core.dispatch.pod_task_list_path(project)`) -- the exact shape
+     `resolve_waiting_approval`'s own parked-grant append already produces, so `_compose_hop`
+     serialises it into `DOCKET_PREGRANTS` on the task's very next hop, not only a re-run after a
+     park.
+6. `docket chat <task-id>` MUST print one `Pre-grant: docket pod <project> pregrant <task-id>
+   "<action>"` line under each of the task's brief's `expectedRiskyActions`, when a brief is
+   present.
+
+Non-goals (ADR 0016 §10): fuzzy command matching -- the exact-after-whitespace-collapse limit in
+item 5 is the only normalisation applied, and a rephrased command is asked again regardless; a
+`--role` override for `create_pregrant`'s stored `role` field (fixed to `"implementer"`, since
+matching is by `(tool, argsDigest)` alone and never reads it).
 
 ### 10. Answer surfaces
 

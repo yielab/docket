@@ -584,7 +584,7 @@ class TestToolApprovalsGrantDeny:
 
 
 class TestEveryToolCallIsAudited:
-    def test_all_twelve_tools_each_write_exactly_one_mcp_audit_entry(
+    def test_every_tool_call_writes_exactly_one_mcp_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
@@ -609,6 +609,7 @@ class TestEveryToolCallIsAudited:
         second_token = _approval.approval_create("demo", "implementer", "deploy2")
         _mcp.tool_approvals_deny(second_token)
         _mcp.tool_task_answer("demo", parked["id"], "accept", {"answer": "ship it"})
+        _mcp.tool_task_pregrant("demo", parked["id"], "git push origin main")
         _mcp.tool_inbox()
         _mcp.tool_cost()
         _wait_for_terminal_run(dispatch_result["run"])
