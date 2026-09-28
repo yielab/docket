@@ -218,7 +218,7 @@ def _filter_part(part: dict[str, Any], cls: str, policy: ExportPolicy) -> dict[s
 def _filter_input_messages(messages: Any, policy: ExportPolicy) -> list[dict[str, Any]] | None:
     """The conversation sent to the model, one turn per message, each part kept or
     withheld per its own class (`_input_part_class`). ``None`` when *messages* is not a
-    list, so a caller whose payload never carries one must not assume a list back."""
+    list or no part is granted, so nothing but withheld markers is never exported."""
     if not isinstance(messages, list):
         return None
     filtered: list[dict[str, Any]] = []
@@ -238,7 +238,8 @@ def _filter_input_messages(messages: Any, policy: ExportPolicy) -> list[dict[str
                 ],
             }
         )
-    return filtered
+    kept = any(part.get("type") != "withheld" for turn in filtered for part in turn["parts"])
+    return filtered if kept else None
 
 
 def _filter_output_messages(messages: Any, policy: ExportPolicy) -> list[dict[str, Any]] | None:

@@ -255,6 +255,13 @@ class TestPrivacyAllowlist:
         encoded = _encode_under(_canary_records(), policy)
         _assert_shares_exactly(encoded, frozenset({cls}))
 
+    def test_nothing_granted_omits_the_input_messages_attribute(self) -> None:
+        llm_record = next(r for r in _canary_records() if r["event_type"] == "llm_call")
+        state = telemetry.ProjectionState()
+        spans = telemetry.project(llm_record, state, telemetry.MINIMAL_POLICY)
+        chat = next(s for s in spans if s.name == "gen_ai.chat")
+        assert "gen_ai.input.messages" not in chat.attributes
+
     def test_share_prompts_withholds_the_tool_turn_as_a_marked_part(self) -> None:
         policy = telemetry.ExportPolicy(classes=frozenset({"prompts"}), label="custom")
         llm_record = next(r for r in _canary_records() if r["event_type"] == "llm_call")

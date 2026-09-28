@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 60 (Phase 33, D-49) · opened 2026-09-28
+> ## ▶ ACTIVE BOARD — WAVE 61 (Phase 33, D-49) · opened 2026-09-28
 >
 > **Six cards over Waves 60–63**, one Sonnet worker per card in an isolated worktree under one
 > integrator: what a trace destination may see becomes a declared privacy level (`minimal`,
@@ -21,7 +21,7 @@
 > `list`/`show`/`explain`/`doctor`, on the span itself, and in an offline `preview`. Decision
 > and rules: [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 > Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
-> Wave 60 is P33-1 alone. **Phase 33 closes when the Wave 63 rollup merges green.**
+> Wave 60 (P33-1) merged 2026-09-28; **Wave 61 (P33-2 ∥ P33-3) is active**. **Phase 33 closes when the Wave 63 rollup merges green.**
 >
 > **Phase 32 closed 2026-09-28** (ROADMAP D-48, [ADR 0014](docs/adr/0014-observability-export.md)):
 > nine cards over Waves 56–59, one Sonnet worker per card in an isolated worktree then the
@@ -217,9 +217,9 @@ release source.
 
 
 
-## ▶ WAVE 60 — ACTIVE (opened 2026-09-28): Phase 33, export privacy levels (D-49)
+## ▶ WAVES 60–63 — ACTIVE (opened 2026-09-28): Phase 33, export privacy levels (D-49)
 
-**Opened 2026-09-28 (Wave 60 active).** Six cards in four waves (one Sonnet worker, then two in
+**Opened 2026-09-28. Wave 60 merged (`1890420`, merge `a6ebd7d`); Wave 61 active.** Six cards in four waves (one Sonnet worker, then two in
 parallel, then two, then the integrator). Decision, the class and level tables, the eleven rules
 and the verdict table are in [docs/adr/0015-export-privacy-levels.md](docs/adr/0015-export-privacy-levels.md).
 Worker packets: [.agents/handoffs/wave-60-worker-packets.md](.agents/handoffs/wave-60-worker-packets.md).
@@ -262,7 +262,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P33-1 — what may leave is a class; the projection is an allowlist
 
-**Status:** TODO · **Size:** M · **Wave:** 60 · **Spec:** `observability-export.spec.md` new sections "Privacy classes and levels" and "Allowlist projection" (requirements 64–79); requirements 11, 16 and 17 amended in place (integrator bumps the version)
+**Status:** DONE (2026-09-28, `1890420`) · **Size:** M · **Wave:** 60 · **Spec:** `observability-export.spec.md` new sections "Privacy classes and levels" and "Allowlist projection" (requirements 64–79); requirements 11, 16 and 17 amended in place (integrator bumps the version)
 
 **Trigger:** `core/telemetry.py::_CONTENT_KEYS` is a denylist; `_handle_generic_event` forwards
 every scalar as `docket.<key>`, so `approval_requested.action` and `error.error` leave under the

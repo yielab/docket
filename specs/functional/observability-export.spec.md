@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.5.1
+**Version**: 1.6.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
@@ -384,7 +384,8 @@ document rather than replace it:
     by `{"type": "withheld", "class": "<class>"}` otherwise. A `system`-role message's parts
     **MUST** be class `instructions`; a `tool`-role message's parts **MUST** be class
     `toolResults`; an `assistant`-role message's `tool_call`-type parts **MUST** be class
-    `toolArguments`; every other part **MUST** be class `prompts`.
+    `toolArguments`; every other part **MUST** be class `prompts`. When no part is kept, the
+    attribute **MUST** be absent, never a list of withheld markers.
 76. An `llm_call` record's `outputMessages` payload key **MUST** become the
     `gen_ai.output.messages` attribute, class `completions`, as a whole (never split per part,
     since it is one class end to end — ADR 0015 §1) — present in full (parts' `content`
@@ -869,6 +870,18 @@ above) are what a live run can actually add over the fixture, and this section r
 instead. The fixture and its golden are unchanged.
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-28)
+
+- **Privacy classes and the allowlist projection (Phase 33, P33-1).** New sections "Privacy
+  classes and levels" (requirements 64-66) and "Allowlist projection" (67-79); requirements 11,
+  16 and 17 amended: `ExportPolicy.admit` filters by event type only, and content reaches a span
+  only through `ATTRIBUTE_CLASSES` and a granted class. Closes two leaks under the old default:
+  `approval_requested.action` and `error.error` no longer forward as `docket.*` attributes; they
+  are `docket.approval.action` (toolArguments) and `docket.error.message` (errors). Every root
+  span carries `docket.privacy`/`docket.privacy.classes`. Requirement 75 also says an input
+  message list with no kept part is omitted, never exported as withheld markers. Interim: every
+  started exporter projects at `minimal` until the exporter document's fields are wired.
 
 ### Version 1.5.1 (2026-09-28)
 
