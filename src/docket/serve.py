@@ -29,6 +29,7 @@ from typing import Any
 import docket.config as cfg
 from docket.core import audit as _audit
 from docket.core import fleet, utils
+from docket.core import operator_contract as _oc
 from docket.core import provisioning as _prov
 from docket.core import trace as _trace
 
@@ -60,6 +61,30 @@ def _last_activity_or_never(agent_id: str) -> str:
     """Like utils.last_activity but returns 'never' (cmd_snapshot's sentinel)."""
     val = utils.last_activity(agent_id)
     return "never" if val == "—" else val
+
+
+def _task_answer_view(project: str, task: dict[str, Any]) -> _oc.TaskView:
+    """The `TaskView` for `POST /tasks/<id>/answer`'s response -- mirrors
+    `core.inbox._task_view`'s field mapping (module-private, so not imported)."""
+    status = str(task.get("status", "pending"))
+    return _oc.TaskView(
+        id=str(task.get("id", "")),
+        pod=project,
+        status=status,
+        a2a_state=_oc.a2a_state(
+            status,
+            blocked_reason=task.get("blockedReason"),
+            failure_kind=task.get("failureKind"),
+        ),
+        reason=task.get("reason") or None,
+        description=str(task.get("description", "")),
+        priority=str(task.get("priority", "normal")),
+        created_at=str(task.get("created", "")),
+        updated_at=str(
+            task.get("completedAt") or task.get("startedAt") or task.get("created") or ""
+        ),
+        approval_token=task.get("approvalToken"),
+    )
 
 
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
@@ -1023,7 +1048,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             self._send_json_error("Unauthorized", 401)
             return
-        project = path[len("/tasks/") :]
+        rest = path[len("/tasks/") :]
+        if rest.endswith("/answer"):
+            self._handle_post_task_answer(rest[: -len("/answer")])
+            return
+        project = rest
         if not project:
             self._send_json_error("Missing project", 400)
             return
@@ -1056,6 +1085,33 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         from docket.core import dispatch as _dispatch
 
+        # `brief` (optional): a `TaskBrief` document, the HTTP counterpart of `docket pod
+        # <p> delegate --brief`. Validated here regardless, so a malformed one is always
+        # `422` before anything is enqueued; `core.dispatch.enqueue_task` has no `brief`
+        # parameter yet, so a *valid* one is refused too rather than silently dropped —
+        # see `cli/_pod.py::_pod_delegate`'s identical contention note.
+        brief_raw = task_body.get("brief")
+        if brief_raw is not None:
+            if not isinstance(brief_raw, dict):
+                self._send_json_error("brief must be an object", 400)
+                return
+            import inspect
+
+            from pydantic import ValidationError
+
+            try:
+                _oc.TaskBrief.model_validate(brief_raw)
+            except ValidationError as exc:
+                self._send_json_error(f"invalid brief: {exc}", 422)
+                return
+            if "brief" not in inspect.signature(_dispatch.enqueue_task).parameters:
+                self._send_json_error(
+                    "brief is not yet supported: core.dispatch.enqueue_task has no "
+                    "'brief' parameter",
+                    422,
+                )
+                return
+
         try:
             task = _dispatch.enqueue_task(project, description, priority, trusted=trusted)
         except _dispatch.DispatchError as exc:
@@ -1081,6 +1137,70 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if task["status"] == "waiting_approval":
             task_resp["approvalToken"] = task.get("approvalToken", "")
         self._send(json.dumps(task_resp).encode(), "application/json")
+
+    def _handle_post_task_answer(self, task_id: str) -> None:
+        """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket pod <p> answer`.
+        Body: `{"pod", "action", "content"?, "actor"?}`; `actor` is a label only, and the
+        channel is always `"http"`."""
+        if not task_id:
+            self._send_json_error("Missing task id", 400)
+            return
+        raw = self._read_body()
+        if raw is None:
+            return
+        try:
+            body: Any = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(body, dict):
+            self._send_json_error("Request body must be a JSON object", 400)
+            return
+
+        project = body.get("pod")
+        if not isinstance(project, str) or not project:
+            self._send_json_error("pod is required", 400)
+            return
+        if self._reject_bad_project_id(project):
+            return
+        action = body.get("action")
+        if not isinstance(action, str) or not action:
+            self._send_json_error("action is required", 400)
+            return
+        content = body.get("content")
+        if content is not None and not isinstance(content, dict):
+            self._send_json_error("content must be an object", 400)
+            return
+        actor_raw = body.get("actor")
+        actor = actor_raw if isinstance(actor_raw, str) and actor_raw else "http"
+
+        from docket.core import answers as _answers
+        from docket.core import dispatch as _dispatch
+
+        try:
+            _answers.answer_task(project, task_id, action, content, channel="http", actor=actor)
+        except _answers.AnswerRejected as exc:
+            self._send_json_error(f"blocked by policy '{exc.policy_id}'", 422)
+            return
+        except _answers.AnswerError as exc:
+            msg = str(exc)
+            if "not found in pod" in msg:
+                self._send_json_error(msg, 404)
+            elif "is not waiting_input" in msg or "is not parked at step" in msg:
+                self._send_json_error(msg, 409)
+            else:
+                self._send_json_error(msg, 422)
+            return
+
+        task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
+        if task is None:
+            # Answered, then vanished from its own pod's queue before this read — not
+            # expected in practice (nothing deletes a task), but report it honestly
+            # rather than crash rendering a view for it.
+            self._send_json_error(f"task {task_id!r} not found after answering", 500)
+            return
+        view = _task_answer_view(project, task).model_dump(by_alias=True, mode="json")
+        self._send(json.dumps(view).encode(), "application/json")
 
     def _handle_post_dispatch(self, path: str) -> None:
         if not self._check_auth():

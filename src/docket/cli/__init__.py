@@ -2817,6 +2817,24 @@ def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
 
 
 @app.command(
+    "chat",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_chat(ctx: typer.Context) -> None:
+    """See and answer one task's parked question.
+
+    `docket chat <task-id> [--pod <project>]` -- searches every pod for *task-id* (or just
+    *pod* when given), then shows its brief, its pending question (if any) and its earlier
+    answers. On a TTY, a pending question is followed by one prompt per schema property and
+    then answered through the same `core.answers.answer_task` every other surface calls
+    (`channel="cli"`, `actor=<OS user>`). Off a TTY, or with no pending question, this only
+    ever displays -- use `docket pod <p> answer` to answer non-interactively."""
+    from docket.cli._chat import run_chat
+
+    raise typer.Exit(run_chat(list(ctx.args)))
+
+
+@app.command(
     "inbox",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

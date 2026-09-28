@@ -1410,6 +1410,25 @@ it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns.
 
 ---
 
+### chat
+
+**Usage:** `docket chat`
+
+See and answer one task's parked question.
+
+`docket chat <task-id> \[--pod <project>\]` -- searches every pod for *task-id* (or just
+*pod* when given), then shows its brief, its pending question (if any) and its earlier
+answers. On a TTY, a pending question is followed by one prompt per schema property and
+then answered through the same `core.answers.answer_task` every other surface calls
+(`channel="cli"`, `actor=<OS user>`). Off a TTY, or with no pending question, this only
+ever displays -- use `docket pod <p> answer` to answer non-interactively.
+
+
+**Aliases:** None
+
+
+---
+
 ## Observability Commands
 
 ### runs
@@ -1683,7 +1702,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `channels`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `notify`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `channels`, `chat`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `notify`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---

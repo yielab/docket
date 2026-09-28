@@ -118,7 +118,10 @@ GROUPS: list[tuple[str, list[str]]] = [
             "mcp",
         ],
     ),
-    ("Security & Audit", ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox"]),
+    (
+        "Security & Audit",
+        ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox", "chat"],
+    ),
     (
         "Observability Commands",
         ["runs", "trace", "metrics", "harness", "exporters", "channels", "notify"],

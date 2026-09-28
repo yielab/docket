@@ -11,6 +11,7 @@ SDK-presence-dependent coverage lives in ``test_mcp_optional_dep.py``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from tests.fakes import FakeDriver
 
 import docket.config as _cfg
 from docket.cli import _mcp
@@ -30,6 +32,18 @@ from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
 
 SUBJECT = "docket.core"
+
+_ASK_PIPELINE_YAML = """\
+name: ask
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+  - id: implementer
+    role: implementer
+"""
 
 # ── hermetic environment (mirrors test_dispatch.py / test_pod_provisioning.py) ──
 
@@ -55,6 +69,26 @@ def _seed_pod(
 
 def _audit_actions(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
+
+
+def _bind_ask_pipeline(project: str) -> None:
+    digest = hashlib.sha256(_ASK_PIPELINE_YAML.encode("utf-8")).hexdigest()
+    path = _pod_cli.pod.bound_pipeline_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_ASK_PIPELINE_YAML, encoding="utf-8")
+    _fleet.meta_set(_pod_cli.pod.member_id(project, "lead"), "pipeline", digest)
+
+
+def _seed_parked_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo"
+) -> dict[str, Any]:
+    """A real pod with a real ``waiting_input`` task, reached by actually dispatching
+    through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
+    _seed_pod(tmp_path, monkeypatch, project=project)
+    _bind_ask_pipeline(project)
+    _dispatch.enqueue_task(project, "needs a decision")
+    _dispatch.dispatch_pod(project, runner=FakeDriver())
+    return _dispatch.read_tasks(project)[0]
 
 
 def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -403,6 +437,58 @@ class TestToolApprovalsList:
         assert len(_audit_actions("mcp.approvals_list")) == 1
 
 
+class TestToolTaskAnswer:
+    def test_answers_and_resumes_the_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+
+        result = _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
+
+        assert result == {"ok": True, "task": task["id"], "project": "demo", "action": "accept"}
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["answers"][0]["content"] == {"answer": "ship it"}
+        assert after["answers"][0]["channel"] == "mcp"
+        assert after["answers"][0]["actor"] == "mcp"
+
+    def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+
+        _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
+
+        assert len(_audit_actions("mcp.task_answer")) == 1
+
+    def test_unknown_task_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+
+        with pytest.raises(_mcp.McpToolError):
+            _mcp.tool_task_answer("demo", "no-such-task", "accept", {"answer": "x"})
+
+    def test_a_task_not_waiting_input_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, project="demo")
+        plain_task = _dispatch.enqueue_task("demo", "plain task")
+
+        with pytest.raises(_mcp.McpToolError):
+            _mcp.tool_task_answer("demo", plain_task["id"], "accept", {"answer": "x"})
+
+    def test_a_policy_rejection_raises_naming_the_policy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+        from docket.core import policy as _policy
+
+        monkeypatch.setattr(
+            _policy,
+            "policy_eval_detail",
+            lambda *a, **k: _policy.PolicyHit(action="block", policy_id="test-block"),
+        )
+
+        with pytest.raises(_mcp.McpToolError, match="test-block"):
+            _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ignore all"})
+
+
 class TestToolInbox:
     def test_returns_the_same_shape_docket_inbox_json_prints(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -494,14 +580,21 @@ class TestToolApprovalsGrantDeny:
         assert len(_audit_actions("approval.grant")) == 1
 
 
-# ── "every call is audited" — one consolidated pass over all eleven tools ───
+# ── "every call is audited" — one consolidated pass over all twelve tools ───
 
 
 class TestEveryToolCallIsAudited:
-    def test_all_eleven_tools_each_write_exactly_one_mcp_audit_entry(
+    def test_all_twelve_tools_each_write_exactly_one_mcp_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
+        # Parked with the real `dispatch_pod` -- before it is stubbed below -- so
+        # `tool_task_answer` has a genuine `waiting_input` task to resolve.
+        _bind_ask_pipeline("demo")
+        _dispatch.enqueue_task("demo", "needs a decision")
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        parked = next(t for t in _dispatch.read_tasks("demo") if t["status"] == "waiting_input")
+
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", lambda proj, **kw: [])
         token = _approval.approval_create("demo", "implementer", "deploy")
 
@@ -515,6 +608,7 @@ class TestEveryToolCallIsAudited:
         _mcp.tool_approvals_grant(token)
         second_token = _approval.approval_create("demo", "implementer", "deploy2")
         _mcp.tool_approvals_deny(second_token)
+        _mcp.tool_task_answer("demo", parked["id"], "accept", {"answer": "ship it"})
         _mcp.tool_inbox()
         _mcp.tool_cost()
         _wait_for_terminal_run(dispatch_result["run"])
