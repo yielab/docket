@@ -42,7 +42,7 @@ case_id() {
 cases_dir() {
   local cmd="${1:-list}"
   case "$cmd" in
-    list|info|cost|doctor|scope|context|auth|help|models|keys|config)
+    list|info|cost|doctor|scope|context|auth|help|models|keys|config|exporters)
       echo "$GOLDEN_DIR/cases/readonly"
       ;;
     *)

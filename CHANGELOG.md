@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Observability export verified live and documented (Phase 32, D-48, close).** A real
+  `docket pod` dispatch (4 hops, local model) against a Docker `otel-collector`
+  produced 5 `docket.session` roots, 29 `gen_ai.chat` spans with real measured token counts, and
+  39 `execute_tool` spans, matching `docket trace`'s own 29 `llm_call` lines and a
+  non-zero `exported` health counter — see `observability-export.spec.md`
+  §"External verification". Docs: `docs/CONFIGURATION.md` §3.14, a new Layer 6 in
+  `docs/SECURITY-SIMPLE.md` naming what leaves the host under `metadata` vs `full`, and one
+  README sentence. Langfuse verification stays open, blocked on the operator's own
+  `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`.
 - **`docket exporters` turns a destination on by authenticating, and a recipe can name one.**
   The bounded export pipeline is wired into every turn: `run_turn` starts it lazily, flushes it
   on every return path (bounded to `EXPORT_FLUSH_TIMEOUT_S` even if a destination hangs), and

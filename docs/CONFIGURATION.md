@@ -777,6 +777,84 @@ docket config explain myapp-implementer                # ... Skills: release-che
 `AGENTS.md` and skills alike, are read live and screened; rules from the repository (roles,
 policies, pipelines, settings) are still applied only by an operator command (§3.11).
 
+### 3.14 Export traces to OpenTelemetry or Langfuse
+
+A destination is a `kind: exporter` YAML document, the same shape as a `kind: provider`
+(§3.1): five built-in templates ship in the wheel (`otel-collector`, `jaeger`, `phoenix` —
+no auth; `honeycomb` — header; `langfuse` — basic), all speaking the same hand-rolled
+`otlp-http` dialect (no OpenTelemetry SDK dependency; D-24 stands). Every dispatch hop already
+emits an `llm_call` trace event; `core/telemetry.py` projects the whole session into a neutral
+span model (`docket.session` root, `gen_ai.chat` and `execute_tool` children, deterministic
+span/trace ids from the session id) and a background pipeline drains it to every enabled
+exporter — bounded queue, drop-on-full, never raises into a turn.
+
+`enable` resolves the credential (a TTY prompt, or a refusal naming `docket keys add <NAME>`
+when there is none), probes the endpoint with it, and classifies the result before writing
+anything. A transport failure refuses the enable; a reachable-but-unauthenticated endpoint still
+enables, because only a transport failure is disqualifying. Real transcripts from this machine,
+all three auth kinds:
+
+```bash
+# auth: none -- otel-collector, running locally in Docker, no credential needed
+$ docket exporters enable otel-collector
+✓ Exporter enabled: otel-collector  ->  http://127.0.0.1:4318/v1/traces
+  scope: global  payload: full
+⚠ tool arguments and results leave this host
+
+# auth: header -- honeycomb, no key stored yet
+$ docket exporters enable honeycomb
+✗ Error: Exporter 'honeycomb' needs credentials that are not set:
+  docket keys add HONEYCOMB_API_KEY
+
+# auth: basic -- langfuse, no keys stored yet
+$ docket exporters enable langfuse
+✗ Error: Exporter 'langfuse' needs credentials that are not set:
+  docket keys add LANGFUSE_PUBLIC_KEY
+  docket keys add LANGFUSE_SECRET_KEY
+```
+
+Store the missing credential(s) with `docket keys add <NAME>` (prompts, never take a value as an
+argument) and re-run `enable` -- it re-probes with the stored credential before writing anything.
+
+| Command | Effect |
+|---|---|
+| `docket exporters list [--json]` | Every built-in and global exporter, dialect, activation state, required credentials, scope |
+| `docket exporters show <name> [--json]` | One exporter's full spec plus its health counters: `exported`/`dropped`/`failed` |
+| `docket exporters enable <name> [--endpoint URL] [--payload metadata\|full] [--events ...] [--no-verify]` | Resolves credentials, probes, writes a minimal global override (never the whole inherited document) |
+| `docket exporters disable <name>` | Writes `enabled: false` to the override, nothing else |
+| `docket exporters test <name>` | Re-probes the currently-configured endpoint without changing anything |
+| `docket exporters add <file.yaml>` | Registers a new `kind: exporter` document (a self-hosted or vendor endpoint the built-ins don't cover) |
+| `docket exporters remove <name>` | Removes a global override; a built-in reverts to its shipped defaults instead of disappearing |
+| `docket exporters export <name> [<file>]` | Writes the effective document back out, short-form YAML |
+
+`payload` governs what a span carries, not whether it is sent: `metadata` (the default, and every
+built-in except `otel-collector`) strips `arguments`/`text`/`content`/`output`/`result`/`prompt`/
+`messages`/`summary` from every span's payload before it leaves the host; `full` keeps them,
+truncated to a capped length. `otel-collector` ships `payload: full` because that traffic never
+leaves the machine; flip any other exporter to `full` only when the destination itself is
+trusted with tool output and prompt content.
+
+A pod names the destinations it wants in `pod.yaml`'s `exporters:` list (validated against the
+live catalog by `apply`/`validate`/`init --recipe`; unknown names refuse before anything is
+written); the list is recorded and reported, never itself the thing that turns an exporter on --
+`docket exporters enable` is still the one write that flips `enabled: true`, so naming a
+destination in a recipe documents intent without silently starting to ship data anywhere.
+
+```yaml
+# .docket/pod.yaml
+exporters: [otel-collector, langfuse]
+```
+
+**Live proof, this machine, 2026-09-28:** a real `docket pod rack-cli dispatch` (4 hops: lead ->
+implementer -> reviewer -> tester) against the local llama.cpp endpoint, with `otel-collector`
+enabled and an `otel/opentelemetry-collector` container (`debug` exporter) receiving on 4318 --
+the collector logged 5 `docket.session` roots, 29 `gen_ai.chat` spans with real measured token
+counts (e.g. `in=2467/out=63`), and 39 `execute_tool` spans (`read`/`grep`/`glob`); `docket trace
+<session>` showed the same 29 `llm_call` lines; `docket exporters show otel-collector` reported
+`health exported=71 dropped=0 failed=0`. Full detail: `specs/functional/observability-export.spec.md`
+§"External verification". Langfuse needs the operator's own `LANGFUSE_PUBLIC_KEY`/
+`LANGFUSE_SECRET_KEY` -- the refusal transcript above is what this machine can show without them.
+
 ## 4. File reference
 
 **Hand-editing.** Docket writes its JSON atomically: a file lock, a `.bak` of the previous

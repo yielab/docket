@@ -114,12 +114,13 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 </p>
 
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
-whole command line (`git status` passes, `git push origin production` asks), then human approval
-over CLI, HTTP, MCP or an inbound-only Telegram bot, then the budget. Fail-closed: an approval
-nobody answers denies itself, and a policy file that no longer parses blocks what it governed.
-`docket audit verify` checks the hash chain over every verdict, approval and execution.
-`docket trace tail <p>` shows a run step by step. `docket cost` reports measured tokens and a
-labelled estimate. `/status.json` and `/metrics` feed your own board; docket does not ship one.
+whole command line (`git status` passes, `git push origin production` asks), then approval over
+CLI, HTTP, MCP or Telegram, then budget. Fail-closed: an approval nobody answers denies itself,
+and a policy file that no longer parses blocks it. `docket audit verify` checks the hash chain
+over every verdict, approval, execution. `docket trace tail <p>` shows a run step-by-step, also
+projected to any OpenTelemetry or Langfuse endpoint (`kind: exporter`). `docket cost` reports
+measured tokens and a labelled estimate; `/status.json` and `/metrics` feed your own board —
+docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
 rotation). `fetch` is inspectable, but `bash` still reaches the network through allowlisted

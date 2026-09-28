@@ -34,7 +34,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 |-----|----------------|
 | [Quick start](QUICK-START-DOCKET.md) | Ten minutes from install to a governed run, then the customization loop |
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: org specialists vs project pods, the roles, blueprints, recipes and real pipeline dispatch |
-| [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies and tools |
+| [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
 | [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
 | [Recipe library](recipes.md) | The twelve shipped recipes (teams, policy packs, methodology pipelines), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |

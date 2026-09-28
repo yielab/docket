@@ -172,6 +172,31 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   gated call fails fast with `approval_unavailable` instead of blocking the turn for the usual
   120-second in-turn timeout.
 
+### Layer 6: Telemetry export (what leaves the host)
+
+- **Off by default.** Every built-in exporter (`docket exporters list`) ships `enabled: false`.
+  Nothing is sent anywhere until an operator runs `docket exporters enable <name>`, which
+  resolves a credential (prompted, never a CLI argument), probes the real endpoint, and only
+  then writes the minimal override that turns it on.
+- **What leaves depends on `payload`, checked per exporter.** `metadata` (the default, and every
+  built-in except `otel-collector`) strips `arguments`, `text`, `content`, `output`, `result`,
+  `prompt`, `messages` and `summary` from every span before export — only structural facts
+  travel: tool name, ok/fail, timing, measured token counts, span/trace ids. `full` keeps those
+  fields, each truncated to a capped length (`payload_max_chars`, default 4000). `otel-collector`
+  is the one built-in shipped with `payload: full`, because that traffic stays on this machine;
+  every other built-in ships `metadata`.
+- **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
+  stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24 explicitly cut the OpenTelemetry SDK,
+  and this stays a zero-dependency projection of docket's own trace events, never a second
+  source of truth.
+- **Never blocks a turn.** The export pipeline is a bounded queue drained by a background
+  thread — a slow or unreachable destination drops spans past the bound and records it in that
+  exporter's health counters (`docket exporters show <name>`), it never raises into the agent
+  loop.
+- **A pod only documents intent, never activates.** `pod.yaml`'s `exporters:` list is validated
+  against the live catalog and reported by `config explain`, but naming a destination there does
+  not turn it on — `docket exporters enable` is still the one command that flips `enabled: true`.
+
 ---
 
 ## Testing Security (Simple)

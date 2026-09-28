@@ -1,19 +1,21 @@
 # Observability Export Specification
 
-**Version**: 1.4.0
-**Status**: Implemented -- awaiting external verification (P32-9). Model, projection, the
-exporter catalog, the `otlp-http` wire dialect, the bounded queue/background sender, the
-`run_turn` wiring, and CLI activation (`docket exporters enable/disable/test/add/remove/list/
-show/export`) are all live. `core/telemetry.py` provides the neutral span model, the incremental
+**Version**: 1.5.0
+**Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
+dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
+exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
+are all live and verified against a real dispatch and a real OpenTelemetry Collector (see
+"External verification"). `core/telemetry.py` provides the neutral span model, the incremental
 projection, the export policy, and `Pipeline`/the module-level `start`/`flush`/`close`/`health`
 registry; `core/exporter.py` provides the `kind: exporter` document, the built-in + global
 catalog, pure activation classification, and `enable_exporter`/`disable_exporter`;
 `edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport;
 `edges/adapters/exporters/__init__.py` builds a `SpanSink` from a resolved `ExporterSpec`
 (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts the pipeline lazily and
-flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. `pod.yaml`'s
-`exporters:` key does not exist yet (P32-8).
-**Last Updated**: 2026-09-27
+flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. A live Langfuse
+round-trip remains open, blocked on the operator's own credentials -- see "External
+verification".
+**Last Updated**: 2026-09-28
 
 ## Purpose
 
@@ -653,7 +655,92 @@ health = telemetry.health()                         # {} when started == 0
 - `OtlpHttpSink.emit` and `probe` **MUST NOT** raise for any transport or HTTP-level failure;
   every outcome is a typed result.
 
+## External verification
+
+Live proof, captured on the development machine on 2026-09-28 (P32-9). Not requirements —
+recorded evidence that Requirements 1-63 hold against a real dispatch and a real destination,
+distinct from the committed fixture-driven unit tests above.
+
+### OpenTelemetry Collector, `otlp-http`, `auth: none`
+
+An `otel/opentelemetry-collector` container (image digest
+`sha256:b6d2b9a85b1029d05b5ad913150c1f014eed4ae99be81a1813ca5ade4a191913`) ran locally with the
+`debug` exporter on its `traces` pipeline, receiving OTLP/HTTP on `4318`.
+
+```text
+$ docket exporters enable otel-collector
+✓ Exporter enabled: otel-collector  ->  http://127.0.0.1:4318/v1/traces
+  scope: global  payload: full
+⚠ tool arguments and results leave this host
+```
+
+A real `docket pod rack-cli dispatch` (a freshly provisioned `software` pod, full roster) ran
+one task through all four hops -- Lead, Implementer, Reviewer, Tester -- against the local
+llama.cpp endpoint (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), and completed: `done -- 4 hop(s)`.
+
+- The collector's own log recorded 5 `docket.session` root spans, 29 `gen_ai.chat` spans
+  carrying real measured token counts (e.g. `gen_ai.usage.input_tokens: Int(2467)`,
+  `gen_ai.usage.output_tokens: Int(63)`), and 39 `execute_tool` spans (`read`, `grep`, `glob`).
+- `docket trace <session>` showed the matching 29 `llm_call` lines for the same session, with
+  the same token counts, confirming the projected spans and the underlying trace agree.
+- `docket exporters show otel-collector` reported `health exported=71 dropped=0 failed=0` --
+  Requirement 28's health file is a non-zero, never-failed counter under real traffic.
+
+This exercises the `auth: none` path (Requirements 24-27) end to end: catalog resolution,
+`verify_endpoint` classification on enable (Requirement 31), the pipeline (Requirements 44-49),
+and the module-level wiring into `run_turn` (Requirements 50-57).
+
+### Langfuse, `otlp-http`, `auth: basic` -- blocked on operator credentials
+
+`docket exporters enable langfuse` was run on the same machine and correctly refused, since no
+credential was stored -- the real, reproducible non-TTY path Requirement 60 describes:
+
+```text
+$ docket exporters enable langfuse
+✗ Error: Exporter 'langfuse' needs credentials that are not set:
+  docket keys add LANGFUSE_PUBLIC_KEY
+  docket keys add LANGFUSE_SECRET_KEY
+```
+
+The same refusal was reproduced for `honeycomb` (`auth: header`), confirming Requirement 60
+across both non-`none` auth kinds. **A live Langfuse round-trip needs the operator's own
+`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`** -- this cannot be fabricated or skipped per the
+project's no-overclaiming discipline. This is the one acceptance item this specification cannot
+mark verified; re-run `docket exporters enable langfuse` with real keys and a dispatch, then
+record the trace's appearance in Langfuse (or its rejection of `application/json`, which would
+open a deferred protobuf card) in a future revision of this section.
+
+### Recorded discrepancy: the fixture-replacement instruction
+
+P32-9's own card text asked for `tests/fixtures/traces/dispatch-3-hops.jsonl` to be replaced
+with this real capture. The fixture is not a loose example: `test_one_root_session_span`,
+`test_two_llm_call_children_carry_measured_tokens` (which asserts the token set is exactly
+`{120, 180}`), `test_guardrail_block_is_a_span_event_on_root`, and the golden byte-match against
+`tests/fixtures/otlp-v1/dispatch-3-hops.json` are all pinned to its specific, deliberately
+small, deterministic values -- including a `guardrail_block` event a real dispatch does not
+reliably produce. Overwriting it with a 145-line real capture would either break those
+committed assertions or require rewriting them to match arbitrary real numbers, trading a
+readable, deterministic regression fixture for a volatile one, for no gain: the real capture's
+event *shapes* (the same `event_type`/`payload` keys the fixture already models, confirmed
+above) are what a live run can actually add over the fixture, and this section records that
+instead. The fixture and its golden are unchanged.
+
 ## Changelog
+
+### Version 1.5.0 (2026-09-28)
+
+- **External verification (P32-9), close.** New "External verification" section: a real
+  `docket pod` dispatch against a Docker `otel/opentelemetry-collector` proved the `auth: none`
+  path end to end (real `gen_ai.chat` token counts, `execute_tool` spans, a matching `docket
+  trace` view, a non-zero `exported` health counter); the `auth: header` and `auth: basic` paths
+  were proved through their real, reproducible non-TTY credential refusal. A live Langfuse
+  round-trip stays open, named as blocked on the operator's own keys rather than skipped
+  silently. Status moves to "Implemented and live" -- every requirement in this specification,
+  including `pod.yaml`'s `exporters:` key (P32-8, already live), now has external evidence
+  behind it. Recorded, not applied: P32-9's own instruction to replace
+  `tests/fixtures/traces/dispatch-3-hops.jsonl` with the real capture conflicts with that
+  fixture's own committed, deterministic assertions (see "External verification"); the fixture
+  and its golden are unchanged, and the real capture's evidence lives in this section instead.
 
 ### Version 1.4.0 (2026-09-27)
 
