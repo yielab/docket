@@ -97,3 +97,36 @@ class TestSubscribe:
             r'"agent_role": "tester", "event_type": "session_start", "payload": \{"a": 1\}\}',
             line,
         ), line
+
+
+class TestTaskId:
+    def test_task_id_written_after_event_type_when_truthy(self) -> None:
+        trace.trace_event("proj", "s6", "tester", "session_start", "{}", task_id="task-1")
+        tracefile = trace.project_trace_dir("proj") / "s6.jsonl"
+        record = trace.read_trace(tracefile)[0]
+        assert record["task_id"] == "task-1"
+        keys = list(record.keys())
+        assert keys.index("task_id") == keys.index("event_type") + 1
+
+    def test_task_id_key_absent_when_not_given(self) -> None:
+        trace.trace_event("proj", "s7", "tester", "session_start", "{}")
+        tracefile = trace.project_trace_dir("proj") / "s7.jsonl"
+        record = trace.read_trace(tracefile)[0]
+        assert "task_id" not in record
+
+
+class TestIngestNotifiesSubscribers:
+    def test_ingest_notifies_subscribers_before_append(self) -> None:
+        from docket.core import session as _session
+        from docket.core.llm import ToolCall, assistant, tool_result, user
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _session.append_messages(
+            session_key, [user("go"), assistant(tool_calls=[call]), tool_result(call, "ok")]
+        )
+        received: list[dict[str, object]] = []
+        with trace.subscribe(received.append):
+            trace.trace_ingest("myshop")
+        tracefile = trace.project_trace_dir("myshop") / f"{session_key}.jsonl"
+        assert received == trace.read_trace(tracefile)

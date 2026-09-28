@@ -77,6 +77,7 @@ class FakeDriver:
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
         """``on_spawn``/``model`` are accepted (per the ``RuntimeDriver`` Protocol's own

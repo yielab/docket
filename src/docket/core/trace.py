@@ -207,6 +207,8 @@ def trace_event(
     payload: str,
     cost_usd: float | str | None = None,
     duration_ms: int | str | None = None,
+    *,
+    task_id: str = "",
 ) -> TraceStatus:
     """Validate, redact and append one trace event. Returns ``"written"`` on
     a real append, ``"rejected"`` for an unknown ``event_type``, or
@@ -230,8 +232,10 @@ def trace_event(
         "session_id": session_id,
         "agent_role": agent_role,
         "event_type": event_type,
-        "payload": payload_obj,
     }
+    if task_id:
+        record["task_id"] = task_id
+    record["payload"] = payload_obj
     if cost_usd not in (None, ""):
         with contextlib.suppress(TypeError, ValueError):
             record["cost_usd"] = float(cost_usd)  # type: ignore[arg-type]
@@ -328,6 +332,8 @@ def trace_ingest(project: str) -> None:
                 }
             )
 
+        for r in records:
+            _notify_subscribers(r)
         _append(tracefile, records)
 
         index[session_id] = sl.next_offset
@@ -341,7 +347,9 @@ def trace_ingest(project: str) -> None:
                 and (now - last_epoch) > timeout_s
                 and not _has_session_end(tracefile)
             ):
-                _append(tracefile, [_end_record(project, session_id)])
+                end_record = _end_record(project, session_id)
+                _notify_subscribers(end_record)
+                _append(tracefile, [end_record])
 
     if changed:
         _write_index(index_file, index)
