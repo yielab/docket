@@ -293,6 +293,11 @@ def policy_templates_dir() -> Path:
 # ai-gateway, groq, mistral, deepseek, xai, cerebras, together, ollama, lmstudio, local.
 PROVIDER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "providers"
 
+# EXPORTER_TEMPLATES_DIR: built-in `kind: exporter` documents shipped in the wheel
+# (core/exporter.py's Catalog scope "built-in") -- otel-collector, jaeger, langfuse, honeycomb,
+# phoenix. Same read-only, wheel-shipped shape as PROVIDER_TEMPLATES_DIR above.
+EXPORTER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "exporters"
+
 
 def recipes_dir() -> Path:
     """Shipped role/pipeline/policy recipe bundles (``templates/recipes/<name>/``)."""
@@ -416,6 +421,27 @@ MCP_SERVERS_FILE = Path(os.environ.get("MCP_SERVERS_FILE", DOCKET_HOME / "docket
 # edges/store.py like every other docket-owned JSON file. Merged with the built-in scope
 # (PROVIDER_TEMPLATES_DIR above), nearest-wins by name.
 PROVIDERS_FILE = Path(os.environ.get("PROVIDERS_FILE", DOCKET_HOME / "docket-providers.json"))
+
+# ── exporter catalog (core/exporter.py) ───────────────────────────────────────
+# EXPORTERS_FILE: docket-owned catalog of the operator's own exporter registrations and
+# overrides (core/exporter.py's ExporterSpec/Catalog, scope "global"), written through
+# edges/store.py. Merged with the built-in scope (EXPORTER_TEMPLATES_DIR above), nearest-wins
+# by name -- the same shape as PROVIDERS_FILE just above.
+EXPORTERS_FILE = Path(os.environ.get("EXPORTERS_FILE", DOCKET_HOME / "docket-exporters.json"))
+# EXPORTERS_HEALTH_FILE: per-exporter delivery counters and last-error state
+# ({"<name>": {"exported", "dropped", "failed", "lastOk", "lastError", "lastErrorAt"}}), read by
+# core/exporter.py::read_health (pure) and written by the background flusher, through
+# edges/store.py like every other docket-owned JSON file.
+EXPORTERS_HEALTH_FILE = Path(
+    os.environ.get("EXPORTERS_HEALTH_FILE", DOCKET_HOME / "exporters-health.json")
+)
+# EXPORT_QUEUE_MAX: bound on the in-memory span queue the background sender drains -- a stop
+# condition against an exporter that is slow or down, not a throughput knob, matching every
+# other bound in this file.
+EXPORT_QUEUE_MAX = int(os.environ.get("EXPORT_QUEUE_MAX", "1000"))
+# EXPORT_FLUSH_TIMEOUT_S: per-flush wall-clock bound for the same background sender.
+EXPORT_FLUSH_TIMEOUT_S = float(os.environ.get("EXPORT_FLUSH_TIMEOUT_S", "5.0"))
+
 # MCP_CLIENT_TIMEOUT_S: default per-call bound (connect+list, or connect+call)
 # used when a server config does not specify its own `timeout`.
 MCP_CLIENT_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_TIMEOUT_S", "10"))
@@ -527,6 +553,15 @@ def no_trace() -> bool:
     (read once at import) cannot do.
     """
     return os.environ.get("DOCKET_NO_TRACE", "0") == "1"
+
+
+# ── export suppression (core/exporter.py) ──
+
+
+def no_export() -> bool:
+    """True when DOCKET_NO_EXPORT=1 should no-op every export queue/flush action. A function,
+    not a cached constant, so a test can toggle it with ``monkeypatch.setenv`` mid-process."""
+    return os.environ.get("DOCKET_NO_EXPORT", "0") == "1"
 
 
 # ── sandboxed exec (edges/adapters/system.py) ──

@@ -1,0 +1,12 @@
+kind: exporter
+name: jaeger
+dialect: otlp-http
+endpoint: http://127.0.0.1:4318/v1/traces
+auth: {type: none}
+payload: metadata
+enabled: false
+note: >-
+  A local Jaeger instance's own OTLP/HTTP receiver (its default port is the same 4318 as
+  otel-collector -- run only one of the two on this host at a time). Start one with
+  `docker run -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one`, then open
+  http://127.0.0.1:16686 to browse traces.

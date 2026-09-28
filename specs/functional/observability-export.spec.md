@@ -1,9 +1,11 @@
 # Observability Export Specification
 
-**Version**: 1.0.0
-**Status**: Draft - model and projection implemented; no exporter yet. `core/telemetry.py`
-provides the neutral span model, the incremental projection, and the export policy; no
-destination, wire encoding, queue, or CLI surface exists yet.
+**Version**: 1.1.0
+**Status**: Draft - model, projection, and the exporter catalog implemented. `core/telemetry.py`
+provides the neutral span model, the incremental projection, and the export policy;
+`core/exporter.py` provides the `kind: exporter` document, the built-in + global catalog, and
+pure activation classification. No wire encoding, queue, health-file writer, or CLI surface
+exists yet.
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -26,13 +28,21 @@ This specification covers:
   on which span, and the fallback rule for a record type with no explicit case.
 - `ExportPolicy` and `admit(record)`: event-type admission and payload reduction
   (`metadata`/`full`).
+- The `kind: exporter` document (`core/exporter.py`'s `ExporterSpec`/`ExporterAuth`): field
+  shape, credential-name validation, and the four authentication types.
+- The built-in + global exporter catalog (`Catalog`, `load_catalog`, `save_exporter`,
+  `delete_exporter`, `_with_inherited_identity`, `export_exporter`) and the five built-in
+  documents shipped under `templates/exporters/`.
+- Pure activation classification (`activation_state`) and endpoint-probe classification
+  (`verify_endpoint`), and the read-only shape of the health file (`read_health`).
 
 This specification does NOT cover, and each is planned for a later card that will extend this
 document rather than replace it:
 
-- Any wire encoding of a `Span` (an `otlp-http` dialect).
-- A destination document (`kind: exporter`), its credentials, or a built-in catalog.
-- The bounded queue or background thread that would carry spans off the calling thread.
+- Any wire encoding of a `Span` (an `otlp-http` dialect) — that is the exporter document's
+  `dialect` field naming a closed vocabulary of one, not the encoder itself.
+- The bounded queue or background thread that would carry spans off the calling thread, and the
+  code that actually writes the health file (`core/exporter.py::read_health` is read-only).
 - A `docket exporters` command or any other CLI surface.
 - `task_id` on the trace record itself (`trace-store.spec.md` owns the record shape); this
   module only reads it defensively (`record.get("task_id", "")`), so nothing here changes when
@@ -104,6 +114,72 @@ document rather than replace it:
     exported as a measurement), and **MUST** exclude `run_cancellation_observed`/`step_skipped`
     (no destination has asked for either).
 
+### Exporter documents
+
+19. A `kind: exporter` document **MUST** validate through `core.exporter.ExporterSpec`
+    (`populate_by_name`), carrying `kind` (`Literal["exporter"]`), `name`
+    (`^[a-z0-9][a-z0-9-]*$`), `dialect` (`Literal["otlp-http"]`, default `"otlp-http"`),
+    `endpoint` (an `http://`/`https://` URL), `auth`, `headers`, `resource` (default
+    `{"service.name": "docket"}`), `aliases`, `events` (`"default"` | `"all"` | a list of
+    `core.trace.EVENT_TYPES` members), `payload` (`"metadata"` | `"full"`, default
+    `"metadata"`), `payloadMaxChars` (default `2000`), `enabled` (default `False`), and `note`.
+20. `auth.type` **MUST** be one of `bearer`, `header`, `basic`, `none`, and **MUST** require
+    exactly the credential-name arity that type implies: zero for `none`, exactly one for
+    `bearer` and `header`, exactly two (ordered: username, then password) for `basic`.
+    `auth.header` **MUST** be present exactly when `auth.type` is `"header"`.
+21. Every name in `auth.credentials` **MUST** match `^[A-Z][A-Z0-9_]*$`. A value that instead
+    looks like a credential *value* (matches `^[A-Za-z0-9/_\-+.]{20,}$`) **MUST** be refused
+    naming `auth.credentials` — a document never carries a secret, only the name of one already
+    in the store.
+22. `headers` **MUST** refuse the reserved names `authorization`, `content-type`, `accept`
+    (docket sends these itself), the same rule `core.provider.ProviderSpec.headers` applies.
+23. A malformed document (unknown `kind`, missing `name`, an unknown `dialect`/`auth.type`, or
+    any Requirement 20-22 failure) **MUST** raise `ExporterError` naming the file, field, and
+    message, mirroring `core.provider.ProviderError`'s shape exactly (`file`, `field`,
+    `message`, `valid`).
+
+### Catalog and scopes
+
+24. The exporter catalog **MUST** have two scopes, nearest-wins by name: built-in
+    (`config.EXPORTER_TEMPLATES_DIR`, the five documents under `templates/exporters/` —
+    `otel-collector`, `jaeger`, `langfuse`, `honeycomb`, `phoenix`) and global
+    (`config.EXPORTERS_FILE`, the operator's own, written through `edges/store.py`).
+    `Catalog.get(name)`/`source_of(name)` **MUST** report which scope resolved a name.
+25. A global entry sharing a built-in's name **MUST** inherit every field it does not itself
+    set, from that built-in — an override is typically a one- or two-field tweak (`endpoint`,
+    `enabled`), never a from-scratch redeclaration.
+26. `delete_exporter(name)` **MUST** refuse (naming the built-in scope) when *name* is a
+    built-in with no global override, and **MUST** refuse naming "not in the exporter catalog"
+    when *name* is not in the catalog at all; otherwise it removes the global entry.
+27. `export_exporter(name)` **MUST** render the resolved catalog entry as a `kind: exporter`
+    YAML document and **MUST NOT** ever include a credential value — only credential names are
+    ever held by `ExporterSpec` in the first place.
+
+### Activation state
+
+28. `activation_state(spec, health)` **MUST** be pure (no I/O) and **MUST** return
+    `"disabled"` whenever `spec.enabled` is `False`, checked before anything else — a present
+    credential **MUST NOT**, by itself, activate an exporter.
+29. When enabled, `activation_state` **MUST** return `("needs credential", [<missing names>])`
+    naming every `auth.credentials` entry that resolves to no value (checked via
+    `resolve_credentials`, which tries an environment variable of the same name first, then
+    `core.secrets.secret_value`).
+30. When enabled and every credential resolves, `activation_state` **MUST** return
+    `"unreachable"` when *health*'s `lastErrorAt` is present and newer than its `lastOk` (or
+    `lastOk` is absent), and `"enabled"` otherwise.
+31. `verify_endpoint(spec, probe)` **MUST** classify a `ProbeResult` the same way
+    `core.provider.verify_endpoint` classifies a provider probe: `probe.status is None` is the
+    only `reachable=False` outcome; a 2xx status carries no warning; `401`/`403` names the
+    credential as rejected or missing; any other status names the HTTP status.
+
+### Health file
+
+32. `config.EXPORTERS_HEALTH_FILE` (`exporters-health.json`) **MUST** hold a mapping of
+    exporter name to `{"exported": int, "dropped": int, "failed": int, "lastOk": <timestamp>,
+    "lastError": <string>, "lastErrorAt": <timestamp>}`. `core.exporter.read_health()` **MUST**
+    read it through `edges/store.py` and **MUST NOT** write it — the background sender that
+    writes this file is out of this specification's scope (see Scope, above).
+
 ## Interface Contracts
 
 ### Module API (`docket.core.telemetry`)
@@ -146,6 +222,73 @@ class ExportPolicy:
     def admit(self, record: dict[str, Any]) -> dict[str, Any] | None: ...
 ```
 
+### Module API (`docket.core.exporter`)
+
+```python
+class ExporterAuth(BaseModel):
+    type: Literal["bearer", "header", "basic", "none"]
+    header: str = ""
+    credentials: list[str] = []
+
+class ExporterSpec(BaseModel):
+    kind: Literal["exporter"]
+    name: str
+    dialect: Literal["otlp-http"] = "otlp-http"
+    endpoint: str
+    auth: ExporterAuth = ExporterAuth(type="none")
+    headers: dict[str, str] = {}
+    resource: dict[str, str] = {"service.name": "docket"}
+    aliases: dict[str, str] = {}
+    events: Literal["default", "all"] | list[str] = "default"
+    payload: Literal["metadata", "full"] = "metadata"
+    payload_max_chars: int = 2000               # alias "payloadMaxChars"
+    enabled: bool = False
+    note: str = ""
+
+class ExporterError(Exception):
+    file: Path
+    field: str
+    message: str
+    valid: tuple[str, ...]
+
+def load_exporter_document(path: str | Path) -> ExporterSpec: ...
+
+@dataclass(frozen=True)
+class Catalog:
+    entries: dict[str, ExporterSpec]
+    scopes: dict[str, str]                      # name -> "built-in" | "global"
+    def get(self, name: str) -> ExporterSpec | None: ...
+    def source_of(self, name: str) -> str: ...
+
+def load_catalog() -> Catalog: ...
+def save_exporter(spec: ExporterSpec) -> None: ...
+def delete_exporter(name: str) -> None: ...     # raises ExporterError
+def export_exporter(name: str) -> str: ...      # YAML, never a credential value
+def resolve_credentials(spec: ExporterSpec) -> tuple[list[str], str]: ...
+
+ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
+
+def activation_state(
+    spec: ExporterSpec, health: dict[str, Any] | None
+) -> tuple[ExporterState, list[str]]: ...
+
+@dataclass(frozen=True)
+class ProbeResult:
+    status: int | None
+    error: str = ""
+
+@dataclass(frozen=True)
+class ExporterVerification:
+    reachable: bool
+    status: int | None
+    credential_present: bool
+    credential_name: str
+    warning: str
+
+def verify_endpoint(spec: ExporterSpec, probe: ProbeResult) -> ExporterVerification: ...
+def read_health() -> dict[str, dict[str, Any]]: ...   # read-only
+```
+
 ## Examples
 
 ### Projecting one session
@@ -167,6 +310,19 @@ policy = telemetry.ExportPolicy(events=telemetry.DEFAULT_EVENTS, payload="metada
 admitted = policy.admit(record)
 if admitted is not None:
     send(admitted)   # never carries "arguments", "output", "prompt", ...
+```
+
+### Checking whether a shipped destination is ready
+
+```python
+from docket.core import exporter
+
+catalog = exporter.load_catalog()
+spec = catalog.get("langfuse")           # a built-in, disabled until enabled: true
+health = exporter.read_health().get("langfuse")
+state, missing = exporter.activation_state(spec, health)
+# state == "disabled" until an operator both enables it and stores
+# LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY.
 ```
 
 ## Validation
@@ -191,8 +347,27 @@ if admitted is not None:
   write to disk.
 - Redaction of secret shapes happens once, in `core.trace.trace_event`, before a record is
   written; this module never re-redacts and never widens what `metadata` mode already dropped.
+- `core/exporter.py` **MUST NOT** import anything from `edges/adapters/`; its own probe type
+  (`ProbeResult`) is a plain dataclass so the module never needs to. `core/exporter.py` and
+  `core/provider.py` are a deliberate duplication, not a shared base — refactoring them to share
+  code is a follow-up measurement, not a requirement of this specification.
+- `activation_state` and `verify_endpoint` **MUST** be pure: no I/O, no import of `edges/store.py`.
+- Nothing in `core/exporter.py` **MUST** ever hold, log, or serialize a credential *value* — only
+  credential *names* are ever fields of `ExporterSpec`.
 
 ## Changelog
+
+### Version 1.1.0 (2026-09-27)
+
+- **The exporter catalog.** New "Exporter documents", "Catalog and scopes", "Activation state",
+  and "Health file" Requirements sections (19-32): `core.exporter.ExporterSpec`/`ExporterAuth`
+  (a deliberate copy of `core.provider.ProviderSpec`'s shape, not a shared base), the built-in +
+  global catalog (five built-in documents under `templates/exporters/`: `otel-collector`,
+  `jaeger`, `langfuse`, `honeycomb`, `phoenix`), full-field inheritance for a global override
+  sharing a built-in's name, and the pure `activation_state`/`verify_endpoint` classifiers. A
+  present credential never activates an exporter by itself — `enabled` is checked first. The
+  wire encoding, the bounded queue/background sender, the health-file writer, and the CLI
+  surface remain out of scope; a later card extends this document with those sections.
 
 ### Version 1.0.0 (2026-09-27)
 

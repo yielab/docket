@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -10,7 +10,11 @@ requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUC
 `templates/policies/` as read-only package data, neither of which is itself a workspace. P31-2
 adds requirement 4: `$DOCKET_HOME/recipes/<name>/`, the operator's own recipes, is *not*
 package data despite living beside the shipped library in `resolve_recipe`'s lookup order. P31-6
-added "Skills scopes": `~/.docket/skills/` and a pod's own `config/skills/`.
+added "Skills scopes": `~/.docket/skills/` and a pod's own `config/skills/`. P32-4 added
+requirement 5: `templates/exporters/` joins `templates/providers/` as read-only shipped data;
+`docket-exporters.json`/`exporters-health.json` are documented in
+observability-export.spec.md, not here — this spec's scope is the workspace and template layer,
+not `DOCKET_HOME`'s own top-level registry files (see "Shipped-data templates").
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -184,6 +188,14 @@ permission/provisioning rules apply to.
    checks it before the shipped `recipes_dir()`, so a same-named operator recipe wins; `docket
    recipes list`/`show` (`cli-interface.spec.md`) is this directory's read-only discovery
    surface, alongside the shipped library.
+5. `templates/exporters/*.yaml` (the five built-in `kind: exporter` documents, ADR 0014)
+   **MUST** resolve through `docket.config.EXPORTER_TEMPLATES_DIR`, the same read-only,
+   wheel-shipped shape as `templates/providers/`. Neither `templates/providers/` nor
+   `templates/exporters/` is itself a workspace this spec's permission rules apply to; the
+   catalogs built from them (`docket-providers.json`, `docket-exporters.json`) and the
+   exporter health file (`exporters-health.json`) are `DOCKET_HOME`-level registry files
+   documented by their own owning specs (model-profiles.spec.md, observability-export.spec.md)
+   rather than by this one.
 
 ### Skills scopes (P31-6, ADR 0013 §3 rule 8)
 
@@ -287,6 +299,15 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.15.0 (2026-09-27)
+
+- **P32-4: the exporter catalog's shipped templates.** New requirement 5 in "Shipped-data
+  templates": `templates/exporters/*.yaml` (five built-in `kind: exporter` documents, ADR 0014)
+  resolves through `docket.config.EXPORTER_TEMPLATES_DIR`, the same shape as
+  `templates/providers/`. Named, but explicitly not owned here: `docket-exporters.json` and
+  `exporters-health.json`, `DOCKET_HOME`-level registry files documented in
+  observability-export.spec.md rather than this workspace/template-scoped specification.
 
 ### Version 1.14.0 (2026-09-27)
 

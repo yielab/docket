@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/exporter.schema.json",
+  "title": "ExporterSpec",
+  "$defs": {
+    "ExporterAuth": {
+      "description": "How a request authenticates -- names only, never a value. ``header`` names the request\nheader a ``type: header`` credential rides on, required exactly when ``type`` is\n``\"header\"``. ``basic`` is exactly two ordered names: username, then password.",
+      "properties": {
+        "type": {
+          "enum": [
+            "bearer",
+            "header",
+            "basic",
+            "none"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "header": {
+          "default": "",
+          "title": "Header",
+          "type": "string"
+        },
+        "credentials": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credentials",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ExporterAuth",
+      "type": "object"
+    }
+  },
+  "description": "A `kind: exporter` document -- see observability-export.spec.md (\"Exporter documents\").\nUnlike a role/pipeline/policy/pod short form, this model IS the canonical, only parsed\nshape; there is no separate wire format underneath it.",
+  "properties": {
+    "kind": {
+      "const": "exporter",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "dialect": {
+      "const": "otlp-http",
+      "default": "otlp-http",
+      "title": "Dialect",
+      "type": "string"
+    },
+    "endpoint": {
+      "title": "Endpoint",
+      "type": "string"
+    },
+    "auth": {
+      "$ref": "#/$defs/ExporterAuth"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Headers",
+      "type": "object"
+    },
+    "resource": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Resource",
+      "type": "object"
+    },
+    "aliases": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Aliases",
+      "type": "object"
+    },
+    "events": {
+      "anyOf": [
+        {
+          "enum": [
+            "default",
+            "all"
+          ],
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "default": "default",
+      "title": "Events"
+    },
+    "payload": {
+      "default": "metadata",
+      "enum": [
+        "metadata",
+        "full"
+      ],
+      "title": "Payload",
+      "type": "string"
+    },
+    "payloadMaxChars": {
+      "default": 2000,
+      "exclusiveMinimum": 0,
+      "title": "Payloadmaxchars",
+      "type": "integer"
+    },
+    "enabled": {
+      "default": false,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "endpoint"
+  ],
+  "type": "object"
+}
