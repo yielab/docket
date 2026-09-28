@@ -1,11 +1,11 @@
 # Trace Store Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
-`core/security.py`'s guardrail checks, and `core/harness.py`'s subscriber stream. Before this
-version the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
+`core/security.py`'s guardrail checks, and `core/harness.py`'s subscriber stream. Before v1.0.0
+the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
 **Last Updated**: 2026-09-27
@@ -128,6 +128,18 @@ This specification does NOT cover:
     `.ingest-index.json`, since a session id is never reused and a stale offset entry for one
     can never be read again.
 
+### Task attribution (v1.1.0)
+
+19. A record **MAY** carry an optional `task_id` field, included only when the caller passes a
+    non-empty value, and placed immediately after `event_type` in the record's key order so a
+    reader sees it early; a record written with no `task_id` **MUST NOT** carry the key at all
+    (never an empty string).
+20. `trace_ingest` **MUST** notify every registered subscriber with each record it is about to
+    append — including the synthetic `session_end` for a timed-out session — before that record
+    is durably written, the same notify-then-append order `trace_event` itself uses (requirement
+    10). Before this version, `trace_ingest` appended directly and no subscriber ever observed an
+    ingested record.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.trace`)
@@ -141,6 +153,7 @@ EVENT_TYPES: frozenset[str]  # the full set enumerated in requirement 6
 def trace_event(
     project: str, session_id: str, agent_role: str, event_type: str, payload: str,
     cost_usd: float | str | None = None, duration_ms: int | str | None = None,
+    *, task_id: str = "",
 ) -> TraceStatus: ...
 
 def subscribe(sink: TraceSink) -> AbstractContextManager[None]: ...
@@ -203,6 +216,17 @@ with trace.subscribe(received.append):
 No `cost_usd` key appears on this or any `llm_call` record: token counts are measured, but this
 store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
+### A record with `task_id` (v1.1.0)
+
+```json
+{"ts": "2026-09-27T18:04:11Z", "project": "docket-dev", "session_id": "agent:demo:task-9",
+ "agent_role": "implementer", "event_type": "tool_call", "task_id": "task-9",
+ "payload": {"tool": "read", "callId": "c1", "arguments": "{}"}}
+```
+
+`task_id` sits between `event_type` and `payload`; a record from a caller that passes no task id
+(most direct `trace_event` callers outside a pod-dispatch hop) has no `task_id` key at all.
+
 ## Validation
 
 ### Pre-conditions
@@ -227,6 +251,16 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.1.0 (2026-09-27)
+
+- Adds the optional `task_id` record field (requirement 19; ROADMAP P32-3, ADR 0014): written by
+  `trace_event` only when the caller passes a non-empty value, placed right after `event_type`.
+  `core/agent_loop.py::run_agent_turn` threads it through every `_trace_*` helper; the single
+  pod-dispatch call site (`core/dispatch.py`) now passes the claimed task's id.
+- `trace_ingest` now notifies every registered subscriber with each record (including the
+  synthetic `session_end`) before appending it (requirement 20) — closing the gap where an
+  ingested `tool_call`/`tool_result` never reached a live subscriber.
 
 ### Version 1.0.0 (2026-09-27)
 

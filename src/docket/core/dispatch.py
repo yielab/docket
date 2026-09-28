@@ -1244,6 +1244,7 @@ def _run_hop_turn(
                 on_spawn=_on_spawn,
                 trace_project=ctx.project,
                 trace_session_key=ctx.session_id,
+                trace_task_id=ctx.task_id,
                 model=resolved_model,
             )
         else:

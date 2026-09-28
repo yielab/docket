@@ -1,7 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.22.0
-**Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) makes a pipeline step's own `model`
+**Version**: 6.23.0
+**Status**: Complete. **P32-3** (ADR 0014) makes every hop-scoped trace event `core/agent_loop.py`
+writes carry the claimed task's `task_id` (new "Per-hop execution" requirement 6), threaded from
+the single `driver.run_turn(...)` call site; see `trace-store.spec.md` 1.1.0 for the record-shape
+side of this. **P30-3** (ADR 0012 §2 rule 6) makes a pipeline step's own `model`
 (`pipeline-format.spec.md`'s "Steps" Requirement 10) load-bearing at hop execution — see
 "Per-hop execution" requirement 5 below; resolution of the `cheap`/`strong` rank words is
 `model-profiles.spec.md`'s concern, applied per hop only, never persisted to `.docket-meta.json`.
@@ -522,6 +525,13 @@ was seeded once at binding time.)*
    parameter. A step `model` literal whose provider is absent from the provider catalog **MUST**
    be a `docket pipeline validate`/`plan` error naming the step, the same "caught before dispatch"
    posture an unresolvable `role`/`agent` target already gets.
+6. Every trace event `core/agent_loop.py` writes for a hop (`context_composed`, `tool_call`,
+   `tool_result`, `llm_call`, `session_compaction`, `request_fit`, `budget_warning`) **MUST**
+   carry `task_id` equal to the claimed task's id — threaded from `core.dispatch`'s single
+   `driver.run_turn(...)` call site through `run_agent_turn`'s `trace_task_id` parameter
+   (`trace-store.spec.md` requirement 19). The task-level `session_start`/`session_end`/
+   `dispatch_refused` events `core/dispatch.py` writes directly (see "Trace events this pipeline
+   emits" below) are unaffected and carry no `task_id`.
 
 ### Step-scoped durable runtime history (Wave 20 W20-C4)
 
@@ -1545,6 +1555,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.23.0 (2026-09-27)
+
+- **P32-3: hop trace records carry `task_id` (ADR 0014).** New "Per-hop execution" requirement 6:
+  every trace event the real agent loop writes for a hop (`tool_call`, `tool_result`, `llm_call`,
+  `session_compaction`, `request_fit`, `budget_warning`, `context_composed`) carries `task_id`
+  equal to the claimed task's id, forwarded from the one `driver.run_turn(...)` call site
+  (`core/dispatch.py`) through `run_agent_turn`'s new `trace_task_id` parameter. The task-level
+  `session_start`/`session_end`/`dispatch_refused` events `core/dispatch.py` writes directly are
+  unchanged and carry no `task_id`. See `trace-store.spec.md` 1.1.0 requirement 19.
 
 ### Version 6.22.0 (2026-09-27)
 

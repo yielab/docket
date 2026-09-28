@@ -501,6 +501,33 @@ class TestEndToEnd:
         assert tasks[0]["status"] == "done"
         assert (oc_dir / "traces" / "demo").is_dir()
 
+    def test_agent_loop_trace_records_carry_the_claimed_tasks_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every record the real agent loop writes for a hop is filed under the claimed
+        task's id; dispatch's own task-level session_start/session_end bookkeeping records
+        (written directly by core/dispatch.py, untouched by this card) carry no task_id."""
+        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        backend = _ScriptedBackend(
+            [_final_response("lead plan"), _final_response("implementer done")]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        task = _dispatch.enqueue_task("demo", "Trace task id")
+        results = _dispatch.dispatch_pod("demo")
+        assert results[0].status == "done"
+
+        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+        assert len(trace_files) == 1
+        events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+        llm_events = [e for e in events if e["event_type"] == "llm_call"]
+        assert len(llm_events) == 2  # one per hop (lead, implementer)
+        assert all(e.get("task_id") == task["id"] for e in llm_events)
+        session_events = [e for e in events if e["event_type"] in ("session_start", "session_end")]
+        assert session_events
+        assert all("task_id" not in e for e in session_events)
+
     def test_refuse_approval_mode_fails_a_gated_hop_immediately_instead_of_waiting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

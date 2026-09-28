@@ -210,6 +210,7 @@ class DocketDriver:
         on_spawn: Callable[[int], None] | None = None,
         trace_project: str | None = None,
         trace_session_key: str | None = None,
+        trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
         """Run one turn through ``core/agent_loop.py``. Never raises, with one deliberate
@@ -322,6 +323,7 @@ class DocketDriver:
             config=loop_config,
             trace_project=trace_project,
             trace_session_key=trace_session_key,
+            trace_task_id=trace_task_id or "",
         )
 
         # cost_usd stays 0.0: real token counts are recorded (result.usage,

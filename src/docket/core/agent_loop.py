@@ -328,6 +328,7 @@ def _trace_request_fit(
     estimated_input_tokens: int,
     output_reserve_tokens: int,
     context_window_tokens: int | None,
+    task_id: str = "",
 ) -> None:
     trace_event(
         project,
@@ -344,11 +345,18 @@ def _trace_request_fit(
                 "estimate": True,
             }
         ),
+        task_id=task_id,
     )
 
 
 def _trace_tool_call(
-    project: str, session_key: str, role: str, tool: str, call_id: str, arguments: str
+    project: str,
+    session_key: str,
+    role: str,
+    tool: str,
+    call_id: str,
+    arguments: str,
+    task_id: str = "",
 ) -> None:
     trace_event(
         project,
@@ -356,6 +364,7 @@ def _trace_tool_call(
         role,
         "tool_call",
         json.dumps({"tool": tool, "callId": call_id, "arguments": arguments}),
+        task_id=task_id,
     )
 
 
@@ -386,6 +395,7 @@ def _trace_tool_result(
     denial_kind: ToolDenialKind | None,
     policy_id: str = "",
     reason: str = "",
+    task_id: str = "",
 ) -> None:
     payload: dict[str, Any] = {
         "tool": tool,
@@ -406,6 +416,7 @@ def _trace_tool_result(
         role,
         "tool_result",
         json.dumps(payload),
+        task_id=task_id,
     )
 
 
@@ -417,6 +428,7 @@ def _trace_llm_call(
     iteration: int | None = None,
     *,
     purpose: str = "",
+    task_id: str = "",
 ) -> None:
     """One backend chat-completions exchange, measured -- never a cost figure."""
     payload: dict[str, Any] = {
@@ -440,6 +452,7 @@ def _trace_llm_call(
         "llm_call",
         json.dumps(payload),
         duration_ms=response.latency_ms,
+        task_id=task_id,
     )
 
 
@@ -448,6 +461,7 @@ def _trace_compaction(
     session_key: str,
     role: str,
     result: CompactionResult,
+    task_id: str = "",
 ) -> None:
     status = "failed" if not result.ok else "succeeded" if result.compacted else "no_op"
     trace_event(
@@ -467,6 +481,7 @@ def _trace_compaction(
                 "maxSummaryPromptEstimatedTokens": (result.max_summary_prompt_estimated_tokens),
             }
         ),
+        task_id=task_id,
     )
 
 
@@ -482,6 +497,7 @@ def _trace_terminal_finalization(
     normal_estimated_input_tokens: int,
     finalization_estimated_input_tokens: int,
     output_reserve_tokens: int,
+    task_id: str = "",
 ) -> None:
     remaining = max(0, token_budget - measured_tokens_used)
     trace_event(
@@ -506,6 +522,7 @@ def _trace_terminal_finalization(
                 "estimate": True,
             }
         ),
+        task_id=task_id,
     )
 
 
@@ -547,6 +564,7 @@ def _trace_prompt_composed(
     sections: tuple[_identity.PromptSectionReport, ...],
     budget_tokens: int,
     budget_source: str,
+    task_id: str = "",
 ) -> None:
     trace_event(
         project,
@@ -562,6 +580,7 @@ def _trace_prompt_composed(
                 "budgetSource": budget_source,
             }
         ),
+        task_id=task_id,
     )
 
 
@@ -691,6 +710,7 @@ class _TurnState:
     system_prompt: str
     tool_specs: list[ToolSpec]
 
+    trace_task_id: str = ""
     total_usage: TokenUsage = field(default_factory=TokenUsage)
     tool_calls_executed: int = 0
     iteration: int = 0
@@ -715,6 +735,7 @@ class _TurnState:
         clock: Callable[[], float],
         trace_project: str | None,
         trace_session_key: str | None,
+        trace_task_id: str = "",
     ) -> _TurnState:
         """Resolve every per-turn constant, in the order the loop always has."""
         context_window, output_reserve, request_max_tokens = _resolve_context_bounds(backend, cfg)
@@ -737,6 +758,7 @@ class _TurnState:
                 composition.sections,
                 composition.budget_tokens,
                 composition.budget_source,
+                task_id=trace_task_id,
             )
         return cls(
             backend=backend,
@@ -753,6 +775,7 @@ class _TurnState:
             registry=registry,
             system_prompt=system_prompt,
             tool_specs=tool_specs,
+            trace_task_id=trace_task_id,
         )
 
     def done(
@@ -813,6 +836,7 @@ class _TurnState:
                 estimated_input_tokens=estimated_input,
                 output_reserve_tokens=self.output_reserve,
                 context_window_tokens=None,
+                task_id=self.trace_task_id,
             )
             return estimated_input, ""
         if self.output_reserve <= 0:
@@ -838,6 +862,7 @@ class _TurnState:
             estimated_input_tokens=estimated_input,
             output_reserve_tokens=self.output_reserve,
             context_window_tokens=self.context_window,
+            task_id=self.trace_task_id,
         )
         return estimated_input, error
 
@@ -928,7 +953,14 @@ class _TurnState:
             temperature=self.cfg.temperature,
             timeout=min(timeout, remaining),
         )
-        _trace_llm_call(self.project, self.trace_key, self.ctx.role, response, purpose="compaction")
+        _trace_llm_call(
+            self.project,
+            self.trace_key,
+            self.ctx.role,
+            response,
+            purpose="compaction",
+            task_id=self.trace_task_id,
+        )
         self.last_raw = response.raw
         self.summary_usage = _accumulate(self.summary_usage, response.usage)
         if self.cancellation_requested():
@@ -1026,7 +1058,9 @@ class _TurnState:
         self.accounted_summary_usage = self.summary_usage
         if usage_delta.total_tokens or usage_delta.cached_tokens:
             append_messages(self.session_key, [], usage=usage_delta)
-        _trace_compaction(self.project, self.trace_key, self.ctx.role, result)
+        _trace_compaction(
+            self.project, self.trace_key, self.ctx.role, result, task_id=self.trace_task_id
+        )
         return result, self.compaction_failure_stop_reason
 
     def apply_initial_history_compaction(self) -> AgentLoopResult | None:
@@ -1372,6 +1406,7 @@ class _TurnState:
             normal_estimated_input_tokens=normal_estimated_input,
             finalization_estimated_input_tokens=final_estimated_input,
             output_reserve_tokens=self.output_reserve,
+            task_id=self.trace_task_id,
         )
         if final_fit_error:
             return (
@@ -1420,7 +1455,14 @@ class _TurnState:
             temperature=self.cfg.temperature,
             timeout=request_timeout,
         )
-        _trace_llm_call(self.project, self.trace_key, self.ctx.role, response, self.iteration)
+        _trace_llm_call(
+            self.project,
+            self.trace_key,
+            self.ctx.role,
+            response,
+            self.iteration,
+            task_id=self.trace_task_id,
+        )
         self.last_raw = response.raw
         self.total_usage = _accumulate(self.total_usage, response.usage)
         if self.cancellation_requested():
@@ -1532,7 +1574,13 @@ class _TurnState:
         approval_unavailable: ToolResult | None = None
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
-                self.project, self.trace_key, self.ctx.role, call.name, call.id, call.arguments
+                self.project,
+                self.trace_key,
+                self.ctx.role,
+                call.name,
+                call.id,
+                call.arguments,
+                task_id=self.trace_task_id,
             )
             result = dispatch_tool(call, self.ctx, self.registry)
             if result.denial_kind != "run_cancelled":
@@ -1549,6 +1597,7 @@ class _TurnState:
                 result.denial_kind,
                 result.policy_id,
                 result.reason,
+                task_id=self.trace_task_id,
             )
             if result.denial_kind is not None and not result.executed:
                 self.consecutive_denial_kinds.append(result.denial_kind)
@@ -1632,6 +1681,7 @@ def run_agent_turn(
     clock: Callable[[], float] = time.monotonic,
     trace_project: str | None = None,
     trace_session_key: str | None = None,
+    trace_task_id: str = "",
 ) -> AgentLoopResult:
     """Run one full turn: compose -> call -> gate-and-execute -> feed back -> repeat.
 
@@ -1654,6 +1704,7 @@ def run_agent_turn(
         clock=clock,
         trace_project=trace_project,
         trace_session_key=trace_session_key,
+        trace_task_id=trace_task_id,
     )
 
     initial_compaction_stop = state.apply_initial_history_compaction()

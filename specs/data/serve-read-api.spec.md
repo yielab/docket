@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.13.1
+**Version**: 2.13.2
 **Status**: Stable
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -302,6 +302,12 @@ that aggregates client-side across calls.
 
 - Each element of `events` is the **verbatim JSONL line** (a JSON string, not a re-parsed/re-keyed
   object) exactly as `core.trace.export_lines` returned it — no field is added, removed or renamed.
+- **`task_id` (2.13.2, P32-3, additive).** A pod-dispatch hop's line may carry a `task_id` key
+  (`trace-store.spec.md` 1.1.0 requirement 19), placed right after `event_type` by `trace_event`,
+  identifying which claimed task the record belongs to. This endpoint makes no change to read it:
+  since a line is delivered verbatim, a `task_id`-bearing line already flows through unchanged. A
+  caller that does not recognize the key **MUST** ignore it, exactly as any other unrecognized
+  payload field.
 - A project with no trace files returns `200` with `{"events": [], "next": ""}` — not an error.
 - The project segment must be non-empty — `GET /traces` and `GET /traces/` both reject with `400`.
 - The project segment must also pass `core.provisioning.validate_project_id` (specs/validation/
@@ -630,6 +636,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.13.2 (2026-09-27)
+
+- `GET /traces/<project>` documents the optional `task_id` key (`trace-store.spec.md` 1.1.0
+  requirement 19) a pod-dispatch hop's line may now carry — purely additive, no endpoint code
+  changed since lines are delivered verbatim (P32-3).
 
 ### Version 2.13.1 (2026-09-25)
 
