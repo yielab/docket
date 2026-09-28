@@ -150,6 +150,18 @@
             {
               "attributes": [
                 {
+                  "key": "docket.privacy",
+                  "value": {
+                    "stringValue": "minimal"
+                  }
+                },
+                {
+                  "key": "docket.privacy.classes",
+                  "value": {
+                    "stringValue": ""
+                  }
+                },
+                {
                   "key": "docket.project",
                   "value": {
                     "stringValue": "demo-project"
