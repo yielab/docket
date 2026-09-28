@@ -1,0 +1,14 @@
+kind: exporter
+name: honeycomb
+dialect: otlp-http
+endpoint: https://api.honeycomb.io/v1/traces
+auth:
+  type: header
+  header: x-honeycomb-team
+  credentials: [HONEYCOMB_API_KEY]
+payload: metadata
+enabled: false
+note: >-
+  Honeycomb's OTLP/HTTP ingest endpoint (US instance). For the EU instance, override `endpoint`
+  to https://api.eu1.honeycomb.io/v1/traces. Store the key with
+  `docket keys add HONEYCOMB_API_KEY` before enabling.

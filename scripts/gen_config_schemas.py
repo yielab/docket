@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""gen_config_schemas.py -- render docs/contracts/config-v1/{role,pipeline,policy,pod}.schema.json
-from the short-form Pydantic models in ``core.config_docs``.
+"""gen_config_schemas.py -- render
+docs/contracts/config-v1/{role,pipeline,policy,pod,exporter}.schema.json from the Pydantic
+models in ``core.config_docs``.
 
-``core.config_docs.RoleDocument``/``PipelineDocument``/``PolicyDocument``/``PodDocument`` are the
-source of truth; this script only serializes them. The same four files are also shipped inside
-the installed package (``src/docket/templates/schemas/``, byte-identical) so ``export_pod`` can
-copy them next to what it writes without reaching outside the wheel.
+Four are short-form models used only for schema generation and error refinement; ``ExporterSpec``
+is different -- it IS the canonical, only-parsed shape of a `kind: exporter` document. All five
+are also shipped byte-identical inside the installed package.
 
 Usage:
   ./scripts/gen_config_schemas.py            # regenerate every schema file
@@ -25,7 +25,7 @@ PACKAGE_SCHEMA_DIR = SRC / "docket" / "templates" / "schemas"
 
 sys.path.insert(0, str(SRC))
 
-KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod")
+KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "exporter")
 
 
 def render(kind: str) -> str:

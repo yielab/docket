@@ -32,9 +32,17 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
 
     error = exc_info.value
     assert error.valid == config_docs.KINDS
-    assert set(config_docs.KINDS) == {"role", "pipeline", "policy", "pod", "provider"}
+    assert set(config_docs.KINDS) == {
+        "role",
+        "pipeline",
+        "policy",
+        "pod",
+        "provider",
+        "exporter",
+    }
     assert str(error) == (
-        f"{path}:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider)"
+        f"{path}:1 kind: unknown kind 'banana' "
+        "(valid: role, pipeline, policy, pod, provider, exporter)"
     )
 
 

@@ -1,0 +1,11 @@
+kind: exporter
+name: phoenix
+dialect: otlp-http
+endpoint: http://127.0.0.1:6006/v1/traces
+auth: {type: none}
+payload: metadata
+enabled: false
+note: >-
+  A local Arize Phoenix instance's OTLP/HTTP receiver. Start one with
+  `docker run -p 6006:6006 -p 4317:4317 arizephoenix/phoenix`, then open
+  http://127.0.0.1:6006 to browse traces.

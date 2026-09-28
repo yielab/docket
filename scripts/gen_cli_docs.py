@@ -460,6 +460,16 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`$DOCKET_HOME/docket-providers.json`",
     ),
     (
+        ("EXPORTERS_FILE",),
+        "Global exporter catalog scope (`core/exporter.py`)",
+        "`$DOCKET_HOME/docket-exporters.json`",
+    ),
+    (
+        ("EXPORTERS_HEALTH_FILE",),
+        "Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`)",
+        "`$DOCKET_HOME/exporters-health.json`",
+    ),
+    (
         ("FLEET_FILE",),
         "Agent registration, channel bindings, gate/isolation flags, org default model",
         "`$DOCKET_HOME/fleet.json`",
@@ -510,6 +520,16 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         ("TRACE_RETENTION_DAYS",),
         "How long a terminated trace file survives before `docket trace expire` deletes it",
         "`30`",
+    ),
+    (
+        ("EXPORT_QUEUE_MAX",),
+        "Bound on the in-memory span queue the background exporter sender drains",
+        "`1000`",
+    ),
+    (
+        ("EXPORT_FLUSH_TIMEOUT_S",),
+        "Per-flush wall-clock bound for the background exporter sender",
+        "`5.0`",
     ),
     (
         ("TEMPLATE_VERSION",),
@@ -644,6 +664,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`docket-cli`",
     ),
     (("DOCKET_NO_TRACE",), "Set to `1` to disable trace-store writes", "unset (tracing on)"),
+    (
+        ("DOCKET_NO_EXPORT",),
+        "Set to `1` to disable every export queue/flush action",
+        "unset (export on)",
+    ),
     (
         ("DOCKET_SANDBOX_IMAGE",),
         "Image for the Docker exec-jail (`docket gates isolate on`)",

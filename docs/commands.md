@@ -1641,6 +1641,8 @@ No command emits any other exit code today.
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
 | `PROVIDERS_FILE` | Global provider catalog scope (`docket models provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
+| `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
+| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
@@ -1653,6 +1655,8 @@ No command emits any other exit code today.
 | `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway | `20` |
 | `DOCKET_KEY_MAX_AGE_DAYS` | `docket doctor`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
 | `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket trace expire` deletes it | `30` |
+| `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
+| `EXPORT_FLUSH_TIMEOUT_S` | Per-flush wall-clock bound for the background exporter sender | `5.0` |
 | `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket doctor` flags older agents for rebuild past a bump | `4` |
 | `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards in `docket maintain check` | `4` |
 | `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this | `6000` |
@@ -1681,6 +1685,7 @@ No command emits any other exit code today.
 | `DOCKET_SECRETS_BACKEND` | Stored-secret backend: `file` (default, `secrets.json`) or `keyring` (secret-tool/libsecret) | `file` |
 | `DOCKET_KEYRING_SERVICE` | The libsecret service name secrets are stored under when `DOCKET_SECRETS_BACKEND=keyring` | `docket-cli` |
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
+| `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
 | `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |

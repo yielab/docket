@@ -1,0 +1,12 @@
+kind: exporter
+name: otel-collector
+dialect: otlp-http
+endpoint: http://127.0.0.1:4318/v1/traces
+auth: {type: none}
+payload: full
+enabled: false
+note: >-
+  A generic OpenTelemetry Collector on this host, receiving OTLP/HTTP -- the only built-in
+  exporter shipped with payload: full, since traffic never leaves the machine. Run one with
+  `docker run -p 4318:4318 otel/opentelemetry-collector`, then flip enabled: true and point its
+  own config at whatever backend you actually want (Jaeger, Honeycomb, a vendor, ...).
