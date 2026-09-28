@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1/brief.schema.json",
+  "title": "TaskBrief",
+  "additionalProperties": false,
+  "description": "The Lead's typed intake output: objective, acceptance, what the Implementer needs,\nand the resources a deterministic check must confirm before another turn runs.",
+  "properties": {
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "acceptance": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Acceptance",
+      "type": "array"
+    },
+    "context": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Context",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Questions",
+      "type": "array"
+    },
+    "resources": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "expectedRiskyActions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Expectedriskyactions",
+      "type": "array"
+    },
+    "answers": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Answers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "objective"
+  ],
+  "type": "object"
+}

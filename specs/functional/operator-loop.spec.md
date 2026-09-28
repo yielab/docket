@@ -1,0 +1,265 @@
+# Operator Loop Specification
+
+**Version**: 0.1.0
+**Status**: Draft — contract only; behaviour ships across Phase 34.
+**Last Updated**: 2026-09-28
+
+## Purpose
+
+A docket operator who assigns work to a pod's Lead and walks away needs a way to learn that
+something needs them, be asked a question rather than only a permission, and trust that
+answering late never loses the work. This specification defines the shared `operator-v1`
+contract every later Phase-34 requirement, surface and channel builds through:
+`core/operator_contract.py`. It adopts existing standards rather than inventing docket-only
+vocabulary — A2A 1.0.0 task states, an MCP-elicitation-shaped question/answer, CloudEvents 1.0
+event envelopes — so any client that already understands one of those standards understands the
+matching part of docket's operator loop unchanged.
+
+## Scope
+
+This specification covers:
+
+- The task lifecycle vocabulary and its mapping onto the A2A 1.0.0 `TaskState` enumeration
+- The typed intake brief a pod's Lead produces (`TaskBrief`)
+- A question posed to a human and its answer, shaped as an MCP elicitation request/result
+  (`Question`, `QuestionSchema`, `AnswerResult`, `validate_requested_schema`, `validate_answer`)
+- The read views every surface (HTTP, CLI, MCP, channels) renders (`ApprovalView`, `TaskView`,
+  `InboxView`)
+- The CloudEvents 1.0 envelope every notification uses (`CloudEvent`, `make_event`,
+  `EVENT_KINDS`)
+- The stable digest that matches a tool call to a single-use pre-grant
+  (`canonical_args_digest`)
+- The generated JSON Schema documents under `docs/contracts/operator-v1/`
+
+This specification does NOT cover (each is a distinct future requirement area below, owned by
+its own card):
+
+- How a task actually parks for a human, or how a granted permission re-enters a hop
+  (`core/tools.py`, `core/approval.py`, `core/dispatch.py`)
+- How the Lead's pipeline produces a `TaskBrief` in practice, or how `POST /tasks` and
+  `docket pod <p> delegate` accept a pre-brief
+- How the inbox is assembled from live pod/approval/run state (`core/inbox.py`)
+- How an event is actually produced, diffed and delivered to a `kind: channel` destination
+  (`core/notify.py`, `edges/adapters/channels/`)
+- How an answer actually resumes a parked `input` pipeline step (`core/answers.py`)
+- The Telegram channel amendment (`core/telegram.py`, `telegram-integration.spec.md`)
+- The interruption forecast and CLI/HTTP pre-grant surface (`core/interruptions.py`)
+
+## Requirements
+
+### 1. Task status and its A2A mapping
+
+1. `a2a_state(status, blocked_reason=None, failure_kind=None)` MUST return exactly one of the
+   eight `A2A_STATES` names for every docket task `status` this specification enumerates:
+
+   | docket `status` | `blocked_reason` / `failure_kind` | `a2aState` |
+   | --- | --- | --- |
+   | `pending` | — | `SUBMITTED` |
+   | `running` | — | `WORKING` |
+   | `waiting_input` | — | `INPUT_REQUIRED` |
+   | `waiting_approval` | — | `INPUT_REQUIRED` |
+   | `blocked` | `blocked_reason == "resources"` | `AUTH_REQUIRED` |
+   | `blocked` | any other reason (including none) | `INPUT_REQUIRED` |
+   | `done` | — | `COMPLETED` |
+   | `failed` | `failure_kind == "rejected"` | `REJECTED` |
+   | `failed` | any other kind (including none) | `FAILED` |
+   | `cancelled` | — | `CANCELED` |
+
+2. `a2a_state` MUST raise `ValueError` for a `status` outside this table. It MUST NOT guess or
+   fall back to a default state.
+3. `A2A_STATES` MUST list exactly the eight names above, in A2A 1.0.0's own order, and MUST be
+   the only place that vocabulary is enumerated (later requirement areas reference it, never
+   redeclare it).
+
+### 2. Park, don't block
+
+**Status: Planned — owned by P34-5 (chokepoint) and P34-8 (dispatch re-entry).** The digest this
+area matches a call against (`canonical_args_digest`) and the stop-reason contract it extends
+already exist in this module and in `core/agent_loop.py`'s vocabulary respectively; the `park`
+approval mode, the pre-grant record and re-entry behaviour do not.
+
+### 3. The Lead's intake
+
+**Status: Planned — owned by P34-12.** `TaskBrief`, its field validation (a non-empty
+`objective`, and every `resources[]` entry prefixed `secret:`, `path:` or equal to `verify`) and
+the `expectedRiskyActions` alias exist in this module. The pipeline `input` step that produces
+one from a Lead's reply, and the deterministic resource pre-check, do not.
+
+### 4. Task assignment in a standard shape
+
+**Status: Planned — owned by P34-13.** `TaskBrief` is the pre-brief shape `POST /tasks` and
+`docket pod <p> delegate` will accept; nothing yet parses it at either surface.
+
+### 5. One inbox, derived
+
+**Status: Planned — owned by P34-6.** `InboxView`'s four sections (`needs_you`, `failed`,
+`done_since`, `running`) and its `next` cursor field are defined; `core/inbox.py::build_inbox`,
+the function that populates one from live pod/approval/run state, does not exist yet.
+
+### 6. Notifications
+
+**Status: Planned — owned by P34-9 (the `kind: channel` document) and P34-11 (delivery).**
+`CloudEvent`, `make_event` and the closed `EVENT_KINDS` vocabulary are defined and satisfy the
+CloudEvents 1.0 structured-mode shape; no channel document kind, snapshot diff or delivery
+adapter exists yet.
+
+### 7. Answers
+
+**Status: Planned — owned by P34-10.** `Question`, `QuestionSchema`,
+`validate_requested_schema` and `AnswerResult`/`validate_answer` are defined and enforce the MCP
+elicitation subset (a flat object of primitive properties, `accept`/`decline`/`cancel`); no
+`core/answers.py::answer_task` exists yet to resume a parked `input` step with a validated
+answer.
+
+### 8. Telegram (the one amended boundary)
+
+**Status: Planned — owned by P34-16.** No behaviour in this module is Telegram-specific; the
+amendment to `telegram-integration.spec.md` Command grammar 7 and the `/answer` verb are out of
+scope here.
+
+### 9. Seeing it coming, and not being interrupted twice
+
+**Status: Planned — owned by P34-15.** `canonical_args_digest` is the digest this area's
+pre-grant matcher will use (the same function `core/tools.py`'s `park` branch uses, so a
+CLI-issued pre-grant and an in-turn parked approval are matched identically); the forecast
+function and CLI/HTTP surface do not exist yet.
+
+## Interface Contracts
+
+### Module API (`docket.core.operator_contract`)
+
+```python
+A2A_STATES: tuple[str, ...]            # the eight A2A 1.0.0 TaskState names, in order
+EVENT_KINDS: tuple[str, ...]           # the closed vocabulary of dev.docket.<noun>.<verb> kinds
+
+def a2a_state(
+    status: str, blocked_reason: str | None = None, failure_kind: str | None = None,
+) -> str: ...                          # raises ValueError outside requirement area 1's table
+
+class TaskBrief(BaseModel): ...        # objective, acceptance/context/constraints/assumptions/
+                                        # questions/resources/answers, expectedRiskyActions
+def validate_requested_schema(d: dict[str, Any]) -> dict[str, Any]: ...  # raises ValueError
+class QuestionSchema(BaseModel): ...   # schema-generator wrapper for requestedSchema
+def new_question_id() -> str: ...      # "q-<12 hex chars>"
+class Question(BaseModel): ...         # id/taskId/pod/step/message/requestedSchema/created/expires
+class AnswerResult(BaseModel): ...     # action: accept|decline|cancel, content
+def validate_answer(question: Question, result: AnswerResult) -> AnswerResult: ...  # raises
+
+class ApprovalView(BaseModel): ...     # token/pod/taskId/role/tool/action/policy/state/…/a2aState
+class TaskView(BaseModel): ...         # id/pod/status/a2aState/…/question/approvalToken/brief
+class InboxView(BaseModel): ...        # needsYou/failed/doneSince/running/next
+
+class CloudEvent(BaseModel): ...       # CloudEvents 1.0 structured-mode envelope
+def make_event(
+    kind: str, pod: str, subject: str, data: dict[str, Any], *, time: str, version: str,
+) -> CloudEvent: ...                   # raises ValueError if kind not in EVENT_KINDS
+
+def canonical_args_digest(tool: str, args: dict[str, Any]) -> str: ...  # 16 hex chars
+```
+
+### Generated schemas (`docs/contracts/operator-v1/`)
+
+`scripts/gen_operator_schemas.py` renders `task.schema.json`, `question.schema.json`,
+`answer.schema.json`, `approval.schema.json`, `inbox.schema.json`, `brief.schema.json` and
+`event.schema.json` from `TaskView`, `Question`, `AnswerResult`, `ApprovalView`, `InboxView`,
+`TaskBrief` and `CloudEvent` respectively. `question.schema.json`'s `requestedSchema` property is
+rendered from `QuestionSchema`, not the generic object the Python field carries, so the published
+document constrains it to the MCP elicitation subset. Every document carries `$id`
+`https://docket.dev/schemas/operator-v1/<name>.schema.json` and JSON Schema 2020-12's
+`$schema`. `--check` exits 1 when any file on disk is stale; there is no package copy (contrast
+`config-v1`, which ships one inside the wheel).
+
+## Examples
+
+### The A2A mapping
+
+```python
+from docket.core.operator_contract import a2a_state
+
+a2a_state("waiting_approval")                       # "INPUT_REQUIRED"
+a2a_state("blocked", blocked_reason="resources")     # "AUTH_REQUIRED"
+a2a_state("blocked", blocked_reason="budget")        # "INPUT_REQUIRED"
+a2a_state("failed", failure_kind="rejected")         # "REJECTED"
+a2a_state("failed")                                  # "FAILED"
+```
+
+### A question and a validated answer
+
+```python
+from docket.core.operator_contract import AnswerResult, Question, validate_answer
+
+q = Question(
+    id="q-0123456789ab", task_id="t-1", pod="alpha", step="ask",
+    message="Which environment?",
+    requested_schema={
+        "type": "object",
+        "properties": {"env": {"type": "string", "enum": ["staging", "prod"]}},
+        "required": ["env"],
+    },
+    created_at="2026-09-28T00:00:00Z",
+)
+validate_answer(q, AnswerResult(action="accept", content={"env": "staging"}))  # ok
+validate_answer(q, AnswerResult(action="accept", content={"env": "nope"}))     # raises ValueError
+validate_answer(q, AnswerResult(action="decline"))                             # ok, content ignored
+```
+
+### An event's stable id
+
+```python
+from docket.core.operator_contract import make_event
+
+first = make_event("approval.requested", "alpha", "apr-1", {}, time="t0", version="v1")
+again = make_event("approval.requested", "alpha", "apr-1", {}, time="t1", version="v1")
+first.id == again.id  # True: redelivering the same transition never mints a new id
+```
+
+### Matching a pre-grant
+
+```python
+from docket.core.operator_contract import canonical_args_digest
+
+a = canonical_args_digest("bash", {"command": "git push origin main"})
+b = canonical_args_digest("bash", {"command": "git push origin main"})
+a == b  # True regardless of argument dict key order
+```
+
+## Validation
+
+### Pre-conditions
+
+- Every model in this module uses `populate_by_name=True` with `alias=...` for its `camelCase`
+  wire fields, mirroring `core/conversations.py`, so a caller may construct one by either the
+  Python name or the wire alias.
+- Every model uses `extra="forbid"`: an unknown key is rejected, never silently carried.
+
+### Post-conditions
+
+- `a2a_state` MUST return a value from `A2A_STATES` for every status/reason/kind combination
+  requirement area 1's table lists, and MUST raise for every other status.
+- `validate_requested_schema` MUST return its input unchanged on success and MUST raise
+  `ValueError` naming the offending key on failure; it MUST NOT mutate its argument.
+- `validate_answer` MUST leave `decline`/`cancel` results unvalidated against `content`, and MUST
+  raise `ValueError` naming the first missing or mismatched property for a rejected `accept`.
+- `make_event` MUST raise `ValueError` for a `kind` outside `EVENT_KINDS` and MUST NOT construct
+  a `CloudEvent` in that case.
+- `canonical_args_digest` MUST return the same digest for the same tool name and the same
+  arguments regardless of the arguments dict's key order, and MUST return a different digest for
+  a different tool name given the same arguments.
+
+### Invariants
+
+- `EVENT_KINDS` MUST remain the only place a `dev.docket.<noun>.<verb>` event kind is
+  enumerated; a future card adding a kind edits this module, never redeclares one elsewhere.
+- No value this module rejects (an unknown A2A status, a malformed `requestedSchema`, an
+  out-of-vocabulary event kind) MUST ever reach a schema document, an HTTP response or a channel
+  delivery — every producer of those surfaces MUST construct its value through this module's
+  functions, never by hand-building an equivalent dict.
+
+## Changelog
+
+### Version 0.1.0 (2026-09-28)
+
+- Initial specification: the `operator-v1` contract module (`core/operator_contract.py`), its
+  generated JSON Schema documents, and the nine requirement areas the rest of the operator loop
+  fills in. Only requirement area 1 (task status and its A2A mapping) is implemented; the other
+  eight are stubbed pending their owning cards.

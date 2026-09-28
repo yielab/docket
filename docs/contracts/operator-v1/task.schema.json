@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1/task.schema.json",
+  "title": "TaskView",
+  "$defs": {
+    "Question": {
+      "additionalProperties": false,
+      "description": "A question posed to a human, shaped as an MCP elicitation request.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "taskId": {
+          "title": "Taskid",
+          "type": "string"
+        },
+        "pod": {
+          "title": "Pod",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "requestedSchema": {
+          "additionalProperties": true,
+          "title": "Requestedschema",
+          "type": "object"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiresat"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "pod",
+        "step",
+        "message",
+        "requestedSchema",
+        "createdAt"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "TaskBrief": {
+      "additionalProperties": false,
+      "description": "The Lead's typed intake output: objective, acceptance, what the Implementer needs,\nand the resources a deterministic check must confirm before another turn runs.",
+      "properties": {
+        "objective": {
+          "title": "Objective",
+          "type": "string"
+        },
+        "acceptance": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Acceptance",
+          "type": "array"
+        },
+        "context": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Context",
+          "type": "array"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Questions",
+          "type": "array"
+        },
+        "resources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resources",
+          "type": "array"
+        },
+        "expectedRiskyActions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expectedriskyactions",
+          "type": "array"
+        },
+        "answers": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Answers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "objective"
+      ],
+      "title": "TaskBrief",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The operator-v1 rendering of one docket task: lifecycle plus its A2A state.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "pod": {
+      "title": "Pod",
+      "type": "string"
+    },
+    "status": {
+      "title": "Status",
+      "type": "string"
+    },
+    "a2aState": {
+      "title": "A2Astate",
+      "type": "string"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "priority": {
+      "default": "",
+      "title": "Priority",
+      "type": "string"
+    },
+    "createdAt": {
+      "default": "",
+      "title": "Createdat",
+      "type": "string"
+    },
+    "updatedAt": {
+      "default": "",
+      "title": "Updatedat",
+      "type": "string"
+    },
+    "question": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Question"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approvalToken": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approvaltoken"
+    },
+    "brief": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TaskBrief"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "pod",
+    "status",
+    "a2aState"
+  ],
+  "type": "object"
+}
