@@ -2,12 +2,14 @@ kind: channel
 name: telegram
 dialect: telegram
 description: >-
-  docket's own inbound-only Telegram bot (`core/telegram.py`). It can notify, converse and
-  decide, but only for a chat id you have explicitly allow-listed -- `enable` refuses while
-  `actors` is empty. Pass `--set actors=<chat-id>` naming the chat(s) allowed to answer or
-  approve; it stays disabled until then.
+  docket's own Telegram bot (`core/telegram.py`). It can notify, converse and decide, but only
+  for a chat id you have explicitly allow-listed -- `enable` refuses while `actors` is empty.
+  Pass `--set actors=<chat-id>` naming the chat(s) allowed to answer, approve, or receive a
+  push when a task needs input; it stays disabled until then. Uses the same
+  `TELEGRAM_BOT_TOKEN` secret `docket keys add TELEGRAM_BOT_TOKEN` stores.
 capabilities: [notify, converse, decide]
 on: [needs_you]
 content: minimal
 actors: []
+secret: TELEGRAM_BOT_TOKEN
 enabled: false

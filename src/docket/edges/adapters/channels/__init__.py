@@ -2,8 +2,7 @@
 `ChannelSpec`'s `dialect` to its `deliver` function -- the one seam `core/notify.py::flush`
 uses; `core/` never imports this package directly.
 
-Wired here: `console`, `webhook`, `command`, `ntfy`, `desktop`, `email`. The remaining
-v1 dialect (`telegram`) will be added in a later change.
+Wired here: `console`, `webhook`, `command`, `ntfy`, `desktop`, `email`, `telegram`.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from .console import deliver as _console_deliver
 from .desktop import deliver as _desktop_deliver
 from .email import deliver as _email_deliver
 from .ntfy import deliver as _ntfy_deliver
+from .telegram import deliver as _telegram_deliver
 from .webhook import DeliveryResult
 from .webhook import deliver as _webhook_deliver
 
@@ -39,6 +39,7 @@ _DIALECTS: dict[str, Deliver] = {
     "ntfy": _ntfy_deliver,
     "desktop": _desktop_deliver,
     "email": _email_deliver,
+    "telegram": _telegram_deliver,
 }
 
 

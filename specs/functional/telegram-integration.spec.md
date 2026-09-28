@@ -132,28 +132,79 @@ blocked policy verdict never default to granting or denying anything.
    a missing/malformed argument (e.g. `/approve` with no token).
 6. **MUST** treat any other text as unrecognized — never as an implicit delegate or an implicit
    approval of the most-recent pending token.
-7. **MUST** be inbound-only: the channel replies to a message it received and **MUST NOT** send
-   unprompted. There is no notification on a newly-created approval and no report when a
-   delegated task finishes — `send_message` has exactly one call site, the reply inside
-   `poll_once`, and `core/approval.py` holds no reference to this module. An operator discovers
-   pending work by sending `/status`. This is a deliberate boundary, not an omission: an outbound
-   path would make an approval request itself a message docket pushes to an untrusted surface.
+7. **MUST** be inbound-only from `core/telegram.py`'s own perspective: the module replies to a
+   message it received and never sends anything on its own initiative — `poll_once`'s reply is
+   this module's only `send_message` call site, and `core/approval.py` holds no reference to
+   this module. **A separate, operator-configured push now exists alongside it** (P34-16): the
+   `telegram` channel dialect (`edges/adapters/channels/telegram.py::deliver`, see the new
+   "Telegram as a channel" section below) can notify a chat when a task needs input, but only a
+   chat id the operator explicitly listed in that channel document's own `actors` — never every
+   `fleet.json` binding, and never triggered from inside this module. Nothing about approve/deny/
+   status/delegate/answer routing changed: this module still only ever *replies*.
 8. **MUST** answer `/delegate` with the queued task's id, not the pipeline's output. The channel
-   queues work; it does not carry results back (see requirement 7). Output is read through
-   `docket pod <project> queue`, `docket trace`, or the HTTP control plane.
+   queues work; it does not carry results back. `/answer` (see the new section below) is the
+   equivalent contract for a parked question: it answers with a confirmation naming the task id,
+   never the agent's own output. Output is read through `docket pod <project> queue`,
+   `docket trace`, or the HTTP control plane.
 
 ### Non-Goals (explicitly out of scope for this card)
 
 - Webhook mode (long-poll only)
-- Any outbound/unprompted message, including approval notifications and task-completion
-  reports (see Command grammar 7) — a wired chat is a command surface, not a feed
-- Conversational chat: prose that is not one of the four operational verbs or the inert `/wire`
+- Any outbound/unprompted message *from `core/telegram.py` itself* — see Command grammar 7's
+  amendment: the operator-configured `telegram` channel push (new section below) is the one
+  deliberate exception, gated by an explicit `actors` allow-list a human must set
+- Conversational chat: prose that is not one of the five operational verbs or the inert `/wire`
   setup handshake is refused, never routed
   to the bound agent as a turn
 - Inline keyboards or any rich UI beyond a plain-text reply
 - Discord/Slack/other chat platforms
 - A per-user allowlist beyond the chat-level binding (the binding IS the authorization unit)
 - Migrating any daemon-era Telegram configuration (D-19: clean break, no migration)
+
+### Telegram as a channel (`/answer` and the outbound `telegram` dialect)
+
+**Status: Implemented (P34-16).** ADR 0016 §7 makes Telegram one `kind: channel` dialect among
+several (`templates/channels/07-telegram.yaml`; `capabilities: [notify, converse, decide]`,
+`console` and `telegram` being the only two dialects allowed to `converse`/`decide`). This section
+amends the command grammar above with the fifth verb and documents the dialect's `notify` half;
+`converse`/`decide` remain entirely inbound, unchanged from Command grammar 1-6 above.
+
+1. **MUST** recognize `/answer <task-id> <answer text>` (`core/telegram.py`'s `_ANSWER_RE`),
+   resolving through `core.answers.answer_task(project, task_id, "accept", content,
+   channel="telegram", actor="telegram")` — the identical function `docket pod <project> answer`,
+   `docket chat`, `POST /tasks/<id>/answer`, and the MCP `task_answer` tool already call. This
+   module never reimplements answer/resume semantics.
+2. **MUST** resolve *project* the same way `/delegate` does (`_lead_project`): the bound agent's
+   own pod. A task id belonging to another pod is refused by `answer_task` itself (it only reads
+   that one project's task list), the same fail-closed behavior `answer_task` already gives every
+   other channel.
+3. **MUST** reply with a usage message on `/answer` with a missing task id or missing answer text,
+   per Command grammar 5's existing rule for a recognized verb with a malformed argument.
+4. **MUST** refuse `/answer` when the bound agent is not a pod Lead, when the named task has no
+   pending question, or when the question's schema has more than one property — a single chat
+   message cannot be split across fields; the reply names `docket pod <project> answer
+   <task-id> --field name=value ...` or `docket chat` as the multi-field path, mirroring
+   `cli/_pod.py::_pod_answer`'s own bare-text restriction.
+5. **MUST** screen the answer text through the same `pre_input` evaluator every other answer
+   channel uses — this is `answer_task`'s own screen (`core/answers.py`), not a second check in
+   this module; a `block` verdict raises `AnswerRejected`, which this module reports as
+   `Answer blocked by policy '<policy id>'` and audits as `telegram.answer_blocked` (chat
+   id/policy id only, never the answer text, matching the `telegram.delegate_blocked`
+   precedent).
+6. **MUST** implement the dialect's `notify` capability as `edges/adapters/channels/
+   telegram.py::deliver(spec, event, *, secret, timeout) -> DeliveryResult` (the same shape every
+   other dialect under `edges/adapters/channels/` implements, wired into `sink_for`). It **MUST**
+   send the rendered event (`core.notify.render_text`) to every chat id in `spec.actors` via
+   `edges/adapters/telegram.py::send_message`, using `secret` (the channel's own resolved
+   credential — the built-in document names `TELEGRAM_BOT_TOKEN`, the same secret `docket keys
+   add TELEGRAM_BOT_TOKEN` stores and `core/telegram.py`'s poll loop reads) as the bot token.
+   It **MUST NOT** send to any chat id outside `spec.actors`, and in particular **MUST NOT**
+   enumerate `fleet.json` bindings — the channel's own allow-list is the only recipient list.
+   A missing secret, an empty `actors` list, or a failed send **MUST** all report a failed
+   `DeliveryResult` without raising, per the shared dialect contract.
+7. **MUST NOT** let this dialect's `deliver` initiate a conversation or resolve an approval —
+   it is a one-shot, fire-and-forget push; a chat that wants to act on the notification still
+   does so through the normal inbound `/approve`/`/answer` path, authorized the normal way.
 
 ## Interface Contracts
 
