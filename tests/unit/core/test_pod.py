@@ -279,6 +279,42 @@ class TestPodSettings:
         settings = pod.PodSettings.load_for("shop")
         assert settings.value_and_source("approvalMode", "shop") == ("refuse", "set")
 
+    def test_approval_mode_park_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalMode": "park"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_mode == "park"
+
+    def test_coerce_accepts_park(self) -> None:
+        assert pod.PodSettings.coerce("approvalMode", "park") == "park"
+
+    def test_approval_expiry_hours_defaults_to_24(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_expiry_hours == 24
+
+    def test_input_expiry_hours_defaults_to_72(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.input_expiry_hours == 72
+
+    def test_approval_expiry_hours_round_trips(self) -> None:
+        _write_lead_meta("shop", {"approvalExpiryHours": "6"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.approval_expiry_hours == 6
+
+    def test_input_expiry_hours_round_trips(self) -> None:
+        _write_lead_meta("shop", {"inputExpiryHours": "48"})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.input_expiry_hours == 48
+
+    def test_approval_expiry_hours_rejects_non_positive(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="approvalExpiryHours"):
+            pod.PodSettings.coerce("approvalExpiryHours", "0")
+
+    def test_input_expiry_hours_rejects_non_positive(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="inputExpiryHours"):
+            pod.PodSettings.coerce("inputExpiryHours", "0")
+
 
 class TestPodSettingsSchedule:
     """`PodSettings.schedule`: validated through the same `coerce` path as every other

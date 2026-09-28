@@ -282,6 +282,8 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
     "approvalMode": "approval_mode",
+    "approvalExpiryHours": "approval_expiry_hours",
+    "inputExpiryHours": "input_expiry_hours",
     "allowCommands": "allow_commands",
     "pipeline": "pipeline",
     "schedule": "schedule",
@@ -319,10 +321,23 @@ class PodSettings(BaseModel):
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
     # Whether an unattended hop waits on an `ask` verdict (today's behavior,
-    # byte-identical) or refuses it at once -- threaded into the hop's tool
-    # env as DOCKET_APPROVAL_MODE (see core/dispatch.py's `_compose_hop`
-    # and core/tools.py's `ToolContext.approval_mode`).
-    approval_mode: Literal["wait", "refuse"] = Field("wait", alias="approvalMode")
+    # byte-identical), parks it durably for a human to resolve later, or
+    # refuses it at once -- threaded into the hop's tool env as
+    # DOCKET_APPROVAL_MODE (see core/dispatch.py's `_compose_hop` and
+    # core/tools.py's `ToolContext.approval_mode`). The field default stays
+    # "wait" (export/apply round-trips and goldens depend on it); "unset" --
+    # which caller-scoped default applies (ADR 0016 SS2) -- is detected from
+    # whether the Lead's meta carries this key at all
+    # (core/dispatch.py's `pod_approval_mode_is_set`), never from this value.
+    approval_mode: Literal["wait", "park", "refuse"] = Field("wait", alias="approvalMode")
+    # Hours a park-mode approval record stays live before the fail-closed
+    # sweep denies it (core/dispatch.py's `_compose_hop`, which stamps each
+    # parked call's own `expiresAt`).
+    approval_expiry_hours: int = Field(24, alias="approvalExpiryHours", ge=1)
+    # Hours an `input` step's unanswered question stays live before it is
+    # tagged `blockedReason: "input_expired"` (read by a later execution card;
+    # unused by dispatch until then).
+    input_expiry_hours: int = Field(72, alias="inputExpiryHours", ge=1)
     allow_commands: tuple[str, ...] = Field((), alias="allowCommands")
     # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
     # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
@@ -391,6 +406,8 @@ class PodSettings(BaseModel):
         "turnTimeoutS",
         "verifyTimeoutS",
         "approvalMode",
+        "approvalExpiryHours",
+        "inputExpiryHours",
         "allowCommands",
         "pipeline",
         "schedule",

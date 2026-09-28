@@ -16,9 +16,10 @@ from __future__ import annotations
 import contextlib
 import hashlib as _hashlib
 import json as _json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import typer
 from rich.markup import escape
@@ -631,6 +632,12 @@ def _pod_dispatch(
     record = _runs.create_run("cli", project)
 
     def _fn() -> list[Any]:
+        # An unset pod `approvalMode` resolves to "wait" on a real TTY (an
+        # operator watching this run can answer in place -- see
+        # cli/_progress.py) and to "park" otherwise (ADR 0016 SS2): a
+        # non-interactive foreground dispatch has nobody to answer an in-turn
+        # ask, so it must park rather than block for TOOL_APPROVAL_TIMEOUT.
+        approval_default: Literal["wait", "park"] = "wait" if sys.stdin.isatty() else "park"
         return _dispatch.dispatch_pod(
             project,
             resume=resume,
@@ -638,6 +645,7 @@ def _pod_dispatch(
             verify_timeout=timeout_override,
             spec=spec,
             variables=variables,
+            approval_default=approval_default,
         )
 
     # No TTY and no --progress: the exact call this function has always made,
