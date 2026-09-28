@@ -11,15 +11,16 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 58 (Phase 32, D-48) · Wave 57 complete 2026-09-27
+> ## ▶ ACTIVE BOARD — WAVE 59 (Phase 32, D-48) · Wave 58 complete 2026-09-27
 >
 > **Nine cards over Waves 56–59**, one Sonnet worker per card in an isolated worktree under one
 > integrator. Decision, the rules, the verdict table and the test discipline are in
 > [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md). Worker packets:
 > [.agents/handoffs/wave-56-worker-packets.md](.agents/handoffs/wave-56-worker-packets.md).
-> Wave 56 (P32-1 `8576090`, P32-2 `7f6a364`) and Wave 57 (P32-4 `96680d9`, P32-5 `8dc5c45`,
-> P32-3 `235db20`) merged 2026-09-27 with a rollup after each. Wave 58 runs P32-6, P32-7 and
-> P32-8 in parallel, one Sonnet worker per card, merge order P32-6, P32-7, P32-8.
+> Waves 56 (P32-1 `8576090`, P32-2 `7f6a364`), 57 (P32-4 `96680d9`, P32-5 `8dc5c45`, P32-3
+> `235db20`) and 58 (P32-6 `40166fb`, P32-7 `db760be`, P32-8 `f6e80bb`) merged 2026-09-27 with a
+> rollup after each. Wave 59 is P32-9, integrator-only: docs, external verification against a
+> real OTel Collector and Langfuse, board archive.
 > **Phase 32 closes when the Wave 59 rollup merges green.**
 >
 > **Phase 31 closed 2026-09-27** — see the record below.
@@ -192,9 +193,9 @@ release source.
 
 
 
-## ▶ WAVE 58 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
+## ▶ WAVE 59 — ACTIVE (opened 2026-09-27): Phase 32, observability as configuration (D-48)
 
-**Opened 2026-09-27 (Wave 58 active; Waves 56-57 done).** Nine cards in four waves (two Sonnet
+**Opened 2026-09-27 (Wave 59 active; Waves 56-58 done).** Nine cards in four waves (two Sonnet
 workers in parallel, then three, then three, then the integrator). Decision, the rules, the
 destination table, the verdict table and the test discipline are in
 [docs/adr/0014-observability-export.md](docs/adr/0014-observability-export.md).
@@ -206,10 +207,17 @@ commit. **Wave 56 merged 2026-09-27:** P32-1 at `8576090`, P32-2 at `7f6a364`. *
 bumps from the same 1.0.0 base were reconciled by hand into one sequential 1.1.0 -> 1.2.0
 history, requirements renumbered 19-43), P32-3 at `235db20` (also fixed a real regression in
 the shared `tests/fakes.py::FakeDriver.run_turn`, which needed the new `trace_task_id` kwarg
-once `core/dispatch.py` started passing it unconditionally). Full gates green after each rollup
-(3,191 tests, 31 specs, 19/19 goldens, mypy/ruff/spec-index clean); `specs/README.md` and
-`CONTRIBUTING.md` re-trued. Analysis and plan (gitignored):
-`internal-docs/observability-export-audit-2026-09-27.es.md`,
+once `core/dispatch.py` started passing it unconditionally). **Wave 58 merged 2026-09-27:**
+P32-6 at `40166fb`, P32-7 at `db760be` and P32-8 at `f6e80bb` (P32-6/P32-7 again independently
+bumped `observability-export.spec.md` from the same 1.2.0 base -- reconciled to 1.3.0 -> 1.4.0,
+requirements renumbered 58-63; P32-7/P32-8 independently bumped `cli-interface.spec.md` from the
+same 1.53.0 base -- reconciled to 1.54.0 -> 1.55.0). P32-8 also found a real discrepancy between
+its card's literal Acceptance text and `activation_state`'s actual, already-shipped behaviour
+(a disabled built-in always reports `"disabled"`, never `"needs credential"`) and implemented
+against the verified live behaviour, per AGENTS.md's rule to record the discrepancy rather than
+choose the convenient reading. Full gates green after each rollup (3,212 tests, 31 specs, 19/19
+goldens, mypy/ruff/spec-index clean); `specs/README.md` and `CONTRIBUTING.md` re-trued. Analysis
+and plan (gitignored): `internal-docs/observability-export-audit-2026-09-27.es.md`,
 `internal-docs/observability-export-plan-2026-09-27.es.md`.
 
 **Trigger (explicit request, 2026-09-27):** observability and telemetry configurable and adaptable
@@ -542,7 +550,7 @@ gates; no goldens (the OTLP golden is a fixture, not a CLI golden).
 
 ### P32-6 — the pipeline, wired where turns run
 
-**Status:** TODO · **Size:** M · **Wave:** 58 (after the Wave 57 rollup) · **Spec:** `observability-export.spec.md` → 1.3.0 (new sections "Pipeline" and "Wiring"; Status "Implemented — awaiting external verification (P32-9)"), `agent-loop.spec.md` → 1.26.0 (`DocketDriver` conformance: `run_turn` starts export lazily and flushes on return; zero enabled exporters change nothing)
+**Status:** DONE (2026-09-27, `40166fb`) · **Size:** M · **Wave:** 58 (after the Wave 57 rollup) · **Spec:** `observability-export.spec.md` → 1.3.0 (new sections "Pipeline" and "Wiring"; Status "Implemented — awaiting external verification (P32-9)"), `agent-loop.spec.md` → 1.26.0 (`DocketDriver` conformance: `run_turn` starts export lazily and flushes on return; zero enabled exporters change nothing)
 
 **Trigger:** the fifth unwired-machinery instance (CLAUDE.md) is machinery with a writer, a CLI
 reader and no consumer on the live path. This card is the consumer: without it P32-2/4/5 are
@@ -605,7 +613,7 @@ there (`rg -n "skills.py" tests/agent packages/docket-runtime`).
 
 ### P32-7 — `docket exporters`: enable by authenticating
 
-**Status:** TODO · **Size:** M · **Wave:** 58 · **Spec:** `observability-export.spec.md` → 1.4.0 (new section "Activation": `enable`/`disable`/`test`, the audit entries, the TTY rule), `cli-interface.spec.md` → 1.54.0 (`docket exporters list|show|enable|disable|test|add|remove|export`; `config explain` `exporters` lines; `doctor` check), `cli-json-shapes.spec.md` → 1.15.0 (`exporters list --json`, `config explain --json` `exporters`)
+**Status:** DONE (2026-09-27, `db760be`) · **Size:** M · **Wave:** 58 · **Spec:** `observability-export.spec.md` → 1.4.0 (new section "Activation": `enable`/`disable`/`test`, the audit entries, the TTY rule), `cli-interface.spec.md` → 1.54.0 (`docket exporters list|show|enable|disable|test|add|remove|export`; `config explain` `exporters` lines; `doctor` check), `cli-json-shapes.spec.md` → 1.15.0 (`exporters list --json`, `config explain --json` `exporters`)
 
 **Trigger:** the request's experience is "the YAML exists, I only put the key". `cli/_keys.py::
 _keys_add` holds the hidden prompt inline; `cli/_provider.py::_run_add` shows the verify-then-
@@ -667,7 +675,7 @@ gates; `completions` golden regenerated with the one line listed; `gen_cli_docs.
 
 ### P32-8 — a recipe names its destinations
 
-**Status:** TODO · **Size:** S · **Wave:** 58 · **Spec:** `pod-blueprints.spec.md` → 1.20.0 ("Pod manifests: apply" key set gains `exporters`; "Recipe summary" gains the names; `apply` reports state, activates nothing), `config-format.spec.md` → 1.5.0 (manifest key), `cli-interface.spec.md` → 1.55.0 (`apply` state lines; `recipes show` line)
+**Status:** DONE (2026-09-27, `f6e80bb`) · **Size:** S · **Wave:** 58 · **Spec:** `pod-blueprints.spec.md` → 1.20.0 ("Pod manifests: apply" key set gains `exporters`; "Recipe summary" gains the names; `apply` reports state, activates nothing), `config-format.spec.md` → 1.5.0 (manifest key), `cli-interface.spec.md` → 1.55.0 (`apply` state lines; `recipes show` line)
 
 **Trigger:** ADR 0014 rule 7: a repository can state that its team is observed in Langfuse
 without carrying a credential or activating anything; `core/pod_apply.py::_MANIFEST_KEYS` is

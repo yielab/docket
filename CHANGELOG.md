@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket exporters` turns a destination on by authenticating, and a recipe can name one.**
+  The bounded export pipeline is wired into every turn: `run_turn` starts it lazily, flushes it
+  on every return path (bounded to `EXPORT_FLUSH_TIMEOUT_S` even if a destination hangs), and
+  writes the health file — zero enabled exporters costs one catalog read and nothing else.
+  `docket exporters list|show|enable|disable|test|add|remove|export` is the CLI surface:
+  `enable` resolves an exporter's declared credentials (prompting on a TTY, refusing and naming
+  `docket keys add <NAME>` off one), probes the endpoint, and on success writes only the minimal
+  override needed — everything else keeps resolving from the built-in. `docket config explain`
+  and `docket doctor` report each exporter's state. A `pod.yaml` may name `exporters:`; `apply`
+  and `docket recipes show` print each one's activation state and never activate one themselves.
+  See `observability-export.spec.md` and [ADR 0014](docs/adr/0014-observability-export.md).
 - **A destination for observability is configuration, and one wire dialect ships built in.**
   A `kind: exporter` document (`core/exporter.py`) describes where spans go — endpoint, auth
   (`bearer`/`header`/`basic`/`none`, credential *names* only, never values), `resource`,
