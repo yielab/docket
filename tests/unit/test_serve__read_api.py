@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
+import docket.config as _cfg
 import docket.serve as serve
 
 SUBJECT = "docket.serve"
@@ -96,6 +97,7 @@ class TestApiContract:
             "docket_cost_usd_total",
             "docket_gateway_up",
             "docket_approvals_pending_total",
+            "docket_inbox_items",
         }
     )
 
@@ -198,3 +200,90 @@ class TestBudgetInStatusJson:
         (ws / ".docket-meta.json").write_text(json.dumps(meta_no_budget))
         agents = serve.build_status()["agents"]
         assert agents[0]["budgetUsd"] is None
+
+
+# ── TestInboxEndpoint: GET /inbox, live over HTTP ─────────────────────────────
+
+_INBOX_TEST_TOKEN = "test-serve-token-inbox-p34-6"
+
+
+@pytest.fixture()
+def inbox_live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from docket.serve import _DocketHandler
+
+    home = tmp_path / ".docket"
+    home.mkdir()
+    repoint_docket_home(monkeypatch, home)
+    monkeypatch.setattr(_cfg, "INBOX_CURSOR_FILE", home / "inbox-cursor.json", raising=True)
+
+    class _Handler(_DocketHandler):
+        serve_token = _INBOX_TEST_TOKEN
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    port = srv.server_address[1]
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield f"http://127.0.0.1:{port}"
+    srv.shutdown()
+
+
+def _get_json(url: str, token: str | None = None) -> tuple[int, dict[str, Any]]:
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(url)
+    if token is not None:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+class TestInboxEndpoint:
+    def test_no_token_rejected(self, inbox_live_server: str) -> None:
+        status, body = _get_json(f"{inbox_live_server}/inbox")
+        assert status == 401
+        assert body["ok"] is False
+
+    def test_authenticated_call_matches_build_inbox(
+        self, inbox_live_server: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _pod
+
+        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        from docket.core import dispatch as _dispatch
+
+        _dispatch.enqueue_task("demo", "ship it")
+
+        status, body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
+
+        assert status == 200
+        assert set(body.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
+
+    def test_matches_docket_inbox_json_for_the_same_state(self, inbox_live_server: str) -> None:
+        from docket.cli import _inbox as _cli_inbox
+        from docket.cli import _pod
+
+        _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        from docket.core import dispatch as _dispatch
+
+        _dispatch.enqueue_task("demo", "ship it")
+
+        status, http_body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
+        assert status == 200
+
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = _cli_inbox.run_inbox(["--json", "--peek"])
+        assert code == 0
+        cli_body = json.loads(buf.getvalue())
+
+        assert http_body == cli_body

@@ -116,7 +116,7 @@ targets the module that actually ships.
 
 ## Tools
 
-Ten tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Eleven tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
@@ -252,6 +252,17 @@ dispatch task stuck `waiting_approval` from an earlier grant that never reached 
 **Output**: `{"ok": true, "token": "apr-...", "state": "denied"}`.
 **Failure modes**: same as `approvals_grant`, including that the `resolve_waiting_approval`
 follow-up still runs before the raise.
+
+### `inbox`
+
+**Purpose**: The derived operator inbox — every pod's tasks needing a human, plus pending
+approvals, failed/done/running context — identical to `docket serve`'s `GET /inbox`.
+**Arguments**: `since` (string, optional) — an ISO timestamp; restricts `doneSince` to tasks that
+completed after it. Omitted, `doneSince` lists every terminal task.
+**Output**: `InboxView` (`core/operator_contract.py`), `by_alias` — `{"needsYou": [...], "failed":
+[...], "doneSince": [...], "running": [...], "next": "..." | null}`, matching `docket inbox
+--json` for the same state.
+**Failure modes**: none beyond the SDK's own argument-shape validation.
 
 ### `cost`
 

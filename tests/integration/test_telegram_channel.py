@@ -30,6 +30,7 @@ from docket.core import fleet as _fleet
 from docket.core import policy as _policy
 from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
+from docket.edges import store as _store
 from docket.edges.adapters.telegram import TelegramUpdate
 
 SUBJECT = "docket.core"
@@ -260,7 +261,21 @@ class TestStatus:
         _bind("security", "-100200")
         outcome = _tg.handle_message(_msg("-100200", "/status"))
         assert outcome.ok
-        assert "No pending approvals" in outcome.reply
+        assert "Nothing needs you" in outcome.reply
+
+    def test_status_shows_a_blocked_task_scoped_to_this_pod(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        _dispatch.enqueue_task("demo", "Do the thing")
+        tasks = _dispatch.read_tasks("demo")
+        tasks[0]["status"] = "blocked"
+        tasks[0]["blockedReason"] = "budget"
+        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+
+        outcome = _tg.handle_message(_msg("-100300", "/status"))
+
+        assert outcome.ok
+        assert tasks[0]["id"] in outcome.reply
 
 
 # ── delegate ──────────────────────────────────────────────────────────────

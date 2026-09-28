@@ -332,6 +332,18 @@ def render_metrics() -> str:
         "docket_approvals_pending_total " + str(pending),
     ]
 
+    from docket.core import inbox as _inbox
+
+    inbox_view = _inbox.build_inbox(now=_utc_timestamp())
+    lines += [
+        "# HELP docket_inbox_items Items in the derived operator inbox, by section",
+        "# TYPE docket_inbox_items gauge",
+        'docket_inbox_items{section="needsYou"} ' + str(len(inbox_view.needs_you)),
+        'docket_inbox_items{section="failed"} ' + str(len(inbox_view.failed)),
+        'docket_inbox_items{section="doneSince"} ' + str(len(inbox_view.done_since)),
+        'docket_inbox_items{section="running"} ' + str(len(inbox_view.running)),
+    ]
+
     # Guardrail + loop metrics -- see LoopMetrics' docstring for where each
     # number is sourced from.
     #
@@ -823,6 +835,18 @@ class _DocketHandler(BaseHTTPRequestHandler):
             from docket.core import approval
 
             body = json.dumps({"pending": approval.list_pending()}).encode("utf-8")
+            self._send(body, "application/json")
+        elif path == "/inbox":
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            from docket.core import inbox as _inbox
+
+            query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
+            since_values = query.get("since")
+            since = since_values[0] if since_values else None
+            view = _inbox.build_inbox(now=_utc_timestamp(), since=since)
+            body = json.dumps(view.model_dump(by_alias=True, mode="json")).encode("utf-8")
             self._send(body, "application/json")
         elif path == "/runs":
             if not self._check_auth():

@@ -1392,6 +1392,24 @@ denies it. Same token format, idempotency, and provenance rules as
 
 ---
 
+### inbox
+
+**Usage:** `docket inbox`
+
+List everything across every pod that needs you: waiting/blocked tasks and pending
+approvals, plus failed/done/running context.
+
+`docket inbox \[--json\] \[--since <iso>\] \[--peek\]`. A plain call advances a durable cursor so a
+repeat call's `Done` section only shows newly-terminal tasks; `--peek` reads without
+advancing it, and `--since <iso>` overrides the stored cursor for one call without touching
+it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns.
+
+
+**Aliases:** None
+
+
+---
+
 ## Observability Commands
 
 ### runs
@@ -1614,7 +1632,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---

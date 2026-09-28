@@ -45,6 +45,7 @@ _docket() {
     'policies:Manage tool-approval policies'
     'approve:Approve a pending tool-action'
     'deny:Deny a pending tool-action'
+    'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
     'help:Show help'
   )
 

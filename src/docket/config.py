@@ -515,6 +515,12 @@ TELEGRAM_REQUEST_TIMEOUT_S = float(os.environ.get("TELEGRAM_REQUEST_TIMEOUT_S", 
 # no-override shape as AUDIT_LOG/MODEL_REGISTRY_FILE above).
 TELEGRAM_OFFSET_FILE = DOCKET_HOME / "docket-telegram-offset.json"
 
+# INBOX_CURSOR_FILE: the last timestamp `docket inbox` showed as `doneSince`, so a plain
+# `docket inbox` only surfaces newly-terminal tasks on a repeat call. No env override, same
+# reasoning as TELEGRAM_OFFSET_FILE above -- internal bookkeeping, not an operator relocation
+# target.
+INBOX_CURSOR_FILE = DOCKET_HOME / "inbox-cursor.json"
+
 # ── docket-owned secrets store (core/secrets.py, cli/_doctor.py) ──
 
 

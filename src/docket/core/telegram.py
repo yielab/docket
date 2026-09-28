@@ -58,6 +58,7 @@ creation time).
 
 from __future__ import annotations
 
+import datetime as _dt
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -66,6 +67,8 @@ import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import inbox as _inbox
+from docket.core import operator_contract as _oc
 from docket.core import pod as _pod
 from docket.core import policy as _policy
 from docket.core import secrets as _secrets
@@ -205,20 +208,31 @@ def _handle_decision(agent_id: str, token: str, *, grant: bool) -> TelegramActio
 
 
 def _handle_status(agent_id: str) -> TelegramActionResult:
-    """List pending approvals scoped to *agent_id*'s project -- see
-    :func:`_approval_scope`. Read-only; never mutates anything."""
+    """Render the derived inbox (:func:`docket.core.inbox.build_inbox`) scoped to *agent_id*'s
+    project -- see :func:`_approval_scope`. Needs-you items first. Read-only; never mutates
+    anything."""
     scope = _approval_scope(agent_id)
-    pending = [d for d in _approval.list_pending() if d.get("project") == scope]
-    if not pending:
-        return TelegramActionResult(True, f"No pending approvals for '{scope}'.", True, "status")
-    lines = [f"Pending approvals for '{scope}':"]
-    for rec in pending:
-        token = rec.get("token", "?")
-        role = rec.get("role", "?")
-        # `action` was already redacted at approval_create() time (core/approval.py's
-        # own _redact) -- safe to echo back verbatim, same as `docket approve`'s listing.
-        action_text = str(rec.get("action") or "")[:120]
-        lines.append(f"  {token}  role={role}  {action_text}")
+    now = _dt.datetime.now(_dt.UTC).isoformat()
+    view = _inbox.build_inbox(now=now)
+    needs_you = [item for item in view.needs_you if item.pod == scope]
+    failed = [t for t in view.failed if t.pod == scope]
+    if not needs_you and not failed:
+        return TelegramActionResult(True, f"Nothing needs you in '{scope}'.", True, "status")
+
+    lines = [f"Needs you in '{scope}':"] if needs_you else []
+    for item in needs_you:
+        if isinstance(item, _oc.ApprovalView):
+            # `action` was already redacted at approval_create() time (core/approval.py's
+            # own _redact) -- safe to echo back verbatim, same as `docket approve`'s listing.
+            action_text = str(item.action or "")[:120]
+            lines.append(f"  approval {item.token}  role={item.role}  {action_text}")
+        else:
+            label = (item.description or item.reason or "")[:120]
+            lines.append(f"  task {item.id}  status={item.status}  {label}")
+    if failed:
+        lines.append("Failed:")
+        for t in failed:
+            lines.append(f"  task {t.id}  {(t.reason or '')[:120]}")
     return TelegramActionResult(True, "\n".join(lines), True, "status")
 
 
