@@ -4,18 +4,23 @@
 The default endpoint is deterministic and loopback-only so the command is suitable for CI.
 ``--live-model`` instead defaults to a realistic memory-backed code repair against a real loopback
 model (port 8081 by default), without scripting its replies. ``--scenario basic`` retains the
-smaller live infrastructure diagnostic. Everything on Docket's side is production in every mode:
-CLI subprocesses, persisted state, endpoint resolution, the chat-completions adapter,
-``DocketDriver``, the agent loop, gated tools, pipeline gates, resume, sessions, traces and audit.
+smaller live infrastructure diagnostic. ``--scenario operator-loop`` measures a baseline: a real
+``docket serve --dispatch`` sweep against two pods, one of which blocks on an unanswered in-turn
+approval, written to ``--report PATH`` as JSON. Everything on Docket's side is
+production in every mode: CLI subprocesses, persisted state, endpoint resolution, the
+chat-completions adapter, ``DocketDriver``, the agent loop, gated tools, pipeline gates, resume,
+sessions, traces and audit.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,7 +46,8 @@ class SmokeFailure(RuntimeError):
 
 _BASIC_SCENARIO = "basic"
 _MEMORY_SCENARIO = "memory-maintenance"
-_SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO)
+_OPERATOR_LOOP_SCENARIO = "operator-loop"
+_SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO, _OPERATOR_LOOP_SCENARIO)
 
 
 def _basic_task_description() -> str:
@@ -1833,6 +1839,581 @@ def _run(
     print("\nSMOKE PASS — complete Docket workflow is operational")
 
 
+# ── operator-loop scenario: a measured multi-pod approval-blocking baseline ──
+#
+# Two real pods (alpha, beta) dispatched through one real `docket serve
+# --dispatch` sweep. alpha's first task issues a high-risk bash command that
+# the baseline security classifier asks about; nobody ever answers it, so it
+# times out. Because `serve.py::_run_sweeps` dispatches one pod fully before
+# moving to the next (a plain `for` loop, not concurrent), that unanswered
+# approval blocks the whole fleet, not just alpha -- this scenario measures
+# exactly how long.
+
+_OPLOOP_LABELS = ("A1", "A2", "B1", "B2")
+
+
+def _operator_loop_tasks() -> list[tuple[str, str, str]]:
+    """Return ``(label, pod, description)`` for the four scripted tasks, in delegate order."""
+    return [
+        (
+            "A1",
+            "alpha",
+            "OPLOOP-A1: push the current branch straight to origin main.",
+        ),
+        (
+            "A2",
+            "alpha",
+            "OPLOOP-A2: make the workspace better, in whatever way seems most useful.",
+        ),
+        (
+            "B1",
+            "beta",
+            "OPLOOP-B1: write a one-line status note to the workspace.",
+        ),
+        (
+            "B2",
+            "beta",
+            "OPLOOP-B2: write a one-line status note; verification is expected to fail.",
+        ),
+    ]
+
+
+def _oploop_label_for(description: str) -> str:
+    for label in _OPLOOP_LABELS:
+        if f"OPLOOP-{label}" in description:
+            return label
+    return ""
+
+
+class _OperatorLoopModel:
+    """Scripted chat-completions replies matched on message content, never call order, so
+    a retried hop gets the same deterministic reply every time."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _role(text: str) -> str:
+        for role in ("implementer", "reviewer", "tester"):
+            if f"the **{role}** of the **" in text:
+                return role
+        return "lead"
+
+    @staticmethod
+    def _label(text: str) -> str:
+        return _oploop_label_for(text)
+
+    @staticmethod
+    def _response(
+        content: str | None,
+        *,
+        finish_reason: str = "stop",
+        tool_calls: list[dict[str, Any]] | None = None,
+        sequence: int,
+    ) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": "assistant", "content": content}
+        if tool_calls is not None:
+            message["tool_calls"] = tool_calls
+        return {
+            "id": f"oploop-{sequence}",
+            "object": "chat.completion",
+            "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+            "usage": {
+                "prompt_tokens": 10 + sequence,
+                "completion_tokens": 5,
+                "total_tokens": 15 + sequence,
+            },
+        }
+
+    def complete(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            self.requests.append(payload)
+            sequence = len(self.requests)
+
+        _require(payload.get("stream") is False, "chat request must explicitly disable streaming")
+        messages_raw = payload.get("messages")
+        _require(
+            isinstance(messages_raw, list) and bool(messages_raw), "chat request has no messages"
+        )
+        messages = cast(list[dict[str, Any]], messages_raw)
+        text = " ".join(str(m.get("content") or "") for m in messages)
+        role = self._role(text)
+        label = self._label(text)
+
+        if role == "lead":
+            return self._response(
+                f"Lead prepared a plan for {label or 'the task'}.", sequence=sequence
+            )
+        if role == "implementer" and label == "A1":
+            return self._response(
+                None,
+                finish_reason="tool_calls",
+                tool_calls=[
+                    {
+                        "id": "oploop-a1-push",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": json.dumps({"command": "git push origin main"}),
+                        },
+                    }
+                ],
+                sequence=sequence,
+            )
+        if role == "implementer":
+            return self._response(
+                f"Implementer completed {label or 'the task'}.", sequence=sequence
+            )
+        if role == "reviewer":
+            return self._response("APPROVE\nLooks correct.", sequence=sequence)
+        if role == "tester":
+            return self._response("PASS\nVerified.", sequence=sequence)
+        raise SmokeFailure(
+            f"operator-loop scripted model got an unrecognized request: {text[:200]!r}"
+        )
+
+
+def _operator_loop_handler_for(model: _OperatorLoopModel) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            if self.path != "/v1/chat/completions":
+                self.send_error(404)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length)
+                payload = json.loads(raw)
+                _require(isinstance(payload, dict), "chat payload must be an object")
+                response = model.complete(payload)
+                body = json.dumps(response).encode()
+                self.send_response(200)
+            except Exception as exc:  # surfaced to Docket as an endpoint failure
+                body = json.dumps({"error": {"message": f"{type(exc).__name__}: {exc}"}}).encode()
+                self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *args: object) -> None:
+            del args
+
+    return Handler
+
+
+@contextmanager
+def _operator_loop_model_endpoint(model: _OperatorLoopModel) -> Iterator[str]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _operator_loop_handler_for(model))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    address = server.server_address
+    host_raw, port = address[0], address[1]
+    host = host_raw.decode() if isinstance(host_raw, bytes) else host_raw
+    try:
+        yield f"http://{host}:{port}/v1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return cast(int, listener.getsockname()[1])
+
+
+def _write_operator_loop_inputs(world: Path) -> tuple[Path, Path, Path]:
+    home = world / ".docket"
+    alpha_codebase = world / "alpha-codebase"
+    beta_codebase = world / "beta-codebase"
+    alpha_codebase.mkdir(parents=True, exist_ok=True)
+    beta_codebase.mkdir(parents=True, exist_ok=True)
+    (alpha_codebase / "README.md").write_text("# operator-loop alpha\n", encoding="utf-8")
+    (beta_codebase / "README.md").write_text("# operator-loop beta\n", encoding="utf-8")
+
+    alpha_spec = world / "alpha-pod.json"
+    alpha_spec.write_text(
+        json.dumps(
+            {
+                "id": "alpha",
+                "blueprint": "agentic-product",
+                "codebase": str(alpha_codebase),
+                "stack": "Python",
+                "description": "operator-loop scenario pod alpha.",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    beta_spec = world / "beta-pod.json"
+    beta_spec.write_text(
+        json.dumps(
+            {
+                "id": "beta",
+                "blueprint": "agentic-product",
+                "codebase": str(beta_codebase),
+                "stack": "Python",
+                "description": "operator-loop scenario pod beta.",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return home, alpha_spec, beta_spec
+
+
+_SETTLED_STATUSES = frozenset({"done", "failed", "cancelled"})
+
+
+def _oploop_task_settled(status: str) -> bool:
+    return status in _SETTLED_STATUSES or status.startswith("waiting_")
+
+
+def _oploop_wait_for_file(path: Path, deadline: float) -> None:
+    while time.monotonic() < deadline:
+        if path.is_file() and path.stat().st_size > 0:
+            return
+        time.sleep(0.05)
+    raise SmokeFailure(f"timed out waiting for {path} to appear")
+
+
+def _oploop_http_get_json(url: str, token: str, timeout: float = 5.0) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read())
+    if not isinstance(payload, dict):
+        raise SmokeFailure(f"{url} did not return a JSON object")
+    return cast(dict[str, Any], payload)
+
+
+def _oploop_poll_tasks(
+    base_url: str, token: str, projects: tuple[str, str], ceiling_s: float
+) -> dict[str, list[dict[str, Any]]]:
+    """Poll ``GET /tasks/<project>`` for every *projects* until each has at least one task and
+    every task is terminal or ``waiting_*``, or *ceiling_s* elapses."""
+    deadline = time.monotonic() + ceiling_s
+    latest: dict[str, list[dict[str, Any]]] = {project: [] for project in projects}
+    while True:
+        settled = True
+        for project in projects:
+            body = _oploop_http_get_json(f"{base_url}/tasks/{project}", token)
+            tasks_raw = body.get("tasks")
+            tasks = cast(list[dict[str, Any]], tasks_raw) if isinstance(tasks_raw, list) else []
+            latest[project] = tasks
+            if not tasks or not all(_oploop_task_settled(str(t.get("status", ""))) for t in tasks):
+                settled = False
+        if settled:
+            return latest
+        if time.monotonic() >= deadline:
+            raise SmokeFailure(
+                "operator-loop scenario did not settle within the 90s ceiling: "
+                + json.dumps(
+                    {project: [t.get("status") for t in latest[project]] for project in projects}
+                )
+            )
+        time.sleep(1.0)
+
+
+def _oploop_trace_events(home: Path, project: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for path in sorted((home / "traces" / project).glob("*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict):
+                events.append(record)
+    return events
+
+
+def _oploop_parse_ts(value: str) -> _dt.datetime:
+    return _dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_dt.UTC)
+
+
+def _oploop_sweep_blocked_seconds(home: Path, alpha: str, beta: str) -> float:
+    """alpha's first ``approval_requested`` ts, against beta's first ``session_start`` ts --
+    the gap is how long the sweep's plain per-pod ``for`` loop (serve.py::_run_sweeps) left
+    beta's whole queue untouched while alpha blocked on an approval nobody answered."""
+    alpha_asks = sorted(
+        _oploop_parse_ts(str(event["ts"]))
+        for event in _oploop_trace_events(home, alpha)
+        if event.get("event_type") == "approval_requested"
+    )
+    beta_starts = sorted(
+        _oploop_parse_ts(str(event["ts"]))
+        for event in _oploop_trace_events(home, beta)
+        if event.get("event_type") == "session_start"
+    )
+    if not alpha_asks or not beta_starts:
+        return 0.0
+    return (beta_starts[0] - alpha_asks[0]).total_seconds()
+
+
+def _oploop_load_json(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise SmokeFailure(f"{path} did not contain a JSON object")
+    return cast(dict[str, Any], data)
+
+
+def _oploop_approval_counts(home: Path) -> dict[str, int]:
+    counts = {"timeout": 0, "granted": 0, "denied": 0, "pending": 0}
+    for path in sorted((home / "approvals").glob("*.json")):
+        try:
+            record = _oploop_load_json(path)
+        except (OSError, json.JSONDecodeError, SmokeFailure):
+            continue
+        state = str(record.get("state", ""))
+        if state == "pending":
+            counts["pending"] += 1
+        elif state == "granted":
+            counts["granted"] += 1
+        elif state in ("denied", "expired"):
+            # This scenario never runs `docket approve`/`docket deny`, so every
+            # resolved record here was resolved by TOOL_APPROVAL_TIMEOUT's own
+            # timeout-as-denied path (core/approval.py::_resolve_timeout_as_denied),
+            # not an explicit operator decision -- there is no persisted "channel"
+            # field on the record itself to distinguish the two directly.
+            counts["timeout"] += 1
+    return counts
+
+
+def _oploop_lead_asked(tasks_by_project: dict[str, list[dict[str, Any]]]) -> bool:
+    return any(
+        str(task.get("status", "")) == "waiting_input"
+        for tasks in tasks_by_project.values()
+        for task in tasks
+    )
+
+
+def _oploop_events_delivered(home: Path) -> int:
+    path = home / "channels-health.json"
+    if not path.is_file():
+        return 0
+    try:
+        data = _oploop_load_json(path)
+    except (OSError, json.JSONDecodeError, SmokeFailure):
+        return 0
+    deliveries = data.get("deliveries")
+    if isinstance(deliveries, (list, dict)):
+        return len(deliveries)
+    return 0
+
+
+def _oploop_real_home_audit_stat() -> tuple[bool, int, float]:
+    path = Path.home() / ".docket" / "audit.log"
+    if not path.is_file():
+        return False, 0, 0.0
+    st = path.stat()
+    return True, st.st_size, st.st_mtime
+
+
+def _run_operator_loop_scenario(
+    world: Path,
+    repo: Path,
+    live: _LiveModel | None,
+    report_path: Path | None,
+) -> dict[str, Any]:
+    before_stat = _oploop_real_home_audit_stat()
+    start = time.monotonic()
+
+    home, alpha_spec, beta_spec = _write_operator_loop_inputs(world)
+    model: _OperatorLoopModel | None
+    endpoint_context: AbstractContextManager[str]
+    if live is None:
+        model = _OperatorLoopModel()
+        endpoint_context = _operator_loop_model_endpoint(model)
+    else:
+        model = None
+        endpoint_context = nullcontext(live.endpoint)
+
+    tasks_by_project: dict[str, list[dict[str, Any]]] = {}
+    with endpoint_context as endpoint:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DOCKET_HOME": str(home),
+                "DOCKET_SERVICE_MANAGER": "none",
+                "DOCKET_LOG_DIR": str(world / "logs"),
+                "NO_COLOR": "1",
+                "NO_PROXY": "127.0.0.1,localhost",
+                "no_proxy": "127.0.0.1,localhost",
+                "PYTHONUNBUFFERED": "1",
+                # Fast, real approvals: TOOL_APPROVAL_TIMEOUT (in-turn bash ask) and
+                # APPROVAL_TIMEOUT (the sweep's own pending-approval expiry) are both
+                # config.py module-level `os.environ.get` reads, so a fresh subprocess
+                # picks these up at import time -- see config.py.
+                "TOOL_APPROVAL_TIMEOUT": "3",
+                "APPROVAL_TIMEOUT": "10",
+                "DISPATCH_RETRY_BACKOFF_S": "0",
+            }
+        )
+        if live is None:
+            env.update({"DOCKET_LLM_BASE_URL": endpoint, "DOCKET_LLM_API_KEY": "oploop-local"})
+        else:
+            for inherited in ("DOCKET_LLM_BASE_URL", "DOCKET_LLM_API_KEY", "SMOKE_LOCAL_API_KEY"):
+                env.pop(inherited, None)
+            env["DOCKET_TOOL_MAX_OUTPUT_CHARS"] = "2500"
+
+        def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+            return _run_cli(repo, env, *args, process_timeout=45)
+
+        print(f"Operator-loop world: {world}")
+        run_cli("init", "--from", str(alpha_spec))
+        run_cli("init", "--from", str(beta_spec))
+        run_cli("pod", "alpha", "apply", "prod-approval")
+        run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
+        print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
+
+        if live is not None:
+            _configure_live_model(repo, env, live)
+
+        for label, pod_name, description in _operator_loop_tasks():
+            run_cli("pod", pod_name, "delegate", description)
+            print(f"[check] queued {label} on {pod_name}")
+
+        port = _free_port()
+        token_file = world / "serve.token"
+        serve_args = [
+            sys.executable,
+            "-m",
+            "docket",
+            "serve",
+            "--port",
+            str(port),
+            "--interval",
+            "1",
+            "--dispatch",
+            "--token-file",
+            str(token_file),
+        ]
+        proc = subprocess.Popen(
+            serve_args,
+            cwd=repo,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            _oploop_wait_for_file(token_file, time.monotonic() + 15)
+            token = token_file.read_text(encoding="utf-8").strip()
+            base_url = f"http://127.0.0.1:{port}"
+            tasks_by_project = _oploop_poll_tasks(base_url, token, ("alpha", "beta"), 90.0)
+            print("[check] every task reached a terminal or waiting_* status")
+        finally:
+            proc.terminate()
+            try:
+                out, _stderr = proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                out, _stderr = proc.communicate()
+            if out:
+                print(out.rstrip())
+
+    elapsed = time.monotonic() - start
+
+    after_stat = _oploop_real_home_audit_stat()
+    if before_stat != after_stat:
+        raise SmokeFailure(
+            "operator-loop scenario touched the real $HOME/.docket/audit.log "
+            f"(before={before_stat} after={after_stat})"
+        )
+    print("[check] the real $HOME/.docket/audit.log was untouched")
+
+    sweep_blocked = _oploop_sweep_blocked_seconds(home, "alpha", "beta")
+    approvals = _oploop_approval_counts(home)
+    lead_asked = _oploop_lead_asked(tasks_by_project)
+    events_delivered = _oploop_events_delivered(home)
+
+    tasks_report: dict[str, Any] = {}
+    for pod_name, tasks in tasks_by_project.items():
+        for task in tasks:
+            label = _oploop_label_for(str(task.get("description", "")))
+            reason = str(task.get("reason", ""))
+            # `implementer hop failed: consecutive tool denials reached configured
+            # limit: ... kinds=approval_timeout,...` is the real persisted reason
+            # (core/dispatch.py) -- it names the denial_kind code, not the prose
+            # `core/tools.py` uses for the underlying tool result ("approval timed
+            # out and was denied"). Surface that prose too so the report reads the
+            # same way a human would describe what happened.
+            if "approval_timeout" in reason and "approval timed out" not in reason:
+                reason = f"approval timed out — {reason}"
+            tasks_report[str(task.get("id", ""))] = {
+                "pod": pod_name,
+                "status": str(task.get("status", "")),
+                "reason": reason,
+                "label": label,
+            }
+
+    report: dict[str, Any] = {
+        "scenario": _OPERATOR_LOOP_SCENARIO,
+        "mode": "live" if live is not None else "deterministic",
+        "sweepBlockedSeconds": round(sweep_blocked, 3),
+        "tasks": tasks_report,
+        "approvals": approvals,
+        "eventsDelivered": events_delivered,
+        "leadAsked": lead_asked,
+        "elapsedSeconds": round(elapsed, 3),
+    }
+
+    if report_path is not None:
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written to {report_path}")
+    else:
+        print(json.dumps(report, indent=2))
+
+    return report
+
+
+def _main_operator_loop(args: argparse.Namespace, repo: Path) -> int:
+    temp: tempfile.TemporaryDirectory[str] | None = None
+    if args.workdir is None:
+        temp = tempfile.TemporaryDirectory(prefix="docket-smoke-oploop-")
+        world = Path(temp.name)
+    else:
+        world = args.workdir.expanduser().resolve()
+        if world.exists() and any(world.iterdir()):
+            print(f"SMOKE FAIL — --workdir must be new or empty: {world}", file=sys.stderr)
+            return 2
+        world.mkdir(parents=True, exist_ok=True)
+
+    try:
+        live = _discover_live_model(args.endpoint, args.model) if args.live_model else None
+        report = _run_operator_loop_scenario(world, repo, live, args.report)
+    except (
+        SmokeFailure,
+        OSError,
+        ValueError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+    ) as exc:
+        print(f"\nSMOKE FAIL — {exc}", file=sys.stderr)
+        if temp is not None:
+            print("Rerun with --workdir PATH to preserve failed state.", file=sys.stderr)
+            temp.cleanup()
+        else:
+            print(f"Inspect state at: {world}", file=sys.stderr)
+        return 1
+
+    if temp is not None:
+        temp.cleanup()
+    else:
+        print(f"Preserved smoke world: {world}")
+
+    a1_status = next(
+        (t["status"] for t in report["tasks"].values() if t.get("label") == "A1"), None
+    )
+    print(f"\nSMOKE PASS — operator-loop baseline recorded (A1={a1_status})")
+    return 0
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1861,6 +2442,11 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Preserve the smoke world at this new or empty directory for inspection.",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="--scenario operator-loop only: write its JSON report to this path.",
+    )
     return parser.parse_args()
 
 
@@ -1869,6 +2455,8 @@ def main() -> int:
     if args.model and not args.live_model:
         print("SMOKE FAIL — --model requires --live-model", file=sys.stderr)
         return 2
+    if args.scenario == _OPERATOR_LOOP_SCENARIO:
+        return _main_operator_loop(args, Path(__file__).resolve().parents[1])
     scenario = args.scenario or (_MEMORY_SCENARIO if args.live_model else _BASIC_SCENARIO)
     if scenario == _MEMORY_SCENARIO and not args.live_model:
         print("SMOKE FAIL — memory-maintenance requires --live-model", file=sys.stderr)
