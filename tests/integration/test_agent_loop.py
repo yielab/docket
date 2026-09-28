@@ -29,6 +29,7 @@ from docket.core import agent_loop as _loop
 from docket.core import approval as _approval
 from docket.core import session as _session
 from docket.core import tools as _tools
+from docket.core import trace as _trace
 from docket.core.llm import (
     ChatMessage,
     ChatResponse,
@@ -2513,6 +2514,58 @@ class TestTracing:
 
         tracefile = _cfg.TRACES_DIR / "bare-agent" / f"{session_key}.jsonl"
         assert tracefile.exists()
+
+
+class TestLlmCallTrace:
+    def test_two_llm_call_records_with_measured_usage_and_no_cost(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        session_key = "agent:demo:default"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response(
+                    "c1",
+                    "echo",
+                    '{"text": "hi"}',
+                    usage=TokenUsage(input_tokens=10, output_tokens=5),
+                ),
+                _final("ok", usage=TokenUsage(input_tokens=20, output_tokens=8)),
+            ]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert result.ok
+        llm_calls = [e for e in events if e["event_type"] == "llm_call"]
+        assert [c["payload"]["iteration"] for c in llm_calls] == [1, 2]
+        assert [c["payload"]["inputTokens"] for c in llm_calls] == [10, 20]
+        assert [c["payload"]["outputTokens"] for c in llm_calls] == [5, 8]
+        for record in llm_calls:
+            assert isinstance(record["duration_ms"], int)
+            assert record["duration_ms"] >= 0
+            assert "cost_usd" not in record
+
+    def test_a_failed_second_call_is_traced_with_its_failure_kind(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        session_key = "agent:demo:default"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("c1", "echo", '{"text": "hi"}'),
+                ChatResponse(ok=False, error="timed out", failure_kind="timeout"),
+            ]
+        )
+        events: list[dict[str, Any]] = []
+        with _trace.subscribe(events.append):
+            result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert not result.ok
+        assert result.failure_kind == "timeout"
+        llm_calls = [e for e in events if e["event_type"] == "llm_call"]
+        assert len(llm_calls) == 2
+        assert llm_calls[1]["payload"]["ok"] is False
+        assert llm_calls[1]["payload"]["failureKind"] == "timeout"
 
 
 # ── multi-turn history feeding ───────────────────────────────────────────────

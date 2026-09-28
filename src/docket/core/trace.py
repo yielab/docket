@@ -89,6 +89,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "step_skipped",  # a `when` predicate was false; the step advanced with no hop
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
+        "llm_call",  # one backend chat-completions exchange: model, tokens, latency
         "error",
         "session_end",
     ]

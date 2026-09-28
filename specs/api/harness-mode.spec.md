@@ -1,8 +1,8 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.1.1
+**Version**: 1.1.2
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4)
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -76,7 +76,7 @@ contract's fields below then take the place of these arguments for wire validati
 | `token` | string | the run token this event belongs to |
 | `seq` | integer | contiguous ascending sequence, starting at 0 |
 | `ts` | string | envelope timestamp |
-| `event` | object | the exact record `core.trace.trace_event` produced for this line; docket's existing trace vocabulary, not a second one |
+| `event` | object | the exact record `core.trace.trace_event` produced for this line; docket's existing trace vocabulary, not a second one. This is additive by design: an `llm_call` record (see `trace-store.spec.md`) appears on stdout exactly like any other event type, and `docs/contracts/harness-v1/schema.json` is unchanged because this field's schema is `additionalProperties: true` |
 
 ### `HarnessResult`
 
@@ -164,6 +164,13 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
   caller-supplied home.
 
 ## Changelog
+
+### Version 1.1.2 (2026-09-27)
+
+- P32-1 adds the `llm_call` trace event (`trace-store.spec.md`, `agent-loop.spec.md` 1.25.0). No
+  wire change: the `event` field's table row now says so explicitly, and the committed schema is
+  unchanged (`additionalProperties: true`) -- an `llm_call` line streams on stdout like any other
+  event type. Contract version (`HARNESS_CONTRACT_VERSION`) stays `1.0.0`.
 
 ### Version 1.1.1 (2026-09-25)
 

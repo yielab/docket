@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.24.0
+**Version**: 1.25.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-27
 
 ## Purpose
 
@@ -82,6 +82,9 @@ This specification does NOT cover:
 - The docket-native fleet registry; see `agent-lifecycle.spec.md`
 - Turning measured token usage into a dollar figure — `cost_usd` is `0.0` on every result this
   driver produces; see the Requirements section below and `cost-tracking.spec.md`
+- The trace store's own record shape, redaction, subscriber seam, retention window, and full
+  event-type vocabulary (`core/trace.py`) — see the new `trace-store.spec.md`; this spec requires
+  only that the loop emits certain events at certain points (requirements 16, 17, 71)
 
 ## Requirements
 
@@ -143,7 +146,8 @@ This specification does NOT cover:
     (`core/trace.py`) before it runs and a `tool_result` trace event after, using the same two
     event types `core/trace.py`'s `trace_ingest` already projects from the driver's session
     records.
-17. A turn that dispatches no tool calls **MUST NOT** emit either event type.
+17. A turn that dispatches no tool calls **MUST NOT** emit either event type. See also
+    requirement 71 for the `llm_call` trace event every backend request emits.
 
 ### `DocketDriver` (`RuntimeDriver` conformance)
 
@@ -538,6 +542,16 @@ This specification does NOT cover:
     made terminal by this requirement — both remain recoverable and bounded only by the existing
     `max_consecutive_tool_denials` limit (requirements 57-60), exactly as under `approval_mode ==
     "wait"`.
+71. Every `ChatBackend.complete` call the loop makes — one ordinary task request per
+    `call_backend_and_handle_response` invocation, and one summarizer request per
+    `summarize_without_reentry` invocation — **MUST** emit exactly one `llm_call` trace event
+    (`core/trace.py`), recorded before that call's own early-return handling runs. The event's
+    `duration_ms` **MUST** equal the response's `latency_ms`; its payload **MUST** carry `model`,
+    `provider`, `ok`, `finishReason`, `failureKind`, `inputTokens`, `outputTokens`, and
+    `cachedTokens`, plus `iteration` for an ordinary task request or `purpose: "compaction"` for
+    the summarizer's own call. It **MUST NOT** carry a `cost_usd` value: token counts are
+    measured, but no call here converts them into a dollar figure. See `trace-store.spec.md` for
+    the full record shape and event-type list.
 
 ## Interface Contracts
 
@@ -587,6 +601,11 @@ def run_agent_turn(
     trace_session_key: str | None = None, # defaults to session_key; traces only
 ) -> AgentLoopResult: ...
 ```
+
+`core.llm.ChatResponse` (the `ChatBackend` port's own return type, out of this spec's scope for
+everything else) gained three fields requirement 71's `llm_call` trace event reads: `model: str`,
+`provider: str` (both from the resolved `Endpoint`), and `latency_ms: int` (wall-clock time around
+the backend request, measured by the adapter, `0` on a response no request was ever sent for).
 
 ### Module API (`docket.edges.adapters.docket_runtime`)
 
@@ -726,6 +745,16 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.25.0 (2026-09-27)
+
+- **P32-1 makes the model call itself a trace event** (ADR 0014 rule 1). New requirement 71:
+  every `ChatBackend.complete` call the loop makes — the ordinary per-iteration request and the
+  compaction summarizer's own request — emits one `llm_call` trace event, `duration_ms` equal to
+  the response's measured `latency_ms`, never a `cost_usd` value. `core.llm.ChatResponse` gained
+  `model`/`provider`/`latency_ms`, documented in the Module API section. See the new
+  `trace-store.spec.md` 1.0.0, which now owns the trace record shape and full event-type list
+  this spec's Tracing requirements (16, 17, 71) depend on, and `harness-mode.spec.md` 1.1.2.
 
 ### Version 1.24.0 (2026-09-27)
 

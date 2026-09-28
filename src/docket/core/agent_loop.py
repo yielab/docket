@@ -148,6 +148,7 @@ from docket.core import identity as _identity
 from docket.core.llm import (
     ChatBackend,
     ChatMessage,
+    ChatResponse,
     TokenUsage,
     ToolSpec,
     system,
@@ -405,6 +406,40 @@ def _trace_tool_result(
         role,
         "tool_result",
         json.dumps(payload),
+    )
+
+
+def _trace_llm_call(
+    project: str,
+    session_key: str,
+    role: str,
+    response: ChatResponse,
+    iteration: int | None = None,
+    *,
+    purpose: str = "",
+) -> None:
+    """One backend chat-completions exchange, measured -- never a cost figure."""
+    payload: dict[str, Any] = {
+        "model": response.model,
+        "provider": response.provider,
+        "ok": response.ok,
+        "finishReason": response.finish_reason,
+        "failureKind": response.failure_kind,
+        "inputTokens": response.usage.input_tokens,
+        "outputTokens": response.usage.output_tokens,
+        "cachedTokens": response.usage.cached_tokens,
+    }
+    if iteration is not None:
+        payload["iteration"] = iteration
+    if purpose:
+        payload["purpose"] = purpose
+    trace_event(
+        project,
+        session_key,
+        role,
+        "llm_call",
+        json.dumps(payload),
+        duration_ms=response.latency_ms,
     )
 
 
@@ -893,6 +928,7 @@ class _TurnState:
             temperature=self.cfg.temperature,
             timeout=min(timeout, remaining),
         )
+        _trace_llm_call(self.project, self.trace_key, self.ctx.role, response, purpose="compaction")
         self.last_raw = response.raw
         self.summary_usage = _accumulate(self.summary_usage, response.usage)
         if self.cancellation_requested():
@@ -1384,6 +1420,7 @@ class _TurnState:
             temperature=self.cfg.temperature,
             timeout=request_timeout,
         )
+        _trace_llm_call(self.project, self.trace_key, self.ctx.role, response, self.iteration)
         self.last_raw = response.raw
         self.total_usage = _accumulate(self.total_usage, response.usage)
         if self.cancellation_requested():
