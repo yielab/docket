@@ -1534,7 +1534,10 @@ one back out. `privacy <name> \[<level>|--share a,b\] \[--max-chars N\]
 \[--yes\]` shows or changes what an exporter shares beyond bare structure;
 widening the shared classes prints what is newly granted and the
 destination host, then asks for confirmation on a TTY or refuses off one
-without `--yes` -- narrowing never asks.
+without `--yes` -- narrowing never asks. `preview <name> \[--session <id>\] \[--level
+<level>|--share a,b\] \[--json\]` projects a local session through the
+exporter's policy and prints what it would send -- no network call, no
+write.
 
 
 **Aliases:** None

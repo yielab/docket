@@ -286,3 +286,176 @@ class TestDoctorExporterHealth:
         run_doctor()
         out = capsys.readouterr().out
         assert "docket exporters test langfuse" in out
+
+
+_CANARY = "rm -rf CANARY-TOOL-ARG-MARKER"
+
+
+def _seed_session(
+    home: Path, project: str = "docket-dev", session_id: str = "sess-preview-1"
+) -> str:
+    """Write one hand-built trace file with a canary in a tool call's arguments -- enough to
+    open and close a `gen_ai.chat` span with no content and an `execute_tool` span carrying a
+    `toolArguments`-class attribute. Returns *session_id*."""
+    pdir = home / "traces" / project
+    pdir.mkdir(parents=True)
+    records = [
+        {
+            "event_type": "session_start",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:00Z",
+            "project": project,
+            "agent_role": "implementer",
+            "payload": {},
+        },
+        {
+            "event_type": "llm_call",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:01Z",
+            "duration_ms": 100,
+            "payload": {"provider": "local", "model": "test-model", "ok": True, "iteration": 1},
+        },
+        {
+            "event_type": "tool_call",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:02Z",
+            "payload": {"tool": "bash", "callId": "c1", "arguments": _CANARY},
+        },
+        {
+            "event_type": "tool_result",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:03Z",
+            "payload": {"tool": "bash", "callId": "c1", "ok": True, "text": "done"},
+        },
+        {
+            "event_type": "session_end",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:04Z",
+            "payload": {},
+        },
+    ]
+    text = "\n".join(json.dumps(r) for r in records) + "\n"
+    (pdir / f"{session_id}.jsonl").write_text(text, encoding="utf-8")
+    return session_id
+
+
+def _snapshot(home: Path) -> tuple[bytes | None, bytes | None, bytes | None]:
+    def _read(p: Path) -> bytes | None:
+        return p.read_bytes() if p.is_file() else None
+
+    return _read(_cfg.EXPORTERS_FILE), _read(_cfg.EXPORTERS_HEALTH_FILE), _read(_cfg.AUDIT_LOG)
+
+
+class TestPreview:
+    """`docket exporters preview` -- see what a destination would receive before sharing it
+    (ADR 0015 rule 10). RED on the base: `preview` is not a registered `exporters` action, so
+    every call here fails with 'Unknown exporters action'."""
+
+    def test_minimal_hides_the_canary_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        session_id = _seed_session(home)
+        before = _snapshot(home)
+
+        result = _runner.invoke(_app, ["exporters", "preview", "langfuse", "--session", session_id])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert _CANARY not in result.stdout
+        assert "toolArguments: 0" in result.stdout
+        assert _snapshot(home) == before
+
+    def test_actions_level_shows_the_canary_under_tool_call_arguments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        session_id = _seed_session(home)
+        before = _snapshot(home)
+
+        result = _runner.invoke(
+            _app,
+            ["exporters", "preview", "langfuse", "--session", session_id, "--level", "actions"],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert _CANARY in result.stdout
+        assert "gen_ai.tool.call.arguments [toolArguments]" in result.stdout
+        assert "toolArguments: 1" in result.stdout
+        assert _snapshot(home) == before
+
+    def test_json_output_equals_otlp_http_encode_of_the_same_projection(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import exporter as _exp
+        from docket.core import privacy as _privacy
+        from docket.core import telemetry as _telemetry
+        from docket.core import trace as _trace
+        from docket.edges.adapters.exporters import otlp_http as _otlp_http
+
+        home = _seed(tmp_path, monkeypatch)
+        session_id = _seed_session(home)
+
+        result = _runner.invoke(
+            _app,
+            [
+                "exporters",
+                "preview",
+                "langfuse",
+                "--session",
+                session_id,
+                "--level",
+                "actions",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+
+        spec = _exp.load_catalog().get("langfuse")
+        assert spec is not None
+        _label, classes = _privacy.resolve("actions", None)
+        policy = _telemetry.ExportPolicy(
+            events=_telemetry.DEFAULT_EVENTS,
+            classes=classes,
+            label="actions",
+            content_max_chars=spec.content_max_chars,
+        )
+        state = _telemetry.ProjectionState()
+        spans = []
+        tracefile = _trace.find_trace(session_id)
+        assert tracefile is not None
+        for record in _trace.read_trace(tracefile):
+            admitted = policy.admit(record)
+            if admitted is None:
+                continue
+            spans.extend(_telemetry.project(admitted, state, policy))
+        spans.extend(_telemetry.flush_open(state))
+        expected = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
+
+        assert json.loads(result.stdout) == expected
+        assert result.stdout.strip().encode() == json.dumps(expected).encode()
+
+    def test_footer_notes_when_the_level_grants_content_the_session_never_recorded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`llm_call` above never carried `inputMessages`/`outputMessages`/`systemInstructions`
+        (minimal was in effect when it was captured) -- previewing it at `conversation` must
+        say so instead of silently showing less than a later, wider-captured session would."""
+        home = _seed(tmp_path, monkeypatch)
+        session_id = _seed_session(home)
+
+        result = _runner.invoke(
+            _app,
+            [
+                "exporters",
+                "preview",
+                "langfuse",
+                "--session",
+                session_id,
+                "--level",
+                "conversation",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "recorded no conversation content" in result.stdout
+        assert "captured only once an exporter grants it" in result.stdout

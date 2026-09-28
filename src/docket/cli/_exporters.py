@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from docket import ui
 from docket.cli import _keys
+from docket.cli._exporters_preview import run_preview
 from docket.core import exporter as _exp
 from docket.core import privacy as _privacy
 from docket.core.audit import audit_log
@@ -35,6 +36,7 @@ def run_exporters(action: str, args: list[str]) -> int:
         "remove": _run_remove,
         "export": _run_export,
         "privacy": _run_privacy,
+        "preview": run_preview,
     }
     handler = handlers.get(action)
     if handler is None:
@@ -52,6 +54,8 @@ def run_exporters(action: str, args: list[str]) -> int:
             "  docket exporters export <name> [<file>]\n"
             "  docket exporters privacy <name> [<level>|--share a,b]"
             " [--max-chars N] [--yes]"
+            "  docket exporters preview <name> [--session <id>]"
+            " [--level <level>|--share a,b] [--json]"
         )
         return 1
     return handler(args)

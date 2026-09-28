@@ -482,6 +482,37 @@ document rather than replace it:
     `conversation`/`full` sharing to a non-loopback host, and one per exporter still carrying a
     legacy `payload`/`payloadMaxChars` field, naming `docket exporters privacy <name> <level>`.
 
+### Preview
+
+98. `docket exporters preview <name> [--session <id>] [--level <level>|--share a,b] [--json]`
+    **MUST** resolve *name* through `core.exporter.load_catalog()`, build an `ExportPolicy` from
+    that exporter document's own resolved `privacy`/`share`/`events`/`content_max_chars` fields
+    the same way `core.telemetry.start` builds one for a started `Pipeline` — or, when `--level`
+    or `--share` is given, from `core.privacy.resolve` applied to the override instead — and
+    project the named local session (default: the newest `*.jsonl` under `config.TRACES_DIR` by
+    mtime, across every project) through it with `core.telemetry.project`/`flush_open`. An
+    override **MUST NOT** be written to the exporter's document.
+99. `preview` **MUST NOT** open a socket, write any docket-owned file, or append an audit entry;
+    a call with `--session <id>` naming an unknown session **MUST** exit `1` naming the session
+    and touch nothing.
+100. Without `--json`, `preview` **MUST** print, per projected span, its name and every
+     attribute (including each span event's own attributes) with the content class that
+     attribute belongs to (`core.telemetry.ATTRIBUTE_CLASSES`, `"structure"` for an attribute
+     absent from that table, and `"per part"` for `gen_ai.input.messages`, which is deliberately
+     absent from `ATTRIBUTE_CLASSES` because its class varies by message part), with content
+     truncated to 200 characters for display; a footer **MUST** count spans, attributes per
+     class, and the total byte size of the OTLP document the same projection would encode.
+101. `preview --json` **MUST** print the exact document `edges.adapters.exporters.otlp_http.encode`
+     produces for the same spans, resource, and aliases — byte-identical to what an enabled
+     exporter's `Pipeline` would send for this session under the same policy.
+102. When the effective policy grants `prompts`, `completions`, or `instructions`, and no
+     `llm_call` record in the previewed session carries a truthy `inputMessages`,
+     `outputMessages`, or `systemInstructions` payload key, `preview` **MUST** print one line
+     stating plainly that the session recorded no conversation content and that content is
+     captured only once an exporter grants it, so a later session would also send it — a session
+     recorded under `minimal` never carries that content, whatever level it is later previewed
+     at (ADR 0015 §2 rule 4).
+
 ## Interface Contracts
 
 ### Module API (`docket.core.privacy`)
