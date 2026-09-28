@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1/question.schema.json",
+  "title": "Question",
+  "additionalProperties": false,
+  "description": "A question posed to a human, shaped as an MCP elicitation request.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "pod": {
+      "title": "Pod",
+      "type": "string"
+    },
+    "step": {
+      "title": "Step",
+      "type": "string"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "requestedSchema": {
+      "additionalProperties": false,
+      "description": "The MCP elicitation ``requestedSchema`` shape, used only to render its own JSON\nSchema fragment for the generator; runtime checks go through\n``validate_requested_schema``.",
+      "properties": {
+        "type": {
+          "const": "object",
+          "default": "object",
+          "title": "Type",
+          "type": "string"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Properties"
+        },
+        "required": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required",
+          "type": "array"
+        }
+      },
+      "title": "QuestionSchema",
+      "type": "object"
+    },
+    "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+    },
+    "expiresAt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expiresat"
+    }
+  },
+  "required": [
+    "id",
+    "taskId",
+    "pod",
+    "step",
+    "message",
+    "requestedSchema",
+    "createdAt"
+  ],
+  "type": "object"
+}

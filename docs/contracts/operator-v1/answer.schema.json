@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1/answer.schema.json",
+  "title": "AnswerResult",
+  "additionalProperties": false,
+  "description": "The result of answering a ``Question``, shaped as an MCP elicitation result.",
+  "properties": {
+    "action": {
+      "enum": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "type": "object"
+}

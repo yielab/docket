@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1/approval.schema.json",
+  "title": "ApprovalView",
+  "additionalProperties": false,
+  "description": "The operator-v1 rendering of a pending or resolved approval record.",
+  "properties": {
+    "token": {
+      "title": "Token",
+      "type": "string"
+    },
+    "pod": {
+      "title": "Pod",
+      "type": "string"
+    },
+    "taskId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Taskid"
+    },
+    "role": {
+      "title": "Role",
+      "type": "string"
+    },
+    "tool": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tool"
+    },
+    "action": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Action"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy"
+    },
+    "state": {
+      "title": "State",
+      "type": "string"
+    },
+    "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+    },
+    "expiresAt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expiresat"
+    },
+    "a2aState": {
+      "default": "INPUT_REQUIRED",
+      "title": "A2Astate",
+      "type": "string"
+    }
+  },
+  "required": [
+    "token",
+    "pod",
+    "role",
+    "state",
+    "createdAt"
+  ],
+  "type": "object"
+}
