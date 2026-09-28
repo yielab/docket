@@ -926,3 +926,99 @@ steps:
         assert not result.ok
         assert len(result.errors) == 1
         assert "dead" in result.errors[0]
+
+
+class TestInputSteps:
+    def test_valid_input_step_parses_and_renders(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: triage
+      message: "Confirm the approach?"
+"""
+        result = load_pipeline(text)
+        assert result.ok, result.errors
+        assert result.spec is not None
+        ask = result.spec.steps[1]
+        assert ask.input is not None
+        assert ask.input.from_ == "triage"
+        assert ask.input.message == "Confirm the approach?"
+
+        plan = _orch.resolve_plan(result.spec, {})
+        assert "asks the operator (from triage)" in _orch.render_plan(plan)
+
+    def test_input_step_cannot_also_set_role(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    role: implementer
+    input:
+      from: triage
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "input" in result.errors[0]
+        assert "role" in result.errors[0]
+
+    def test_input_step_from_references_nonexistent_step(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: no_such_step
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "no_such_step" in result.errors[0]
+
+    def test_input_step_from_references_later_step(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: plan
+  - id: plan
+    role: implementer
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "plan" in result.errors[0]
+        assert "earlier" in result.errors[0]
+
+    def test_input_step_on_keys_must_be_subset_of_answered_declined(self) -> None:
+        text = """\
+name: p
+steps:
+  - id: triage
+    role: lead
+  - id: ask
+    input:
+      from: triage
+    on:
+      answered: pass
+      unknown_key: fail
+"""
+        result = load_pipeline(text)
+        assert not result.ok
+        assert len(result.errors) == 1
+        assert "ask" in result.errors[0]
+        assert "unknown_key" in result.errors[0]

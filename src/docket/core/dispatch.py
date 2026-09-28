@@ -1995,6 +1995,20 @@ def _run_pipeline(
             continue
         elif node.run is not None:
             outcome = _run_command_step(ctx, node, prior, pipeline_index)
+        elif node.input is not None:
+            hop = HopResult(
+                role=node.step_id,
+                member_id="",
+                ok=False,
+                output="",
+                error=f"step {node.step_id!r}: an 'input' step cannot run yet — only 'plan' renders it (P34-10 implements execution)",
+                step_id=node.step_id,
+            )
+            outcome = _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=f"step {node.step_id!r}: an 'input' step cannot run yet — only 'plan' renders it (P34-10 implements execution)",
+            )
         else:
             rework_hop = pending_rework_by_index.pop(pipeline_index, None)
             outcome = _execute_unit(

@@ -148,10 +148,21 @@ class When(BaseModel):
         return self
 
 
+class InputSpec(BaseModel):
+    """An operator-input step: the pipeline pauses and asks the operator a question."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    message: str = ""
+    expires_hours: int | None = Field(None, alias="expiresHours", gt=0)
+
+
 class Step(BaseModel):
-    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run``, plus optional
-    gate/retries/timeout) or a parallel group (``parallel``: unit-step children only, one
-    level deep). See specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups")."""
+    """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run`` xor ``input``,
+    plus optional gate/retries/timeout) or a parallel group (``parallel``: unit-step children
+    only, one level deep). See specs/functional/pipeline-format.spec.md ("Steps", "Parallel groups",
+    "Operator input")."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -181,6 +192,8 @@ class Step(BaseModel):
     # A command step's shell command, run directly with no agent turn, exclusive of
     # `role`/`agent` -- see the class docstring and "Conditional steps and command steps".
     run: str | None = None
+    # An operator-input step: pauses and asks for input, exclusive of role/agent/run.
+    input: InputSpec | None = None
     parallel: list[Step] | None = None
     # Outcome routing: each key is a gate outcome label (a verdict marker, or
     # "pass"/"fail" for a mechanical gate), compared case-insensitively at
@@ -251,6 +264,22 @@ class Step(BaseModel):
                     raise ValueError(
                         f"step {self.id!r}: a 'run' (command) step carries no {field_name!r}"
                     )
+            return self
+
+        if self.input is not None:
+            for field_name, value in (
+                ("role", self.role),
+                ("agent", self.agent),
+                ("run", self.run),
+                ("parallel", self.parallel),
+                ("gate", self.gate),
+                ("retries", self.retries),
+                ("timeout", self.timeout),
+                ("instructions", self.instructions),
+                ("model", self.model),
+            ):
+                if value is not None:
+                    raise ValueError(f"step {self.id!r}: an 'input' step carries no {field_name!r}")
             return self
 
         if self.role is None and self.agent is None:
@@ -454,6 +483,26 @@ class PipelineSpec(BaseModel):
                             "is not supported (target a top-level step instead)"
                         )
                 continue
+            if s.input is not None:
+                if s.input.from_ not in top_index:
+                    raise ValueError(
+                        f"step {s.id!r}: input 'from' references {s.input.from_!r}, "
+                        "which is not a step id"
+                    )
+                if top_index[s.input.from_] >= i:
+                    raise ValueError(
+                        f"step {s.id!r}: input 'from' {s.input.from_!r} must be an earlier step"
+                    )
+                if s.on:
+                    valid_keys = frozenset({"answered", "declined"})
+                    on_keys = {str(k).lower() for k in s.on}
+                    invalid = on_keys - valid_keys
+                    if invalid:
+                        raise ValueError(
+                            f"step {s.id!r}: input step 'on' keys must be a subset of "
+                            f"{sorted(valid_keys)}; got invalid key(s): {sorted(invalid)}"
+                        )
+                continue
             if not isinstance(s.gate, VerdictGate) or s.gate.rework is None:
                 continue
             rework = s.gate.rework
@@ -568,6 +617,7 @@ _STEP_SUGAR_KEYS = frozenset(
         "on",
         "until",
         "max",
+        "input",
     }
 )
 _BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
@@ -706,6 +756,16 @@ def _normalize_command_short_step(step_id: str, target: dict[Any, Any]) -> dict[
     return step
 
 
+def _normalize_input_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+    # `- ask: {input: {from: triage}}` -- a one-key mapping whose value is itself a
+    # mapping carrying `input`. Like command steps, its sugar lives inside *target*.
+    step: dict[str, Any] = {"id": step_id, "input": target["input"]}
+    for key in ("on",):
+        if key in target:
+            step[key] = target[key]
+    return step
+
+
 def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
     id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
     if len(id_keys) != 1:
@@ -714,6 +774,8 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     target = entry[step_id]
     if isinstance(target, dict) and "run" in target:
         return _normalize_command_short_step(step_id, target)
+    if isinstance(target, dict) and "input" in target:
+        return _normalize_input_short_step(step_id, target)
     if not isinstance(target, str):
         return entry
     step: dict[str, Any] = {"id": step_id}

@@ -63,6 +63,8 @@ class PlannedUnit:
     # specs/functional/pipeline-format.spec.md ("Conditional steps and command steps").
     when: dict[str, Any] | None = None
     run: str | None = None
+    # An operator-input step spec, or `None` for a regular role/agent/run step.
+    input: _pipeline.InputSpec | None = None
     # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
     # See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
@@ -148,6 +150,10 @@ def _resolve_unit(
         # A command step needs no member -- it never runs an agent turn.
         member_id: str | None = None
         skipped = False
+    elif step.input is not None:
+        # An input step needs no member -- it asks the operator a question.
+        member_id = None
+        skipped = False
     elif step.agent is not None:
         member_id = step.agent
         skipped = False
@@ -168,6 +174,7 @@ def _resolve_unit(
         skipped=skipped,
         when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
         run=step.run,
+        input=step.input,
         on=step.on,
     )
 
@@ -211,6 +218,8 @@ def render_plan(plan: ExecutionPlan) -> str:
 def _render_unit(unit: PlannedUnit) -> str:
     if unit.run is not None:
         base = f"run {unit.run!r} [gate: exit code]"
+    elif unit.input is not None:
+        base = f"asks the operator (from {unit.input.from_})"
     else:
         target = unit.agent if unit.agent is not None else f"role={unit.role}"
         who = unit.member_id or "(unresolved)"
