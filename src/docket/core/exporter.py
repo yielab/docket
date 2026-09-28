@@ -1,14 +1,14 @@
 """Exporter catalog: the observability destinations docket knows, as `kind: exporter`
 documents (ADR 0014 §4) -- a deliberate copy of `core/provider.py`'s shape (name, dialect,
 endpoint, named credentials, never a value) with the model/price/preset fields dropped and
-destination-shaped ones added: `resource`/`aliases`, `events`/`payload`/`payloadMaxChars`, and
-`enabled` (a present credential never activates an exporter by itself -- see
-`activation_state`). Two scopes, nearest-wins by name: built-in
-(`config.EXPORTER_TEMPLATES_DIR`) and global (`config.EXPORTERS_FILE`, the operator's own).
+destination-shaped ones added: `resource`/`aliases`, `events`, `privacy`/`share` (what a
+document shares beyond structure -- ADR 0015 §1; retired `payload`/`payloadMaxChars` load as
+`minimal`, named in `legacy_fields`), and `enabled` (a present credential never activates an
+exporter by itself). Two scopes, nearest-wins by name: built-in and global
+(`config.EXPORTERS_FILE`, the operator's own).
 
-This module owns the document, the catalog, and pure classification. The wire encoding, the
-bounded queue/background sender, the health-file writer, and the CLI surface live elsewhere;
-`ProbeResult`/`read_health` here import nothing from `edges/`.
+This module owns the document, the catalog, and pure classification; the wire encoding and
+CLI surface live elsewhere.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import docket.config as _cfg
+from docket.core import privacy as _privacy
 from docket.core.trace import EVENT_TYPES
 from docket.edges import store as _store
 
@@ -29,6 +30,10 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _CREDENTIAL_VALUE_RE = re.compile(r"^[A-Za-z0-9/_\-+.]{20,}$")
 _RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
+
+# The retired `payload`/`payloadMaxChars` keys (ADR 0015 rule 7) -- a document still carrying
+# either loads as `minimal` and names the key in `legacy_fields`, never a wider level.
+_LEGACY_KEYS: tuple[str, ...] = ("payload", "payloadMaxChars")
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
@@ -119,10 +124,51 @@ class ExporterSpec(BaseModel):
     resource: dict[str, str] = Field(default_factory=lambda: {"service.name": "docket"})
     aliases: dict[str, str] = Field(default_factory=dict)
     events: Literal["default", "all"] | list[str] = "default"
-    payload: Literal["metadata", "full"] = "metadata"
-    payload_max_chars: int = Field(2000, alias="payloadMaxChars", gt=0)
+    privacy: Literal["minimal", "actions", "conversation", "full"] | None = None
+    share: list[str] | None = None
+    content_max_chars: int = Field(4000, alias="contentMaxChars", gt=0, le=100_000)
     enabled: bool = False
     note: str = ""
+    legacy_fields: list[str] = Field(default_factory=list, exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _capture_legacy_fields(cls, data: Any) -> Any:
+        """A document still carrying the retired `payload`/`payloadMaxChars` keys (ADR 0015
+        rule 7) drops them here and names them in `legacy_fields` -- they never reach a field,
+        so they can never widen `privacy` past its unset default."""
+        if not isinstance(data, dict):
+            return data
+        found = [key for key in _LEGACY_KEYS if key in data]
+        if not found:
+            return data
+        data = dict(data)
+        for key in found:
+            data.pop(key)
+        data["legacy_fields"] = found
+        return data
+
+    @model_validator(mode="after")
+    def _resolve_privacy(self) -> ExporterSpec:
+        try:
+            _privacy.resolve(self.privacy, self.share)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
+
+    @property
+    def privacy_label(self) -> str:
+        """The resolved privacy level name -- `"minimal"` when neither `privacy` nor `share`
+        is set."""
+        label, _classes = _privacy.resolve(self.privacy, self.share)
+        return label
+
+    @property
+    def privacy_classes(self) -> frozenset[str]:
+        """The resolved set of content classes this exporter's document grants beyond bare
+        structure -- the empty set when neither `privacy` nor `share` is set."""
+        _label, classes = _privacy.resolve(self.privacy, self.share)
+        return classes
 
     @field_validator("name")
     @classmethod
@@ -371,7 +417,8 @@ def enable_exporter(name: str, overrides: dict[str, Any] | None = None) -> Expor
     from docket.core import audit as _audit
 
     _audit.audit_log(
-        "exporter.enabled", f"name={spec.name} payload={spec.payload} endpoint={spec.endpoint}"
+        "exporter.enabled",
+        f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}",
     )
     return spec
 
@@ -402,7 +449,8 @@ def disable_exporter(name: str) -> ExporterSpec:
     from docket.core import audit as _audit
 
     _audit.audit_log(
-        "exporter.disabled", f"name={spec.name} payload={spec.payload} endpoint={spec.endpoint}"
+        "exporter.disabled",
+        f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}",
     )
     return spec
 

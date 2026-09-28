@@ -912,9 +912,12 @@ def start(specs: Sequence[Any], sink_for: SinkFactory) -> int:
             if spec.auth.credentials and any(not value for value in values):
                 continue
             sink = sink_for(spec, values)
-            # Every started pipeline shares nothing beyond structure until an exporter
-            # document's own privacy fields are wired through here -- a default only narrows.
-            policy = ExportPolicy(events=_events_for(spec), classes=frozenset(), label="minimal")
+            policy = ExportPolicy(
+                events=_events_for(spec),
+                classes=spec.privacy_classes,
+                label=spec.privacy_label,
+                content_max_chars=spec.content_max_chars,
+            )
             _REGISTRY[spec.name] = Pipeline(
                 sink, policy, queue_max=_cfg.EXPORT_QUEUE_MAX, clock=time.monotonic
             )

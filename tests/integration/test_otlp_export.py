@@ -26,7 +26,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.core import exporter as _exporter
 from docket.core import telemetry as _telemetry
-from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
+from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import DocketDriver
 
@@ -49,12 +49,13 @@ def _reset_telemetry_registry() -> Iterator[None]:
     _telemetry.close()
 
 
-def _write_meta(agent_id: str) -> None:
+def _write_meta(agent_id: str) -> Path:
     ws = _cfg.workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
     _store.write_json(
         _cfg.meta_path(agent_id), {"kind": "project", "role": "implementer", "model": "test/model"}
     )
+    return ws
 
 
 class _ScriptedBackend:
@@ -79,7 +80,17 @@ def _final_response(text: str = "hello") -> ChatResponse:
     )
 
 
-def _enable_local_exporter(endpoint: str) -> None:
+def _read_call_response(path: str) -> ChatResponse:
+    call = ToolCall(id="c1", name="read", arguments=json.dumps({"path": path}))
+    return ChatResponse(
+        ok=True,
+        message=assistant("", tool_calls=[call]),
+        finish_reason="tool_calls",
+        usage=TokenUsage(10, 5),
+    )
+
+
+def _enable_local_exporter(endpoint: str, privacy: str = "full") -> None:
     """Write a global `kind: exporter` document named "local" -- not a built-in name, so no
     inheritance kicks in -- straight through `edges/store.py`, the same file `core.exporter`
     reads back."""
@@ -94,7 +105,7 @@ def _enable_local_exporter(endpoint: str) -> None:
                     "endpoint": endpoint,
                     "auth": {"type": "none"},
                     "enabled": True,
-                    "payload": "full",
+                    "privacy": privacy,
                 }
             }
         },
@@ -222,6 +233,51 @@ class TestRealPost:
             assert _telemetry._UNSUBSCRIBE is unsubscribe_after_first
         finally:
             srv.shutdown()
+
+
+class TestExporterPrivacyGatesToolArguments:
+    """`ExporterSpec.privacy` wired through `core.telemetry.start` into the started
+    `Pipeline`'s policy (observability-export.spec.md requirement 86): `actions` grants
+    `toolArguments`; the default `minimal` grants nothing."""
+
+    def _run_a_read_call(self, agent_id: str, privacy: str) -> list[dict[str, Any]]:
+        ws = _write_meta(agent_id)
+        (ws / "notes.txt").write_text("top secret\n")
+        srv, url, handler_cls = _recording_server()
+        try:
+            _enable_local_exporter(url, privacy=privacy)
+            backend = _ScriptedBackend(
+                [_read_call_response("notes.txt"), _final_response("here it is")]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+
+            result = driver.run_turn(agent_id, f"agent:{agent_id}:default", "read notes.txt", 60)
+
+            assert result.ok is True
+            deadline = _time.monotonic() + 2.0
+            while not handler_cls.bodies and _time.monotonic() < deadline:
+                _time.sleep(0.02)
+        finally:
+            srv.shutdown()
+
+        assert handler_cls.bodies, "the server never received a POST"
+        return [
+            span
+            for body in handler_cls.bodies
+            for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+        ]
+
+    def test_privacy_actions_exports_tool_arguments(self) -> None:
+        spans = self._run_a_read_call("actions-agent", "actions")
+        tool_span = next(s for s in spans if s["name"] == "execute_tool read")
+        assert "gen_ai.tool.call.arguments" in {a["key"] for a in tool_span["attributes"]}
+
+    def test_privacy_minimal_omits_tool_arguments(self) -> None:
+        """The kept negative twin: the default `minimal` level shares nothing beyond
+        structure, so the same tool call's arguments never leave this host."""
+        spans = self._run_a_read_call("minimal-agent", "minimal")
+        tool_span = next(s for s in spans if s["name"] == "execute_tool read")
+        assert "gen_ai.tool.call.arguments" not in {a["key"] for a in tool_span["attributes"]}
 
 
 class TestZeroExportersAndNoExport:

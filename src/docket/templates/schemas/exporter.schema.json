@@ -100,19 +100,44 @@
       "default": "default",
       "title": "Events"
     },
-    "payload": {
-      "default": "metadata",
-      "enum": [
-        "metadata",
-        "full"
+    "privacy": {
+      "anyOf": [
+        {
+          "enum": [
+            "minimal",
+            "actions",
+            "conversation",
+            "full"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "title": "Payload",
-      "type": "string"
+      "default": null,
+      "title": "Privacy"
     },
-    "payloadMaxChars": {
-      "default": 2000,
+    "share": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Share"
+    },
+    "contentMaxChars": {
+      "default": 4000,
       "exclusiveMinimum": 0,
-      "title": "Payloadmaxchars",
+      "maximum": 100000,
+      "title": "Contentmaxchars",
       "type": "integer"
     },
     "enabled": {
@@ -124,6 +149,13 @@
       "default": "",
       "title": "Note",
       "type": "string"
+    },
+    "legacy_fields": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Legacy Fields",
+      "type": "array"
     }
   },
   "required": [

@@ -132,7 +132,7 @@ class TestEnableWithLocalServer:
         audit_entries = read_audit()
         enabled_entries = [e for e in audit_entries if e["action"] == "exporter.enabled"]
         assert len(enabled_entries) == 1
-        assert "payload=metadata" in enabled_entries[0]["detail"]
+        assert "privacy=minimal" in enabled_entries[0]["detail"]
         assert _SECRET_KEY not in json.dumps(audit_entries)
 
         show_result = _runner.invoke(_app, ["exporters", "show", "langfuse"])

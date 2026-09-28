@@ -186,7 +186,7 @@ def _run_show(args: list[str]) -> int:
     if spec.aliases:
         aliases = ", ".join(f"{k} -> {v}" for k, v in spec.aliases.items())
         ui.console.print(f"  aliases       {aliases}")
-    ui.console.print(f"  payload       {spec.payload}")
+    ui.console.print(f"  privacy       {spec.privacy_label}")
     if health:
         ui.console.print(
             f"  health        exported={health.get('exported', 0)}"
@@ -255,8 +255,8 @@ def _run_enable(args: list[str]) -> int:
 
     enabled_spec = _exp.enable_exporter(name, overrides)
     ui.success(f"Exporter enabled: {name}  ->  {enabled_spec.endpoint}")
-    ui.console.print(f"  scope: global  payload: {enabled_spec.payload}")
-    if enabled_spec.payload == "full":
+    ui.console.print(f"  scope: global  privacy: {enabled_spec.privacy_label}")
+    if enabled_spec.privacy_label != "minimal":
         ui.warn("tool arguments and results leave this host")
     return 0
 
@@ -331,7 +331,9 @@ def _run_add(args: list[str]) -> int:
             ui.warn(verification.warning)
 
     _exp.save_exporter(spec)
-    audit_log("exporter.added", f"name={spec.name} payload={spec.payload} endpoint={spec.endpoint}")
+    audit_log(
+        "exporter.added", f"name={spec.name} privacy={spec.privacy_label} endpoint={spec.endpoint}"
+    )
     ui.success(f"Exporter added: {spec.name}  ->  {spec.endpoint}")
     return 0
 

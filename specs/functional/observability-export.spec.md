@@ -150,8 +150,8 @@ document rather than replace it:
     (`^[a-z0-9][a-z0-9-]*$`), `dialect` (`Literal["otlp-http"]`, default `"otlp-http"`),
     `endpoint` (an `http://`/`https://` URL), `auth`, `headers`, `resource` (default
     `{"service.name": "docket"}`), `aliases`, `events` (`"default"` | `"all"` | a list of
-    `core.trace.EVENT_TYPES` members), `payload` (`"metadata"` | `"full"`, default
-    `"metadata"`), `payloadMaxChars` (default `2000`), `enabled` (default `False`), and `note`.
+    `core.trace.EVENT_TYPES` members), `enabled` (default `False`), and `note`. `payload`/
+    `payloadMaxChars` are retired (see "Exporter privacy fields" below).
 20. `auth.type` **MUST** be one of `bearer`, `header`, `basic`, `none`, and **MUST** require
     exactly the credential-name arity that type implies: zero for `none`, exactly one for
     `bearer` and `header`, exactly two (ordered: username, then password) for `basic`.
@@ -326,8 +326,8 @@ document rather than replace it:
     catalog file, unless the operator passed `--no-verify`.
 62. Enabling, disabling, adding, or removing an exporter **MUST** append one audit entry —
     `exporter.enabled` / `exporter.disabled` / `exporter.added` / `exporter.removed` — whose
-    detail names the exporter and, for `enabled`/`added`, its `payload` mode and `endpoint`;
-    **MUST NOT** ever include a credential value.
+    detail names the exporter and, for `enabled`/`added`, its `privacy` label and `endpoint`
+    (requirement 87); **MUST NOT** ever include a credential value.
 63. `docket exporters test <name>` **MUST** probe and classify *name*'s endpoint the same way
     `enable` does, and **MUST NOT** write the global catalog file, the health file, or an audit
     entry — it is read-only.
@@ -401,6 +401,37 @@ document rather than replace it:
 79. Every root `docket.session` span **MUST** carry `docket.privacy` (the policy's `label`) and
     `docket.privacy.classes` (its `classes`, comma-joined in sorted order, the empty string for
     `minimal`).
+
+### Exporter privacy fields
+
+80. `core.exporter.ExporterSpec` **MUST** carry `privacy` (`Literal["minimal", "actions",
+    "conversation", "full"] | None`, default `None`), `share` (`list[str] | None`, default
+    `None`), and `contentMaxChars` (alias for `content_max_chars: int`, default `4000`, `gt=0`,
+    `le=100_000`) in place of the retired `payload`/`payloadMaxChars`.
+81. A document setting both `privacy` and `share` **MUST** be refused, naming both fields; a
+    `share` entry absent from `core.privacy.CONTENT_CLASSES` **MUST** be refused naming it —
+    both resolved through `core.privacy.resolve(spec.privacy, spec.share)`. A `privacy` value
+    outside `core.privacy.LEVELS` **MUST** be refused naming the field and the valid values,
+    through the field's own closed `Literal` vocabulary (the same refinement
+    `_validation_to_exporter_error` already gives an unknown `dialect`/`auth.type`).
+82. `ExporterSpec.privacy_label` **MUST** return the resolved level name (`core.privacy.resolve`
+    applied to `(spec.privacy, spec.share)`) — `"minimal"` when neither field is set.
+83. `ExporterSpec.privacy_classes` **MUST** return the resolved `frozenset[str]` of granted
+    content classes for the same input — the empty set when neither field is set.
+84. A document that still carries the retired `payload` and/or `payloadMaxChars` keys **MUST**
+    load successfully: those keys **MUST NOT** reach `privacy`/`share`/`content_max_chars` or
+    widen `privacy_label` past `"minimal"`, and each such key present on the document **MUST**
+    be named, in the order encountered, in `ExporterSpec.legacy_fields` (ADR 0015 rule 7).
+    `legacy_fields` **MUST NOT** be written back out by `save_exporter`/`export_exporter`.
+85. Every built-in exporter document under `templates/exporters/` **MUST** declare `privacy:
+    minimal` (or omit `privacy`/`share` entirely) — including `otel-collector`, whose prior
+    `payload: full` is retired, since a collector forwards to whatever its own config names.
+86. `core.telemetry.start` **MUST** build each started `Pipeline`'s `ExportPolicy` from its
+    exporter document's own resolved fields: `classes=spec.privacy_classes`,
+    `label=spec.privacy_label`, `content_max_chars=spec.content_max_chars` — no exporter shares
+    beyond `structure` until its own document says so.
+87. `enable_exporter`/`disable_exporter`'s audit detail, and the CLI's `exporters add` audit
+    detail, **MUST** name `privacy=<privacy_label>` in place of the retired `payload=<payload>`.
 
 ## Interface Contracts
 
@@ -519,10 +550,17 @@ class ExporterSpec(BaseModel):
     resource: dict[str, str] = {"service.name": "docket"}
     aliases: dict[str, str] = {}
     events: Literal["default", "all"] | list[str] = "default"
-    payload: Literal["metadata", "full"] = "metadata"
-    payload_max_chars: int = 2000               # alias "payloadMaxChars"
+    privacy: Literal["minimal", "actions", "conversation", "full"] | None = None
+    share: list[str] | None = None
+    content_max_chars: int = 4000                # alias "contentMaxChars"
     enabled: bool = False
     note: str = ""
+    legacy_fields: list[str] = []                # e.g. ["payload"]; never re-serialized
+
+    @property
+    def privacy_label(self) -> str: ...           # core.privacy.resolve(privacy, share)[0]
+    @property
+    def privacy_classes(self) -> frozenset[str]: ...  # core.privacy.resolve(privacy, share)[1]
 
 class ExporterError(Exception):
     file: Path
