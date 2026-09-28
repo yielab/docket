@@ -2609,7 +2609,10 @@ def cmd_exporters(ctx: typer.Context) -> None:
     `enabled` flag plus the overrides given. `disable <name>` turns it back
     off; stored keys are kept. `test <name>` re-probes without changing
     anything. `add <file.yaml>` and `remove <name>` manage a full document;
-    `export <name> [<file>]` prints or writes one back out."""
+    `export <name> [<file>]` prints or writes one back out. `preview <name>
+    [--session <id>] [--level <level>|--share a,b] [--json]` projects a
+    local session through the exporter's policy and prints what it would
+    send -- no network call, no write."""
     from docket.cli._exporters import run_exporters
 
     args = list(ctx.args)

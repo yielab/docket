@@ -822,10 +822,18 @@ I only put the key" (observability-export.spec.md "Activation")
 - `remove <name>`: Remove a global override; a built-in with none refuses naming it as built-in
 - `export <name> [<file>]`: Print (or write) the exporter as a `kind: exporter` document --
   never a credential value, only credential names
-**Output**: Exporter listing, one exporter's detail, or an enable/disable/test/add/remove
-confirmation or refusal
-**Return**: 0 on success, 1 on an unknown exporter, a missing credential, or an unreachable
-endpoint
+- `preview <name> [--session <id>] [--level minimal|actions|conversation|full] [--share a,b]
+  [--json]`: Project a real local session (default: the newest trace under `TRACES_DIR`,
+  across every project) through *name*'s resolved `ExportPolicy` -- or the given `--level`/
+  `--share` override, which is never written -- and print each span's attributes with their
+  content class, content truncated to 200 characters for display, plus a footer counting spans,
+  attributes per class, and total bytes; `--json` prints the exact `otlp_http.encode` document
+  byte-for-byte. No network call, no write, no audit entry (observability-export.spec.md
+  "Preview")
+**Output**: Exporter listing, one exporter's detail, an enable/disable/test/add/remove
+confirmation or refusal, or a preview of what a destination would receive
+**Return**: 0 on success, 1 on an unknown exporter, a missing credential, an unreachable
+endpoint, or (`preview`) an unknown session
 
 #### docket approve
 **Purpose**: Grant a pending HITL approval token

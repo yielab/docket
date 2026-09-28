@@ -16,6 +16,7 @@ from typing import Any
 
 from docket import ui
 from docket.cli import _keys
+from docket.cli._exporters_preview import run_preview
 from docket.core import exporter as _exp
 from docket.core.audit import audit_log
 from docket.edges.adapters.exporters import otlp_http as _otlp_http
@@ -32,6 +33,7 @@ def run_exporters(action: str, args: list[str]) -> int:
         "add": _run_add,
         "remove": _run_remove,
         "export": _run_export,
+        "preview": run_preview,
     }
     handler = handlers.get(action)
     if handler is None:
@@ -46,7 +48,9 @@ def run_exporters(action: str, args: list[str]) -> int:
             "  docket exporters test <name>\n"
             "  docket exporters add <file.yaml>\n"
             "  docket exporters remove <name>\n"
-            "  docket exporters export <name> [<file>]"
+            "  docket exporters export <name> [<file>]\n"
+            "  docket exporters preview <name> [--session <id>]"
+            " [--level <level>|--share a,b] [--json]"
         )
         return 1
     return handler(args)
