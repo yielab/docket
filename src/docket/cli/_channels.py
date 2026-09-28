@@ -9,6 +9,7 @@ for this module; see `core/channel.py`'s module docstring.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json as _json
 import sys
 from pathlib import Path
@@ -16,7 +17,9 @@ from typing import Any
 
 from docket import ui
 from docket.core import channel as _chan
+from docket.core import notify as _notify
 from docket.core.audit import audit_log
+from docket.edges.adapters import channels as _channels
 
 # `--set key=value` keys that go onto a top-level list field instead of `config`.
 _LIST_KEYS = {"actors": "actors"}
@@ -33,6 +36,7 @@ def run_channels(action: str, args: list[str]) -> int:
         "remove": _run_remove,
         "export": _run_export,
         "content": _run_content,
+        "test": _run_test,
     }
     handler = handlers.get(action)
     if handler is None:
@@ -46,7 +50,8 @@ def run_channels(action: str, args: list[str]) -> int:
             "  docket channels add <file.yaml>\n"
             "  docket channels remove <name>\n"
             "  docket channels export <name> [<file>]\n"
-            "  docket channels content <name> [<level>] [--yes]"
+            "  docket channels content <name> [<level>] [--yes]\n"
+            "  docket channels test <name>"
         )
         return 1
     return handler(args)
@@ -332,3 +337,32 @@ def _run_content(args: list[str]) -> int:
     ui.success(f"Channel content updated: {name}")
     ui.console.print(f"  content: {updated.content}")
     return 0
+
+
+def _run_test(args: list[str]) -> int:
+    pos, _sets = _parse_sets(args)
+    if not pos:
+        ui.error("Usage: docket channels test <name>")
+        return 1
+    name = pos[0]
+
+    catalog = _chan.load_catalog()
+    spec = catalog.get(name)
+    if spec is None:
+        ui.error(f"Unknown channel '{name}'.")
+        return 1
+
+    deliver = _channels.sink_for(spec)
+    if deliver is None:
+        ui.error(f"Channel '{name}' has dialect '{spec.dialect}', which has no delivery yet.")
+        return 1
+
+    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    event = _notify.build_test_event(spec, now=now)
+    secret = _notify.resolve_secret(spec)
+    result = deliver(spec, event, secret=secret, timeout=5.0)
+    if result.ok:
+        ui.success(f"Test delivered to '{name}' ({spec.dialect}).")
+        return 0
+    ui.error(f"Test delivery to '{name}' failed: {result.error or 'unknown error'}")
+    return 1

@@ -41,6 +41,7 @@ _docket() {
     'recipes:List and inspect the recipe library'
     'exporters:Observability export destinations: list, inspect, and enable by authenticating'
     'channels:Notification/conversation/decision destinations: list, inspect, and enable'
+    'notify:Flush operator events to every enabled channel'
     'trace:View agent execution traces'
     'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'

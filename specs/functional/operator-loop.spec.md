@@ -39,8 +39,10 @@ its own card):
 
 - How the Lead's pipeline produces a `TaskBrief` in practice, or how `POST /tasks` and
   `docket pod <p> delegate` accept a pre-brief
-- How an event is actually produced, diffed and delivered to a `kind: channel` destination
-  (`core/notify.py`, `edges/adapters/channels/`)
+- The `ntfy`, `desktop`, `email` and `telegram` dialects' own wire formats — requirement area 6
+  below covers the diff/render/delivery framework and the `console`/`webhook`/`command`
+  dialects; the remaining four each add one more `edges/adapters/channels/` module and one more
+  `sink_for` entry in a later requirement area
 - How an answer actually resumes a parked `input` pipeline step (`core/answers.py`)
 - The Telegram channel amendment (`core/telegram.py`, `telegram-integration.spec.md`)
 - The interruption forecast and CLI/HTTP pre-grant surface (`core/interruptions.py`)
@@ -169,12 +171,14 @@ of its own.
 
 ### 6. Notifications
 
-**Status: Partially implemented — the `kind: channel` document, catalog and CLI ship here;
-delivery (`core/notify.py`, the snapshot diff, and each dialect's actual send) is owned by
-P34-11 and remains planned.** `CloudEvent`, `make_event` and the closed `EVENT_KINDS`
+**Status: Implemented for `console`/`webhook`/`command` — items 1-8 are the `kind: channel`
+document, catalog and CLI (shipped earlier); items 9-16 are the diff/render/delivery framework
+and its three simplest dialects. `ntfy`, `desktop`, `email` and `telegram` remain planned
+(their own requirement area).** `CloudEvent`, `make_event` and the closed `EVENT_KINDS`
 vocabulary are defined (requirement area 1's module) and satisfy the CloudEvents 1.0
 structured-mode shape. This area adds the destination side: what a channel document declares
-about itself, and what docket refuses to write or activate.
+about itself, what docket refuses to write or activate, and — from item 9 — how a transition
+in the derived inbox becomes an event on the wire.
 
 1. `core.channel.ChannelSpec` (`kind: channel`) MUST declare `dialect` (one of `console`,
    `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`), `capabilities` (a subset of
@@ -217,6 +221,65 @@ about itself, and what docket refuses to write or activate.
    `core.config_docs._MODEL_FOR_KIND["channel"] = core.channel.ChannelSpec`), and
    `scripts/gen_config_schemas.py` MUST render `docs/contracts/config-v1/channel.schema.json`
    (and its package copy) directly from `ChannelSpec`, the same shape as `exporter`.
+9. `core.notify.diff_events(prev, inbox, now) -> (events, snapshot)` MUST be pure (no clock, no
+   I/O) and MUST emit one `NotifyEvent` per item in `inbox.needsYou`/`failed`/`doneSince` whose
+   dedupe key is new, or whose version has changed, since `prev`. The dedupe key MUST be
+   `task:<pod>:<id>` for a `TaskView` or `approval:<token>` for an `ApprovalView`; the version
+   MUST be the item's status (or state) plus its question id or approval token, so a task
+   re-asking a different question is treated as changed even when `status` itself repeats. The
+   event kind MUST be `task.input_required` (`waiting_input`), `approval.requested`
+   (`waiting_approval` or a standalone `ApprovalView`), `task.blocked`, `task.rejected` (a
+   failed task whose `a2aState` is `REJECTED`), `task.failed` (any other failed task), or
+   `task.completed`.
+10. `diff_events` MUST additionally emit `approval.expiring` at most once per approval token,
+    the first time 80% or more of the interval between its `createdAt` and `expiresAt` has
+    elapsed; a token already recorded in the returned `snapshot`'s `expiring` list MUST NOT
+    fire again.
+11. `core.notify.render_data(item, level)` MUST enforce the three content levels on the
+    `CloudEvent.data` it builds: `minimal` MUST NOT include an approval's rendered `action` or
+    a task's `question`/`brief`; `actions` MUST add `action` (approvals only); `conversation`
+    MUST add `question` and, when present, `brief` (tasks only). `core.notify.render_text(event)`
+    MUST derive `(title, body)` only from *event*'s own already-leveled `data`, never from the
+    source item, so a `minimal` event's text carries nothing a `minimal` event's data omitted.
+12. `core.notify.flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe
+    snapshot (`config.NOTIFY_STATE_FILE`), compute `diff_events`, and save the new snapshot
+    **before** delivering anything, so a crash mid-delivery never re-emits an event on the next
+    flush — delivery in this module is at-most-once, not at-least-once, by construction. For
+    every event, `flush` MUST call `sink_for` once per enabled channel with `notify` in
+    `capabilities` whose `on` matches the event's kind (directly, or via the `needs_you`
+    shorthand for `task.input_required`/`approval.requested`/`task.blocked`/
+    `approval.expiring`), retry a failing delivery up to two further times within the same
+    call, and record the outcome in `config.CHANNELS_HEALTH_FILE` (`delivered`/`failed`
+    counters, `lastOk`/`lastError`/`lastErrorAt`). `flush` MUST NOT import
+    `edges/adapters/channels` itself — `sink_for` is supplied by its caller, the same seam
+    `core/telemetry.py::start(specs, sink_for)` uses. `flush` MUST NOT raise.
+13. The `webhook` dialect (`edges/adapters/channels/webhook.py::deliver`) MUST POST the
+    `CloudEvent` as `application/cloudevents+json` to `spec.config["url"]` with the Standard
+    Webhooks headers: `webhook-id` (the event's `id`), `webhook-timestamp` (Unix seconds), and,
+    when a secret is resolved, `webhook-signature: v1,<base64>` over
+    `hmac-sha256(base64-decode(secret.removeprefix("whsec_")), f"{id}.{ts}.{body}")`. A missing
+    `config.url`, a transport failure, or a non-2xx response MUST all report a failed
+    `DeliveryResult` without raising.
+14. The `command` dialect (`edges/adapters/channels/command.py::deliver`) MUST run
+    `spec.config["argv"]` (a JSON-encoded list of strings, since `config` is `dict[str, str]`)
+    — or, when `argv` is absent, a single-element argv built from `spec.config["command"]` (the
+    already-shipped built-in document's shape) — as `subprocess.run(argv, input=<event JSON>,
+    timeout=min(timeout, 10), check=False)`, never `shell=True`. A non-zero exit, a missing
+    binary, or a missing `argv`/`command` MUST all report a failed `DeliveryResult` without
+    raising.
+15. The `console` dialect (`edges/adapters/channels/console.py::deliver`) MUST always succeed
+    without sending anything — the console is already the inbox.
+16. `docket notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
+    catalog and print the delivered/failed/skipped counts; `--dry-run` MUST print the pending
+    events from `diff_events` without delivering or advancing the persisted snapshot. `docket
+    channels test <name>` MUST build one synthetic `channel.test` event
+    (`core.notify.build_test_event`) and deliver it once through that one channel's dialect,
+    regardless of the channel's `on` subscription, reporting success or failure — this and
+    `docket notify flush` are the only things in this specification's CLI surface that ever
+    send anything to a real destination. `serve.py`'s periodic sweep and `docket pod <p>
+    dispatch`'s foreground summary MUST each call `core.notify.flush` once, after their own
+    work, with the CLI dispatch path printing nothing beyond one warning line naming the
+    failure count when a delivery failed.
 
 ### 7. Answers
 

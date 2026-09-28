@@ -447,6 +447,16 @@ EXPORTERS_HEALTH_FILE = Path(
 # edges/store.py. Merged with the built-in scope (CHANNEL_TEMPLATES_DIR above), nearest-wins
 # by name -- the same shape as EXPORTERS_FILE just above.
 CHANNELS_FILE = Path(os.environ.get("CHANNELS_FILE", DOCKET_HOME / "docket-channels.json"))
+# NOTIFY_STATE_FILE: `core/notify.py::flush`'s dedupe snapshot ({item_key: version} plus
+# `expiring`), so two flushes over the same state deliver each event once. Saved BEFORE
+# delivering, so a crash mid-delivery never re-emits (ADR 0016 SS7, "at-most-once, not
+# at-least-once"). Through edges/store.py like every other docket-owned JSON file.
+NOTIFY_STATE_FILE = Path(os.environ.get("NOTIFY_STATE_FILE", DOCKET_HOME / "notify-state.json"))
+# CHANNELS_HEALTH_FILE: per-channel delivery counters and last-error state, the same shape
+# EXPORTERS_HEALTH_FILE holds, written by `core/notify.py::flush` through edges/store.py.
+CHANNELS_HEALTH_FILE = Path(
+    os.environ.get("CHANNELS_HEALTH_FILE", DOCKET_HOME / "channels-health.json")
+)
 # EXPORT_QUEUE_MAX: bound on the in-memory span queue the background sender drains -- a stop
 # condition against an exporter that is slow or down, not a throughput knob, matching every
 # other bound in this file.

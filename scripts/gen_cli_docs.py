@@ -119,7 +119,10 @@ GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
     ("Security & Audit", ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox"]),
-    ("Observability Commands", ["runs", "trace", "metrics", "harness", "exporters", "channels"]),
+    (
+        "Observability Commands",
+        ["runs", "trace", "metrics", "harness", "exporters", "channels", "notify"],
+    ),
 ]
 
 _TOC_SLUG_OVERRIDES = {
@@ -473,6 +476,17 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         ("CHANNELS_FILE",),
         "Global channel catalog scope (`core/channel.py`)",
         "`$DOCKET_HOME/docket-channels.json`",
+    ),
+    (
+        ("NOTIFY_STATE_FILE",),
+        "`core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state "
+        "deliver each event once",
+        "`$DOCKET_HOME/notify-state.json`",
+    ),
+    (
+        ("CHANNELS_HEALTH_FILE",),
+        "Per-channel delivery counters and last-error state (`core/notify.py::flush`)",
+        "`$DOCKET_HOME/channels-health.json`",
     ),
     (
         ("FLEET_FILE",),

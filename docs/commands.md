@@ -1582,8 +1582,31 @@ full document; `export <name> \[<file>\]` prints or writes one back out.
 `content <name> \[<level>\] \[--yes\]` shows or changes how much a delivery
 carries (`minimal < actions < conversation`); widening prints the change
 and asks for confirmation on a TTY or refuses off one without `--yes` --
-narrowing never asks. This command does not send anything: delivery is a
-later command.
+narrowing never asks. `test <name>` sends one synthetic
+`dev.docket.channel.test` event through that one channel and reports
+success or failure -- useful to verify a webhook URL or a command binary
+before relying on it. Every other subcommand here only edits the catalog;
+`test` and `docket notify` are the only things in this command group that
+ever send anything.
+
+
+**Aliases:** None
+
+
+---
+
+### notify
+
+**Usage:** `docket notify`
+
+Flush operator events to every enabled channel.
+
+`docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
+state change; this command forces one in between, or previews it. `docket notify
+flush \[--dry-run\]` -- with no `--dry-run`, diffs the inbox against the last flush,
+delivers each new event (`dev.docket.task.*`/`approval.*`) to every enabled channel
+whose `on` matches, and prints the counts; `--dry-run` prints what would be sent
+without delivering or advancing the dedupe snapshot.
 
 
 **Aliases:** None
@@ -1660,7 +1683,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `channels`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `channels`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `notify`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---
@@ -1722,6 +1745,8 @@ No command emits any other exit code today.
 | `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
 | `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
 | `CHANNELS_FILE` | Global channel catalog scope (`core/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
+| `NOTIFY_STATE_FILE` | `core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
+| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`core/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |

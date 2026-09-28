@@ -481,6 +481,18 @@ def _check_schedules(now_ts: float) -> None:
         t.start()
 
 
+def _flush_notify_channels() -> None:
+    """One `core.notify.flush` call over every catalog channel -- the periodic half of
+    delivery; `cli/_pod.py::_pod_dispatch` runs the other, foreground half."""
+    from docket.core import channel as _channel
+    from docket.core import notify as _notify
+    from docket.edges.adapters import channels as _channels
+
+    _notify.flush(
+        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=_utc_timestamp()
+    )
+
+
 def _run_sweeps(dispatch: bool = False) -> None:
     """Run the periodic sweeps once, each best-effort and independently guarded so one failure
     never aborts the others or the server.
@@ -548,6 +560,9 @@ def _run_sweeps(dispatch: bool = False) -> None:
             _check_schedules(time.time())
         except Exception as exc:
             print(f"[serve] sweep: schedule check failed: {exc}")
+
+    with contextlib.suppress(Exception):
+        _flush_notify_channels()
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
