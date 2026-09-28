@@ -1,12 +1,17 @@
 # Observability Export Specification
 
-**Version**: 1.2.0
-**Status**: Draft - model, projection, the exporter catalog, and the `otlp-http` wire dialect
-are implemented. `core/telemetry.py` provides the neutral span model, the incremental
-projection, and the export policy; `core/exporter.py` provides the `kind: exporter` document,
-the built-in + global catalog, and pure activation classification;
-`edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport. No
-bounded queue, background sender, health-file writer, or CLI surface exists yet.
+**Version**: 1.3.0
+**Status**: Implemented -- awaiting external verification (P32-9). Model, projection, the
+exporter catalog, the `otlp-http` wire dialect, the bounded queue/background sender, and the
+`run_turn` wiring are all live. `core/telemetry.py` provides the neutral span model, the
+incremental projection, the export policy, and (P32-6) `Pipeline`/the module-level
+`start`/`flush`/`close`/`health` registry; `core/exporter.py` provides the `kind: exporter`
+document, the built-in + global catalog, and pure activation classification;
+`edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport;
+`edges/adapters/exporters/__init__.py` builds a `SpanSink` from a resolved `ExporterSpec`
+(`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts the pipeline lazily and
+flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. No `docket exporters`
+CLI surface exists yet (P32-7); `pod.yaml`'s `exporters:` key does not exist yet (P32-8).
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -39,13 +44,19 @@ This specification covers:
 - The `otlp-http` dialect (`edges/adapters/exporters/otlp_http.py`): the OTLP JSON encoding of a
   `Span`/`SpanEvent`, `OtlpHttpSink`'s transport and retry behaviour, and `probe`'s reachability
   check. This is the only module in docket that knows OTLP's wire shape.
+- The bounded queue and background sender (`core/telemetry.py::Pipeline` and the module-level
+  `start`/`flush`/`close`/`health` registry): batching, drop-on-full backpressure, the health
+  counters `health()` reports, and `sink_for` (`edges/adapters/exporters/__init__.py`), which
+  builds a `SpanSink` from a resolved `ExporterSpec` and its already-resolved credential values.
+- How `edges/adapters/docket_runtime.py::run_turn` wires the pipeline into a live turn: lazy,
+  idempotent start; a `flush` and a `config.EXPORTERS_HEALTH_FILE` write on every return path;
+  `atexit`-registered `close`.
 
 This specification does NOT cover, and each is planned for a later card that will extend this
 document rather than replace it:
 
-- The bounded queue or background thread that would carry spans off the calling thread, and the
-  code that actually writes the health file (`core/exporter.py::read_health` is read-only).
-- A `docket exporters` command or any other CLI surface.
+- A `docket exporters` command or any other CLI surface (P32-7).
+- `exporters:` as a `pod.yaml` key (P32-8).
 - `task_id` on the trace record itself (`trace-store.spec.md` owns the record shape); this
   module only reads it defensively (`record.get("task_id", "")`), so nothing here changes when
   the field arrives.
@@ -224,6 +235,61 @@ document rather than replace it:
     return a `ProbeResult` naming the raw HTTP status (`None` only for a transport failure) and
     any error text; it **MUST NOT** classify the outcome itself (that is the caller's job).
 
+### Pipeline
+
+44. `Pipeline.offer(record)` **MUST** run `policy.admit` and `project` on the calling thread and
+    enqueue every span the call closes; it **MUST NOT** block the caller and **MUST NOT** raise
+    for any reason, including a raising `policy` or a corrupt `record`.
+45. A `Pipeline` whose queue is full **MUST** drop the offered item and increment that pipeline's
+    `dropped` counter rather than block `offer` or raise.
+46. One background thread per `Pipeline` **MUST** drain the queue in batches -- up to
+    `batch_max` items, or `batch_wait_s` since the first item of a forming batch, whichever comes
+    first -- and call `sink.emit` on each batch.
+47. After a `sink.emit` call, `accepted` (clamped to `[0, len(batch)]`) **MUST** be added to
+    `exported`; any remainder **MUST** be added to `failed`; a non-empty `error` **MUST** set
+    `last_error`/`last_error_at`; at least one accepted span with no error **MUST** set `last_ok`.
+    A `sink.emit` that raises **MUST** be treated as a full-batch failure (`failed += len(batch)`,
+    `last_error` set to the exception text) -- `Pipeline` never trusts a sink's never-raise
+    contract, it enforces the outcome regardless.
+48. `Pipeline.flush(timeout_s)` **MUST** force-close every span still open in its projection
+    state, enqueue it, and then wait **at most** `timeout_s` for the drain thread to have sent
+    everything queued as of that call -- a slow or hung `sink.emit` **MUST NOT** make `flush`
+    wait longer than `timeout_s`, whether or not the send has actually finished by then.
+49. `Pipeline.close()` **MUST** flush, stop the drain thread, and release the sink; it **MUST** be
+    safe to call on a `Pipeline` that has already sent everything, and **MUST NOT** raise.
+
+### The module-level registry and wiring
+
+50. `load_enabled_exporters()` **MUST** return every catalog entry (`core.exporter.load_catalog`)
+    with `enabled: true`; it performs no credential resolution -- that is `start`'s job.
+51. `start(specs, sink_for)` **MUST** build one `Pipeline` for every entry in `specs` that is
+    both enabled and has every `auth.credentials` name resolved (`core.exporter.
+    resolve_credentials`), and **MUST** subscribe exactly one fan-out callable for all of them
+    through `core.trace.add_subscriber` -- never one subscriber per exporter.
+52. `start` **MUST** return `0` and register nothing -- no `Pipeline`, no subscriber -- under
+    `DOCKET_NO_EXPORT=1`, when no entry in `specs` is both enabled and fully credentialed, or
+    when the registry already has a pipeline registered from an earlier call in this process.
+    A later call in the same process, before `close()`, **MUST** therefore be a no-op.
+53. `flush(timeout_s)` **MUST** flush every registered `Pipeline`, each bounded to at most
+    `timeout_s`; `close()` **MUST** flush and stop every registered `Pipeline` and unsubscribe
+    the fan-out callable, and **MUST** be a safe no-op when nothing was ever started.
+54. `health()` **MUST** return one entry per registered `Pipeline`, in `config.
+    EXPORTERS_HEALTH_FILE`'s documented shape (requirement 32); it performs no I/O itself --
+    writing the file is the caller's job.
+55. `edges/adapters/docket_runtime.py::run_turn` **MUST** call `telemetry.start(telemetry.
+    load_enabled_exporters(), exporters.sink_for)` before running the turn, and **MUST**, in a
+    `finally` block covering every return path of `run_turn` (including an early return before
+    the turn itself starts), call `telemetry.flush(config.EXPORT_FLUSH_TIMEOUT_S)` and then write
+    `telemetry.health()` to `config.EXPORTERS_HEALTH_FILE` through `edges/store.py`.
+56. With zero enabled exporters, `run_turn` **MUST** start no background thread and register no
+    trace subscriber -- `start`'s cost in that case is one catalog read and nothing else.
+57. `edges/adapters/exporters/__init__.py::sink_for(spec, values)` **MUST** dispatch on
+    `spec.dialect` and build the wire sink with an auth header pair derived from `spec.auth.type`
+    and *values* (already resolved by the caller): `bearer` -> `("Authorization", "Bearer
+    <values[0]>")`, `basic` -> `("Authorization", "Basic <base64 of values[0]:values[1]>")`,
+    `header` -> `(spec.auth.header, values[0])`, `none` -> `None`. An unrecognized `dialect`
+    **MUST** raise `ValueError`.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.telemetry`)
@@ -264,6 +330,44 @@ class ExportPolicy:
     payload_max_chars: int = 4000
 
     def admit(self, record: dict[str, Any]) -> dict[str, Any] | None: ...
+
+class SinkOutcome(Protocol):        # structural match to otlp_http.SinkResult's field names
+    accepted: int
+    status: int | None
+    error: str
+    retry_after_s: float | None
+
+class SpanSink(Protocol):
+    def emit(self, spans: Sequence[Span]) -> SinkOutcome: ...
+    def close(self) -> None: ...
+
+@dataclass
+class PipelineStats:
+    exported: int = 0
+    dropped: int = 0
+    failed: int = 0
+    last_ok: str = ""
+    last_error: str = ""
+    last_error_at: str = ""
+
+class Pipeline:
+    def __init__(
+        self, sink: SpanSink, policy: ExportPolicy, *,
+        queue_max: int, batch_max: int = 100, batch_wait_s: float = 1.0,
+        clock: Callable[[], float],
+    ) -> None: ...
+    def offer(self, record: dict[str, Any]) -> None: ...
+    def flush(self, timeout_s: float) -> None: ...
+    def close(self) -> None: ...
+    def stats(self) -> PipelineStats: ...
+
+SinkFactory = Callable[[Any, list[str]], SpanSink]   # (ExporterSpec, resolved credential values)
+
+def load_enabled_exporters() -> list[Any]: ...        # list[ExporterSpec], enabled entries only
+def start(specs: Sequence[Any], sink_for: SinkFactory) -> int: ...
+def flush(timeout_s: float) -> None: ...
+def close() -> None: ...
+def health() -> dict[str, dict[str, Any]]: ...        # config.EXPORTERS_HEALTH_FILE's shape
 ```
 
 ### Module API (`docket.core.exporter`)
@@ -383,6 +487,13 @@ def probe(
 ) -> ProbeResult: ...
 ```
 
+### Module API (`docket.edges.adapters.exporters`)
+
+```python
+def sink_for(spec: ExporterSpec, values: list[str]) -> telemetry.SpanSink: ...
+    # dispatches on spec.dialect via _DIALECTS; raises ValueError for an unknown one
+```
+
 ## Examples
 
 ### Projecting one session
@@ -434,6 +545,19 @@ sink = otlp_http.OtlpHttpSink(
 result = sink.emit(spans)   # never raises; result.status is None only for a transport failure
 ```
 
+### Starting the pipeline for a turn
+
+```python
+from docket.core import telemetry
+from docket.edges.adapters import exporters
+
+started = telemetry.start(telemetry.load_enabled_exporters(), exporters.sink_for)
+# started == 0 with every exporter disabled (the shipped default) -- no thread, no subscriber
+...
+telemetry.flush(config.EXPORT_FLUSH_TIMEOUT_S)      # bounded even if a sink hangs
+health = telemetry.health()                         # {} when started == 0
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -452,8 +576,18 @@ result = sink.emit(spans)   # never raises; result.status is None only for a tra
 
 ### Invariants
 
-- `core/telemetry.py` **MUST NOT** import anything from `edges/`, open a socket, print, or
-  write to disk.
+- `core/telemetry.py` **MUST NOT** import anything from `edges/`, print, or write to disk;
+  `Pipeline` **MUST NOT** open a socket itself -- it drains into a `SpanSink` object it is
+  handed, and never constructs one (that is `edges/adapters/exporters`'s job).
+- `Pipeline.offer`, `Pipeline.flush`, and `Pipeline.close`, and the module-level `start`,
+  `flush`, and `close`, **MUST NOT** raise for any reason -- a raising `policy`, a corrupt
+  record, a raising `sink.emit`, or a full queue are all handled outcomes, never exceptions
+  that reach the caller (`edges/adapters/docket_runtime.py::run_turn`, which itself promises
+  never to raise for an ordinary failure).
+- A `Pipeline.flush(timeout_s)` call **MUST** return within `timeout_s` of its own wall-clock
+  budget regardless of how long the underlying `sink.emit` takes -- a hung or slow destination
+  **MUST NOT** make a turn's `run_turn` call take meaningfully longer than
+  `config.EXPORT_FLUSH_TIMEOUT_S` on top of the turn's own time.
 - Redaction of secret shapes happens once, in `core.trace.trace_event`, before a record is
   written; this module never re-redacts and never widens what `metadata` mode already dropped.
 - `core/exporter.py` **MUST NOT** import anything from `edges/adapters/`; its own probe type
@@ -474,6 +608,24 @@ result = sink.emit(spans)   # never raises; result.status is None only for a tra
   every outcome is a typed result.
 
 ## Changelog
+
+### Version 1.3.0 (2026-09-27)
+
+- **The pipeline, wired where turns run (P32-6).** New "Pipeline" and "The module-level registry
+  and wiring" Requirements sections (44-57): `core.telemetry.Pipeline` (a bounded queue plus one
+  daemon drain thread per enabled exporter, batching, drop-on-full, never-raise), `PipelineStats`
+  (the exact per-name shape `config.EXPORTERS_HEALTH_FILE` holds), and the module-level
+  `load_enabled_exporters`/`start`/`flush`/`close`/`health` registry, which subscribes one
+  fan-out sink through the new `core.trace.add_subscriber` (see `trace-store.spec.md`).
+  `edges/adapters/exporters/__init__.py::sink_for` builds a `SpanSink` from a resolved
+  `ExporterSpec` and its already-resolved credential values, dispatching on `dialect`.
+  `edges/adapters/docket_runtime.py::run_turn` starts the pipeline lazily (a no-op after the
+  first successful start, and with zero enabled exporters), and flushes it plus writes
+  `config.EXPORTERS_HEALTH_FILE` in a `finally` covering every return path -- see
+  `agent-loop.spec.md` 1.26.0 for the `DocketDriver` conformance requirement this adds. Status
+  moves to "Implemented -- awaiting external verification (P32-9)": every card through this one
+  is live; only the CLI surface (P32-7) and `pod.yaml`'s `exporters:` key (P32-8) remain, plus a
+  real collector/Langfuse round-trip (P32-9).
 
 ### Version 1.2.0 (2026-09-27)
 

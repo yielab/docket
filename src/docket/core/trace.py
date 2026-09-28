@@ -173,22 +173,32 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
         os.chmod(tracefile, 0o600)
 
 
+# Same list, same lock, same semantics as subscribe() below (now expressed over this, byte for
+# byte the same behaviour): a raising sink is suppressed (mirrors _emit_trace's best-effort rule
+# in core/approval.py) and never changes trace_event's return value; the returned callable
+# removes exactly the one instance added even if subscribed twice. Built for a long-lived
+# subscriber (core/telemetry.py's export pipeline) that has no single `with` block to own.
+def add_subscriber(sink: TraceSink) -> Callable[[], None]:
+    """Non-context-manager form of ``subscribe``: register *sink* and return a callable that
+    unregisters it."""
+    with _SUBSCRIBERS_LOCK:
+        _SUBSCRIBERS.append(sink)
+
+    def _unsubscribe() -> None:
+        with _SUBSCRIBERS_LOCK:
+            _SUBSCRIBERS.remove(sink)
+
+    return _unsubscribe
+
+
 @contextlib.contextmanager
 def subscribe(sink: TraceSink) -> Iterator[None]:
     """Receive every record ``trace_event`` appends, for as long as this is open."""
-    # Called synchronously on the calling thread with the exact (redacted)
-    # record about to be written, before the write. A raising sink is
-    # suppressed (mirrors _emit_trace's best-effort rule in core/approval.py)
-    # and never changes trace_event's return value. Registration is a plain
-    # list, so concurrent subscribers all see every record, and unregistering
-    # removes exactly the one instance added even if subscribed twice.
-    with _SUBSCRIBERS_LOCK:
-        _SUBSCRIBERS.append(sink)
+    unsubscribe = add_subscriber(sink)
     try:
         yield
     finally:
-        with _SUBSCRIBERS_LOCK:
-            _SUBSCRIBERS.remove(sink)
+        unsubscribe()
 
 
 def _notify_subscribers(record: dict[str, Any]) -> None:
