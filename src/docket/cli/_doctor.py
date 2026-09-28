@@ -14,6 +14,7 @@ from __future__ import annotations
 import json as _json
 import shutil
 from typing import Any
+from urllib.parse import urlsplit
 
 import docket.config as _cfg
 from docket import ui
@@ -424,26 +425,43 @@ def _check_provider_catalog() -> int:
     return len(problems)
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 def _check_exporters() -> int:
-    """Warn for every enabled exporter whose health shows a failure since its last success --
-    `docket exporters test <name>` re-probes; an ok line otherwise. Read-only."""
+    """Warn for every enabled exporter whose health shows a failure since its last success,
+    plus informational lines (not counted as issues) for a `conversation`/`full` exporter
+    reaching a non-loopback host and any retired `payload` field still on a document."""
     ui.console.print()
     ui.console.print("[bold]Exporters:[/bold]")
     catalog = _exporter.load_catalog()
     enabled = sorted(name for name, spec in catalog.entries.items() if spec.enabled)
+    issues = 0
     if not enabled:
         ui.dim("  No exporters enabled")
-        return 0
-    health = _exporter.read_health()
-    issues = 0
-    for name in enabled:
-        record = health.get(name, {})
-        failed = int(record.get("failed") or 0)
-        if failed > 0:
-            ui.warn(f"  {name}: {failed} failed export(s) — docket exporters test {name}")
-            issues += 1
-        else:
-            ui.success(f"  {name}: healthy")
+    else:
+        health = _exporter.read_health()
+        for name in enabled:
+            spec = catalog.entries[name]
+            record = health.get(name, {})
+            failed = int(record.get("failed") or 0)
+            if failed > 0:
+                ui.warn(f"  {name}: {failed} failed export(s) — docket exporters test {name}")
+                issues += 1
+            else:
+                ui.success(f"  {name}: healthy")
+            if spec.privacy_label in ("conversation", "full"):
+                host = urlsplit(spec.endpoint).hostname or spec.endpoint
+                if host not in _LOOPBACK_HOSTS:
+                    ui.info(f"  {name}: privacy '{spec.privacy_label}' shares content with {host}")
+    for name in sorted(catalog.entries):
+        spec = catalog.entries[name]
+        if spec.legacy_fields:
+            fields = ", ".join(spec.legacy_fields)
+            ui.info(
+                f"  {name}: retired field(s) {fields} are ignored — "
+                f"docket exporters privacy {name} <level>"
+            )
     return issues
 
 

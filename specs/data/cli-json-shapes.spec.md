@@ -352,7 +352,10 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
       "state":            "enabled | needs credential | disabled | unreachable",
       "scope":            "built-in | global",
       "credentialSource": "env | store | mixed | none",
-      "payload":          "metadata | full",
+      "privacy": {
+        "label":   "minimal | actions | conversation | full | custom",
+        "classes": "array of core.privacy.CONTENT_CLASSES names this exporter shares"
+      },
       "exported":         "number", "dropped": "number", "failed": "number",
       "lastError":        "string (empty when there has been none)"
     }

@@ -239,7 +239,7 @@ def _exporters_report() -> list[dict[str, Any]]:
                 "state": state,
                 "scope": catalog.source_of(name),
                 "credentialSource": credential_source,
-                "privacy": spec.privacy_label,
+                "privacy": {"label": spec.privacy_label, "classes": sorted(spec.privacy_classes)},
                 "exported": record.get("exported", 0),
                 "dropped": record.get("dropped", 0),
                 "failed": record.get("failed", 0),
@@ -411,7 +411,8 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
     if report["exporters"]:
         for exp in report["exporters"]:
             ui.console.print(
-                f"    {exp['name']:<14} {exp['dialect']:<10} {exp['state']:<16} ({exp['scope']})"
+                f"    {exp['name']:<14} {exp['dialect']:<10} {exp['state']:<16} ({exp['scope']},"
+                f" privacy: {exp['privacy']['label']})"
             )
     else:
         ui.console.print("    none enabled")

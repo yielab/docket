@@ -13,10 +13,12 @@ import json as _json
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from docket import ui
 from docket.cli import _keys
 from docket.core import exporter as _exp
+from docket.core import privacy as _privacy
 from docket.core.audit import audit_log
 from docket.edges.adapters.exporters import otlp_http as _otlp_http
 
@@ -32,6 +34,7 @@ def run_exporters(action: str, args: list[str]) -> int:
         "add": _run_add,
         "remove": _run_remove,
         "export": _run_export,
+        "privacy": _run_privacy,
     }
     handler = handlers.get(action)
     if handler is None:
@@ -41,12 +44,14 @@ def run_exporters(action: str, args: list[str]) -> int:
             "  docket exporters list [--json]\n"
             "  docket exporters show <name> [--json]\n"
             "  docket exporters enable <name> [--endpoint URL]"
-            " [--payload metadata|full] [--events ...] [--no-verify]\n"
+            " [--privacy <level>|--share a,b] [--events ...] [--no-verify] [--yes]\n"
             "  docket exporters disable <name>\n"
             "  docket exporters test <name>\n"
-            "  docket exporters add <file.yaml>\n"
+            "  docket exporters add <file.yaml> [--no-verify] [--yes]\n"
             "  docket exporters remove <name>\n"
-            "  docket exporters export <name> [<file>]"
+            "  docket exporters export <name> [<file>]\n"
+            "  docket exporters privacy <name> [<level>|--share a,b]"
+            " [--max-chars N] [--yes]"
         )
         return 1
     return handler(args)
@@ -104,6 +109,59 @@ def _probe_for(spec: _exp.ExporterSpec) -> _exp.ProbeResult:
     return _exp.ProbeResult(status=None, error=f"no probe for dialect '{spec.dialect}'")
 
 
+def _host_of(endpoint: str) -> str:
+    """The bare host a privacy confirmation or audit entry names -- never the full endpoint
+    (path/query are configuration, not content, but the disclosure names only what a reader
+    needs: where it goes)."""
+    return urlsplit(endpoint).hostname or endpoint
+
+
+def _shares_display(classes: frozenset[str]) -> str:
+    """`"toolArguments, errors" | "structure only"` -- the parenthesised half of a
+    `shares: <label> (<classes>)` line."""
+    return ", ".join(sorted(classes)) if classes else "structure only"
+
+
+def _render_leaves_this_host(spec: _exp.ExporterSpec) -> None:
+    """The "Leaves this host" disclosure block `show` and `privacy <name>` (no argument) both
+    print: one line per content class, granted or not, its example attributes, and the fixed
+    reminder that credentials and secret-shaped values are never sent."""
+    ui.console.print("  Leaves this host:")
+    for cls, granted, attrs in _privacy.describe(spec.privacy_classes):
+        mark = "[green]✓[/green]" if granted else "[dim]✗[/dim]"
+        ui.console.print(f"    {mark} {cls}  ({', '.join(attrs)})")
+    ui.console.print("    never: credentials, secret-shaped values (redacted)")
+
+
+def _confirm_widening(
+    name: str,
+    endpoint: str,
+    old_label: str,
+    new_label: str,
+    old_classes: frozenset[str],
+    new_classes: frozenset[str],
+    yes: bool,
+) -> bool:
+    """A widening privacy change is a confirmed command, never a silent write. ``--yes``
+    proceeds immediately; otherwise a TTY is asked `y/N` (anything but `y` refuses) and a
+    non-TTY refuses naming ``--yes`` without asking."""
+    if yes:
+        return True
+    host = _host_of(endpoint)
+    newly_granted = new_classes - old_classes
+    ui.warn(f"'{name}' will widen from '{old_label}' to '{new_label}':")
+    for cls, granted, attrs in _privacy.describe(new_classes):
+        if granted and cls in newly_granted:
+            example = attrs[0] if attrs else ""
+            ui.console.print(f"    + {cls}  (e.g. {example})")
+    ui.console.print(f"  destination: {host}")
+    if not sys.stdin.isatty():
+        ui.error(f"Refusing to widen '{name}' off a TTY without --yes.")
+        return False
+    answer = input("Continue? [y/N] ").strip().lower()
+    return answer == "y"
+
+
 def _run_list(args: list[str]) -> int:
     _pos, opts = _parse_opts(args)
     catalog = _exp.load_catalog()
@@ -132,16 +190,18 @@ def _run_list(args: list[str]) -> int:
 
     ui.header("Exporters")
     ui.console.print()
-    fmt = "  {:<14}  {:<11}  {:<16}  {:<28}  {}"
+    fmt = "  {:<14}  {:<11}  {:<16}  {:<28}  {:<8}  {}"
     ui.console.print(
-        f"[bold]{fmt.format('NAME', 'DIALECT', 'STATE', 'CREDENTIALS', 'SCOPE')}[/bold]"
+        f"[bold]{fmt.format('NAME', 'DIALECT', 'STATE', 'CREDENTIALS', 'SCOPE', 'SHARES')}[/bold]"
     )
     for name in sorted(catalog.entries):
         spec = catalog.entries[name]
         state, _missing = _exp.activation_state(spec, health.get(name))
         credentials = ", ".join(spec.auth.credentials) or "-"
         ui.console.print(
-            fmt.format(name, spec.dialect, state, credentials, catalog.source_of(name))
+            fmt.format(
+                name, spec.dialect, state, credentials, catalog.source_of(name), spec.privacy_label
+            )
         )
     return 0
 
@@ -192,17 +252,21 @@ def _run_show(args: list[str]) -> int:
             f"  health        exported={health.get('exported', 0)}"
             f" dropped={health.get('dropped', 0)} failed={health.get('failed', 0)}"
         )
+    ui.console.print()
+    _render_leaves_this_host(spec)
     return 0
 
 
 def _run_enable(args: list[str]) -> int:
     no_verify = "--no-verify" in args
     args = [a for a in args if a != "--no-verify"]
+    yes = "--yes" in args
+    args = [a for a in args if a != "--yes"]
     pos, opts = _parse_opts(args)
     if not pos:
         ui.error(
             "Usage: docket exporters enable <name> [--endpoint URL]"
-            " [--payload metadata|full] [--events ...] [--no-verify]"
+            " [--privacy <level>|--share a,b] [--events ...] [--no-verify] [--yes]"
         )
         return 1
     name = pos[0]
@@ -230,11 +294,35 @@ def _run_enable(args: list[str]) -> int:
     overrides: dict[str, Any] = {}
     if "endpoint" in opts:
         overrides["endpoint"] = opts["endpoint"]
-    if "payload" in opts:
-        if opts["payload"] not in ("metadata", "full"):
-            ui.error(f"--payload must be 'metadata' or 'full', got '{opts['payload']}'")
+    if "privacy" in opts and "share" in opts:
+        ui.error("--privacy and --share are mutually exclusive")
+        return 1
+    requested_share = (
+        [s.strip() for s in opts["share"].split(",") if s.strip()] if "share" in opts else None
+    )
+    requested_privacy = opts.get("privacy")
+    if requested_privacy is not None or requested_share is not None:
+        try:
+            new_label, new_classes = _privacy.resolve(requested_privacy, requested_share)
+        except ValueError as exc:
+            ui.error(str(exc))
             return 1
-        overrides["payload"] = opts["payload"]
+        if requested_privacy is not None:
+            overrides["privacy"] = requested_privacy
+        else:
+            overrides["share"] = requested_share
+        if _exp.is_widening(spec.privacy_classes, new_classes):
+            proceed = _confirm_widening(
+                name,
+                spec.endpoint,
+                spec.privacy_label,
+                new_label,
+                spec.privacy_classes,
+                new_classes,
+                yes,
+            )
+            if not proceed:
+                return 1
     if "events" in opts:
         overrides["events"] = [e.strip() for e in opts["events"].split(",") if e.strip()]
 
@@ -255,9 +343,10 @@ def _run_enable(args: list[str]) -> int:
 
     enabled_spec = _exp.enable_exporter(name, overrides)
     ui.success(f"Exporter enabled: {name}  ->  {enabled_spec.endpoint}")
-    ui.console.print(f"  scope: global  privacy: {enabled_spec.privacy_label}")
-    if enabled_spec.privacy_label != "minimal":
-        ui.warn("tool arguments and results leave this host")
+    ui.console.print(
+        f"  scope: global  shares: {enabled_spec.privacy_label}"
+        f" ({_shares_display(enabled_spec.privacy_classes)})"
+    )
     return 0
 
 
@@ -306,9 +395,11 @@ def _run_test(args: list[str]) -> int:
 def _run_add(args: list[str]) -> int:
     no_verify = "--no-verify" in args
     args = [a for a in args if a != "--no-verify"]
+    yes = "--yes" in args
+    args = [a for a in args if a != "--yes"]
     pos, _opts = _parse_opts(args)
     if not pos:
-        ui.error("Usage: docket exporters add <file.yaml>")
+        ui.error("Usage: docket exporters add <file.yaml> [--no-verify] [--yes]")
         return 1
 
     try:
@@ -316,6 +407,22 @@ def _run_add(args: list[str]) -> int:
     except _exp.ExporterError as exc:
         ui.error(str(exc))
         return 1
+
+    existing = _exp.load_catalog().get(spec.name)
+    old_label = existing.privacy_label if existing else "minimal"
+    old_classes = existing.privacy_classes if existing else frozenset()
+    if _exp.is_widening(old_classes, spec.privacy_classes):
+        proceed = _confirm_widening(
+            spec.name,
+            spec.endpoint,
+            old_label,
+            spec.privacy_label,
+            old_classes,
+            spec.privacy_classes,
+            yes,
+        )
+        if not proceed:
+            return 1
 
     if not no_verify:
         result = _probe_for(spec)
@@ -369,4 +476,80 @@ def _run_export(args: list[str]) -> int:
         ui.success(f"Exported '{pos[0]}' to {pos[1]}")
     else:
         ui.console.print(text, end="")
+    return 0
+
+
+def _run_privacy(args: list[str]) -> int:
+    yes = "--yes" in args
+    args = [a for a in args if a != "--yes"]
+    pos, opts = _parse_opts(args)
+    if not pos:
+        ui.error(
+            "Usage: docket exporters privacy <name> [<level>|--share a,b] [--max-chars N] [--yes]"
+        )
+        return 1
+    name = pos[0]
+    level = pos[1] if len(pos) > 1 else None
+
+    catalog = _exp.load_catalog()
+    spec = catalog.get(name)
+    if spec is None:
+        ui.error(f"Unknown exporter '{name}'.")
+        return 1
+
+    if level is not None and "share" in opts:
+        ui.error("a level argument and --share are mutually exclusive")
+        return 1
+    requested_share = (
+        [s.strip() for s in opts["share"].split(",") if s.strip()] if "share" in opts else None
+    )
+
+    max_chars: int | None = None
+    if "max-chars" in opts:
+        try:
+            max_chars = int(opts["max-chars"])
+        except ValueError:
+            ui.error(f"--max-chars must be an integer, got '{opts['max-chars']}'")
+            return 1
+
+    if level is None and requested_share is None and max_chars is None:
+        ui.header(f"Exporter: {name}")
+        ui.console.print()
+        _render_leaves_this_host(spec)
+        return 0
+
+    if level is not None or requested_share is not None:
+        try:
+            new_label, new_classes = _privacy.resolve(level, requested_share)
+        except ValueError as exc:
+            ui.error(str(exc))
+            return 1
+    else:
+        new_label, new_classes = spec.privacy_label, spec.privacy_classes
+
+    if _exp.is_widening(spec.privacy_classes, new_classes):
+        proceed = _confirm_widening(
+            name,
+            spec.endpoint,
+            spec.privacy_label,
+            new_label,
+            spec.privacy_classes,
+            new_classes,
+            yes,
+        )
+        if not proceed:
+            return 1
+
+    try:
+        updated = _exp.set_privacy(
+            name, privacy=level, share=requested_share, content_max_chars=max_chars
+        )
+    except _exp.ExporterError as exc:
+        ui.error(str(exc))
+        return 1
+
+    ui.success(f"Exporter privacy updated: {name}")
+    ui.console.print(
+        f"  shares: {updated.privacy_label} ({_shares_display(updated.privacy_classes)})"
+    )
     return 0

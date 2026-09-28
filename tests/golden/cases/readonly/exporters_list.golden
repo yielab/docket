@@ -2,9 +2,9 @@ EXIT:0
 
 Exporters
 
-  NAME            DIALECT      STATE             CREDENTIALS                   SCOPE
-  honeycomb       otlp-http    disabled          HONEYCOMB_API_KEY             built-in
-  jaeger          otlp-http    disabled          -                             built-in
-  langfuse        otlp-http    disabled          LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY  built-in
-  otel-collector  otlp-http    disabled          -                             built-in
-  phoenix         otlp-http    disabled          -                             built-in
+  NAME            DIALECT      STATE             CREDENTIALS                   SCOPE     SHARES
+  honeycomb       otlp-http    disabled          HONEYCOMB_API_KEY             built-in  minimal
+  jaeger          otlp-http    disabled          -                             built-in  minimal
+  langfuse        otlp-http    disabled          LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY  built-in  minimal
+  otel-collector  otlp-http    disabled          -                             built-in  minimal
+  phoenix         otlp-http    disabled          -                             built-in  minimal

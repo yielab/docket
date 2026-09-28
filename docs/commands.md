@@ -1520,15 +1520,21 @@ is `live`, `finished` (with a best-effort reconstructed result), or
 Observability export destinations: list, inspect, and enable by authenticating.
 
 Subcommands: `list \[--json\]` prints every catalog exporter's dialect,
-activation state and credential names. `show <name> \[--json\]` prints one
-exporter's effective document, source, state and health counters.
-`enable <name> \[--endpoint URL\] \[--payload metadata|full\] \[--events ...\]
-\[--no-verify\]` prompts for a missing credential on a TTY (else names
-`docket keys add` and exits), probes the endpoint, and writes only the
-`enabled` flag plus the overrides given. `disable <name>` turns it back
-off; stored keys are kept. `test <name>` re-probes without changing
-anything. `add <file.yaml>` and `remove <name>` manage a full document;
-`export <name> \[<file>\]` prints or writes one back out.
+activation state, credential names and its privacy level (SHARES). `show
+<name> \[--json\]` prints one exporter's effective document, source, state,
+health counters and a "Leaves this host" disclosure of every content
+class. `enable <name> \[--endpoint URL\] \[--privacy <level>|--share a,b\]
+\[--events ...\] \[--no-verify\] \[--yes\]` prompts for a missing credential on
+a TTY (else names `docket keys add` and exits), probes the endpoint, and
+writes only the `enabled` flag plus the overrides given. `disable <name>`
+turns it back off; stored keys are kept. `test <name>` re-probes without
+changing anything. `add <file.yaml> \[--no-verify\] \[--yes\]` and `remove
+<name>` manage a full document; `export <name> \[<file>\]` prints or writes
+one back out. `privacy <name> \[<level>|--share a,b\] \[--max-chars N\]
+\[--yes\]` shows or changes what an exporter shares beyond bare structure;
+widening the shared classes prints what is newly granted and the
+destination host, then asks for confirmation on a TTY or refuses off one
+without `--yes` -- narrowing never asks.
 
 
 **Aliases:** None
