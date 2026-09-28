@@ -916,6 +916,63 @@ otherwise.
    `fetch` until an operator configures one — and nothing in this section changes what `bash`,
    `python3`, `node`, or `git` may already do; those stay exactly as described in requirement 1.
 
+### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
+
+An in-turn `ask` verdict may need to end the turn without blocking the calling thread on a human
+answer, and a human's grant of that exact call needs a way to reach a later, re-entered turn
+without asking again.
+
+1. **`ToolContext.approval_mode`** is `Literal["wait", "park", "refuse"]`. `"wait"` and
+   `"refuse"` are unchanged from the existing behaviour this spec already describes. Under
+   `"park"`, `dispatch_tool`'s `ask` branch **MUST NOT** call `core.approval.wait_for_approval`;
+   it creates a pending approval record naming the exact call and returns immediately.
+2. **The parked record.** `core.approval.approval_create` is called with
+   `context={"tool": <tool name>, "callId": <call id>, "argsDigest": <digest>, "parked": True}`,
+   plus `context["project"]`/`context["role"]` when `ToolContext.project`/`.role` are non-empty.
+   `<digest>` is `core.operator_contract.canonical_args_digest(tool.name, args)` — a stable
+   SHA-256 digest of the tool's canonical-JSON arguments, independent of key order. The result's
+   `decision` **MUST** be `"deny"`, `denial_kind` **MUST** be `"approval_parked"`, and the new
+   `ToolResult.approval_token` field carries the created record's token.
+3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is
+   set, the parked record carries it as `expiresAt`; `core.approval.approval_sweep_expired` reads
+   a pending record's own `expiresAt` when present, falling back to
+   `created + config.APPROVAL_TIMEOUT` otherwise (unchanged for a record with no `expiresAt`).
+   Both paths resolve through the existing `_resolve_timeout_as_denied` — a parked call's
+   timeout is not a second terminal path, just a per-record deadline on the one that already
+   existed.
+4. **Single-use pre-grants.** `core.approval.create_pregrant(project, role, tool, args_digest,
+   *, task_id=None, expires_at=None, channel, actor="")` persists a record already `state:
+   "granted"`, `context={"kind": "pregrant", "tool": ..., "argsDigest": ..., ["taskId": ...]}`,
+   audited `approval.pregrant`. `core.approval.consume_pregrant(token)` atomically (through
+   `edges/store.py::read_modify_write`) marks it `consumedAt` and returns `True` exactly once, for
+   a record still `granted`, never previously consumed, and not past its own `expiresAt` when one
+   is set; every later call, or a call past expiry, returns `False` without changing the record. A
+   successful consumption audits `approval.consume`.
+5. **Where pre-grants are checked.** In `dispatch_tool`'s `ask` branch, **before** the
+   `approval_mode` dispatch (`refuse`/`park`/`wait`), every entry of `ToolContext.pregrants` (a
+   tuple of `Pregrant(token, tool, args_digest)`) whose `(tool, args_digest)` matches this call's
+   `(tool.name, <digest>)` is tried against `consume_pregrant`; the first one that consumes
+   successfully allows the call (`decision="allow"`, `ToolResult.approval_token` set to its
+   token) and the handler runs. This check applies **regardless of `approval_mode`** — a
+   pre-grant answers a question that was already asked, so it wins even under `"refuse"`. A call
+   whose canonical arguments do not match any pre-grant's digest, or whose only match was already
+   consumed or is past its own expiry, falls through to the ordinary `approval_mode` handling
+   unaffected.
+6. **Unconsumed pre-grants expire too.** `approval_sweep_expired` additionally prunes a `granted`,
+   unconsumed `context.kind == "pregrant"` record once past its own `expiresAt`: denied
+   (fail-closed), audited `approval.deny` with `channel=timeout`. This is a record born already
+   `granted` (its birth state, not a contested decision), so it is resolved directly rather than
+   through `_set_state`'s grant/deny-race guard, which exists for the two-sided ordinary approval
+   flow; a pre-grant swept this way is never consumable afterward.
+7. **The turn loop.** `core/agent_loop.py` treats `denial_kind == "approval_parked"` as terminal
+   for the batch, exactly like `"approval_unavailable"`: the turn stops with
+   `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
+   shape `approval_unavailable_error` uses, plus `approval_token`. See agent-loop.spec.md, "The
+   approval_parked stop".
+8. **Harness mode is unaffected.** `docket harness run` always sets
+   `DOCKET_APPROVAL_MODE=refuse` (unchanged); `approval_parked` cannot occur on that path, and
+   `core/harness.py`'s wire contract is untouched by this section.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)

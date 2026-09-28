@@ -147,11 +147,16 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
 
 
 def approval_create(
-    project: str, role: str, action: str, *, context: dict[str, Any] | None = None
+    project: str,
+    role: str,
+    action: str,
+    *,
+    context: dict[str, Any] | None = None,
+    expires_at: str | None = None,
 ) -> str:
     """Persist a pending approval and return its token. ``context`` is optional caller
-    data stored verbatim, never redacted (callers must not put secrets in it), so whatever
-    later resolves the grant/deny can find what it gated; always ``{}`` when omitted."""
+    data stored verbatim, never redacted; always ``{}`` when omitted. ``expires_at``,
+    when given, is the record's own deadline -- the sweep honours it over ``APPROVAL_TIMEOUT``."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -171,6 +176,8 @@ def approval_create(
         "created": created,
         "context": context or {},
     }
+    if expires_at:
+        data["expiresAt"] = expires_at
     _store.write_json(_approval_path(token), data)
 
     _emit_trace(
@@ -181,6 +188,85 @@ def approval_create(
         {"token": token, "action": redacted_action},
     )
     return token
+
+
+def create_pregrant(
+    project: str,
+    role: str,
+    tool: str,
+    args_digest: str,
+    *,
+    task_id: str | None = None,
+    expires_at: str | None = None,
+    channel: str,
+    actor: str = "",
+) -> str:
+    """Persist a single-use pre-grant, already ``granted``, for one exact tool call a
+    human approved ahead of the turn that will make it -- unlike ``approval_create``,
+    this record is born resolved. ``consume_pregrant`` is the only way it is ever spent."""
+    if not project or not role or not tool or not args_digest:
+        raise ApprovalError("create_pregrant: missing arguments")
+    if channel not in APPROVAL_CHANNELS:
+        raise ApprovalError(f"create_pregrant: unknown channel {channel!r}")
+
+    _cfg.APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(_cfg.APPROVALS_DIR, 0o700)
+
+    token = f"apr-{uuid.uuid4()}"
+    created = _utc_now()
+    context: dict[str, Any] = {"kind": "pregrant", "tool": tool, "argsDigest": args_digest}
+    if task_id:
+        context["taskId"] = task_id
+
+    data: dict[str, Any] = {
+        "token": token,
+        "project": project,
+        "role": role,
+        "action": f"pre-grant: {tool} (argsDigest={args_digest})",
+        "state": "granted",
+        "created": created,
+        "context": context,
+    }
+    if expires_at:
+        data["expiresAt"] = expires_at
+    _store.write_json(_approval_path(token), data)
+
+    audit_log(
+        "approval.pregrant",
+        f"token={token} project={project} tool={tool} channel={channel} actor={actor or '?'}",
+    )
+    return token
+
+
+def consume_pregrant(token: str) -> bool:
+    """Spend one single-use pre-grant. Returns ``True`` only once, for a record still
+    ``granted`` and not past its own ``expiresAt``; a second call, or one past expiry,
+    is a safe ``False`` no-op. Atomic, so a concurrent caller can never spend it twice."""
+    if not token:
+        return False
+    path = _approval_path(token)
+    consumed = False
+
+    def transition(data: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal consumed
+        if not path.is_file():
+            return None
+        if data.get("state") != "granted" or data.get("consumedAt"):
+            return None
+        expires_at = data.get("expiresAt")
+        if expires_at:
+            deadline = _parse_iso(str(expires_at))
+            if deadline is not None and _dt.datetime.now(_dt.UTC).timestamp() > deadline:
+                return None
+        data["consumedAt"] = _utc_now()
+        consumed = True
+        return data
+
+    data = _store.read_modify_write(path, transition)
+    if consumed:
+        tool = str((data.get("context") or {}).get("tool", ""))
+        audit_log("approval.consume", f"token={token} tool={tool}")
+    return consumed
 
 
 def approval_get(token: str) -> dict[str, Any]:
@@ -293,14 +379,67 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     return True
 
 
+def _parse_iso(text: str) -> float | None:
+    """Parse a ``YYYY-MM-DDTHH:MM:SS...`` UTC timestamp to epoch seconds, or ``None``
+    for anything unparseable (fail-open on parsing, never on the expiry decision
+    itself: an unparseable ``expiresAt`` is treated as "no expiry recorded")."""
+    try:
+        return (
+            _dt.datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")
+            .replace(tzinfo=_dt.UTC)
+            .timestamp()
+        )
+    except ValueError:
+        return None
+
+
+def _expiry_deadline(data: dict[str, Any]) -> float | None:
+    """A pending record's own ``expiresAt`` wins when present (a parked call may carry
+    one); otherwise fall back to ``created + APPROVAL_TIMEOUT``, unchanged from before
+    pre-grants existed."""
+    expires_at = data.get("expiresAt")
+    if expires_at:
+        return _parse_iso(str(expires_at))
+    created_str = str(data.get("created", ""))
+    if not created_str:
+        return None
+    created_ts = _parse_iso(created_str)
+    if created_ts is None:
+        return None
+    return created_ts + _cfg.APPROVAL_TIMEOUT
+
+
+def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
+    """Fail-closed: deny an unconsumed pre-grant once past its own ``expiresAt``.
+    Unlike ``_resolve_timeout_as_denied`` this skips ``_set_state``: a pre-grant is
+    *born* ``granted``, so this prunes an unused offer, not a grant/deny race."""
+    path = _approval_path(token)
+    expired = False
+
+    def transition(data: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal expired
+        if not path.is_file():
+            return None
+        if data.get("state") != "granted" or data.get("consumedAt"):
+            return None
+        data["state"] = "denied"
+        expired = True
+        return data
+
+    _store.read_modify_write(path, transition)
+    if expired:
+        _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
+        audit_log("approval.deny", f"token={token} project={project} channel=timeout")
+    return expired
+
+
 def approval_sweep_expired() -> int:
-    """Expire pending approvals older than APPROVAL_TIMEOUT, resolved as **denied**
-    (fail-closed) rather than a read-by-nobody ``"expired"`` state; each swept record is
-    treated exactly like an explicit ``docket deny`` via ``_resolve_timeout_as_denied``."""
+    """Expire pending approvals past their deadline (own ``expiresAt``, else
+    ``APPROVAL_TIMEOUT``) via ``_resolve_timeout_as_denied``, and separately prune
+    unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
     now = _dt.datetime.now(_dt.UTC).timestamp()
-    timeout = _cfg.APPROVAL_TIMEOUT
     swept = 0
     for path in _cfg.APPROVALS_DIR.glob("*.json"):
         try:
@@ -308,21 +447,30 @@ def approval_sweep_expired() -> int:
                 data: dict[str, Any] = json.load(f)
         except Exception:
             continue
-        if data.get("state") != "pending":
+
+        token = str(data.get("token", ""))
+        if not token:
             continue
-        created_str = str(data.get("created", ""))
-        if not created_str:
-            continue
-        try:
-            dt = _dt.datetime.strptime(created_str[:19], "%Y-%m-%dT%H:%M:%S").replace(
-                tzinfo=_dt.UTC
-            )
-        except ValueError:
-            continue
-        if (now - dt.timestamp()) > timeout:
-            token = str(data.get("token", ""))
-            if token and _resolve_timeout_as_denied(token):
+        state = data.get("state")
+
+        if state == "pending":
+            deadline = _expiry_deadline(data)
+            if deadline is not None and now > deadline and _resolve_timeout_as_denied(token):
                 swept += 1
+            continue
+
+        if (
+            state == "granted"
+            and not data.get("consumedAt")
+            and str((data.get("context") or {}).get("kind", "")) == "pregrant"
+        ):
+            expires_at = data.get("expiresAt")
+            deadline = _parse_iso(str(expires_at)) if expires_at else None
+            if deadline is not None and now > deadline:
+                project = str(data.get("project", "")) or "operator"
+                role = str(data.get("role", "")) or "operator"
+                if _expire_unconsumed_pregrant(token, project, role):
+                    swept += 1
     return swept
 
 

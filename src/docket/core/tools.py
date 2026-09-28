@@ -23,6 +23,7 @@ from docket.core import policy as _policy
 from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.llm import ToolCall, ToolCallArgumentsError, ToolSpec
+from docket.core.operator_contract import canonical_args_digest
 from docket.core.security import classify_command
 from docket.core.trace import redact as _redact
 from docket.edges.adapters import system as _sys
@@ -37,7 +38,18 @@ ToolDenialKind = Literal[
     "approval_timeout",
     "run_cancelled",
     "approval_unavailable",
+    "approval_parked",
 ]
+
+
+@dataclass(frozen=True)
+class Pregrant:
+    """One single-use pre-grant carried into a turn: a human already approved this exact
+    tool call, ahead of time, identified by its canonical argument digest."""
+
+    token: str
+    tool: str
+    args_digest: str
 
 
 @dataclass
@@ -56,8 +68,10 @@ class ToolContext:
     project: str = ""
     sandbox: SandboxMode = "off"
     cancellation_check: Callable[[], bool] | None = None
-    approval_mode: Literal["wait", "refuse"] = "wait"
+    approval_mode: Literal["wait", "park", "refuse"] = "wait"
     allow_commands: tuple[str, ...] = ()
+    pregrants: tuple[Pregrant, ...] = ()
+    approval_expires_at: str | None = None
 
 
 @dataclass
@@ -78,6 +92,7 @@ class ToolResult:
     executed: bool = False
     denial_kind: ToolDenialKind | None = None
     policy_id: str = ""
+    approval_token: str = ""
 
     @property
     def denied(self) -> bool:
@@ -354,65 +369,8 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.error = verdict.reason
         return result
 
-    if verdict.decision == "ask":
-        _audit_tool_decision(
-            "tool.ask",
-            tool.name,
-            ctx,
-            f"{verdict.reason} call={render_tool_call(tool.name, args)}",
-            policy_id=verdict.policy_id,
-            policy_action=verdict.policy_action,
-        )
-        if ctx.approval_mode == "refuse":
-            # No approval record, no wait: there is nobody on the other end of
-            # this call who could ever answer it. Reported distinctly from a
-            # timeout or an explicit denial so a caller can tell "nobody was
-            # asked" apart from "someone was asked and said no" or "asked and
-            # nobody answered in time" -- see docs/adr/0001-harness-mode.md
-            # decision 11.
-            result.decision = "deny"
-            result.denial_kind = "approval_unavailable"
-            result.error = result.reason
-            return result
-        token = _approval.approval_create(
-            ctx.project or "operator",
-            ctx.role or "tool",
-            (
-                f"tool call {tool.name!r}: {verdict.reason}; "
-                f"call={render_tool_call(tool.name, args)}"
-            )[:1000],
-            context={"tool": tool.name, "callId": call.id},
-        )
-        if ctx.cancellation_check is None:
-            # Preserve the public embeddable runtime's one-argument approval
-            # stub when this call is not owned by a cancellable run.
-            wait_outcome = _approval.wait_for_approval(token)
-        else:
-            wait_outcome = _approval.wait_for_approval(
-                token,
-                cancellation_check=ctx.cancellation_check,
-            )
-        if cancel_before_execution():
-            return result
-        if wait_outcome.state != "granted":
-            result.decision = "deny"
-            if wait_outcome.cancelled:
-                result.denial_kind = "run_cancelled"
-                result.reason = "run cancellation requested before execution"
-            else:
-                result.denial_kind = (
-                    "approval_timeout" if wait_outcome.timed_out else "approval_denied"
-                )
-                result.reason = (
-                    "approval timed out and was denied"
-                    if wait_outcome.timed_out
-                    else "approval denied"
-                )
-            result.error = result.reason
-            return result
-        # Granted: the call is now allowed, and falls through to execute.
-        result.decision = "allow"
-        result.reason = f"approved (token={token})"
+    if verdict.decision == "ask" and _resolve_ask_verdict(call, tool, args, ctx, verdict, result):
+        return result
 
     if cancel_before_execution():
         return result
@@ -429,6 +387,151 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     result.content = outcome.content
     result.error = outcome.error
     return result
+
+
+def _resolve_ask_verdict(
+    call: ToolCall,
+    tool: Tool,
+    args: dict[str, Any],
+    ctx: ToolContext,
+    verdict: ToolVerdict,
+    result: ToolResult,
+) -> bool:
+    """Handle an ``ask`` verdict: a matching pre-grant, ``refuse``, ``park``, or
+    ``wait``. Mutates *result* in place; returns ``True`` when it is already
+    terminal, so ``dispatch_tool`` should return it without running the handler."""
+    _audit_tool_decision(
+        "tool.ask",
+        tool.name,
+        ctx,
+        f"{verdict.reason} call={render_tool_call(tool.name, args)}",
+        policy_id=verdict.policy_id,
+        policy_action=verdict.policy_action,
+    )
+    digest = canonical_args_digest(tool.name, args)
+    pregrant_token = _consume_matching_pregrant(ctx, tool.name, digest)
+    if pregrant_token is not None:
+        # A human already approved this exact call, ahead of time, by its
+        # canonical argument digest -- consumed once, above, so it falls
+        # straight through to execution without asking again.
+        result.decision = "allow"
+        result.reason = f"pre-granted (token={pregrant_token})"
+        result.approval_token = pregrant_token
+        return False
+
+    if ctx.approval_mode == "refuse":
+        # No approval record, no wait: there is nobody on the other end of
+        # this call who could ever answer it. Reported distinctly from a
+        # timeout or an explicit denial so a caller can tell "nobody was
+        # asked" apart from "someone was asked and said no" or "asked and
+        # nobody answered in time" -- see docs/adr/0001-harness-mode.md
+        # decision 11.
+        result.decision = "deny"
+        result.denial_kind = "approval_unavailable"
+        result.error = result.reason
+        return True
+
+    if ctx.approval_mode == "park":
+        _park_call(call, tool, args, ctx, verdict, digest, result)
+        return True
+
+    token = _approval.approval_create(
+        ctx.project or "operator",
+        ctx.role or "tool",
+        (f"tool call {tool.name!r}: {verdict.reason}; call={render_tool_call(tool.name, args)}")[
+            :1000
+        ],
+        context={"tool": tool.name, "callId": call.id},
+    )
+    _wait_for_ask_approval(token, ctx, result)
+    return result.decision == "deny"
+
+
+def _park_call(
+    call: ToolCall,
+    tool: Tool,
+    args: dict[str, Any],
+    ctx: ToolContext,
+    verdict: ToolVerdict,
+    digest: str,
+    result: ToolResult,
+) -> None:
+    """Record the exact call and end the turn without waiting -- a later grant
+    re-enters the pipeline with a single-use pre-grant for it (core/dispatch.py's
+    resume path). Mutates *result* into its terminal ``approval_parked`` denial."""
+    park_context: dict[str, Any] = {
+        "tool": tool.name,
+        "callId": call.id,
+        "argsDigest": digest,
+        "parked": True,
+    }
+    if ctx.project:
+        park_context["project"] = ctx.project
+    if ctx.role:
+        park_context["role"] = ctx.role
+    token = _approval.approval_create(
+        ctx.project or "operator",
+        ctx.role or "tool",
+        (f"tool call {tool.name!r}: {verdict.reason}; call={render_tool_call(tool.name, args)}")[
+            :1000
+        ],
+        context=park_context,
+        expires_at=ctx.approval_expires_at,
+    )
+    result.decision = "deny"
+    result.denial_kind = "approval_parked"
+    result.approval_token = token
+    result.reason = f"parked for approval (token={token})"
+    result.error = result.reason
+
+
+def _consume_matching_pregrant(ctx: ToolContext, tool_name: str, digest: str) -> str | None:
+    """Return the token of the first pre-grant whose ``(tool, args_digest)`` matches and
+    that consumed cleanly, or ``None``. A pre-grant past its own expiry, or already
+    consumed by a concurrent caller, does not match."""
+    for pregrant in ctx.pregrants:
+        if (
+            pregrant.tool == tool_name
+            and pregrant.args_digest == digest
+            and _approval.consume_pregrant(pregrant.token)
+        ):
+            return pregrant.token
+    return None
+
+
+def _wait_for_ask_approval(token: str, ctx: ToolContext, result: ToolResult) -> None:
+    """Block on *token* (the ``wait`` posture, the pre-existing in-turn gate) and fill
+    *result* with the outcome, mutating it in place."""
+    if ctx.cancellation_check is None:
+        # Preserve the public embeddable runtime's one-argument approval
+        # stub when this call is not owned by a cancellable run.
+        wait_outcome = _approval.wait_for_approval(token)
+    else:
+        wait_outcome = _approval.wait_for_approval(
+            token,
+            cancellation_check=ctx.cancellation_check,
+        )
+    if ctx.cancellation_check is not None and ctx.cancellation_check():
+        result.decision = "deny"
+        result.denial_kind = "run_cancelled"
+        result.reason = "run cancellation requested before execution"
+        result.error = result.reason
+        return
+    if wait_outcome.state != "granted":
+        result.decision = "deny"
+        if wait_outcome.cancelled:
+            result.denial_kind = "run_cancelled"
+            result.reason = "run cancellation requested before execution"
+        else:
+            result.denial_kind = "approval_timeout" if wait_outcome.timed_out else "approval_denied"
+            result.reason = (
+                "approval timed out and was denied" if wait_outcome.timed_out else "approval denied"
+            )
+        result.error = result.reason
+        return
+    # Granted: the call is now allowed, and falls through to execute.
+    result.decision = "allow"
+    result.reason = f"approved (token={token})"
 
 
 # ── built-in tools ────────────────────────────────────────────────────────────

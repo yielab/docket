@@ -584,6 +584,26 @@ This specification does NOT cover:
     module-level registry and wiring" sections for `Pipeline`/`start`/`flush`/`close`/`health`'s
     own requirements.
 
+### The approval_parked stop (ADR 0016 §2)
+
+75. A dispatched result whose `denial_kind == "approval_parked"` (`ToolContext.approval_mode ==
+    "park"` on an `ask` verdict with no matching pre-grant; see `security-gates.spec.md`'s "Parked
+    calls and single-use pre-grants") **MUST** stop the turn on its own, exactly as requirement 70
+    stops it for `approval_unavailable`: independently of `max_consecutive_tool_denials`, only
+    after that batch's complete-batch persistence, with no further backend request. The loop
+    **MUST** return `stop_reason="approval_parked"` and `failure_kind="invalid_output"`, and its
+    actionable error **MUST** name the tool, the call id, the policy id, the reason, and the
+    created approval's token from the first such result in the batch.
+    `core/agent_loop.py::approval_parked_error()` is the single renderer of that error string (the
+    same quoted `key=value` shape `approval_unavailable_error()` uses, plus `approval_token`), so
+    a later consumer parses one format rather than two independent guesses of it. A `gate_denied`
+    or `invalid_call` result elsewhere in the batch **MUST NOT** be made terminal by this
+    requirement, exactly as requirement 70 states for `approval_unavailable`.
+76. Harness mode (`core/harness.py`) **MUST NOT** be able to produce `stop_reason="approval_parked"`:
+    it always sets `ToolContext.approval_mode = "refuse"`, never `"park"`, so this stop reason
+    never reaches the published harness-v1 wire contract. That contract is unchanged by this
+    section.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -592,7 +612,7 @@ This specification does NOT cover:
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
-    "tool_denials", "run_cancelled", "approval_unavailable",
+    "tool_denials", "run_cancelled", "approval_unavailable", "approval_parked",
 ]
 
 class LoopConfig:                              # frozen

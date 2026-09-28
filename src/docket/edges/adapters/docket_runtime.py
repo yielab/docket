@@ -14,6 +14,7 @@ built onto. This module never calls a tool handler directly, nor imports
 from __future__ import annotations
 
 import atexit
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,9 @@ from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
+    DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
+    DOCKET_PREGRANTS,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
     ProvisionResult,
@@ -44,7 +47,7 @@ from docket.core.runtime_driver import (
     UsageReport,
     UsageTotals,
 )
-from docket.core.tools import ToolContext, ToolRegistry, builtin_registry
+from docket.core.tools import Pregrant, ToolContext, ToolRegistry, builtin_registry
 from docket.edges import store as _store
 from docket.edges.adapters import exporters as _exporters
 from docket.edges.adapters import llm as _llm
@@ -161,6 +164,30 @@ def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
         return _pod.PodSettings.load_for(project).allow_commands
     except _pod.PodSettingsError:
         return ()
+
+
+def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
+    """Decode ``DOCKET_PREGRANTS``' JSON list into ``Pregrant`` tuples; malformed or
+    incomplete entries are dropped rather than raised, fail closed (a dropped entry
+    just asks again instead of granting)."""
+    if not raw:
+        return ()
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(parsed, list):
+        return ()
+    out: list[Pregrant] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        token = str(item.get("token", ""))
+        tool = str(item.get("tool", ""))
+        args_digest = str(item.get("argsDigest", ""))
+        if token and tool and args_digest:
+            out.append(Pregrant(token=token, tool=tool, args_digest=args_digest))
+    return tuple(out)
 
 
 def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]:
@@ -306,9 +333,16 @@ class DocketDriver:
         # tool_env reaches ToolContext.env. An unset or unrecognized value
         # keeps today's default ("wait") byte for byte.
         approval_mode_raw = tool_env.pop(DOCKET_APPROVAL_MODE, None)
-        approval_mode: Literal["wait", "refuse"] = (
-            "refuse" if approval_mode_raw == "refuse" else "wait"
+        approval_mode: Literal["wait", "park", "refuse"] = (
+            "refuse"
+            if approval_mode_raw == "refuse"
+            else "park"
+            if approval_mode_raw == "park"
+            else "wait"
         )
+        pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
+        pregrants = _parse_pregrants(pregrants_raw)
+        approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
         cancellation_signal = _runs.current_cancellation_signal()
         ctx = ToolContext(
             agent_id=agent_id,
@@ -332,6 +366,8 @@ class DocketDriver:
             ),
             approval_mode=approval_mode,
             allow_commands=_resolve_allow_commands(agent_id),
+            pregrants=pregrants,
+            approval_expires_at=approval_expires_at,
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside

@@ -1918,6 +1918,56 @@ class TestApprovalUnavailable:
         assert "gate_denied" in result.error
 
 
+# ── park mode (ADR 0016 §2) ──────────────────────────────────────────────────
+
+
+class TestApprovalParked:
+    def test_park_mode_stops_the_turn_immediately_with_a_typed_result(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """A call gated to `ask` under `approval_mode="park"` ends the turn on its
+        own, recording the call rather than waiting on it or refusing it outright."""
+        _write_gate_policy("test-ask-echo", r"\becho\b", "require_approval")
+        ctx.approval_mode = "park"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("call-1", "echo", '{"text": "hello"}'),
+                _final("must not be requested"),
+            ]
+        )
+        session_key = "agent:demo:approval-parked"
+
+        result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert result.ok is False
+        assert result.stop_reason == "approval_parked"
+        assert result.failure_kind == "invalid_output"
+        assert len(backend.calls) == 1  # no second request was made
+        assert "echo" in result.error
+        assert "call-1" in result.error
+        assert "test-ask-echo" in result.error
+        assert "approval_token=" in result.error
+        pending = _approval.list_pending()
+        assert len(pending) == 1
+        record = load_session(session_key)
+        assert [message.role for message in record.messages] == ["user", "assistant", "tool"]
+        assert "REFUSED [approval_parked]" in record.messages[-1].content
+
+    def test_harness_mode_cannot_produce_approval_parked(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        _write_gate_policy("test-ask-echo", r"\becho\b", "require_approval")
+        ctx.approval_mode = "refuse"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("call-1", "echo", '{"text": "hello"}'),
+                _final("must not be requested"),
+            ]
+        )
+        result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo:harness-parity", "go")
+        assert result.stop_reason == "approval_unavailable"
+
+
 # ── cumulative-budget terminal response reservation ─────────────────────────
 
 

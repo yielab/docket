@@ -9,16 +9,20 @@ containment holds at the handler as well as at the chokepoint.
 from __future__ import annotations
 
 import ast
+import time
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
 
 import docket.config as _cfg
+from docket.core import approval as core_approval
 from docket.core import tools as core_tools
 from docket.core.llm import ToolCall
+from docket.core.operator_contract import canonical_args_digest
 from docket.core.security import classify_command, split_command_segments
 from docket.core.tools import (
+    Pregrant,
     Tool,
     ToolContext,
     ToolRegistry,
@@ -391,6 +395,93 @@ class TestDispatchChokepoint:
         # test_gated_command_is_not_executed) -- unresolved here too.
         assert (refused.decision, refused.executed) == ("deny", False)
         assert (failed.decision, failed.executed, failed.ok) == ("allow", True, False)
+
+
+class TestParkMode:
+    """``approval_mode="park"`` (ADR 0016 §2): the chokepoint records the exact call
+    and ends the turn without waiting -- unlike "wait", nothing here blocks the
+    calling thread on ``wait_for_approval``."""
+
+    def test_park_records_the_call_and_returns_without_waiting(self, ctx: ToolContext) -> None:
+        ctx.approval_mode = "park"
+        start = time.monotonic()
+        res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 1.0
+        assert not res.executed
+        assert res.decision == "deny"
+        assert res.denial_kind == "approval_parked"
+        assert res.approval_token
+
+        pending = core_approval.list_pending()
+        assert len(pending) == 1
+        record = pending[0]
+        assert record["token"] == res.approval_token
+        assert record["context"]["tool"] == "bash"
+        assert record["context"]["parked"] is True
+        assert record["context"]["argsDigest"] == canonical_args_digest("bash", {"command": "rm x"})
+
+    def test_park_records_the_calling_project_and_role(self, workspace: Path) -> None:
+        ctx = ToolContext(
+            agent_id="demo-implementer",
+            roots=(workspace,),
+            timeout=10,
+            project="alpha",
+            role="implementer",
+            approval_mode="park",
+        )
+        res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        record = core_approval.approval_get(res.approval_token)
+        assert record["context"]["project"] == "alpha"
+        assert record["context"]["role"] == "implementer"
+
+    def test_park_carries_the_given_expiry_onto_the_record(self, ctx: ToolContext) -> None:
+        ctx.approval_mode = "park"
+        ctx.approval_expires_at = "2099-01-01T00:00:00Z"
+        res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        record = core_approval.approval_get(res.approval_token)
+        assert record["expiresAt"] == "2099-01-01T00:00:00Z"
+
+
+class TestPreGrants:
+    """A single-use pre-grant (a human already approved this exact call, ahead of
+    time) is checked first in the ask branch, regardless of ``approval_mode``."""
+
+    def test_a_matching_pregrant_runs_the_handler_without_asking(self, ctx: ToolContext) -> None:
+        digest = canonical_args_digest("bash", {"command": "rm x"})
+        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        ctx.approval_mode = "refuse"  # a pre-grant must win even over "refuse"
+        ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
+
+        mismatch = dispatch_tool(_call("bash", '{"command": "rm y"}'), ctx, builtin_registry())
+        assert mismatch.decision == "deny"  # this call's own digest never matched the grant
+
+        matching = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        assert matching.decision == "allow"
+        assert matching.executed
+        assert matching.approval_token == token
+
+    def test_an_identical_second_call_asks_again(self, ctx: ToolContext) -> None:
+        digest = canonical_args_digest("bash", {"command": "rm x"})
+        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
+
+        first = dispatch_tool(_call("bash", '{"command": "rm x"}', "c1"), ctx, builtin_registry())
+        second = dispatch_tool(_call("bash", '{"command": "rm x"}', "c2"), ctx, builtin_registry())
+
+        assert first.decision == "allow"
+        assert second.decision == "deny"  # the pre-grant was already spent
+        assert second.approval_token != token
+
+    def test_a_different_argument_does_not_match(self, ctx: ToolContext) -> None:
+        digest = canonical_args_digest("bash", {"command": "rm x"})
+        token = core_approval.create_pregrant("operator", "tool", "bash", digest, channel="cli")
+        ctx.pregrants = (Pregrant(token=token, tool="bash", args_digest=digest),)
+
+        res = dispatch_tool(_call("bash", '{"command": "rm y"}'), ctx, builtin_registry())
+        assert res.decision == "deny"
+        assert core_approval.consume_pregrant(token) is True  # never spent by the mismatch above
 
 
 class TestResultReportedBackToTheModel:
