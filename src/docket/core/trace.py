@@ -89,6 +89,9 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "step_skipped",  # a `when` predicate was false; the step advanced with no hop
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
+        "input_requested",  # an `input` step parked the task, waiting on an operator question
+        "input_answered",  # `core.answers.answer_task` resumed a parked `input` step
+        "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency
         "error",
         "session_end",

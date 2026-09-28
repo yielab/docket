@@ -502,7 +502,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
     ``"sweep"``) and checks due schedules."""
     import time
 
-    from docket.core import approval, conversations, trace
+    from docket.core import answers, approval, conversations, trace
     from docket.core import runs as _runs
 
     with contextlib.suppress(Exception):
@@ -511,6 +511,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
         trace.expire_old_traces()
     with contextlib.suppress(Exception):
         approval.approval_sweep_expired()
+    with contextlib.suppress(Exception):
+        answers.sweep_expired_questions()
     with contextlib.suppress(Exception):
         _runs.prune_terminal()
     with contextlib.suppress(Exception):

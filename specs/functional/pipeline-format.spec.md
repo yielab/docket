@@ -436,7 +436,7 @@ This specification does NOT cover:
    `plan`'s rendering of a `run` step and a `when`-bearing step is specified in `pod-dispatch.spec.md`
    (the executor) since this format itself defines no renderer.
 
-### Operator input steps (P34-7: format only, no execution yet)
+### Operator input steps (P34-7: format; P34-10: execution)
 
 1. `input` is this format's operator-input step: a pipeline pause that asks the operator a
    question, exclusive of `role`/`agent`/`run`/`parallel` — one and only one of these five
@@ -451,9 +451,10 @@ This specification does NOT cover:
 3. `plan` renders an `input` step as `asks the operator (from <source-step-id>)`, the same
    rendered-once, never-executed posture a `run` step already takes (output shows what *would*
    run if execution were available, never *that it ran*).
-4. Execution of an `input` step is **NOT YET IMPLEMENTED** (owned by P34-10). The executor
-   raises with the message `"step <id>: an 'input' step cannot run yet — only 'plan' renders it
-   (P34-10 implements execution)"` if an `input` step is ever reached during dispatch.
+4. Execution of an `input` step is implemented: the executor parks the task and resumes it
+   from an operator's answer, documented in `pod-dispatch.spec.md`'s "Operator input steps and
+   answers" (the "Task status vocabulary" section's `waiting_input` entry is this format's own
+   pause state).
 
 ## Interface Contracts
 
