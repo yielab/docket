@@ -1,0 +1,16 @@
+kind: channel
+name: email
+dialect: email
+description: >-
+  A plain SMTP notification. Notify only -- email can never decide or converse (a `From`
+  header is forgeable, so it is never trusted with a token that grants or denies). Set
+  `config.to`/`config.from`/`config.smtpHost` and, if your server needs auth, `secret` to a
+  stored credential name before enabling.
+capabilities: [notify]
+on: [needs_you]
+content: minimal
+config:
+  to: ""
+  from: ""
+  smtpHost: ""
+enabled: false

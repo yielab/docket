@@ -142,10 +142,54 @@ of its own.
 
 ### 6. Notifications
 
-**Status: Planned — owned by P34-9 (the `kind: channel` document) and P34-11 (delivery).**
-`CloudEvent`, `make_event` and the closed `EVENT_KINDS` vocabulary are defined and satisfy the
-CloudEvents 1.0 structured-mode shape; no channel document kind, snapshot diff or delivery
-adapter exists yet.
+**Status: Partially implemented — the `kind: channel` document, catalog and CLI ship here;
+delivery (`core/notify.py`, the snapshot diff, and each dialect's actual send) is owned by
+P34-11 and remains planned.** `CloudEvent`, `make_event` and the closed `EVENT_KINDS`
+vocabulary are defined (requirement area 1's module) and satisfy the CloudEvents 1.0
+structured-mode shape. This area adds the destination side: what a channel document declares
+about itself, and what docket refuses to write or activate.
+
+1. `core.channel.ChannelSpec` (`kind: channel`) MUST declare `dialect` (one of `console`,
+   `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`), `capabilities` (a subset of
+   `{notify, converse, decide}`), `on` (event types this channel receives, from `EVENT_KINDS`
+   plus the `needs_you` shorthand), `content` (`minimal | actions | conversation`, default
+   `minimal` — never the export-only `full`; ADR 0016 §7), `actors` (identities allowed to
+   converse or decide through it), `config` (dialect-specific settings), and `secret` (a
+   credential **name**, never a value).
+2. Each dialect MUST have a closed maximum capability set (`core.channel.DIALECT_MAX`):
+   `console` and `telegram` may include `decide`; every other v1 dialect may only `notify`. A
+   document declaring a capability past its dialect's maximum MUST be refused, naming the
+   maximum, at parse time (unconditional — this is a structural property of the dialect, not
+   of whether the document is enabled).
+3. A document whose `capabilities` include `decide` or `converse` and whose `actors` is empty
+   MUST be refused only once `enabled` is true, and never for `dialect: console` (the
+   operator's own terminal, trusted without an allow-list). A *dormant* document (`enabled:
+   false`, the default) MAY declare `decide`/`converse` with empty `actors` — this is the
+   shape the built-in `telegram` template ships, so it can be catalogued before an operator
+   names who may use it.
+4. The channel catalog (`core.channel.load_catalog`) MUST merge two scopes nearest-wins by
+   name: built-in documents under `config.CHANNEL_TEMPLATES_DIR` (seven shipped:
+   `console`, `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`) and the operator's
+   own global entries in `config.CHANNELS_FILE`, through `edges/store.py`. Only `console` MUST
+   ship enabled.
+5. `enable_channel(name, overrides)` MUST refuse, without writing, a channel whose resulting
+   document fails a dialect-specific precondition: `ntfy` requires a non-empty
+   `config["topic"]`; `telegram` requires a non-empty `actors`. Every other built-in has no
+   such precondition in this area.
+6. `set_content(name, level)` MUST accept only `minimal`, `actions` or `conversation`, on the
+   closed order `minimal < actions < conversation`; `core.channel.is_widening(old, new)` MUST
+   return `True` exactly when `new` is strictly richer than `old`. The CLI (`docket channels
+   content <name> <level>`) MUST treat a widening change as a confirmed, audited command,
+   exactly as `docket exporters privacy` does: `--yes` proceeds immediately, a TTY is asked
+   `y/N`, and a non-TTY refuses naming `--yes` without asking. Narrowing never asks.
+7. `docket channels list|show|enable [--set k=v]|disable|add <file>|remove|export|content
+   <name> [<level>] [--yes]` (`cli/_channels.py`) MUST cover exactly this document's fields;
+   it MUST NOT send anything to a dialect's actual destination — that is P34-11's `channels
+   test` and delivery adapters.
+8. `docket validate` MUST accept `kind: channel` (`core.config_docs.KINDS` gains `channel`;
+   `core.config_docs._MODEL_FOR_KIND["channel"] = core.channel.ChannelSpec`), and
+   `scripts/gen_config_schemas.py` MUST render `docs/contracts/config-v1/channel.schema.json`
+   (and its package copy) directly from `ChannelSpec`, the same shape as `exporter`.
 
 ### 7. Answers
 

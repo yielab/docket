@@ -298,6 +298,11 @@ PROVIDER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "provid
 # phoenix. Same read-only, wheel-shipped shape as PROVIDER_TEMPLATES_DIR above.
 EXPORTER_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "exporters"
 
+# CHANNEL_TEMPLATES_DIR: built-in `kind: channel` documents shipped in the wheel
+# (core/channel.py's Catalog scope "built-in") -- console, desktop, webhook, command, ntfy,
+# email, telegram. Same read-only, wheel-shipped shape as EXPORTER_TEMPLATES_DIR above.
+CHANNEL_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates" / "channels"
+
 
 def recipes_dir() -> Path:
     """Shipped role/pipeline/policy recipe bundles (``templates/recipes/<name>/``)."""
@@ -435,6 +440,13 @@ EXPORTERS_FILE = Path(os.environ.get("EXPORTERS_FILE", DOCKET_HOME / "docket-exp
 EXPORTERS_HEALTH_FILE = Path(
     os.environ.get("EXPORTERS_HEALTH_FILE", DOCKET_HOME / "exporters-health.json")
 )
+
+# ── channel catalog (core/channel.py) ─────────────────────────────────────────
+# CHANNELS_FILE: docket-owned catalog of the operator's own channel registrations and
+# overrides (core/channel.py's ChannelSpec/Catalog, scope "global"), written through
+# edges/store.py. Merged with the built-in scope (CHANNEL_TEMPLATES_DIR above), nearest-wins
+# by name -- the same shape as EXPORTERS_FILE just above.
+CHANNELS_FILE = Path(os.environ.get("CHANNELS_FILE", DOCKET_HOME / "docket-channels.json"))
 # EXPORT_QUEUE_MAX: bound on the in-memory span queue the background sender drains -- a stop
 # condition against an exporter that is slow or down, not a throughput knob, matching every
 # other bound in this file.

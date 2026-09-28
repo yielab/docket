@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/channel.schema.json",
+  "title": "ChannelSpec",
+  "description": "A `kind: channel` document -- see operator-loop.spec.md (\"Notifications\"). This model\nIS the canonical, only parsed shape; there is no separate short form underneath it.",
+  "properties": {
+    "kind": {
+      "const": "channel",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "dialect": {
+      "enum": [
+        "console",
+        "desktop",
+        "webhook",
+        "command",
+        "ntfy",
+        "email",
+        "telegram"
+      ],
+      "title": "Dialect",
+      "type": "string"
+    },
+    "enabled": {
+      "default": false,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "capabilities": {
+      "items": {
+        "enum": [
+          "notify",
+          "converse",
+          "decide"
+        ],
+        "type": "string"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "on": {
+      "items": {
+        "type": "string"
+      },
+      "title": "On",
+      "type": "array"
+    },
+    "content": {
+      "default": "minimal",
+      "enum": [
+        "minimal",
+        "actions",
+        "conversation"
+      ],
+      "title": "Content",
+      "type": "string"
+    },
+    "actors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Actors",
+      "type": "array"
+    },
+    "config": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Config",
+      "type": "object"
+    },
+    "secret": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Secret"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "dialect"
+  ],
+  "type": "object"
+}

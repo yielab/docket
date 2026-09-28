@@ -2627,6 +2627,35 @@ def cmd_exporters(ctx: typer.Context) -> None:
 
 
 @app.command(
+    "channels",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_channels(ctx: typer.Context) -> None:
+    """Notification/conversation/decision destinations: list, inspect, and enable.
+
+    Subcommands: `list [--json]` prints every catalog channel's dialect,
+    enabled state, capabilities and content level. `show <name> [--json]`
+    prints one channel's effective document and scope. `enable <name> [--set
+    k=v ...]` writes only the `enabled` flag plus the overrides given (`--set
+    actors=a,b` sets the actors list, `--set secret=NAME` sets the credential
+    name, anything else lands in `config`); it refuses without writing when a
+    required field the built-in names is still empty (`ntfy` needs a
+    non-empty `topic`, `telegram` needs a non-empty `actors`). `disable
+    <name>` turns it back off. `add <file.yaml>` and `remove <name>` manage a
+    full document; `export <name> [<file>]` prints or writes one back out.
+    `content <name> [<level>] [--yes]` shows or changes how much a delivery
+    carries (`minimal < actions < conversation`); widening prints the change
+    and asks for confirmation on a TTY or refuses off one without `--yes` --
+    narrowing never asks. This command does not send anything: delivery is a
+    later command."""
+    from docket.cli._channels import run_channels
+
+    args = list(ctx.args)
+    action = args[0] if args else ""
+    raise typer.Exit(run_channels(action, args[1:]))
+
+
+@app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

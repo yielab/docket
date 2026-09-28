@@ -1,0 +1,14 @@
+kind: channel
+name: webhook
+dialect: webhook
+description: >-
+  An HTTP endpoint you own, receiving each event as a CloudEvent with a Standard Webhooks
+  signature (`webhook-id`/`webhook-timestamp`/`webhook-signature`). Notify only. Set `config.url`
+  to your endpoint and, if it verifies the signature, `secret` to a stored `whsec_...` name
+  before enabling.
+capabilities: [notify]
+on: [needs_you]
+content: minimal
+config:
+  url: ""
+enabled: false
