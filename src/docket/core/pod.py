@@ -376,6 +376,13 @@ class PodSettings(BaseModel):
     config_source: str = Field("", alias="configSource")
     config_digest: str = Field("", alias="configDigest", pattern=r"^(|[0-9a-f]{64})$")
 
+    # Which observability destinations (`core.exporter.load_catalog()` names) this pod's last
+    # applied recipe named (ADR 0014 rule 7) -- recorded by `core.pod_apply.apply`, exactly like
+    # `configSource`/`configDigest` above, and never configurable directly (`config set
+    # exporters` is refused the same way). Names are already validated against the live catalog
+    # by `plan_apply` before this is ever stored, so no catalog dependency is added here.
+    exporters: tuple[str, ...] = Field((), alias="exporters")
+
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
@@ -396,7 +403,7 @@ class PodSettings(BaseModel):
     # settable-key path (`coerce`, `config set`'s fallthrough, a `pod.yaml` `settings` mapping)
     # already refuses them as unknown; `config set` checks this tuple first only to give the
     # friendlier "written by apply" message instead of "unknown pod setting".
-    RECORDED_KEYS: ClassVar[tuple[str, ...]] = ("configSource", "configDigest")
+    RECORDED_KEYS: ClassVar[tuple[str, ...]] = ("configSource", "configDigest", "exporters")
 
     @field_validator("allow_commands", mode="before")
     @classmethod
@@ -508,6 +515,22 @@ class PodSettings(BaseModel):
             if name not in known:
                 raise ValueError(f"{name!r} is not a known tool name ({', '.join(sorted(known))})")
             kept.setdefault(name, None)
+        return tuple(kept.keys())
+
+    @field_validator("exporters", mode="before")
+    @classmethod
+    def _parse_exporters(cls, value: Any) -> tuple[str, ...]:
+        """Comma-separated exporter catalog names, like ``allow_commands`` -- already
+        validated against the catalog by ``core.pod_apply.plan_apply`` before this is ever
+        stored, so this parser only reshapes the stored string back into a tuple."""
+        if value in (None, ""):
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip()
+            if name:
+                kept.setdefault(name, None)
         return tuple(kept.keys())
 
     @classmethod

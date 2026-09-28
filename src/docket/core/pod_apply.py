@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +24,7 @@ from typing import Any, Literal
 import docket.config as _cfg
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
+from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import orchestrator as _orch
@@ -33,7 +35,14 @@ from docket.core import policy as _policy
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
 
-_MANIFEST_KEYS = frozenset({"members", "settings", "pipeline", "kind", "name", "description"})
+_MANIFEST_KEYS = frozenset(
+    {"members", "settings", "pipeline", "kind", "name", "description", "exporters"}
+)
+
+# The same name shape `core.exporter.ExporterSpec` validates -- checked here too so a
+# credential-shaped string or a URL is refused for what it is, before a catalog lookup
+# (`Catalog.get` on a non-string would raise `TypeError` on the dict membership test).
+_EXPORTER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 ApplyAction = Literal["add", "replace", "skip"]
 
@@ -112,6 +121,7 @@ class ApplyPlan:
     project: str
     directory: Path
     items: tuple[ApplyItem, ...]
+    exporters: tuple[str, ...] = field(default=())
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
@@ -126,10 +136,13 @@ class ApplyPlan:
 
 @dataclass(frozen=True)
 class ApplyResult:
-    """What ``apply`` actually did -- the same items ``plan_apply`` returned, now written."""
+    """What ``apply`` actually did -- the same items ``plan_apply`` returned, now written.
+    ``exporters`` is this pod's recorded destination names (ADR 0014 rule 7) -- reported, not
+    activated; the CLI renders each one's state from ``core.exporter.activation_state``."""
 
     project: str
     items: tuple[ApplyItem, ...]
+    exporters: tuple[str, ...] = ()
 
 
 def _dump_yaml_file(path: Path, doc: dict[str, Any], *, schema_header: str = "") -> None:
@@ -200,8 +213,8 @@ def resolve_recipe(name_or_dir: str) -> Path:
 @dataclass(frozen=True)
 class RecipeSummary:
     """What a directory brings, derived from its contents, never a declared field (ADR 0013
-    §1 rule 1). ``pipeline`` is the bound pipeline's own ``name`` (or ``""``); ``description``
-    is ``pod.yaml``'s own optional prose (or ``""``)."""
+    §1 rule 1); ``pipeline``/``description`` are the pipeline's own `name` and `pod.yaml`'s
+    prose; ``exporters`` is its declared list, unvalidated here (ADR 0014 rule 7)."""
 
     roles: int
     policies: int
@@ -211,14 +224,19 @@ class RecipeSummary:
     settings: int
     pipeline: str
     description: str
+    exporters: tuple[str, ...] = ()
 
     def render(self) -> str:
-        """One line, every count always shown, in a fixed order; `pipeline none` when unbound."""
-        return (
+        """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
+        `· exporters <name>, ...` appended only when the recipe names at least one."""
+        line = (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
             f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
             f"settings {self.settings}"
         )
+        if self.exporters:
+            line += f" · exporters {', '.join(self.exporters)}"
+        return line
 
 
 def _recipe_manifest(directory: Path) -> dict[str, Any]:
@@ -292,6 +310,13 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     description_raw = manifest.get("description")
     description = description_raw if isinstance(description_raw, str) else ""
 
+    exporters_raw = manifest.get("exporters")
+    exporters = (
+        tuple(e for e in exporters_raw if isinstance(e, str))
+        if isinstance(exporters_raw, list)
+        else ()
+    )
+
     return RecipeSummary(
         roles=roles,
         policies=policies,
@@ -301,6 +326,7 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
         settings=settings,
         pipeline=pipeline,
         description=description,
+        exporters=exporters,
     )
 
 
@@ -612,6 +638,26 @@ def _plan_settings(
     return items, writes
 
 
+def _plan_exporters(manifest: dict[str, Any]) -> tuple[str, ...]:
+    """Validate `pod.yaml`'s optional `exporters` list against the live exporter catalog
+    (ADR 0014 rule 7): a recipe may *name* a destination, never carry one. A malformed or
+    unknown entry raises `PodApplyError` naming `exporters` before anything is written."""
+    raw = manifest.get("exporters")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise PodApplyError("pod.yaml: 'exporters' must be a list")
+    catalog = _exporter.load_catalog()
+    names: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, str) or not _EXPORTER_NAME_RE.match(entry):
+            raise PodApplyError(f"pod.yaml: 'exporters' entry {entry!r} is not an exporter name")
+        if catalog.get(entry) is None:
+            raise PodApplyError(f"pod.yaml: 'exporters' names unknown exporter {entry!r}")
+        names.append(entry)
+    return tuple(names)
+
+
 def directory_digest(directory: Path) -> str:
     """Sha256 hex digest over the sorted relative paths and bytes of every file
     `discover_config_paths` returns, plus any `plugins/*.py` and any `skills/**` file
@@ -670,6 +716,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     if description is not None and not isinstance(description, str):
         raise PodApplyError("pod.yaml: 'description' must be a string")
     pipeline_name = manifest.get("pipeline")
+    exporter_names = _plan_exporters(manifest)
 
     base_registry = _arch.load_registry(project)
     role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry, project)
@@ -698,6 +745,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         project=project,
         directory=directory,
         items=tuple(items),
+        exporters=exporter_names,
         _role_writes=tuple(role_writes),
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
@@ -799,7 +847,13 @@ def apply(plan: ApplyPlan) -> ApplyResult:
     _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))
     _fleet.meta_set(lead_id, "configDigest", directory_digest(plan.directory))
 
-    return ApplyResult(project=plan.project, items=plan.items)
+    # Recorded the same way, every apply, `exporters` included -- never merged with what a
+    # prior apply named: an empty list here clears a previous recipe's destinations, matching
+    # `configSource`/`configDigest` always describing the *last* directory applied (ADR 0014
+    # rule 7). Activates nothing: no write ever reaches `docket-exporters.json` from this path.
+    _fleet.meta_set(lead_id, "exporters", ",".join(plan.exporters))
+
+    return ApplyResult(project=plan.project, items=plan.items, exporters=plan.exporters)
 
 
 def _export_roles(project: str, directory: Path) -> None:
@@ -889,9 +943,9 @@ def _export_pipeline(project: str, directory: Path) -> None:
 
 
 def _export_manifest(project: str, directory: Path) -> None:
-    """Write ``pod.yaml`` with ``members`` (every non-Lead role this pod's roster has) and
-    ``settings`` (every ``PodSettings`` key whose stored value differs from that model's own
-    default) -- never a ``pipeline`` key (see ``_export_pipeline``'s docstring)."""
+    """Write ``pod.yaml`` with ``members``, ``settings`` (every non-default ``PodSettings``
+    key), and ``exporters`` (this pod's recorded destinations, ADR 0014 rule 7, when set) --
+    never a ``pipeline`` key (see ``_export_pipeline``'s docstring)."""
     roster = _dispatch.pod_full_roster(project)
     members = [role for role, _mid in sorted(roster.items()) if role != "lead"]
 
@@ -907,6 +961,8 @@ def _export_manifest(project: str, directory: Path) -> None:
     manifest: dict[str, Any] = {"kind": "pod", "name": project, "members": members}
     if settings_out:
         manifest["settings"] = settings_out
+    if settings_doc.exporters:
+        manifest["exporters"] = list(settings_doc.exporters)
     pod_path = directory / "pod.yaml"
     _dump_yaml_file(pod_path, manifest, schema_header=_schema_header(directory, pod_path, "pod"))
 

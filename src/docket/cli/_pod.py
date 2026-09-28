@@ -803,11 +803,38 @@ def render_apply_header(project: str, directory: Path, summary: _pod_apply.Recip
 
 
 def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
-    """Print an apply plan one item per line. Shared by ``pod <p> apply`` and ``docket init``,
-    so the two never render the same plan differently; the action is escaped because Rich
-    would otherwise read ``[add]`` as a style tag and drop it."""
+    """Print an apply plan one item per line, then one exporter-state line per named
+    destination (``render_exporter_states``). Shared by ``pod <p> apply`` and ``docket init``;
+    the action is escaped because Rich would otherwise read ``[add]`` as a style tag."""
     for item in plan.items:
         ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")
+    render_exporter_states(plan.exporters)
+
+
+def render_exporter_states(names: tuple[str, ...]) -> None:
+    """Print one line per exporter in *names* -- its state and (unless ``enabled``) the exact
+    enable command -- never activating anything (ADR 0014 rule 7). Shared by
+    ``render_apply_plan`` and ``docket recipes show``, so the two never disagree."""
+    if not names:
+        return
+    from docket.core import exporter as _exporter
+
+    catalog = _exporter.load_catalog()
+    for name in names:
+        spec = catalog.get(name)
+        if spec is None:
+            continue  # named at apply time; the catalog may have since dropped it
+        state, missing = _exporter.activation_state(spec, health=None)
+        if state == "enabled":
+            line = f"exporter {name}: enabled"
+        elif state == "needs credential":
+            line = (
+                f"exporter {name}: needs credential {', '.join(missing)} "
+                f"-> docket exporters enable {name}"
+            )
+        else:
+            line = f"exporter {name}: {state} -> docket exporters enable {name}"
+        ui.console.print(f"  {escape(line)}")
 
 
 def _pod_apply_cmd(project: str, extra: list[str]) -> None:

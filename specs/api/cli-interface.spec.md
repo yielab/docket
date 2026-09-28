@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.53.0
+**Version**: 1.54.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -414,23 +414,29 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
-  `pipeline.yaml`, a small `pod.yaml` naming `members`/`settings`/`pipeline`/`description`) to
-  this pod in one command, composing the same `roles add`/`add <role>`/`config set` writers
-  rather than a new write path; the argument resolves as a directory path if one exists there,
-  else as a shipped recipe name, exactly as `docket init --recipe` resolves it (an unresolvable
-  name exits 1 naming the shipped recipes); with no argument it defaults to `<codebase>/.docket`.
-  Validates every role, the roster the pipeline would resolve against once `members` join, and
-  every setting before writing anything; idempotent (a second run plans every item `skip`);
-  `--dry-run` prints the plan without writing. The non-`--json` plan is preceded by a header —
-  `Apply plan — <project> <- <dir>`, the directory's own `description` when set, then
-  `core.pod_apply.summarize_recipe`'s derived summary line — the same header `docket init
-  --recipe`/a discovered `.docket/` prints (`cli/_pod.py::render_apply_header`). See
-  `pod-blueprints.spec.md`, "Pod manifests: apply"
+  `pipeline.yaml`, a small `pod.yaml` naming
+  `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
+  composing the same `roles add`/`add <role>`/`config set` writers rather than a new write path;
+  the argument resolves as a directory path if one exists there, else as a shipped recipe name,
+  exactly as `docket init --recipe` resolves it (an unresolvable name exits 1 naming the shipped
+  recipes); with no argument it defaults to `<codebase>/.docket`. Validates every role, the
+  roster the pipeline would resolve against once `members` join, every setting, and every
+  `exporters` name against `core.exporter.load_catalog()`, before writing anything; idempotent
+  (a second run plans every item `skip`); `--dry-run` prints the plan without writing. The
+  non-`--json` plan is preceded by a header — `Apply plan — <project> <- <dir>`, the directory's
+  own `description` when set, then `core.pod_apply.summarize_recipe`'s derived summary line —
+  the same header `docket init --recipe`/a discovered `.docket/` prints
+  (`cli/_pod.py::render_apply_header`), and followed, after the plan, by one line per named
+  exporter — its state from `core.exporter.activation_state` and, unless already `enabled`, the
+  exact `docket exporters enable <name>` command (`cli/_pod.py::render_apply_plan`/
+  `render_exporter_states`); nothing is ever written to `docket-exporters.json` from this path.
+  See `pod-blueprints.spec.md`, "Pod manifests: apply"
 - `export [<dir>] [--force]`: Write this pod's own scope, every YAML file in the short form with
   a `# yaml-language-server:` header — pod-overlay `roles/<name>.yaml` (+ paired
   `roles/<name>.md` instructions), this pod's own `policies/<stem>.yaml`, a bound
-  `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`, `name`, non-Lead `members`
-  and every non-default `setting`, and the four config-v1 JSON Schemas copied into
+  `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`, `name`, non-Lead `members`,
+  every non-default `setting`, this pod's recorded `exporters` (when set), and the four
+  config-v1 JSON Schemas copied into
   `.schemas/` — into `<dir>`, the same shape `apply` reads back. `<dir>` defaults to
   `<codebase>/.docket`, like `apply`. Global scope (the operator's
   own role overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty
@@ -776,7 +782,9 @@ over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fe
   `brings`, `directory`, `description`, and every `core.pod_apply.RecipeSummary` count
 - `show <name|dir> [--json]`: Resolve *name|dir* through the same `resolve_recipe` order
   `docket pod <p> apply` uses and print its scope, directory, derived summary line
-  (`pod-blueprints.spec.md` 1.14.0), and `README.md` body when present; `--json` adds a
+  (`pod-blueprints.spec.md` 1.14.0), one line per exporter the directory's `pod.yaml` names —
+  the same state lines `docket pod <p> apply` prints, from `core.exporter.activation_state`
+  (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when present; `--json` adds a
   `readme` field to the same object shape `list --json` prints
 **Output**: Recipe listing, one recipe's detail, or the `resolve_recipe` error naming both
 scopes' recipe names
@@ -1046,6 +1054,21 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.54.0 (2026-09-27)
+
+- **P32-8: `pod apply`/`recipes show` report exporter state, never activate one.** `pod.yaml`'s
+  `apply` action now also accepts `exporters`; the non-`--json` plan prints one line per named
+  exporter after the plan (`exporter <name>: enabled` / `needs credential <names> -> docket
+  exporters enable <name>` / `disabled -> docket exporters enable <name>`), from
+  `core.exporter.activation_state` (`cli/_pod.py::render_exporter_states`, shared by
+  `render_apply_plan` and `docket recipes show`); nothing is written to
+  `docket-exporters.json`. `export` writes this pod's recorded `exporters` list back into
+  `pod.yaml` when set. Pre-assigned as 1.55.0 in the Wave 58 packet, which anticipated P32-6's
+  and P32-7's own bumps landing first on this branch's base; this card bumped from its actual
+  base (1.53.0) and leaves reconciling the sequence to the Wave 58 rollup, as the Wave 57
+  rollup did for `observability-export.spec.md`. See `pod-blueprints.spec.md` 1.20.0 and
+  `config-format.spec.md` 1.5.0.
 
 ### Version 1.53.0 (2026-09-27)
 

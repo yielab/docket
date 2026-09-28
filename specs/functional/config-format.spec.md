@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented
 **Last Updated**: 2026-09-27
 
@@ -246,6 +246,7 @@ docket validate [dir|file]
 | `kind` | this spec — always `pod` for a pod manifest |
 | `name` | this spec — the pod's own name |
 | `description` | P31-1 (ADR 0013 §1 rule 2) — optional prose for a listing; read-only, never applied to the pod |
+| `exporters` | P32-8 (ADR 0014 rule 7) — a list of `core.exporter.load_catalog()` names this pod's recipe declares; reported by `apply`/`recipes show`, never applied (never activates an exporter) |
 
 ### Return Codes
 
@@ -296,6 +297,15 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.5.0 (2026-09-27)
+
+- **P32-8: the pod manifest key set gains `exporters`.** An optional list of
+  `core.exporter.load_catalog()` names on `pod.yaml` (`core.config_docs.PodDocument.exporters`,
+  both published `pod.schema.json` copies regenerated); `core.pod_apply._MANIFEST_KEYS` gains
+  it, so this spec's dispatch (`pod` → `core.pod_apply`'s own manifest key set) accepts it
+  unchanged. Value-shape and catalog-membership validation is `plan_apply`'s job, not this
+  envelope's — see `pod-blueprints.spec.md` 1.20.0, "Pod manifests: apply" requirement 11.
 
 ### Version 1.4.0 (2026-09-27)
 
