@@ -550,6 +550,24 @@ def _parse_dispatch_args(extra: list[str]) -> DispatchArgs:
     return DispatchArgs(resume, timeout, progress, no_prompt)
 
 
+def _flush_notify_after_dispatch() -> None:
+    """One `core.notify.flush` call over every catalog channel, after a CLI dispatch's own
+    summary has already printed (ADR 0016 SS7) -- the foreground half of delivery; the
+    background half is `serve.py`'s sweep. Prints nothing unless a delivery failed."""
+    import datetime as _dt
+
+    from docket.core import channel as _channel
+    from docket.core import notify as _notify
+    from docket.edges.adapters import channels as _channels
+
+    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    report = _notify.flush(
+        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=now
+    )
+    if report.failed:
+        ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
+
+
 def _pod_dispatch(
     project: str,
     extra: list[str],
@@ -689,6 +707,7 @@ def _pod_dispatch(
             ui.warn(escape(f"  [{res.task_id}] waiting_approval — {res.reason}"))
         else:
             ui.error(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
+    _flush_notify_after_dispatch()
     final = _runs.get_run(record["id"])
     if final is not None and final.get("state") == "failed":
         ui.dim(f"  Details: docket runs show {record['id']}")

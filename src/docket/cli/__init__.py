@@ -2646,13 +2646,40 @@ def cmd_channels(ctx: typer.Context) -> None:
     `content <name> [<level>] [--yes]` shows or changes how much a delivery
     carries (`minimal < actions < conversation`); widening prints the change
     and asks for confirmation on a TTY or refuses off one without `--yes` --
-    narrowing never asks. This command does not send anything: delivery is a
-    later command."""
+    narrowing never asks. `test <name>` sends one synthetic
+    `dev.docket.channel.test` event through that one channel and reports
+    success or failure -- useful to verify a webhook URL or a command binary
+    before relying on it. Every other subcommand here only edits the catalog;
+    `test` and `docket notify` are the only things in this command group that
+    ever send anything."""
     from docket.cli._channels import run_channels
 
     args = list(ctx.args)
     action = args[0] if args else ""
     raise typer.Exit(run_channels(action, args[1:]))
+
+
+@app.command(
+    "notify",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_notify(ctx: typer.Context) -> None:
+    """Flush operator events to every enabled channel.
+
+    `docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
+    state change; this command forces one in between, or previews it. `docket notify
+    flush [--dry-run]` -- with no `--dry-run`, diffs the inbox against the last flush,
+    delivers each new event (`dev.docket.task.*`/`approval.*`) to every enabled channel
+    whose `on` matches, and prints the counts; `--dry-run` prints what would be sent
+    without delivering or advancing the dedupe snapshot."""
+    from docket.cli._notify import run_notify
+
+    args = list(ctx.args)
+    if args and not args[0].startswith("--"):
+        action, rest = args[0], args[1:]
+    else:
+        action, rest = "", args
+    raise typer.Exit(run_notify(action, rest))
 
 
 @app.command(
