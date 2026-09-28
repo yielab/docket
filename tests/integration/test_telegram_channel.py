@@ -1,25 +1,26 @@
-"""docket-owned Telegram approval channel -- the routing/authorization layer (``core/telegram.py``).
-Grant/deny/status/delegate all route through this channel with a real producer, a real audit
+"""docket-owned Telegram channel: the inbound routing layer (``core/telegram.py``) and the
+outbound `telegram` channel dialect (``edges/adapters/channels/telegram.py``). Approve/deny/
+status/delegate/answer route through the inbound layer with a real producer, a real audit
 entry, and no daemon bridge. **No test here ever touches a socket or a real token** --
-``handle_message`` never does network I/O (only ``poll_once`` does, and its tests inject fake
-``get_updates``/``send_message`` callables). Pins, in order of importance: an unbound chat cannot
-approve/deny/status/delegate anything, proven both directly and by breaking the authorization
-check and watching the same test go red; every grant/deny writes ``audit_log(...,
-channel="telegram")`` via the existing ``core.approval`` producer, never a competing entry except
-for a refusal; fail-closed on every ambiguous case (missing token, unparseable command, a
-`pre_input` block/require_approval verdict); and delegated text is screened through the real
-`pre_input` hook before `enqueue_task` is ever called.
+``handle_message`` never does network I/O; ``poll_once`` and the dialect's own tests inject
+fake ``get_updates``/``send_message`` callables. Pins: an unbound chat cannot approve/deny/
+status/delegate/answer anything; every grant/deny writes ``audit_log(..., channel="telegram")``;
+fail-closed on every ambiguous case; delegated/answered text is screened through the real
+`pre_input` hook; and the outbound dialect only ever reaches a chat id in its own `actors`
+list, never every `fleet.json` binding.
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import threading
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
+from tests.fakes import FakeDriver
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -30,10 +31,25 @@ from docket.core import fleet as _fleet
 from docket.core import policy as _policy
 from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
+from docket.core.channel import ChannelSpec
+from docket.core.operator_contract import make_event
 from docket.edges import store as _store
+from docket.edges.adapters.channels import telegram as _tg_channel
 from docket.edges.adapters.telegram import TelegramUpdate
 
 SUBJECT = "docket.core"
+
+_ASK_PIPELINE_YAML = """\
+name: ask
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+  - id: implementer
+    role: implementer
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +72,27 @@ def _msg(chat_id: str, text: str, update_id: int = 1, user_id: str = "999") -> _
 
 def _read_audit() -> list[dict[str, object]]:
     return _audit.read_audit()
+
+
+def _bind_pipeline(project: str, text: str) -> None:
+    """Bind *text* as *project*'s own pipeline, mirroring ``tests/unit/core/test_answers.py``'s
+    helper -- so a task actually dispatched through it parks at a real ``input`` step with the
+    schema ``answer_task`` expects."""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    path = _pod.pod.bound_pipeline_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
+
+
+def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
+    """A real pod with a real ``waiting_input`` task (single-property ``answer`` schema),
+    reached by actually dispatching through an ``input`` step."""
+    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    _bind_pipeline(project, _ASK_PIPELINE_YAML)
+    _dispatch.enqueue_task(project, "needs a decision")
+    _dispatch.dispatch_pod(project, runner=FakeDriver())
+    return _dispatch.read_tasks(project)[0]
 
 
 # ── authorization: the security-critical invariant ──────────────────────────
@@ -381,6 +418,100 @@ class TestDelegate:
         assert len(warns) == 1
 
 
+# ── answer ────────────────────────────────────────────────────────────────
+
+
+class TestAnswer:
+    def test_answer_resolves_a_single_property_question_and_replies_with_the_task_id(self) -> None:
+        task = _seed_parked_task("demo")
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
+
+        assert outcome.ok
+        assert outcome.action == "answer"
+        assert task["id"] in outcome.reply
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "pending"
+        assert after["answers"][0]["content"] == {"answer": "ship it"}
+        assert after["answers"][0]["channel"] == "telegram"
+
+    def test_missing_task_id_and_text_replies_with_usage(self) -> None:
+        _bind("security", "-100200")
+        outcome = _tg.handle_message(_msg("-100200", "/answer"))
+        assert not outcome.ok
+        assert outcome.authorized
+        assert "Usage: /answer" in outcome.reply
+
+    def test_missing_answer_text_replies_with_usage(self) -> None:
+        _bind("security", "-100200")
+        outcome = _tg.handle_message(_msg("-100200", "/answer task-1"))
+        assert not outcome.ok
+        assert "Usage: /answer" in outcome.reply
+
+    def test_answer_is_refused_for_a_non_lead_binding(self) -> None:
+        _bind("security", "-100200")  # an org specialist, not a pod Lead
+        outcome = _tg.handle_message(_msg("-100200", "/answer task-1 ship it"))
+        assert not outcome.ok
+        assert "not a pod Lead" in outcome.reply
+
+    def test_answer_refuses_a_task_id_from_another_pod(self) -> None:
+        _seed_parked_task("demo")
+        other = _seed_parked_task("other")
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {other['id']} ship it"))
+
+        assert not outcome.ok
+        assert "not found" in outcome.reply
+        assert _dispatch.read_tasks("other")[0]["status"] == "waiting_input"
+
+    def test_a_multi_property_question_is_refused_with_cli_guidance(self) -> None:
+        """A bare chat message cannot be split across fields -- mirrors ``cli/_pod.py``'s
+        ``_pod_answer`` bare-text refusal for the same case."""
+        task = _seed_parked_task("demo")
+        _bind("demo-lead", "-100300")
+        tasks = _dispatch.read_tasks("demo")
+        tasks[0]["question"]["requestedSchema"]["properties"]["confirm"] = {"type": "boolean"}
+        _store.write_json(_dispatch.pod_task_list_path("demo"), {"tasks": tasks})
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
+
+        assert not outcome.ok
+        assert "docket pod demo answer" in outcome.reply
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
+
+    def test_a_block_policy_refuses_before_the_answer_is_ever_written(self) -> None:
+        """Mirrors ``TestDelegate``'s block test: a real installed policy, not a patched
+        evaluator -- proving `answer_task`'s own `pre_input` screen (not this module) is what
+        refuses."""
+        task = _seed_parked_task("demo")
+        _bind("demo-lead", "-100300")
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        policy = {
+            "id": "test-block-answer",
+            "description": "test-only",
+            "applies_to": ["*"],
+            "hook": "pre_input",
+            "match": {"type": "regex", "pattern": r"forbidden-phrase"},
+            "action": "block",
+            "message": "blocked by test policy",
+        }
+        (_cfg.POLICIES_DIR / "test-block-answer.json").write_text(json.dumps(policy))
+
+        outcome = _tg.handle_message(
+            _msg("-100300", f"/answer {task['id']} this has a forbidden-phrase in it")
+        )
+
+        assert not outcome.ok
+        assert "blocked by policy" in outcome.reply
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "waiting_input"
+        assert after.get("answers", []) == []
+        blocked = [e for e in _read_audit() if e.get("action") == "telegram.answer_blocked"]
+        assert len(blocked) == 1
+
+
 # ── unrecognized input never guesses ────────────────────────────────────────
 
 
@@ -575,27 +706,128 @@ class TestRequestTimeoutInvariantIsEnforced:
         assert summary.warning != ""
 
 
-class TestInboundOnly:
-    """The channel replies, never initiates (specs/functional/telegram-integration.spec.md,
-    Command grammar 7): a security boundary, not a missing feature, since an outbound path would
-    push an unprompted message from code that never went through `_authorize`. Pinned structurally
-    (an AST walk over `src/`) rather than behaviourally, because the failure guarded against is
-    someone *adding* a caller -- a behavioural test can only assert about call sites that already
-    exist. If outbound messaging is ever implemented, this test must change in the same commit."""
+# ── the outbound channel dialect ─────────────────────────────────────────────
+
+
+def _notify_event(pod: str = "demo", task_id: str = "task-1") -> Any:
+    return make_event(
+        "task.input_required",
+        pod,
+        f"task:{pod}:{task_id}",
+        {"pod": pod, "taskId": task_id},
+        time="2026-09-28T00:00:00Z",
+        version=f"waiting_input:{task_id}",
+    )
+
+
+def _channel_spec(actors: list[str]) -> ChannelSpec:
+    return ChannelSpec(kind="channel", name="telegram", dialect="telegram", actors=actors)
+
+
+class TestTelegramChannelDialect:
+    """The outbound half of the `telegram` dialect (`edges/adapters/channels/telegram.py::
+    deliver`) -- the second legitimate `send_message` call site `TestOutboundOnlyThroughTheChannel`
+    pins. Never touches a socket: `send_message` is monkeypatched on the dialect module."""
+
+    def test_sends_to_every_actor_with_the_resolved_secret(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            _tg_channel,
+            "send_message",
+            lambda token, chat_id, text, **k: sent.append((token, chat_id)) or True,
+        )
+
+        result = _tg_channel.deliver(
+            _channel_spec(["-100", "-200"]), _notify_event(), secret="123:abc", timeout=5.0
+        )
+
+        assert result.ok
+        assert sorted(sent) == [("123:abc", "-100"), ("123:abc", "-200")]
+
+    def test_missing_secret_is_a_typed_failure_not_an_exception(self) -> None:
+        result = _tg_channel.deliver(
+            _channel_spec(["-100"]), _notify_event(), secret=None, timeout=5.0
+        )
+        assert not result.ok
+        assert "secret" in result.error
+
+    def test_no_actors_is_a_typed_failure(self) -> None:
+        result = _tg_channel.deliver(
+            _channel_spec([]), _notify_event(), secret="123:abc", timeout=5.0
+        )
+        assert not result.ok
+        assert "actors" in result.error
+
+    def test_a_failed_send_is_reported_without_raising(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_tg_channel, "send_message", lambda *a, **k: False)
+
+        result = _tg_channel.deliver(
+            _channel_spec(["-100"]), _notify_event(), secret="123:abc", timeout=5.0
+        )
+
+        assert not result.ok
+        assert "-100" in result.error
+
+    def test_sink_for_resolves_the_telegram_dialect_to_this_module(self) -> None:
+        from docket.edges.adapters.channels import sink_for
+
+        assert sink_for(_channel_spec(["-100"])) is _tg_channel.deliver
+
+    def test_only_actors_are_reached_never_every_fleet_binding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A pod may have several `fleet.json` bindings; the channel push must reach only the
+        chat ids the operator explicitly put in `actors`."""
+        _bind("demo-lead", "-100300")
+        _bind("security", "-100200")
+        sent: list[str] = []
+        monkeypatch.setattr(
+            _tg_channel,
+            "send_message",
+            lambda token, chat_id, text, **k: sent.append(chat_id) or True,
+        )
+
+        _tg_channel.deliver(
+            _channel_spec(["-100300"]), _notify_event(), secret="123:abc", timeout=5.0
+        )
+
+        assert sent == ["-100300"]
+
+
+class TestOutboundOnlyThroughTheChannel:
+    """Outbound Telegram messages now exist through exactly two paths, and no other
+    (specs/functional/telegram-integration.spec.md, Command grammar 7): the
+    reply inside `core.telegram.poll_once` (unchanged -- a response to a message that already
+    passed `_authorize`), and `edges/adapters/channels/telegram.py::deliver`, the `telegram`
+    channel dialect's `notify` push, which only ever reaches a chat id the operator explicitly
+    listed in that channel's own `actors` -- never every `fleet.json` binding, and never from
+    `core/telegram.py` itself. Pinned structurally (an AST walk over `src/`) rather than
+    behaviourally, because the failure guarded against is someone *adding* a third caller -- a
+    behavioural test can only assert about call sites that already exist. If a third caller is
+    ever added, this test must change in the same commit."""
 
     _SRC = Path(_tg.__file__).resolve().parent.parent  # src/docket/
 
-    #: The single legitimate call site: the reply inside `core.telegram.poll_once`.
+    #: The two legitimate call sites: the reply inside `core.telegram.poll_once`, and the
+    #: `telegram` channel dialect's outbound, `actors`-scoped push.
     #: The email dialect also defines a `send_message` -- `smtplib.SMTP.send_message`, an
     #: unrelated stdlib method name collision, not a path to the Telegram channel.
-    _ALLOWED: ClassVar[set[str]] = {"core/telegram.py", "edges/adapters/channels/email.py"}
+    _ALLOWED: ClassVar[set[str]] = {
+        "core/telegram.py",
+        "edges/adapters/channels/telegram.py",
+        "edges/adapters/channels/email.py",
+    }
 
     def _send_call_sites(self) -> list[str]:
         found: list[str] = []
         for path in sorted(self._SRC.rglob("*.py")):
             rel = path.relative_to(self._SRC).as_posix()
             if rel in self._ALLOWED or rel.startswith("edges/adapters/telegram"):
-                continue  # the wire-format adapter defines it; poll_once calls it
+                continue  # the wire-format adapter defines it; the two allowed callers use it
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
@@ -612,11 +844,11 @@ class TestInboundOnly:
                     found.append(f"{rel}:{node.lineno}")
         return found
 
-    def test_nothing_outside_the_reply_path_sends_a_telegram_message(self) -> None:
+    def test_nothing_outside_the_reply_and_channel_paths_sends_a_telegram_message(self) -> None:
         offenders = self._send_call_sites()
         assert not offenders, (
-            "docket must never message a wired chat unprompted; found send_message "
-            f"call(s) outside core/telegram.py's reply path at: {offenders}"
+            "docket must only message a Telegram chat via poll_once's reply or the "
+            f"actors-scoped channel dialect; found send_message call(s) at: {offenders}"
         )
 
     def test_the_approval_store_does_not_reach_the_telegram_channel(self) -> None:

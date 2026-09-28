@@ -35,10 +35,21 @@ anything happening:
 **Fail closed, always.** An unknown sender, an unparseable command, a
 missing/ambiguous token, or a blocked policy verdict all refuse -- none of
 them ever default to granting or denying an approval. Approve/deny/status/
-delegate are the only four operational actions this module recognizes. The
-inert ``/wire <code>`` setup handshake only confirms a binding that the CLI
-already created; anything else is an "unrecognized command" reply, not a
+delegate/answer are the only five operational actions this module recognizes.
+The inert ``/wire <code>`` setup handshake only confirms a binding that the
+CLI already created; anything else is an "unrecognized command" reply, not a
 guess at what the sender meant.
+
+``/answer <task-id> <text>`` resolves a task's parked ``input`` question
+through the same ``core.answers.answer_task`` every other surface (CLI, HTTP,
+MCP) calls -- see :func:`_handle_answer`. It is the one verb whose *outbound*
+counterpart also exists: an operator who enables the ``telegram`` channel
+document (``kind: channel``, dialect ``telegram``) gets a *push* to every
+chat id it lists in ``actors`` when a task needs input, through
+``edges/adapters/channels/telegram.py::deliver`` -- a separate, explicitly
+operator-configured path, not a change to this module's own reply-only
+behaviour (see the module-level ``send_message`` call-site pin in
+``tests/integration/test_telegram_channel.py``).
 
 **The bot token is never handled here.** This module reads it once (from
 ``core.secrets``, the same store ``docket keys`` uses) to hand to
@@ -64,6 +75,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import docket.config as _cfg
+from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -88,7 +100,7 @@ __all__ = [
     "wire_discovery_configured",
 ]
 
-# Command grammar. Deliberately narrow (four operational verbs plus the inert
+# Command grammar. Deliberately narrow (five operational verbs plus the inert
 # setup handshake; no inline keyboards, no
 # rich UI) -- see the module docstring's "fail closed, always" note. The verb
 # is matched independently of its argument (the trailing group is OPTIONAL on
@@ -96,20 +108,28 @@ __all__ = [
 # recognized as an incomplete *approve* command -- and refused with a usage
 # reply, per-verb -- rather than falling through to the generic "unrecognized
 # command" bucket, which would blur "you typed nonsense" together with "you
-# typed a real command wrong". `re.DOTALL` on delegate so a multi-line task
-# description survives.
+# typed a real command wrong". `re.DOTALL` on delegate/answer so a multi-line
+# task description/answer survives.
 _APPROVE_RE = re.compile(r"^/approve(?:@\w+)?(?:\s+(\S+))?\s*$")
 _DENY_RE = re.compile(r"^/deny(?:@\w+)?(?:\s+(\S+))?\s*$")
 _STATUS_RE = re.compile(r"^/status(?:@\w+)?\s*$")
 _DELEGATE_RE = re.compile(r"^/delegate(?:@\w+)?\s*(.*)$", re.DOTALL)
+_ANSWER_RE = re.compile(r"^/answer(?:@\w+)?\s+(\S+)\s+(.+)$", re.DOTALL)
+# Matches `/answer` on its own or with only a task id -- a recognized verb with a missing
+# argument, per the same "usage reply, not unparseable" rule as approve/deny above. Checked
+# only once `_ANSWER_RE` itself has failed to match.
+_ANSWER_PREFIX_RE = re.compile(r"^/answer(?:@\w+)?\b")
 _WIRE_RE = re.compile(r"^/wire(?:@\w+)?\s+\S+\s*$", re.IGNORECASE)
+
+_ANSWER_USAGE = "Usage: /answer <task-id> <answer text>"
 
 _UNRECOGNIZED_REPLY = (
     "Unrecognized command. Use:\n"
     "  /approve <token>\n"
     "  /deny <token>\n"
     "  /status\n"
-    "  /delegate <task description>"
+    "  /delegate <task description>\n"
+    "  /answer <task-id> <answer text>"
 )
 
 
@@ -128,7 +148,7 @@ class InboundMessage:
 class TelegramActionResult:
     """Outcome of handling one inbound message. ``reply`` never contains raw
     untrusted input beyond what the sender already typed; ``action`` buckets
-    it (approve/deny/status/delegate/wire/unauthorized/unparseable)."""
+    it (approve/deny/status/delegate/answer/wire/unauthorized/unparseable)."""
 
     ok: bool
     reply: str
@@ -285,6 +305,63 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     )
 
 
+def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResult:
+    """Accept *text* as the answer to *task_id*'s parked question, mirroring
+    ``docket pod <project> answer``'s bare-text path (``cli/_pod.py::_pod_answer``): a
+    single-property schema fills from the whole message, a multi-property one is refused
+    with the CLI/``docket chat`` guidance instead of guessing which field the text belongs
+    to. The pod is the bound agent's own project (:func:`_lead_project`) --
+    ``core.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
+    same way it does for any other channel."""
+    project = _lead_project(agent_id)
+    if project is None:
+        return TelegramActionResult(
+            False,
+            "This binding cannot answer tasks (bound agent is not a pod Lead).",
+            True,
+            "answer",
+        )
+
+    task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
+    if task is None:
+        return TelegramActionResult(
+            False, f"Task {task_id!r} not found in pod {project!r}.", True, "answer"
+        )
+    question = task.get("question")
+    if not isinstance(question, dict):
+        return TelegramActionResult(
+            False, f"Task {task_id!r} has no pending question.", True, "answer"
+        )
+    properties = question.get("requestedSchema", {}).get("properties", {})
+    if len(properties) != 1:
+        return TelegramActionResult(
+            False,
+            "This question has more than one field -- answer it with "
+            f"'docket pod {project} answer {task_id} --field name=value ...' or 'docket chat'.",
+            True,
+            "answer",
+        )
+    (prop_name,) = properties
+    content = {prop_name: text}
+
+    try:
+        _answers.answer_task(
+            project, task_id, "accept", content, channel="telegram", actor="telegram"
+        )
+    except _answers.AnswerRejected as exc:
+        audit_log(
+            "telegram.answer_blocked",
+            f"project={project!r} task={task_id!r} policy={exc.policy_id!r}",
+        )
+        return TelegramActionResult(
+            False, f"Answer blocked by policy {exc.policy_id!r}.", True, "answer"
+        )
+    except _answers.AnswerError as exc:
+        return TelegramActionResult(False, str(exc), True, "answer")
+
+    return TelegramActionResult(True, f"Answered task {task_id}.", True, "answer")
+
+
 def handle_message(msg: InboundMessage) -> TelegramActionResult:
     """Route one inbound message to an action. The one entry point this
     module exposes to a caller (the poll loop); enforces the module
@@ -309,6 +386,11 @@ def handle_message(msg: InboundMessage) -> TelegramActionResult:
     m = _DELEGATE_RE.match(text)
     if m:
         return _handle_delegate(agent_id, m.group(1).strip())
+    m = _ANSWER_RE.match(text)
+    if m:
+        return _handle_answer(agent_id, m.group(1), m.group(2).strip())
+    if _ANSWER_PREFIX_RE.match(text):
+        return TelegramActionResult(False, _ANSWER_USAGE, True, "answer")
     if _WIRE_RE.match(text):
         return TelegramActionResult(
             True, f"Telegram setup complete for '{agent_id}'.", True, "wire"
