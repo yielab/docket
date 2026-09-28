@@ -14,7 +14,9 @@ the two surfaces cannot drift apart.
 from __future__ import annotations
 
 import contextlib
+import getpass as _getpass
 import hashlib as _hashlib
+import inspect as _inspect
 import json as _json
 import sys
 from dataclasses import asdict, dataclass
@@ -22,16 +24,19 @@ from pathlib import Path
 from typing import Any, Literal
 
 import typer
+from pydantic import ValidationError
 from rich.markup import escape
 from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
 from docket.cli import _progress
+from docket.core import answers as _answers
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
+from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
@@ -56,6 +61,21 @@ teardown_member = _pp.teardown_member
 free_pod_resources = _pp.free_pod_resources
 purge_pod_history = _pp.purge_pod_history
 pod_member_ids = _pp.pod_member_ids
+
+# `core.dispatch.enqueue_task` has no `brief` keyword yet -- `_pod_delegate`'s `--brief`
+# validates the file and refuses to enqueue rather than guessing how to pass it through
+# (see that function's docstring). Checked once, at import time, so this refusal turns
+# itself off the moment a later card adds the parameter.
+_ENQUEUE_ACCEPTS_BRIEF = "brief" in _inspect.signature(_dispatch.enqueue_task).parameters
+
+
+def _actor() -> str:
+    """The OS user running this CLI invocation, falling back to '?' (mirrors
+    `core.audit`'s own username lookup)."""
+    try:
+        return _getpass.getuser()
+    except Exception:
+        return "?"
 
 
 def _role_purpose(role: str) -> str:
@@ -234,6 +254,8 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_set_verify(project, extra)
     elif action == "delegate":
         _pod_delegate(project, extra)
+    elif action == "answer":
+        _pod_answer(project, extra)
     elif action == "queue":
         _pod_queue(project, extra)
     elif action == "dispatch":
@@ -249,7 +271,7 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "delegate | queue | dispatch | config | sync | apply | export."
+            "delegate | answer | queue | dispatch | config | sync | apply | export."
         )
         raise typer.Exit(1)
 
@@ -451,8 +473,11 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
 
 
 def _pod_delegate(project: str, extra: list[str]) -> None:
-    """Queue a task for the pod: ``docket pod <project> delegate [--priority P] <task>``."""
+    """Queue a task: ``docket pod <project> delegate [--priority P] [--brief FILE.json]
+    <task>``. ``--brief`` validates the file as a `TaskBrief`; invalid or not, it exits
+    non-zero and enqueues nothing (see `_ENQUEUE_ACCEPTS_BRIEF`)."""
     priority = "normal"
+    brief_path: str | None = None
     rest: list[str] = []
     i = 0
     while i < len(extra):
@@ -462,9 +487,35 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
                 raise typer.Exit(1)
             priority = extra[i + 1]
             i += 2
+        elif extra[i] == "--brief":
+            if i + 1 >= len(extra):
+                ui.error("Missing file. Use: --brief FILE.json")
+                raise typer.Exit(1)
+            brief_path = extra[i + 1]
+            i += 2
         else:
             rest.append(extra[i])
             i += 1
+
+    if brief_path is not None:
+        try:
+            raw = _json.loads(Path(brief_path).read_text(encoding="utf-8"))
+            _oc.TaskBrief.model_validate(raw)
+        except (OSError, _json.JSONDecodeError, ValidationError) as exc:
+            ui.error(f"Invalid brief file '{brief_path}': {exc}")
+            raise typer.Exit(1) from exc
+        if _ENQUEUE_ACCEPTS_BRIEF:
+            ui.error(
+                "delegate --brief: core.dispatch.enqueue_task now accepts 'brief', but "
+                "this CLI surface has not been updated to pass it through yet."
+            )
+        else:
+            ui.error(
+                "delegate --brief is not yet supported: core.dispatch.enqueue_task has "
+                "no 'brief' parameter."
+            )
+        raise typer.Exit(1)
+
     description = " ".join(rest)
     if not description.strip():
         ui.error("Usage: docket pod <project> delegate [--priority high|normal|low] <task>")
@@ -482,6 +533,81 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
         raise typer.Exit(1) from ex
     ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {description}"))
     ui.info(f"Run the pipeline: docket pod {project} dispatch")
+
+
+def _pod_answer(project: str, extra: list[str]) -> None:
+    """Answer a parked question: ``docket pod <project> answer <task-id> [text]
+    [--field k=v]... [--decline]``. Bare ``text`` fills a one-property schema;
+    ``--field`` names each property explicitly; ``--decline`` ignores both."""
+    task_id: str | None = None
+    text_parts: list[str] = []
+    fields: dict[str, str] = {}
+    decline = False
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok == "--field":
+            if i + 1 >= len(extra) or "=" not in extra[i + 1]:
+                ui.error("Usage: --field name=value")
+                raise typer.Exit(1)
+            key, value = extra[i + 1].split("=", 1)
+            fields[key] = value
+            i += 2
+        elif tok == "--decline":
+            decline = True
+            i += 1
+        elif task_id is None:
+            task_id = tok
+            i += 1
+        else:
+            text_parts.append(tok)
+            i += 1
+
+    if task_id is None:
+        ui.error("Usage: docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]")
+        raise typer.Exit(1)
+
+    if decline:
+        action = "decline"
+        content: dict[str, Any] | None = None
+    else:
+        action = "accept"
+        content = dict(fields)
+        text = " ".join(text_parts).strip()
+        if text:
+            task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
+            if task is None:
+                ui.error(f"Task '{task_id}' not found in pod '{project}'.")
+                raise typer.Exit(1)
+            question = task.get("question")
+            if not isinstance(question, dict):
+                ui.error(f"Task '{task_id}' has no pending question.")
+                raise typer.Exit(1)
+            properties = question.get("requestedSchema", {}).get("properties", {})
+            if len(properties) == 1:
+                (prop_name,) = properties
+                content.setdefault(prop_name, text)
+            else:
+                ui.error(
+                    "A bare text answer requires a single-property question; use "
+                    "--field name=value for each property instead."
+                )
+                raise typer.Exit(1)
+        if not content:
+            ui.error(
+                "Usage: docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]"
+            )
+            raise typer.Exit(1)
+
+    try:
+        _answers.answer_task(project, task_id, action, content, channel="cli", actor=_actor())
+    except _answers.AnswerRejected as exc:
+        ui.error(f"Answer blocked by policy '{exc.policy_id}'.")
+        raise typer.Exit(1) from exc
+    except _answers.AnswerError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+    ui.success(f"Answered task '{task_id}' in pod '{project}' ({action}).")
 
 
 def _pod_queue(project: str, extra: list[str]) -> None:

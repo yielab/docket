@@ -20,6 +20,7 @@ import threading
 from typing import Any
 
 import docket.config as _cfg
+from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import mcp_tools as _mcp_tools
@@ -48,6 +49,7 @@ _TOOL_NAMES: tuple[str, ...] = (
     "approvals_deny",
     "inbox",
     "cost",
+    "task_answer",
 )
 
 
@@ -190,6 +192,22 @@ def tool_approvals_deny(token: str) -> dict[str, Any]:
     return {"ok": True, "token": token, "state": rec["state"]}
 
 
+def tool_task_answer(
+    project: str, task_id: str, action: str, content: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Answer a task's parked ``input`` question. Identical to `docket pod <project> answer`
+    / `docket serve`'s `POST /tasks/<task_id>/answer` -- same `core.answers.answer_task`
+    call (``channel="mcp"``, ``actor="mcp"``)."""
+    _audit("task_answer", f"project={project} task={task_id} action={action}")
+    try:
+        result = _answers.answer_task(project, task_id, action, content, channel="mcp", actor="mcp")
+    except _answers.AnswerRejected as exc:
+        raise McpToolError(f"answer blocked by policy '{exc.policy_id}'") from exc
+    except _answers.AnswerError as exc:
+        raise McpToolError(str(exc)) from exc
+    return {"ok": True, "task": task_id, "project": project, "action": result.action}
+
+
 def tool_inbox(since: str | None = None) -> dict[str, Any]:
     """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
     failed/done/running context, and a cursor. Identical shape to `docket serve`'s `GET /inbox`."""
@@ -245,6 +263,7 @@ def _build_server() -> Any:
     server.add_tool(tool_approvals_list, name="approvals_list")
     server.add_tool(tool_approvals_grant, name="approvals_grant")
     server.add_tool(tool_approvals_deny, name="approvals_deny")
+    server.add_tool(tool_task_answer, name="task_answer")
     server.add_tool(tool_inbox, name="inbox")
     server.add_tool(tool_cost, name="cost")
     return server

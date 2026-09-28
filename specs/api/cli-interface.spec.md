@@ -443,9 +443,18 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
-- `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
-  own list whether it arrives as one quoted argv item or several ordinary positional words
-  (one queue per pod, at `~/.docket/workspaces/<project>-lead/TASK_LIST.json`)
+- `delegate <task> [--priority high|normal|low] [--brief FILE.json]`: Queue the complete
+  free-form task on this pod's own list whether it arrives as one quoted argv item or several
+  ordinary positional words (one queue per pod, at
+  `~/.docket/workspaces/<project>-lead/TASK_LIST.json`). `--brief` (Phase 34, P34-13) loads and
+  validates the file as a `TaskBrief` (operator-v1); an invalid one exits non-zero and enqueues
+  nothing. `core.dispatch.enqueue_task` has no `brief` parameter yet, so a *valid* one also exits
+  non-zero today, naming the missing parameter, rather than silently dropping it
+- `answer <task-id> [text] [--field name=value]... [--decline]`: Answer a parked question
+  (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills the single
+  property of a one-property question schema; `--field` sets named properties explicitly
+  (required for a multi-property schema); `--decline` ignores any `text`/`--field`. Calls
+  `core.answers.answer_task(channel="cli", actor=<OS user>)`
 - `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
   `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
   other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
@@ -874,6 +883,21 @@ endpoint, a refused widening, or (`preview`) an unknown session
   as `docket approve`)
 **Output**: Denial confirmation
 **Return**: 0 on success, 1 if token not found or already resolved
+
+#### docket chat
+**Purpose**: See and answer one task's parked question in the foreground (Phase 34, P34-13; see
+operator-loop.spec.md "Answer surfaces")
+**Syntax**: `docket chat <task-id> [--pod <project>]`
+**Behavior**: Searches every pod for *task-id* (or just *pod* when given), then shows its brief,
+its pending question (if any) and its earlier answers. On a TTY, a pending question is followed
+by one prompt per `requestedSchema` property (a blank optional property is omitted; a blank
+required one is passed through so the schema check itself reports it) and then answered through
+`core.answers.answer_task(action="accept", channel="cli", actor=<OS user>)`. Off a TTY, or with no
+pending question, this command only ever displays — use `docket pod <p> answer` to answer
+non-interactively
+**Output**: The task's status/brief/question/answers; an answer confirmation when one is sent
+**Return**: 0 on success or a read-only display, 1 if *task-id* is not found, the answer is
+blocked by a `pre_input` policy, or fails the question's own schema validation
 
 ### Identity & Conversations
 

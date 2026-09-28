@@ -321,6 +321,60 @@ pre-grant matcher will use (the same function `core/tools.py`'s `park` branch us
 CLI-issued pre-grant and an in-turn parked approval are matched identically); the forecast
 function and CLI/HTTP surface do not exist yet.
 
+### 10. Answer surfaces
+
+**Status: Implemented (CLI, `docket chat`, HTTP, MCP; Telegram is area 8's own card).** Every
+surface below calls `core.answers.answer_task` directly (area 7) -- none re-implements schema
+validation, the `pre_input` screen, or the resume. ADR 0016 §8 names these as "two core
+functions, every surface is transport"; this area is that transport.
+
+1. `docket pod <p> answer <task-id> [text] [--field name=value]... [--decline]`
+   (`cli/_pod.py::_pod_answer`) MUST call `answer_task(channel="cli", actor=<OS user via
+   getpass.getuser()>)`. A bare `text` argument MUST fill the single property of a
+   one-property `requestedSchema`, read from the task's own parked `question`; against a
+   schema with more than one property, a bare `text` MUST be refused (exit 1, nothing sent)
+   naming `--field name=value` as the alternative. `--field` MAY be repeated to set named
+   properties explicitly. `--decline` MUST set `action="decline"` and ignore any `text`/
+   `--field` values, matching `validate_answer`'s own decline/cancel short-circuit. Neither
+   `text` nor a `--field` nor `--decline` is a usage error (exit 1, nothing sent).
+2. `docket chat <task-id> [--pod <project>]` (`cli/_chat.py::run_chat`) MUST locate *task-id*
+   across every `core.dispatch.dispatchable_pods()` pod when `--pod` is omitted, else within
+   just that one pod; an unresolved task-id MUST exit 1. It MUST render the task's brief (when
+   present), its `answers[]` (when present) and its pending `question`'s message (when
+   `waiting_input`). On a TTY with a pending question, it MUST prompt once per
+   `requestedSchema` property (a blank optional property is omitted from `content`; a blank
+   required one is passed through unchanged, so the schema check itself reports it -- never a
+   client-side retry loop) and then call `answer_task(action="accept", channel="cli",
+   actor=<OS user>)`. Off a TTY, or with no pending question, it MUST only display -- never
+   call `answer_task`.
+3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
+   file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
+   and enqueue nothing. `core.dispatch.enqueue_task` has no `brief` parameter as of this
+   requirement's own card (P34-13) -- a **well-formed** brief MUST also exit 1 and enqueue
+   nothing, naming the missing parameter, rather than silently dropping the document or
+   guessing how to pass it through. `_pod._ENQUEUE_ACCEPTS_BRIEF` (checked once via
+   `inspect.signature`) exists so this refusal turns itself off, without further code, the
+   moment a later card adds the parameter.
+4. `POST /tasks/<id>/answer` (`serve.py::_handle_post_task_answer`) MUST require the same
+   `Authorization: Bearer <token>` as every other write route, then a JSON object body naming
+   `pod` (string, required) and `action` (string, required); `content` (object, optional) and
+   `actor` (string, optional label -- the Bearer token remains the sole authority, and the
+   channel is always `"http"`) round out the elicitation-result shape. It MUST call
+   `answer_task(channel="http", actor=<body.actor or "http">)` and, on success, respond with
+   the answered task's `TaskView` (`by_alias`, `mode="json"`). Errors MUST map: an
+   `AnswerRejected` to `422` naming its `policy_id`; an `AnswerError` whose message contains
+   `"not found in pod"` to `404`; one containing `"is not waiting_input"` or `"is not parked at
+   step"` to `409`; any other `AnswerError` (a schema-validation `ValueError`, relayed
+   unchanged) to `422`. `POST /tasks/<project>` (task creation) gained an optional `brief`
+   field, validated the same way as `--brief` above and refused the same way when
+   `enqueue_task` cannot yet accept it -- the identical contention, not a second guess at its
+   shape.
+5. MCP `task_answer(project, task_id, action, content=None)` (`cli/_mcp.py::tool_task_answer`)
+   MUST call `answer_task(channel="mcp", actor="mcp")` and return `{"ok": true, "task":
+   task_id, "project": project, "action": result.action}` on success; an `AnswerRejected` or
+   `AnswerError` MUST become a raised `McpToolError` (the SDK's own `isError` convention),
+   naming the policy id or the underlying message respectively -- never an inline error field.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.operator_contract`)

@@ -431,6 +431,7 @@ Request body:
 | `description` | string | Yes | `400` if absent or empty. |
 | `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization `enqueue_task` already applies to the CLI/MCP callers. |
 | `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue (see `core.dispatch.enqueue_task`'s `trusted` parameter). Omitted, it preserves the CLI/MCP default exactly (trusted). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (today: whether the `prompt-injection` policy id is skipped). |
+| `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket pod <p> delegate --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. `core.dispatch.enqueue_task` has no `brief` parameter yet, so even a well-formed one is `422`, naming the missing parameter — nothing is silently dropped, and nothing here guesses the eventual shape (see `cli/_pod.py::_pod_delegate`'s identical contention note). |
 
 Success response (task queued, `pending`):
 
@@ -466,6 +467,56 @@ Success response (task queued, `pending`):
   `approvalToken` resolves through the same `POST /approvals/<token>` endpoint documented below —
   granting it resumes the task, denying it fails the task terminally, exactly like any other
   approval-gated task.
+
+### POST /tasks/&lt;id&gt;/answer
+
+**Added in 2.13.2 (Phase 34, P34-13).** Requires `Authorization: Bearer <token>`. Resolves one
+task's parked `input` question — the HTTP counterpart of `docket pod <p> answer` and the MCP
+`task_answer` tool. Calls the exact same `core.answers.answer_task` those two callers use, so the
+schema/`pre_input` screen and the resume onto the step's own route are byte-for-byte identical —
+this route adds no new semantics (operator-loop.spec.md, "Answer surfaces").
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"pod": "myapp", "action": "accept", "content": {"answer": "ship it"}}' \
+  http://127.0.0.1:7331/tasks/task-91a2.../answer
+```
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `pod` | string | Yes | The project the task belongs to (task ids are not globally unique across pods). `400` if absent, empty, or fails `core.provisioning.validate_project_id`. |
+| `action` | string | Yes | `"accept"`, `"decline"` or `"cancel"` (the MCP elicitation result vocabulary). `400` if absent or empty; an unrecognized value surfaces as `422` from `answer_task`'s own `AnswerResult` validation. |
+| `content` | object | No | Required properties for `"accept"` (validated against the parked question's `requestedSchema`); ignored for `"decline"`/`"cancel"`. `400` if present but not an object. |
+| `actor` | string | No | A label only — the Bearer token remains the sole authority over who may answer. Defaults to `"http"`. The channel recorded on the answer and its audit entry is always `"http"`, regardless of `actor`. |
+
+Success response (`200`) — the answered task's `TaskView` (operator-v1, `by_alias`, `mode="json"`):
+
+```json
+{
+  "id": "task-91a2...",
+  "pod": "myapp",
+  "status": "pending",
+  "a2aState": "SUBMITTED",
+  "description": "needs a decision",
+  "priority": "normal",
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+- A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
+  before `answer_task` is ever called; likewise a missing/empty `pod` or `action`, or a non-object
+  `content`.
+- An `AnswerRejected` (the answer's `content` matched a `pre_input` `block` policy) is `422`,
+  naming the policy id in the error message — nothing is written.
+- An `AnswerError` naming an unknown task (`"not found in pod"`) is `404`; one naming a task not
+  currently `waiting_input`, or parked at a different step than the answer targets
+  (`"is not waiting_input"` / `"is not parked at step"`), is `409`; any other `AnswerError` — a
+  schema-validation failure from `validate_answer`, relayed unchanged — is `422`.
+- See `POST /tasks/<project>` above for the sibling `brief` field `POST /tasks/<project>` gained
+  in the same card.
 
 ### POST /pods
 

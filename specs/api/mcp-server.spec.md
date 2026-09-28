@@ -116,7 +116,7 @@ targets the module that actually ships.
 
 ## Tools
 
-Eleven tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Twelve tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
@@ -252,6 +252,20 @@ dispatch task stuck `waiting_approval` from an earlier grant that never reached 
 **Output**: `{"ok": true, "token": "apr-...", "state": "denied"}`.
 **Failure modes**: same as `approvals_grant`, including that the `resolve_waiting_approval`
 follow-up still runs before the raise.
+
+### `task_answer`
+
+**Purpose**: Answer a task's parked `input` question — identical to `docket pod <project>
+answer <task-id>` / `docket serve`'s `POST /tasks/<task-id>/answer`.
+**Arguments**: `project` (string, required), `task_id` (string, required), `action` (string,
+required — `"accept"`, `"decline"` or `"cancel"`), `content` (object, optional).
+**Gating**: calls `core.answers.answer_task(channel="mcp", actor="mcp")` — the exact function
+every other surface calls, so the schema/`pre_input` screen and the resume onto the step's own
+route are byte-for-byte the same as `docket pod <p> answer`/`docket chat`/the HTTP route.
+**Output**: `{"ok": true, "task": "<task_id>", "project": "<project>", "action": "accept"}`.
+**Failure modes**: raises (`McpToolError`) naming the policy id if the answer's `content` matched
+a `pre_input` `block` policy; raises naming the underlying reason for an unknown task, a task not
+currently `waiting_input`, or `content` failing the question's own `requestedSchema`.
 
 ### `inbox`
 
