@@ -1074,6 +1074,45 @@ Required for destructive operations:
 
 Format: `Continue? [y/N]: ` for the y/N prompts; `Type the ... id to confirm [<id>]: ` for deletes
 
+## Foreground dispatch progress and in-place approval
+
+### Rendering
+
+`docket pod <project> dispatch` (and `docket pipeline run`, which drives the same function) MUST
+render one line per event on stderr while the dispatch runs, whenever stderr is a real TTY or
+`--progress` is given:
+
+- `session_start` → `▶ <role> …`
+- `approval_requested` → `⏸ <role> wants: <action> · token <token> · denies in <n>s · docket
+  approve <token>`, where `<n>` is `TOOL_APPROVAL_TIMEOUT` minus the elapsed time since the event
+- `approval_required` (the hop-level gate) → `⏸ <role> hop needs approval · token <token> ·
+  docket approve <token>`
+- `session_end` → `■ <role> finished — status=<status>`
+
+No other trace event type renders a line. Without a TTY and without `--progress`, no worker
+thread runs, no trace subscription opens, and stdout/stderr MUST stay byte-identical to a build
+with no progress view (the no-change oracle the golden suite pins).
+
+### In-place approval
+
+When the rendering above is active, stdin is also a real TTY, and `--no-prompt` is absent, every
+`approval_requested` event additionally prints `[a]pprove  [d]eny  [Enter] keep waiting` and reads
+one line from stdin. `a` MUST call `core.approval.approval_grant(token, channel="cli")` then
+`core.dispatch.resolve_waiting_approval(token, "granted")`; `d` MUST call the same pair with
+`approval_deny`/`"denied"` — the identical pair `docket approve`/`docket deny` use, so an in-place
+answer is indistinguishable from a second terminal's. Any other input (including a bare Enter)
+keeps waiting. A token already resolved through another channel (`ApprovalNoop`) prints one dim
+notice and the prompt keeps waiting on the next event; it MUST NOT raise out of the dispatch call.
+
+### Flags
+
+- `--progress` forces the rendering above even when stderr is not a TTY.
+- `--no-prompt` disables the in-place prompt even when stdin is a TTY; rendering is unaffected.
+
+Neither flag applies to `docket harness run` or a non-interactive dispatch caller (`serve
+--dispatch`, a due schedule, the MCP `dispatch` tool) — this section governs only the foreground
+CLI path (`cli/_pod.py::_pod_dispatch`, `cli/_progress.py`).
+
 ## Error Message Standards
 
 ### Format

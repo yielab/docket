@@ -16,8 +16,9 @@ from __future__ import annotations
 import contextlib
 import hashlib as _hashlib
 import json as _json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.markup import escape
@@ -25,6 +26,7 @@ from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli import _progress
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -520,11 +522,23 @@ def _pod_queue(project: str, extra: list[str]) -> None:
     ui.console.print(table)
 
 
-def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
-    """Parse ``[--resume] [--timeout SECONDS]``. ``--timeout`` overrides both the
-    agent-turn and verifyCmd timeout, taking precedence over the pod's persisted
-    Lead-meta values. Raises ValueError on a non-positive/non-integer value."""
+@dataclass(frozen=True, slots=True)
+class DispatchArgs:
+    """Parsed ``docket pod <p> dispatch`` flags."""
+
+    resume: bool
+    timeout: int | None
+    progress: bool
+    no_prompt: bool
+
+
+def _parse_dispatch_args(extra: list[str]) -> DispatchArgs:
+    """Parse ``[--resume] [--timeout SECONDS] [--progress] [--no-prompt]``.
+    ``--timeout`` overrides the agent-turn/verifyCmd timeout over the pod's
+    persisted Lead-meta values. Raises ValueError on a bad ``--timeout``."""
     resume = "--resume" in extra
+    progress = "--progress" in extra
+    no_prompt = "--no-prompt" in extra
     timeout: int | None = None
     if "--timeout" in extra:
         i = extra.index("--timeout")
@@ -532,7 +546,7 @@ def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
         timeout = int(raw)
         if timeout <= 0:
             raise ValueError(raw)
-    return resume, timeout
+    return DispatchArgs(resume, timeout, progress, no_prompt)
 
 
 def _pod_dispatch(
@@ -556,10 +570,12 @@ def _pod_dispatch(
     from docket.core import runs as _runs
 
     try:
-        resume, timeout_override = _parse_dispatch_args(extra)
+        dispatch_args = _parse_dispatch_args(extra)
     except ValueError:
         ui.error("--timeout requires a positive integer number of seconds.")
         raise typer.Exit(1) from None
+    resume = dispatch_args.resume
+    timeout_override = dispatch_args.timeout
     try:
         _dispatch.pod_pipeline(project)  # validates the pod exists and has a Lead
     except _dispatch.DispatchError as ex:
@@ -613,17 +629,28 @@ def _pod_dispatch(
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
 
     record = _runs.create_run("cli", project)
-    results = _runs.execute(
-        record["id"],
-        lambda: _dispatch.dispatch_pod(
+
+    def _fn() -> list[Any]:
+        return _dispatch.dispatch_pod(
             project,
             resume=resume,
             turn_timeout=timeout_override,
             verify_timeout=timeout_override,
             spec=spec,
             variables=variables,
-        ),
-    )
+        )
+
+    # No TTY and no --progress: the exact call this function has always made,
+    # so goldens stay byte-identical (specs/api/cli-interface.spec.md,
+    # "Foreground dispatch progress and in-place approval").
+    if _progress.should_render(progress_flag=dispatch_args.progress):
+        results = _progress.dispatch_with_progress(
+            record["id"],
+            _fn,
+            prompt=_progress.should_prompt(no_prompt_flag=dispatch_args.no_prompt, render=True),
+        )
+    else:
+        results = _runs.execute(record["id"], _fn)
     if results is None:
         rec = _runs.get_run(record["id"])
         error = str(rec.get("error", "")) if rec else ""
