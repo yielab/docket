@@ -1,9 +1,10 @@
 # Observability Export Specification
 
-**Version**: 1.0.0
-**Status**: Draft - model and projection implemented; no exporter yet. `core/telemetry.py`
-provides the neutral span model, the incremental projection, and the export policy; no
-destination, wire encoding, queue, or CLI surface exists yet.
+**Version**: 1.2.0
+**Status**: Draft - model, projection, and the `otlp-http` wire dialect are implemented; no
+destination document, queue, or CLI surface exists yet. `core/telemetry.py` provides the
+neutral span model, the incremental projection, and the export policy;
+`edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport.
 **Last Updated**: 2026-09-27
 
 ## Purpose
@@ -26,11 +27,13 @@ This specification covers:
   on which span, and the fallback rule for a record type with no explicit case.
 - `ExportPolicy` and `admit(record)`: event-type admission and payload reduction
   (`metadata`/`full`).
+- The `otlp-http` dialect (`edges/adapters/exporters/otlp_http.py`): the OTLP JSON encoding of a
+  `Span`/`SpanEvent`, `OtlpHttpSink`'s transport and retry behaviour, and `probe`'s reachability
+  check. This is the only module in docket that knows OTLP's wire shape.
 
 This specification does NOT cover, and each is planned for a later card that will extend this
 document rather than replace it:
 
-- Any wire encoding of a `Span` (an `otlp-http` dialect).
 - A destination document (`kind: exporter`), its credentials, or a built-in catalog.
 - The bounded queue or background thread that would carry spans off the calling thread.
 - A `docket exporters` command or any other CLI surface.
@@ -104,6 +107,48 @@ document rather than replace it:
     exported as a measurement), and **MUST** exclude `run_cancellation_observed`/`step_skipped`
     (no destination has asked for either).
 
+### The otlp-http dialect
+
+19. `encode(spans, *, resource, aliases)` **MUST** return one OTLP JSON `resourceSpans`
+    document: one resource carrying `resource`'s attributes, one `scopeSpans` entry whose
+    `scope` is `{"name": "docket", "version": <docket.__version__>}`, and one wire span per
+    input `Span`, in input order.
+20. Each wire span **MUST** carry `traceId`, `spanId`, and `parentSpanId` as lowercase hex
+    strings (`parentSpanId` is the empty string for a root span, never an omitted key), `name`,
+    `kind` (`3` for a span named `gen_ai.chat`, `1` otherwise), `startTimeUnixNano` and
+    `endTimeUnixNano` as decimal-string nanoseconds
+    (`str(int(datetime.fromisoformat(ts).timestamp() * 1e9))`), and `attributes`.
+21. An OTLP attribute value **MUST** encode a `str` as `{"stringValue": ...}`, a `bool` as
+    `{"boolValue": ...}`, and an `int` as `{"intValue": "<decimal string>"}` (never a bare JSON
+    number, per OTLP JSON's int64-as-string convention); the attribute list **MUST** be sorted
+    by key so the encoding is deterministic.
+22. `aliases` **MUST** duplicate a matching attribute under its alias key on every attribute map
+    it is applied to (the resource and each span's and event's attributes); it **MUST NOT**
+    remove or rename the source key.
+23. A wire span's `status` object (`{"code": 1}` for `Span.status == "ok"`, `{"code": 2}` for
+    `"error"`) **MUST** be present only when the span's status is not `"unset"`; an `"unset"`
+    span **MUST** carry no `status` key.
+24. A `SpanEvent` **MUST** encode as `{"timeUnixNano", "name", "attributes"}`; a span with no
+    events **MUST** carry no `events` key.
+25. `OtlpHttpSink.emit(spans)` **MUST** POST `encode(...)` as `application/json` to the sink's
+    configured endpoint, using the caller-supplied, already-resolved auth header pair (a
+    `bearer`/`basic`/custom-header credential is resolved by the caller; this module reads no
+    credential name) plus any static headers, and **MUST** return a `SinkResult` naming how many
+    spans were accepted.
+26. `emit` **MUST** retry the POST exactly once, and only for an HTTP 429/502/503/504 response,
+    sleeping `min(Retry-After, DISPATCH_RETRY_MAX_WAIT_S)` seconds (1 second when the response
+    names no `Retry-After`) before the retry; any other non-2xx response, and a second retryable
+    response, **MUST** report `accepted=0` without a further retry.
+27. `emit` **MUST NOT** raise for a transport failure (refused connection, timeout, DNS
+    failure); such a failure **MUST** report `SinkResult(accepted=0, status=None,
+    error=<non-empty>)`.
+28. `emit` and `probe` **MUST** accept their clock, sleep, and HTTP opener as parameters with
+    real defaults (`time.monotonic`, `time.sleep`, `urllib.request.urlopen`), so a test can
+    replace all three without a real socket or a real wait.
+29. `probe(endpoint, auth_header, headers, timeout_s)` **MUST** POST `{"resourceSpans": []}` and
+    return a `ProbeResult` naming the raw HTTP status (`None` only for a transport failure) and
+    any error text; it **MUST NOT** classify the outcome itself (that is the caller's job).
+
 ## Interface Contracts
 
 ### Module API (`docket.core.telemetry`)
@@ -146,6 +191,56 @@ class ExportPolicy:
     def admit(self, record: dict[str, Any]) -> dict[str, Any] | None: ...
 ```
 
+### Module API (`docket.edges.adapters.exporters.otlp_http`)
+
+```python
+AuthHeader = tuple[str, str] | None   # (header name, resolved value); None = no auth
+
+def encode(
+    spans: Sequence[telemetry.Span],
+    *,
+    resource: Mapping[str, str],
+    aliases: Mapping[str, str],
+) -> dict[str, Any]: ...
+
+@dataclass(frozen=True)
+class SinkResult:
+    accepted: int
+    status: int | None
+    error: str = ""
+    retry_after_s: float | None = None
+
+class OtlpHttpSink:
+    def __init__(
+        self,
+        endpoint: str,
+        auth_header: AuthHeader,
+        headers: Mapping[str, str] | None = None,
+        resource: Mapping[str, str] | None = None,
+        aliases: Mapping[str, str] | None = None,
+        timeout_s: float = 5.0,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+        opener: Callable[..., Any] = urllib.request.urlopen,
+    ) -> None: ...
+
+    def emit(self, spans: Sequence[telemetry.Span]) -> SinkResult: ...
+    def close(self) -> None: ...
+
+@dataclass(frozen=True)
+class ProbeResult:
+    status: int | None
+    error: str = ""
+
+def probe(
+    endpoint: str,
+    auth_header: AuthHeader,
+    headers: Mapping[str, str],
+    timeout_s: float = 5.0,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> ProbeResult: ...
+```
+
 ## Examples
 
 ### Projecting one session
@@ -167,6 +262,21 @@ policy = telemetry.ExportPolicy(events=telemetry.DEFAULT_EVENTS, payload="metada
 admitted = policy.admit(record)
 if admitted is not None:
     send(admitted)   # never carries "arguments", "output", "prompt", ...
+```
+
+### Encoding and sending one batch
+
+```python
+from docket.edges.adapters.exporters import otlp_http
+
+document = otlp_http.encode(
+    spans, resource={"service.name": "docket"}, aliases={"session.id": "langfuse.session.id"}
+)
+sink = otlp_http.OtlpHttpSink(
+    endpoint="https://collector.example/v1/traces",
+    auth_header=("Authorization", "Bearer <resolved-token>"),
+)
+result = sink.emit(spans)   # never raises; result.status is None only for a transport failure
 ```
 
 ## Validation
@@ -191,8 +301,27 @@ if admitted is not None:
   write to disk.
 - Redaction of secret shapes happens once, in `core.trace.trace_event`, before a record is
   written; this module never re-redacts and never widens what `metadata` mode already dropped.
+- `edges/adapters/exporters/otlp_http.py` **MUST NOT** import `core.exporter.ExporterSpec` or
+  any other destination-document type; it receives only primitive values (an endpoint string,
+  an already-resolved auth header pair, plain mappings) and never reads a credential by name.
+- Encoding the committed fixture (`tests/fixtures/traces/dispatch-3-hops.jsonl`, projected, then
+  `encode`d with `resource={"service.name": "docket"}` and
+  `aliases={"session.id": "langfuse.session.id"}`) **MUST** byte-match
+  `tests/fixtures/otlp-v1/dispatch-3-hops.json` (`json.dumps(sort_keys=True, indent=2) + "\n"`).
+- `OtlpHttpSink.emit` and `probe` **MUST NOT** raise for any transport or HTTP-level failure;
+  every outcome is a typed result.
 
 ## Changelog
+
+### Version 1.2.0 (2026-09-27)
+
+- Added the `otlp-http` dialect: `encode`'s OTLP JSON mapping (attribute value encoding,
+  deterministic sort order, alias duplication, nanosecond timestamps, `status`/`kind` rules),
+  `OtlpHttpSink`'s transport (auth header pass-through, single retry on 429/502/503/504
+  honouring `Retry-After` capped by `DISPATCH_RETRY_MAX_WAIT_S`, never-raises contract), and
+  `probe`'s reachability check. Added the committed wire golden
+  `tests/fixtures/otlp-v1/dispatch-3-hops.json`. No destination document, queue, or CLI surface
+  exists yet; later cards extend this document with those sections.
 
 ### Version 1.0.0 (2026-09-27)
 

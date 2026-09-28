@@ -1,0 +1,222 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "docket"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "docket",
+            "version": "0.2.0-beta.3"
+          },
+          "spans": [
+            {
+              "attributes": [
+                {
+                  "key": "docket.iteration",
+                  "value": {
+                    "intValue": "1"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "qwen3.6-35b"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "stringValue": "stop"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "llama-cpp"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "120"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "40"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1790503202000000000",
+              "kind": 3,
+              "name": "gen_ai.chat",
+              "parentSpanId": "0bbc419ca0683f84",
+              "spanId": "7c83bde03bbb4c56",
+              "startTimeUnixNano": "1790503200500000000",
+              "status": {
+                "code": 1
+              },
+              "traceId": "e8bc163c82eee18733288c7d4ac636db"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "docket.tool.ok",
+                  "value": {
+                    "boolValue": true
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "c1"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "read"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1790503203000000000",
+              "kind": 1,
+              "name": "execute_tool read",
+              "parentSpanId": "0bbc419ca0683f84",
+              "spanId": "30698f78e9d55a63",
+              "startTimeUnixNano": "1790503203000000000",
+              "traceId": "e8bc163c82eee18733288c7d4ac636db"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "docket.iteration",
+                  "value": {
+                    "intValue": "2"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "qwen3.6-35b"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "stringValue": "stop"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "llama-cpp"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "180"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "55"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1790503205000000000",
+              "kind": 3,
+              "name": "gen_ai.chat",
+              "parentSpanId": "0bbc419ca0683f84",
+              "spanId": "5341f26ce3cbf3d1",
+              "startTimeUnixNano": "1790503203200000000",
+              "status": {
+                "code": 1
+              },
+              "traceId": "e8bc163c82eee18733288c7d4ac636db"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "docket.project",
+                  "value": {
+                    "stringValue": "demo-project"
+                  }
+                },
+                {
+                  "key": "docket.role",
+                  "value": {
+                    "stringValue": "lead"
+                  }
+                },
+                {
+                  "key": "docket.session_id",
+                  "value": {
+                    "stringValue": "s1"
+                  }
+                },
+                {
+                  "key": "langfuse.session.id",
+                  "value": {
+                    "stringValue": "s1"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "s1"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1790503207000000000",
+              "events": [
+                {
+                  "attributes": [
+                    {
+                      "key": "docket.action",
+                      "value": {
+                        "stringValue": "block"
+                      }
+                    },
+                    {
+                      "key": "docket.hook",
+                      "value": {
+                        "stringValue": "pre_tool_call"
+                      }
+                    },
+                    {
+                      "key": "docket.policy",
+                      "value": {
+                        "stringValue": "no-secrets"
+                      }
+                    }
+                  ],
+                  "name": "guardrail_block",
+                  "timeUnixNano": "1790503206000000000"
+                }
+              ],
+              "kind": 1,
+              "name": "docket.session",
+              "parentSpanId": "",
+              "spanId": "0bbc419ca0683f84",
+              "startTimeUnixNano": "1790503200000000000",
+              "traceId": "e8bc163c82eee18733288c7d4ac636db"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
