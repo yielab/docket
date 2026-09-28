@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Complete
 **Last Updated**: 2026-09-27
 
@@ -253,6 +253,25 @@ A stored value that fails validation (e.g. a hand-edited `.docket-meta.json`) pr
 stderr naming the offending key and exits 1, with nothing on stdout, instead of showing that
 key's default.
 
+### `docket exporters list --json`
+
+A JSON array, one object per catalog exporter (built-in + global, nearest-wins by name),
+sorted by name. `state` is `core.exporter.activation_state`'s pure classification; a present
+credential never flips it to `"enabled"` by itself -- `enabled` in the underlying document
+must also be `true`.
+
+```json
+[
+  {
+    "name":        "string",
+    "dialect":     "otlp-http",
+    "state":       "enabled | needs credential | disabled | unreachable",
+    "credentials": "array of credential names this exporter's auth declares (may be empty)",
+    "scope":       "built-in | global"
+  }
+]
+```
+
 ### `docket config explain <agent> --json`
 
 A bare object: the effective configuration a real dispatch turn would use for
@@ -326,6 +345,18 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
   "skills": [
     { "name": "string", "scope": "codebase | pod | global" }
   ],
+  "exporters": [
+    {
+      "name":             "string",
+      "dialect":          "otlp-http",
+      "state":            "enabled | needs credential | disabled | unreachable",
+      "scope":            "built-in | global",
+      "credentialSource": "env | store | mixed | none",
+      "payload":          "metadata | full",
+      "exported":         "number", "dropped": "number", "failed": "number",
+      "lastError":        "string (empty when there has been none)"
+    }
+  ],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -341,7 +372,8 @@ guessed default.
 The human-readable (non-`--json`) rendering prints `scope` nowhere (JSON-only) and keeps the
 `tools`/`policies` names/columns and order; it adds one `Provider:` line under the model,
 one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)` /
-`<files> (set)` / `none`), one `Skills:` line listing each `name (scope)` (or `none`), and,
+`<files> (set)` / `none`), one `Skills:` line listing each `name (scope)` (or `none`), one
+`Exporters:` block listing each `name dialect state (scope)` (or `none enabled`), and,
 when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
 ### `docket snapshot` (full output)
@@ -454,6 +486,14 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.15.0 (2026-09-27)
+
+- Added `docket exporters list --json`: an array of `{name, dialect, state, credentials,
+  scope}`, state from `core.exporter.activation_state`. `docket config explain <agent> --json`
+  gains `exporters`: one object per catalog exporter (name, dialect, state, scope, credential
+  source, payload mode, and today's health counters) -- global, not per-agent, since an
+  exporter has no per-pod scope. The human view gains a matching `Exporters:` block.
 
 ### Version 1.14.0 (2026-09-27)
 

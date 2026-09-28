@@ -1513,6 +1513,29 @@ is `live`, `finished` (with a best-effort reconstructed result), or
 
 ---
 
+### exporters
+
+**Usage:** `docket exporters`
+
+Observability export destinations: list, inspect, and enable by authenticating.
+
+Subcommands: `list \[--json\]` prints every catalog exporter's dialect,
+activation state and credential names. `show <name> \[--json\]` prints one
+exporter's effective document, source, state and health counters.
+`enable <name> \[--endpoint URL\] \[--payload metadata|full\] \[--events ...\]
+\[--no-verify\]` prompts for a missing credential on a TTY (else names
+`docket keys add` and exits), probes the endpoint, and writes only the
+`enabled` flag plus the overrides given. `disable <name>` turns it back
+off; stored keys are kept. `test <name>` re-probes without changing
+anything. `add <file.yaml>` and `remove <name>` manage a full document;
+`export <name> \[<file>\]` prints or writes one back out.
+
+
+**Aliases:** None
+
+
+---
+
 ## Global Options
 
 ### --debug
@@ -1582,7 +1605,7 @@ Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` m
 | `telegram` | `wire` |
 | `usage` | `cost` |
 
-`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
+`add`, `approve`, `audit`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
 
 
 ---

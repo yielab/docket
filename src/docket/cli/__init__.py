@@ -2594,6 +2594,30 @@ def cmd_recipes(ctx: typer.Context) -> None:
 
 
 @app.command(
+    "exporters",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_exporters(ctx: typer.Context) -> None:
+    """Observability export destinations: list, inspect, and enable by authenticating.
+
+    Subcommands: `list [--json]` prints every catalog exporter's dialect,
+    activation state and credential names. `show <name> [--json]` prints one
+    exporter's effective document, source, state and health counters.
+    `enable <name> [--endpoint URL] [--payload metadata|full] [--events ...]
+    [--no-verify]` prompts for a missing credential on a TTY (else names
+    `docket keys add` and exits), probes the endpoint, and writes only the
+    `enabled` flag plus the overrides given. `disable <name>` turns it back
+    off; stored keys are kept. `test <name>` re-probes without changing
+    anything. `add <file.yaml>` and `remove <name>` manage a full document;
+    `export <name> [<file>]` prints or writes one back out."""
+    from docket.cli._exporters import run_exporters
+
+    args = list(ctx.args)
+    action = args[0] if args else ""
+    raise typer.Exit(run_exporters(action, args[1:]))
+
+
+@app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

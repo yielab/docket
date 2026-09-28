@@ -22,6 +22,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
+from docket.core import exporter as _exporter
 from docket.core import identity as _identity
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
@@ -219,6 +220,35 @@ def _skills_report(project: str, roots: tuple[Path, ...]) -> list[dict[str, str]
     return [{"name": name, "scope": discovered[name].scope} for name in sorted(discovered)]
 
 
+def _exporters_report() -> list[dict[str, Any]]:
+    """Every catalog exporter's activation state and today's health counters -- global, not
+    per-agent (an exporter has no per-pod scope; see observability-export.spec.md
+    "Activation")."""
+    catalog = _exporter.load_catalog()
+    health = _exporter.read_health()
+    report: list[dict[str, Any]] = []
+    for name in sorted(catalog.entries):
+        spec = catalog.entries[name]
+        state, _missing = _exporter.activation_state(spec, health.get(name))
+        _values, credential_source = _exporter.resolve_credentials(spec)
+        record = health.get(name, {})
+        report.append(
+            {
+                "name": name,
+                "dialect": spec.dialect,
+                "state": state,
+                "scope": catalog.source_of(name),
+                "credentialSource": credential_source,
+                "payload": spec.payload,
+                "exported": record.get("exported", 0),
+                "dropped": record.get("dropped", 0),
+                "failed": record.get("failed", 0),
+                "lastError": record.get("lastError", ""),
+            }
+        )
+    return report
+
+
 def _explain(agent_id: str) -> dict[str, Any]:
     """Compose one agent's effective configuration. Raises ``DispatchError``/
     ``PodSettingsError`` unchanged when this pod's stored settings are invalid --
@@ -301,6 +331,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
         "podSettings": pod_settings_report,
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
+        "exporters": _exporters_report(),
         "configSource": config_of_record["configSource"],
         "configDigest": config_of_record["configDigest"],
         "drift": config_of_record["drift"],
@@ -376,6 +407,14 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
     skills = report["skills"]
     skills_display = ", ".join(f"{s['name']} ({s['scope']})" for s in skills) if skills else "none"
     ui.console.print(f"  [bold]{'Skills:':<16}[/bold] {skills_display}")
+    ui.console.print("  [bold]Exporters:[/bold]")
+    if report["exporters"]:
+        for exp in report["exporters"]:
+            ui.console.print(
+                f"    {exp['name']:<14} {exp['dialect']:<10} {exp['state']:<16} ({exp['scope']})"
+            )
+    else:
+        ui.console.print("    none enabled")
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         ui.console.print(
