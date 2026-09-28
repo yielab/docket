@@ -85,7 +85,13 @@ explicit request. D-25's trigger stays as written for anything beyond this phase
 3. **Policy before the queue.** `ExportPolicy` (`events: default|all|[...]`, `payload:
    metadata|full`, `payloadMaxChars`) is applied in the calling thread, O(1) per record.
    `metadata` (default) sends names, ids, counts, sizes, verdicts and finish reasons; never tool
-   arguments, tool results or prompt text. `full` is an explicit, audited operator choice.
+   arguments, tool results or prompt text. `full` is an explicit, audited operator choice. As
+   shipped, the `gen_ai.chat`/`execute_tool` spans' attribute sets are closed (Requirements 8-9)
+   and never include prompt, message, or tool argument/output content at either setting --
+   `llm_call` itself never records that content (measured tokens and latency only); `payload`
+   currently governs only the handful of other trace event types whose payload carries a
+   content-named field. Found live 2026-09-28 (P32-9 follow-up); wiring real content through
+   under `full` would be a deliberate, separately-scoped privacy decision, not a bug fix.
 4. **The pipeline never blocks a turn.** `core/telemetry.py::Pipeline`: bounded `queue.Queue`,
    one daemon thread, batches, drop-and-count on saturation, `flush(timeout)` at the end of
    `run_turn`, `close()` at exit. Zero enabled exporters means no thread and no subscription:

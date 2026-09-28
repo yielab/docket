@@ -1,20 +1,22 @@
 # Observability Export Specification
 
-**Version**: 1.5.0
+**Version**: 1.5.1
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export`), and `pod.yaml`'s `exporters:` key
-are all live and verified against a real dispatch and a real OpenTelemetry Collector (see
-"External verification"). `core/telemetry.py` provides the neutral span model, the incremental
-projection, the export policy, and `Pipeline`/the module-level `start`/`flush`/`close`/`health`
-registry; `core/exporter.py` provides the `kind: exporter` document, the built-in + global
-catalog, pure activation classification, and `enable_exporter`/`disable_exporter`;
-`edges/adapters/exporters/otlp_http.py` provides the one shipped wire encoding and transport;
-`edges/adapters/exporters/__init__.py` builds a `SpanSink` from a resolved `ExporterSpec`
-(`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts the pipeline lazily and
-flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path. A live Langfuse
-round-trip remains open, blocked on the operator's own credentials -- see "External
-verification".
+are all live and verified against a real dispatch, a real OpenTelemetry Collector, and a real
+Langfuse round-trip visually confirmed in its dashboard (see "External verification"). **A known
+limit, found in that same verification:** `gen_ai.chat`/`execute_tool` spans carry only
+structural facts (model/tool name, ok/fail, timing, measured token counts) at either `payload`
+setting — a destination's Input/Output fields read empty for both, by the closed attribute sets
+Requirements 8-9 specify, because `llm_call` itself never records message content. `core/telemetry.py` provides the neutral span
+model, the incremental projection, the export policy, and `Pipeline`/the module-level
+`start`/`flush`/`close`/`health` registry; `core/exporter.py` provides the `kind: exporter`
+document, the built-in + global catalog, pure activation classification, and
+`enable_exporter`/`disable_exporter`; `edges/adapters/exporters/otlp_http.py` provides the one
+shipped wire encoding and transport; `edges/adapters/exporters/__init__.py` builds a `SpanSink`
+from a resolved `ExporterSpec` (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts
+the pipeline lazily and flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path.
 **Last Updated**: 2026-09-28
 
 ## Purpose
@@ -690,10 +692,10 @@ This exercises the `auth: none` path (Requirements 24-27) end to end: catalog re
 `verify_endpoint` classification on enable (Requirement 31), the pipeline (Requirements 44-49),
 and the module-level wiring into `run_turn` (Requirements 50-57).
 
-### Langfuse, `otlp-http`, `auth: basic` -- blocked on operator credentials
+### Langfuse, `otlp-http`, `auth: basic` -- live round-trip verified 2026-09-28
 
-`docket exporters enable langfuse` was run on the same machine and correctly refused, since no
-credential was stored -- the real, reproducible non-TTY path Requirement 60 describes:
+`docket exporters enable langfuse` was first run on this machine with no credential stored, and
+correctly refused -- the real, reproducible non-TTY path Requirement 60 describes:
 
 ```text
 $ docket exporters enable langfuse
@@ -703,12 +705,52 @@ $ docket exporters enable langfuse
 ```
 
 The same refusal was reproduced for `honeycomb` (`auth: header`), confirming Requirement 60
-across both non-`none` auth kinds. **A live Langfuse round-trip needs the operator's own
-`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`** -- this cannot be fabricated or skipped per the
-project's no-overclaiming discipline. This is the one acceptance item this specification cannot
-mark verified; re-run `docket exporters enable langfuse` with real keys and a dispatch, then
-record the trace's appearance in Langfuse (or its rejection of `application/json`, which would
-open a deferred protobuf card) in a future revision of this section.
+across both non-`none` auth kinds.
+
+The operator then stored both keys (`docket keys add LANGFUSE_PUBLIC_KEY` /
+`LANGFUSE_SECRET_KEY`) and `enable` succeeded, probing the real endpoint with the real
+credential:
+
+```text
+$ docket exporters enable langfuse
+✓ Exporter enabled: langfuse  ->  https://cloud.langfuse.com/api/public/otel/v1/traces
+  scope: global  payload: metadata
+```
+
+A second real `docket pod rack-cli dispatch` (4 hops, local model, 10 `llm_call` events) ran with
+both `otel-collector` and `langfuse` enabled at once. `docket exporters show langfuse` afterward
+reported `health exported=27 dropped=0 failed=0`: every one of the 27 spans this dispatch
+produced (session roots, `gen_ai.chat`, `execute_tool`) got a 2xx response from Langfuse's real
+cloud endpoint, under the real basic-auth credential -- `OtlpHttpSink.emit`'s `accepted` count
+(Interface Contracts, `docket.edges.adapters.exporters.otlp_http`) only increments on
+`200 <= status < 300`, so a non-zero `exported`/zero `failed` pair is not self-reported success,
+it is the endpoint's own answer. The same dispatch's 27 spans also landed on the local
+`otel-collector`, confirming both destinations receive the identical batch. This machine has no
+browser access to Langfuse's own dashboard, so the generations' on-screen appearance is the one
+detail only the operator can confirm directly; the HTTP-level delivery result above -- a 2xx
+response for every span, from Langfuse's own server -- is what this specification records.
+
+The operator then did view the dashboard directly and confirmed the trace, its
+`docket.session` root, and its `gen_ai.chat` spans render there with real timing and token
+counts -- and flagged that the `gen_ai.chat` generation's Input/Output fields read `null`/
+`undefined`. Traced to the code: this is not a delivery or encoding defect. Requirement 8 closes
+the `gen_ai.chat` attribute set to `gen_ai.system`/`gen_ai.request.model`/
+`gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens`/`gen_ai.response.finish_reasons`/
+`docket.iteration`, and Requirement 9 closes `execute_tool <name>` to
+`gen_ai.tool.name`/`gen_ai.tool.call.id`/`docket.tool.ok`/`docket.tool.blocked_by` -- neither
+list has ever included prompt, message, or tool argument/output content, at either `payload`
+setting, because `_trace_llm_call` (`core/agent_loop.py`) never records message content in the
+`llm_call` event to begin with (model, provider, `ok`, `finishReason`, token counts, latency
+only). `ExportPolicy`'s `metadata`/`full` reduction (Requirements 15-17) is real and correctly
+implemented, but has no observable effect on these two span kinds, since `project`'s handlers
+for `llm_call`/`tool_call`/`tool_result` never read a content-bearing payload key into a `Span`
+attribute regardless of what `admit` left in the record. This was accurately specified
+(Requirements 8-9 never promised content) but under-documented: `docs/CONFIGURATION.md` §3.14,
+`docs/SECURITY-SIMPLE.md`'s Layer 6, and this ADR's own §"Policy before the queue" previously
+implied `full` would surface prompt/tool content for these spans; corrected 2026-09-28 to state
+plainly that a destination's Input/Output will read empty for `gen_ai.chat`/`execute_tool`
+regardless of `payload`, and that wiring real content through would be new, deliberately-scoped
+work (a privacy decision, not a bug fix) -- not undertaken here.
 
 ### Recorded discrepancy: the fixture-replacement instruction
 
@@ -726,6 +768,21 @@ above) are what a live run can actually add over the fixture, and this section r
 instead. The fixture and its golden are unchanged.
 
 ## Changelog
+
+### Version 1.5.1 (2026-09-28)
+
+- **Langfuse round-trip visually confirmed; a known content limit found and documented.** The
+  operator supplied real `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`, `docket exporters enable
+  langfuse` succeeded, and a real dispatch's trace, `docket.session` root and `gen_ai.chat` spans
+  rendered in Langfuse's own dashboard with real timing and token counts, closing the one item
+  1.5.0 left open. Flagged live: the generation's Input/Output fields read `null`/`undefined`.
+  Traced to Requirements 8-9's closed `gen_ai.chat`/`execute_tool` attribute sets and
+  `core/agent_loop.py::_trace_llm_call`, which never records message content -- not a delivery
+  or encoding defect, but `docs/CONFIGURATION.md` §3.14, `docs/SECURITY-SIMPLE.md`'s Layer 6, and
+  ADR 0014 previously implied `payload: full` would surface it for these two span kinds; all
+  three corrected. New "content in gen_ai.chat/execute_tool spans" paragraph in "External
+  verification" records the finding; wiring real content through remains unscoped, deliberate
+  future work.
 
 ### Version 1.5.0 (2026-09-28)
 

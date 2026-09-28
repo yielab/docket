@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Langfuse round-trip confirmed live, and a content limit found and documented.** With the
+  operator's own credentials stored, `docket exporters enable langfuse` and a real dispatch
+  produced a trace visually confirmed in Langfuse's own dashboard (session root, `gen_ai.chat`
+  spans, real timing and token counts). Flagged live: the generation's Input/Output read empty.
+  Traced to a closed, spec-mandated attribute set (`observability-export.spec.md` Requirements
+  8-9) and `core/agent_loop.py::_trace_llm_call`, which never records message content — not a
+  delivery or encoding defect. `docs/CONFIGURATION.md` §3.14, `docs/SECURITY-SIMPLE.md`'s Layer
+  6, and `docs/adr/0014-observability-export.md` previously implied `payload: full` would
+  surface prompt/tool content for `gen_ai.chat`/`execute_tool`; corrected — a destination's
+  Input/Output will read empty for both span kinds regardless of `payload` until that content is
+  deliberately, separately wired in.
 - **Observability export verified live and documented (Phase 32, D-48, close).** A real
   `docket pod` dispatch (4 hops, local model) against a Docker `otel-collector`
   produced 5 `docket.session` roots, 29 `gen_ai.chat` spans with real measured token counts, and

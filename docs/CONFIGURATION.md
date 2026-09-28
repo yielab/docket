@@ -829,10 +829,21 @@ argument) and re-run `enable` -- it re-probes with the stored credential before 
 
 `payload` governs what a span carries, not whether it is sent: `metadata` (the default, and every
 built-in except `otel-collector`) strips `arguments`/`text`/`content`/`output`/`result`/`prompt`/
-`messages`/`summary` from every span's payload before it leaves the host; `full` keeps them,
-truncated to a capped length. `otel-collector` ships `payload: full` because that traffic never
-leaves the machine; flip any other exporter to `full` only when the destination itself is
-trusted with tool output and prompt content.
+`messages`/`summary` from a trace record's payload before it is projected; `full` keeps them,
+truncated to a capped length. **This does not currently affect the two span kinds a destination
+like Langfuse renders as a generation or a tool call:** `gen_ai.chat` (`llm_call`) carries only
+`gen_ai.system`/`gen_ai.request.model`/`gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens`/
+`gen_ai.response.finish_reasons`/`docket.iteration`, and `execute_tool <name>` carries only
+`gen_ai.tool.name`/`gen_ai.tool.call.id`/`docket.tool.ok` — neither ever includes the model's
+prompt/completion text or a tool's arguments/output, at either payload setting, because docket's
+own `llm_call` trace event never captures message content in the first place (measured tokens
+and latency only) and the two spans' attribute sets are closed by
+`observability-export.spec.md`'s Requirements 8-9. A destination's own "Input"/"Output" columns
+will read empty for these two span kinds until that content is deliberately wired in — expect
+token counts, timing, tool names and pass/fail, not conversation content, from any exporter
+today. `otel-collector` still ships `payload: full` because that traffic never leaves the
+machine, and `full` is not inert everywhere: it still applies to the handful of other trace event
+types whose payload happens to carry a `metadata`-stripped field as a session-root event.
 
 A pod names the destinations it wants in `pod.yaml`'s `exporters:` list (validated against the
 live catalog by `apply`/`validate`/`init --recipe`; unknown names refuse before anything is

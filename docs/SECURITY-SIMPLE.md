@@ -178,11 +178,18 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   Nothing is sent anywhere until an operator runs `docket exporters enable <name>`, which
   resolves a credential (prompted, never a CLI argument), probes the real endpoint, and only
   then writes the minimal override that turns it on.
-- **What leaves depends on `payload`, checked per exporter.** `metadata` (the default, and every
-  built-in except `otel-collector`) strips `arguments`, `text`, `content`, `output`, `result`,
-  `prompt`, `messages` and `summary` from every span before export — only structural facts
-  travel: tool name, ok/fail, timing, measured token counts, span/trace ids. `full` keeps those
-  fields, each truncated to a capped length (`payload_max_chars`, default 4000). `otel-collector`
+- **Only structural facts travel today, whatever `payload` says.** A model-call span
+  (`gen_ai.chat`) and a tool span (`execute_tool <name>`) — the two kinds a destination like
+  Langfuse renders as a generation or a tool call — carry only tool/model name, ok/fail, timing,
+  measured token counts and span/trace ids. Neither ever carries the actual prompt, completion,
+  or a tool's arguments/output: docket's own `llm_call` trace event never records message
+  content, by design (measured tokens and latency only), so there is no content for either
+  payload setting to include. Expect a destination's "Input"/"Output" fields to read empty for
+  these two span kinds regardless of `payload`. `payload` still governs the small number of
+  other trace event types whose payload happens to carry a `metadata`-stripped field (`arguments`,
+  `text`, `content`, `output`, `result`, `prompt`, `messages`, `summary`): `metadata` (the
+  default, and every built-in except `otel-collector`) drops those fields before export; `full`
+  keeps them, truncated to a capped length (`payload_max_chars`, default 4000). `otel-collector`
   is the one built-in shipped with `payload: full`, because that traffic stays on this machine;
   every other built-in ships `metadata`.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
