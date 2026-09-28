@@ -577,6 +577,224 @@ class TestEndToEnd:
             for ev in trace_events
         )
 
+    def test_park_approval_mode_parks_a_gated_hop_immediately_instead_of_waiting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A real policy-gated `bash` call, through the real `DocketDriver`, ends the hop
+        well under `TOOL_APPROVAL_TIMEOUT` and parks the task, token recorded."""
+        from docket.core.policy import install_policies
+
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
+        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        install_policies()
+        _fleet.meta_set("demo-lead", "approvalMode", "park")
+
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                _final_response("lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "clean the build dir")
+        started = time.monotonic()
+        results = _dispatch.dispatch_pod("demo")
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
+        assert results[0].status == "waiting_approval", results[0].reason
+        assert results[0].approval_token
+        tasks = _dispatch.read_tasks("demo")
+        assert tasks[0]["status"] == "waiting_approval"
+        assert tasks[0]["approvalToken"] == results[0].approval_token
+        # The parked hop is persisted (audit/trace history stays true) --
+        # `parked: true`, not silently dropped.
+        assert tasks[0]["hops"][-1]["role"] == "implementer"
+        assert tasks[0]["hops"][-1]["parked"] is True
+        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+        assert trace_files
+        trace_events = [
+            json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+        ]
+        assert any(
+            ev["event_type"] == "approval_required"
+            and ev["payload"].get("token") == results[0].approval_token
+            for ev in trace_events
+        )
+
+    def test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The resume path: `docket approve <t>` then `docket pod <p> dispatch` re-runs the
+        implementer hop (not the lead's already-persisted one) at its own index, and the exact
+        same tool call the human approved passes once via a single-use pre-grant."""
+        from docket.core import approval as _approval_mod
+        from docket.core.policy import install_policies
+
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
+        _seed_pod(tmp_path, monkeypatch)
+        install_policies()
+        _fleet.meta_set("demo-lead", "approvalMode", "park")
+
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        park_backend = _ScriptedBackend(
+            [
+                _final_response("lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: park_backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "clean the build dir")
+        parked = _dispatch.dispatch_pod("demo")
+        token = parked[0].approval_token
+        assert token
+
+        # docket approve <token>
+        _approval_mod.approval_grant(token, channel="cli")
+        assert _dispatch.resolve_waiting_approval(token, "granted") is True
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "pending"
+        assert len(task["pregrants"]) == 1
+        assert task["pregrants"][0]["token"] == token
+        assert task["pregrants"][0]["tool"] == "bash"
+        assert task["pregrants"][0]["argsDigest"]
+        # The override-index field is for skipping a pre-hop approval *gate*,
+        # never reused to re-run an already-attempted hop.
+        assert task.get("gateOverridePipelineIndex") is None
+
+        # docket pod demo dispatch -- the implementer's identical call is
+        # re-issued by the model and this time passes via the pre-grant, then
+        # the hop finishes normally.
+        resume_backend = _ScriptedBackend(
+            [
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+                _final_response("implementer done"),
+            ]
+        )
+        driver2 = DocketDriver(backend_factory=lambda model: resume_backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver2)
+
+        second = _dispatch.dispatch_pod("demo")
+
+        assert second[0].status == "done", second[0].reason
+        final = _dispatch.read_tasks("demo")[0]
+        # Lead's already-persisted hop was not re-run; the implementer step
+        # appears twice -- the parked attempt and the real one -- exactly the
+        # same "each attempt is its own audit record" shape a rework cycle's
+        # repeated reviewer hop already has, never overwritten in place.
+        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
+        assert final["hops"][1]["parked"] is True
+        assert final["hops"][1]["ok"] is False
+        assert final["hops"][-1]["parked"] is False
+        assert final["hops"][-1]["ok"] is True
+
+    def test_park_deny_fails_the_task_approval_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import approval as _approval_mod
+        from docket.core.policy import install_policies
+
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
+        _seed_pod(tmp_path, monkeypatch)
+        install_policies()
+        _fleet.meta_set("demo-lead", "approvalMode", "park")
+
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                _final_response("lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "clean the build dir")
+        parked = _dispatch.dispatch_pod("demo")
+        token = parked[0].approval_token
+
+        _approval_mod.approval_deny(token, channel="cli")
+        assert _dispatch.resolve_waiting_approval(token, "denied") is True
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "approval_denied"
+
+    def test_park_expiry_past_deadline_denies_via_sweep(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A parked approval's own `expiresAt` (not the default APPROVAL_TIMEOUT) governs it,
+        and the fail-closed sweep denies it once past that deadline -- same resolution path as
+        an explicit human deny."""
+        from docket.core import approval as _approval_mod
+        from docket.core.policy import install_policies
+
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 2, raising=True)
+        _seed_pod(tmp_path, monkeypatch)
+        install_policies()
+        _fleet.meta_set("demo-lead", "approvalMode", "park")
+
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                _final_response("lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "clean the build dir")
+        parked = _dispatch.dispatch_pod("demo")
+        token = parked[0].approval_token
+        assert token
+
+        # Force this record's own expiresAt into the past -- the parked
+        # record carries its own deadline (core/tools.py's `_park_call`),
+        # never the generic APPROVAL_TIMEOUT.
+        rec_path = _cfg.APPROVALS_DIR / f"{token}.json"
+        rec = json.loads(rec_path.read_text(encoding="utf-8"))
+        assert rec["expiresAt"]
+        rec["expiresAt"] = "2000-01-01T00:00:00Z"
+        rec_path.write_text(json.dumps(rec), encoding="utf-8")
+
+        swept = _approval_mod.approval_sweep_expired()
+        assert swept == 1
+
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "approval_denied"
+
     def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -792,6 +1010,63 @@ class _VerdictAwareRunner:
         else:
             output = f"done by {agent_id}"
         return _rd.TurnResult(True, output, 0.01, {"output": output})
+
+
+class TestSweepDoesNotStallOnAParkedPod:
+    """ADR 0016 SS2: an unset ``approvalMode`` resolves to "park" under the sweep, so one
+    pod's gated call no longer stalls every other dispatchable pod in the same call."""
+
+    def test_sweep_parks_one_pod_and_still_finishes_another_in_the_same_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import docket.serve as _serve
+        from docket.core.policy import install_policies
+
+        # Deliberately slow -- if the sweep's "park" default did not fire, alpha's
+        # `wait`-mode ask would block on nobody for up to this long, and beta's
+        # task would not even start within this test's own timeout.
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 60, raising=True)
+
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        repoint_docket_home(monkeypatch, home)
+        _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
+        _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
+        install_policies()
+
+        # dispatchable_pods() walks fleet.json's own agent order -- alpha's Lead
+        # was registered first, so the sweep reaches alpha before beta and these
+        # four scripted turns are consumed in this exact order.
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                _final_response("alpha lead plan"),
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+                _final_response("beta lead plan"),
+                _final_response("beta implementer done"),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("alpha", "gated work")
+        _dispatch.enqueue_task("beta", "plain work")
+
+        started = time.monotonic()
+        _serve._run_sweeps(True)
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
+        alpha_task = _dispatch.read_tasks("alpha")[0]
+        beta_task = _dispatch.read_tasks("beta")[0]
+        assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
+        assert beta_task["status"] == "done", beta_task.get("reason")
 
 
 class TestCrashRecovery:

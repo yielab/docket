@@ -877,3 +877,53 @@ class TestPodSettingReaders:
         _write_meta("myapp-lead", {"approvalMode": "sometimes"})
         with pytest.raises(_dispatch.DispatchError, match="approvalMode"):
             _dispatch.pod_approval_mode("myapp")
+
+    def test_pod_approval_mode_unset_resolves_through_caller_default(self, pod_home: Path) -> None:
+        """ADR 0016 SS2: an unset pod ``approvalMode`` defers to the caller, not a fixed
+        "wait" -- `serve --dispatch`'s sweep passes "park", a foreground TTY dispatch "wait"."""
+        _write_meta("myapp-lead")
+        assert _dispatch.pod_approval_mode("myapp", caller_default="park") == "park"
+        assert _dispatch.pod_approval_mode("myapp", caller_default="wait") == "wait"
+
+    def test_pod_approval_mode_explicit_value_wins_over_caller_default(
+        self, pod_home: Path
+    ) -> None:
+        _write_meta("myapp-lead", {"approvalMode": "refuse"})
+        assert _dispatch.pod_approval_mode("myapp", caller_default="park") == "refuse"
+
+    def test_pod_approval_mode_is_set_false_when_unset(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead")
+        assert _dispatch.pod_approval_mode_is_set("myapp") is False
+
+    def test_pod_approval_mode_is_set_true_when_set(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"approvalMode": "park"})
+        assert _dispatch.pod_approval_mode_is_set("myapp") is True
+
+
+class TestParkedApprovalToken:
+    """``_parked_approval_token`` parses the ``approval_parked`` stop's ``key=value`` error
+    string -- driven through the real producer so the two are proven against each other."""
+
+    def test_round_trips_the_real_producer(self) -> None:
+        from docket.core.agent_loop import approval_parked_error
+        from docket.core.tools import ToolResult
+
+        result = ToolResult(
+            ok=False,
+            decision="deny",
+            tool="bash",
+            call_id="c1",
+            denial_kind="approval_parked",
+            policy_id="prod-approval",
+            reason="policy requires approval",
+            approval_token="apr-abc123",
+        )
+        error = approval_parked_error(result)
+
+        assert _dispatch._parked_approval_token(error) == "apr-abc123"
+
+    def test_none_for_an_ordinary_failure(self) -> None:
+        assert _dispatch._parked_approval_token("boom: connection reset") is None
+
+    def test_none_when_the_prefix_matches_but_no_token_field_is_present(self) -> None:
+        assert _dispatch._parked_approval_token("approval_parked: tool='bash'") is None

@@ -37,8 +37,6 @@ This specification covers:
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
 
-- How a task actually parks for a human, or how a granted permission re-enters a hop
-  (`core/tools.py`, `core/approval.py`, `core/dispatch.py`)
 - How the Lead's pipeline produces a `TaskBrief` in practice, or how `POST /tasks` and
   `docket pod <p> delegate` accept a pre-brief
 - How an event is actually produced, diffed and delivered to a `kind: channel` destination
@@ -75,10 +73,39 @@ its own card):
 
 ### 2. Park, don't block
 
-**Status: Planned — owned by P34-5 (chokepoint) and P34-8 (dispatch re-entry).** The digest this
-area matches a call against (`canonical_args_digest`) and the stop-reason contract it extends
-already exist in this module and in `core/agent_loop.py`'s vocabulary respectively; the `park`
-approval mode, the pre-grant record and re-entry behaviour do not.
+**Status: Implemented.** The chokepoint half (`ToolContext.approval_mode: "park"`,
+`core/tools.py`'s `_park_call`, the `approval_parked` denial kind and stop reason) and the
+dispatch re-entry half (`core/dispatch.py`, `core/pod.py`) together answer requirement area 2's
+question with no live wait: an unattended pod's in-turn `ask` records the call and durably
+parks the task for a human, instead of blocking a thread for up to `TOOL_APPROVAL_TIMEOUT` or
+losing the call outright under `"refuse"`. Full dispatch-side mechanics (resume position,
+pre-grant matching, expiry) are `pod-dispatch.spec.md`'s "Parked approvals"; this area states the
+operator-loop-level contract that section's behaviour must satisfy.
+
+1. A parked task's docket `status` MUST be `waiting_approval`, mapping to `INPUT_REQUIRED` via
+   requirement area 1's table — the same `a2aState` a pre-hop `require_approval` gate's
+   `waiting_approval` already carries. A client reading `a2aState` alone cannot distinguish the
+   two triggers, and MUST NOT need to: both mean "nothing runs until a human decides."
+2. `core.operator_contract.canonical_args_digest(tool, args)` MUST be the one digest a parked
+   call's record, a `resolve_waiting_approval` pre-grant, and `docket pod <p> pregrant`'s
+   CLI-issued pre-grant (requirement area 9, deferred) all key against — so a CLI-issued
+   pre-grant and an in-turn parked approval are matched identically by `core/tools.py`'s single
+   matcher, never two independent digest implementations that could silently disagree.
+3. An unset pod `approvalMode` MUST NOT resolve to a single fixed posture across every caller.
+   `serve --dispatch`'s sweep and a non-interactive foreground dispatch MUST resolve it to
+   `"park"`; an interactive foreground dispatch (a real TTY) MUST resolve it to `"wait"`. An
+   explicit stored `approvalMode` always overrides the caller's own default.
+4. A parked approval's own `expiresAt` MUST be honoured by the same fail-closed sweep that
+   already expires a pre-hop gate's pending approval, resolving to **denied** past deadline —
+   never a silent indefinite wait, and never a second expiry mechanism.
+5. Granting a parked approval MUST NOT reuse the pre-hop gate's `gateOverridePipelineIndex`
+   single-use override: that field exists to skip a gate at a position no hop ever ran, which
+   does not describe an already-attempted, parked hop. The re-entry MUST instead re-run that
+   exact hop, carrying a single-use pre-grant matched by `canonical_args_digest`, so the model's
+   identical next call passes once without asking again.
+6. Non-goal (deliberately out of scope, ADR 0016): resuming the live model-turn session with the
+   granted call's result injected in place of a hop re-run — deferred with a named trigger in
+   the ADR (a measured rate of the re-run hop not re-issuing the granted call).
 
 ### 3. The Lead's intake
 

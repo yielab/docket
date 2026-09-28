@@ -635,11 +635,16 @@ was seeded once at binding time.)*
    `AgentMeta`'s typed fields), falling back to the field's default. Every write is
    audit-logged as `pod.config`. `docket profile <lead-id> --budget <usd>` persists `budgetUsd`
    as this same validated number, not the raw CLI argument string.
-3. `approvalMode` (`"wait"` | `"refuse"`, default `"wait"`) is a fifth key on the same model
-   (`core.pod.PodSettings.approval_mode`), writable through the same `config get`/`set`/`unset`
-   surface. A present-but-invalid stored value (anything other than the two literals) raises
-   exactly like a malformed numeric setting — naming the key — and refuses dispatch rather than
-   defaulting to `"wait"`.
+3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a fifth key on
+   the same model (`core.pod.PodSettings.approval_mode`), writable through the same `config
+   get`/`set`/`unset` surface. A present-but-invalid stored value (anything other than the three
+   literals) raises exactly like a malformed numeric setting — naming the key — and refuses
+   dispatch rather than defaulting to `"wait"`. "Unset" (no `approvalMode` key at all in the
+   Lead's stored meta) is a distinct state from a stored `"wait"` — see "Parked approvals" below
+   for what it resolves to. `approvalExpiryHours` (int `>= 1`, default `24`) and
+   `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
+   likewise writable through `config get`/`set`/`unset`; `inputExpiryHours` is read only by the
+   `input`-step execution this spec's "Parked approvals" section does not itself cover.
 4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256
    digest): the hash of this pod's bound pipeline copy (`core.pod.bound_pipeline_path`), or
    unset. Unlike the scalar keys, `set pipeline <value>` does not accept an arbitrary
@@ -740,16 +745,18 @@ was seeded once at binding time.)*
    no way to shorten that for a pod that is known to run unattended. Only harness mode
    (`cli/_harness.py`) could opt out, by setting `DOCKET_APPROVAL_MODE=refuse` on its own `run_turn`
    call — a path pod dispatch never took.
-2. `_compose_hop` (`core/dispatch.py`) reads `pod_approval_mode(project)` for every hop and, when
-   it is `"refuse"`, sets `DOCKET_APPROVAL_MODE=refuse` in that hop's tool env — merged into
-   whatever env the hop already carries (e.g. an Implementer's `DOCKET_PORT_*`/
-   `DOCKET_SCRATCH_DIR` vars, or a downstream hop's `PIPELINE_WORKTREE_ENV`), never replacing it.
-   This is the same internal caller-to-driver coordinate `PIPELINE_WORKTREE_ENV` already travels:
-   `DocketDriver.run_turn` pops it out of the tool env before building `ToolContext`, so it is
-   never a real tool-visible environment variable, and maps it onto
-   `ToolContext.approval_mode` (`security-gates.spec.md` requirement 11).
-3. Under `"wait"` (the default), a hop's env is byte-identical to every dispatch before this
-   setting existed — no key is added, no existing key is touched.
+2. `_compose_hop` (`core/dispatch.py`) reads `pod_approval_mode(project, caller_default=...)`
+   for every hop and, when the resolved mode is `"refuse"` or `"park"`, sets
+   `DOCKET_APPROVAL_MODE` to that value in that hop's tool env — merged into whatever env the
+   hop already carries (e.g. an Implementer's `DOCKET_PORT_*`/`DOCKET_SCRATCH_DIR` vars, or a
+   downstream hop's `PIPELINE_WORKTREE_ENV`), never replacing it. This is the same internal
+   caller-to-driver coordinate `PIPELINE_WORKTREE_ENV` already travels: `DocketDriver.run_turn`
+   pops it out of the tool env before building `ToolContext`, so it is never a real tool-visible
+   environment variable, and maps it onto `ToolContext.approval_mode` (`security-gates.spec.md`
+   requirement 11). See "Parked approvals" below for `caller_default`'s resolution and for
+   `park`'s own behavior.
+3. Under `"wait"`, a hop's env is byte-identical to every dispatch before this setting
+   existed — no key is added, no existing key is touched.
 4. Under `"refuse"`, a gated call inside that hop ends immediately with the existing
    `approval_unavailable` denial (no approval record created, no wait), the agent loop stops on
    `stop_reason="approval_unavailable"`, and the hop's `TurnResult` comes back `ok=False` with
@@ -759,9 +766,73 @@ was seeded once at binding time.)*
    never retries — `"invalid_output"` (the failure kind this stop reason maps to) is not in
    `_RETRYABLE_FAILURE_KINDS`. No new task status, trace event type, or failure-kind vocabulary is
    introduced; this only changes which hop-failure reason a stuck-on-approval hop now produces.
-5. Non-goals (deliberately out of scope): detecting whether an approval channel is actually live
-   before choosing `"wait"` vs `"refuse"`, and changing the default. A pod that never sets
-   `approvalMode` sees no behavior change at all.
+5. Non-goal (deliberately out of scope): detecting whether an approval channel is actually live
+   before choosing `"wait"` vs `"refuse"` vs `"park"`.
+
+### Parked approvals (`approvalMode: "park"`, ADR 0016 SS2)
+
+1. **Trigger.** `serve --dispatch`'s sweep walks every dispatchable pod serially in one thread
+   (`serve.py::_run_sweeps`); an in-turn `ask` blocking under `"wait"` in one pod's hop stalls
+   every other pod's turn in the same sweep call for up to `TOOL_APPROVAL_TIMEOUT`. `"park"`
+   answers this without the pod ever choosing `"refuse"` (which loses the call rather than
+   deferring it to a human).
+2. **Caller-scoped default.** An *unset* pod `approvalMode` (no key at all in the Lead's stored
+   meta — `pod_approval_mode_is_set`) no longer fixes to `"wait"`. It resolves through the
+   caller's own `caller_default`: `serve.py::_run_sweeps`'s dispatch loop and `dispatch_pod`'s
+   default both pass `"park"`; `cli/_pod.py::_pod_dispatch` passes `"wait"` when `sys.stdin`
+   is a real TTY, else `"park"`. An explicit stored `approvalMode` (including an explicit
+   `"wait"`) always wins over the caller's default. A pod that never had `approvalMode` set and
+   is dispatched from a real foreground TTY sees no behavior change from before this section
+   existed.
+3. **The park itself.** Under a resolved `"park"`, `_compose_hop` sets
+   `DOCKET_APPROVAL_MODE=park` in the hop's tool env (`core/tools.py`'s `ToolContext
+   .approval_mode`, unchanged by this spec). An `ask` verdict there records the exact call (tool
+   name plus a canonical-JSON argument digest) and the task position, creates an approval record
+   with `context.parked = true`, and ends the turn on `stop_reason="approval_parked"` — the
+   agent loop's `error` string carries the token in the same `key=value` shape
+   `approval_unavailable_error` already uses (`core.agent_loop.approval_parked_error`).
+4. **From denial to a durable park.** `_persist_hop_and_trace` (`core/dispatch.py`) parses that
+   token back out of the hop's `TurnResult.error` (`_parked_approval_token`, failing closed —
+   an unparseable token falls through to an ordinary `failed` outcome, never a silent forever-
+   wait). When found, the hop is persisted with `parked: true` (a new boolean field on the
+   persisted hop record, `false` for every prior hop shape) **before** the crash-safety
+   `on_hop` callback runs, and the unit outcome is the same `kind="waiting_approval"` shape the
+   pre-hop `require_approval` gate already produces, carrying this hop's own pipeline index —
+   see "Task status vocabulary" item 6. The event traced is `approval_required` (reused, not a
+   new trace event type): "a require_approval-equivalent gate fired; task -> waiting_approval",
+   whichever of the two triggers fired it.
+5. **Expiry.** `_compose_hop` also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
+   `now + approvalExpiryHours`, computed fresh per hop) whenever the resolved mode is `"park"`;
+   `core/tools.py` stamps this onto the parked record's own `expiresAt`, which
+   `core.approval.approval_sweep_expired`'s existing fail-closed deadline logic already prefers
+   over the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to
+   **denied**, and `resolve_waiting_approval` fails the task exactly as an explicit human deny
+   does (`failureKind: "approval_denied"`).
+6. **Resume at the same index.** `_replay_pipeline_position` treats a `hop.parked` entry as an
+   attempt, not a decided outcome: it neither advances past it nor evaluates it as a rework/route
+   target, and sets the resume position to that hop's own index — re-running the exact step
+   rather than the one after it. The step id may then appear more than once in the task's
+   persisted `hops` (the parked attempt, then the real one), the same "each attempt is its own
+   audit record" shape a rework cycle's repeated Reviewer hop already has. This is deliberately
+   not the same mechanism as the pre-hop gate's `gateOverridePipelineIndex`: that field skips a
+   gate check at a position no hop was ever attempted at, which does not describe a hop that
+   already ran and parked mid-turn — a granted parked approval never sets it.
+7. **Single-use pre-grant on resume.** `resolve_waiting_approval(token, "granted")`, for a
+   record whose context carries `parked: true`, appends `{token, tool, argsDigest}` to the
+   task's own `pregrants` list (new, defaulting to `[]` on every task) instead of setting
+   `gateOverridePipelineIndex`, inside the same locked read-modify-write. `_compose_hop`
+   serialises the task's `pregrants` as JSON into `DOCKET_PREGRANTS` on every hop it composes
+   for that task; `core/tools.py`'s existing pre-grant matcher (unchanged by this spec) consumes
+   at most one entry per exact `(tool, argsDigest)` match, so the re-run hop's identical call
+   passes once without asking again, and anything else still asks.
+8. **Denial.** `resolve_waiting_approval(token, "denied")` for a parked record behaves exactly
+   like a pre-hop gate's deny: the task moves straight to `failed`,
+   `failureKind: "approval_denied"`, never reclaimable.
+9. Non-goals (deliberately out of scope, ADR 0016): resuming the exact live model-turn session
+   with the granted call's result injected (a hop re-run is a new turn, sharing the same durable
+   session history); one worker per pod in the sweep (a parked pod still occupies its own turn
+   in the serial sweep loop, only without blocking); the foreground TTY `[p]ark and continue`
+   prompt key.
 
 ### Budget gate and auto-pause
 
@@ -1343,13 +1414,17 @@ the archetype-side `tokenBudget` schema this section consumes.)*
 5. `blocked` — the pod's budget cap was reached before a hop could run. Not terminal — re-enters
    `pending` only via `docket pod <project> queue --retry <task-id>` or a pod-wide budget change
    on the Lead (never automatically, never via a plain dispatch run).
-6. `waiting_approval` (ROADMAP Phase 15 G-1) — a require_approval gate fired before a hop could
-   run; a real approval record was created and the task is waiting on a human (or automated
-   headless) decision. Not terminal — re-enters `pending` only via a granted approval
-   (`resolve_waiting_approval`, handing the exact pipeline position back as a single-use
-   override), never automatically, never via a plain dispatch run, `retry_task`, or `unblock_pod`.
-   A denied (or fail-closed-expired) approval instead moves the task straight to `failed` (see
-   above) — it does not pass through `pending` at all.
+6. `waiting_approval` (ROADMAP Phase 15 G-1) — either a require_approval gate fired before a hop
+   could run, or (ADR 0016, "Parked approvals" below) a hop's in-turn tool call parked mid-turn
+   under `approvalMode: "park"`; either way a real approval record was created and the task is
+   waiting on a human (or automated headless) decision. Not terminal — re-enters `pending` only
+   via a granted approval (`resolve_waiting_approval`), never automatically, never via a plain
+   dispatch run, `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact
+   pipeline position back as a single-use override (`gateOverridePipelineIndex`); a parked call's
+   grant instead appends a single-use pre-grant to the task's `pregrants` and resumes the
+   already-attempted hop at its own index (see "Parked approvals"). A denied (or
+   fail-closed-expired) approval instead moves the task straight to `failed` (see above) — it
+   does not pass through `pending` at all.
 7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
    during execution. Terminal. The task retains its completed and cancelled-hop evidence, records
    `completedAt`, and cannot be reclaimed or overwritten by a late successful response.

@@ -135,6 +135,17 @@ def _mcp_servers_report(pod_settings: _pod.PodSettings | None) -> list[dict[str,
     ]
 
 
+def _pod_settings_display_value(key: str, value: Any, source: str) -> str:
+    """Human-rendered value for one pod-settings table row -- generic passthrough except
+    for an unset ``approvalMode``."""
+    # ADR 0016 SS2: an unset approvalMode's real effective value is not a single constant
+    # the way every other setting's default is, so this names its two caller-scoped
+    # resolutions instead of the bare stored default.
+    if key == "approvalMode" and source == "default":
+        return f"{value} (unset → park under serve and without a TTY, wait on a TTY)"
+    return str(value)
+
+
 def _pod_settings_report(settings: _pod.PodSettings, project: str) -> dict[str, dict[str, Any]]:
     """Every ``PodSettings`` key's effective value and source ("set"/"default") --
     same shape as ``docket pod <p> config get --json``."""
@@ -428,5 +439,6 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
         table.add_column("VALUE")
         table.add_column("SOURCE", style="dim")
         for key, entry in report["podSettings"].items():
-            table.add_row(key, str(entry["value"]), entry["source"])
+            display = _pod_settings_display_value(key, entry["value"], entry["source"])
+            table.add_row(key, display, entry["source"])
         ui.console.print(table)

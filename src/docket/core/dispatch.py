@@ -17,6 +17,7 @@ import datetime as _dt
 import fnmatch as _fnmatch
 import hashlib as _hashlib
 import json as _json
+import re as _re
 import time as _time
 import uuid as _uuid
 from collections.abc import Callable
@@ -142,6 +143,11 @@ class HopResult:
     # ordinary hop. Persisted so ``_replay_pipeline_position`` can follow the
     # same routing decision on resume instead of re-deriving it.
     next_step: str | None = None
+    # True only for a hop whose in-turn tool call parked mid-turn (ADR 0016
+    # SS2, ``_persist_hop_and_trace``'s ``_parked_approval_token``): an
+    # attempt, not a real outcome. Persisted so ``_replay_pipeline_position``
+    # resumes by re-running this exact index rather than advancing past it.
+    parked: bool = False
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -234,6 +240,12 @@ def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
         task.setdefault(key, default)
     if not isinstance(task.get("hops"), list):
         task["hops"] = []
+    # Single-use pre-grants a human has already resolved for this task's exact
+    # parked call(s) (ADR 0016 SS2) -- `resolve_waiting_approval` appends,
+    # `_compose_hop` serialises unconsumed entries into the resumed hop's env.
+    # A fresh list per task for the same reason `hops` gets one above.
+    if not isinstance(task.get("pregrants"), list):
+        task["pregrants"] = []
     task.setdefault("created", _now())
     task.setdefault("id", f"task-{_uuid.uuid4()}")
     return task
@@ -539,10 +551,26 @@ def pod_verify_timeout(project: str) -> int | None:
     return _lead_meta_timeout(project, "verifyTimeoutS")
 
 
-def pod_approval_mode(project: str) -> Literal["wait", "refuse"]:
-    """The pod's configured unattended-approval posture (Lead's ``approvalMode``,
-    default ``"wait"`` -- see ``_compose_hop``)."""
-    return _pod_settings(project).approval_mode
+def pod_approval_mode_is_set(project: str) -> bool:
+    """Whether this pod's Lead meta carries its own explicit ``approvalMode`` (see
+    ``pod_approval_mode``)."""
+    # Reads the raw stored key directly, never a validated PodSettings value, since that
+    # always carries the field default ("wait") once loaded -- indistinguishable from a
+    # real "wait" unless the raw presence is checked first.
+    lead_id = _pod.member_id(project, "lead")
+    return bool(_fleet.meta_get(lead_id, "approvalMode", ""))
+
+
+def pod_approval_mode(
+    project: str, *, caller_default: Literal["wait", "park"] = "wait"
+) -> Literal["wait", "park", "refuse"]:
+    """The pod's configured unattended-approval posture: an explicit Lead ``approvalMode``
+    always wins; an unset one resolves through *caller_default* instead of a fixed "wait"."""
+    # ADR 0016 SS2: `serve --dispatch`'s sweep and a non-TTY foreground dispatch pass
+    # "park", a TTY foreground dispatch passes "wait" -- see `_compose_hop`.
+    if pod_approval_mode_is_set(project):
+        return _pod_settings(project).approval_mode
+    return caller_default
 
 
 def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
@@ -794,6 +822,7 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "stepId": h.step_id or h.role,
         "artifact": h.artifact.model_dump() if h.artifact is not None else None,
         "nextStep": h.next_step,
+        "parked": h.parked,
     }
 
 
@@ -823,6 +852,7 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         step_id=str(rec.get("stepId", "") or rec.get("role", "")),
         artifact=artifact,
         next_step=next_step_raw if isinstance(next_step_raw, str) else None,
+        parked=bool(rec.get("parked", False)),
     )
 
 
@@ -866,6 +896,14 @@ def _replay_pipeline_position(
         if idx is None:
             continue  # a parallel-group child's hop — handled by the trailing check below
         node = runtime_steps[idx]
+        if hop.parked:
+            # An in-turn tool call parked mid-hop (ADR 0016 SS2): the hop was
+            # attempted, not decided -- it never reached a gate or a route, so
+            # neither applies. Resume re-runs this exact index (not the one
+            # after it), carrying no rework state forward.
+            rework_hop = None
+            pi = idx
+            continue
         if hop.next_step:
             # This hop's gate outcome was routed via its step's own `on` map
             # (see `_route_outcome`) — follow that exact decision instead of
@@ -1045,6 +1083,11 @@ class _UnitContext:
     # outcome_label) -- alongside `rework_counts`, mutated in place by
     # `_route_outcome`. Defaulted for the same reason as `step_instructions`.
     route_counts: dict[tuple[str, str], int] = field(default_factory=dict)
+    # The caller's own resolution for an *unset* pod ``approvalMode`` (ADR 0016 SS2) --
+    # "wait" for a foreground TTY dispatch, "park" for `serve --dispatch`'s sweep or a
+    # non-TTY foreground dispatch. An explicit pod value always wins over this (see
+    # `pod_approval_mode`). Defaulted for the same reason as `step_instructions` above.
+    approval_default: Literal["wait", "park"] = "wait"
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -1182,12 +1225,32 @@ def _compose_hop(
     if pipeline_worktree:
         env = dict(env or {})
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
-    if pod_approval_mode(ctx.project) == "refuse":
+    resolved_mode = pod_approval_mode(ctx.project, caller_default=ctx.approval_default)
+    if resolved_mode in ("refuse", "park"):
         # Same internal-env route as PIPELINE_WORKTREE_ENV/harness mode
         # (cli/_harness.py): DocketDriver pops this before the tool env
         # reaches ToolContext, so it is never a real tool-visible variable.
         env = dict(env or {})
-        env[_rd.DOCKET_APPROVAL_MODE] = "refuse"
+        env[_rd.DOCKET_APPROVAL_MODE] = resolved_mode
+        if resolved_mode == "park":
+            # This hop's own deadline for a call it parks (ADR 0016 SS2) --
+            # popped by DocketDriver into ToolContext.approval_expires_at,
+            # stamped on the parked record by core/tools.py's `_park_call`.
+            # Computed fresh per hop (not once per task) so a long-running
+            # earlier hop never shortens a later one's window.
+            expiry_hours = _pod_settings(ctx.project).approval_expiry_hours
+            deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=expiry_hours)
+            env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
+    pregrants_raw = ctx.task.get("pregrants")
+    if isinstance(pregrants_raw, list) and pregrants_raw:
+        # Every pre-grant this task's human has already resolved (ADR 0016
+        # SS2) -- a human already consumed one carries no live effect
+        # (`consume_pregrant` is single-use and atomic), so passing the whole
+        # list along is a harmless no-op for anything already spent; it only
+        # ever lets an unconsumed exact-match call through without asking
+        # again.
+        env = dict(env or {})
+        env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
     return message, env
 
 
@@ -1398,6 +1461,30 @@ def _build_hop_result(
     )
 
 
+# `core.agent_loop.approval_parked_error` owns this string's format (quoted
+# key=value pairs, the same convention `core.harness`'s `_extract_field` already
+# parses for `approval_unavailable_error`'s sibling string) -- TurnResult carries
+# no structured field for a parked call's token, so this is the one place
+# dispatch.py re-derives it. Only the token is needed here (the tool/policy/reason
+# fields feed the harness contract, not this seam), so this stays a narrow,
+# single-field parser rather than a second copy of harness.py's generic one.
+_PARKED_ERROR_PREFIX = "approval_parked:"
+_APPROVAL_TOKEN_RE = _re.compile(r"approval_token=(?:'([^']*)'|\"([^\"]*)\"|(\S+))")
+
+
+def _parked_approval_token(error: str) -> str | None:
+    """The approval token from a hop's ``approval_parked`` stop, or ``None`` for an
+    ordinary failure or an unparseable one."""
+    # Fails closed: an unmatched parked call falls through to an ordinary `failed`
+    # outcome instead of silently waiting forever.
+    if not error.startswith(_PARKED_ERROR_PREFIX):
+        return None
+    match = _APPROVAL_TOKEN_RE.search(error)
+    if not match:
+        return None
+    return next((g for g in match.groups() if g is not None), None) or None
+
+
 def _persist_hop_and_trace(
     ctx: _UnitContext,
     role: str,
@@ -1405,10 +1492,21 @@ def _persist_hop_and_trace(
     run_res: _rd.TurnResult,
     hop_ok: bool,
     hop_error: str,
+    index_for_context: int,
 ) -> _UnitOutcome | None:
-    """Persist this hop and trace its result; short-circuit a failed hop. Persisted
-    immediately, not deferred to a group join, so a crash in a sibling child never loses an
-    already-completed hop. Returns the terminal outcome, or ``None`` to proceed to the gate."""
+    """Persist this hop and trace its result; short-circuit a failed hop. Returns the
+    terminal outcome, or ``None`` to proceed to the gate."""
+    # Persisted immediately, not deferred to a group join, so a crash in a sibling child
+    # never loses an already-completed hop. A hop whose turn stopped on an in-turn
+    # `approval_parked` denial (park-mode DOCKET_APPROVAL_MODE, see `_compose_hop`) is
+    # persisted with `hop.parked = True` before `on_hop` -- so a crash right after still
+    # leaves the correct record for `_replay_pipeline_position` to resume from -- and
+    # yields the same `waiting_approval` outcome shape the pre-hop `require_approval` gate
+    # already produces, at this hop's own pipeline index (ADR 0016 SS2).
+    parked_token = None if hop_ok else _parked_approval_token(hop_error)
+    if parked_token is not None:
+        hop.parked = True
+
     if ctx.on_hop is not None:
         ctx.on_hop(hop)
 
@@ -1436,6 +1534,28 @@ def _persist_hop_and_trace(
                 kind="cancelled",
                 hops=[hop],
                 reason="run cancellation requested",
+            )
+        if parked_token is not None:
+            # Reuses the pre-hop gate's own event type (core/trace.py's
+            # EVENT_TYPES is not this card's to extend): both mean exactly
+            # "a require_approval-equivalent gate fired; task ->
+            # waiting_approval", whether the trigger was a pre-hop gate or, as
+            # here, an in-turn tool call parking mid-hop.
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "approval_required",
+                _json.dumps(
+                    {"role": role, "token": parked_token, "pipelineIndex": index_for_context}
+                ),
+            )
+            return _UnitOutcome(
+                kind="waiting_approval",
+                hops=[hop],
+                reason=f"{role} hop parked for approval (token={parked_token})",
+                approval_token=parked_token,
+                pending_approval_index=index_for_context,
             )
         return _UnitOutcome(
             kind="failed",
@@ -1687,7 +1807,9 @@ def _execute_unit(
         ctx, node, role, member_id, run_res, hop_output, hop_ok, hop_error, attempt
     )
 
-    early_outcome = _persist_hop_and_trace(ctx, role, hop, run_res, hop_ok, hop_error)
+    early_outcome = _persist_hop_and_trace(
+        ctx, role, hop, run_res, hop_ok, hop_error, index_for_context
+    )
     if early_outcome is not None:
         return early_outcome
 
@@ -1836,13 +1958,16 @@ def _run_command_step(
     """Run *node*'s ``run`` command directly -- no agent turn, no session. Classified like
     any shell-out first: ``allow`` runs it, anything else gates like an ``approval`` step
     (or fails outright under ``approvalMode: refuse``). See pod-dispatch.spec.md."""
+    # `park` gates the same non-blocking way `wait` does here -- a command step never
+    # reaches the in-turn tool chokepoint a park-mode call would need to record, so there
+    # is nothing to park.
     assert node.run is not None
     role = node.step_id
     cmd = node.run
     settings = _pod_settings(ctx.project)
     verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
     if verdict.action != "allow":
-        if pod_approval_mode(ctx.project) == "refuse":
+        if pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse":
             _trace_locked(
                 ctx.project,
                 ctx.session_id,
@@ -2076,6 +2201,7 @@ def dispatch_task(
     sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
+    approval_default: Literal["wait", "park"] = "wait",
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop. Full contract: pod-dispatch.spec.md
     ("Pipeline order and participation", "Per-hop incremental persistence and crash recovery",
@@ -2084,13 +2210,16 @@ def dispatch_task(
     failed hop stops the pipeline except for a bounded rework loop re-running a verdict gate's
     declared target up to its own cycle budget. *spec* ``None`` resolves the pod's
     zero-migration pipeline; *resume_from* seeds hops completed before a crash or a settled
-    refusal (skipped, not re-invoked); *turn_timeout*/*verify_timeout* override the pod Lead's
-    meta then ``DEFAULT_TIMEOUT``, unless a step declares its own. *on_retry* fires before each
-    retry so the caller can refresh the task's claim before it goes stale. *variables* is this
-    run's already-resolved pipeline variable namespace (``dispatch_pod`` validates and resolves
-    it before calling here) -- used only to interpolate any step's own ``instructions`` text
-    (pipeline-format.spec.md); a direct caller that skips ``dispatch_pod`` gets no unresolved-
-    reference refusal, only best-effort interpolation.
+    refusal (skipped, not re-invoked) -- including a hop that parked mid-turn, replayed by its
+    own exact index (ADR 0016 SS2, see ``_replay_pipeline_position``); *turn_timeout*/
+    *verify_timeout* override the pod Lead's meta then ``DEFAULT_TIMEOUT``, unless a step
+    declares its own. *on_retry* fires before each retry so the caller can refresh the task's
+    claim before it goes stale. *variables* is this run's already-resolved pipeline variable
+    namespace (``dispatch_pod`` validates and resolves it before calling here) -- used only to
+    interpolate any step's own ``instructions`` text (pipeline-format.spec.md); a direct caller
+    that skips ``dispatch_pod`` gets no unresolved-reference refusal, only best-effort
+    interpolation. *approval_default* is this call's own resolution for an *unset* pod
+    ``approvalMode`` (``pod_approval_mode``); an explicit pod value always wins over it.
 
     A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
     the top of ``_execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
@@ -2161,6 +2290,7 @@ def dispatch_task(
             step_instructions=step_instructions,
             variables={k: str(v) for k, v in resolved_vars.items()},
             route_counts=route_counts,
+            approval_default=approval_default,
         )
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
@@ -2461,36 +2591,68 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
     """React to a just-applied approval decision by mutating the dispatch task it gated, if
     any -- never mutates the approval record itself, only reacts to a transition
     ``core/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
-    waiting_approval") for the grant (-> ``pending`` + gate override) and deny (-> ``failed``,
-    ``failureKind: "approval_denied"``) outcomes. Returns ``False`` as a harmless no-op for an
-    unrelated/already-resolved token or a mismatched task; ``True`` when updated."""
+    waiting_approval") for the pre-hop gate's grant (-> ``pending`` + gate override) and deny
+    (-> ``failed``, ``failureKind: "approval_denied"``) outcomes.
+
+    A **parked** in-turn call (ADR 0016 SS2, ``context["parked"] is True``) carries no
+    ``taskId`` -- ``core/tools.py``'s ``_park_call`` has no task to name -- so its task is
+    found by matching ``approvalToken`` directly instead; a grant appends
+    ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
+    into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for
+    skipping a pre-hop gate, not for re-running an already-attempted hop -- the resumed hop
+    re-runs by ``_replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
+    in-turn ``wait``-mode ask also carries no ``taskId`` (its wait blocks the calling thread
+    directly, so there is no task-level state to update here) and is unaffected: not parked
+    and no ``taskId`` still no-ops, exactly as before.
+
+    Returns ``False`` as a harmless no-op for an unrelated/already-resolved token or a
+    mismatched task; ``True`` when updated."""
     try:
         rec = _ap.approval_get(token)
     except _ap.ApprovalError:
         return False
     context = rec.get("context")
-    task_id = str(context.get("taskId", "")) if isinstance(context, dict) else ""
+    context = context if isinstance(context, dict) else {}
+    parked = bool(context.get("parked"))
+    task_id = str(context.get("taskId", ""))
     project = str(rec.get("project", ""))
-    if not task_id or not project:
+    if not project or (not task_id and not parked):
         return False
 
     updated = False
+    resolved_task_id = task_id
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal updated
+        nonlocal updated, resolved_task_id
         tasks_raw = doc.get("tasks")
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
-            if t.get("id") != task_id:
+            if task_id:
+                if t.get("id") != task_id:
+                    continue
+            elif t.get("approvalToken") != token:
                 continue
             if t.get("status") != "waiting_approval" or t.get("approvalToken") != token:
                 return None
+            resolved_task_id = str(t.get("id", ""))
             pending_index = t.get("pendingApprovalIndex")
             t.pop("approvalToken", None)
             t.pop("pendingApprovalIndex", None)
             if decision == "granted":
                 t["status"] = "pending"
-                t["gateOverridePipelineIndex"] = pending_index
+                if parked:
+                    pregrants_raw = t.get("pregrants")
+                    pregrants = list(pregrants_raw) if isinstance(pregrants_raw, list) else []
+                    pregrants.append(
+                        {
+                            "token": token,
+                            "tool": str(context.get("tool", "")),
+                            "argsDigest": str(context.get("argsDigest", "")),
+                        }
+                    )
+                    t["pregrants"] = pregrants
+                else:
+                    t["gateOverridePipelineIndex"] = pending_index
             else:
                 t["status"] = "failed"
                 t["reason"] = "approval denied"
@@ -2505,10 +2667,10 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
     if updated:
         _trace.trace_event(
             project,
-            f"agent:{project}:{task_id}",
+            f"agent:{project}:{resolved_task_id}",
             "lead",
             "approval_resumed" if decision == "granted" else "approval_task_denied",
-            _json.dumps({"task": task_id, "token": token}),
+            _json.dumps({"task": resolved_task_id, "token": token}),
         )
     return updated
 
@@ -2524,6 +2686,7 @@ def dispatch_pod(
     sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
+    approval_default: Literal["wait", "park"] = "wait",
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
     ``dispatch_task`` over locked claims until none remain or *max_tasks* is hit --
@@ -2534,7 +2697,9 @@ def dispatch_pod(
     claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
     e.g. the serve webhook's resolved body, or ``docket pipeline run --var``) leaves any step's
     own ``instructions`` with an unresolved ``${var}`` reference. See
-    specs/functional/pipeline-format.spec.md ("Variables")."""
+    specs/functional/pipeline-format.spec.md ("Variables"). *approval_default* is this caller's
+    own resolution for an unset pod ``approvalMode`` (ADR 0016 SS2) -- forwarded to every task's
+    ``dispatch_task`` call unchanged; an explicit pod value always wins over it."""
     pod_pipeline(project)  # validates pod/lead up front
     effective_spec = effective_pipeline(project, spec)
     try:
@@ -2575,6 +2740,7 @@ def dispatch_pod(
             sleep=sleep,
             spec=spec,
             variables=resolved_vars,
+            approval_default=approval_default,
         )
         _finalize_task(project, task_id, res)
         results.append(res)

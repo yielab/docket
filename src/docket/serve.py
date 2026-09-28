@@ -529,11 +529,16 @@ def _run_sweeps(dispatch: bool = False) -> None:
             record = _runs.create_run("sweep", project)
 
             def _dispatch_one(proj: str = project) -> list[_dispatch.TaskResult]:
-                # Timeout knobs inside this pod's per-pod run record.
+                # Timeout knobs inside this pod's per-pod run record. An unset pod
+                # `approvalMode` resolves to "park" here (ADR 0016 SS2): a sweep
+                # walks every dispatchable pod in this one call, so a hop that
+                # would otherwise block on nobody for TOOL_APPROVAL_TIMEOUT must
+                # park instead, or every other pod in the sweep waits behind it.
                 return _dispatch.dispatch_pod(
                     proj,
                     turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
                     verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                    approval_default="park",
                 )
 
             _runs.execute(record["id"], _dispatch_one)
