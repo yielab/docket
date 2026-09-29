@@ -103,6 +103,35 @@ class TestBudgetForRole:
         )
         assert budget > _ctx.DEFAULT_TOKEN_BUDGET
 
+    def test_pod_scoped_archetype_resolves_its_token_budget(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A pod-scoped role with a declared tokenBudget is resolved when project= is passed."""
+        from docket.core import archetypes as _arch_impl
+        from docket.core import config_docs as _config_docs
+        import docket.config as _cfg_impl
+        import pytest
+
+        home = tmp_path / "docket-home"
+        home.mkdir()
+        monkeypatch.setenv("DOCKET_HOME", str(home))
+        monkeypatch.setattr(_cfg_impl, "ARCHETYPE_REGISTRY_FILE", home / "docket-roles.json")
+        (home / "docket-roles.json").write_text('{"roles": {}}', encoding="utf-8")
+
+        role_file = _cfg_impl.recipes_dir() / "secure-build" / "roles" / "security-vetter.yaml"
+        doc = _config_docs.load_document(role_file, kind="role")
+        _arch_impl.add_user_archetype(doc.doc, "mypod")
+
+        found_budget = _ctx.budget_for_role("security-vetter", project="mypod")
+        assert found_budget > 0
+
+    def test_pod_scoped_call_with_global_role_still_returns_builtin(self) -> None:
+        """When a global role (like 'implementer') exists and project= is passed but
+        no pod override exists, the global registry is still consulted."""
+        global_budget = _ctx.budget_for_role("implementer")
+        pod_budget = _ctx.budget_for_role("implementer", project="nonexistent-pod")
+        assert pod_budget == global_budget
+
 
 class TestResolveWindowShareTokens:
     def test_absent_window_returns_the_floor(self) -> None:

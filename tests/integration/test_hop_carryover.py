@@ -113,7 +113,7 @@ class TestHopMessageCap:
     def test_prior_output_over_budget_is_truncated_with_a_visible_marker(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_context, "budget_for_role", lambda role: 20)
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 20)
         task = {"description": "task"}
         prior = [_hop("lead", "L" * 5000)]
         message, comp = _dispatch._hop_message(task, "implementer", prior)
@@ -124,7 +124,7 @@ class TestHopMessageCap:
         assert comp.sections[0]["sent_bytes"] < 5000
 
     def test_newest_hop_is_truncated_least(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_context, "budget_for_role", lambda role: 8192)
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 8192)
         task = {"description": "task"}
         prior = [
             _hop("lead", "A" * 20_000),
@@ -145,7 +145,7 @@ class TestHopMessageCap:
         """Several large prior outputs (well beyond a normal 4-role pipeline) —
         the aggregate carryover must still respect the role's token budget."""
         cap_tokens = 8192
-        monkeypatch.setattr(_context, "budget_for_role", lambda role: cap_tokens)
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: cap_tokens)
         task = {"description": "task"}
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
         message, comp = _dispatch._hop_message(task, "tester", prior)

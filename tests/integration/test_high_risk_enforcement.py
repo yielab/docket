@@ -221,8 +221,9 @@ class TestPreOutputHighRiskClassification:
         events = _trace_events("myapp")
         block_events = [e for e in events if e["event_type"] == "guardrail_block"]
         assert len(block_events) == 1
-        # The operator's own policy id wins -- not overwritten by the built-in tag.
-        assert block_events[0]["payload"]["action"] == "forbidden-marker"
+        # The operator's own policy wins -- not overwritten by the built-in classifier's tag.
+        assert block_events[0]["payload"]["policy"] == "forbidden-marker"
+        assert block_events[0]["payload"]["action"] == "block"
 
     def test_non_matching_output_still_silent(self) -> None:
         _seed_lean_pod()

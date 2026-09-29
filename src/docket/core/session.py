@@ -755,6 +755,7 @@ def compact_session(
     keep_latest_unit: bool = True,
     timeout: int | None = None,
     label: str = "",
+    project: str = "",
     now: str | None = None,
     sessions_dir: Path | None = None,
 ) -> CompactionResult:
@@ -775,7 +776,7 @@ def compact_session(
             failure_kind="invalid_output",
         )
 
-    role_budget = _context.budget_for_role(role)
+    role_budget = _context.budget_for_role(role, project=project)
     budget = budget_tokens if budget_tokens is not None else role_budget
     summary_input_budget = (
         summary_input_budget_tokens if summary_input_budget_tokens is not None else role_budget

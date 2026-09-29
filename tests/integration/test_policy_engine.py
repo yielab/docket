@@ -243,7 +243,7 @@ class TestEnqueuePreInputGate:
         assert "session_end" in types
         block_event = next(e for e in events if e["event_type"] == "guardrail_block")
         assert block_event["payload"]["policy"] == "no-wipes"
-        assert block_event["payload"]["action"] == "no-wipes"
+        assert block_event["payload"]["action"] == "block"
         end_event = next(e for e in events if e["event_type"] == "session_end")
         assert end_event["payload"]["status"] == "aborted"
 
@@ -410,7 +410,7 @@ class TestPreOutputGate:
         assert "impl@example.com" not in by_role["implementer"].output
 
     def test_guardrail_events_use_the_metrics_bucket_shape(self) -> None:
-        """`guardrail_block`'s payload["action"] is the tripped policy's id — the
+        """`guardrail_block`'s payload["action"] is the tripped policy's action — the
         field/value `cli/_metrics.py`'s reader tallies "Guardrail trips" by."""
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
@@ -421,7 +421,7 @@ class TestPreOutputGate:
         events = _trace_events("myapp")
         block_events = [e for e in events if e["event_type"] == "guardrail_block"]
         assert len(block_events) == 1
-        assert block_events[0]["payload"]["action"] == "forbidden-marker"
+        assert block_events[0]["payload"]["action"] == "block"
         check_events = [e for e in events if e["event_type"] == "guardrail_check"]
         assert any(e["payload"]["action"] == "block" for e in check_events)
 

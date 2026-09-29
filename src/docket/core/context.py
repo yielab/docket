@@ -139,6 +139,7 @@ def estimate_tokens(text: str) -> int:
 def budget_for_role(
     role: str,
     *,
+    project: str = "",
     context_window_tokens: int | None = None,
     max_output_tokens: int | None = None,
 ) -> int:
@@ -146,13 +147,16 @@ def budget_for_role(
 
     Falls back to a window-share of ``DEFAULT_TOKEN_BUDGET`` when *role* isn't
     in the live archetype registry, or resolves a non-positive ``token_budget``.
+    When *project* is provided, resolves via the project-scoped registry first
+    (same nearest-wins layering as ``core.archetypes.load_registry(project)``);
+    otherwise uses the global registry only.
     """
     # An archetype's own declared token_budget always wins -- data set on purpose,
     # like an explicit CONTEXT_TOKEN_BUDGET override elsewhere -- so the window
     # arguments below can never widen or shrink it. Every existing caller omits
     # both keyword-only window arguments, so they keep resolving plain
     # DEFAULT_TOKEN_BUDGET, byte-for-byte, exactly as before this fallback existed.
-    found = _arch.load_registry().get(role)
+    found = _arch.load_registry(project).get(role)
     if found is not None and found.token_budget > 0:
         return found.token_budget
     return resolve_window_share_tokens(

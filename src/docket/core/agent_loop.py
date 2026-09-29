@@ -1160,6 +1160,7 @@ class _TurnState:
             keep_latest_unit=keep_latest_unit,
             timeout=min(self.cfg.request_timeout_s, remaining_now),
             label=f"{self.ctx.role} session",
+            project=self.project,
         )
         usage_delta = _usage_delta(self.summary_usage, self.accounted_summary_usage)
         self.total_usage = _accumulate(self.total_usage, usage_delta)

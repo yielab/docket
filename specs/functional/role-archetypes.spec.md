@@ -436,6 +436,28 @@ to rediscover the same pitfalls.
    task description and the role's own instruction footer are reserved first; what's left funds
    the recency-weighted prior-hop carryover).
 
+### Pod-scoped token budgets
+
+**Implemented and live.**
+
+1. `core/context.py`'s `budget_for_role(role, *, project="", ...)` **MUST** accept an optional
+   `project` parameter; when `project` is truthy, it **MUST** resolve the role against the
+   project-scoped registry via `core/archetypes.py.load_registry(project)` — the same nearest-wins
+   layering that role resolution already uses — and return the role's declared `tokenBudget`.
+2. When `project=""` (the default), behavior **MUST** remain byte-identical: `load_registry()` with
+   no argument is called, resolving only against built-ins and the global overlay, never the pod.
+3. Every live caller that dispatches a hop or compacts a session **MUST** pass its own `project`
+   to `budget_for_role`; the two callers are:
+   - `core/dispatch.py`'s `_hop_message` (for each hop's token budget during pod dispatch)
+   - `core/session.py`'s `compact_session` (for session history summarization, when the caller
+     has a project context)
+   - `core/agent_loop.py`'s `_TurnState.run_compaction` **MUST** pass `self.project` to
+     `compact_session`, the only call site in the live code.
+4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod apply` or
+   `docket roles add --pod <p>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
+   is called; a call without the project argument **MUST** return the built-in value, not the
+   pod-scoped override.
+
 ### User registry overlay
 
 1. User archetypes **MUST** overlay built-ins and the starter library via

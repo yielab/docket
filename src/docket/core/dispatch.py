@@ -308,7 +308,7 @@ def _enqueue_pre_input_gate(
             session_id,
             "lead",
             "guardrail_block",
-            _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.policy_id}),
+            _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.action}),
         )
         _trace.trace_event(
             project,
@@ -752,7 +752,7 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    total_budget = _ctx.budget_for_role(role)
+    total_budget = _ctx.budget_for_role(role, project=project)
     reserved_tokens = _ctx.estimate_tokens(desc) + _ctx.estimate_tokens(instructions)
     carryover_budget = max(total_budget - reserved_tokens, 0)
 
@@ -1530,9 +1530,7 @@ def _apply_output_guardrails(
                 ctx.session_id,
                 role,
                 "guardrail_block",
-                _json.dumps(
-                    {"hook": "pre_output", "policy": hit.policy_id, "action": hit.policy_id}
-                ),
+                _json.dumps({"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}),
             )
             if hop_ok:
                 hop_ok = False
