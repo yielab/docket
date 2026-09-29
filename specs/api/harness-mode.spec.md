@@ -1,8 +1,9 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.1.3
-**Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4)
-**Last Updated**: 2026-09-27
+**Version**: 1.2.0
+**Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
+(P35-2, P35-3) is opt-in and partially implemented -- see "Contract 1.1" below.
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -287,6 +288,17 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   `task`, or enforce `limits` -- those are Sections 3-6 above, each owned by a later card.
 
 ## Changelog
+
+### Version 1.2.0 (2026-09-29)
+
+- **Contract 1.1 opens (P35-2), process events land live (P35-3).** New "Contract 1.1" section:
+  a second, opt-in wire contract (`--contract 1.0|1.1`, default `1.0`, byte-identical) with
+  `HarnessEventV11`/`HarnessResultV11`/`FileChange`/`AnswerLine`/`HarnessTask`/`Limits`, a
+  published `docs/contracts/harness-v1.1/schema.json`, and five hand-authored v1.1 fixtures.
+  Process lifecycle events (Section 3) reach the stream with no harness-specific code, since
+  `_run`'s existing `with _trace.subscribe(_emit):` relays every trace record verbatim. Written
+  paths/limits, stdin answers, and recipe runs (Sections 4-6) remain planned, each owned by a
+  separate later card.
 
 ### Version 1.1.3 (2026-09-28)
 

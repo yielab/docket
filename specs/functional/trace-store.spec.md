@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -8,7 +8,7 @@ every trace-emitting module writes through: `core/agent_loop.py` (tool and model
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -323,6 +323,15 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.4.0 (2026-09-29)
+
+- **Process lifecycle events (P35-3).** New "Process lifecycle events" section: `EVENT_TYPES`
+  gains `process_started`/`process_exited`, emitted by `edges/adapters/toolbox.py::run_bash`'s
+  new `on_process` callback and wired to real trace emission by
+  `edges/adapters/docket_runtime.py::DocketDriver`, registering/clearing the process group
+  against a current dispatch run so `docket runs cancel` reaches it. Built for `harness-mode.
+  spec.md`'s Contract 1.1, which this store's events now reach with no code of its own.
 
 ### Version 1.3.0 (2026-09-28)
 

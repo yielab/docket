@@ -1,7 +1,11 @@
 # Role Archetypes Specification
 
-**Version**: 1.20.0
-**Status**: Implemented. **P30-4** retires `editRights` (ADR 0012 §2 rule 7): the canonical wire
+**Version**: 1.21.0
+**Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
+takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
+`resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
+`core/dispatch.py`'s `guardrail_block` trace payload carries the tripped policy's `action`
+instead of duplicating its `policy` id. **P30-4** retires `editRights` (ADR 0012 §2 rule 7): the canonical wire
 form no longer carries it, `from_wire` accepts and silently drops it so every existing overlay or
 recipe role still loads, `docket validate` prints a `note:` for a file that still declares it, and
 `deniedTools` is the archetype schema's only capability statement — see "Archetype schema"
@@ -40,7 +44,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -671,6 +675,16 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.21.0 (2026-09-29)
+
+- **P35-1: pod-scoped token budgets honored; `guardrail_block.action` carries the real action.**
+  New section "Pod-scoped token budgets". `budget_for_role` gained an optional `project` kwarg
+  (default `""`, byte-identical when omitted) resolving through `core.archetypes.load_registry
+  (project)`; `core/dispatch.py::_hop_message`, `core/session.py::compact_session`, and
+  `core/agent_loop.py::_TurnState.run_compaction` now pass it. Unrelated to this spec's own
+  contract but fixed in the same card: `guardrail_block`'s payload previously duplicated the
+  tripped policy's id into its `action` field instead of the policy's actual action.
 
 ### Version 1.20.0 (2026-09-27)
 

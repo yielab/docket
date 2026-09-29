@@ -1,7 +1,11 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.24.0
-**Status**: Complete. **P32-3** (ADR 0014) makes every hop-scoped trace event `core/agent_loop.py`
+**Version**: 6.25.0
+**Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
+(cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
+and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
+field independently `None` off a non-repo checkout) — see "Hop evidence" below. **P32-3** (ADR
+0014) makes every hop-scoped trace event `core/agent_loop.py`
 writes carry the claimed task's `task_id` (new "Per-hop execution" requirement 6), threaded from
 the single `driver.run_turn(...)` call site; see `trace-store.spec.md` 1.1.0 for the record-shape
 side of this. **P30-3** (ADR 0012 §2 rule 6) makes a pipeline step's own `model`
@@ -1865,6 +1869,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.25.0 (2026-09-29)
+
+- **Hop evidence (P35-4, ADR 0017 §4).** New "Hop evidence" section: `HopResult.verify` and
+  `.evidence` persist a mechanical gate's real command output (redacted, tail-capped at
+  `config.VERIFY_EVIDENCE_TAIL_CHARS`) and an Implementer hop's real git commit/baseCommit/
+  diffStat (new `edges/adapters/system.py` helpers `git_head_sha`/`git_merge_base`/
+  `git_diff_stat`, each degrading to `None` rather than raising). Both round-trip through
+  `_hop_record`/`_hop_from_record`; a hop record written before this version still loads, with
+  both fields defaulting to `None`. Additive record-keeping only — no gating decision changes.
 
 ### Version 6.24.0 (2026-09-29)
 
