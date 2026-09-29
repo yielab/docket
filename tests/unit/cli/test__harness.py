@@ -64,6 +64,18 @@ class TestUsageError:
         assert _harness._usage_error("/ws", "hi", None, "local/x", "60") is None
         assert _harness._usage_error("/ws", None, "/path", "local/x", None) is None
 
+    def test_an_unknown_contract_is_an_error(self) -> None:
+        problem = _harness._usage_error("/ws", "hi", None, "local/x", None, "2.0")
+        assert problem is not None and "--contract" in problem
+
+    def test_contract_1_0_and_1_1_have_no_problem(self) -> None:
+        assert _harness._usage_error("/ws", "hi", None, "local/x", None, "1.0") is None
+        assert _harness._usage_error("/ws", "hi", None, "local/x", None, "1.1") is None
+
+    def test_an_unknown_contract_is_reported_before_a_missing_workspace(self) -> None:
+        problem = _harness._usage_error(None, "hi", None, "local/x", None, "2.0")
+        assert problem is not None and "--contract" in problem
+
 
 # ── run_harness dispatch ──────────────────────────────────────────────────────
 
@@ -94,6 +106,37 @@ class TestDispatch:
         result = json.loads(lines[0])
         assert result["status"] == "refused"
         assert result["error"] == "--workspace is required"
+        assert not home.exists()
+
+    def test_an_unknown_contract_refuses_with_the_default_version_stamped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = tmp_path / "home"
+        repoint_docket_home(monkeypatch, home)
+        monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:1/v1")
+
+        rc = _harness.run_harness(
+            "run",
+            [
+                "--workspace",
+                str(tmp_path),
+                "--task",
+                "x",
+                "--model",
+                "local/x",
+                "--contract",
+                "2.0",
+            ],
+        )
+
+        captured = capsys.readouterr()
+        assert rc == 2
+        lines = [line for line in captured.out.splitlines() if line.strip()]
+        assert len(lines) == 1
+        result = json.loads(lines[0])
+        assert result["status"] == "refused"
+        assert result["v"] == "1.0.0"
+        assert "--contract" in result["error"]
         assert not home.exists()
 
 

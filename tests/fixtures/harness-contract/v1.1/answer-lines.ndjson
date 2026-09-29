@@ -1,0 +1,2 @@
+{"v":"1.1.0","token":"run-asked-1","answer":{"approvalToken":"appr-1","questionId":null,"action":"accept","content":null}}
+{"v":"1.1.0","token":"run-asked-2","answer":{"approvalToken":null,"questionId":"q-1","action":"decline","content":{"reason":"not now"}}}

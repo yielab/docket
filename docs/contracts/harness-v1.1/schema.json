@@ -1,0 +1,382 @@
+{
+  "$defs": {
+    "Answer": {
+      "description": "One resolution to a paused approval or question, in the MCP elicitation\nshape (``action``/``content``): a caller's answer to something the run asked.",
+      "properties": {
+        "action": {
+          "enum": [
+            "accept",
+            "decline",
+            "cancel"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "approvalToken": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approvaltoken"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "questionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Questionid"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "Answer",
+      "type": "object"
+    },
+    "BlockedInfo": {
+      "description": "Which policy rule stopped the run, when ``status`` is ``\"blocked\"``.",
+      "properties": {
+        "call_id": {
+          "default": "",
+          "title": "Call Id",
+          "type": "string"
+        },
+        "denial_kind": {
+          "default": "",
+          "title": "Denial Kind",
+          "type": "string"
+        },
+        "policy_id": {
+          "default": "",
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "tool": {
+          "default": "",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "title": "BlockedInfo",
+      "type": "object"
+    },
+    "FileChange": {
+      "description": "One file a harness run touched, for ``HarnessResultV11.files``.",
+      "properties": {
+        "op": {
+          "enum": [
+            "write",
+            "edit",
+            "delete",
+            "unknown"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "op"
+      ],
+      "title": "FileChange",
+      "type": "object"
+    },
+    "HarnessTask": {
+      "description": "Recipe/task-run state a v1.1 result can carry.",
+      "properties": {
+        "brief": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence"
+        },
+        "hops": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Hops",
+          "type": "array"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "HarnessTask",
+      "type": "object"
+    },
+    "Limits": {
+      "description": "Caller-declared ceilings, echoed back on the result.",
+      "properties": {
+        "maxTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maxtokens"
+        }
+      },
+      "title": "Limits",
+      "type": "object"
+    },
+    "ModelInfo": {
+      "description": "What the caller asked for versus what actually answered the last request.",
+      "properties": {
+        "requested": {
+          "default": "",
+          "title": "Requested",
+          "type": "string"
+        },
+        "served": {
+          "default": "",
+          "title": "Served",
+          "type": "string"
+        }
+      },
+      "title": "ModelInfo",
+      "type": "object"
+    },
+    "UsageInfo": {
+      "description": "Measured token counts for the whole run -- never a dollar figure.",
+      "properties": {
+        "cached_tokens": {
+          "default": 0,
+          "title": "Cached Tokens",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "default": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "turns": {
+          "default": 0,
+          "title": "Turns",
+          "type": "integer"
+        }
+      },
+      "title": "UsageInfo",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "definitions": {
+    "AnswerLine": {
+      "description": "One caller-supplied stdin line answering a paused approval or question.",
+      "properties": {
+        "answer": {
+          "$ref": "#/$defs/Answer"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "v": {
+          "default": "1.1.0",
+          "title": "V",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "answer"
+      ],
+      "title": "AnswerLine",
+      "type": "object"
+    },
+    "HarnessEvent": {
+      "description": "1.1 sibling of ``HarnessEvent``. Same shape -- a process lifecycle\nevent type needs no new field here, since ``event`` is an open dict.",
+      "properties": {
+        "event": {
+          "additionalProperties": true,
+          "title": "Event",
+          "type": "object"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "v": {
+          "default": "1.1.0",
+          "title": "V",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "seq",
+        "ts",
+        "event"
+      ],
+      "title": "HarnessEventV11",
+      "type": "object"
+    },
+    "HarnessResult": {
+      "description": "The 1.1 terminal result: every v1.0 field, plus files/task/limits.\nThe empty defaults below are not yet populated by any live path.",
+      "properties": {
+        "blocked": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockedInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cost_usd": {
+          "default": null,
+          "title": "Cost Usd",
+          "type": "null"
+        },
+        "error": {
+          "default": "",
+          "title": "Error",
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileChange"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelInfo"
+        },
+        "run_state": {
+          "default": "",
+          "title": "Run State",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "blocked",
+            "cancelled",
+            "refused"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stop_reason": {
+          "default": "",
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HarnessTask"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/UsageInfo"
+        },
+        "v": {
+          "default": "1.1.0",
+          "title": "V",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "status",
+        "model",
+        "usage"
+      ],
+      "title": "HarnessResultV11",
+      "type": "object"
+    }
+  },
+  "title": "docket harness contract",
+  "version": "1.1.0"
+}

@@ -163,6 +163,108 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
   operator's own default `DOCKET_HOME` -- every docket-owned file it touches lives under the
   caller-supplied home.
 
+## Contract 1.1
+
+**Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
+contract, `1.1.0`, alongside the unchanged `1.0.0` default. This card (P35-2) ships the models,
+generated schema, fixtures, and the `--contract` flag that selects which version is stamped on
+every line -- it does **not** implement the behaviors four later cards fill in (see the stub
+subsections below). Passing `--contract 1.1` today yields a v1.1-shaped stream whose new fields
+(`files`, `task`, `limits`) are always empty/default, because nothing yet populates them.
+
+### 1. Selecting the contract
+
+`docket harness run` accepts a `--contract` option:
+
+| Value | Effect |
+|---|---|
+| `1.0` (default) | Every line stamps `v: "1.0.0"`; behavior is byte-identical to before this option existed. |
+| `1.1` | Every line -- events, and the terminal result, including a refusal reached after this flag parsed -- stamps `v: "1.1.0"` and validates against the v1.1 shapes below. |
+| anything else | Refused (exit 2, one `HarnessResult` with `status: refused`), before `preflight` runs, like any other malformed argument. |
+
+### 2. The v1.1 envelope
+
+`HarnessEventV11` has the same fields as `HarnessEvent` (`token`, `seq`, `ts`, `event`), with
+`v` pinned to `"1.1.0"` instead of `"1.0.0"`. `event` stays an open dict
+(`additionalProperties: true`): a process lifecycle event type (`process_started`,
+`process_exited` -- Section 3 below) needs no schema change to appear on the stream.
+
+`HarnessResultV11` carries every `HarnessResult` field plus:
+
+| Field | Type | Rule |
+|---|---|---|
+| `files` | array of `FileChange` | Which files the run touched. `[]` until P35-6 populates it (Section 4). |
+| `task` | `HarnessTask` or null | Recipe/task-run state. `null` until P35-9 populates it (Section 5). |
+| `limits` | `Limits` | Caller-declared ceilings echoed back. `{"maxTokens": null}` until P35-6 enforces one (Section 4). |
+
+`FileChange` is `{path: string, op: "write"|"edit"|"delete"|"unknown"}`.
+
+`HarnessTask` is `{status: string, hops: array of object, evidence: object or null, brief:
+object or null}`.
+
+`Limits` is `{maxTokens: integer or null}`.
+
+### 3. Process lifecycle events -- Planned, owned by P35-3
+
+Status: **Planned -- owned by P35-3.** `process_started`/`process_exited` event records (with
+a cancellable process group, e.g. `{"pgid": ...}` and, on a killed process, `{"signal":
+...}`) on the `event` stream for a `bash` tool call. This section is a placeholder until that
+card lands; `tests/fixtures/harness-contract/v1.1/cancelled-process.ndjson` is a hand-authored
+sample of the shape, not yet a live-path guarantee.
+
+### 4. Written paths, token file, and caller limits -- Planned, owned by P35-6
+
+Status: **Planned -- owned by P35-6.** Populating `HarnessResultV11.files` from what a turn
+actually wrote/edited/deleted; a `--token-file` option; and a caller-declared `--max-tokens`
+surfaced back through `limits.maxTokens` and enforced as a stop condition. This section is a
+placeholder until that card lands; `tests/fixtures/harness-contract/v1.1/ok-files.ndjson` is a
+hand-authored sample of the shape.
+
+### 5. Answers on stdin -- Planned, owned by P35-5
+
+Status: **Planned -- owned by P35-5.** A caller resolves a paused approval or question by
+writing an `AnswerLine` (`{v, token, answer: {approvalToken|questionId (exactly one),
+action: "accept"|"decline"|"cancel", content}}`, the MCP elicitation result shape) to this
+process's stdin. `AnswerLine`/`Answer` are defined now (Section 2) so the schema does not move
+again when the read side lands; nothing in this card reads stdin.
+`tests/fixtures/harness-contract/v1.1/asked-answered.ndjson` and `answer-lines.ndjson` are
+hand-authored samples, not yet a live-path guarantee.
+
+### 6. Recipe runs -- Planned, owned by P35-9
+
+Status: **Planned -- owned by P35-9.** `docket harness run --recipe NAME` executing a shipped
+recipe in place and reporting its progress through `HarnessResultV11.task`. This section is a
+placeholder until that card lands; `tests/fixtures/harness-contract/v1.1/recipe-ok.ndjson` is a
+hand-authored sample of the shape.
+
+### 7. Output
+
+The generated schema for the three v1.1 shapes (`HarnessEvent`, `HarnessResult`, `AnswerLine`)
+is committed at `docs/contracts/harness-v1.1/schema.json`, produced by the same
+`scripts/harness_schema.py` script (`render_v11()`), with the same `$defs`-hoisting rule as
+v1's `render()`. A test regenerates it into memory and asserts byte equality with the committed
+file. Five hand-authored, line-validated example transcripts live at
+`tests/fixtures/harness-contract/v1.1/{ok-files,asked-answered,cancelled-process,recipe-ok,
+answer-lines}.ndjson`; the first four end on a `HarnessResultV11` line like the v1 fixtures,
+and `answer-lines.ndjson` holds only `AnswerLine` lines (a stdin sample, not a stdout
+transcript). A test validates every line of every result-ending fixture against the committed
+v1.1 file itself as JSON Schema, not only through the Pydantic models.
+
+### 8. Validation
+
+- **v1.1 version fail-closed.** A `HarnessEventV11`, `HarnessResultV11`, or `AnswerLine` naming
+  any `v` other than `"1.1.0"` MUST fail validation -- including `"1.0.0"`, since the two
+  envelopes are validated independently and neither tolerates the other's version string.
+- **`Answer` arity.** Exactly one of `approvalToken`/`questionId` MUST be set; both set or
+  neither set MUST fail validation.
+- **`--contract` fail-closed.** A value other than `1.0`/`1.1` MUST be refused (exit 2) before
+  `preflight` runs, like any other malformed argument, with no partial output.
+- **Refusal stamps the selected contract.** Once `--contract` itself parses successfully, every
+  refusal reached afterward (a later usage error, a `preflight` refusal, an `agent_meta_for`
+  usage error) MUST stamp the version that was selected, not the default.
+- **No behavior change beyond the stamp.** `--contract 1.1` alone does not populate `files`,
+  `task`, or enforce `limits` -- those are Sections 3-6 above, each owned by a later card.
+
 ## Changelog
 
 ### Version 1.1.3 (2026-09-28)

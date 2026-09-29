@@ -32,6 +32,13 @@ from docket.edges.adapters import docket_runtime as _dr
 _DEFAULT_TIMEOUT = 300
 _DEFAULT_ROLE = "implementer"
 
+# An opt-in v1.1 wire contract. "1.0" stays the default and is
+# byte-identical to before this flag existed.
+_CONTRACT_VERSIONS: dict[str, str] = {
+    "1.0": harness.HARNESS_CONTRACT_VERSION,
+    "1.1": harness.HARNESS_CONTRACT_V11,
+}
+
 
 def _flag(args: list[str], name: str) -> str | None:
     """Return the value after ``--name`` (or ``--name=value``), else None."""
@@ -53,6 +60,7 @@ def run_harness(sub: str | None, args: list[str]) -> int:
     print(
         "usage: docket harness run --workspace DIR (--task TEXT | --task-file PATH) "
         "--model PROVIDER/ID [--role implementer] [--timeout S] [--agent-id ID]\n"
+        "                          [--contract 1.0|1.1]\n"
         "       docket harness status TOKEN",
         file=sys.stderr,
     )
@@ -66,13 +74,34 @@ def _now_iso() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _event_line(
+    contract_version: str, token: str, seq: int, record: dict[str, Any]
+) -> harness.HarnessEvent | harness.HarnessEventV11:
+    if contract_version == harness.HARNESS_CONTRACT_V11:
+        return harness.HarnessEventV11(
+            token=token, seq=seq, ts=str(record.get("ts", "")), event=record
+        )
+    return harness.HarnessEvent(token=token, seq=seq, ts=str(record.get("ts", "")), event=record)
+
+
+def _final_result(
+    contract_version: str, turn: TurnResult, usage_report: UsageReport, run_rec: dict[str, Any]
+) -> harness.HarnessResult | harness.HarnessResultV11:
+    if contract_version == harness.HARNESS_CONTRACT_V11:
+        return harness.result_from_v11(turn, usage_report, run_rec)
+    return harness.result_from(turn, usage_report, run_rec)
+
+
 def _usage_error(
     workspace_raw: str | None,
     task_text: str | None,
     task_file_raw: str | None,
     model: str | None,
     timeout_raw: str | None,
+    contract_raw: str = "1.0",
 ) -> str | None:
+    if contract_raw not in _CONTRACT_VERSIONS:
+        return f"--contract must be one of {sorted(_CONTRACT_VERSIONS)}, got {contract_raw!r}"
     if not workspace_raw:
         return "--workspace is required"
     if bool(task_text) == bool(task_file_raw):
@@ -113,23 +142,32 @@ def _run(args: list[str]) -> int:
     role = _flag(args, "--role") or _DEFAULT_ROLE
     timeout_raw = _flag(args, "--timeout")
     agent_id = _flag(args, "--agent-id") or f"harness-{uuid.uuid4().hex[:12]}"
+    contract_raw = _flag(args, "--contract") or "1.0"
 
-    problem = _usage_error(workspace_raw, task_text, task_file_raw, model, timeout_raw)
+    problem = _usage_error(
+        workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw
+    )
     if problem:
-        return _refuse(problem)
+        # An invalid --contract itself has no known version to stamp; every
+        # other usage error stamps whatever contract the caller did select.
+        return _refuse(
+            problem, _CONTRACT_VERSIONS.get(contract_raw, harness.HARNESS_CONTRACT_VERSION)
+        )
+
+    contract_version = _CONTRACT_VERSIONS[contract_raw]
 
     assert workspace_raw is not None and model is not None  # narrowed by _usage_error
     workspace = Path(workspace_raw).expanduser()
     home_default = Path.home() / ".docket"
     refusal = harness.preflight(os.environ, home_default, workspace)
     if refusal is not None:
-        return _refuse(refusal.reason)
+        return _refuse(refusal.reason, contract_version)
 
     if task_file_raw is not None:
         try:
             task = Path(task_file_raw).expanduser().read_text(encoding="utf-8")
         except OSError as exc:
-            return _refuse(f"could not read --task-file {task_file_raw!r}: {exc}")
+            return _refuse(f"could not read --task-file {task_file_raw!r}: {exc}", contract_version)
     else:
         assert task_text is not None
         task = task_text
@@ -139,7 +177,7 @@ def _run(args: list[str]) -> int:
     try:
         meta = harness.agent_meta_for(agent_id, workspace, model, role)
     except ValueError as exc:
-        return _refuse(str(exc))
+        return _refuse(str(exc), contract_version)
 
     session_key = f"agent:{agent_id}:default"
     _cfg.workspace_dir(agent_id).mkdir(parents=True, exist_ok=True)
@@ -155,10 +193,7 @@ def _run(args: list[str]) -> int:
 
     def _emit(record: dict[str, Any]) -> None:
         nonlocal seq
-        line = harness.HarnessEvent(
-            token=token, seq=seq, ts=str(record.get("ts", "")), event=record
-        )
-        print(line.model_dump_json())
+        print(_event_line(contract_version, token, seq, record).model_dump_json())
         seq += 1
 
     _emit(
@@ -229,7 +264,7 @@ def _run(args: list[str]) -> int:
         )
 
     usage_report = driver.usage(agent_id)
-    result = harness.result_from(turn, usage_report, run_rec)
+    result = _final_result(contract_version, turn, usage_report, run_rec)
     print(result.model_dump_json())
     print(f"docket harness: run {token} finished status={result.status}", file=sys.stderr)
 
@@ -240,8 +275,8 @@ def _run(args: list[str]) -> int:
     return 1
 
 
-def _refuse(reason: str) -> int:
-    print(harness.refusal_result(reason).model_dump_json())
+def _refuse(reason: str, version: str = harness.HARNESS_CONTRACT_VERSION) -> int:
+    print(harness.refusal_result(reason, version=version).model_dump_json())
     return 2
 
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""harness_schema.py -- render docs/contracts/harness-v1/schema.json from the Pydantic models.
+"""harness_schema.py -- render the harness contract's schema.json files.
 
-``core.harness.HarnessEvent``/``HarnessResult`` are the source of truth; this
-script only serializes them. An outside consumer pins its own types against
-the committed file, so `--check` failing means the wire shape moved without
-regenerating the published artifact in the same change.
+``core.harness``'s Pydantic models (v1's ``HarnessEvent``/``HarnessResult``;
+v1.1's ``HarnessEventV11``/``HarnessResultV11``/``AnswerLine``) are the source
+of truth; this script only serializes them, so `--check` failing means a wire
+shape moved without regenerating the published artifact in the same change.
 
 Usage:
-  ./scripts/harness_schema.py            # regenerate schema.json
-  ./scripts/harness_schema.py --check    # exit 1 if the file on disk is stale
+  ./scripts/harness_schema.py            # regenerate both schema.json files
+  ./scripts/harness_schema.py --check    # exit 1 if either file on disk is stale
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 SCHEMA_PATH = ROOT / "docs" / "contracts" / "harness-v1" / "schema.json"
+SCHEMA_V11_PATH = ROOT / "docs" / "contracts" / "harness-v1.1" / "schema.json"
 
 sys.path.insert(0, str(SRC))
 
@@ -46,7 +47,7 @@ def _hoist_defs(definitions: dict[str, object]) -> dict[str, object]:
 
 
 def render() -> str:
-    """Return the generated schema.json content, trailing newline included."""
+    """Return the generated v1 schema.json content, trailing newline included."""
     from docket.core import harness
 
     definitions = {
@@ -66,28 +67,56 @@ def render() -> str:
     return json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 
+def render_v11() -> str:
+    """Return the generated v1.1 schema.json content, trailing newline included."""
+    from docket.core import harness
+
+    definitions = {
+        "HarnessEvent": harness.HarnessEventV11.model_json_schema(),
+        "HarnessResult": harness.HarnessResultV11.model_json_schema(),
+        "AnswerLine": harness.AnswerLine.model_json_schema(),
+    }
+    root_defs = _hoist_defs(definitions)
+
+    document = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "docket harness contract",
+        "version": harness.HARNESS_CONTRACT_V11,
+        "definitions": definitions,
+    }
+    if root_defs:
+        document["$defs"] = root_defs
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
+def _sync(path: Path, rendered: str, check_only: bool) -> bool:
+    """Write or check one schema file. Returns True if it is up to date."""
+    if check_only:
+        current = path.read_text(encoding="utf-8") if path.exists() else None
+        if current == rendered:
+            print(f"harness_schema: {path.relative_to(ROOT)} is up to date.")
+            return True
+        print(
+            f"harness_schema: {path.relative_to(ROOT)} is STALE -- "
+            "run `uv run python scripts/harness_schema.py` to regenerate.",
+            file=sys.stderr,
+        )
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(rendered, encoding="utf-8")
+    print(f"harness_schema: wrote {path.relative_to(ROOT)}")
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     check_only = "--check" in argv
 
-    rendered = render()
+    ok = _sync(SCHEMA_PATH, render(), check_only)
+    ok = _sync(SCHEMA_V11_PATH, render_v11(), check_only) and ok
 
-    if check_only:
-        current = SCHEMA_PATH.read_text(encoding="utf-8") if SCHEMA_PATH.exists() else None
-        if current == rendered:
-            print(f"harness_schema: {SCHEMA_PATH.relative_to(ROOT)} is up to date.")
-            return 0
-        print(
-            f"harness_schema: {SCHEMA_PATH.relative_to(ROOT)} is STALE -- "
-            "run `uv run python scripts/harness_schema.py` to regenerate.",
-            file=sys.stderr,
-        )
-        return 1
-
-    SCHEMA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SCHEMA_PATH.write_text(rendered, encoding="utf-8")
-    print(f"harness_schema: wrote {SCHEMA_PATH.relative_to(ROOT)}")
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

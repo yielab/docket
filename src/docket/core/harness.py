@@ -10,12 +10,12 @@ free to import from either the CLI distribution or the runtime closure.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from docket.core.archetypes import BUILTIN_ARCHETYPES
 from docket.core.models import AgentKind, AgentMeta
@@ -26,6 +26,13 @@ if TYPE_CHECKING:
 # Bump only for a breaking change to the wire shape below -- an outside
 # repository pins the generated JSON Schema against this exact string.
 HARNESS_CONTRACT_VERSION = "1.0.0"
+
+# A second, opt-in wire contract alongside the unchanged v1.0 one above --
+# the v1.0 classes below are untouched, so a caller pinned to them sees no
+# change; process lifecycle events, stdin answers, file reporting and
+# recipe runs are declared here but not yet produced by any live path.
+HARNESS_CONTRACT_V11 = "1.1.0"
+HARNESS_CONTRACT_VERSIONS = (HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT_V11)
 
 HarnessResultStatus = Literal["ok", "failed", "blocked", "cancelled", "refused"]
 # `docket harness status TOKEN`'s three answers -- a later command's own
@@ -59,6 +66,30 @@ class HarnessEvent(_VersionedEnvelope):
     # for this line -- not a second, harness-specific event vocabulary.
     # Stated explicitly: older pydantic 2.x omits it, and the committed schema
     # must render byte-identically at the dependency floor.
+    event: dict[str, Any] = Field(json_schema_extra={"additionalProperties": True})
+
+
+class _VersionedEnvelopeV11(BaseModel):
+    """1.1 sibling of ``_VersionedEnvelope``, pinned to ``"1.1.0"`` exactly --
+    a separate base, not a parameterized one, keeps v1.0's schema byte-identical."""
+
+    v: str = HARNESS_CONTRACT_V11
+
+    @field_validator("v")
+    @classmethod
+    def _known_version(cls, value: str) -> str:
+        if value != HARNESS_CONTRACT_V11:
+            raise ValueError(f"unsupported harness contract version: {value!r}")
+        return value
+
+
+class HarnessEventV11(_VersionedEnvelopeV11):
+    """1.1 sibling of ``HarnessEvent``. Same shape -- a process lifecycle
+    event type needs no new field here, since ``event`` is an open dict."""
+
+    token: str
+    seq: int
+    ts: str
     event: dict[str, Any] = Field(json_schema_extra={"additionalProperties": True})
 
 
@@ -102,6 +133,69 @@ class HarnessResult(_VersionedEnvelope):
     run_state: str = ""
 
 
+class FileChange(BaseModel):
+    """One file a harness run touched, for ``HarnessResultV11.files``."""
+
+    path: str
+    op: Literal["write", "edit", "delete", "unknown"]
+
+
+class Answer(BaseModel):
+    """One resolution to a paused approval or question, in the MCP elicitation
+    shape (``action``/``content``): a caller's answer to something the run asked."""
+
+    approvalToken: str | None = None
+    questionId: str | None = None
+    action: Literal["accept", "decline", "cancel"]
+    content: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self) -> Answer:
+        if (self.approvalToken is None) == (self.questionId is None):
+            raise ValueError("exactly one of approvalToken or questionId must be set")
+        return self
+
+
+class AnswerLine(_VersionedEnvelopeV11):
+    """One caller-supplied stdin line answering a paused approval or question."""
+
+    token: str
+    answer: Answer
+
+
+class HarnessTask(BaseModel):
+    """Recipe/task-run state a v1.1 result can carry."""
+
+    status: str
+    hops: list[dict[str, Any]] = Field(default_factory=list)
+    evidence: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
+
+
+class Limits(BaseModel):
+    """Caller-declared ceilings, echoed back on the result."""
+
+    maxTokens: int | None = None
+
+
+class HarnessResultV11(_VersionedEnvelopeV11):
+    """The 1.1 terminal result: every v1.0 field, plus files/task/limits.
+    The empty defaults below are not yet populated by any live path."""
+
+    token: str
+    status: HarnessResultStatus
+    stop_reason: str = ""
+    error: str = ""
+    blocked: BlockedInfo | None = None
+    model: ModelInfo
+    usage: UsageInfo
+    cost_usd: None = None
+    run_state: str = ""
+    files: list[FileChange] = Field(default_factory=list)
+    task: HarnessTask | None = None
+    limits: Limits = Field(default_factory=Limits)
+
+
 @dataclass(frozen=True)
 class Refusal:
     """Why harness mode exits before any run starts (exit code 2)."""
@@ -112,8 +206,19 @@ class Refusal:
 # No run token exists yet at refusal time -- preflight (and the command's
 # own pre-preflight argument checks) fire before create_run -- so every
 # field but status/error stays at its empty default.
-def refusal_result(reason: str) -> HarnessResult:
+def refusal_result(
+    reason: str, *, version: str = HARNESS_CONTRACT_VERSION
+) -> HarnessResult | HarnessResultV11:
     """The one ``HarnessResult`` a refused run ever prints (exit code 2)."""
+    if version == HARNESS_CONTRACT_V11:
+        return HarnessResultV11(
+            v=HARNESS_CONTRACT_V11,
+            token="",
+            status="refused",
+            error=reason,
+            model=ModelInfo(),
+            usage=UsageInfo(),
+        )
     return HarnessResult(
         token="",
         status="refused",
@@ -243,4 +348,33 @@ def result_from(turn: TurnResult, usage: UsageReport, run: dict[str, Any]) -> Ha
         ),
         cost_usd=None,
         run_state=str(run.get("state", "")),
+    )
+
+
+def result_from_v11(
+    turn: TurnResult,
+    usage: UsageReport,
+    run: dict[str, Any],
+    *,
+    files: Sequence[FileChange] = (),
+    task: HarnessTask | None = None,
+    limits: Limits | None = None,
+) -> HarnessResultV11:
+    """The v1.1 sibling of ``result_from``: same status/blocked/usage mapping,
+    reused rather than re-derived, plus the caller-supplied v1.1-only fields."""
+    base = result_from(turn, usage, run)
+    return HarnessResultV11(
+        v=HARNESS_CONTRACT_V11,
+        token=base.token,
+        status=base.status,
+        stop_reason=base.stop_reason,
+        error=base.error,
+        blocked=base.blocked,
+        model=base.model,
+        usage=base.usage,
+        cost_usd=base.cost_usd,
+        run_state=base.run_state,
+        files=list(files),
+        task=task,
+        limits=limits if limits is not None else Limits(),
     )

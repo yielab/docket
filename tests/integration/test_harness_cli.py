@@ -268,6 +268,79 @@ class TestOkRun:
                 json.loads(line)  # never raises -- no non-JSON byte on stdout
 
 
+# ── (a2) ok, contract 1.1 ────────────────────────────────────────────────────
+
+
+class TestContract11Run:
+    def test_contract_1_1_stamps_every_line_and_carries_empty_v11_fields(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("write", {"path": "out.txt", "content": "hello"}),
+                _final_response("done writing"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(
+            [
+                "run",
+                "--workspace",
+                str(workspace),
+                "--task",
+                "write hello to out.txt",
+                "--model",
+                "local/requested-id",
+                "--contract",
+                "1.1",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        lines = _parse_ndjson(proc.stdout)
+        result = lines[-1]
+        for line in lines:
+            assert line["v"] == "1.1.0"
+
+        assert result["status"] == "ok"
+        assert result["files"] == []
+        assert result["task"] is None
+        assert result["limits"] == {"maxTokens": None}
+
+    def test_an_unrecognized_contract_refuses_with_no_partial_output(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(
+            [
+                "run",
+                "--workspace",
+                str(workspace),
+                "--task",
+                "x",
+                "--model",
+                "local/x",
+                "--contract",
+                "2.0",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 2, proc.stderr
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        assert len(lines) == 1
+        result = json.loads(lines[0])
+        assert result["status"] == "refused"
+        assert "--contract" in result["error"]
+        assert not (tmp_path / "home").exists()
+
+
 # ── (b) blocked ───────────────────────────────────────────────────────────────
 
 

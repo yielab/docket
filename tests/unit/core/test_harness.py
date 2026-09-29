@@ -187,3 +187,50 @@ def test_refusal_result_carries_the_reason_with_no_token_and_empty_usage() -> No
     assert result.cost_usd is None
     assert result.run_state == ""
     assert result.v == harness.HARNESS_CONTRACT_VERSION
+
+
+# ── Contract 1.1 ─────────────────────────────────────────────────────────────
+
+
+def test_refusal_result_can_stamp_the_v11_version() -> None:
+    result = harness.refusal_result("DOCKET_HOME is not set", version=harness.HARNESS_CONTRACT_V11)
+    assert isinstance(result, harness.HarnessResultV11)
+    assert result.v == harness.HARNESS_CONTRACT_V11
+    assert result.status == "refused"
+    assert result.files == []
+    assert result.task is None
+
+
+def test_result_from_v11_reuses_result_froms_mapping() -> None:
+    turn = TurnResult(True, "done", 0.0, {"model": "local/qwen3-35b-a3b"})
+    result = harness.result_from_v11(turn, _usage(), _run())
+    assert result.v == harness.HARNESS_CONTRACT_V11
+    assert result.status == "ok"
+    assert result.model.served == "local/qwen3-35b-a3b"
+    assert result.usage.input_tokens == 100
+    assert result.files == []
+    assert result.task is None
+    assert result.limits == harness.Limits()
+
+
+def test_result_from_v11_carries_the_optional_files_and_task() -> None:
+    turn = TurnResult(True, "done", 0.0, {})
+    files = [harness.FileChange(path="a.py", op="write")]
+    task = harness.HarnessTask(status="done", hops=[{"role": "implementer"}])
+    result = harness.result_from_v11(turn, _usage(), _run(), files=files, task=task)
+    assert result.files == files
+    assert result.task == task
+
+
+def test_a_v11_event_naming_the_v10_version_fails_closed() -> None:
+    with pytest.raises(Exception, match="unsupported harness contract version"):
+        harness.HarnessEventV11(v="1.0.0", token="t1", seq=0, ts="", event={})
+
+
+def test_answer_requires_exactly_one_target() -> None:
+    with pytest.raises(Exception, match="exactly one"):
+        harness.Answer(approvalToken="a", questionId="b", action="accept")
+    with pytest.raises(Exception, match="exactly one"):
+        harness.Answer(action="accept")
+    ok = harness.Answer(approvalToken="a", action="accept")
+    assert ok.questionId is None
