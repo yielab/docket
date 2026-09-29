@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.57.0
+**Version**: 1.58.0
 **Status**: Complete
 **Last Updated**: 2026-09-29
 
@@ -455,6 +455,21 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   property of a one-property question schema; `--field` sets named properties explicitly
   (required for a multi-property schema); `--decline` ignores any `text`/`--field`. Calls
   `core.answers.answer_task(channel="cli", actor=<OS user>)`
+- `explain interruptions [--json]` (Phase 34, P34-15, ADR 0016 §10): Forecast, from this pod's
+  own effective configuration, everything that could pause a task before it is even dispatched —
+  matching `require_approval` policies, pipeline `ApprovalGate`/`input` steps,
+  `requireApprovalRoles`, plus context on the pod's resolved `approvalMode`, the always-on
+  `core/security.py` high-risk classes, and enabled notifying channels. Prints
+  `core.interruptions.NOTHING_WILL_ASK` when nothing would ask. `--json` emits `{"pod",
+  "interruptions": [{"kind", "description", "detail"}, ...]}`. A bare `explain` with no
+  `interruptions` argument, or any other topic, prints usage and exits 1
+- `pregrant <task-id> "<command>" [--tool bash]` (Phase 34, P34-15, ADR 0016 §10): Record a
+  single-use pre-grant for one exact command on one task, ahead of dispatch — the CLI counterpart
+  of `POST /tasks/<id>/pregrants` and the MCP `task_pregrant` tool. Calls
+  `core.interruptions.record_pregrant(channel="cli", actor=<OS user>)`, which calls
+  `core.approval.create_pregrant` exactly as an in-turn park does; when the pipeline later
+  reaches that exact call (matched by `core.operator_contract.canonical_args_digest`), it passes
+  once without asking again
 - `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
   `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
   other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
@@ -899,6 +914,60 @@ non-interactively
 **Return**: 0 on success or a read-only display, 1 if *task-id* is not found, the answer is
 blocked by a `pre_input` policy, or fails the question's own schema validation
 
+#### docket inbox
+**Purpose**: List everything across every pod that needs the operator, in one call (Phase 34,
+D-50, ADR 0016; see operator-loop.spec.md "One inbox, derived")
+**Syntax**: `docket inbox [--json] [--since <iso>] [--peek]`
+**Behavior**: Derives, fresh on every call, a pure `InboxView` (`core/operator_contract.py`) over
+every pod's tasks and pending approvals — `needsYou` (waiting/blocked tasks and pending
+approvals), `failed`, `doneSince`, `running`. A plain call advances a durable cursor
+(`~/.docket/inbox-cursor.json`) so a repeat call's `doneSince` only shows newly-terminal tasks
+since the last call; `--peek` reads without advancing the cursor; `--since <iso>` overrides the
+stored cursor for this one call without touching it either. `--json` emits the identical shape
+`docket serve`'s `GET /inbox` and the MCP `inbox` tool return
+**Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
+**Return**: 0 always — an empty inbox is not an error
+
+#### docket channels
+**Purpose**: Manage `kind: channel` documents — notification/conversation/decision destinations
+(Phase 34, D-50, ADR 0016 §7; see operator-loop.spec.md "Notifications")
+**Syntax**: `docket channels <list|show|enable|disable|add|remove|export|content|test> [args]`
+**Actions**:
+- `list [--json]`: Every catalog channel's dialect, enabled state, capabilities and content level
+- `show <name> [--json]`: One channel's effective document and scope
+- `enable <name> [--set k=v ...]`: Writes only the `enabled` flag plus the overrides given
+  (`--set actors=a,b` sets the actors list, `--set secret=NAME` sets the credential name,
+  anything else lands in `config`); refuses without writing while a required field the built-in
+  names is still empty (`ntfy` needs a non-empty `topic`, `telegram` needs a non-empty `actors`)
+- `disable <name>`: Turns it back off
+- `add <file.yaml>` / `remove <name>`: Manage a full document
+- `export <name> [<file>]`: Print or write one back out
+- `content <name> [<level>] [--yes]`: Show or change how much a delivery carries (`minimal <
+  actions < conversation`); widening prints the change and asks for confirmation on a TTY, or
+  refuses off one without `--yes` — narrowing never asks
+- `test <name>`: Sends one synthetic `dev.docket.channel.test` event through that one channel and
+  reports success or failure — useful to verify a webhook URL or a command binary before relying
+  on it. Every other subcommand here only edits the catalog; `test` and `docket notify` are the
+  only things in this command group that ever send anything
+**Output**: A table/document, or a confirmation
+**Return**: 0 on success, 1 on an unknown channel, a missing required field on `enable`, or a
+refused content widening
+
+#### docket notify
+**Purpose**: Flush operator events to every enabled channel (Phase 34, D-50, ADR 0016 §6; see
+operator-loop.spec.md "Notifications")
+**Syntax**: `docket notify flush [--dry-run]`
+**Behavior**: `docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
+state change; this command forces one in between, or previews it. With no `--dry-run`, diffs the
+inbox against the last flush's saved snapshot, delivers each new event
+(`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
+delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash mid-flush
+never re-emits; a failed delivery is recorded in `~/.docket/docket-channels-health.json` and not
+retried on the next flush (at-most-once, never at-least-once). `--dry-run` prints what would be
+sent without delivering or advancing the snapshot
+**Output**: Delivered/failed/skipped counts, or (with `--dry-run`) the same counts as a preview
+**Return**: 0 always — nothing to deliver is not an error
+
 ### Identity & Conversations
 
 #### docket persona
@@ -1178,6 +1247,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.58.0 (2026-09-29)
+
+- **Closes the known gap 1.57.0 left open.** `docket inbox`, `docket channels`, `docket notify`
+  and `docket pod <p> explain interruptions`/`pregrant` (Phase 34, D-50, ADR 0016) now have full
+  entries in this spec — all five were real, shipped commands with no coverage here since the
+  cards that built them.
 
 ### Version 1.57.0 (2026-09-29)
 

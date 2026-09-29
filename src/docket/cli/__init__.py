@@ -2264,11 +2264,11 @@ def cmd_mcp(ctx: typer.Context) -> None:
                   and exits 1 if missing. Transport: newline-delimited
                   JSON-RPC 2.0 on stdin/stdout -- no HTTP, no bind address,
                   no bearer token; the trust boundary is whoever can spawn
-                  the process. Exposes 12 tools (every call audit-logged as
+                  the process. Exposes 13 tools (every call audit-logged as
                   `mcp.<tool>`): status, pods, queue, delegate, dispatch,
                   runs, approvals_list, approvals_grant, approvals_deny,
-                  task_answer, inbox, cost -- each mirrors the equivalent
-                  CLI/HTTP path through the exact same `core/` function, no
+                  task_answer, task_pregrant, inbox, cost -- each mirrors the
+                  equivalent CLI/HTTP path through the exact same `core/` function, no
                   parallel logic, no auto-approve. `dispatch` creates a run
                   record and returns its id immediately, then runs the
                   pipeline in the background -- poll `runs` for the outcome.

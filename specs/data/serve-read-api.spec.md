@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.14.0
+**Version**: 2.15.0
 **Status**: Stable
 **Last Updated**: 2026-09-29
 
@@ -518,6 +518,42 @@ Success response (`200`) — the answered task's `TaskView` (operator-v1, `by_al
 - See `POST /tasks/<project>` above for the sibling `brief` field `POST /tasks/<project>` gained
   in the same card.
 
+### POST /tasks/&lt;id&gt;/pregrants
+
+**Added in 2.15.0 (Phase 34, P34-15, ADR 0016 §10).** Requires `Authorization: Bearer <token>`.
+Records a single-use pre-grant for one exact command on one task, ahead of dispatch — the HTTP
+counterpart of `docket pod <p> pregrant` and the MCP `task_pregrant` tool. Calls
+`core.interruptions.record_pregrant`, which calls `core.approval.create_pregrant` exactly as an
+in-turn park does, then appends the grant to the task's own `pregrants` list — the same shape a
+live park already produces. When the pipeline later reaches that exact call (matched by
+`core.operator_contract.canonical_args_digest`), it passes once without asking again
+(operator-loop.spec.md, "Interruption forecast and pre-grants").
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"pod": "myapp", "command": "git push origin main"}' \
+  http://127.0.0.1:7331/tasks/task-91a2.../pregrants
+```
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `pod` | string | Yes | The project the task belongs to. `400` if absent, empty, or fails `core.provisioning.validate_project_id`. |
+| `command` | string | Yes | The exact command line to pre-approve. `400` if absent, empty, or whitespace-only. |
+| `tool` | string | No | The tool name the pre-grant is keyed under. Defaults to `"bash"`. |
+| `actor` | string | No | A label only — the Bearer token remains the sole authority. Defaults to `"http"`. The channel recorded on the pre-grant and its audit entry is always `"http"`, regardless of `actor`. |
+
+Success response (`200`):
+
+```json
+{"ok": true, "token": "apr-...", "task": "task-91a2...", "pod": "myapp"}
+```
+
+- A malformed JSON body, a body that is valid JSON but not an object, or a missing/empty
+  `pod`/`command`, is rejected with `400` before `record_pregrant` is ever called.
+- An `InterruptionsError` (the task is not in that pod's own queue) is `404`.
+
 ### POST /pods
 
 **Added in 2.5.0 (Phase 22, P22-5).** Requires `Authorization: Bearer <token>`. Provisions a fresh
@@ -720,6 +756,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.15.0 (2026-09-29)
+
+- **One more route this close missed.** `POST /tasks/<id>/pregrants` (P34-15, ADR 0016 §10) was
+  shipped and audit-logged from the start but never documented here — the same
+  `core.interruptions.record_pregrant` the CLI's `docket pod <p> pregrant` and the MCP
+  `task_pregrant` tool call.
 
 ### Version 2.14.0 (2026-09-29)
 

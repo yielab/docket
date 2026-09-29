@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented
 **Last Updated**: 2026-09-29
 
@@ -116,7 +116,7 @@ targets the module that actually ships.
 
 ## Tools
 
-Twelve tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Thirteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
@@ -267,6 +267,21 @@ route are byte-for-byte the same as `docket pod <p> answer`/`docket chat`/the HT
 a `pre_input` `block` policy; raises naming the underlying reason for an unknown task, a task not
 currently `waiting_input`, or `content` failing the question's own `requestedSchema`.
 
+### `task_pregrant`
+
+**Purpose**: Record a single-use pre-grant for one exact command on one task, ahead of dispatch
+(ADR 0016 §10) — identical to `docket pod <project> pregrant <task-id> "<command>"` / `docket
+serve`'s `POST /tasks/<task_id>/pregrants`.
+**Arguments**: `project` (string, required), `task_id` (string, required), `command` (string,
+required — the exact command line to pre-approve), `tool` (string, optional, default `"bash"`).
+**Gating**: calls `core.interruptions.record_pregrant(project, task_id, command, tool=tool,
+channel="mcp", actor="mcp")`, which calls `core.approval.create_pregrant` exactly as an in-turn
+park does, then appends the grant to the task's own `pregrants` list — the same shape a live park
+already produces. When the pipeline later reaches that exact call (matched by
+`core.operator_contract.canonical_args_digest`), it passes once without asking again.
+**Output**: `{"ok": true, "token": "apr-...", "task": "<task_id>", "project": "<project>"}`.
+**Failure modes**: raises (`McpToolError`) if *task_id* is not in *project*'s own task queue.
+
 ### `inbox`
 
 **Purpose**: The derived operator inbox — every pod's tasks needing a human, plus pending
@@ -377,6 +392,15 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.7.0 (2026-09-29)
+
+- **One more tool this close missed, thirteen total.** `task_pregrant(project, task_id, command,
+  tool="bash")` — identical to `docket pod <project> pregrant` / `POST /tasks/<id>/pregrants`
+  (both shipped by P34-15, ADR 0016 §10) — was registered in `_TOOL_NAMES` and audited from the
+  start but never documented here. `docket mcp serve --help`'s own tool list and count
+  (`cli/__init__.py`) were also stale at the old twelve and did not name `task_pregrant`; both
+  corrected.
 
 ### Version 1.6.0 (2026-09-29)
 
