@@ -70,6 +70,12 @@ docket pipeline plan myapp                    # what would run, without running 
 docket pod myapp dispatch                     # run the pipeline once, now
 docket serve --dispatch                       # drain every pod's queue in the background
 
+# What needs you
+docket inbox                                  # every pod's waiting/blocked tasks and pending approvals
+docket chat <task-id>                         # see and answer one task's parked question
+docket channels enable ntfy --set topic=t     # push a notification the moment something does
+docket notify                                 # force one delivery sweep now
+
 # The record
 docket runs list                              # one row per dispatch
 docket trace tail myapp                       # the latest session, step by step
@@ -120,6 +126,8 @@ in your repository:
 ├── skills/<name>/SKILL.md            # global skills, every pod on this machine
 ├── docket-mcp-servers.json           # external MCP tool servers
 ├── docket-exporters.json             # your changes to the kind: exporter documents; five ship built in, all off
+├── docket-channels.json              # your changes to the kind: channel documents; console is the only one on by default
+├── notify-state.json                 # the last delivery sweep's dedupe snapshot (docket notify)
 ├── docket-runs.json  docket-schedules.json  docket-conversations.json
 ├── audit.log                         # hash-chained audit log (docket audit verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals

@@ -303,13 +303,24 @@ never regenerates. The file-by-file reference, with what reads each file on the 
 ```bash
 docket serve --dispatch                   # drain every pod's queue each sweep (loopback by default)
 docket pod myapp config set schedule "@every 30m"   # or a daily HH:MM in UTC, or 5-field cron
-docket pod myapp config set approvalMode refuse     # a gated call fails fast instead of waiting 120 s
+docket inbox                              # everything across every pod that needs you, derived
 ```
 
+A gated call hit by an unattended sweep no longer waits on a thread: it **parks** instead,
+recorded as an ordinary `waiting_approval` task with nothing blocking behind it. `docket inbox`
+lists every task and approval that needs you (`--peek` reads without advancing its cursor); grant
+or deny it exactly like any other approval: `docket approve <token>` (also HTTP, MCP or Telegram).
+To be told rather than have to ask, turn on a delivery channel — `docket channels enable ntfy
+--set topic=<your-topic>` (or `desktop`, `webhook`, `command`, `email`) — and `docket notify`
+pushes what changed since the last flush; `docket serve --dispatch` and a real dispatch already
+call it after every state change. Prefer a hard failure over a parked one in CI?
+`docket pod myapp config set approvalMode refuse` fails the task at once instead, naming the tool
+and the policy that asked.
+
 `docket serve` also exposes a read API and `POST /dispatch/<project>` for CI. `--telegram`
-adds an inbound-only approval channel with four verbs (`/status`, `/delegate`, `/approve`,
-`/deny`); it is not a chat, and docket never messages first. Schedules, webhooks and the run
-registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
+adds an inbound-only approval channel with five verbs (`/status`, `/delegate`, `/approve`,
+`/deny`, `/answer`); it is not a chat, and docket never messages first. Schedules, webhooks and the
+run registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
 
 ---
 
