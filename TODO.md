@@ -11,10 +11,21 @@
 >
 > ---
 >
-> ## ▶ BOARD CLEAR — no active wave (2026-09-29)
+> ## ▶ ACTIVE BOARD — WAVE 71 (Phase 35, D-51) · opened 2026-09-29
 >
-> Nothing is scheduled. The next wave opens only on a measured trigger (a defect found by running
-> the product, a second operator, a question asked twice), never to work down a backlog.
+> **Ten cards over Waves 71–75**, one worker per card (Sonnet, or Haiku where the card says so)
+> in an isolated worktree under one integrator. docket becomes the governed harness of a
+> harness-agnostic factory:
+> - an opt-in harness contract v1.1: process events, questions answered on stdin, written
+>   paths, `--token-file`, the caller's limits, and a recipe pipeline run in place;
+> - pod dispatch keeps its evidence (verify output, commit SHA, `requireVerify`);
+> - two measured defects fixed.
+>
+> Decision, reversals and verdict table:
+> [docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md).
+> Worker packets: [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
+> **Wave 71 (P35-1..P35-4) is ready to claim.** Phase 35 closes when the Wave 75 rollup merges
+> green. Phases 36–38 are planned below and are **not claimable** until their phase opens.
 >
 > **Phase 34 closed 2026-09-29** (ROADMAP D-50,
 > [ADR 0016](docs/adr/0016-operator-loop-and-interop-standards.md)): seventeen cards over Waves
@@ -247,10 +258,473 @@
 
 **Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `DONE`
 **Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model:** **`main`** is the canonical public/default and release lineage (D-31). Use one
-short-lived card branch or isolated worktree per task and integrate it into `main` without rewriting
-history. `platform` may remain as a synchronized historical/integration ref, but it is not a second
-release source.
+**Branch model (D-52, amending D-31):** **`develop`** is the integration branch. Every card
+branch or isolated worktree bases on `develop` and is integrated into `develop` without
+rewriting history. **`main`** stays the canonical public/default and release lineage: it moves
+only by a fast-forward (or a merge) from `develop`, when the maintainer cuts a release or
+decides `main` has fallen too far behind. Tags and release jobs still originate from `main`.
+`platform` may remain as a synchronized historical ref, but it is not a release source.
 
 ---
 
+## ▶ WAVE 71 ACTIVE — Phase 35, docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)
+
+**Opened 2026-09-29 at `6525b52`.** Ten cards in five waves. Decision, reversals, cut and
+deferred lists: [docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md).
+Worker packets: [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
+
+**Trigger (explicit request plus facts read on the live path and in the consumer, 2026-09-29).**
+The maintainer asked for docket's part of the structured-agentic-engineering plan to be
+architected into the roadmap for parallel Sonnet workers, setting existing ADR limits aside
+(each reversal is recorded in ADR 0017). Read at `6525b52` and in Tack at `7718420`:
+- Tack's U8 is blocked because docket ships no `harness-v1.1` (Tack `docs/plans/phase-65.md`,
+  M3 "done 2026-09-20: absent"). It needs four items: a process-group event, a stdout question
+  answered on stdin, a written-path list, and the token on stderr or `--token-file`.
+- Tack declares docket `decisions: Unsupported`, `artifacts: Advisory`, `cancel: Advisory` and
+  passes it no policy or budgets (Tack `crates/tack-runner/src/harness/docket.rs::capabilities`).
+- A passing verify's output is discarded and a missing `verifyCmd` advances
+  (`core/dispatch.py::_evaluate_mechanical_gate`); `diff_ref` is a branch, not a commit
+  (`_implementer_diff_probe`).
+- Two defects: `guardrail_block` writes the policy id into `action`
+  (`_enqueue_pre_input_gate`, `_apply_output_guardrails`); `budget_for_role` ignores
+  pod-scoped roles (`core/context.py`).
+
+**Spec ownership rule (Phases 32–34 lesson).**
+- A worker adds requirements under **its own new section heading**, numbered from 1 inside that
+  section, and never touches `**Version**`, `**Status**`, `**Last Updated**` or a changelog. The
+  integrator bumps each spec once per rollup.
+- P35-2 adds a "Contract 1.1" section to `specs/api/harness-mode.spec.md` with **every** later
+  harness subsection already stubbed (`Status: Planned — owned by P35-N`). A later card
+  replaces only its own stub.
+
+**Contract rule (the W30 seam lesson).** P35-2 owns every v1.1 model in `core/harness.py`.
+Every later card builds its wire values through those models and never hand-builds a second
+dict. `--contract 1.0` (the default) stays byte-identical: the four v1 fixtures and the v1
+schema are the no-change oracle for every card.
+
+**Test rule.**
+- One RED behavioural test per card, in the module's `SUBJECT` file.
+- A second test only for the card's fail-closed negative case.
+- No real model and no real vendor host: every HTTP target is a local `http.server` on port 0.
+  The only exception is P35-10's live run, and only against `127.0.0.1:8081`.
+- Existing tests, goldens and specs are the no-change oracle, except where a card names the
+  change.
+
+| Wave | Cards (parallel inside the wave) | Hot file and function ownership |
+| --- | --- | --- |
+| 71 | P35-1 ∥ P35-2 ∥ P35-3 ∥ P35-4 | `core/dispatch.py::_enqueue_pre_input_gate`, `_apply_output_guardrails`, `_hop_message` (the one `budget_for_role` call), `core/context.py::budget_for_role`, `core/session.py` (the one `budget_for_role` call), `role-archetypes.spec.md` → P35-1; `core/harness.py` (all v1.1 models, `HARNESS_CONTRACT_VERSIONS`), `scripts/harness_schema.py`, `docs/contracts/harness-v1.1/` (new), `tests/fixtures/harness-contract/v1.1/` (new), `cli/_harness.py::_flag`/`_usage_error` and the version selection in `_run`, `harness-mode.spec.md` "Contract 1.1" → P35-2; `edges/adapters/toolbox.py::run_bash`, `core/tools.py::ToolContext` (one field) and the `bash` handler lambda only, `core/trace.py::EVENT_TYPES` (+2), `core/telemetry.py::_STRUCTURAL_KEYS` (+2), `edges/adapters/docket_runtime.py` (the `ToolContext` construction), `trace-store.spec.md` → P35-3; `core/dispatch.py::_evaluate_mechanical_gate`, `_implementer_diff_probe`, `HopResult`, `_hop_record`, `_hop_from_record`, `edges/adapters/system.py` (new `git_head_sha`, `git_merge_base`, `git_diff_stat`), `pod-dispatch.spec.md` → P35-4 |
+| 72 | P35-5 ∥ P35-7 ∥ P35-8 | `cli/_harness.py::_run` (answer wiring only), `cli/_harness_answers.py` (new), `core/approval.py::approval_create` (trace payload only) → P35-5; `core/harness_pipeline.py` (new), `core/pod_provisioning.py` (an in-place member path, no worktree) → P35-7; `core/pod.py::PodSettings` (`requireVerify`), `core/dispatch.py::_evaluate_mechanical_gate` (the `not verify_cmd` branch only), `pod-dispatch.spec.md` new section → P35-8 |
+| 73 | P35-6 | `cli/_harness.py::_run` (pre-turn token file, limits, policies; post-turn files), `core/harness.py::result_from` (the `files` argument), `edges/adapters/docket_runtime.py` (pop `DOCKET_TURN_TOKEN_BUDGET`), `core/runtime_driver.py` (one constant) |
+| 74 | P35-9 | `cli/_harness.py::_run` (the `--recipe` branch), `core/harness.py` (`task` block builder) |
+| 75 | P35-10 (integrator) | seam test, live run, docs corrections, spec bumps, rollups, archive |
+
+`cli/_harness.py::_run` is owned by exactly one card per wave (P35-2, P35-5, P35-6, P35-9 in
+that order). No other card edits it.
+
+Every card follows the §"How to use this board" definition of done.
+
+### P35-1 — two measured defects: `guardrail_block.action` and pod-scoped role token budgets
+
+**Status:** TODO · **Size:** S · **Wave:** 71 · **Model:** Haiku · **Spec:**
+`role-archetypes.spec.md` new section "Pod-scoped token budgets"
+
+**Trigger:** deterministic defects read at `6525b52`.
+- `core/dispatch.py::_enqueue_pre_input_gate` and `_apply_output_guardrails` write
+  `"action": hit.policy_id` into the `guardrail_block` payload. Expected: `hit.action`. The
+  `guardrail_check` line just above each writes it correctly.
+- `core/context.py::budget_for_role` calls `_arch.load_registry()` with no project. A
+  `tokenBudget` declared on a pod-scoped role (written by `pod apply` through
+  `core/archetypes.py`) is never read at `core/dispatch.py::_hop_message` or in
+  `core/session.py`. This is the same shape as the Phase 30 `resolve_role_model(..., project=)`
+  defect.
+
+**Goal:**
+- Both `guardrail_block` payloads carry `"action": hit.action`.
+- `budget_for_role(role, *, project: str = "", context_window_tokens=..., max_output_tokens=...)`
+  resolves `load_registry(project)` when a project is given, and the global registry otherwise.
+- Both callers pass their project.
+
+**Non-goals:** any other trace payload; changing budget defaults.
+
+**Acceptance:**
+- A pod whose applied role `implementer` declares `tokenBudget: 1234` gets `1234` from
+  `budget_for_role("implementer", project=<pod>)`. The global call still returns the built-in
+  value.
+- A `pre_input` block and a `pre_output` block each write a `guardrail_block` record whose
+  `action` equals the policy's action (`block`), not its id.
+
+**RED:** the pod-scoped budget test in `tests/unit/core/test_context.py` fails at the base
+(returns the built-in budget).
+
+### P35-2 — the harness contract v1.1: models, schema, fixtures, `--contract`
+
+**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`harness-mode.spec.md` new section "Contract 1.1", with stubs for P35-3, P35-5, P35-6, P35-9
+
+**Trigger:** ADR 0017 §1–2; Tack M3.
+
+**Goal:**
+- `core/harness.py`:
+  - `HARNESS_CONTRACT_VERSIONS = ("1.0.0", "1.1.0")`; `HARNESS_CONTRACT_VERSION` stays
+    `"1.0.0"`.
+  - `HarnessEvent` and `HarnessResult` validate `v` exactly against the version they were built
+    for. Keep the v1.0 classes unchanged; add `HarnessEventV11` and `HarnessResultV11`, or a
+    version-parameterised validator, whichever keeps the v1.0 schema byte-identical.
+  - New v1.1 models:
+    - `FileChange{path, op: "write"|"edit"|"delete"|"unknown"}`;
+    - `AnswerLine{v, token, answer: {approvalToken: str|None, questionId: str|None, action:
+      "accept"|"decline"|"cancel", content: dict|None}}`, where exactly one of
+      `approvalToken`/`questionId` is set;
+    - `HarnessTask{status, hops: list[dict], evidence: dict|None}`;
+    - `HarnessResultV11` = v1.0 fields + `files: list[FileChange] = []` + `task: HarnessTask |
+      None = None` + `limits: {maxTokens: int|None}`.
+- `scripts/harness_schema.py` writes both `docs/contracts/harness-v1/schema.json` (unchanged)
+  and `docs/contracts/harness-v1.1/schema.json`, including `AnswerLine`.
+- Fixtures at `tests/fixtures/harness-contract/v1.1/`: `ok-files.ndjson`,
+  `asked-answered.ndjson` (an `approval_requested` event, then an ok result),
+  `cancelled-process.ndjson` (`process_started`/`process_exited` with `signal`),
+  `recipe-ok.ndjson` (a result with a `task` block), `answer-lines.ndjson` (stdin lines). Each
+  line validates against the committed v1.1 schema.
+- `cli/_harness.py`: `--contract 1.0|1.1` (default `1.0`). An unknown value is refused (exit 2).
+  The chosen version is stamped on every emitted line. No other v1.1 behaviour yet.
+
+**Non-goals:** process events, stdin, files, recipe execution (later cards fill their stubs).
+
+**Acceptance:**
+- `docket harness run --contract 1.1 ...` against the fake endpoint emits lines with `"v":
+  "1.1.0"` that validate against the v1.1 schema.
+- The same run without `--contract` is byte-identical to the base on the four v1 fixtures'
+  scenarios.
+- `--contract 2.0` → exit 2, one refused result.
+- The v1 and v1.1 schema pins both hold.
+
+**RED:** the v1.1 schema-pin test fails at the base (the file does not exist).
+
+### P35-3 — process lifecycle events and cancellable process groups
+
+**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`trace-store.spec.md` new section "Process lifecycle events"; the P35-3 stub in
+`harness-mode.spec.md` after P35-2 merges (integrator reconciles if needed)
+
+**Trigger:** ADR 0017 §2; Tack M3 item 1 ("an event per child process group started").
+
+**Goal:**
+- `edges/adapters/toolbox.py::run_bash` accepts `on_process: Callable[[str, dict], None] | None
+  = None`. After `Popen` it calls `on_process("started", {"pgid": proc.pid})`. On every exit
+  path (normal, non-zero, timeout, cancellation) it calls `on_process("exited", {"pgid",
+  "exitCode" | "signal"})`, exactly once per start.
+- `core/tools.py::ToolContext.on_process` (one field, default `None`). The `bash` handler
+  lambda passes it, closing over `tool` and `callId`. No other change in `core/tools.py`.
+- `core/trace.py::EVENT_TYPES` gains `process_started` and `process_exited`.
+  `core/telemetry.py::_STRUCTURAL_KEYS` gains their structural keys (`pgid`, `tool`, `callId`,
+  `exitCode`, `signal`).
+- `edges/adapters/docket_runtime.py` builds `ToolContext.on_process` to:
+  - emit the trace event;
+  - call `core/runs.py::add_hop_pid(current_run_id(), pgid)` on start and `remove_hop_pid` on
+    exit, when a run is current.
+
+  `docket runs cancel` and harness SIGTERM then reach a live tool's process group.
+
+**Non-goals:** harness-specific output (the trace already streams to stdout); MCP server
+processes (Phase 38).
+
+**Acceptance:**
+- A turn whose `bash` call runs `sleep 30` under a run emits `process_started` with a live pgid.
+- `docket runs cancel <run>` kills that group within the grace period and a `process_exited`
+  with `signal` follows.
+- A normal command emits one started/exited pair with `exitCode: 0`.
+- No `bash` call → no process events (byte-identical trace otherwise).
+
+**RED:** the start/exit pair test in a new `tests/unit/edges/adapters/test_toolbox.py`
+(`SUBJECT = "docket.edges.adapters.toolbox"`) fails at the base (no callback parameter). The
+cancel-kills-the-group case belongs beside `tests/integration/test_bash_cancellation.py`.
+
+### P35-4 — pod dispatch keeps its evidence: verify output, commit, base, diffstat
+
+**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`pod-dispatch.spec.md` new section "Hop evidence"
+
+**Trigger:** ADR 0017 §4. `_evaluate_mechanical_gate` discards a passing verify's output;
+`_implementer_diff_probe` records a branch name only.
+
+**Goal:**
+- `HopResult.verify: dict | None`, set by `_evaluate_mechanical_gate` on pass **and** fail:
+  - `cmd`, `exitCode`, `durationS`;
+  - `outputTail`: the last `VERIFY_EVIDENCE_TAIL_CHARS = 4000` characters, after
+    `trace.redact`.
+
+  The `verification_failed` trace event is unchanged.
+- `_implementer_diff_probe` also returns:
+  - `commit`: `git rev-parse HEAD` in the member's checkout;
+  - `baseCommit`: merge-base of HEAD with the codebase's current branch;
+  - `diffStat`: `{files, insertions, deletions}`.
+
+  Each is `None` when not a repository. New `edges/adapters/system.py` helpers: `git_head_sha`,
+  `git_merge_base`, `git_diff_stat`, which degrade to `None` like the existing git helpers.
+- `_hop_record` persists `verify` and `evidence: {commit, baseCommit, diffStat}`;
+  `_hop_from_record` round-trips them, and a legacy record without them loads unchanged.
+
+**Non-goals:** committing on the agent's behalf; any CLI renderer (Phase 36); `requireVerify`
+(P35-8).
+
+**Acceptance:**
+- A dispatched task with `verifyCmd: "echo ok"` persists a hop whose `verify.exitCode == 0` and
+  whose `verify.outputTail` contains `ok`.
+- A failing verify persists `exitCode != 0` and its redacted tail, and a stored secret value
+  never appears in it (canary).
+- In a git codebase the Implementer hop persists a 40-hex `commit`; outside git all three
+  evidence fields are `None`.
+- A hop record written at the base still loads.
+
+**RED:** the passing-verify evidence test in `tests/integration/test_dispatch.py` fails at the
+base (no `verify` key).
+
+### P35-5 — questions on stdout, answers on stdin (`--answers stdin`)
+
+**Status:** TODO · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:** the P35-5 stub in
+`harness-mode.spec.md`; `security-gates.spec.md` new section "The harness answer channel"
+
+**Trigger:** ADR 0017 §2; Tack M3 item 2 and U8 `decisions: Supported`.
+
+**Goal:**
+- `--answers stdin` (v1.1 only; with `--contract 1.0` → exit 2):
+  - sets `DOCKET_APPROVAL_MODE=wait` in `run_turn`'s env instead of `refuse`;
+  - `--answer-timeout S` (default `TOOL_APPROVAL_TIMEOUT`) bounds each wait.
+- Refused (exit 2) when the task comes from stdin: `--task-file` naming `-`, `/dev/stdin`, or
+  `/proc/self/fd/0`.
+- `cli/_harness_answers.py` (new): a daemon reader thread started around the turn.
+  - It parses each stdin line as `core.harness.AnswerLine` and rejects a wrong `v`/`token`
+    with one stderr line, ignoring the answer.
+  - For an `approvalToken`: `content` (if any) passes `core.policy.policy_eval_detail("lead",
+    "pre_input", text, trusted=False)`, then `accept` → `core.approval.approval_grant(t,
+    channel="harness")` and `decline`/`cancel` → `approval_deny(t, channel="harness")`.
+  - A `questionId` answer is accepted by the model and answered with a stderr "unsupported
+    until a recipe run" line (P35-9 wires it).
+  - It stops when the turn ends.
+- `core/approval.py::approval_create`: the `approval_requested` trace payload adds `tool` and
+  `callId` when the context has them. Nothing else changes.
+
+**Non-goals:** a question tool for agents (Phase 36); HTTP; `park` in harness.
+
+**Acceptance:**
+- A scripted turn whose `bash` call needs approval emits `approval_requested` with `token`,
+  `tool` and `callId`. Writing an `accept` line for that token runs the command and ends `ok`.
+- A `decline` line denies it.
+- No line within `--answer-timeout 1` denies (fail closed) and the run ends `blocked` or
+  `failed` per the existing mapping.
+- An answer whose content trips a `pre_input` block policy is refused and the approval stays
+  pending until timeout.
+- Every resolution writes an audit entry with `channel=harness`.
+
+**RED:** the accept-line test in `tests/integration/test_harness_cli.py` fails at the base
+(`--answers` unknown → exit 2).
+
+### P35-6 — written paths, `--token-file`, and the caller's limits
+
+**Status:** TODO · **Size:** M · **Wave:** 73 · **Model:** Sonnet · **Spec:** the P35-6 stub in
+`harness-mode.spec.md`
+
+**Trigger:** ADR 0017 §2; Tack M3 items 3–4; Tack `additional: Unsupported` (policy and budgets
+not passed).
+
+**Goal (v1.1 only; each flag with `--contract 1.0` → exit 2):**
+- **`files`:** the harness collects every `tool_call` record for `write`/`edit` from its own
+  trace subscription (path from the arguments). When the workspace is a git repository it
+  merges `git status --porcelain` (through `edges/adapters/system.py`). The result is
+  deduplicated, relative to the workspace, and passed to `core/harness.py::result_from(...,
+  files=)`.
+- **`--token-file PATH`:** written atomically with mode 0600 **before** the turn starts. It
+  contains `{"v","token","pid"}`. The stderr line `docket harness: run <token> agent=...` is
+  pinned in the spec as the stable format.
+- **`--max-tokens N`:** `run_turn` env key `DOCKET_TURN_TOKEN_BUDGET` (new constant in
+  `core/runtime_driver.py`), popped in `edges/adapters/docket_runtime.py` into the loop's
+  measured-token bound. The result echoes `limits.maxTokens`.
+- **`--policy FILE`** (repeatable):
+  - each file is validated with `core.policy.validate_policy`;
+  - an invalid file → exit 2 before any run;
+  - valid files are copied into the caller's `DOCKET_HOME` policies directory and are active
+    for the turn.
+
+**Non-goals:** diff content (the caller captures it); dollar budgets.
+
+**Acceptance:**
+- A scripted turn that writes `a.txt` and edits `b.txt` returns `files` with both.
+- A git workspace with an untracked file written by `bash` also lists it.
+- The token file exists, with mode 0600, before the first model request (assert from the fake
+  endpoint's first request handler).
+- `--max-tokens 10` stops the turn on the token bound.
+- A `--policy` denying `bash` blocks a `bash` call; a malformed policy file exits 2 with no run
+  created.
+
+**RED:** the `files` test in `tests/integration/test_harness_cli.py` fails at the base.
+
+### P35-7 — the in-place recipe runner (core)
+
+**Status:** TODO · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:**
+`pod-dispatch.spec.md` new section "In-place ephemeral pods"
+
+**Trigger:** ADR 0017 §3. Harness mode must run a pipeline without a second executor.
+
+**Goal:** `core/harness_pipeline.py::run_recipe_task(workspace: Path, recipe: str, task: str, *,
+model: str, approval_mode: str, timeout: int, env: dict) -> RecipeRun`, which does the
+following in the current `DOCKET_HOME`:
+- provisions an ephemeral pod `h-<run-token-prefix>` with `codebase = workspace`, whose members
+  work **in place**. Add the smallest parameter to `core/pod_provisioning.py` so an Implementer
+  skips `provision_worktree` and its `cwd` resolves to the codebase;
+- sets every role's model to `model`;
+- applies the recipe through `core/pod_apply.py::resolve_recipe` / `plan_apply` and the
+  existing apply path;
+- enqueues one task (`enqueue_task`);
+- runs `dispatch_task` synchronously with the pod's `approvalMode` set to `approval_mode`;
+- returns `RecipeRun{task: dict, hops: list[dict]}` from the persisted task record.
+
+**Non-goals:** the CLI flag (P35-9); worktrees; tearing down the ephemeral pod (it lives in the
+caller's disposable home).
+
+**Acceptance:**
+- With the scripted backend, `run_recipe_task(tmp_repo, "tdd", ...)` runs the recipe's steps in
+  order.
+- The Implementer's `bash`/`write` calls land inside `tmp_repo` itself (a file appears there,
+  and no worktree directory is created).
+- The returned hops match the persisted task.
+- An unknown recipe raises the existing `resolve_recipe` error before any pod is provisioned.
+
+**RED:** the in-place write test in `tests/integration/test_harness_pipeline.py` (new) fails at
+the base (module missing).
+
+### P35-8 — `requireVerify`: a missing verify command fails instead of advancing
+
+**Status:** TODO · **Size:** S · **Wave:** 72 · **Model:** Haiku · **Spec:**
+`pod-dispatch.spec.md` new section "Required verification"
+
+**Trigger:** ADR 0017 §4. `_evaluate_mechanical_gate` advances when `verifyCmd` is empty.
+
+**Goal:**
+- `core/pod.py::PodSettings.require_verify: bool = Field(False, alias="requireVerify")`, added
+  to `KEYS` so `docket pod <p> config set requireVerify true` writes it.
+- In `_evaluate_mechanical_gate`'s `not verify_cmd` branch, when the pod's setting is true:
+  - trace `verification_failed` with `{"reason": "verification_missing", "member"}`;
+  - return a `failed` outcome with reason `verifyCmd required but not set`.
+- Otherwise the branch is unchanged.
+
+**Non-goals:** changing the default; the harness flag (P35-9 sets the setting in recipe mode).
+
+**Acceptance:**
+- With `requireVerify: true` and no `verifyCmd`, dispatch ends the task `failed` with that
+  reason and no Reviewer hop runs.
+- With `false`, the base behaviour (`verification_skipped`) is byte-identical.
+- `docket pod <p> config explain` shows the key.
+
+**RED:** the required-verify test in `tests/integration/test_dispatch.py` fails at the base
+(task advances).
+
+### P35-9 — `harness run --recipe`: a pipeline for an external caller
+
+**Status:** TODO · **Size:** M · **Wave:** 74 · **Model:** Sonnet · **Spec:** the P35-9 stub in
+`harness-mode.spec.md`
+
+**Trigger:** ADR 0017 §3; the verdict table's "multi-role loop" row.
+
+**Goal (v1.1 only):**
+- **Arguments:** `--recipe NAME|DIR` is mutually exclusive with `--role`. With `--contract 1.0`
+  it exits 2.
+- **Execution:** `cli/_harness.py::_run` calls `core/harness_pipeline.py::run_recipe_task` with:
+  - `approval_mode`: `wait` under `--answers stdin`, else `refuse`;
+  - `requireVerify` set true on the ephemeral pod.
+- **Result:** built through the P35-2 models:
+  - `task` block: `status`, `hops` (role, stepId, ok, verdict, `verify`, `evidence`), `brief`;
+  - `files` as in P35-6;
+  - status mapping: task `done` → `ok`; `failed` → `failed`; a refused approval →
+    `blocked`; `waiting_input` with no answer channel → `blocked`.
+- **Answers:** `questionId` lines from P35-5's reader now route to
+  `core.answers.answer_task` for the ephemeral pod's task.
+
+**Non-goals:** new pipeline semantics; a second executor.
+
+**Acceptance:**
+- `docket harness run --contract 1.1 --recipe tdd --task-file t.md ...` against the scripted
+  backend streams hop events and ends with a `task` block whose hops follow the recipe.
+- A failing verify ends `failed` with that hop's `verify.exitCode`.
+- The `intake` recipe's question, answered with a `questionId` line, reaches the Lead's re-entry.
+- The emitted result validates against the v1.1 schema.
+
+**RED:** the `--recipe` run test in `tests/integration/test_harness_cli.py` fails at the base.
+
+### P35-10 — integrator: the consumer seam, a live run, doc corrections, close
+
+**Status:** TODO · **Size:** M · **Wave:** 75 · **Model:** the integrating session · **Spec:**
+every Phase 35 spec: version, status and changelog bumps
+
+**Goal:**
+- **Seam test:** `tests/integration/test_harness_v11_consumer.py` drives the real `docket
+  harness run --contract 1.1` subprocess the way Tack does. Task from a file, then:
+  - read `process_started`;
+  - answer an approval on stdin;
+  - read `files`;
+  - run `--recipe`;
+  - cancel with SIGTERM and see `process_exited`.
+
+  Every line is validated against the **committed** v1.1 schema file.
+- **Live run** against `127.0.0.1:8081` (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`): one `--recipe
+  software` run and one `--answers stdin` run. Record the result lines in the ADR.
+- **Doc corrections:**
+  - ADR 0016 §6 (Tack does not poll);
+  - `docs/SECURITY-SIMPLE.md` (notifications exist since Phase 34; only `bash` is jailed);
+  - the stale comment in `core/orchestrator.py`;
+  - `docs/DEVELOPMENT-HARNESS.md` and the harness section of `docs/DOCKET.md`;
+  - `CHANGELOG.md`; the README sentence on harness mode (D-37: describe what is now true).
+- **Handoff note** for Tack's M3: each of the four items `present`, with its commit.
+- Spec bumps, rollups, `scripts/metrics.py --check`, board archive.
+
+**Acceptance:** all gates green; the seam test fails when any one card's piece is reverted
+(prove it once for the answer line and once for `files`).
+
+## ◇ PLANNED — Phases 36–38 (D-51 follow-on; not claimable)
+
+These are outlines, not cards. The integrator writes each phase's cards when it opens and
+re-verifies every locator against the tree at that moment, because a gap list decays. Each
+phase opens only after the previous one closes. The phase that reverses an earlier ADR records
+that in its own ADR (ADR 0017 "What this reverses" lists them as not decided yet).
+
+**Phase 36 — consultation and evidence packs (CRP v1, evidence-v1).** Opens after Phase 35.
+- **operator-v1.1 contract.** `Question.kind` (`approval|clarification|decision`); `options[]`
+  (`id`, `label`, `description`, `risks`, `estimatedTokens`); `recommendation` (`optionId`,
+  `rationale`, `evidenceRefs[]`); `Answer.optionId`. Approval grant and deny gain `reason` and
+  `actor` (closes the ADR 0016 §8 drift). JSON Schema under `docs/contracts/operator-v1.1/`.
+- **A `consult` built-in tool for every role** (not only the Lead under `intake`). It requires
+  options and a recommendation. Outcome by posture: `park` → `waiting_input`; harness
+  `--answers stdin` → stdio; `refuse` → `blocked` with the pack in the result. Capped by
+  `maxConsultationsPerTask` (the attention budget).
+- **Approval packs.** A gated call carries the model's stated rationale (screened, truncated)
+  and three options: approve once, approve for this task (a pre-grant), deny with reason.
+- **A corrections ledger.** Deny reasons, `REQUEST-CHANGES` texts and declined answers go
+  append-only to a per-pod `corrections.jsonl` (D-12 exemption shape); `docket pod <p>
+  corrections`. This is the input for an external verifier's directive proposals.
+- **evidence-v1.** A published schema of what P35-4 persists, plus per-hop measured tokens and
+  trace ids. `docket pod <p> evidence <task> [--json]`; `GET /tasks/<p>/<id>/evidence`; the same
+  block in harness v1.1 results.
+- **Escalation metrics.** `docket_tasks_started_total`; `docket_questions_total{kind,outcome}`;
+  `docket_decision_latency_seconds` from inbox transitions; `docket metrics --escalation`. Kept
+  in measured tokens and seconds, never dollars.
+
+**Phase 37 — verification-ready execution.** Opens after Phase 36.
+- `pre_input` screening of **MCP tool results** (today only descriptions are screened).
+- A worktree per task instead of per member.
+- **Recipes, no core change:**
+  - `mutation`: a `run:` step with a threshold, scoped to changed lines;
+  - `cross-family-review`: a reviewer with a `model:` from another provider family;
+  - `spec-writer`: tests derived from the brief by a different model, before the Implementer;
+  - `anti-tautology`: new tests must fail on `baseCommit`.
+- A `no_progress` stop reason in the loop: no new passing check or an oscillating diff over N
+  iterations.
+- An AEE MCP pack as recipes (ast-grep, an LSP server, a semantic index), declared `kind: read`
+  where true.
+
+**Phase 38 — the L4 execution envelope.** Opens after Phase 37.
+- Isolation on by default, with a preflight. File tools and MCP servers jailed, not only `bash`.
+- An egress lockdown mode (`--network none` plus the `fetch` allowlist). This reverses ADR 0004's
+  default for autonomy-granted domains.
+- Per-pod sweep workers (parallel dispatch across pods).
+- Ephemeral per-task credentials.
+- A `kind: autonomy` document consumed from the external verifier: domain → required recipe,
+  models, checks and authority. docket enforces it; it never computes it (ADR 0017 §5).
