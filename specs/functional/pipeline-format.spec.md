@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -36,7 +36,7 @@ edge the short form could already express keeps normalizing to the canonical `re
 byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
 now loads. The canonical form itself, and everything this format's executor and CLI surface read
 beyond the new field, is unchanged.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -638,6 +638,14 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.11.0 (2026-09-29)
+
+- **New "Operator input steps" section (Phase 34, D-50, ADR 0016 §4).** A step may declare
+  `input: {from: <step id>, message?: str}` (P34-7's format), running no agent turn: it creates
+  a question from the `from` step's latest hop, parks the task `waiting_input`, and routes on
+  `answered`/`declined` (P34-10's execution, operator-loop.spec.md and pod-dispatch.spec.md own
+  the runtime mechanics).
 
 ### Version 2.10.0 (2026-09-27)
 

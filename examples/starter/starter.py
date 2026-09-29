@@ -24,7 +24,7 @@ TARGET_NAME = "starter-output.txt"
 INITIAL_BYTES = b"starter pending\n"
 APPROVED_TEXT = "docket starter approved\n"
 TERMINAL_SUMMARY = "Starter journey completed."
-HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "verdict", "notes"}
+HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "verdict", "notes", "brief"}
 
 
 class StarterFailure(RuntimeError):

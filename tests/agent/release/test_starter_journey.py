@@ -23,7 +23,7 @@ INITIAL_BYTES = b"starter pending\n"
 APPROVED_BYTES = b"docket starter approved\n"
 TERMINAL_SUMMARY = "Starter journey completed."
 PUBLIC_COMMAND = "python starter.py --workspace ./workspace"
-HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "verdict", "notes"}
+HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "verdict", "notes", "brief"}
 
 
 def _run(

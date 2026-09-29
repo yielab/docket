@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.56.0
+**Version**: 1.57.0
 **Status**: Complete
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -448,8 +448,8 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   ordinary positional words (one queue per pod, at
   `~/.docket/workspaces/<project>-lead/TASK_LIST.json`). `--brief` (Phase 34, P34-13) loads and
   validates the file as a `TaskBrief` (operator-v1); an invalid one exits non-zero and enqueues
-  nothing. `core.dispatch.enqueue_task` has no `brief` parameter yet, so a *valid* one also exits
-  non-zero today, naming the missing parameter, rather than silently dropping it
+  nothing. A *valid* one is passed through to `core.dispatch.enqueue_task`'s own `brief=`
+  parameter and actually enqueues
 - `answer <task-id> [text] [--field name=value]... [--decline]`: Answer a parked question
   (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills the single
   property of a one-property question schema; `--field` sets named properties explicitly
@@ -1179,7 +1179,19 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
-### Version 1.56.0 (2026-09-28)
+### Version 1.57.0 (2026-09-29)
+
+- **Phase 34, D-50, ADR 0016.** `pod <p> delegate` gains `--brief FILE.json` and `pod <p>
+  answer` (P34-13); the corrected version below states a valid brief now actually enqueues
+  (a post-close integration fix wired `enqueue_task`'s `brief=` parameter through, see
+  operator-loop.spec.md's changelog). New `docket chat <task-id>` command (P34-13). New
+  "Foreground dispatch progress and in-place approval" section (P34-4): `docket pod <p>
+  dispatch` renders trace events on a TTY or `--progress`, with an in-place `[a]pprove/[d]eny`
+  prompt, `--no-prompt` to disable it, and a byte-identical no-TTY/no-flag oracle.
+  **Known gap, not closed by this pass:** `docket inbox`, `docket channels`, `docket notify`,
+  `docket pod <p> pregrant` and `docket pod <p> explain interruptions` are real, shipped
+  commands (`docs/commands.md`, operator-loop.spec.md areas 5/6/9) with no coverage in this
+  spec yet — flagged for a follow-up card rather than backfilled here.
 
 - **`docket exporters privacy` and `docket exporters preview`.** The exporters entry gains
   both actions; `enable` takes `--privacy <level>|--share a,b` and no longer `--payload`;

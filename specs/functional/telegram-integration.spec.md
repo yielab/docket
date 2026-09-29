@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 2.2.1
+**Version**: 2.3.0
 **Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
 discovers a Telegram group from a one-time `/wire <code>` message (with manual entry as a
 fallback), records its binding in `fleet.json`, and `docket serve
@@ -9,7 +9,7 @@ new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
 fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny through it writes an
 `audit_log()` entry tagged `channel="telegram"`, exactly like the other three.
-**Last Updated**: 2026-09-18
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -329,6 +329,21 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Version 2.3.0 (2026-09-29)
+
+- **New "Telegram as a channel" section, amending Command grammar 7 (Phase 34, D-50, ADR 0016
+  §9, P34-16).** A fifth verb, `/answer <task-id> <text>`, resolves through the same
+  `core.answers.answer_task` every other surface calls (the bound agent's own pod; a foreign
+  task id is refused by `answer_task` itself). The outbound `telegram` `kind: channel` dialect
+  (`edges/adapters/channels/telegram.py`) pushes a rendered notification to every chat id in the
+  channel's own `actors` list, never enumerating `fleet.json` bindings and never called from
+  `core/telegram.py` itself. The inbound-only guard is amended and renamed
+  `TestOutboundOnlyThroughTheChannel`: outbound Telegram messages now exist through exactly two
+  structurally-pinned call sites (`core.telegram.poll_once`'s reply, and the channel dialect's
+  `actors`-scoped push) instead of one, an AST walk over `src/` refuses a third, and a real
+  false positive it found along the way (the new `email` dialect's unrelated
+  `smtplib.SMTP.send_message` method) is allow-listed by path, not by weakening the scan.
 
 ### Version 2.2.1 (2026-09-18)
 

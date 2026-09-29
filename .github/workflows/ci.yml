@@ -94,6 +94,9 @@ jobs:
       - name: Recipe library drift check
         run: uv run python scripts/gen_recipe_docs.py --check
 
+      - name: Operator-v1 schema drift check
+        run: uv run python scripts/gen_operator_schemas.py --check
+
       - name: Docs site build (strict)
         run: uvx --with mkdocs-material --with 'mkdocstrings[python]' mkdocs build --strict
 

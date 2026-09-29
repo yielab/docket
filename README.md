@@ -115,12 +115,12 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
 whole command line (`git status` passes, `git push origin production` asks), then approval over
-CLI, HTTP, MCP or Telegram, then budget. Fail-closed: an approval nobody answers denies itself,
-and a policy file that no longer parses blocks it. `docket audit verify` checks the hash chain
-over every verdict, approval, execution. `docket trace tail <p>` shows a run step-by-step; a
-`kind: exporter` sends it to OpenTelemetry or Langfuse, structure-only unless widened.
-`docket cost` reports measured tokens and a labelled estimate; `/status.json` and `/metrics`
-feed your own board — docket does not ship one.
+CLI, HTTP, MCP or Telegram, then budget. An unattended pod **parks** instead of blocking:
+`docket inbox` shows what needs you, `docket channels` notifies, neither ever deciding.
+`docket audit verify` checks the hash chain over every verdict, approval, execution. `docket
+trace tail <p>` shows a run step-by-step; a `kind: exporter` sends it to OpenTelemetry or
+Langfuse, structure-only unless widened. `docket cost` reports measured tokens and a labelled
+estimate; `/status.json` and `/metrics` feed your own board — docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
 rotation). `fetch` is inspectable, but `bash` still reaches the network through allowlisted
@@ -226,8 +226,8 @@ evidence](docs/ADOPTION-EVIDENCE.md).
 - **MCP tools are writes unless the operator says otherwise:** nothing can prove a remote tool is
   read-only, so a server left at the default reaches no read-only role. `--kind read` is an
   operator assertion, not a verified fact. Each configured stdio server is re-spawned per turn.
-- **Telegram is inbound-only:** four verbs, no free-text chat, and docket never messages a chat
-  first; no approval notifications, no completion reports.
+- **Telegram is not a chat:** five verbs, no free-text conversation, and a notification never
+  carries a control that decides.
 - **Metrics counters are not monotonic:** they count what current storage holds, so audit
   rotation and trace retention can drop them. Do not alert on `rate()` over them.
 - **Cancellation is cooperative:** `cancel requested` is durable immediately and a running `bash`

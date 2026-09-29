@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.13.2
+**Version**: 2.14.0
 **Status**: Stable
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -720,6 +720,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 2.14.0 (2026-09-29)
+
+- **Two new routes (Phase 34, D-50, ADR 0016).** `GET /inbox` returns the same derived
+  `InboxView` `docket inbox --json` prints, Bearer-authenticated like `GET /approvals`.
+  `POST /tasks/<id>/answer` resolves a parked `input` step through the same
+  `core.answers.answer_task(channel="http")` every other answer surface calls, mapping
+  `AnswerRejected`/`AnswerError` to `422`/`404`/`409`.
 
 ### Version 2.13.2 (2026-09-27)
 
