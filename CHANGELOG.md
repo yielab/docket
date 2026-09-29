@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The operator loop: tasks park instead of blocking, and every human touchpoint speaks one
+  contract (Phase 34, D-50, ADR 0016).** An unattended pod's gated tool call no longer blocks a
+  hop for 120s with nobody watching: `approvalMode: park` (the default for `serve --dispatch`'s
+  sweep and a non-interactive `dispatch`; an interactive TTY still resolves to `wait`) records
+  the exact call and moves the task to `waiting_approval` so the sweep moves on to the next pod
+  in the same pass, and granting it re-runs the hop carrying a single-use pre-grant matched by a
+  stable argument digest. A pipeline `input` step (`{ask: {input: {from: <step>}}}`) can instead
+  park a task `waiting_input` to ask a real question, shaped as an MCP elicitation request/
+  result; the opt-in `intake` recipe wires this to a Lead's typed `TaskBrief`
+  (`objective`/`acceptance`/`resources`/`questions`, verdict `READY`/`NEEDS-INPUT`/`REJECT`) with
+  a deterministic pre-flight check of named secrets/paths/verify commands before the Implementer
+  ever runs. `docket inbox` (also `GET /inbox`, the MCP `inbox` tool, and Telegram's `/status`)
+  is a pure, derived view across every pod's tasks and approvals; nothing is pushed anywhere
+  until an operator enables a `kind: channel` document (`docket channels
+  list|show|enable|disable|content|test|add|remove|export`) — seven dialects ship, all off
+  except `console`, each declaring `content: minimal|actions|conversation` under the same
+  confirmed-and-audited widening shape Phase 33 used for exporter privacy, and every
+  notification is a CloudEvents 1.0 envelope, with `webhook` signing deliveries per Standard
+  Webhooks. Parked work is answered from `docket pod <p> answer`, `docket chat <task-id>`,
+  `POST /tasks/<id>/answer`, the MCP `task_answer` tool, or Telegram's new fifth verb
+  `/answer <task-id> <text>` (still inbound-only, still screened by `pre_input`) — every one of
+  these resolves through the single `core.answers.answer_task` function. `docket pod <p> explain
+  interruptions` forecasts what could pause a task before it runs, and `docket pod <p> pregrant
+  <task-id> "<command>"` pre-approves an exact, whitespace-normalized command (a rephrased one
+  still asks). Every task view now carries an `a2aState` alongside docket's own `status`, mapped
+  onto A2A 1.0.0's `TaskState` enum, though docket does not itself become an A2A server this
+  phase. Measured on the phase's own `--scenario operator-loop` oracle: `sweepBlockedSeconds`
+  fell from roughly 12-13s to under 1s deterministically once `park` shipped, confirming the
+  blocking wait is gone — though under the local live model the same scenario still measured
+  138s, because the sweep remains one worker walking pods serially, a different and unfixed cost
+  left deferred with its own trigger. Two known limits: `channels-health.json` records delivery
+  counters that no CLI surface reads back yet, and mid-turn session resume (in place of a hop
+  re-run) stays deferred pending a measured trigger.
 - **Export privacy levels: you choose what leaves, and see it first (Phase 33, D-49, ADR 0015).**
   Each `kind: exporter` document says what it shares beyond structure: `privacy: minimal` (the
   default for every built-in), `actions` (tool arguments, error text), `conversation` (prompts,
