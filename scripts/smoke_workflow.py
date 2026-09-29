@@ -2193,6 +2193,9 @@ def _oploop_lead_asked(tasks_by_project: dict[str, list[dict[str, Any]]]) -> boo
 
 
 def _oploop_events_delivered(home: Path) -> int:
+    """Sum of every channel's own ``delivered`` counter in ``channels-health.json``
+    (``core.notify.flush``'s own shape: one entry per channel name, not a top-level
+    ``deliveries`` list -- the original key this function read never existed)."""
     path = home / "channels-health.json"
     if not path.is_file():
         return 0
@@ -2200,10 +2203,15 @@ def _oploop_events_delivered(home: Path) -> int:
         data = _oploop_load_json(path)
     except (OSError, json.JSONDecodeError, SmokeFailure):
         return 0
-    deliveries = data.get("deliveries")
-    if isinstance(deliveries, (list, dict)):
-        return len(deliveries)
-    return 0
+    if not isinstance(data, dict):
+        return 0
+    total = 0
+    for entry in data.values():
+        if isinstance(entry, dict):
+            delivered = entry.get("delivered")
+            if isinstance(delivered, int):
+                total += delivered
+    return total
 
 
 def _oploop_real_home_audit_stat() -> tuple[bool, int, float]:
@@ -2265,14 +2273,18 @@ def _run_operator_loop_scenario(
             return _run_cli(repo, env, *args, process_timeout=45)
 
         print(f"Operator-loop world: {world}")
+        if live is not None:
+            # Registers the live provider and pins every role to it *before* `init` runs --
+            # `init`'s own readiness check otherwise resolves the packaged Anthropic default
+            # and fails on a missing ANTHROPIC_API_KEY, exactly the order `_run`'s basic and
+            # memory-maintenance scenarios already use (this scenario had it backwards, which
+            # meant `--scenario operator-loop --live-model` had never actually completed init).
+            _configure_live_model(repo, env, live)
         run_cli("init", "--from", str(alpha_spec))
         run_cli("init", "--from", str(beta_spec))
         run_cli("pod", "alpha", "apply", "prod-approval")
         run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
-
-        if live is not None:
-            _configure_live_model(repo, env, live)
 
         for label, pod_name, description in _operator_loop_tasks():
             run_cli("pod", pod_name, "delegate", description)
@@ -2302,10 +2314,19 @@ def _run_operator_loop_scenario(
             stderr=subprocess.STDOUT,
         )
         try:
-            _oploop_wait_for_file(token_file, time.monotonic() + 15)
+            # `run_serve` runs one full sweep of every pod *before* opening the port or
+            # writing the token file (serve.py's own documented startup order) -- with the
+            # scripted deterministic backend that sweep is sub-second, but with a real local
+            # model generating every hop of four real tasks across two pods it can genuinely
+            # take minutes. 15s was only ever exercised against the deterministic backend.
+            token_wait_s = 15.0 if live is None else 600.0
+            _oploop_wait_for_file(token_file, time.monotonic() + token_wait_s)
             token = token_file.read_text(encoding="utf-8").strip()
             base_url = f"http://127.0.0.1:{port}"
-            tasks_by_project = _oploop_poll_tasks(base_url, token, ("alpha", "beta"), 90.0)
+            poll_ceiling_s = 90.0 if live is None else 300.0
+            tasks_by_project = _oploop_poll_tasks(
+                base_url, token, ("alpha", "beta"), poll_ceiling_s
+            )
             print("[check] every task reached a terminal or waiting_* status")
         finally:
             proc.terminate()

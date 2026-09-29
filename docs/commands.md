@@ -1153,14 +1153,14 @@ Subcommands:
               and exits 1 if missing. Transport: newline-delimited
               JSON-RPC 2.0 on stdin/stdout -- no HTTP, no bind address,
               no bearer token; the trust boundary is whoever can spawn
-              the process. Exposes 10 tools (every call audit-logged as
+              the process. Exposes 12 tools (every call audit-logged as
               `mcp.<tool>`): status, pods, queue, delegate, dispatch,
               runs, approvals_list, approvals_grant, approvals_deny,
-              cost -- each mirrors the equivalent CLI/HTTP path through
-              the exact same `core/` function, no parallel logic, no
-              auto-approve. `dispatch` creates a run record and returns
-              its id immediately, then runs the pipeline in the
-              background -- poll `runs` for the outcome.
+              task_answer, inbox, cost -- each mirrors the equivalent
+              CLI/HTTP path through the exact same `core/` function, no
+              parallel logic, no auto-approve. `dispatch` creates a run
+              record and returns its id immediately, then runs the
+              pipeline in the background -- poll `runs` for the outcome.
   servers    list/add/remove external MCP tool servers (stdio transport)
               so their tools become available to an agent's turn, gated
               by the same pre_tool_call policy and dispatch_tool

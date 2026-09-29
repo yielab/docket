@@ -1,8 +1,8 @@
 # Extractable Starter Journey
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: Implemented — artifact-installed Python 3.11 journey tested outside the checkout
-**Last Updated**: 2026-09-02
+**Last Updated**: 2026-09-29
 
 ## Overview
 
@@ -64,8 +64,8 @@ contracts: the starter MUST NOT claim that `docket-runtime` owns the CLI run reg
 6. The deterministic model MUST issue exactly one admitted `write` call with call id
    `starter-write`, observe its matching tool result, and then return the terminal summary
    `Starter journey completed.`. The done task's persisted final hop MUST contain the complete
-   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `verdict`, and `notes`), and its
-   legacy `output` MUST equal the typed artifact's summary.
+   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `verdict`, `notes`, and
+   `brief`), and its legacy `output` MUST equal the typed artifact's summary.
 7. The installed public CLI MUST successfully execute `docket runs list --project docket-starter
    --json`, `docket runs show <id> --json`, `docket trace export docket-starter`, and
    `docket audit verify`. List/show MUST agree on a successful run that names the completed task;
@@ -106,6 +106,13 @@ all use their production paths.
   artifact installation.
 
 ## Changelog
+
+### Version 1.0.1 (2026-09-29)
+
+- Corrected requirement 6's `HandoffArtifact` field list: Phase 34's Lead intake (D-50, ADR
+  0016) added `brief` to the model, which the starter's own persisted-shape check already
+  caught as a real regression (`examples/starter/starter.py`, `tests/agent/release/
+  test_starter_journey.py`) before this spec was brought back into agreement.
 
 ### Version 1.0.0 (2026-09-02)
 
