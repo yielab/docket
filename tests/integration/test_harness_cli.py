@@ -340,6 +340,59 @@ class TestContract11Run:
         assert "--contract" in result["error"]
         assert not (tmp_path / "home").exists()
 
+    def test_a_bash_call_reports_process_lifecycle_events_on_the_v11_stream(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        """`_run`'s `with _trace.subscribe(_emit):` relays every trace event
+        verbatim, so `process_started`/`process_exited` reach this stream
+        with no harness-specific wiring at all."""
+        server = llm_server(
+            [
+                _tool_call_response("bash", {"command": "echo hi"}),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(
+            [
+                "run",
+                "--workspace",
+                str(workspace),
+                "--task",
+                "run echo hi",
+                "--model",
+                "local/requested-id",
+                "--contract",
+                "1.1",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        lines = _parse_ndjson(proc.stdout)
+        events = lines[:-1]
+        for line in lines:
+            assert line["v"] == "1.1.0"
+
+        started = [e for e in events if e["event"]["event_type"] == "process_started"]
+        exited = [e for e in events if e["event"]["event_type"] == "process_exited"]
+        assert len(started) == 1
+        assert len(exited) == 1
+        started_payload = started[0]["event"]["payload"]
+        exited_payload = exited[0]["event"]["payload"]
+        assert started_payload["tool"] == "bash"
+        assert isinstance(started_payload["pgid"], int)
+        assert exited_payload["pgid"] == started_payload["pgid"]
+        assert exited_payload["exitCode"] == 0
+        assert "signal" not in exited_payload
+
+        event_types = [e["event"]["event_type"] for e in events]
+        assert event_types.index("process_started") < event_types.index("process_exited")
+
 
 # ── (b) blocked ───────────────────────────────────────────────────────────────
 

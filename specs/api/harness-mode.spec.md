@@ -166,11 +166,12 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
 ## Contract 1.1
 
 **Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
-contract, `1.1.0`, alongside the unchanged `1.0.0` default. This card (P35-2) ships the models,
-generated schema, fixtures, and the `--contract` flag that selects which version is stamped on
-every line -- it does **not** implement the behaviors four later cards fill in (see the stub
-subsections below). Passing `--contract 1.1` today yields a v1.1-shaped stream whose new fields
-(`files`, `task`, `limits`) are always empty/default, because nothing yet populates them.
+contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 ships the models, generated
+schema, fixtures, and the `--contract` flag that selects which version is stamped on every line.
+P35-3 (Section 3) has since landed live. Three behaviors remain planned (Sections 4-6 below).
+Passing `--contract 1.1` today yields a v1.1-shaped stream whose `files`/`task`/`limits` fields
+are still always empty/default, because nothing yet populates them -- process lifecycle events
+ride the `event` stream itself, independent of those three fields.
 
 ### 1. Selecting the contract
 
@@ -204,13 +205,33 @@ object or null}`.
 
 `Limits` is `{maxTokens: integer or null}`.
 
-### 3. Process lifecycle events -- Planned, owned by P35-3
+### 3. Process lifecycle events -- Implemented and live (P35-3)
 
-Status: **Planned -- owned by P35-3.** `process_started`/`process_exited` event records (with
-a cancellable process group, e.g. `{"pgid": ...}` and, on a killed process, `{"signal":
-...}`) on the `event` stream for a `bash` tool call. This section is a placeholder until that
-card lands; `tests/fixtures/harness-contract/v1.1/cancelled-process.ndjson` is a hand-authored
-sample of the shape, not yet a live-path guarantee.
+`process_started`/`process_exited` event records appear on the `event` stream for a `bash` tool
+call with no harness-specific code: `_run`'s `with _trace.subscribe(_emit):` already relays
+every trace record verbatim, so the two event types `core/trace.py`'s `EVENT_TYPES` gained
+(wired by `edges/adapters/docket_runtime.py::_build_on_process`, see
+`specs/functional/trace-store.spec.md` "Process lifecycle events" for the owning contract)
+reach this stream for free, under both `--contract 1.0` and `--contract 1.1` alike -- this
+section only documents the shape a v1.1 consumer sees, it does not gate on the flag.
+
+- `process_started`'s payload is exactly `{"pgid": <int>, "tool": "bash"}`.
+- `process_exited`'s payload is `{"pgid": <int>, "tool": "bash", "exitCode": <int>}` on a real
+  exit, or `{"pgid": <int>, "tool": "bash", "signal": "SIGKILL"}` when the tool handler killed
+  the process group (a timeout or `docket runs cancel` reaching it) -- never both keys, never
+  neither.
+- Exactly one `process_started`/`process_exited` pair appears per `bash` call; a turn with no
+  `bash` call carries neither event, byte-identical to before this capability existed.
+
+Verified live by `tests/integration/test_harness_cli.py::TestContract11Run::
+test_a_bash_call_reports_process_lifecycle_events_on_the_v11_stream`, which spawns a real
+`docket harness run --contract 1.1` subprocess with a scripted `bash` tool call and asserts both
+events appear on stdout in order with a real pgid.
+`tests/fixtures/harness-contract/v1.1/cancelled-process.ndjson` is a hand-authored sample of the
+signal-carrying shape (`docket runs cancel` reaching a live `bash` subprocess is exercised by
+`tests/integration/test_bash_cancellation.py`, not by the harness subprocess tests, since it
+requires a `run` `cancel` call from a second thread rather than SIGTERM-ing the harness process
+itself).
 
 ### 4. Written paths, token file, and caller limits -- Planned, owned by P35-6
 
