@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 71 (Phase 35, D-51) · opened 2026-09-29
+> ## ▶ ACTIVE BOARD — WAVE 72 (Phase 35, D-51) · opened 2026-09-29
 >
 > **Ten cards over Waves 71–75**, one worker per card (Sonnet, or Haiku where the card says so)
 > in an isolated worktree under one integrator. docket becomes the governed harness of a
@@ -24,8 +24,11 @@
 > Decision, reversals and verdict table:
 > [docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md).
 > Worker packets: [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
-> **Wave 71 (P35-1..P35-4) is ready to claim.** Phase 35 closes when the Wave 75 rollup merges
-> green. Phases 36–38 are planned below and are **not claimable** until their phase opens.
+> **Wave 71 (P35-1..P35-4) is DONE, merged to `develop`** (`9dd0a7f`, `7b42f86`, `e7dc098`,
+> `44e35e4`; harness-mode.spec.md's P35-3 stub reconciled in `72cebea`; spec version bumps in
+> `c90d4e6`). Not pushed. **Wave 72 (P35-5, P35-7, P35-8) is ready to claim.** Phase 35 closes
+> when the Wave 75 rollup merges green. Phases 36–38 are planned below and are **not claimable**
+> until their phase opens.
 >
 > **Phase 34 closed 2026-09-29** (ROADMAP D-50,
 > [ADR 0016](docs/adr/0016-operator-loop-and-interop-standards.md)): seventeen cards over Waves
@@ -267,7 +270,18 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 
 ---
 
-## ▶ WAVE 71 ACTIVE — Phase 35, docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)
+## ▶ WAVE 72 ACTIVE — Phase 35, docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)
+
+**Wave 71 done 2026-09-29** — P35-1 `9dd0a7f`, P35-2 `7b42f86`, P35-3 `e7dc098`, P35-4 `44e35e4`,
+harness-mode.spec.md's P35-3 stub reconciled `72cebea`, spec version bumps `c90d4e6`. All merged
+to `develop`, not pushed. Full gates (pytest, ruff, mypy, golden suite, validate-specs, guards,
+comment-lint, gen_cli_docs/config/operator-schemas --check, metrics --check, secret-grep) green
+after every merge. Two of the isolated worktrees this wave used branched one commit behind the
+stated base and two workers committed the difference (deleting this section's own ADR/packets
+files) before noticing; recovered by hand-extracting each worker's legitimate diff against the
+true base rather than merging its commit as-is. A worktree-base self-check (`git merge-base HEAD`
+against the stated base commit before any commit, diffed against that same base, never against a
+worker's own `HEAD`) is worth adding to the worker packet template for the next wave.
 
 **Opened 2026-09-29 at `6525b52`.** Ten cards in five waves. Decision, reversals, cut and
 deferred lists: [docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md).
@@ -325,8 +339,8 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P35-1 — two measured defects: `guardrail_block.action` and pod-scoped role token budgets
 
-**Status:** TODO · **Size:** S · **Wave:** 71 · **Model:** Haiku · **Spec:**
-`role-archetypes.spec.md` new section "Pod-scoped token budgets"
+**Status:** DONE (`9dd0a7f`) · **Size:** S · **Wave:** 71 · **Model:** Haiku · **Spec:**
+`role-archetypes.spec.md` 1.21.0, new section "Pod-scoped token budgets"
 
 **Trigger:** deterministic defects read at `6525b52`.
 - `core/dispatch.py::_enqueue_pre_input_gate` and `_apply_output_guardrails` write
@@ -358,8 +372,9 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P35-2 — the harness contract v1.1: models, schema, fixtures, `--contract`
 
-**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
-`harness-mode.spec.md` new section "Contract 1.1", with stubs for P35-3, P35-5, P35-6, P35-9
+**Status:** DONE (`7b42f86`) · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`harness-mode.spec.md` 1.2.0, new section "Contract 1.1", with stubs for P35-5, P35-6, P35-9
+(the P35-3 stub was reconciled to "Implemented and live" in `72cebea` once that card merged)
 
 **Trigger:** ADR 0017 §1–2; Tack M3.
 
@@ -402,9 +417,9 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P35-3 — process lifecycle events and cancellable process groups
 
-**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
-`trace-store.spec.md` new section "Process lifecycle events"; the P35-3 stub in
-`harness-mode.spec.md` after P35-2 merges (integrator reconciles if needed)
+**Status:** DONE (`e7dc098`) · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`trace-store.spec.md` 1.4.0, new section "Process lifecycle events"; the `harness-mode.spec.md`
+stub reconciled in `72cebea`
 
 **Trigger:** ADR 0017 §2; Tack M3 item 1 ("an event per child process group started").
 
@@ -441,8 +456,8 @@ cancel-kills-the-group case belongs beside `tests/integration/test_bash_cancella
 
 ### P35-4 — pod dispatch keeps its evidence: verify output, commit, base, diffstat
 
-**Status:** TODO · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
-`pod-dispatch.spec.md` new section "Hop evidence"
+**Status:** DONE (`44e35e4`) · **Size:** M · **Wave:** 71 · **Model:** Sonnet · **Spec:**
+`pod-dispatch.spec.md` 6.25.0, new section "Hop evidence"
 
 **Trigger:** ADR 0017 §4. `_evaluate_mechanical_gate` discards a passing verify's output;
 `_implementer_diff_probe` records a branch name only.
