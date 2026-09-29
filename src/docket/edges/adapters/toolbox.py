@@ -22,7 +22,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import docket.config as _cfg
 from docket.edges.adapters import system as _system
@@ -284,6 +284,7 @@ def run_bash(
     env: dict[str, str] | None = None,
     sandbox: SandboxMode = "off",
     cancelled: Callable[[], bool] | None = None,
+    on_process: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -303,7 +304,16 @@ def run_bash(
     cannot be killed safely, a subprocess can). Left ``None``, behaviour is unchanged, byte for
     byte. Given a callback, a bounded poll checks it between waits and kills the process group
     exactly as a timeout does, returning a complete cancelled ``ToolOutcome``. See
-    specs/functional/agent-loop.spec.md item 65."""
+    specs/functional/agent-loop.spec.md item 65.
+
+    ``on_process`` reports this call's real OS process group lifecycle -- ``("started", {"pgid":
+    proc.pid})`` once a process actually exists (never for a `Popen` that raises ``OSError`` --
+    there is no process to report), then exactly one ``("exited", {"pgid": ..., ...})`` on
+    whichever single return path this call takes, carrying ``exitCode`` (int) on a normal (or
+    non-zero) completion or ``signal="SIGKILL"`` when this function itself killed the group
+    (timeout or cancellation). Left ``None``, behaviour is unchanged, byte for byte -- no
+    callback is ever invoked. See specs/functional/trace-store.spec.md "Process lifecycle
+    events"."""
     if not roots:
         return ToolOutcome(False, error="no working directory configured")
     cwd = roots[0].resolve()
@@ -344,38 +354,56 @@ def run_bash(
             return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
         return ToolOutcome(False, error=f"cannot start command: {ex}")
 
-    if cancelled is None:
-        try:
-            out, _ = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            if backend == "docker":
-                _system.docker_kill(container_name)
-            _kill_group(proc)
-            message = f"command timed out after {timeout}s"
-            return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
-    else:
-        timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
-        if timed_out or was_cancelled:
-            if backend == "docker":
-                _system.docker_kill(container_name)
-            _kill_group(proc)
-            message = (
-                "cancelled before completion"
-                if was_cancelled
-                else f"command timed out after {timeout}s"
-            )
-            return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+    # `start_new_session=True` makes this child the leader of a brand-new session, so its
+    # pid doubles as its own process group id -- the same identity `_kill_group` and
+    # `core.runs.add_hop_pid` already rely on, with no extra syscall to confirm it.
+    pgid = proc.pid
+    if on_process is not None:
+        on_process("started", {"pgid": pgid})
 
-    body = _truncate((out or "").strip())
-    if proc.returncode != 0:
-        message = f"command exited {proc.returncode}"
-        return ToolOutcome(
-            False,
-            content=body,
-            error=f"{message} [{tag}]" if tag else message,
-        )
-    content = body or "(no output)"
-    return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+    # A `dict` built up on every path and reported exactly once, from the one `finally`
+    # below, is what makes "exactly one `exited` per `started`" hold regardless of which
+    # of this function's several return statements actually fires.
+    exit_payload: dict[str, Any] = {"pgid": pgid}
+    try:
+        if cancelled is None:
+            try:
+                out, _ = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                if backend == "docker":
+                    _system.docker_kill(container_name)
+                _kill_group(proc)
+                exit_payload["signal"] = "SIGKILL"
+                message = f"command timed out after {timeout}s"
+                return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+        else:
+            timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
+            if timed_out or was_cancelled:
+                if backend == "docker":
+                    _system.docker_kill(container_name)
+                _kill_group(proc)
+                exit_payload["signal"] = "SIGKILL"
+                message = (
+                    "cancelled before completion"
+                    if was_cancelled
+                    else f"command timed out after {timeout}s"
+                )
+                return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+
+        body = _truncate((out or "").strip())
+        exit_payload["exitCode"] = proc.returncode
+        if proc.returncode != 0:
+            message = f"command exited {proc.returncode}"
+            return ToolOutcome(
+                False,
+                content=body,
+                error=f"{message} [{tag}]" if tag else message,
+            )
+        content = body or "(no output)"
+        return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+    finally:
+        if on_process is not None:
+            on_process("exited", exit_payload)
 
 
 # A bare `proc.wait()` never drains stdout, so a command that writes more
@@ -406,6 +434,14 @@ def _wait_cancellable(
 
     deadline = time.monotonic() + timeout
     while True:
+        # Checked before `reader.is_alive()`: an external kill (e.g. `docket runs cancel`
+        # signalling this same process group directly) can make the reader see EOF and
+        # finish in the same instant the cancellation flag it set becomes visible here.
+        # `cancel_run` always persists that flag *before* signalling, so a poll tick that
+        # observes it must still report `was_cancelled`, not a plain finish -- otherwise a
+        # cancelled run's own exit callback would misreport it as a normal exit.
+        if cancelled():
+            return False, True, ""
         if not reader.is_alive():
             reader.join()
             proc.wait()
@@ -413,8 +449,6 @@ def _wait_cancellable(
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return True, False, ""
-        if cancelled():
-            return False, True, ""
         time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))
 
 

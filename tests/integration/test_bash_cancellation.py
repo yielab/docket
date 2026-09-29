@@ -20,10 +20,13 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from docket.core import agent_loop as _loop
+from docket.core import runs as _runs
+from docket.core import trace as _trace
 from docket.core.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.core.session import load_messages
 from docket.core.tools import ToolContext, builtin_registry
@@ -212,3 +215,70 @@ class TestAgentTurnBashCancellation:
         assert messages[1].role == "assistant"
         assert messages[2].role == "tool"
         assert "cancel" in messages[2].content.lower()
+
+    def test_docket_runs_cancel_kills_the_live_bash_call_and_traces_the_signal(
+        self, workspace: Path
+    ) -> None:
+        """A `bash` call's real process group is registered against the current run
+        (`ToolContext.on_process`, mirroring `edges/adapters/docket_runtime.py`'s production
+        wiring) while it is in flight, so `docket runs cancel` reaches it and the turn's own
+        cooperative check (the same persisted signal) reports the kill as `process_exited`
+        with `signal`, not `exitCode`."""
+        backend = _OneShotBashBackend(_SLEEP.format(seconds=30))
+        session_key = "agent:demo-agent:demo"
+        record = _runs.create_run("cli", "demo")
+        process_events: list[dict[str, object]] = []
+
+        def _on_process(kind: str, data: dict[str, object]) -> None:
+            run_id = _runs.current_run_id()
+            pgid = data.get("pgid")
+            if run_id is not None and isinstance(pgid, int):
+                if kind == "started":
+                    _runs.add_hop_pid(run_id, pgid)
+                elif kind == "exited":
+                    _runs.remove_hop_pid(run_id, pgid)
+            _trace.trace_event(
+                "demo", session_key, "implementer", f"process_{kind}", json.dumps(data)
+            )
+            process_events.append({"kind": kind, **data})
+
+        ctx = ToolContext(
+            agent_id="demo-agent",
+            role="implementer",
+            project="demo",
+            roots=(workspace,),
+            timeout=60,
+            cancellation_check=_runs.RunCancellationSignal(record["id"]).observe,
+            on_process=_on_process,
+        )
+
+        def _fn() -> list[Any]:
+            _loop.run_agent_turn(backend, builtin_registry(), ctx, session_key, "run it")
+            return []
+
+        thread = threading.Thread(target=lambda: _runs.execute(record["id"], _fn))
+        thread.start()
+
+        deadline = time.monotonic() + 5
+        pids: list[int] = []
+        while time.monotonic() < deadline:
+            pids = _runs.get_run(record["id"])["pids"]
+            if pids:
+                break
+            time.sleep(0.02)
+        assert pids, "the bash call never registered its process group against the run"
+        pgid = pids[0]
+
+        outcome = _runs.cancel_run(record["id"])
+        assert outcome.ok is True
+
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+
+        with pytest.raises(ProcessLookupError):
+            os.killpg(pgid, 0)
+
+        exited = [e for e in process_events if e["kind"] == "exited"]
+        assert len(exited) == 1
+        assert exited[0]["signal"] == "SIGKILL"
+        assert "exitCode" not in exited[0]

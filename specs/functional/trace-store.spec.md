@@ -177,6 +177,41 @@ This specification does NOT cover:
     grant its payload **MUST** carry no `text` key. (Found by the live privacy proof: the
     projection's `gen_ai.tool.call.result` read a `text` key that the live loop never wrote.)
 
+## Process lifecycle events
+
+Added by P35-3 (ADR 0017 section 2): one event marking the start, and one marking the matching
+exit, of a real OS process group a tool handler spawns. The only current producer is
+`edges/adapters/toolbox.py::run_bash`'s `on_process` callback, threaded through
+`core/tools.py::ToolContext.on_process` and wired to real trace emission by
+`edges/adapters/docket_runtime.py::DocketDriver`. Built for an external plan-of-record (Tack)
+that needs to show and cancel a long-running `bash` call spawned through `docket harness run`.
+
+1. `EVENT_TYPES` **MUST** additionally include `process_started` and `process_exited`.
+2. `process_started`'s payload **MUST** carry exactly `{"pgid": <int>}` — the spawned process
+   group's id — as reported by `run_bash`; the `bash` tool handler further tags it with
+   `"tool": "bash"` before it reaches this store (added in `core/tools.py`, not by `run_bash`
+   itself, which knows nothing about which tool called it).
+3. `process_exited`'s payload **MUST** carry `pgid` plus exactly one of `exitCode` (int, the
+   process's real exit status, including a normal zero) or `signal` (the string `"SIGKILL"`,
+   present only when `run_bash` itself killed the group on a timeout or a cancellation) — never
+   both, never neither.
+4. Exactly one `process_started`/`process_exited` pair **MUST** be emitted per process group a
+   tool handler starts, and **MUST** fire even when the process is killed rather than left to
+   exit on its own; a `Popen` call that raises before a process exists **MUST NOT** produce
+   either event.
+5. A turn with no process-spawning tool call **MUST** produce a trace carrying no
+   `process_started`/`process_exited` events at all — byte-identical to a trace recorded before
+   this capability existed.
+6. When a dispatch run is current (`core.runs.current_run_id()` is not `None`) at the moment a
+   `process_started`/`process_exited` event is reported, the reporting driver **MUST**
+   register or clear that pgid against the run (`core.runs.add_hop_pid`/`remove_hop_pid`) so
+   `docket runs cancel` reaches it; with no run current, the event is still traced, but no pid
+   is registered anywhere.
+
+See `harness-mode.spec.md`'s Contract 1.1 (owned by a separate card in this same wave) for how an
+external consumer is expected to use these events; this store owns only their shape and firing
+rule, not that consumer's contract.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.trace`)

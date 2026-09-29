@@ -93,6 +93,8 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "input_answered",  # `core.answers.answer_task` resumed a parked `input` step
         "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency
+        "process_started",  # a tool handler's real OS process group started
+        "process_exited",  # ...and its matching exit, with exitCode or signal
         "error",
         "session_end",
     ]

@@ -178,6 +178,8 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "step_skipped": ("step",),
     "input_requested": ("task", "step", "questionId"),
     "input_answered": ("task", "step", "questionId", "action"),
+    "process_started": ("pgid", "tool"),
+    "process_exited": ("pgid", "tool", "exitCode", "signal"),
     "error": ("run", "source"),
 }
 

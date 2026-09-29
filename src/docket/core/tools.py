@@ -72,6 +72,7 @@ class ToolContext:
     allow_commands: tuple[str, ...] = ()
     pregrants: tuple[Pregrant, ...] = ()
     approval_expires_at: str | None = None
+    on_process: Callable[[str, dict[str, Any]], None] | None = None
 
 
 @dataclass
@@ -547,6 +548,21 @@ def _int_arg(args: dict[str, Any], name: str, default: int = 0) -> int:
     return int(value) if isinstance(value, int | float | str) and str(value).isdigit() else default
 
 
+def _tag_bash_process_events(
+    on_process: Callable[[str, dict[str, Any]], None] | None,
+) -> Callable[[str, dict[str, Any]], None] | None:
+    """Tag a process-lifecycle event with the tool that spawned it. No ``callId``: this
+    handler lambda receives only ``(args, ctx)``, with no call id in scope, unlike
+    ``dispatch_tool``."""
+    if on_process is None:
+        return None
+
+    def _tagged(kind: str, data: dict[str, Any]) -> None:
+        on_process(kind, {**data, "tool": "bash"})
+
+    return _tagged
+
+
 def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     """Handler for the ``skill`` built-in: resolve ``name`` and read ``path`` (default
     ``SKILL.md``) from within that skill's own directory. An unknown name is a failed call
@@ -762,11 +778,11 @@ def builtin_registry() -> ToolRegistry:
                 ctx.env,
                 ctx.sandbox,
                 ctx.cancellation_check,
+                _tag_bash_process_events(ctx.on_process),
             ),
             kind="exec",
         )
     )
-
     registry.register(_skill_tool())
     registry.register(_fetch_tool(_fetch.fetch_url))
 

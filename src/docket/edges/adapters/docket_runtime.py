@@ -30,6 +30,7 @@ from docket.core import pod as _pod
 from docket.core import runs as _runs
 from docket.core import session as _session
 from docket.core import telemetry as _telemetry
+from docket.core import trace as _trace
 from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
@@ -235,6 +236,26 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]
     return False, refusal
 
 
+def _build_on_process(
+    project: str, session_key: str, role: str
+) -> Callable[[str, dict[str, Any]], None]:
+    """A `ToolContext.on_process` for one turn: trace a tool call's process lifecycle and,
+    while a dispatch run is current, register/clear its pgid against it so `docket runs
+    cancel` reaches a live subprocess."""
+
+    def _on_process(kind: str, data: dict[str, Any]) -> None:
+        run_id = _runs.current_run_id()
+        pgid = data.get("pgid")
+        if run_id is not None and isinstance(pgid, int):
+            if kind == "started":
+                _runs.add_hop_pid(run_id, pgid)
+            elif kind == "exited":
+                _runs.remove_hop_pid(run_id, pgid)
+        _trace.trace_event(project, session_key, role, f"process_{kind}", json.dumps(data))
+
+    return _on_process
+
+
 @dataclass
 class DocketDriver:
     """The ``RuntimeDriver`` implementation. ``backend_factory``/``registry_factory``/
@@ -355,6 +376,12 @@ class DocketDriver:
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
         cancellation_signal = _runs.current_cancellation_signal()
+        # Same resolution `project=` below applies -- so the `on_process` callback files its
+        # trace events under the identical coordinate `core/agent_loop.py`'s own
+        # `_trace_tool_call`/`_trace_tool_result` resolve for the very same turn.
+        resolved_project = trace_project or _pod.pod_of(agent_id) or agent_id
+        resolved_session_key = trace_session_key or session_key
+
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
@@ -370,7 +397,7 @@ class DocketDriver:
             # that pod's own policy files, not just the global set -- falling back to
             # agent_id only for a non-pod agent (e.g. an org specialist, or the
             # harness), which keeps that caller's behavior unchanged.
-            project=trace_project or _pod.pod_of(agent_id) or agent_id,
+            project=resolved_project,
             sandbox="auto" if want_sandbox else "off",
             cancellation_check=(
                 cancellation_signal.observe if cancellation_signal is not None else None
@@ -379,6 +406,7 @@ class DocketDriver:
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
+            on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside
