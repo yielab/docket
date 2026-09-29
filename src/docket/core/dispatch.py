@@ -152,6 +152,20 @@ class HopResult:
     # attempt, not a real outcome. Persisted so ``_replay_pipeline_position``
     # resumes by re-running this exact index rather than advancing past it.
     parked: bool = False
+    # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
+    # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
+    # verify gate, or one whose gate had no ``verifyCmd`` configured (see
+    # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
+    # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
+    # ``_evaluate_mechanical_gate``. ``_hop_record``/``_hop_from_record`` round-trip this
+    # key; a record with no ``verify`` key at all defaults to ``None`` on read.
+    verify: dict[str, Any] | None = None
+    # Real git evidence for an Implementer hop, from ``_implementer_diff_probe``:
+    # ``{"commit", "baseCommit", "diffStat"}``, or ``None`` for a non-Implementer hop or one
+    # whose member checkout is not a git repository. Each inner field independently degrades
+    # to ``None`` rather than raising. Round-tripped by ``_hop_record``/``_hop_from_record``
+    # the same way as ``verify``.
+    evidence: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -900,21 +914,30 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
     }
 
 
-def _implementer_diff_probe(member_id: str, role: str) -> tuple[list[str], str | None]:
-    """Real ``files_changed``/``diff_ref`` for an Implementer hop (every other role gets
-    ``([], None)``); resolves the same working tree the verify gate uses via
-    ``core.pod.resolve_member_cwd`` so the two can never disagree, degrading to ``([], None)``
-    rather than raising when git is missing or unavailable. See pod-dispatch.spec.md."""
+def _implementer_diff_probe(
+    member_id: str, role: str
+) -> tuple[list[str], str | None, dict[str, Any] | None]:
+    """Real ``files_changed``/``diff_ref``/``evidence`` for an Implementer hop (every other
+    role gets ``([], None, None)``); resolves the same working tree the verify gate uses via
+    ``core.pod.resolve_member_cwd`` so the two can never disagree. ``evidence`` is
+    ``HopResult.evidence``'s ``{"commit", "baseCommit", "diffStat"}`` shape, with each field
+    independently ``None`` (never raising) when git is missing, the checkout is not a repo,
+    or the codebase's branch cannot be resolved. See pod-dispatch.spec.md, "Hop evidence"."""
     if role != "implementer":
-        return [], None
+        return [], None, None
     worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
     cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
     if not _sys.git_available() or not _sys.git_is_repo(cwd):
-        return [], None
+        return [], None, {"commit": None, "baseCommit": None, "diffStat": None}
     files_changed = _sys.git_changed_files(cwd)
     diff_ref = _sys.git_current_branch(cwd) or None
-    return files_changed, diff_ref
+    commit = _sys.git_head_sha(cwd)
+    base_branch = _sys.git_current_branch(member_codebase or cwd) or None
+    base_commit = _sys.git_merge_base(cwd, base_branch) if base_branch else None
+    diff_stat = _sys.git_diff_stat(cwd, base_commit) if base_commit else None
+    evidence = {"commit": commit, "baseCommit": base_commit, "diffStat": diff_stat}
+    return files_changed, diff_ref, evidence
 
 
 def _prior_implementer_worktree(prior: list[HopResult]) -> str:
@@ -927,8 +950,8 @@ def _prior_implementer_worktree(prior: list[HopResult]) -> str:
 
 def _hop_record(h: HopResult) -> dict[str, Any]:
     """Persisted shape of one hop (round-trips via ``_hop_from_record``; pod-dispatch.spec.md,
-    "Structured handoff artifacts"). ``artifact`` is persisted alongside legacy ``output``, never
-    replacing it; ``verification_skipped`` stays unpersisted -- an in-memory signal for ``cli/``."""
+    "Structured handoff artifacts" and "Hop evidence"). ``artifact``/``verify``/``evidence`` are
+    persisted alongside legacy ``output``; ``verification_skipped`` stays an in-memory-only flag."""
     return {
         "role": h.role,
         "member": h.member_id,
@@ -942,13 +965,15 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "artifact": h.artifact.model_dump() if h.artifact is not None else None,
         "nextStep": h.next_step,
         "parked": h.parked,
+        "verify": h.verify,
+        "evidence": h.evidence,
     }
 
 
 def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     """Reconstruct a HopResult from a persisted hop record (for resume). A legacy record with
-    no (or invalid) ``artifact`` degrades via ``HandoffArtifact.from_legacy_output``, treating
-    raw ``output`` as ``summary`` -- see pod-dispatch.spec.md ("Structured handoff artifacts")."""
+    no (or invalid) ``artifact``, ``verify``, or ``evidence`` key degrades each to its own
+    default -- see pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
     output = str(rec.get("output", ""))
     artifact_raw = rec.get("artifact")
     artifact: _handoff.HandoffArtifact | None = None
@@ -960,6 +985,8 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     if artifact is None:
         artifact = _handoff.HandoffArtifact.from_legacy_output(output)
     next_step_raw = rec.get("nextStep")
+    verify_raw = rec.get("verify")
+    evidence_raw = rec.get("evidence")
     return HopResult(
         role=str(rec.get("role", "")),
         member_id=str(rec.get("member", "")),
@@ -972,6 +999,8 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         artifact=artifact,
         next_step=next_step_raw if isinstance(next_step_raw, str) else None,
         parked=bool(rec.get("parked", False)),
+        verify=verify_raw if isinstance(verify_raw, dict) else None,
+        evidence=evidence_raw if isinstance(evidence_raw, dict) else None,
     )
 
 
@@ -1559,8 +1588,9 @@ def _build_hop_result(
         verdict = _orch.parse_verdict(node.gate, hop_output)
     files_changed: list[str] = []
     diff_ref: str | None = None
+    evidence: dict[str, Any] | None = None
     if hop_ok:
-        files_changed, diff_ref = _implementer_diff_probe(member_id, role)
+        files_changed, diff_ref, evidence = _implementer_diff_probe(member_id, role)
     # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
     # the Lead role by construction -- any hop's reply can end in one -- but is `None`
     # for the overwhelming majority that never emit one, `_handoff.parse_brief` failing
@@ -1583,6 +1613,7 @@ def _build_hop_result(
         attempts=attempt,
         step_id=node.step_id,
         artifact=artifact,
+        evidence=evidence,
     )
 
 
@@ -1738,8 +1769,19 @@ def _evaluate_mechanical_gate(
     # timeout above — a 20-minute test suite and a hung LLM turn are no longer
     # forced to share one budget.
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
+    verify_start = _time.monotonic()
     passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
+    duration_s = _time.monotonic() - verify_start
     redacted = _trace.redact(raw_output)
+    # Persisted regardless of pass/fail/route -- see HopResult.verify. `outputTail` is the
+    # redacted string's own tail (never the raw one), so a secret is never one truncation
+    # away from surviving into the persisted record.
+    hop.verify = {
+        "cmd": verify_cmd,
+        "exitCode": 0 if passed else 1,
+        "durationS": round(duration_s, 3),
+        "outputTail": redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
+    }
     label = "pass" if passed else "fail"
     if _match_on_route(node.on, label) is not None:
         return _UnitOutcome(kind="routed", hops=[hop], label=label)

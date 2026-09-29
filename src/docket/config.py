@@ -399,6 +399,10 @@ AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS = int(
 # 30k chars two results alone (~15k tokens) overflow a 16k-context llama.cpp
 # instance, and the turn dies on an HTTP 400 with no partial progress.
 TOOL_MAX_OUTPUT_CHARS = int(os.environ.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "30000"))
+# VERIFY_EVIDENCE_TAIL_CHARS: cap on a persisted mechanical-gate hop's stored verify
+# output tail (core/dispatch.py's HopResult.verify) -- long enough to carry a real
+# test-failure trace, short enough that a queue record never balloons.
+VERIFY_EVIDENCE_TAIL_CHARS = 4000
 # AGENT_LOOP_WALL_CLOCK_TIMEOUT_S: default overall budget for one turn,
 # checked between iterations (not by interrupting an in-flight HTTP call).
 # edges.adapters.docket_runtime.DocketDriver.run_turn overrides this with its

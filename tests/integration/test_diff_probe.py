@@ -37,8 +37,8 @@ class TestImplementerDiffProbeUnit:
 
         monkeypatch.setattr(_sys, "git_available", boom)
         monkeypatch.setattr(_fleet, "meta_get", boom)
-        assert _dispatch._implementer_diff_probe("demo-lead", "lead") == ([], None)
-        assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer") == ([], None)
+        assert _dispatch._implementer_diff_probe("demo-lead", "lead") == ([], None, None)
+        assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer") == ([], None, None)
 
     def test_missing_git_binary_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
@@ -51,7 +51,7 @@ class TestImplementerDiffProbeUnit:
 
         monkeypatch.setattr(_sys, "git_is_repo", boom)
         result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
-        assert result == ([], None)
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
     def test_non_repo_cwd_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
@@ -66,7 +66,7 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_changed_files", boom)
         monkeypatch.setattr(_sys, "git_current_branch", boom)
         result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
-        assert result == ([], None)
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
     def test_real_probe_resolves_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
         meta = {"worktreeDir": "/wt/demo-implementer", "codebase": "/src/demo"}
@@ -85,7 +85,12 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_current_branch", lambda cwd: "pc/demo-implementer")
 
         result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
-        assert result == (["a.py", "b.py"], "pc/demo-implementer")
+        files_changed, diff_ref, evidence = result
+        assert (files_changed, diff_ref) == (["a.py", "b.py"], "pc/demo-implementer")
+        # The commit/base/diffStat producers are real git calls against a nonexistent
+        # path here (unmocked, unlike the fields above) -- they degrade to None rather
+        # than raising, the same as any other non-repo target.
+        assert evidence == {"commit": None, "baseCommit": None, "diffStat": None}
         # resolve_member_cwd prefers the worktree over the shared codebase --
         # verified here, not just asserted by reading the source.
         assert seen_cwds == ["/wt/demo-implementer"]
@@ -103,7 +108,7 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: [])
         monkeypatch.setattr(_sys, "git_current_branch", lambda _cwd: "")
         result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
-        assert result == ([], None)
+        assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
 
 # ── shared pod-seeding helpers (mirrors test_handoff_artifacts.py) ───────
@@ -226,12 +231,24 @@ class TestDispatchPopulatesRealDiff:
         assert implementer_hop.artifact.files_changed == ["feature.py"]
         assert implementer_hop.artifact.diff_ref == expected_branch
 
+        # Real git evidence: a 40-hex commit sha and a resolved base against the
+        # codebase's own branch, not just the artifact's file list/branch name.
+        assert implementer_hop.evidence is not None
+        commit = implementer_hop.evidence["commit"]
+        base_commit = implementer_hop.evidence["baseCommit"]
+        assert commit is not None and len(commit) == 40
+        assert all(c in "0123456789abcdef" for c in commit)
+        assert base_commit is not None and len(base_commit) == 40
+        assert isinstance(implementer_hop.evidence["diffStat"], dict)
+        assert set(implementer_hop.evidence["diffStat"]) == {"files", "insertions", "deletions"}
+
         # The lead hop is not an implementer -- it must carry no diff at all,
         # even though it ran in the same task.
         lead_hop = next(h for h in res.hops if h.role == "lead")
         assert lead_hop.artifact is not None
         assert lead_hop.artifact.files_changed == []
         assert lead_hop.artifact.diff_ref is None
+        assert lead_hop.evidence is None
 
 
 # ── TestDegradePaths: workdir pod, non-repo workspace, no git binary ────────
@@ -260,6 +277,11 @@ class TestDegradePaths:
         assert implementer_hop.artifact is not None
         assert implementer_hop.artifact.files_changed == []
         assert implementer_hop.artifact.diff_ref is None
+        assert implementer_hop.evidence == {
+            "commit": None,
+            "baseCommit": None,
+            "diffStat": None,
+        }
 
     def test_non_repo_codebase_degrades_to_empty_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -282,6 +304,11 @@ class TestDegradePaths:
         assert implementer_hop.artifact is not None
         assert implementer_hop.artifact.files_changed == []
         assert implementer_hop.artifact.diff_ref is None
+        assert implementer_hop.evidence == {
+            "commit": None,
+            "baseCommit": None,
+            "diffStat": None,
+        }
 
     def test_missing_git_binary_degrades_to_empty_artifact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -310,3 +337,8 @@ class TestDegradePaths:
         assert implementer_hop.artifact is not None
         assert implementer_hop.artifact.files_changed == []
         assert implementer_hop.artifact.diff_ref is None
+        assert implementer_hop.evidence == {
+            "commit": None,
+            "baseCommit": None,
+            "diffStat": None,
+        }

@@ -205,6 +205,42 @@ class TestHopRecordRoundTrip:
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
+    def test_record_with_no_verify_or_evidence_key_loads_with_both_none(self) -> None:
+        # Simulates a hop record persisted before HopResult.verify/evidence existed --
+        # neither key is present at all, not even as a null value.
+        rec: dict[str, Any] = {
+            "role": "implementer",
+            "member": "demo-implementer",
+            "ok": True,
+            "output": "old raw text",
+            "costUsd": 0.01,
+            "error": "",
+            "attempts": 1,
+            "stepId": "implementer",
+        }
+        restored = _dispatch._hop_from_record(rec)
+        assert restored.verify is None
+        assert restored.evidence is None
+
+    def test_verify_and_evidence_round_trip_exactly(self) -> None:
+        verify = {"cmd": "pytest -q", "exitCode": 0, "durationS": 1.5, "outputTail": "3 passed"}
+        evidence = {"commit": "a" * 40, "baseCommit": "b" * 40, "diffStat": {"files": 1}}
+        hop = _dispatch.HopResult(
+            role="implementer",
+            member_id="demo-implementer",
+            ok=True,
+            output="done",
+            verify=verify,
+            evidence=evidence,
+        )
+        rec = _dispatch._hop_record(hop)
+        assert rec["verify"] == verify
+        assert rec["evidence"] == evidence
+
+        restored = _dispatch._hop_from_record(rec)
+        assert restored.verify == verify
+        assert restored.evidence == evidence
+
 
 # ── End to end: dispatch_task builds and threads real artifacts ─────────────
 

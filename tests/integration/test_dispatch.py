@@ -413,6 +413,67 @@ class TestPipeline:
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
 
+# ── HopResult.verify: real mechanical-gate evidence persisted alongside a hop ────
+
+
+class TestHopEvidence:
+    """A mechanical gate's real command, exit code, duration, and redacted output tail are
+    persisted on the hop record itself (`HopResult.verify`), not just traced on failure."""
+
+    def test_passing_verify_persists_real_evidence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-implementer", "worktreeDir", str(tmp_path))
+        _fleet.meta_set("demo-implementer", "verifyCmd", "echo ok")
+        _dispatch.enqueue_task("demo", "Ship it")
+
+        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+
+        assert res.status == "done"
+        persisted = _dispatch.read_tasks("demo")[0]
+        implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
+        verify = implementer_rec["verify"]
+        assert verify is not None
+        assert verify["cmd"] == "echo ok"
+        assert verify["exitCode"] == 0
+        assert "ok" in verify["outputTail"]
+        assert verify["durationS"] >= 0
+
+    def test_failing_verify_persists_redacted_evidence_without_leaking_a_secret(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-implementer", "worktreeDir", str(tmp_path))
+        secret_value = "zzqx-unleakable-canary-9000"
+        _secrets.save_secrets({"LEAKY_KEY": secret_value})
+        _fleet.meta_set("demo-implementer", "verifyCmd", f"echo {secret_value}; exit 1")
+        _dispatch.enqueue_task("demo", "Ship it")
+
+        res = _dispatch.dispatch_pod("demo", runner=FakeDriver())[0]
+
+        assert res.status == "failed"
+        persisted = _dispatch.read_tasks("demo")[0]
+        implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
+        verify = implementer_rec["verify"]
+        assert verify is not None
+        assert verify["exitCode"] == 1
+        # The genuine canary: the stored secret's real value never survives into the
+        # persisted record, even though the verify command echoed it verbatim.
+        assert secret_value not in verify["outputTail"]
+        assert "[REDACTED]" in verify["outputTail"]
+
+    def test_no_verify_cmd_leaves_verify_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "no verify configured")
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
+        persisted = _dispatch.read_tasks("demo")[0]
+        implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
+        assert implementer_rec["verify"] is None
+
+
 # ── pod port range / scratch dir reach the implementer hop's real env ───────────
 
 

@@ -1470,6 +1470,73 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 5. `git_current_branch` (`edges/adapters/system.py`) is this probe's `diff_ref` source — it has a
    real production caller as of this version.
 
+### Hop evidence (ROADMAP Phase 35, ADR 0017, card P35-4)
+
+*Trigger: before this card, a passing `verifyCmd` left no trace of what actually ran — only a
+failure was ever traced (`verification_failed`) — and the Implementer diff producer recorded only
+a branch name, not a commit or a diff stat. Pod dispatch's own live state was too thin for an
+external consumer (a control-plane product such as Tack, polling docket's read API) to show what a
+hop actually did. This section adds two new, independently optional `HopResult` fields; it does not
+change the `verification_failed` trace event, `requireVerify` gating (that is a separate card), or
+any CLI rendering of this evidence.*
+
+1. `HopResult.verify` **MUST** be a `dict | None`: `None` for any hop whose step has no mechanical
+   gate, or whose mechanical gate had no `verifyCmd` configured (`HopResult.verification_skipped`
+   already covers that "no check configured" case honestly; `verify` staying `None` is consistent
+   with it, not a second way to say the same thing). For a hop whose mechanical gate **did** run a
+   command, `_evaluate_mechanical_gate` **MUST** populate `verify` on **both** a pass and a fail,
+   before checking the step's own `on` route (so a routed outcome carries the same evidence as an
+   ordinary pass/fail), with exactly these keys:
+   - `cmd` (`str`): the exact command that ran (`gate.command` or the resolved `verifyCmd`, the
+     same string already used in the `verification_failed` trace event and the `tool_result`
+     "passed" trace event).
+   - `exitCode` (`int`): `0` when `run_verify_cmd` reports a pass, `1` otherwise (a real nonzero
+     exit, a timeout, a refused command, or a missing binary all read as `1`) -- `run_verify_cmd`'s
+     own `(passed, output)` shape carries no numeric exit code to relay, so this is the honest
+     pass/fail projection of it, not a claim of the underlying process's real status.
+   - `durationS` (`float`): wall-clock seconds the command took, measured around the call, rounded
+     to milliseconds (3 decimal places).
+   - `outputTail` (`str`): the last `VERIFY_EVIDENCE_TAIL_CHARS` (4000) characters of the command's
+     combined stdout+stderr, **after** `core/trace.py`'s `redact` — the same redaction already
+     applied to the `verification_failed` trace event's `output` field. A secret held in
+     `core/secrets.py` and echoed by the verify command **MUST NOT** appear anywhere in a persisted
+     `outputTail`.
+2. This requirement adds evidence storage only. The existing `verification_failed` trace event
+   (cmd + redacted output) and the `tool_result` "passed"/"skipped" trace events **MUST** remain
+   byte-for-byte unchanged; `verify` is a new field on the hop record, not a new trace event and not
+   a replacement for the existing ones.
+3. `HopResult.evidence` **MUST** be a `dict | None`: `None` for any non-Implementer hop (unchanged
+   from the diff producer's existing `([], None)` shape for those roles). For an Implementer hop
+   whose diff probe runs (`hop_ok` true), `_implementer_diff_probe` **MUST** always return an
+   `evidence` dict with exactly these keys, each independently `None` rather than the whole dict
+   collapsing to `None`:
+   - `commit` (`str | None`): the resolved working tree's HEAD sha (`edges/adapters/system.py`'s
+     `git_head_sha`), 40 hex characters when present.
+   - `baseCommit` (`str | None`): the merge-base of that HEAD with the pod's shared codebase
+     directory's own current branch (`git_current_branch` on `codebase`, then `git_merge_base` on
+     the Implementer's resolved worktree against that branch name) -- the codebase's branch, never
+     the worktree's own.
+   - `diffStat` (`dict | None`): `{"files": int, "insertions": int, "deletions": int}` from
+     `git_diff_stat(cwd, baseCommit)`, which diffs `baseCommit` against `cwd`'s current state
+     (`git diff --shortstat`), or `None` when `baseCommit` is `None`.
+   Each of `git_head_sha`/`git_merge_base`/`git_diff_stat` **MUST** degrade to `None` — never raise
+   — on a missing `git` binary, a non-repository directory, an unresolvable ref, or a timeout, the
+   same degrade-to-empty convention `git_changed_files`/`git_current_branch` already use for
+   `files_changed`/`diff_ref`. When the resolved working tree is not a git repository at all (or
+   `git` is unavailable), the probe **MUST** still return an `evidence` dict with all three keys
+   `None`, not `None` itself — this dict is what proves "checked, found nothing" rather than
+   "never checked."
+4. Both fields **MUST** round-trip through persistence. `_hop_record` **MUST** persist `verify` and
+   `evidence` verbatim (each `None` when the hop never set it); `_hop_from_record` **MUST** restore
+   both, accepting only a `dict` value for each key and defaulting to `None` on any other type
+   (including the key being absent entirely). A hop record written before this version — with no
+   `verify`/`evidence` key at all — **MUST** still load via `_hop_from_record` without raising, with
+   both fields defaulting to `None`; this is the same backward-compatibility contract "Structured
+   handoff artifacts" already established for `artifact`.
+5. Neither field changes gating. No requirement in "Implementer verification gate" or "Generalized
+   gate execution" is altered by this section — `verify`/`evidence` are additive record-keeping,
+   read by nothing on the live gate-decision path.
+
 ### Downstream worktree continuity
 
 1. Once a successful Implementer hop has a registered `worktreeDir`, every later non-Lead,

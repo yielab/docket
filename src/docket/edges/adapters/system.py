@@ -14,6 +14,7 @@ always-``False`` stub (no daemon exists) -- see ``specs/data/serve-read-api.spec
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -543,3 +544,76 @@ def git_branch_delete(repo_dir: str, branch: str) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, (result.stderr or result.stdout).strip()
     return True, ""
+
+
+def git_head_sha(cwd: str) -> str | None:
+    """Return the full 40-hex-char HEAD sha for `cwd`, or ``None`` if not a repo or
+    unavailable; degrades gracefully like `git_current_branch`. The ``commit`` producer
+    for an Implementer hop's persisted evidence."""
+    if not git_available():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def git_merge_base(cwd: str, other_branch: str) -> str | None:
+    """Return the merge-base sha of HEAD and `other_branch` in `cwd`, or ``None`` if not a
+    repo, `other_branch` is unknown, or git is unavailable; degrades gracefully like
+    `git_current_branch`. The ``baseCommit`` producer for an Implementer hop's evidence."""
+    if not git_available():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "merge-base", "HEAD", other_branch],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+_SHORTSTAT_FILES = re.compile(r"(\d+) files? changed")
+_SHORTSTAT_INSERTIONS = re.compile(r"(\d+) insertions?\(\+\)")
+_SHORTSTAT_DELETIONS = re.compile(r"(\d+) deletions?\(-\)")
+
+
+def git_diff_stat(cwd: str, base: str) -> dict[str, int] | None:
+    """Return ``{"files", "insertions", "deletions"}`` diffing `base` against `cwd`'s current
+    state (``git diff --shortstat``), or ``None`` if not a repo, `base` is missing, or git is
+    unavailable; an empty summary (no changes) reports all-zero counts, not ``None``."""
+    if not git_available():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "diff", "--shortstat", base],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    summary = result.stdout.strip()
+    files_match = _SHORTSTAT_FILES.search(summary)
+    insertions_match = _SHORTSTAT_INSERTIONS.search(summary)
+    deletions_match = _SHORTSTAT_DELETIONS.search(summary)
+    return {
+        "files": int(files_match.group(1)) if files_match else 0,
+        "insertions": int(insertions_match.group(1)) if insertions_match else 0,
+        "deletions": int(deletions_match.group(1)) if deletions_match else 0,
+    }
