@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -307,3 +308,126 @@ class TestPrivacyAllowlist:
         content = input_messages[0]["parts"][0]["content"]
         assert content == "x" * 4000 + "…[truncated 6000 chars]"
         json.dumps(content)  # still a valid string to re-encode
+
+
+def _hop_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
+    """One pod dispatch in one session: a lead and an implementer hop, each restarting its
+    iteration count at 1, the way `core/dispatch.py` runs every hop under one trace key."""
+
+    def llm_call(ts: str, role: str, iteration: int, user: str, reply: str) -> dict[str, Any]:
+        return {
+            "ts": ts,
+            "project": "p",
+            "session_id": session_id,
+            "agent_role": role,
+            "event_type": "llm_call",
+            "duration_ms": 500,
+            "payload": {
+                **_llm_call_canary_payload(),
+                "iteration": iteration,
+                "inputMessages": [
+                    {"role": "user", "parts": [{"type": "text", "content": user}]},
+                ],
+                "outputMessages": [
+                    {"role": "assistant", "parts": [{"type": "text", "content": reply}]},
+                ],
+            },
+        }
+
+    start = {
+        "ts": "2026-09-28T00:00:00Z",
+        "project": "p",
+        "session_id": session_id,
+        "agent_role": "lead",
+        "event_type": "session_start",
+        "payload": {},
+    }
+    return [
+        start,
+        llm_call("2026-09-28T00:00:05Z", "lead", 1, "TASK-lead", "plan ready"),
+        llm_call("2026-09-28T00:00:09Z", "implementer", 1, "TASK-impl", "FINAL-impl"),
+    ]
+
+
+def _session_end(session_id: str = "s-hops") -> dict[str, Any]:
+    return {
+        "ts": "2026-09-28T00:00:10Z",
+        "project": "p",
+        "session_id": session_id,
+        "agent_role": "lead",
+        "event_type": "session_end",
+        "payload": {"status": "done"},
+    }
+
+
+class TestOneSessionAcrossHops:
+    def test_two_hops_at_the_same_iteration_get_distinct_span_ids(self) -> None:
+        spans = _project_all(_hop_records())
+        chats = [s for s in spans if s.name == "gen_ai.chat"]
+        assert len(chats) == 2
+        assert len({s.span_id for s in chats}) == 2
+
+    def test_root_carries_the_session_input_and_final_output_when_granted(self) -> None:
+        policy = telemetry.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
+        state = telemetry.ProjectionState()
+        spans: list[telemetry.Span] = []
+        for record in [*_hop_records(), _session_end()]:
+            spans.extend(telemetry.project(record, state, policy))
+        root = next(s for s in spans if s.name == "docket.session")
+        assert root.attributes["docket.session.input"] == "TASK-lead"
+        assert root.attributes["docket.session.output"] == "FINAL-impl"
+
+    @pytest.mark.parametrize("level", ["minimal", "actions"])
+    def test_root_carries_no_session_content_below_conversation(self, level: str) -> None:
+        policy = telemetry.ExportPolicy(classes=privacy.LEVELS[level], label=level)
+        state = telemetry.ProjectionState()
+        spans: list[telemetry.Span] = []
+        for record in [*_hop_records(), _session_end()]:
+            spans.extend(telemetry.project(record, state, policy))
+        root = next(s for s in spans if s.name == "docket.session")
+        assert "docket.session.input" not in root.attributes
+        assert "docket.session.output" not in root.attributes
+
+
+class _CollectingSink:
+    def __init__(self) -> None:
+        self.spans: list[telemetry.Span] = []
+
+    def emit(self, spans: Any) -> Any:
+        self.spans.extend(spans)
+        return otlp_http.SinkResult(accepted=len(spans), status=200, error="")
+
+    def close(self) -> None:
+        return None
+
+
+class TestTurnEndFlushKeepsTheSessionRoot:
+    def test_every_root_copy_keeps_the_first_start_and_one_span_id(self) -> None:
+        sink = _CollectingSink()
+        pipeline = telemetry.Pipeline(
+            sink, telemetry.ExportPolicy(), queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+        )
+        lead_start, lead_call, impl_call = _hop_records()
+        for record in (lead_start, lead_call):
+            pipeline.offer(record)
+        pipeline.flush(2.0)
+        pipeline.offer(impl_call)
+        pipeline.offer(_session_end())
+        pipeline.close()
+        roots = [s for s in sink.spans if s.name == "docket.session"]
+        assert roots, "the session root was never sent"
+        assert {s.span_id for s in roots} == {roots[0].span_id}
+        assert {s.start_ts for s in roots} == {"2026-09-28T00:00:00Z"}
+        assert roots[-1].end_ts == "2026-09-28T00:00:10Z"
+        assert len([s for s in sink.spans if s.name == "gen_ai.chat"]) == 2
+
+    def test_a_session_that_never_ends_is_still_sent_at_close(self) -> None:
+        sink = _CollectingSink()
+        pipeline = telemetry.Pipeline(
+            sink, telemetry.ExportPolicy(), queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+        )
+        for record in _hop_records("s-open"):
+            pipeline.offer(record)
+        pipeline.close()
+        roots = [s for s in sink.spans if s.name == "docket.session"]
+        assert roots and roots[-1].end_ts == "2026-09-28T00:00:09Z"

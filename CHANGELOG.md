@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docket exporters preview <name>` shows what a destination would receive from a real local
   session, offline. `list` gains `SHARES`, `show` a "Leaves this host" block, and every exported
   session carries `docket.privacy`. At `conversation`, Langfuse shows each generation's
-  Input/Output and each tool's result, verified live with canaries at three levels; at
+  Input/Output, each tool's result, and the trace's own Input and Output (the session's task and
+  its last answer, carried on the root and aliased by the built-in `langfuse` document), verified live with canaries at three levels; at
   `minimal` no canary reached the collector, Langfuse or the local trace. Compared with the
   pre-release `payload: metadata` default, an approval's command line and error text no longer
   leave at `minimal`. A document still carrying `payload` loads as `minimal`, and `docket doctor`
@@ -41,10 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the CLI surface: `enable` resolves the declared credentials (prompting on a TTY, naming
   `docket keys add <NAME>` off one), probes the endpoint, and writes only the minimal override.
   `docket config explain` and `docket doctor` report each exporter; a `pod.yaml` may name
-  `exporters:`, which `apply` and `docket recipes show` report and never activate. Verified live:
-  a 4-hop dispatch against a Docker `otel-collector` produced 5 `docket.session` roots, 29
-  `gen_ai.chat` spans matching `docket trace`'s 29 `llm_call` lines, and 39 `execute_tool`
-  spans; a real dispatch reached Langfuse's own dashboard with timing and token counts. See
+  `exporters:`, which `apply` and `docket recipes show` report and never activate. One session
+  is one trace: every hop's model calls keep their own span ids (the key includes the role and
+  the call's timestamp, not only its iteration, which each hop restarts at 1) and the root stays
+  open across the flush at the end of each turn, so a destination that upserts by span id keeps
+  every generation and one root. Verified live: a 4-hop dispatch against a Docker
+  `otel-collector` produced 29 `gen_ai.chat` spans matching `docket trace`'s 29 `llm_call` lines
+  and 39 `execute_tool` spans; replaying that dispatch's trace now gives 29 distinct generation
+  ids and one root, where before the fix Langfuse kept 12; a real dispatch reached Langfuse's own
+  dashboard with timing and token counts. See
   `observability-export.spec.md` §"External verification".
 - **The model's own call is a trace event.** Every chat-completions exchange (each turn
   iteration, plus the compaction summarizer's own call) is a durable `llm_call` trace record

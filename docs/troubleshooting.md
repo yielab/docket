@@ -246,7 +246,9 @@ docket exporters privacy langfuse conversation  # lists the new classes and asks
 ```
 
 `actions` adds tool arguments and error text; `conversation` adds prompts, replies and tool
-results; `full` adds the system prompt. The next session shows the content. An earlier one
+results, and gives the trace itself the task as its Input and the last answer as its Output;
+`full` adds the system prompt, when the turn has one (a `docket harness run` workspace composes
+none). The next session shows the content. An earlier one
 cannot: content is captured only while an exporter grants it.
 
 ### A level change has no effect
@@ -265,14 +267,6 @@ shows its `exported`/`dropped`/`failed` counters and last error; `docket exporte
 re-probes the endpoint without changing anything; `docket doctor` warns about an enabled
 exporter with a failure since its last success. Check that `DOCKET_NO_EXPORT` and
 `DOCKET_NO_TRACE` are unset.
-
-### One session shows two `docket.session` spans
-**Cause:** a known limit. When a turn goes quiet long enough (a slow model call), the pipeline's
-idle flush closes and sends the open session span; the next record reopens it with the same
-ids, and some destinations display both.
-
-**Fix:** none needed; the child spans are complete. It is recorded as an open follow-up in
-`specs/functional/observability-export.spec.md`.
 
 ## Permission Denied Errors
 **Fix:**

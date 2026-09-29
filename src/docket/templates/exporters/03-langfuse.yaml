@@ -5,7 +5,10 @@ endpoint: https://cloud.langfuse.com/api/public/otel/v1/traces
 auth:
   type: basic
   credentials: [LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY]
-aliases: {"session.id": "langfuse.session.id"}
+aliases:
+  session.id: langfuse.session.id
+  docket.session.input: langfuse.observation.input
+  docket.session.output: langfuse.observation.output
 privacy: minimal
 enabled: false
 note: >-

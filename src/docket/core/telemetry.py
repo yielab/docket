@@ -115,6 +115,8 @@ ATTRIBUTE_CLASSES: dict[str, str] = {
     "gen_ai.tool.call.result": "toolResults",
     "gen_ai.output.messages": "completions",
     "gen_ai.system_instructions": "instructions",
+    "docket.session.input": "prompts",
+    "docket.session.output": "completions",
 }
 
 # Per generic event type, the payload keys forwarded as `docket.<key>` structural
@@ -441,10 +443,21 @@ def _handle_llm_call(
     instructions_sha = payload.get("systemInstructionsSha256")
     if instructions_sha:
         attributes["docket.instructions.sha256"] = str(instructions_sha)
+    _fold_session_content(root, payload, policy)
+    # Every hop of a pod dispatch restarts at iteration 1 under one session, so the iteration
+    # alone would give four hops one span id and a destination that upserts would keep one.
+    key = "|".join(
+        (
+            str(record.get("agent_role", "")),
+            str(payload.get("purpose") or "task"),
+            str(iteration),
+            ts,
+        )
+    )
     return [
         Span(
             trace_id=_trace_id(session_id),
-            span_id=_span_id(session_id, "llm_call", str(iteration)),
+            span_id=_span_id(session_id, "llm_call", key),
             parent_id=root.span_id,
             name="gen_ai.chat",
             start_ts=_shift_ts(ts, -duration_ms),
@@ -453,6 +466,37 @@ def _handle_llm_call(
             attributes=attributes,
         )
     ]
+
+
+def _text_parts(messages: Any, role: str) -> list[str]:
+    """Every non-empty ``text`` part's content, in order, across *messages* of *role*."""
+    if not isinstance(messages, list):
+        return []
+    return [
+        part["content"]
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == role
+        for part in message.get("parts") or ()
+        if isinstance(part, dict)
+        and part.get("type") == "text"
+        and isinstance(part.get("content"), str)
+        and part["content"]
+    ]
+
+
+def _fold_session_content(root: _OpenSpan, payload: dict[str, Any], policy: ExportPolicy) -> None:
+    """Give the session root what the session was asked and what it last answered, for a
+    destination that shows a trace's own input and output (Langfuse reads the root's)."""
+    if _granted(policy, "prompts") and "docket.session.input" not in root.attributes:
+        asked = _text_parts(payload.get("inputMessages"), "user")
+        if asked:
+            root.attributes["docket.session.input"] = _truncate(asked[0], policy.content_max_chars)
+    if _granted(policy, "completions"):
+        answered = _text_parts(payload.get("outputMessages"), "assistant")
+        if answered:
+            root.attributes["docket.session.output"] = _truncate(
+                answered[-1], policy.content_max_chars
+            )
 
 
 def _handle_tool_call(
@@ -647,6 +691,22 @@ def project(
     return handler(state, record, policy)
 
 
+def flush_turn(state: ProjectionState) -> list[Span]:
+    """Close every open non-root span and return a closed copy of each open session root,
+    keeping the root itself open: the next turn of that session extends the same root rather
+    than starting a second one with the same id and a later start."""
+    closed: list[Span] = []
+    for session_id, stack in state.stacks.items():
+        if not stack:
+            continue
+        ts = state.last_ts.get(session_id) or stack[0].start_ts
+        trace_id = _trace_id(session_id)
+        closed.extend(_close(open_span, trace_id, ts, "unset") for open_span in reversed(stack[1:]))
+        del stack[1:]
+        closed.append(_close(stack[0], trace_id, ts, "unset"))
+    return closed
+
+
 def flush_open(state: ProjectionState) -> list[Span]:
     """Force-close every span still open in ``state`` (children before their root),
     at each session's last-seen timestamp, and clear that session's state."""
@@ -777,12 +837,13 @@ class Pipeline:
             with self._stats_lock:
                 self._stats.dropped += 1
 
-    def flush(self, timeout_s: float) -> None:
+    def flush(self, timeout_s: float, *, final: bool = False) -> None:
         """Force-close every span still open, enqueue it, then wait at most *timeout_s* for the
-        drain thread to have sent everything queued as of this call -- never longer."""
+        drain thread to have sent everything queued as of this call -- never longer. A session
+        root stays open for the session's next turn unless *final*."""
         try:
             with self._project_lock:
-                closed = flush_open(self._state)
+                closed = flush_open(self._state) if final else flush_turn(self._state)
             for span in closed:
                 self._enqueue(span)
             marker = _FlushMarker()
@@ -797,7 +858,7 @@ class Pipeline:
     def close(self) -> None:
         """Flush, then stop the drain thread and release the sink."""
         with contextlib.suppress(Exception):
-            self.flush(_cfg.EXPORT_FLUSH_TIMEOUT_S)
+            self.flush(_cfg.EXPORT_FLUSH_TIMEOUT_S, final=True)
         with contextlib.suppress(queue.Full):
             self._queue.put_nowait(_STOP)
         self._thread.join(timeout=_cfg.EXPORT_FLUSH_TIMEOUT_S)

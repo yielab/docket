@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -8,7 +8,7 @@ exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `po
 OpenTelemetry Collector and a real Langfuse project at `minimal`, `actions` and `conversation`
 (see "External verification"). A destination receives structure only unless the exporter's own
 document grants a content class; at `conversation` Langfuse shows each generation's Input and
-Output and each tool's result. `core/telemetry.py` provides the neutral span
+Output, each tool's result, and the trace's own Input and Output. `core/telemetry.py` provides the neutral span
 model, the incremental projection, the export policy, and `Pipeline`/the module-level
 `start`/`flush`/`close`/`health` registry; `core/exporter.py` provides the `kind: exporter`
 document, the built-in + global catalog, pure activation classification, and
@@ -16,7 +16,7 @@ document, the built-in + global catalog, pure activation classification, and
 shipped wire encoding and transport; `edges/adapters/exporters/__init__.py` builds a `SpanSink`
 from a resolved `ExporterSpec` (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts
 the pipeline lazily and flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path.
-**Last Updated**: 2026-09-28
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -99,7 +99,8 @@ document rather than replace it:
    to the session root, with `start_ts` computed as the record's `ts` minus its `duration_ms`,
    and attributes `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`,
    `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`, and `docket.iteration`. Its
-   `status` **MUST** be `"error"` when the payload's `ok` field is `false`.
+   `status` **MUST** be `"error"` when the payload's `ok` field is `false`. Its `span_id` key is
+   fixed by requirement 103.
 9. A `tool_call` record **MUST** open a span named `execute_tool <tool>`, with attributes
    `gen_ai.tool.name` and `gen_ai.tool.call.id`; the matching `tool_result` record (same
    `callId`) **MUST** close it, adding `docket.tool.ok` and, when the payload names a blocking
@@ -267,7 +268,7 @@ document rather than replace it:
     `last_error` set to the exception text) -- `Pipeline` never trusts a sink's never-raise
     contract, it enforces the outcome regardless.
 48. `Pipeline.flush(timeout_s)` **MUST** force-close every span still open in its projection
-    state, enqueue it, and then wait **at most** `timeout_s` for the drain thread to have sent
+    state (a session root as requirement 106 describes), enqueue it, and then wait **at most** `timeout_s` for the drain thread to have sent
     everything queued as of that call -- a slow or hung `sink.emit` **MUST NOT** make `flush`
     wait longer than `timeout_s`, whether or not the send has actually finished by then.
 49. `Pipeline.close()` **MUST** flush, stop the drain thread, and release the sink; it **MUST** be
@@ -511,6 +512,34 @@ document rather than replace it:
      captured only once an exporter grants it, so a later session would also send it — a session
      recorded under `minimal` never carries that content, whatever level it is later previewed
      at (ADR 0015 §2 rule 4).
+
+### One session across hops
+
+A pod dispatch runs every hop under one trace key, so one session holds several agent turns,
+each restarting its iteration count at 1, and `DocketDriver.run_turn` flushes the pipeline at
+the end of each of them. These requirements keep that session one complete trace.
+
+103. An `llm_call` span's `span_id` key (requirement 4) **MUST** be `<role>|<purpose>|<iteration>|
+     <ts>` -- the record's `agent_role`, its payload `purpose` (`task` when absent), its
+     `iteration`, and its own `ts` -- so two hops, or two runs of one role, in one session never
+     share a span id, while a replayed record still derives the same one.
+104. When `prompts` is granted, the session root **MUST** carry `docket.session.input`: the first
+     `text` part of the first `user`-role message in the first `llm_call` whose
+     `inputMessages` has one, set once and never replaced, truncated per requirement 78. It is
+     class `prompts` in `ATTRIBUTE_CLASSES` and absent otherwise.
+105. When `completions` is granted, the session root **MUST** carry `docket.session.output`: the
+     last `text` part of the most recent `llm_call` whose `outputMessages` has one, replaced by
+     each later such call, truncated per requirement 78. It is class `completions` in
+     `ATTRIBUTE_CLASSES` and absent otherwise.
+106. `Pipeline.flush` **MUST** close and enqueue every open non-root span, and enqueue a closed
+     copy of each open session root (ending at that session's last-seen timestamp) while
+     keeping the root open in its state with its original `start_ts`, attributes and events.
+     Every copy of one session's root **MUST** therefore share one `span_id` and one
+     `start_ts`, and the last copy covers the whole session. A `session_end` record closes the
+     root for good; `Pipeline.close` closes every span still open (`flush_open`).
+107. The built-in `langfuse` document **MUST** alias `docket.session.input` to
+     `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
+     so Langfuse derives the trace's Input and Output from the root observation.
 
 ## Interface Contracts
 
@@ -1015,13 +1044,42 @@ its output on demand (`trace-store.spec.md` requirement 27) and the wire seam te
 (`tests/integration/test_otlp_export.py::TestCapturedContentReachesTheWire`) asserts it; the
 `conversation` and `minimal` runs in the table are the re-runs on the fixed code.
 
-**Found, not fixed (Phase 32 behaviour, outside this phase):** a session whose model call pauses
-long enough for the pipeline's idle flush (`Pipeline._drain` calling `flush_open`) closes its
-`docket.session` root early; the next record re-creates the root with the same span id, so the
-destination receives two `docket.session` spans for one session (Langfuse lists both). It does
-not affect what content is shared.
+**Found then, fixed in 1.10.0:** one session could reach the destination as two or more
+`docket.session` spans. The cause was not an idle flush in `Pipeline._drain`, as first
+recorded, but the flush at the end of every `run_turn`: it closed the root, and the next hop
+re-created it with the same span id and a later start. Requirement 106 keeps the root open
+across that flush.
+
+### One session across hops -- live, 2026-09-29
+
+A second look at the Langfuse project after the privacy run found three gaps, none of them a
+privacy leak:
+
+- A real four-hop dispatch trace on this machine held 29 `llm_call` records, but only 12
+  distinct `gen_ai.chat` span ids. The lead, implementer, reviewer and tester each restart at
+  iteration 1, and the key was the iteration alone, so a destination that upserts by span id
+  (Langfuse does) kept one generation per iteration number and silently overwrote the rest.
+  Fixed by requirement 103.
+- At `full`, Langfuse showed every generation's and tool's Input and Output, but the trace's
+  own Input and Output stayed empty. Langfuse derives them from the root observation, and
+  `docket.session` carried no content at any level. Fixed by requirements 104, 105 and 107.
+- A `docket harness run` turn exports no `gen_ai.system_instructions` even at `full`. That is
+  correct, not a gap: a harness workspace composes no system prompt (no `prompt_composed`
+  record), so there are no instructions to send.
 
 ## Changelog
+
+### Version 1.10.0 (2026-09-29)
+
+- **One session across hops.** New section "One session across hops" (requirements 103-107): an
+  `llm_call` span id is keyed by role, purpose, iteration and timestamp, because four hops at
+  iteration 1 shared one id and Langfuse kept one of them; the session root carries
+  `docket.session.input`/`docket.session.output` when `prompts`/`completions` are granted, and
+  the built-in `langfuse` document aliases them to the root observation's input and output;
+  `Pipeline.flush` keeps the root open across a turn-end flush, so one session is one root with
+  its real start. Requirements 8 and 48 point to them. The committed wire fixture's two
+  `gen_ai.chat` span ids change with the key; nothing else in it does. "External
+  verification" corrects the duplicate-root cause and records the finding run.
 
 ### Version 1.9.0 (2026-09-28)
 

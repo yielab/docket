@@ -52,6 +52,11 @@ class TestBuiltinCatalog:
             assert spec.privacy_label == "minimal", name
             assert spec.privacy_classes == frozenset()
 
+    def test_langfuse_reads_the_session_root_as_the_trace_input_and_output(self) -> None:
+        aliases = _exporter.load_catalog().get("langfuse").aliases
+        assert aliases["docket.session.input"] == "langfuse.observation.input"
+        assert aliases["docket.session.output"] == "langfuse.observation.output"
+
 
 class TestLoadExporterDocument:
     def test_loads_a_minimal_no_auth_document(self, tmp_path: Path) -> None:
@@ -265,7 +270,8 @@ class TestGlobalOverrideInheritance:
         assert spec.endpoint == "https://lf.internal/api/public/otel/v1/traces"
         assert spec.auth.type == "basic"
         assert spec.auth.credentials == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
-        assert spec.aliases == {"session.id": "langfuse.session.id"}
+        builtin = _exporter.load_exporter_document(_cfg.EXPORTER_TEMPLATES_DIR / "03-langfuse.yaml")
+        assert spec.aliases == builtin.aliases
         assert spec.resource == {"service.name": "docket"}
 
     def test_needs_credential_when_only_one_of_two_is_stored(self) -> None:

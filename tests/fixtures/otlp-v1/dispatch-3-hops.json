@@ -61,7 +61,7 @@
               "kind": 3,
               "name": "gen_ai.chat",
               "parentSpanId": "0bbc419ca0683f84",
-              "spanId": "7c83bde03bbb4c56",
+              "spanId": "35f0d4e940a9f8e2",
               "startTimeUnixNano": "1790503200500000000",
               "status": {
                 "code": 1
@@ -140,7 +140,7 @@
               "kind": 3,
               "name": "gen_ai.chat",
               "parentSpanId": "0bbc419ca0683f84",
-              "spanId": "5341f26ce3cbf3d1",
+              "spanId": "7948e16f3086b71e",
               "startTimeUnixNano": "1790503203200000000",
               "status": {
                 "code": 1

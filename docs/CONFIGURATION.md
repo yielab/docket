@@ -792,7 +792,9 @@ present credential never turns an exporter on by itself.
 Every turn docket runs (a dispatch hop, a `serve --dispatch` sweep, `docket harness run`) hands
 the records it writes to the local trace, already redacted, to `core/telemetry.py`, which turns
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
-their ids derived from the session id so a re-send lands on the same trace. A background
+their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
+every hop in one session, so its lead, implementer, reviewer and tester appear as one trace, each
+model call its own span, under one root that stays open from the first hop to the last. A background
 pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the standard library
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
 queue, counts what it drops, and never raises into a turn. The pipelines start with the first
@@ -887,7 +889,9 @@ Preview: langfuse  (session agent:harness-e262ed07e5a2:default)
 
 The level also travels with the data: every `docket.session` root span carries
 `docket.privacy` and `docket.privacy.classes`, so the destination shows what it was allowed to
-receive. `docket exporters list` has a `SHARES` column, `docket config explain` prints the level
+receive. From `conversation` up the root also carries the session's task and its last answer
+(`docket.session.input`, `docket.session.output`); the built-in `langfuse` document aliases them to
+the root observation's input and output, which Langfuse shows as the trace's own. `docket exporters list` has a `SHARES` column, `docket config explain` prints the level
 per exporter, and `docket doctor` notes any exporter sharing `conversation` or `full` with a host
 that is not this machine.
 
@@ -1044,10 +1048,6 @@ rest of the original list; what remains below is the honest boundary, not a back
   tool output are recorded only while an enabled exporter grants them (§3.14), so a wider level
   cannot send an earlier session's conversation, and `preview --level conversation` on that
   session says so.
-- **One session can show two `docket.session` roots.** When a turn goes quiet long enough for
-  the pipeline's idle flush (a slow model call), the open root is closed and sent; the next
-  record opens it again with the same ids, and some destinations display both. The spans below
-  it are complete. Recorded in `observability-export.spec.md` as an open follow-up.
 - **`docket delete` keeps an unmerged branch.** Teardown deletes `docket/<pod>/<member>` when it
   is merged into your current branch; an unmerged one is kept and the command to remove it is
   printed.
