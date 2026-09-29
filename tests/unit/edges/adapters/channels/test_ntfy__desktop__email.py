@@ -4,7 +4,10 @@ and their registration in `sink_for`.
 
 from __future__ import annotations
 
+import os
+import shutil
 import smtplib
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar
@@ -214,27 +217,48 @@ class TestNtfyDeliver:
             srv.shutdown()
 
 
+def _fake_binary(tmpdir: str, name: str, body: str) -> str:
+    script_path = f"{tmpdir}/{name}"
+    with open(script_path, "w") as f:
+        f.write(body)
+    os.chmod(script_path, 0o755)
+    return script_path
+
+
 class TestDesktopDeliver:
     def test_calls_notify_send_with_title_and_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import tempfile
-
+        monkeypatch.setattr(desktop.sys, "platform", "linux")
         tmpdir = tempfile.mkdtemp()
-        script_path = f"{tmpdir}/notify-send"
-        with open(script_path, "w") as f:
-            f.write('#!/bin/sh\necho "$@" >> /tmp/test-notify.txt\n')
-        import os
-
-        os.chmod(script_path, 0o755)
+        _fake_binary(tmpdir, "notify-send", '#!/bin/sh\necho "$@" >> /tmp/test-notify.txt\n')
         monkeypatch.setenv("PATH", tmpdir)
         spec = _ChannelSpecLike({})
         event = _event_approval()
         result = desktop.deliver(spec, event, secret=None, timeout=5.0)
         assert result.ok is True
-        import shutil
+        shutil.rmtree(tmpdir)
 
+    def test_calls_osascript_on_macos(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(desktop.sys, "platform", "darwin")
+        tmpdir = tempfile.mkdtemp()
+        _fake_binary(tmpdir, "osascript", '#!/bin/sh\necho "$@" >> /tmp/test-notify.txt\n')
+        monkeypatch.setenv("PATH", tmpdir)
+        spec = _ChannelSpecLike({})
+        event = _event_approval()
+        result = desktop.deliver(spec, event, secret=None, timeout=5.0)
+        assert result.ok is True
         shutil.rmtree(tmpdir)
 
     def test_missing_notify_send_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(desktop.sys, "platform", "linux")
+        monkeypatch.setenv("PATH", "")
+        spec = _ChannelSpecLike({})
+        event = _event_approval()
+        result = desktop.deliver(spec, event, secret=None, timeout=5.0)
+        assert result.ok is False
+        assert "not found" in result.error
+
+    def test_missing_osascript_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(desktop.sys, "platform", "darwin")
         monkeypatch.setenv("PATH", "")
         spec = _ChannelSpecLike({})
         event = _event_approval()
@@ -243,35 +267,21 @@ class TestDesktopDeliver:
         assert "not found" in result.error
 
     def test_nonzero_exit_is_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import tempfile
-
+        monkeypatch.setattr(desktop.sys, "platform", "linux")
         tmpdir = tempfile.mkdtemp()
-        script_path = f"{tmpdir}/notify-send"
-        with open(script_path, "w") as f:
-            f.write("#!/bin/sh\nexit 1\n")
-        import os
-
-        os.chmod(script_path, 0o755)
+        _fake_binary(tmpdir, "notify-send", "#!/bin/sh\nexit 1\n")
         monkeypatch.setenv("PATH", tmpdir)
         spec = _ChannelSpecLike({})
         event = _event_approval()
         result = desktop.deliver(spec, event, secret=None, timeout=5.0)
         assert result.ok is False
-        import shutil
-
         shutil.rmtree(tmpdir)
 
     def test_canary_not_in_minimal_event_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import tempfile
-
+        monkeypatch.setattr(desktop.sys, "platform", "linux")
         tmpdir = tempfile.mkdtemp()
         output_file = f"{tmpdir}/output.txt"
-        script_path = f"{tmpdir}/notify-send"
-        with open(script_path, "w") as f:
-            f.write(f'#!/bin/sh\necho "$@" >> {output_file}\n')
-        import os
-
-        os.chmod(script_path, 0o755)
+        _fake_binary(tmpdir, "notify-send", f'#!/bin/sh\necho "$@" >> {output_file}\n')
         monkeypatch.setenv("PATH", tmpdir)
         spec = _ChannelSpecLike({})
         event = _event_minimal_with_canary()
@@ -280,8 +290,6 @@ class TestDesktopDeliver:
             with open(output_file) as f:
                 output = f.read()
             assert "CANARY_7f3" not in output
-        import shutil
-
         shutil.rmtree(tmpdir)
 
 
