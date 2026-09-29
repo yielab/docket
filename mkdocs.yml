@@ -1,5 +1,6 @@
 site_name: docket
 site_description: Agent teams as configuration. Your rules, in YAML.
+site_url: https://yielab.github.io/docket/
 repo_url: https://github.com/yielab/docket
 docs_dir: docs
 site_dir: site
