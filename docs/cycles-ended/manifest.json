@@ -590,5 +590,13 @@
     "heading": "◆ PHASE 33 — COMPLETE (opened 2026-09-28, closed 2026-09-28): export privacy levels (D-49)",
     "bytes": 23540,
     "sha256": "77fbc87e0d5621438d9fe99bd166990aa12c17084ae895e4b53f3976d02d92de"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ PHASE 34 — COMPLETE (opened 2026-09-28, closed 2026-09-29): the operator loop (D-50)",
+    "bytes": 47193,
+    "sha256": "2fd96d0c4d0e0b92034d598140386a9782ba45b9c88f3a2f2ddf149a346537f2"
   }
 ]

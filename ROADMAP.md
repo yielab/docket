@@ -109,20 +109,42 @@ Verified live at `minimal`/`actions`/`conversation` against a local collector an
 canaries (none at `minimal`); that run found `tool_result` never recording its output and fixed
 it. Follow-up recorded, not scheduled: the pipeline's idle flush can emit a session's root span
 twice. Board archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
-**Phase 34 (the operator loop, D-50) opened 2026-09-28**, seventeen cards over Waves 64–70,
-triggered by the operator's request and three facts found reading the live path: the only four
-real approvals expired unanswered, an in-turn `ask` under `serve --dispatch` stalls every pod,
-and the Lead cannot ask anything although its prompt says it owns human communication. Work
-that needs a human **parks** (`approvalMode: park`, a new `waiting_input` state, single-use
-pre-grants) instead of blocking a thread; the Lead's intake is an opt-in pipeline pattern (a
-typed `TaskBrief`, a new `input` step, the `intake` recipe); one derived inbox feeds every
-surface; notifications are CloudEvents delivered by `kind: channel` documents (console,
-desktop, webhook signed per Standard Webhooks, command, ntfy, email, Telegram by amendment of
-its Command grammar 7); questions and answers take the MCP elicitation shape and task states map
-one to one onto A2A. Reasoning in
-[docs/adr/0016-operator-loop-and-interop-standards.md](docs/adr/0016-operator-loop-and-interop-standards.md);
-cards in `TODO.md`; packets in
-[.agents/handoffs/wave-64-worker-packets.md](.agents/handoffs/wave-64-worker-packets.md).
+**Phase 34 (the operator loop, D-50) shipped 2026-09-29** (opened 2026-09-28), seventeen cards
+over Waves 64–70 (one worker per card, Sonnet or Haiku, in isolated worktrees under one
+integrator), triggered by the operator's request and three facts found reading the live path:
+the only four real approvals expired unanswered, an in-turn `ask` under `serve --dispatch`
+stalls every pod, and the Lead cannot ask anything although its prompt said it owns human
+communication. Work that needs a human **parks** (`approvalMode: park`, a new `waiting_input`
+state, single-use pre-grants matched by a stable args digest) instead of blocking a thread; the
+Lead's intake is an opt-in pipeline pattern (a typed `TaskBrief`, a new `input` step, the
+`intake` recipe, a deterministic resource pre-check); one derived inbox (`docket inbox`,
+`GET /inbox`, the MCP `inbox` tool, Telegram `/status`) feeds every surface; notifications are
+CloudEvents delivered by `kind: channel` documents (console, desktop, webhook signed per
+Standard Webhooks, command, ntfy, email, Telegram by amendment of its Command grammar 7 and a new
+`/answer` verb); questions and answers take the MCP elicitation shape and task states map one to
+one onto A2A 1.0.0. Reasoning in
+[docs/adr/0016-operator-loop-and-interop-standards.md](docs/adr/0016-operator-loop-and-interop-standards.md).
+**The integrator's close (P34-17) added three seam tests no card owned alone** — the real HTTP
+`POST /approvals/<token>` write route threaded into the pre-grant mechanism and a real
+re-dispatch; `content: minimal` vs `actions` enforced at a real local `webhook` delivery, not
+either card's own unit test; the operator's exact typed answer reaching the Lead's own re-entry
+message via `## Operator answers` — and found two real defects by running the product rather
+than reading it: the operator-loop scenario's own `eventsDelivered` counter read a
+`channels-health.json` key that never existed, always `0` since it was written; `--live-model`
+registered its provider after `docket init`, so that path had never actually completed `init`.
+sweepBlockedSeconds dropped from the pre-Wave-65 baseline of ~12-13s to under a second
+(deterministic, park removing the blocking wait) but measured 138.0s under the real local model —
+real per-hop generation latency serialized across one sweep worker, a different cost than the one
+`park` targets, named for a maintainer rather than acted on. Both named deferred triggers this
+phase carries were evaluated at the close and did not fire: fewer than 10 real parked approvals
+exist on this machine to measure the mid-turn-resume trigger against, and the one-worker-per-pod
+trigger's scripted-backend condition does not hold (see the ADR's own "Deferred with named
+triggers" section for the full reasoning). Board archived in
+[docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md); packets stay in
+[.agents/handoffs/wave-64-worker-packets.md](.agents/handoffs/wave-64-worker-packets.md). Nothing
+is parked, except `cli-interface.spec.md` coverage for `docket inbox`/`channels`/`notify`/
+`pregrant`/`explain interruptions`, named there for a follow-up card rather than backfilled under
+this close's time budget.
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
