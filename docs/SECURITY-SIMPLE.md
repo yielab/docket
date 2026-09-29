@@ -20,8 +20,18 @@
 > Telegram (docket's own bot, wired with `docket wire` — a decision there lands in the same audit
 > chain as a CLI one, tagged `channel="telegram"`). The headless channels mean CI jobs and
 > automation can vote without a chat account. **Approvals fail closed on timeout** — an in-turn
-> "ask" (blocking a live tool call) denies itself after 120 seconds with nobody watching; an
-> async dispatch-level approval denies after 15 minutes.
+> "ask" that actually blocks a live tool call (an interactive foreground dispatch, which resolves
+> to `approvalMode: wait`) denies itself after 120 seconds with nobody watching; a pre-hop
+> `approval` gate (the async, pre-dispatch-level kind) denies after 15 minutes. **An unattended
+> pod never blocks on that 120-second wait at all** — `serve --dispatch`'s sweep and a
+> non-interactive `dispatch` both resolve an unset pod to `approvalMode: park` (Phase 34, D-50):
+> the in-turn `ask` is recorded and the task is parked `waiting_approval` immediately, with no
+> live wait and no risk of one stuck hop stalling every other pod in the same sweep. A parked
+> approval is answered exactly the same way (any of the four channels above), re-runs the same
+> hop on a grant rather than skipping ahead, and — left untouched — expires after the pod's
+> `approvalExpiryHours` (24h by default) and denies, the identical fail-closed sweep a pre-hop
+> gate's pending approval already used. See "The operator loop" below for how a human actually
+> learns a task is waiting.
 >
 > `--no-gates` (on `docket init`) does **not** turn the tool-call gate off — it cannot be turned
 > off, and it does not change how an "ask" verdict is answered either. What `--gates`/`--no-gates`
@@ -168,9 +178,13 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - **A pod can widen its own allowlist** with `docket pod <p> config set allowCommands pytest,uv`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
-  `pytest > /etc/passwd` still asks. An unattended pod can also set `approvalMode refuse`, so a
-  gated call fails fast with `approval_unavailable` instead of blocking the turn for the usual
-  120-second in-turn timeout.
+  `pytest > /etc/passwd` still asks. **`approvalMode`** is how a pod chooses what an unattended
+  `ask` does: unset, it resolves per caller — `park` under `serve --dispatch`'s sweep or a
+  non-interactive `dispatch`, `wait` under an interactive TTY. An explicit `wait` blocks the
+  call for the usual 120-second in-turn timeout regardless of caller; `park` records the call and
+  parks the task instead of blocking (see "The operator loop" below); `refuse` fails the call
+  fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
+  later.
 
 ### Layer 6: Telemetry export (what leaves the host)
 
@@ -213,6 +227,50 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - **A pod only documents intent, never activates.** `pod.yaml`'s `exporters:` list is validated
   against the live catalog and reported by `config explain`, but naming a destination there does
   not turn it on — `docket exporters enable` is still the one command that flips `enabled: true`.
+
+### The operator loop: how you find out, and how you answer (Phase 34, D-50)
+
+- **A parked task is not a silent one.** `docket inbox` (also `GET /inbox`, the MCP `inbox`
+  tool, and Telegram's `/status`) is a live, read-only view — every pod's tasks and pending
+  approvals sorted into needs-you, failed, done-since-last-look and running — computed fresh each
+  call, not a separate store to fall out of sync with the truth. It's the one place that answers
+  "does anything need me right now," across every pod, without opening each one.
+- **Off by default, same as export.** A push notification is a separate, opt-in `kind: channel`
+  document (`docket channels`): seven dialects ship (`console`, `desktop`, `webhook`, `command`,
+  `ntfy`, `email`, `telegram`), and only `console` — your own terminal, already the inbox — ships
+  enabled. Nothing leaves this host to notify you of anything until you run `docket channels
+  enable <name>`. Each dialect has a closed maximum of what it may do: every dialect can
+  `notify`; only `console` and `telegram` may ever `decide` (act on an approval from inside the
+  channel itself); a document that tries to exceed its dialect's maximum is refused at parse
+  time, not silently ignored.
+- **A notification carries as little as an exporter does, by the same default.** `content:
+  minimal` (default) names what changed, nothing more; `actions` adds an approval's rendered
+  command; `conversation` adds a task's question or brief. Widening is the same confirmed,
+  audited command shape as `docket exporters privacy`: `docket channels content <name> <level>`
+  lists what starts showing up and asks, refusing off a TTY without `--yes`; narrowing never
+  asks.
+- **Telegram's push is not the inbound bot talking to itself.** `core/telegram.py`'s bot is still
+  exactly what "It isn't a chat" above describes: inbound-only, five verbs now (`/approve`,
+  `/deny`, `/status`, `/delegate`, and `/answer <task-id> <text>` for a parked question), and it
+  never sends anything it wasn't asked to. The `telegram` *channel* (`docket channels enable
+  telegram --set actors=<chat-id>`) is a second, independent mechanism: it can push a
+  notification to a chat id you explicitly listed, and only that chat id — never every
+  `fleet.json` binding, never triggered from inside the bot's own poll loop.
+- **Answering doesn't require re-running anything by hand.** A parked approval is answered like
+  any other (`docket approve`/`docket deny`, HTTP, MCP or Telegram) and re-runs the exact hop it
+  parked in, carrying a single-use pre-grant so the model's identical next call passes without
+  asking again. A parked *question* (`waiting_input`, from a pipeline `input` step or a Lead's
+  own intake brief) is answered with `docket chat <task-id>` (interactive, prompts once per
+  field) or non-interactively with `docket pod <p> answer <task-id> [text] [--field k=v]...
+  [--decline]` — both call the same `answer_task` function HTTP and MCP use, so an answer is
+  screened through the same input policy as any other text reaching an agent.
+- **You can see what would ask before you delegate anything.** `docket pod <p> explain
+  interruptions` forecasts, from the pod's own configuration alone (no live dispatch), every
+  policy, pipeline gate and role rule that could pause its next task, plus which notification
+  channels are enabled to tell you — `docket pod <p> delegate` prints one summary line from the
+  same forecast after queuing. `docket pod <p> pregrant <task-id> "<command>"` grants one exact
+  command ahead of time, matched by the identical digest a live parked `ask` would use, so a
+  command you already expect and approve of never has to park at all.
 
 ---
 
@@ -312,7 +370,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command.
+**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
 
 ---
 
@@ -329,6 +387,9 @@ docket approve            # list pending approvals in docket's own store
 docket audit verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
 docket exporters list     # every trace destination: on or off, and what it SHARES
 docket exporters preview <name>   # the exact spans it would receive, without sending them
+docket inbox               # everything across every pod that needs you, right now
+docket channels list       # every notification destination: on or off, and what it shares
+docket pod <p> explain interruptions   # what could pause this pod's next task, before you delegate it
 ```
 
 ---

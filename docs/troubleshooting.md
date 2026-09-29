@@ -8,10 +8,14 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 ### Common Causes
 
 #### 0. **It isn't a chat**
-docket's Telegram channel is inbound-only and understands exactly four verbs: `/approve`, `/deny`,
-`/status`, and `/delegate <task>`. Plain prose is refused by design, docket never messages a chat
-first (no approval or completion notifications), and `/delegate` answers with a task id, not the
-pipeline's output. Use `docket pod <p> queue`/`docket trace tail <p>` to see results.
+docket's inbound Telegram bot is inbound-only and understands exactly five verbs: `/approve`,
+`/deny`, `/status`, `/delegate <task>`, and `/answer <task-id> <text>` (for a parked question).
+Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
+answer with a task id or a confirmation, never the pipeline's output. Use `docket pod <p>
+queue`/`docket trace tail <p>` to see results. A *push* notification into the chat is a separate,
+opt-in mechanism — the `telegram` channel (`docket channels enable telegram --set
+actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
+never replaces the four verbs above.
 
 #### 1. **Invalid Model Name**
 
@@ -362,6 +366,49 @@ docket profile myapp-lead --resume        # clear the auto-pause + unblock the p
 
 To retry a single blocked task without touching the pod-wide pause, use `docket pod myapp queue
 --retry <task-id>` instead — it moves just that task back to `pending`.
+
+### A dispatched task stays "waiting_approval" and nobody seems to have noticed
+
+**Cause:** a gated tool call parked. Under `serve --dispatch`'s sweep or a non-interactive
+`docket pod <p> dispatch` (an unattended caller resolves an unset `approvalMode` to `park`), an
+in-turn `ask` no longer blocks the hop — it records the exact call and parks the task
+immediately, so it never shows up as a long-running turn. Nothing pushes this at you unless a
+notification channel is enabled; `console` is on by default, but that only helps if you're
+looking at the terminal that ran the dispatch.
+
+**Fix:**
+
+```bash
+docket inbox                              # everything across every pod that needs you, right now
+docket approve <token>                    # grant it -- the exact same hop re-runs, once
+docket deny <token>                       # deny it -- the task fails with approval_denied
+docket pod <p> explain interruptions      # see what could park BEFORE you delegate the next task
+docket channels enable console            # (already on) -- or webhook/ntfy/telegram/desktop/email
+```
+
+Left unanswered, a parked approval expires after the pod's `approvalExpiryHours` (24h by
+default) and denies on its own — it is not a silent forever-wait, but 24h is a long time to
+discover one by accident. Granting it does not skip ahead: the exact hop that parked re-runs,
+carrying a single-use pre-grant so the model's identical next call passes without asking twice.
+
+### A dispatched task stays "waiting_input"
+
+**Cause:** a pipeline `input` step (or a Lead's own typed intake brief marking `NEEDS-INPUT`)
+asked a real question, not a permission — this is a different state from `waiting_approval` even
+though both read as `INPUT_REQUIRED` over the MCP/A2A surfaces.
+
+**Fix:**
+
+```bash
+docket chat <task-id>                     # see the question (and any brief/earlier answers); on a
+                                           # TTY, prompts and answers it in one step
+docket pod <p> answer <task-id> "<answer>"                    # non-interactive, single-property question
+docket pod <p> answer <task-id> --field name=value ...        # non-interactive, multi-property question
+```
+
+An unanswered question past its own deadline moves the task to `blocked`
+(`blockedReason: "input_expired"`), never `failed` — `docket pod <p> queue --retry <task-id>`
+re-queues it once you're ready to answer.
 
 ### A dispatched task fails with "verification_failed" / the verify command failed
 

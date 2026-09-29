@@ -57,6 +57,10 @@ noted.
 ├── docket-mcp-servers.json             mcp servers  external MCP tool servers
 ├── docket-exporters.json               exporters    your kind: exporter overrides (built-ins ship in the wheel, all off)
 ├── exporters-health.json               first export delivery counters per enabled exporter
+├── docket-channels.json                channels     your kind: channel overrides (built-ins ship in the wheel, only console on)
+├── channels-health.json                first notify delivery counters per enabled channel
+├── notify-state.json                   first notify the dedupe snapshot `docket notify flush` diffs against
+├── inbox-cursor.json                   inbox        the last `docket inbox` call's cursor (skipped by --peek/--since)
 ├── docket-schedules.json               you          dispatch schedules (no CLI writer)
 ├── secrets.json, secrets.meta.json     keys add     stored API keys + timestamps
 ├── docket-runs.json                    dispatch     one record per dispatch invocation
@@ -437,14 +441,21 @@ matches. Anything else asks a human.
   metacharacters, opaque names (`eval`, `source`, …) and high-risk-class bins (`git`, `npm`) are
   rejected at write time; a redirected call still asks. Policies remain stricter-only: an `allow`
   policy cannot loosen the classifier.
-- **In an unattended run,** each ask blocks the turn for `TOOL_APPROVAL_TIMEOUT` (120 s) and is
-  then denied. After three denials in a row (`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`), the hop
-  fails. For a pod that is *known* to run unattended, set
+- **In an unattended run today,** an ask does not block at all by default: `serve --dispatch`'s
+  sweep and a non-interactive `docket pod <p> dispatch` both resolve an unset `approvalMode` to
+  `park` (§3.15) — the first ask records the call and parks the task `waiting_approval`
+  immediately, ending the turn rather than eating a 120-second wait. An explicit `approvalMode:
+  wait` (or an interactive foreground TTY, which still defaults to `wait`) keeps the older
+  behavior: each ask blocks the turn for `TOOL_APPROVAL_TIMEOUT` (120 s) and is then denied, and
+  after three denials in a row (`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`) the hop fails. For a
+  pod that should never wait *or* park — a CI job with no one to grant it later — set
   `docket pod <p> config set approvalMode refuse`: a gated call then fails the hop immediately
-  with `approval_unavailable`, naming the tool and policy, instead of eating the timeout.
-- **This is not hypothetical.** Verifying this guide, a real dispatch passed Lead, Implementer
-  and Reviewer, then **failed the task** at the Tester on three asks. The asks were for
-  `cd <worktree> && python3 …`, which W37-C1 has since allowed. `pytest` and `uv` still ask.
+  with `approval_unavailable`, naming the tool and policy.
+- **This is not hypothetical.** Verifying this guide (pre-Phase-34, under the always-`wait`
+  behavior), a real dispatch passed Lead, Implementer and Reviewer, then **failed the task** at
+  the Tester on three asks. The asks were for `cd <worktree> && python3 …`, which W37-C1 has
+  since allowed. `pytest` and `uv` still ask — and today, an unattended run hits `park` on the
+  very first one rather than accumulating three denials.
 
 Three ways to avoid it:
 
@@ -548,7 +559,9 @@ The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
 ### 3.8 Run unattended
 
 - **Continuous sweep.** `docket serve --dispatch` drains every pod's queue. Add `--telegram` for
-  the approval channel.
+  the approval channel. A gated tool call an unattended hop hits doesn't block the sweep: it
+  resolves to `approvalMode: park` by default (an explicit stored value always wins) and moves on
+  — see §3.15 for parking, the derived inbox, and how a human answers.
 - **Schedules.** `docket pod <p> config set schedule "<spec>"` validates and writes one
   (`unset schedule` removes it); an invalid spec is refused at `set`, and the serve sweep logs a
   line for any hand-edited spec it has to skip. Schedules fire
@@ -953,6 +966,97 @@ spans carried `{"path": "notes.txt"}`, still no canary. `conversation`: Langfuse
 generation's Input and Output and the `read` tool's result, both canaries present. Full detail:
 `specs/functional/observability-export.spec.md` §"External verification".
 
+### 3.15 Notify a human, and answer without blocking
+
+An unattended pod's gated tool call used to have two choices: block the hop for up to
+`TOOL_APPROVAL_TIMEOUT` (120s) with nobody watching, or `approvalMode: refuse` and lose the call
+outright. A third posture, `park` (ADR 0016, D-50), records the exact call and moves the task to
+`waiting_approval` without blocking anything — the sweep moves on to the next pod in the same
+pass. `approvalMode` resolves per caller when a pod hasn't set one explicitly: `serve
+--dispatch`'s sweep and a non-interactive `docket pod <p> dispatch` both resolve to `park`; an
+interactive foreground dispatch (a real TTY) resolves to `wait`. A pod's own stored
+`approvalMode` (`docket pod <p> config set approvalMode wait|park|refuse`) always wins over the
+caller's default. A parked approval is granted or denied exactly like any other (CLI, HTTP, MCP,
+Telegram); granting it re-runs the same hop, carrying a single-use pre-grant matched by a stable
+argument digest so the model's identical next call passes once without asking again. Left
+untouched past the pod's `approvalExpiryHours` (`docket pod <p> config set approvalExpiryHours
+N`, default 24), it expires and denies — the same fail-closed sweep a pre-hop `approval` gate's
+pending approval already used.
+
+A pipeline can also pause a task to ask a real *question*, not a permission: an `input` step
+(`- ask: {input: {from: <step-id>}}`) mints a question from another step's output and moves the
+task to `waiting_input`, distinct from `waiting_approval` in the CLI/HTTP/MCP surfaces even
+though both read the same `INPUT_REQUIRED` A2A state. The `intake` recipe (§3.10) wires this to a
+Lead's own typed brief: the Lead writes an `objective`/`acceptance`/`resources`/`questions`
+brief and ends with `READY`/`NEEDS-INPUT`/`REJECT`; `READY` runs a deterministic check that every
+declared resource (`secret:NAME`, `path:P`, or `verify`) actually exists before handing off to
+the Implementer, `NEEDS-INPUT` asks the brief's own `questions[]` and returns to the Lead once
+they're answered, `REJECT` fails the task outright naming the reason. An unanswered question past
+its own deadline (`docket pod <p> config set inputExpiryHours N`, default 72 — a separate knob
+from `approvalExpiryHours`, since a question is reasonable to leave open longer than a
+permission) moves the task to `blocked` (`blockedReason: "input_expired"`), never `failed`.
+
+```yaml
+# pipeline.yaml — a generic input step
+steps:
+  - id: lead
+    role: lead
+  - id: ask
+    input:
+      from: lead
+    on:
+      answered: {goto: lead, max: 3}
+      declined: {goto: lead, max: 3}
+  - build: implementer
+```
+
+**Finding out.** Nothing above pushes a notification by itself. `docket inbox [--json] [--since
+<iso>] [--peek]` (also `GET /inbox`, the MCP `inbox` tool, and Telegram's `/status`) is read-only
+and computed live: every pod is enumerated, each task sorted into `needsYou` (any `waiting_*`
+status, plus `blocked`), `failed`, `doneSince` or `running`, and a pending approval added to
+`needsYou` unless its own task already carries it. A plain `docket inbox` call advances a durable
+cursor so the next one's `doneSince` only shows tasks that finished meanwhile; `--peek` and an
+explicit `--since` don't.
+
+**Pushing.** A destination is a `kind: channel` YAML document, the same shape as `kind: exporter`
+(§3.14). Seven dialects ship, all disabled except `console` (your own terminal, already the
+inbox): `desktop`, `webhook`, `command`, `ntfy`, `email` and `telegram` notify only; `console` and
+`telegram` may also `decide` (act on an approval from inside the channel). A channel declares
+`content: minimal|actions|conversation` (default `minimal`) the same way an exporter declares
+`privacy`, and widening it is the same confirmed, audited command shape:
+
+```bash
+docket channels enable webhook --set url=https://example.com/hook --set secret=WEBHOOK_SECRET
+docket channels content webhook actions --yes
+docket channels test webhook          # one synthetic event, to check the URL/binary/topic works
+docket notify flush [--dry-run]       # push what's pending now; serve's sweep and dispatch already do this
+```
+
+`webhook` signs its POST per Standard Webhooks (`webhook-signature: v1,<hmac-sha256>`); `command`
+runs a local binary with the event as JSON on stdin; `ntfy`/`desktop`/`email`/`telegram` each wrap
+one more stdlib-only transport. Unlike `exporters:` (§3.14), a channel is a global catalog
+entry, not something a `pod.yaml` names or scopes — every enabled channel watches every pod's
+inbox.
+
+**Answering.** A parked approval: `docket approve <token>` / `docket deny <token>`. A parked
+question: `docket chat <task-id> [--pod <project>]` (interactive — shows the brief and any prior
+answers, prompts once per schema property on a TTY, then answers) or non-interactively `docket
+pod <p> answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
+single-property question, `--field` names each property of a richer one. Both, plus `POST
+/tasks/<id>/answer` and the MCP `task_answer` tool, resolve through the same
+`core.answers.answer_task` function, so an answer is screened by the same input policy hook
+regardless of which surface sent it.
+
+**Seeing it coming.** `docket pod <p> explain interruptions [--json]` forecasts, from the pod's
+own configuration alone (no live dispatch), every policy, pipeline gate and role rule that could
+pause its next task, plus the resolved `approvalMode` and which notification channels are
+enabled; `docket pod <p> delegate` prints one summary line from the same forecast after queuing
+("Nothing in this pod will ask you." or "May ask you: 2 policy, 1 pipeline_gate — see: ..."). A
+command you already expect can be pre-approved before it ever runs:
+`docket pod <p> pregrant <task-id> "<command>" [--tool bash]` — matched by the identical digest
+the live parked-approval matcher uses (whitespace-collapsed, otherwise exact), so a rephrased
+command still asks, by design.
+
 ## 4. File reference
 
 **Hand-editing.** Docket writes its JSON atomically: a file lock, a `.bak` of the previous
@@ -972,6 +1076,10 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout}]` | `mcp servers add/remove` | every turn | via command |
 | `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `exporters enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
 | `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `exporters show`, `doctor` | no |
+| `docket-channels.json` | `channels{<name>: kind: channel override}` — only the keys you changed (`enabled`, `capabilities`, `on`, `content`, `actors`, `config`, `secret`) over the built-in | `channels enable/disable/content/add/remove` | `docket notify flush`, `serve`'s sweep and a foreground `dispatch`, each after their own work: which channels run, and how much they carry (§3.15) | via command. A hand edit that widens `content` skips the confirmation and audit entry. |
+| `channels-health.json` | `{<name>: {delivered,failed,lastOk,lastError,…}}` | `core.notify.flush`, after every delivery attempt | nothing yet — no CLI surface reads it back | no |
+| `notify-state.json` | `{<dedupe-key>: version}` plus an `expiring` list | `core.notify.flush`, saved before delivering | `core.notify.diff_events` on the next flush, to avoid re-sending an unchanged item | no |
+| `inbox-cursor.json` | `{"next": "<iso timestamp>"}` | a plain `docket inbox` call | the next plain `docket inbox` call's `doneSince` filter | no |
 | `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | you, serve (`lastRun`) | `serve --dispatch` sweep | **yes, the only interface** |
 | `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `keys add/rotate/remove` | endpoint key lookup (after env) | no |
 | `port-allocations.json` | `allocations{pod: base}`, 100 ports each from 3000 | pod create/delete | implementer env `DOCKET_PORT_BASE` | no |
@@ -993,6 +1101,11 @@ explicitly.
 (`otel-collector`, `jaeger`, `langfuse`, `honeycomb`, `phoenix`), every one `enabled: false` at
 `privacy: minimal`. `docket-exporters.json` stores only what you changed on top of one.
 
+**Built-in channel documents** follow the same pattern at `templates/channels/NN-<name>.yaml`
+(`console`, `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`); only `console` ships
+`enabled: true`, and every one carries `content: minimal`. `docket-channels.json` stores only
+what you changed on top of one.
+
 ### Per agent (`~/.docket/workspaces/projects/<pod>-<role>/`)
 
 `.docket-meta.json`, with each key and what uses it:
@@ -1005,6 +1118,8 @@ explicitly.
 | `verifyCmd` | the mechanical gate after this member's hop | `pod set-verify`, `--verify` |
 | `budgetUsd`, `paused`, `pausedReason` | pod budget and auto-pause, **Lead only** | `profile --budget`, `--resume` |
 | `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` | pod dispatch, **Lead only** | hand-edit (§3.3) |
+| `approvalMode`, `approvalExpiryHours` | unattended posture for a gated call (`wait`/`park`/`refuse`); how long a parked approval stays open before it expires and denies, **Lead only** | `pod config set approvalMode/approvalExpiryHours` (§3.15) |
+| `inputExpiryHours` | how long a parked *question* (`waiting_input`) stays open before it expires to `blocked`, **Lead only** — a separate knob from `approvalExpiryHours`, default 72 | `pod config set inputExpiryHours` (§3.15) |
 | `portRangeStart`, `portRangeCount`, `scratchDir` | Implementer environment `DOCKET_PORT_BASE/COUNT`, `DOCKET_SCRATCH_DIR` | provisioning |
 | `persona` | the persona block in the system prompt | `persona set/clear` |
 | `sessionKey`, `projectKey` | shown by `docket scope`; dispatch builds its own per-task session key | `scope` |

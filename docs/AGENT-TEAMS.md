@@ -266,6 +266,21 @@ Three guarantees hold on every dispatch:
 > or opt-in (`docket serve --dispatch`) — never silent. The read-only `docket serve` monitor does
 > not dispatch.
 
+**A hop that needs a human doesn't stall the rest of the fleet.** A pipeline `approval` step, a
+`requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all
+move the task to `waiting_approval` rather than failing it. Under `serve --dispatch`'s sweep or a
+non-interactive `dispatch`, that `ask` **parks** — it records the exact call and moves on to the
+next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
+needs you, across every pod, shows up in one place (`docket inbox`), and an optional notification
+channel (`docket channels`, off by default except your own console) can push it to you instead of
+waiting for you to look. Answer it the same way you'd answer any approval (`docket approve`/
+`docket deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
+single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
+can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
+the Lead's own typed intake brief when it decides it's missing something — which is `docket chat
+<task-id>` or `docket pod <p> answer`'s job, not `docket approve`'s. See
+[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
+
 ---
 
 ## Runtime-resource isolation per pod
@@ -419,12 +434,21 @@ docket roles add <file.yaml>             # register/override a custom archetype
 docket roles validate [file.yaml]        # dry-run schema + template validation
 
 # Run the pipeline
-docket pod <project> delegate [--priority high|normal|low] "<task>"
+docket pod <project> delegate [--priority high|normal|low] [--brief FILE.json] "<task>"
 docket pod <project> queue
 docket pod <project> dispatch
 docket pod <project> add implementer --verify "<cmd>"   # Implementer's mechanical gate
 docket pod <project> set-verify <member-id> "<cmd>"
 docket serve --dispatch                  # autonomous: drive every pod's queue
+
+# The operator loop: what needs you, and answering it
+docket inbox [--json] [--since <iso>] [--peek]           # everything across every pod that needs you
+docket chat <task-id> [--pod <project>]                  # see + answer one task's parked question
+docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]   # answer, non-interactively
+docket pod <project> pregrant <task-id> "<command>" [--tool bash]          # pre-approve one exact call
+docket pod <project> explain interruptions [--json]      # what could pause this pod's next task
+docket channels list|show|enable <name>|disable <name>   # who gets notified, and how much they see
+docket notify flush [--dry-run]                          # push pending notifications now
 
 # Identity
 docket persona <member-id> set "<label>" # optional display persona

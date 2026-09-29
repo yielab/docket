@@ -184,7 +184,12 @@ Lead  →  Implementer  →  Reviewer  →  Tester
 The per-task dollar figure is *recorded* cost, and docket's own driver never records one, so it
 reads `$0.0000`; the budget gate uses the labelled token estimate instead (Step 2). The command
 exits `1` when a task's run ends `failed`, so `docket pod myapp dispatch && …` stops there;
-`blocked` and `waiting_approval` are expected pauses and exit `0`.
+`blocked`, `waiting_approval` and `waiting_input` are expected pauses and exit `0`. An unattended
+`ask` — under this same `dispatch` off a TTY, or under `serve --dispatch`'s sweep — resolves to
+`waiting_approval` without blocking the turn at all (`approvalMode: park`, the default for an
+unattended caller); see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s operator-loop section and
+[CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) for
+how a human finds out and answers.
 
 docket stays the orchestrator: it invokes each hop through its own turn loop
 (`core/agent_loop.py`), captures the result, and threads it to the next role. The Lead plans,
@@ -433,13 +438,15 @@ recording, budget/approval gating, retries, and crash resume `docket pod myapp d
 `--file` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes,
 including the exit status: `1` when a task's run ends `failed`.
 
-Three gate kinds, and what a failure does to the task:
+Three gate kinds, plus one step kind that isn't a gate at all — it doesn't judge a hop's output,
+it asks a question before one runs — and what each does to the task:
 
 | Gate | Where it shows up | On failure |
 |---|---|---|
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
 | `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
+| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket chat <task-id>` or `docket pod <p> answer`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
 ### Declared variables — interpolated into step instructions
 
@@ -615,9 +622,10 @@ scoped to fleet *metadata* and to recommending, in words, which pods to prioriti
 and never touches code.
 
 > Today nothing runs a turn for it: dispatch only runs pod members, and Telegram accepts only
-> `/approve`, `/deny`, `/status` and `/delegate` (the last only for a pod Lead binding), so there
-> is no command that asks it a question. Until one exists, do the cross-pod read yourself with
-> `docket status --all`, `docket pod <project> queue` and `docket cost`, then:
+> `/approve`, `/deny`, `/status`, `/delegate` and `/answer` (the last two only for a pod Lead
+> binding), so there is no command that asks it a question. Until one exists, do the cross-pod
+> read yourself with `docket status --all`, `docket pod <project> queue`, `docket inbox` (every
+> pod that needs you, in one place) and `docket cost`, then:
 
 ```bash
 docket pod myapp dispatch
@@ -753,8 +761,11 @@ docket serve --dispatch
 You can also queue work from Telegram: wire the Lead once with `docket wire myapp-lead`, run
 `docket serve --telegram`, and send `/delegate <task>` in that group. The task lands on the same
 pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
-the only verbs are `/approve`, `/deny`, `/status` and `/delegate`, and docket never messages the
-group first.
+the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <task-id> <text>` (for
+a parked question). This bot only ever replies to a message it received — it never messages the
+group first. Pushing a notification into the group instead is a separate, opt-in mechanism
+(`docket channels enable telegram --set actors=<chat-id>`, §3.15 in CONFIGURATION.md), scoped to
+the chat ids you explicitly list, never every wired binding.
 
 ### Monitor
 

@@ -612,8 +612,8 @@ Provisioned only by `docket init --portfolio`, which adds **one** `portfolio-man
 (`scope: org`). The flag is read only by the first `docket init`, the one that builds the shared
 foundation. It is a fleet-wide advisory layer, never a pod member. No dispatch path runs a turn
 for an org specialist, so today the Portfolio Manager is a provisioned workspace with no
-conversational entry point: Telegram accepts only four verbs and `/delegate` works only for a
-pod Lead binding.
+conversational entry point: Telegram accepts only five verbs and `/delegate`/`/answer` work only
+for a pod Lead binding.
 
 **Capabilities:**
 - Sees fleet **metadata** — which pods exist, their queues, budgets, and health
@@ -745,8 +745,12 @@ SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-o
 final human `git diff` review. The enforced tool-call gate (policy engine plus argument-aware
 high-risk command classifier) is always active and cannot be turned off, and an `ask` verdict can
 be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). Docker/bwrap workspace
-isolation is **opt-in** (`docket gates isolate on`). Full detail,
-including the exact reviewer checklist and gate/approval-channel mechanics, lives in
+isolation is **opt-in** (`docket gates isolate on`). Since Phase 34 (D-50), an unattended pod's
+in-turn `ask` **parks** the task (`waiting_approval`) rather than blocking the turn, and a
+separate, opt-in notification layer (`docket channels`, off by default except `console`) is what
+tells a human one is waiting — the approval mechanism and its four channels are unchanged. Full
+detail, including the exact reviewer checklist, gate/approval-channel mechanics and the operator
+loop, lives in
 **[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)** — this section intentionally isn't a second copy.
 
 A declarative policy engine (`docket policies`) adds a fourth layer on the dispatch path itself —
@@ -864,6 +868,13 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Export privacy levels (`minimal`/`actions`/`conversation`/`full`, or an exact `share:`
   list), shown before sharing (`docket exporters show|preview`) and widened only by a confirmed,
   audited command (`docket exporters privacy`)
+- [x] The operator loop: an unattended `ask` parks (`waiting_approval`) instead of blocking a
+  sweep, a typed Lead intake brief with a deterministic resource pre-check, an `input` pipeline
+  step for a question rather than a permission (`waiting_input`), one derived inbox
+  (`docket inbox`) every surface renders from, `kind: channel` notifications delivered as
+  CloudEvents (`docket channels`, `docket notify`, seven dialects, only `console` on by
+  default), and answer surfaces (`docket chat`, `docket pod <p> answer`, HTTP, MCP) that all
+  resolve through one `answer_task` function
 
 ### Documentation ✅
 
@@ -891,8 +902,8 @@ resolved against a declarative pipeline by `core/orchestrator.py`.
 
 ### Task state machine
 
-A queued task moves through six states: `pending` → `running` → `done` | `failed` | `blocked` |
-`waiting_approval`.
+A queued task moves through `pending` → `running` → `done` | `failed` | `blocked` |
+`waiting_approval` | `waiting_input` (plus `cancelled` via the run registry, below).
 
 - **Claiming is locked, not read-then-write.** `pending` → `running` is a single locked
   read-modify-write (`edges/store.py`) that also persists `startedAt`, `claimId`, and
@@ -905,12 +916,53 @@ A queued task moves through six states: `pending` → `running` → `done` | `fa
   `dispatch_pod(..., resume=True)` re-claims it and continues from the last persisted hop,
   replaying mid-rework position if needed, rather than restarting at hop 0.
 - **`blocked` is never silently rewritten to `pending`.** A budget-blocked task only re-enters the
-  queue via `unblock_pod` (a pod-wide budget change) or `retry_task` (one task, explicit).
-- **`waiting_approval`** sits outside the normal forward flow: a gated hop stops the task there
-  with an approval token and the exact pipeline position it stopped at; `docket approve`/
-  `docket deny` (or the HTTP `POST /approvals/<token>` endpoint) resolve it — a grant hands that
-  position back to the *next* claim as a single-use gate override, a deny fails the task
-  immediately with `failureKind: "approval_denied"`.
+  queue via `unblock_pod` (a pod-wide budget change) or `retry_task` (one task, explicit); the
+  same is true of a task `blocked` on `blockedReason: "input_expired"` (an unanswered question
+  past its deadline) or `"resources"` (a Lead intake brief naming a resource its own
+  deterministic pre-check couldn't find, before any hop ever ran).
+- **`waiting_approval`** sits outside the normal forward flow, for either of two triggers: a
+  pre-hop `approval` gate (unchanged), or — since Phase 34 (D-50, ADR 0016) — an in-turn tool-call
+  `ask` that would otherwise block the running hop. Which posture an unattended pod gets is
+  resolved, not fixed: `approvalMode: wait` blocks the call as before (the default for an
+  interactive TTY dispatch); `park` — the resolved default for `serve --dispatch`'s sweep and a
+  non-interactive `dispatch` — records the exact call and ends the turn instead of blocking it,
+  so one stuck hop can no longer stall an entire sweep. `docket approve`/`docket deny` (CLI, HTTP
+  `POST /approvals/<token>`, MCP, or Telegram) resolve either trigger identically. A grant on a
+  pre-hop gate hands the position back to the *next* claim as a single-use gate override; a grant
+  on a parked call instead re-runs that *same* hop, carrying a single-use pre-grant matched by a
+  stable argument digest so the model's identical next call passes once without asking again. A
+  deny fails the task immediately with `failureKind: "approval_denied"`, and a parked approval
+  left untouched past the pod's `approvalExpiryHours` (24h by default) expires the same way, via
+  the same fail-closed sweep a pre-hop gate's pending approval already used.
+- **`waiting_input`** is for a question, not a permission: a pipeline `input` step
+  (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
+  brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket chat
+  <task-id>`, `docket pod <p> answer`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
+  all resolve it through one `core.answers.answer_task` function, which routes the step's own
+  `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
+  past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
+  `failed`.
+
+### Notifications: the derived inbox and channels
+
+Nothing above pushes anything on its own. `docket inbox` (also `GET /inbox`, the MCP `inbox`
+tool, and Telegram's `/status`, each scoped to the caller's own pod) is read-only, computed live
+from the task list and the approval store rather than stored anywhere: every provisioned pod is
+enumerated and each task sorted into `needsYou` (any `waiting_*` status, plus `blocked`),
+`failed`, `doneSince` or `running`, with a pending approval added to `needsYou` unless its task
+already carries it. A separate `kind: channel` document (`docket channels`) is what turns a
+transition in that inbox into an actual push: seven dialects ship (`console`, `desktop`,
+`webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default, each
+declaring what it may do (`notify`/`converse`/`decide`, capped per dialect — only `console` and
+`telegram` may ever `decide`) and how much of an event it carries (`minimal` by default, widened
+the same confirmed, audited way `docket exporters privacy` widens a trace). `docket notify flush`
+computes the diff against the last flush and delivers it — deduplicated, at-most-once, retried
+twice per destination — and both `serve`'s sweep and a foreground `dispatch` call it after their
+own work. `core/telegram.py`'s inbound bot is unchanged by any of this: it still only ever
+replies to a message it received; a bound chat's push notification, when the `telegram` channel
+is enabled and that chat id is explicitly listed in its `actors`, is this separate, opt-in
+mechanism, never the bot module sending on its own initiative (see SECURITY-SIMPLE.md and
+telegram-integration.spec.md).
 
 ### Pipeline resolution and generalized gates
 
