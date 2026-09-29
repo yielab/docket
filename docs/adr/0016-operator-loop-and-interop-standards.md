@@ -274,6 +274,31 @@ An unanswered question never fails a task. Nobody said no, so it becomes `blocke
 | One worker per pod in the sweep | The operator-loop scenario, re-run after `park`, still shows one pod delaying another |
 | `intake` as the `software` default | A live run on the local endpoint where at least 9 of 10 Lead intake replies parse |
 
+**Two of the seven triggers above are measurable against this machine's own state right now; the
+integrator (2026-09-29, closing Phase 34) evaluated both. Neither fired — recorded here, not
+acted on.**
+
+- **Mid-turn session resume: not fired, insufficient sample.** The trigger needs at least 10
+  parked approvals with more than 20% of the re-run hops failing to re-issue the granted call.
+  The real `~/.docket/audit.log` on this machine carries **zero** `approval.pregrant` or
+  `approval.consume` entries — every parked-approval round trip observed so far has been inside
+  a test or a throwaway scenario world, never a real operator's own pod. Sample size 0 < 10: the
+  trigger cannot fire yet, and the deferral stands unchanged.
+- **One worker per pod in the sweep: not fired under the scripted backend, but the underlying
+  cost is real and worth naming.** The operator-loop scenario (`scripts/smoke_workflow.py
+  --scenario operator-loop`), re-run after `park` shipped: deterministically, `sweepBlockedSeconds`
+  dropped from the pre-Wave-65 baseline of roughly 12-13s to under a second (0.0-1.0s across two
+  runs) — `park` genuinely removes the blocking wait the trigger's premise describes. Against the
+  real local model (`--live-model`), the same scenario measured `sweepBlockedSeconds = 138.0`:
+  alpha's own two real Lead+Implementer turns (both ending in a park) ran to completion before
+  beta's sweep slot ever started, because the sweep is still one worker walking pods serially.
+  That is not the *blocking-on-a-human-answer* failure mode `park` was built to remove (§2's own
+  evidence table) — it is ordinary serial generation latency, present with or without approvals in
+  the mix — so the trigger's literal condition ("still shows one pod delaying another") is
+  technically satisfied under a live model without being the failure the ADR opened against. This
+  is worth a maintainer's attention as a measured cost of the current design, not a directive to
+  add a worker pool: recorded, not acted on.
+
 ## Verdict table
 
 | Request | Verdict |
@@ -303,3 +328,29 @@ An unanswered question never fails a task. Nobody said no, so it becomes `blocke
 - The phase oracle is `scripts/smoke_workflow.py --scenario operator-loop`: deterministic by
   default, `--live-model` against the local endpoint. It is measured at P34-1 and again at the
   close.
+
+**P34-1 baseline vs. the 2026-09-29 close (same four-task, two-pod scenario, unmodified).**
+
+| Metric | P34-1 baseline (before park/inbox/answers/notify) | Close, deterministic | Close, `--live-model` |
+| --- | --- | --- | --- |
+| `sweepBlockedSeconds` | ~12-13s | 0.0-1.0s | 138.0s |
+| `leadAsked` | always `false` | `false` (no task in this scenario reaches an `input` step) | `false` (same) |
+| `eventsDelivered` | always `0` | `2` | `4` |
+| A1 (gated push) outcome | timed out, denied | `waiting_approval` (parked, token recorded) | `waiting_approval` (parked) |
+
+`eventsDelivered` reads `0` at the baseline for two different reasons across the two
+deterministic re-runs above: first because no channel had anything to deliver yet, and even
+after channels existed the scenario's own counter had a real bug (below) that always returned
+`0` regardless. `leadAsked` stays `false` at every measurement because this scenario's four
+tasks never route through an `input` step or the `intake` recipe — an honest scenario gap, not a
+regression, left unclosed rather than extended under this pass's time budget (see this ADR's
+closing changelog entry in `operator-loop.spec.md`).
+
+**Two defects this re-run found, fixed as part of this close (full detail:
+`operator-loop.spec.md`'s changelog):** `_oploop_events_delivered` read a `deliveries` key the
+real `channels-health.json` shape never had, so the counter silently read `0` since the day it
+was written — fixed to sum each channel's own `delivered` counter. `--live-model` registered its
+provider *after* `docket init`, the reverse of the working order `_run`'s other scenarios use, so
+`init`'s own readiness check failed on a missing `ANTHROPIC_API_KEY` before the live provider was
+ever registered — `--scenario operator-loop --live-model` had never actually completed `init`
+until this fix reordered the two calls.

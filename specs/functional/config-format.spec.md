@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -307,6 +307,14 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-29)
+
+- **`kind: channel` joins the envelope (Phase 34, D-50, ADR 0016 §7).** `core.config_docs.
+  KINDS` gains `"channel"`, dispatching to `core.channel.load_channel_document`;
+  `core.channel.ChannelSpec` is registered in `_MODEL_FOR_KIND` for schema generation the same
+  way `exporter` is (canonical-only, never short-form); `scripts/gen_config_schemas.py` now
+  renders a twelfth file, `docs/contracts/config-v1/channel.schema.json`.
 
 ### Version 1.5.0 (2026-09-27)
 

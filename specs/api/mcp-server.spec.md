@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -377,6 +377,15 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.6.0 (2026-09-29)
+
+- **Two new tools (Phase 34, D-50, ADR 0016), twelve total.** `task_answer(project, task_id,
+  action, content=None)` calls `answer_task(channel="mcp", actor="mcp")`, raising
+  `McpToolError` on rejection; `inbox(since=None)` returns the same derived `InboxView` shape
+  `GET /inbox` and `docket inbox --json` return. `docket mcp serve --help` and
+  `docs/commands.md`'s generated tool count and list corrected from a stale ten to the current
+  twelve.
 
 ### Version 1.5.0 (2026-09-21)
 

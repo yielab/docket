@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.28.0
+**Version**: 1.29.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -796,6 +796,15 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.29.0 (2026-09-29)
+
+- **Requirements 75-76: the `approval_parked` stop (Phase 34, D-50, ADR 0016 §2).** A batch
+  containing an in-turn `ask` that parked (no matching pre-grant) stops the turn exactly as
+  `approval_unavailable` does, naming the tool, call id, policy id and the created approval's
+  token via the new `approval_parked_error()` renderer; harness mode always sets
+  `approval_mode="refuse"`, so this stop reason structurally never reaches the harness-v1 wire
+  contract.
 
 ### Version 1.28.0 (2026-09-28)
 

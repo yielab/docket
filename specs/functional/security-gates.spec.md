@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.27.0
+**Version**: 0.28.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -1421,6 +1421,15 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.28.0 (2026-09-29)
+
+- New "Parked calls and single-use pre-grants" section (Phase 34, D-50, ADR 0016 §2):
+  `ToolContext.approval_mode` gains `"park"`, ending the turn immediately with a durable
+  approval record instead of blocking; `core.approval.create_pregrant`/`consume_pregrant`
+  give a human's grant a single-use, digest-matched pass through the chokepoint on a later
+  re-entered turn; the expiry sweep resolves both a parked call and an unconsumed pre-grant
+  fail-closed; harness mode is structurally unaffected (always `refuse`).
 
 ### Version 0.27.0 (2026-09-26)
 

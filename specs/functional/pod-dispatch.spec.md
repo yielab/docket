@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.23.0
+**Version**: 6.24.0
 **Status**: Complete. **P32-3** (ADR 0014) makes every hop-scoped trace event `core/agent_loop.py`
 writes carry the claimed task's `task_id` (new "Per-hop execution" requirement 6), threaded from
 the single `driver.run_turn(...)` call site; see `trace-store.spec.md` 1.1.0 for the record-shape
@@ -61,7 +61,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -1798,6 +1798,20 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.24.0 (2026-09-29)
+
+- **Phase 34, D-50, ADR 0016 — four new sections.** "Parked approvals" (`approvalMode:
+  "park"`, §2): the dispatch-side resume mechanics for a mid-turn parked call, including
+  `gateOverridePipelineIndex` never being reused for a parked hop's re-entry, which instead
+  re-runs the exact hop carrying a single-use pre-grant. "Operator input steps and answers"
+  (P34-10, §4/§8): an `input` pipeline step parks the task `waiting_input`, and
+  `core.answers.answer_task` resumes it on the step's own `on:` route, never failing an
+  unanswered question. "Task brief" (P34-12, §4): the Lead's typed `TaskBrief`, the
+  deterministic `secret:`/`path:`/`verify` resource pre-check, and the Implementer's `## Brief`
+  view replacing raw prose. "Pre-grants from intake" (P34-15, §10): `docket pod <p> pregrant`
+  records a task-scoped, exact-command pre-grant through the same digest matcher a parked
+  in-turn call uses.
 
 ### Version 6.23.0 (2026-09-27)
 

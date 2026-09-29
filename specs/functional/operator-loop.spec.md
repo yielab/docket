@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 0.1.0
-**Status**: Draft — contract only; behaviour ships across Phase 34.
-**Last Updated**: 2026-09-28
+**Version**: 1.0.0
+**Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
+**Last Updated**: 2026-09-29
 
 ## Purpose
 
@@ -125,8 +125,10 @@ behaviour must satisfy, the same split "Park, don't block" (area 2) has with "Pa
 
 ### 4. Task assignment in a standard shape
 
-**Status: Planned — owned by P34-13.** `TaskBrief` is the pre-brief shape `POST /tasks` and
-`docket pod <p> delegate` will accept; nothing yet parses it at either surface.
+**Status: Implemented.** `TaskBrief` is the pre-brief shape `POST /tasks/<project>` and
+`docket pod <p> delegate --brief FILE.json` accept, validate, and pass through to
+`core.dispatch.enqueue_task`'s own `brief=` parameter — see area 10, "Answer surfaces",
+requirements 3-4 for the exact CLI/HTTP contract.
 
 ### 5. One inbox, derived
 
@@ -178,11 +180,10 @@ of its own.
 
 ### 6. Notifications
 
-**Status: Implemented for `console`/`webhook`/`command` — items 1-8 are the `kind: channel`
-document, catalog and CLI (shipped earlier); items 9-16 are the diff/render/delivery framework
-and its three simplest dialects. `ntfy`, `desktop`, `email` and `telegram` remain planned
-(their own requirement area).** `CloudEvent`, `make_event` and the closed `EVENT_KINDS`
-vocabulary are defined (requirement area 1's module) and satisfy the CloudEvents 1.0
+**Status: Implemented.** Items 1-8 are the `kind: channel` document, catalog and CLI; items
+9-16 are the diff/render/delivery framework and every v1 dialect, `console`/`webhook`/`command`
+here and `ntfy`/`desktop`/`email`/`telegram` in area 6.1. `CloudEvent`, `make_event` and the
+closed `EVENT_KINDS` vocabulary are defined (requirement area 1's module) and satisfy the CloudEvents 1.0
 structured-mode shape. This area adds the destination side: what a channel document declares
 about itself, what docket refuses to write or activate, and — from item 9 — how a transition
 in the derived inbox becomes an event on the wire.
@@ -290,10 +291,10 @@ in the derived inbox becomes an event on the wire.
 
 ### 6.1 Dialects
 
-**Status: Implemented for `ntfy`, `desktop`, `email`; `telegram` remains planned.** The
-`console`, `webhook`, and `command` dialects are delivered via requirement area 6 items 1-16.
-The three dialects described here add one more module under `edges/adapters/channels/` and one
-more entry to `sink_for` for each.
+**Status: Implemented.** The `console`, `webhook`, and `command` dialects are delivered via
+requirement area 6 items 1-16. The three dialects described here, plus the `telegram` dialect
+area 8 owns, each add one more module under `edges/adapters/channels/` and one more entry to
+`sink_for`.
 
 1. The `ntfy` dialect (`edges/adapters/channels/ntfy.py::deliver`) MUST POST the event title and
    body to an ntfy.sh server via HTTP. `spec.config["server"]` (default `https://ntfy.sh`,
@@ -350,9 +351,10 @@ mechanics are otherwise unchanged either way -- the richer schema only changes w
 
 ### 8. Telegram (the one amended boundary)
 
-**Status: Planned — owned by P34-16.** No behaviour in this module is Telegram-specific; the
-amendment to `telegram-integration.spec.md` Command grammar 7 and the `/answer` verb are out of
-scope here.
+**Status: Implemented.** No behaviour in this module is Telegram-specific; the amendment to
+`telegram-integration.spec.md` Command grammar 7, the fifth `/answer <task-id> <text>` verb
+(`core/telegram.py`), and the outbound `telegram` channel dialect
+(`edges/adapters/channels/telegram.py`) are that spec's own requirements.
 
 ### 9. Seeing it coming, and not being interrupted twice
 
@@ -450,12 +452,11 @@ functions, every surface is transport"; this area is that transport.
    call `answer_task`.
 3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
    file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
-   and enqueue nothing. `core.dispatch.enqueue_task` has no `brief` parameter as of this
-   requirement's own card (P34-13) -- a **well-formed** brief MUST also exit 1 and enqueue
-   nothing, naming the missing parameter, rather than silently dropping the document or
-   guessing how to pass it through. `_pod._ENQUEUE_ACCEPTS_BRIEF` (checked once via
-   `inspect.signature`) exists so this refusal turns itself off, without further code, the
-   moment a later card adds the parameter.
+   and enqueue nothing. A well-formed brief MUST be passed through to
+   `core.dispatch.enqueue_task`'s own `brief=` parameter and actually enqueue.
+   `_pod._ENQUEUE_ACCEPTS_BRIEF` (checked once via `inspect.signature`) is a self-correcting
+   guard against a stale build whose `enqueue_task` predates the parameter -- present, but
+   never triggered against this module's own `core.dispatch`.
 4. `POST /tasks/<id>/answer` (`serve.py::_handle_post_task_answer`) MUST require the same
    `Authorization: Bearer <token>` as every other write route, then a JSON object body naming
    `pod` (string, required) and `action` (string, required); `content` (object, optional) and
@@ -467,9 +468,8 @@ functions, every surface is transport"; this area is that transport.
    `"not found in pod"` to `404`; one containing `"is not waiting_input"` or `"is not parked at
    step"` to `409`; any other `AnswerError` (a schema-validation `ValueError`, relayed
    unchanged) to `422`. `POST /tasks/<project>` (task creation) gained an optional `brief`
-   field, validated the same way as `--brief` above and refused the same way when
-   `enqueue_task` cannot yet accept it -- the identical contention, not a second guess at its
-   shape.
+   field, validated the same way as `--brief` above and, once valid, passed through to
+   `enqueue_task`'s `brief=` parameter the identical way -- not a second guess at its shape.
 5. MCP `task_answer(project, task_id, action, content=None)` (`cli/_mcp.py::tool_task_answer`)
    MUST call `answer_task(channel="mcp", actor="mcp")` and return `{"ok": true, "task":
    task_id, "project": project, "action": result.action}` on success; an `AnswerRejected` or
@@ -608,6 +608,32 @@ a == b  # True regardless of argument dict key order
   functions, never by hand-building an equivalent dict.
 
 ## Changelog
+
+### Version 1.0.0 (2026-09-29)
+
+- Every requirement area's stub replaced with its owning card's shipped behaviour (Waves
+  65-69): park/pre-grant (area 2), the Lead's intake (area 3), pre-brief task assignment
+  (area 4, corrected below), the derived inbox (area 5), notifications and every v1 channel
+  dialect including `telegram` (areas 6, 6.1), answers (area 7), the Telegram amendment
+  (area 8), interruption forecasting and pre-grants from intake (area 9), and every answer
+  surface (area 10) — closing Phase 34 (D-50, ADR 0016).
+- Corrected areas 4 and 10 (items 3-4): a post-close integration fix
+  (`Fix: delegate --brief and POST /tasks brief now actually enqueue`) wired
+  `core.dispatch.enqueue_task`'s `brief=` parameter through both surfaces in the same wave
+  they were built, so the refusal these areas originally documented never actually shipped to
+  an operator; the requirement text now describes the shipped, enqueuing behaviour.
+- **Two integration-pass regressions found by running the live product, not by reading it,
+  and fixed as part of this close**, unrelated to any single requirement area above but worth
+  recording here since both surfaced through this spec's own machinery:
+  - `scripts/smoke_workflow.py`'s own `--scenario operator-loop` measured `eventsDelivered` by
+    reading a `deliveries` key `core.notify.flush`'s health-file shape never had (the real
+    shape is one entry per channel name with its own `delivered` counter) — the counter had
+    silently read `0` since it was written.
+  - The same scenario's `--live-model` path registered the live provider *after* `docket
+    init`, the reverse of the working order the basic/memory scenarios use — `init`'s own
+    readiness check resolved the packaged Anthropic default and failed on a missing
+    `ANTHROPIC_API_KEY` before the live provider was ever registered, so `--live-model` had
+    never actually completed `init` for this scenario.
 
 ### Version 0.1.0 (2026-09-28)
 
