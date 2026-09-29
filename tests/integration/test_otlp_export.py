@@ -28,6 +28,7 @@ from docket.core import exporter as _exporter
 from docket.core import telemetry as _telemetry
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.edges import store as _store
+from docket.edges.adapters import docket_runtime
 from docket.edges.adapters.docket_runtime import DocketDriver
 
 SUBJECT = "docket.edges.adapters.docket_runtime"
@@ -194,10 +195,17 @@ class TestRealPost:
             deadline = _time.monotonic() + 2.0
             while not handler_cls.bodies and _time.monotonic() < deadline:
                 _time.sleep(0.02)
+            sent_at_turn_end = [
+                span["name"]
+                for body in list(handler_cls.bodies)
+                for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+            ]
+            docket_runtime._close_telemetry()
         finally:
             srv.shutdown()
 
         assert handler_cls.bodies, "the server never received a POST"
+        assert "docket.session" not in sent_at_turn_end
         spans = [
             span
             for body in handler_cls.bodies

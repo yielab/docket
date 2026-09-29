@@ -507,28 +507,37 @@ def _handle_tool_call(
     payload = record.get("payload") or {}
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
+    key = call_id or f"{record.get('agent_role', '')}|{record.get('ts', '')}"
     attributes: Attributes = {"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id}
     arguments = payload.get("arguments")
     if _granted(policy, "toolArguments") and isinstance(arguments, str) and arguments:
         attributes["gen_ai.tool.call.arguments"] = _truncate(arguments, policy.content_max_chars)
     state.stacks[session_id].append(
         _OpenSpan(
-            span_id=_span_id(session_id, "tool_call", call_id),
+            span_id=_span_id(session_id, "tool_call", key),
             parent_id=root.span_id,
             name=f"execute_tool {tool}" if tool else "execute_tool",
             start_ts=str(record.get("ts", "")),
             kind="tool_call",
-            key=call_id,
+            key=key,
             attributes=attributes,
         )
     )
     return []
 
 
-def _pop_open_tool(state: ProjectionState, session_id: str, call_id: str) -> _OpenSpan | None:
+def _pop_open_tool(
+    state: ProjectionState, session_id: str, call_id: str, role: str
+) -> _OpenSpan | None:
     stack = state.stacks.get(session_id, [])
     for i in range(len(stack) - 1, 0, -1):
-        if stack[i].kind == "tool_call" and stack[i].key == call_id:
+        span = stack[i]
+        if span.kind != "tool_call":
+            continue
+        if call_id and span.key == call_id:
+            return stack.pop(i)
+        unkeyed = not call_id and not span.attributes.get("gen_ai.tool.call.id")
+        if unkeyed and span.key.startswith(f"{role}|"):
             return stack.pop(i)
     return None
 
@@ -542,15 +551,17 @@ def _handle_tool_result(
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
     ts = str(record.get("ts", ""))
-    open_span = _pop_open_tool(state, session_id, call_id)
+    role = str(record.get("agent_role", ""))
+    open_span = _pop_open_tool(state, session_id, call_id, role)
     if open_span is None:
+        key = call_id or f"{role}|{ts}|result"
         open_span = _OpenSpan(
-            span_id=_span_id(session_id, "tool_call", call_id),
+            span_id=_span_id(session_id, "tool_call", key),
             parent_id=root.span_id,
             name=f"execute_tool {tool}" if tool else "execute_tool",
             start_ts=ts,
             kind="tool_call",
-            key=call_id,
+            key=key,
             attributes={"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id},
         )
     attributes = dict(open_span.attributes)
@@ -692,19 +703,23 @@ def project(
 
 
 def flush_turn(state: ProjectionState) -> list[Span]:
-    """Close every open non-root span and return a closed copy of each open session root,
-    keeping the root itself open: the next turn of that session extends the same root rather
-    than starting a second one with the same id and a later start."""
+    """Close every open span a turn owns; keep each session root and hop span open and unsent,
+    since both wrap the turn (Langfuse keeps a trace's Input/Output from the first root it
+    receives). `session_end`, the hop's own reply, or `flush_open` closes them."""
     closed: list[Span] = []
     for session_id, stack in state.stacks.items():
-        if not stack:
+        if len(stack) < 2:
             continue
         ts = state.last_ts.get(session_id) or stack[0].start_ts
         trace_id = _trace_id(session_id)
-        closed.extend(_close(open_span, trace_id, ts, "unset") for open_span in reversed(stack[1:]))
-        del stack[1:]
-        closed.append(_close(stack[0], trace_id, ts, "unset"))
+        owned = [span for span in stack[1:] if not _is_hop_span(span)]
+        closed.extend(_close(open_span, trace_id, ts, "unset") for open_span in reversed(owned))
+        stack[1:] = [span for span in stack[1:] if _is_hop_span(span)]
     return closed
+
+
+def _is_hop_span(span: _OpenSpan) -> bool:
+    return span.kind == "tool_call" and not span.attributes.get("gen_ai.tool.call.id")
 
 
 def flush_open(state: ProjectionState) -> list[Span]:
@@ -1004,21 +1019,23 @@ def flush(timeout_s: float) -> None:
             pipeline.flush(timeout_s)
 
 
-def close() -> None:
-    """Flush and stop every started `Pipeline`, and unsubscribe the fan-out sink. Safe to call
-    when nothing was ever started (a plain no-op), and safe to call more than once."""
+def close() -> dict[str, dict[str, Any]]:
+    """Flush and stop every started `Pipeline`, unsubscribe the fan-out sink, and return the
+    final counters in `health()`'s shape so the caller can record what the final flush sent.
+    Safe to call more than once, or when nothing was started (returns ``{}``)."""
     global _UNSUBSCRIBE
     with _REGISTRY_LOCK:
         unsubscribe = _UNSUBSCRIBE
         _UNSUBSCRIBE = None
-        pipelines = list(_REGISTRY.values())
+        items = list(_REGISTRY.items())
         _REGISTRY.clear()
     if unsubscribe is not None:
         with contextlib.suppress(Exception):
             unsubscribe()
-    for pipeline in pipelines:
+    for _name, pipeline in items:
         with contextlib.suppress(Exception):
             pipeline.close()
+    return _health_of(items)
 
 
 def capture_classes() -> frozenset[str]:
@@ -1039,6 +1056,10 @@ def health() -> dict[str, dict[str, Any]]:
     `edges/store.py`; this function itself performs no I/O."""
     with _REGISTRY_LOCK:
         items = list(_REGISTRY.items())
+    return _health_of(items)
+
+
+def _health_of(items: list[tuple[str, Pipeline]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for name, pipeline in items:
         stats = pipeline.stats()

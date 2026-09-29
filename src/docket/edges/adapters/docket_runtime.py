@@ -14,6 +14,7 @@ built onto. This module never calls a tool handler directly, nor imports
 from __future__ import annotations
 
 import atexit
+import contextlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -55,10 +56,20 @@ from docket.edges.adapters import system as _system
 
 __all__ = ["DocketDriver"]
 
-# Runs once per process at import time. `telemetry.close()` is itself a safe no-op when
-# nothing was ever started (see its own docstring), so this is harmless in every test process
-# and CLI invocation that never enables an exporter.
-atexit.register(_telemetry.close)
+
+def _close_telemetry() -> None:
+    """Close every started exporter and record the final flush's counters -- the session root
+    is sent there, so its delivery belongs in the health file too."""
+    final = _telemetry.close()
+    if final:
+        with contextlib.suppress(Exception):
+            _store.write_json(_cfg.EXPORTERS_HEALTH_FILE, final)
+
+
+# Runs once per process at import time. `telemetry.close()` returns `{}` when nothing was
+# ever started, so this is harmless in every test process and CLI invocation that never
+# enables an exporter.
+atexit.register(_close_telemetry)
 
 
 # Reads and validates *only* the mcpServers meta key, through `PodSettings.coerce` --

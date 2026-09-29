@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -104,7 +104,8 @@ document rather than replace it:
 9. A `tool_call` record **MUST** open a span named `execute_tool <tool>`, with attributes
    `gen_ai.tool.name` and `gen_ai.tool.call.id`; the matching `tool_result` record (same
    `callId`) **MUST** close it, adding `docket.tool.ok` and, when the payload names a blocking
-   policy, `docket.tool.blocked_by`.
+   policy, `docket.tool.blocked_by`. A record without a `callId` is keyed and paired per
+   requirement 108.
 10. `hop_retry`, `rework_started`, `verdict_rework_started`, `verdict_rejected`,
     `verdict_unparseable`, `route_taken`, `command_step`, `review_rejected`,
     `tester_verdict_failed`, and `verification_failed` **MUST** become a `SpanEvent` on the
@@ -531,15 +532,30 @@ the end of each of them. These requirements keep that session one complete trace
      last `text` part of the most recent `llm_call` whose `outputMessages` has one, replaced by
      each later such call, truncated per requirement 78. It is class `completions` in
      `ATTRIBUTE_CLASSES` and absent otherwise.
-106. `Pipeline.flush` **MUST** close and enqueue every open non-root span, and enqueue a closed
-     copy of each open session root (ending at that session's last-seen timestamp) while
-     keeping the root open in its state with its original `start_ts`, attributes and events.
-     Every copy of one session's root **MUST** therefore share one `span_id` and one
-     `start_ts`, and the last copy covers the whole session. A `session_end` record closes the
-     root for good; `Pipeline.close` closes every span still open (`flush_open`).
+106. `Pipeline.flush` **MUST** close and enqueue every open span the turn owns, and keep each
+     open session root, and each open hop span (requirement 108), open in its state, unsent,
+     with its original `start_ts`, attributes and events: both wrap the turn that flushes. A session's root **MUST** be sent exactly once: when a `session_end` record
+     closes it, or when `Pipeline.close` closes every span still open (`flush_open`). Langfuse
+     keeps a trace's Input and Output from the first root observation it receives and ignores
+     later copies, so an early copy would freeze the trace on the first hop's answer. Both
+     live `run_turn` callers (`core/dispatch.py` and `docket harness run`) write
+     `session_end`; a library caller that never does gets its root at process exit.
 107. The built-in `langfuse` document **MUST** alias `docket.session.input` to
      `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
      so Langfuse derives the trace's Input and Output from the root observation.
+108. A `tool_call` record without a `callId` -- the marker `core/dispatch.py` writes when a hop
+     starts (`hop`/`agent`) -- **MUST** key its span (requirement 4) as `<role>|<ts>`. A
+     `tool_result` without a `callId` (the hop's reply, `text`) **MUST** close the most recent
+     open span of the same role that has no `callId`; one with no such span open (the
+     implementer's `verification` result) **MUST** become its own span keyed
+     `<role>|<ts>|result`. So each hop is one span, from its start to its reply, and each
+     verification is its own, in a destination that upserts by span id, and a replayed record
+     still derives the same id.
+109. `telemetry.close()` **MUST** return the closed pipelines' final counters in `health()`'s
+     shape (`{}` when nothing was started), and the process-exit hook in
+     `edges/adapters/docket_runtime.py` **MUST** write a non-empty result to
+     `EXPORTERS_HEALTH_FILE` through `edges/store.py`, so the delivery of the spans the final
+     flush sends (the session root, per requirement 106) is recorded like any other.
 
 ## Interface Contracts
 
@@ -1048,7 +1064,7 @@ its output on demand (`trace-store.spec.md` requirement 27) and the wire seam te
 `docket.session` spans. The cause was not an idle flush in `Pipeline._drain`, as first
 recorded, but the flush at the end of every `run_turn`: it closed the root, and the next hop
 re-created it with the same span id and a later start. Requirement 106 keeps the root open
-across that flush.
+across that flush, and since 1.11.0 does not send it there at all.
 
 ### One session across hops -- live, 2026-09-29
 
@@ -1067,7 +1083,39 @@ privacy leak:
   correct, not a gap: a harness workspace composes no system prompt (no `prompt_composed`
   record), so there are no instructions to send.
 
+A real four-hop dispatch into the same Langfuse project at `conversation`, on the 1.10.0 code,
+then found two more, fixed in 1.11.0:
+
+- Dispatch's hop markers and verification result carry no `callId`, so every one of them in a
+  session derived one span id: five `execute_tool` spans in one session collapsed into one.
+  Requirement 108 keys them by role and timestamp.
+- Every turn-end flush sent a copy of the root, and Langfuse kept the trace's Output from the
+  first copy (the Lead's plan) while the root observation itself moved on. A probe sending two
+  root copies with different outputs confirmed it for `langfuse.observation.output` and
+  `langfuse.trace.output` alike, so no alias can fix it; requirement 106 sends the root once.
+  Keeping the hop span open across the flush inside it is part of the same change: a first
+  re-run showed the hop's reply arriving after that flush had closed the hop, as a second span.
+
+Re-run on the fixed code, a new task's session projected 33 spans locally and Langfuse held
+the same 33 ids, none extra and none missing: one root, 14 generations each with Input and
+Output, the Lead's hop span from its start to its reply, and the task as the trace's Input.
+The pod's tasks then parked on `bash` calls the curated allowlist refuses (`python`, `perl`,
+`apt-get install`); two were approved and resumed, the rest denied, and `docket audit verify`
+stayed clean.
+
 ## Changelog
+
+### Version 1.11.0 (2026-09-29)
+
+- **One session across hops, second pass.** A real four-hop dispatch into Langfuse at
+  `conversation` found two more gaps (see "One session across hops -- live, 2026-09-29").
+  Requirement 106 changes: the turn-end flush no longer sends a copy of the session root; the
+  root is sent once, at `session_end` or `Pipeline.close`, because Langfuse keeps a trace's
+  Input/Output from the first root it receives. New requirement 108 keys a `tool_call`/
+  `tool_result` without a `callId` (dispatch's hop markers and verification result) by role and
+  timestamp, where all of them had shared one span id, and the turn-end flush keeps an open hop
+  span open, since the hop's reply arrives after the turn inside it ends. New requirement 109 records the final
+  flush's counters in the health file. Requirement 9 points to 108.
 
 ### Version 1.10.0 (2026-09-29)
 

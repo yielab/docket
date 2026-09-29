@@ -44,9 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docket config explain` and `docket doctor` report each exporter; a `pod.yaml` may name
   `exporters:`, which `apply` and `docket recipes show` report and never activate. One session
   is one trace: every hop's model calls keep their own span ids (the key includes the role and
-  the call's timestamp, not only its iteration, which each hop restarts at 1) and the root stays
-  open across the flush at the end of each turn, so a destination that upserts by span id keeps
-  every generation and one root. Verified live: a 4-hop dispatch against a Docker
+  the call's timestamp, not only its iteration, which each hop restarts at 1), so does each hop
+  and each verification result, and the root is sent once, when the session ends, so a
+  destination that upserts by span id keeps every generation, every hop and one root, and
+  Langfuse's trace Input/Output show the task and the final answer rather than the first hop's. Verified live: a 4-hop dispatch against a Docker
   `otel-collector` produced 29 `gen_ai.chat` spans matching `docket trace`'s 29 `llm_call` lines
   and 39 `execute_tool` spans; replaying that dispatch's trace now gives 29 distinct generation
   ids and one root, where before the fix Langfuse kept 12; a real dispatch reached Langfuse's own

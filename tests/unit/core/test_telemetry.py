@@ -349,6 +349,43 @@ def _hop_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
     ]
 
 
+def _hop_markers(session_id: str = "s-hops") -> list[dict[str, Any]]:
+    """`_hop_records` with the callId-less tool records `core/dispatch.py` writes around each
+    hop, plus the implementer's verification result."""
+
+    def marker(ts: str, role: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ts": ts,
+            "project": "p",
+            "session_id": session_id,
+            "agent_role": role,
+            "event_type": event,
+            "payload": payload,
+        }
+
+    start, lead_call, impl_call = _hop_records(session_id)
+    return [
+        start,
+        marker("2026-09-28T00:00:01Z", "lead", "tool_call", {"hop": "lead", "agent": "p-lead"}),
+        lead_call,
+        marker("2026-09-28T00:00:06Z", "lead", "tool_result", {"text": "plan ready"}),
+        marker(
+            "2026-09-28T00:00:06Z",
+            "implementer",
+            "tool_call",
+            {"hop": "implementer", "agent": "p-implementer"},
+        ),
+        impl_call,
+        marker("2026-09-28T00:00:09Z", "implementer", "tool_result", {"text": "FINAL-impl"}),
+        marker(
+            "2026-09-28T00:00:09Z",
+            "implementer",
+            "tool_result",
+            {"verification": "passed", "cmd": "true"},
+        ),
+    ]
+
+
 def _session_end(session_id: str = "s-hops") -> dict[str, Any]:
     return {
         "ts": "2026-09-28T00:00:10Z",
@@ -377,6 +414,16 @@ class TestOneSessionAcrossHops:
         assert root.attributes["docket.session.input"] == "TASK-lead"
         assert root.attributes["docket.session.output"] == "FINAL-impl"
 
+    def test_hop_markers_without_a_call_id_get_one_span_each(self) -> None:
+        records = _hop_markers()
+        spans = _project_all(records)
+        tools = [s for s in spans if s.name == "execute_tool"]
+        assert len(tools) == 3
+        assert len({s.span_id for s in tools}) == 3
+        lead = next(s for s in tools if s.start_ts == "2026-09-28T00:00:01Z")
+        assert lead.end_ts == "2026-09-28T00:00:06Z"
+        assert [s.span_id for s in _project_all(records)] == [s.span_id for s in spans]
+
     @pytest.mark.parametrize("level", ["minimal", "actions"])
     def test_root_carries_no_session_content_below_conversation(self, level: str) -> None:
         policy = telemetry.ExportPolicy(classes=privacy.LEVELS[level], label=level)
@@ -401,25 +448,48 @@ class _CollectingSink:
         return None
 
 
-class TestTurnEndFlushKeepsTheSessionRoot:
-    def test_every_root_copy_keeps_the_first_start_and_one_span_id(self) -> None:
+class TestTurnEndFlushHoldsTheSessionRoot:
+    def test_the_root_is_sent_once_at_session_end_with_the_final_answer(self) -> None:
         sink = _CollectingSink()
+        policy = telemetry.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
         pipeline = telemetry.Pipeline(
-            sink, telemetry.ExportPolicy(), queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+            sink, policy, queue_max=100, batch_wait_s=0.01, clock=time.monotonic
         )
         lead_start, lead_call, impl_call = _hop_records()
         for record in (lead_start, lead_call):
             pipeline.offer(record)
         pipeline.flush(2.0)
+        assert [s.name for s in sink.spans] == ["gen_ai.chat"]
         pipeline.offer(impl_call)
         pipeline.offer(_session_end())
         pipeline.close()
         roots = [s for s in sink.spans if s.name == "docket.session"]
-        assert roots, "the session root was never sent"
-        assert {s.span_id for s in roots} == {roots[0].span_id}
-        assert {s.start_ts for s in roots} == {"2026-09-28T00:00:00Z"}
-        assert roots[-1].end_ts == "2026-09-28T00:00:10Z"
+        assert len(roots) == 1
+        assert roots[0].start_ts == "2026-09-28T00:00:00Z"
+        assert roots[0].end_ts == "2026-09-28T00:00:10Z"
+        assert roots[0].attributes["docket.session.output"] == "FINAL-impl"
         assert len([s for s in sink.spans if s.name == "gen_ai.chat"]) == 2
+
+    def test_a_hop_span_outlives_the_turn_end_flush_inside_it(self) -> None:
+        sink = _CollectingSink()
+        policy = telemetry.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
+        pipeline = telemetry.Pipeline(
+            sink, policy, queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+        )
+        start, lead_open, lead_call, lead_reply, *_ = _hop_markers()
+        for record in (start, lead_open, lead_call):
+            pipeline.offer(record)
+        pipeline.flush(2.0)
+        pipeline.offer(lead_reply)
+        pipeline.offer(_session_end())
+        pipeline.close()
+        hops = [s for s in sink.spans if s.name == "execute_tool"]
+        assert len(hops) == 1
+        assert (hops[0].start_ts, hops[0].end_ts) == (
+            "2026-09-28T00:00:01Z",
+            "2026-09-28T00:00:06Z",
+        )
+        assert hops[0].attributes["gen_ai.tool.call.result"] == "plan ready"
 
     def test_a_session_that_never_ends_is_still_sent_at_close(self) -> None:
         sink = _CollectingSink()
