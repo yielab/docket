@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.cli import _harness_answers as _answers
 from docket.core import harness
 from docket.core import runs as _runs
 from docket.core import trace as _trace
@@ -92,6 +93,37 @@ def _final_result(
     return harness.result_from(turn, usage_report, run_rec)
 
 
+# Paths that name this process's stdin. ``--answers stdin`` owns stdin, so a
+# task read from any of them would race the answer reader for the same bytes.
+_STDIN_TASK_FILES = ("-", "/dev/stdin", "/proc/self/fd/0")
+
+
+def _answers_usage_error(
+    answers_raw: str | None,
+    answer_timeout_raw: str | None,
+    task_file_raw: str | None,
+    contract_raw: str,
+) -> str | None:
+    """Validate ``--answers`` and ``--answer-timeout``; both need ``--contract 1.1``."""
+    if answers_raw is None and answer_timeout_raw is None:
+        return None
+    if contract_raw != "1.1":
+        return "--answers and --answer-timeout need --contract 1.1"
+    if answers_raw is None:
+        return "--answer-timeout needs --answers stdin"
+    if answers_raw != "stdin":
+        return f"--answers must be 'stdin', got {answers_raw!r}"
+    if task_file_raw in _STDIN_TASK_FILES:
+        return "--answers stdin conflicts with --task-file reading stdin; pass --task instead"
+    if answer_timeout_raw is not None:
+        try:
+            if int(answer_timeout_raw) <= 0:
+                raise ValueError
+        except ValueError:
+            return f"--answer-timeout must be a positive integer, got {answer_timeout_raw!r}"
+    return None
+
+
 def _usage_error(
     workspace_raw: str | None,
     task_text: str | None,
@@ -143,10 +175,12 @@ def _run(args: list[str]) -> int:
     timeout_raw = _flag(args, "--timeout")
     agent_id = _flag(args, "--agent-id") or f"harness-{uuid.uuid4().hex[:12]}"
     contract_raw = _flag(args, "--contract") or "1.0"
+    answers_raw = _flag(args, "--answers")
+    answer_timeout_raw = _flag(args, "--answer-timeout")
 
     problem = _usage_error(
         workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw
-    )
+    ) or _answers_usage_error(answers_raw, answer_timeout_raw, task_file_raw, contract_raw)
     if problem:
         # An invalid --contract itself has no known version to stamp; every
         # other usage error stamps whatever contract the caller did select.
@@ -217,10 +251,11 @@ def _run(args: list[str]) -> int:
 
     old_handler = signal.signal(signal.SIGTERM, _handle_sigterm)
     driver = _dr.default_driver()
-    env = {DOCKET_APPROVAL_MODE: "refuse"}
+    # --answers stdin waits for the caller's answer line; otherwise nobody can answer.
+    env = {DOCKET_APPROVAL_MODE: "wait" if answers_raw == "stdin" else "refuse"}
 
     try:
-        with _trace.subscribe(_emit):
+        with _answers.guard(answers_raw, answer_timeout_raw, token), _trace.subscribe(_emit):
             _trace.trace_event(
                 agent_id, session_key, role, "session_start", json.dumps({"source": "harness"})
             )

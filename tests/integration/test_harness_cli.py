@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import queue
 import signal
 import subprocess
 import sys
@@ -755,3 +756,309 @@ class TestStatus:
             proc.send_signal(signal.SIGTERM)
             proc.wait(timeout=10)
             reader.join(timeout=5)
+
+
+# ── (g) answers on stdin ─────────────────────────────────────────────────────
+
+# classify_command asks on a push to a named remote; the workspace is not a git
+# repository, so an approved push fails locally and never reaches a network.
+_PUSH_CALL = {"command": "git push origin production"}
+
+
+class _AnsweredRun:
+    """A ``docket harness run --answers stdin`` child. Its stdout is pumped by a
+    thread so a test can wait for one event (the approval request) and then write
+    an answer line to the child's stdin, the way a real caller would."""
+
+    def __init__(self, args: list[str], env: dict[str, str], stderr_path: Path) -> None:
+        self._stderr = stderr_path.open("w", encoding="utf-8")
+        self.proc = subprocess.Popen(
+            [sys.executable, "-m", "docket", "harness", *args],
+            cwd=REPO_ROOT,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self._stderr,
+            text=True,
+            bufsize=1,
+        )
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        self._seen: list[str] = []
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self) -> None:
+        assert self.proc.stdout is not None
+        for line in self.proc.stdout:
+            self._lines.put(line)
+        self._lines.put(None)
+
+    def wait_for_event(self, event_type: str, timeout: float = 30.0) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
+        while True:
+            line = self._lines.get(timeout=max(0.1, deadline - time.monotonic()))
+            if line is None:
+                raise AssertionError(f"stdout closed before {event_type!r}")
+            self._seen.append(line)
+            record = json.loads(line)
+            if record.get("event", {}).get("event_type") == event_type:
+                return record
+
+    def write_raw(self, text: str) -> None:
+        assert self.proc.stdin is not None
+        self.proc.stdin.write(text + "\n")
+        self.proc.stdin.flush()
+
+    def write_answer(self, token: str, approval: str, action: str) -> None:
+        answer = {"approvalToken": approval, "action": action}
+        self.write_raw(json.dumps({"v": "1.1.0", "token": token, "answer": answer}))
+
+    def close_stdin(self) -> None:
+        assert self.proc.stdin is not None
+        self.proc.stdin.close()
+
+    def finish(self, timeout: float = 60.0) -> tuple[int, list[dict[str, Any]]]:
+        while True:
+            line = self._lines.get(timeout=timeout)
+            if line is None:
+                break
+            self._seen.append(line)
+        returncode = self.proc.wait(timeout=timeout)
+        self._stderr.close()
+        return returncode, _parse_ndjson("".join(self._seen))
+
+
+def _approval_records(home: Path) -> list[dict[str, Any]]:
+    directory = home / "approvals"
+    if not directory.is_dir():
+        return []
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(directory.glob("*.json"))]
+
+
+def _answered_args(workspace: Path, *extra: str) -> list[str]:
+    return [
+        "run",
+        "--workspace",
+        str(workspace),
+        "--task",
+        "push it",
+        "--model",
+        "local/x",
+        "--contract",
+        "1.1",
+        "--answers",
+        "stdin",
+        *extra,
+    ]
+
+
+class TestAnswersOnStdin:
+    def test_an_accept_line_grants_the_paused_call_and_the_run_completes(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        payload = requested["event"]["payload"]
+        assert payload["tool"] == "bash"
+        assert payload["callId"] == "call-1"
+        run.write_answer(requested["token"], payload["token"], "accept")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0, (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        assert lines[-1]["status"] == "ok"
+        [record] = _approval_records(home)
+        assert record["state"] == "granted"
+        assert "channel=harness" in (home / "audit.log").read_text(encoding="utf-8")
+
+    def test_a_decline_line_denies_the_call_and_the_model_is_told_so(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        run.write_answer(requested["token"], requested["event"]["payload"]["token"], "decline")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["status"] == "ok"
+        [record] = _approval_records(home)
+        assert record["state"] == "denied"
+        assert "approval.deny" in (home / "audit.log").read_text(encoding="utf-8")
+        # The second model request carries the refused tool result: the push never ran.
+        assert "approval denied" in json.dumps(server.requests[-1]["messages"])
+
+    def test_no_answer_before_the_timeout_denies_the_call(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(
+            _answered_args(workspace, "--answer-timeout", "1"), env, tmp_path / "stderr.txt"
+        )
+        run.wait_for_event("approval_requested")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["status"] == "ok"
+        [record] = _approval_records(home)
+        assert record["state"] == "denied"
+        assert "timed out" in json.dumps(server.requests[-1]["messages"])
+
+    def test_malformed_and_foreign_lines_are_ignored_and_never_echoed(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        canary = "MALFORMED-MARKER-7f3a"
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        run.write_raw(f"not json {canary}")
+        run.write_raw(json.dumps({"v": "1.1.0", "token": "other-run", "answer": {}}))
+        run.write_answer(requested["token"], requested["event"]["payload"]["token"], "accept")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["status"] == "ok"
+        stderr = (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        assert stderr.count("answer line ignored") == 2
+        assert canary not in stderr
+        assert canary not in json.dumps(lines)
+
+    def test_an_answer_whose_content_a_pre_input_policy_blocks_leaves_the_approval_pending(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        (home / "policies").mkdir(parents=True)
+        (home / "policies" / "block-input.json").write_text(
+            json.dumps(
+                {
+                    "id": "block-input",
+                    "description": "Refuse forbidden phrases from humans",
+                    "applies_to": ["*"],
+                    "hook": "pre_input",
+                    "match": {"type": "regex", "pattern": "forbidden phrase"},
+                    "action": "block",
+                    "message": "Input refused by policy.",
+                }
+            )
+        )
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        token = requested["token"]
+        approval = requested["event"]["payload"]["token"]
+        run.write_raw(
+            json.dumps(
+                {
+                    "v": "1.1.0",
+                    "token": token,
+                    "answer": {
+                        "approvalToken": approval,
+                        "action": "accept",
+                        "content": {"note": "forbidden phrase"},
+                    },
+                }
+            )
+        )
+        run.write_answer(token, approval, "accept")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["status"] == "ok"
+        assert "block-input" in (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        [record] = _approval_records(home)
+        assert record["state"] == "granted"
+
+    def test_an_answer_for_a_question_is_refused_until_recipe_runs_exist(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(
+            _answered_args(workspace, "--answer-timeout", "1"), env, tmp_path / "stderr.txt"
+        )
+        requested = run.wait_for_event("approval_requested")
+        question = {"questionId": "q-1", "action": "accept"}
+        run.write_raw(json.dumps({"v": "1.1.0", "token": requested["token"], "answer": question}))
+        run.close_stdin()
+        returncode, _ = run.finish()
+
+        assert returncode == 0
+        assert "need --recipe" in (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("extra", [["--answers", "stdin"], ["--answer-timeout", "5"]])
+    def test_answer_flags_need_contract_1_1(self, tmp_path: Path, extra: list[str]) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(
+            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x", *extra],
+            env,
+        )
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert "--contract 1.1" in result["error"]
+        assert not (tmp_path / "home").exists()
+
+    def test_answers_stdin_refuses_a_task_file_that_reads_stdin(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(
+            [
+                "run",
+                "--workspace",
+                str(workspace),
+                "--task-file",
+                "-",
+                "--model",
+                "local/x",
+                "--contract",
+                "1.1",
+                "--answers",
+                "stdin",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert "conflicts" in result["error"]
+        assert "--task-file" in result["error"]
+        assert not (tmp_path / "home").exists()

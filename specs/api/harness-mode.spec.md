@@ -242,15 +242,39 @@ surfaced back through `limits.maxTokens` and enforced as a stop condition. This 
 placeholder until that card lands; `tests/fixtures/harness-contract/v1.1/ok-files.ndjson` is a
 hand-authored sample of the shape.
 
-### 5. Answers on stdin -- Planned, owned by P35-5
+### 5. Answers on stdin -- Implemented and live (P35-5)
 
-Status: **Planned -- owned by P35-5.** A caller resolves a paused approval or question by
-writing an `AnswerLine` (`{v, token, answer: {approvalToken|questionId (exactly one),
-action: "accept"|"decline"|"cancel", content}}`, the MCP elicitation result shape) to this
-process's stdin. `AnswerLine`/`Answer` are defined now (Section 2) so the schema does not move
-again when the read side lands; nothing in this card reads stdin.
-`tests/fixtures/harness-contract/v1.1/asked-answered.ndjson` and `answer-lines.ndjson` are
-hand-authored samples, not yet a live-path guarantee.
+With `--answers stdin` a caller resolves a paused approval by writing one `AnswerLine` per line
+(`{v, token, answer: {approvalToken, action: "accept"|"decline"|"cancel", content?}}`, the MCP
+elicitation result shape) to this process's stdin, while the run is live. The reader is
+`src/docket/cli/_harness_answers.py`; the approval rules it applies are owned by
+`specs/functional/security-gates.spec.md`, "The harness answer channel".
+
+1. **Flags.** `--answers stdin` and `--answer-timeout S` (a positive integer). Either one under
+   `--contract 1.0` (the default) exits 2 with a refused result. `--answer-timeout` without
+   `--answers stdin` exits 2. `--answers` with any other value exits 2. `--answers stdin` with
+   `--task-file` naming stdin (`-`, `/dev/stdin` or `/proc/self/fd/0`) exits 2 with a reason that
+   contains "conflicts".
+2. **Mode.** Under `--answers stdin` the run's approval mode is `wait`, so an approval-gated call
+   blocks until answered; otherwise the mode stays `refuse`, unchanged. The wait bound is
+   `--answer-timeout` when given, else `TOOL_APPROVAL_TIMEOUT`. The harness is its own process, so
+   it sets that config attribute for the run and restores it afterwards.
+3. **Reading.** One `AnswerLine` per stdin line. A line that does not validate, or that names a
+   different run's token, is ignored with one stderr line that never echoes the line's contents.
+   A `questionId` answer is ignored with a stderr line until recipe runs (Section 6) exist.
+4. **Timeout.** An approval with no answer by its deadline is denied (`approval_timeout`). The
+   refusal is an ordinary tool result: the model sees it, and the run ends by its turn's own
+   outcome, so exit 0 is possible with status `ok`.
+5. **Event.** The `approval_requested` event carries `tool` and `callId` of the call it pauses on.
+   A caller matches its answer on `token` (the run) and `payload.token` (the approval).
+6. **Stdout.** Stdout stays NDJSON only. Every answer diagnostic goes to stderr.
+
+Verified by `tests/integration/test_harness_cli.py::TestAnswersOnStdin` (granted, declined,
+timed out, a malformed or foreign line that is never echoed, a content line held by a
+`pre_input` policy, a question answer, and the usage refusals), which drive a real
+`docket harness run --answers stdin` subprocess over pipes, and by
+`tests/unit/cli/test__harness_answers.py`. `tests/fixtures/harness-contract/v1.1/asked-answered.ndjson`
+and `answer-lines.ndjson` remain hand-authored samples of the shape.
 
 ### 6. Recipe runs -- Planned, owned by P35-9
 

@@ -973,6 +973,35 @@ without asking again.
    `DOCKET_APPROVAL_MODE=refuse` (unchanged); `approval_parked` cannot occur on that path, and
    `core/harness.py`'s wire contract is untouched by this section.
 
+### The harness answer channel (implemented, ROADMAP Phase 35 P35-5)
+
+A non-interactive caller can answer a paused approval over stdin (`docket harness run
+--answers stdin`, `specs/api/harness-mode.spec.md` Section 5). This section states what the
+channel may do to an approval. Where it differs from item 8 of "Parked calls and single-use
+pre-grants", this section governs for `--answers stdin` only.
+
+1. **Wait, not refuse.** Under `--answers stdin` the run's `DOCKET_APPROVAL_MODE` is `wait`: an
+   in-turn ask calls `core.approval.wait_for_approval` and blocks until a decision or its
+   deadline. Without the flag, harness mode is `refuse` as before.
+2. **Only the two terminal decisions.** `accept` calls `approval_grant(token, channel="harness")`;
+   `decline` and `cancel` call `approval_deny(token, channel="harness")`. No other action has any
+   effect on an approval.
+3. **Tokens are validated before use.** An answer's `approvalToken` must match the minted form
+   `apr-<uuid4>`. A token of any other shape is refused, so no path under the approvals directory
+   is ever built from caller text.
+4. **Content is screened as input.** A `content` value is serialised and evaluated with
+   `policy_eval_detail("lead", "pre_input", text, trusted=False)`, the same evaluation `/delegate`
+   applies. A `block` or `require_approval` hit leaves the approval **pending**; the decision is
+   not applied, and the stderr line names the policy id, never the content.
+5. **Fail closed.** A line that does not validate, names another run, carries a `questionId`, or
+   resolves an approval that is already decided is ignored with one stderr line. The approval
+   stays pending until its deadline, and an unanswered approval is denied.
+6. **Every resolution is audited with its channel.** The audit entry names `channel=harness` (the
+   existing `approval.grant`/`approval.deny` entries carry the channel; no new event type).
+7. **Credential values never appear in a string.** Neither the stderr diagnostics nor the trace
+   carry a line's text. `approval_requested` carries the call's `tool` and `callId` only, so a
+   caller learns which call it is answering without the call's arguments.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)
