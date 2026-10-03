@@ -1555,6 +1555,26 @@ any CLI rendering of this evidence.*
    gate execution" is altered by this section — `verify`/`evidence` are additive record-keeping,
    read by nothing on the live gate-decision path.
 
+### In-place ephemeral pods
+
+1. A pod provisioned in place **MUST** give its Implementer no git worktree: the Implementer's
+   resolved working directory is the codebase the pod was provisioned on, and no `worktreeDir`
+   is recorded for it. The default provisioning path **MUST** remain unchanged: the keyword that
+   selects in-place provisioning defaults to off.
+2. An in-place run **MUST** provision its pod through the same core provisioning function that
+   `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
+   `docket pod <project> apply` uses.
+3. Every member of an in-place pod **MUST** be pinned to the one model the run was given
+   (`modelSource: pinned`), including members a recipe adds.
+4. The run's approval mode **MUST** be written through the typed pod-setting coercion, never as a
+   raw metadata write, and a value outside `wait|park|refuse` **MUST** be refused before any pod
+   is provisioned.
+5. A run **MUST** refuse, before provisioning, a workspace that is not an existing directory and a
+   recipe that does not resolve. Neither refusal creates a pod.
+6. A run enqueues one task and dispatches the pod with a limit of one task, synchronously. On a
+   pod provisioned by the run, that task is the only pending one, and the run returns its
+   persisted record and one record per hop that ran.
+
 ### Downstream worktree continuity
 
 1. Once a successful Implementer hop has a registered `worktreeDir`, every later non-Lead,

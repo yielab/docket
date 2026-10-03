@@ -395,6 +395,7 @@ def provision_member(
     work_dir: str = "",
     blueprint_name: str = "",
     budget_usd: float | None = None,
+    in_place: bool = False,
 ) -> tuple[bool, str, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
 
@@ -406,7 +407,11 @@ def provision_member(
 
     ``work_dir``/``blueprint_name``/``budget_usd`` are all no-ops (no new meta
     keys) when unset, which is every non-blueprint caller."""
-    worktree_dir, fallback_reason = provision_worktree(member, project, codebase)
+    if in_place:
+        # In place: the Implementer works in the codebase itself, with no git worktree.
+        worktree_dir, fallback_reason = "", ""
+    else:
+        worktree_dir, fallback_reason = provision_worktree(member, project, codebase)
     _write_member_workspace(
         member,
         codebase,
@@ -598,6 +603,7 @@ def provision_members(
     budget_usd: float | None = None,
     verify_cmd: str = "",
     work_dir_created: bool = False,
+    in_place: bool = False,
 ) -> list[ProvisionedMember]:
     """Provision a fresh pod's members from an already-resolved role list.
 
@@ -637,6 +643,7 @@ def provision_members(
                 work_dir=work_dir,
                 blueprint_name=blueprint_name,
                 budget_usd=budget_usd,
+                in_place=in_place,
             )
             if not ok:
                 raise PodProvisionError(f"{m.member_id}: {msg}")
@@ -682,6 +689,7 @@ def provision_pod(
     budget_usd: float | None = None,
     verify_cmd: str = "",
     source: str = "declarative",
+    in_place: bool = False,
 ) -> PodProvisionResult:
     """Provision a fresh pod from a blueprint.
 
@@ -735,6 +743,7 @@ def provision_pod(
             budget_usd=effective_budget,
             verify_cmd=verify_cmd,
             work_dir_created=work_dir_created,
+            in_place=in_place,
         )
 
         audit_log(
