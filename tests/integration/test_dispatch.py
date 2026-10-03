@@ -1829,6 +1829,44 @@ class TestCheckBriefResources:
         assert _dispatch._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
 
 
+class TestRequireVerify:
+    def test_require_verify_true_fails_task_with_no_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When requireVerify is true, a task fails immediately if no verifyCmd is set."""
+        _seed_pod(tmp_path, monkeypatch)
+        _fleet.meta_set("demo-lead", "requireVerify", True)
+
+        backend = _ScriptedBackend(
+            [_final_response("lead plan"), _final_response("implementer done")]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "Should fail verification")
+        results = _dispatch.dispatch_pod("demo")
+        assert results[0].status == "failed"
+        assert "verifyCmd required but not set" in results[0].reason
+
+    def test_require_verify_false_skips_missing_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When requireVerify is false (the default), a task with no verifyCmd reaches done."""
+        _seed_pod(tmp_path, monkeypatch)
+        # Explicitly set requireVerify to False (or just use default)
+        _fleet.meta_set("demo-lead", "requireVerify", False)
+
+        backend = _ScriptedBackend(
+            [_final_response("lead plan"), _final_response("implementer done")]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        _dispatch.enqueue_task("demo", "Should skip verification")
+        results = _dispatch.dispatch_pod("demo")
+        assert results[0].status == "done"
+
+
 class TestIntakeRecipeTaskBrief:
     def test_needs_input_then_ready_reaches_the_implementer_with_a_brief_view(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

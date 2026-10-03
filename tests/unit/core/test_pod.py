@@ -315,6 +315,20 @@ class TestPodSettings:
         with pytest.raises(pod.PodSettingsError, match="inputExpiryHours"):
             pod.PodSettings.coerce("inputExpiryHours", "0")
 
+    def test_require_verify_defaults_to_false(self) -> None:
+        _write_lead_meta("shop")
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.require_verify is False
+
+    def test_require_verify_true_round_trips(self) -> None:
+        _write_lead_meta("shop", {"requireVerify": True})
+        settings = pod.PodSettings.load_for("shop")
+        assert settings.require_verify is True
+
+    def test_coerce_accepts_require_verify(self) -> None:
+        assert pod.PodSettings.coerce("requireVerify", True) is True
+        assert pod.PodSettings.coerce("requireVerify", False) is False
+
 
 class TestPodSettingsSchedule:
     """`PodSettings.schedule`: validated through the same `coerce` path as every other

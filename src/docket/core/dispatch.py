@@ -1747,6 +1747,21 @@ def _evaluate_mechanical_gate(
     never disagree); a ``"pass"``/``"fail"`` named in the step's own ``on`` map routes instead."""
     verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
     if not verify_cmd:
+        # Check if verification is required
+        require_verify = _pod_settings(ctx.project).require_verify
+        if require_verify:
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "verification_failed",
+                _json.dumps({"reason": "verification_missing", "member": member_id}),
+            )
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason="verifyCmd required but not set",
+            )
         # Honesty rule: never silently skip — a missing verifyCmd is
         # visible via a trace event (parity with the "passed" case
         # below) and the hop's own `verification_skipped` flag, which

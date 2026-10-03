@@ -290,6 +290,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "projectInstructions": "project_instructions",
     "mcpServers": "mcp_servers",
     "deniedTools": "denied_tools",
+    "requireVerify": "require_verify",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -381,6 +382,12 @@ class PodSettings(BaseModel):
     # `set` instead of silently doing nothing at dispatch time.
     denied_tools: tuple[str, ...] = Field((), alias="deniedTools")
 
+    # Whether an Implementer's unset verifyCmd (no verification gate) is
+    # treated as skippable (the default, false) or as a required failure
+    # (true). When true and verifyCmd is unset, the task fails with a
+    # clear reason instead of silently advancing.
+    require_verify: bool = Field(False, alias="requireVerify")
+
     # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
     # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
@@ -414,6 +421,7 @@ class PodSettings(BaseModel):
         "projectInstructions",
         "mcpServers",
         "deniedTools",
+        "requireVerify",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every

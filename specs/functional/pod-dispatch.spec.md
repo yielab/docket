@@ -1145,6 +1145,20 @@ Every requirement below still holds byte-for-byte for the Implementer specifical
 6. This gate only applies to the Implementer hop; Reviewer and Tester hops are never subject to
    it.
 
+### Required verification (`requireVerify`)
+
+1. A pod's Lead **MAY** set the `requireVerify` pod setting (default `false`) to declare that
+   every Implementer hop **MUST** have a `verifyCmd` configured, either through the
+   Implementer's `verifyCmd` meta or the mechanical gate's own `command` field.
+2. When `requireVerify` is `true` and an Implementer hop's mechanical gate finds no `verifyCmd`,
+   dispatch **MUST** transition the task to `failed` (reason: `"verifyCmd required but not
+   set"`) and **MUST NOT** advance to Reviewer/Tester.
+3. A `verification_failed` trace event **MUST** be emitted with `{"reason":
+   "verification_missing", "member": <implementer_id>}` when this rule triggers.
+4. When `requireVerify` is `false` (the default), an unset `verifyCmd` behaves as documented
+   in "Implementer verification gate" requirement 5 (skipped with an honesty-rule trace event
+   and the `verification_skipped` flag).
+
 ### Reviewer verdict gate and bounded rework
 
 *(This is a `verdict` gate — see "Generalized gate execution" for how W-8 generalizes the marker
