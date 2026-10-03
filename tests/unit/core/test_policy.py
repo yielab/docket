@@ -46,29 +46,33 @@ def policies_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 class TestHighRiskPayment:
     def test_stripe_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval("implementer", "pre_tool_call", "stripe charge customer")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "stripe charge customer"
+        ).action
         assert action == "require_approval"
 
     def test_paypal_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval("implementer", "pre_tool_call", "paypal payout send")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "paypal payout send"
+        ).action
         assert action == "require_approval"
 
     def test_wire_transfer_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "initiate wire transfer to account"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_refund_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "refund amount to customer card"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_non_payment_text_not_gated(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "list all orders in the database"
-        )
+        ).action
         # Should not trigger a high-risk gate.
         assert action != "require_approval"
 
@@ -79,35 +83,41 @@ class TestHighRiskPayment:
 class TestHighRiskDeploy:
     def test_git_push_main_requires_approval(self, policies_dir: Path) -> None:
         # 'git' is in SAFE_BINS (exec allowlist) — policy still fires.
-        action = _policy.policy_eval("implementer", "pre_tool_call", "git push origin main")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "git push origin main"
+        ).action
         assert action == "require_approval"
 
     def test_git_push_production_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval("implementer", "pre_tool_call", "git push origin production")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "git push origin production"
+        ).action
         assert action == "require_approval"
 
     def test_npm_publish_requires_approval(self, policies_dir: Path) -> None:
         # 'npm' is in SAFE_BINS — policy still fires.
-        action = _policy.policy_eval("implementer", "pre_tool_call", "npm publish --access public")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "npm publish --access public"
+        ).action
         assert action == "require_approval"
 
     def test_terraform_apply_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "terraform apply -auto-approve"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_helm_upgrade_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "helm upgrade my-chart ./chart --namespace prod"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_git_push_feature_branch_not_gated(self, policies_dir: Path) -> None:
         # Pushing to a feature branch is not high-risk.
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "git push origin feature/my-feature"
-        )
+        ).action
         assert action != "require_approval"
 
     def test_allowlisted_bin_still_gated_by_high_risk(self, policies_dir: Path) -> None:
@@ -115,8 +125,12 @@ class TestHighRiskDeploy:
         # high-risk-deploy policy must override the allowlist.
         assert "git" in _sec.SAFE_BINS
         assert "npm" in _sec.SAFE_BINS
-        git_action = _policy.policy_eval("implementer", "pre_tool_call", "git push origin master")
-        npm_action = _policy.policy_eval("implementer", "pre_tool_call", "npm publish")
+        git_action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "git push origin master"
+        ).action
+        npm_action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "npm publish"
+        ).action
         assert git_action == "require_approval", "git (allowlisted) must still gate on prod push"
         assert npm_action == "require_approval", "npm (allowlisted) must still gate on publish"
 
@@ -126,36 +140,40 @@ class TestHighRiskDeploy:
 
 class TestHighRiskCredentials:
     def test_vault_write_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "vault write secret/myapp api_key=xyz"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_kubectl_create_secret_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "kubectl create secret generic db-creds"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_openssl_genrsa_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "openssl genrsa -out key.pem 4096"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_ssh_keygen_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval(
+        action = _policy.policy_eval_detail(
             "implementer", "pre_tool_call", "ssh-keygen -t ed25519 -C user@example.com"
-        )
+        ).action
         assert action == "require_approval"
 
     def test_adduser_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval("implementer", "pre_tool_call", "adduser deployer")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "adduser deployer"
+        ).action
         assert action == "require_approval"
 
     def test_read_secret_not_gated(self, policies_dir: Path) -> None:
         # Reading a secret (vault read) is not a write — not high-risk.
-        action = _policy.policy_eval("implementer", "pre_tool_call", "vault read secret/myapp")
+        action = _policy.policy_eval_detail(
+            "implementer", "pre_tool_call", "vault read secret/myapp"
+        ).action
         # No high-risk policy should fire on a read-only vault path.
         assert action != "require_approval"
 
@@ -235,7 +253,9 @@ class TestBrokenPolicyFailsClosed:
                 "action": "block",
             },
         )
-        assert _policy.policy_eval("implementer", "pre_output", "hello world") == "allow"
+        assert (
+            _policy.policy_eval_detail("implementer", "pre_output", "hello world").action == "allow"
+        )
 
     def test_unreadable_json_blocks_every_hook(self, policies_dir: Path) -> None:
         """With nothing readable, the scope is every hook and every role."""
@@ -258,7 +278,9 @@ class TestBrokenPolicyFailsClosed:
                 "action": "blocc",
             },
         )
-        assert _policy.policy_eval("tester", "pre_output", "nothing to see") == "block"
+        assert (
+            _policy.policy_eval_detail("tester", "pre_output", "nothing to see").action == "block"
+        )
 
     def test_empty_pattern_blocks(self, policies_dir: Path) -> None:
         _write_policy(
@@ -272,7 +294,7 @@ class TestBrokenPolicyFailsClosed:
                 "action": "block",
             },
         )
-        assert _policy.policy_eval("lead", "pre_input", "a task") == "block"
+        assert _policy.policy_eval_detail("lead", "pre_input", "a task").action == "block"
 
     def test_broken_scope_respects_applies_to(self, policies_dir: Path) -> None:
         """A readable applies_to keeps the fail-closed verdict off other roles."""
@@ -287,8 +309,8 @@ class TestBrokenPolicyFailsClosed:
                 "action": "warn",
             },
         )
-        assert _policy.policy_eval("implementer", "pre_tool_call", "ls") == "block"
-        assert _policy.policy_eval("lead", "pre_tool_call", "ls") == "allow"
+        assert _policy.policy_eval_detail("implementer", "pre_tool_call", "ls").action == "block"
+        assert _policy.policy_eval_detail("lead", "pre_tool_call", "ls").action == "allow"
 
     def test_trusted_skip_never_widens_over_a_broken_file(self, policies_dir: Path) -> None:
         """trusted=True skips a readable injection id, not an arbitrary broken file."""
@@ -336,11 +358,15 @@ class TestPodPolicies:
             },
         )
         assert (
-            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="p")
+            _policy.policy_eval_detail(
+                "implementer", "pre_tool_call", "make deploy", project="p"
+            ).action
             == "block"
         )
         assert (
-            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="q")
+            _policy.policy_eval_detail(
+                "implementer", "pre_tool_call", "make deploy", project="q"
+            ).action
             == "allow"
         )
 
@@ -371,7 +397,9 @@ class TestPodPolicies:
             },
         )
         assert (
-            _policy.policy_eval("implementer", "pre_tool_call", "make deploy", project="p")
+            _policy.policy_eval_detail(
+                "implementer", "pre_tool_call", "make deploy", project="p"
+            ).action
             == "block"
         )
 
@@ -413,9 +441,12 @@ class TestNormalizePolicy:
             d.mkdir()
             monkeypatch.setattr(_cfg, "POLICIES_DIR", d, raising=True)
             (d / "p.yaml").write_text(json.dumps(doc), encoding="utf-8")
-            assert _policy.policy_eval("implementer", "pre_tool_call", "ls src") == "allow"
             assert (
-                _policy.policy_eval("implementer", "pre_tool_call", "rm -rf /tmp")
+                _policy.policy_eval_detail("implementer", "pre_tool_call", "ls src").action
+                == "allow"
+            )
+            assert (
+                _policy.policy_eval_detail("implementer", "pre_tool_call", "rm -rf /tmp").action
                 == "require_approval"
             )
 

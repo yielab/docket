@@ -175,8 +175,8 @@ The first `docket init` on a machine creates the cross-cutting specialists once,
 shared workstation foundation it builds before the project pod. They are genuinely fleet-wide, so a
 per-project copy would be waste:
 
-- **manager** — cross-cutting coordination (transitional; `docket team`'s queue was retired in
-  favor of per-pod dispatch — see below — so this role is being superseded by per-pod Leads).
+- **manager** — cross-cutting coordination (transitional; it has no task queue of its own —
+  per-pod dispatch is the only queue, see below — so this role is being superseded by per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
 
@@ -336,10 +336,7 @@ docket persona myapp-lead clear            # back to role-only
 The persona lives in a marked block inside `SOUL.md` (it survives `docket maintain rebuild`) and
 never replaces the role itself — a persona-carrying agent is still, structurally, "the
 Implementer." Display names (`docket list`/`info`) resolve persona → name → role, never from a
-self-authored `IDENTITY.md`. docket also quarantines the base-assistant self-authoring scaffolding
-a model may leave behind (`IDENTITY.md`, `BOOTSTRAP.md`) out of managed workspaces — on
-provisioning, and again on `docket doctor` — moving any that appear into `.docket-archive/`.
-Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
+self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
 templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod <project> sync` when
@@ -459,6 +456,5 @@ docket persona <member-id> show
 docket init --portfolio               # first init only: + the optional org Portfolio Manager
 ```
 
-> `docket team` (the org manager's own task queue) was **retired** — every project's pod owns
-> its own delegate/queue/dispatch now (see above). There is no remaining org-wide queue; the
-> optional Portfolio Manager is advisory-only and never dispatches.
+> Every project's pod owns its own delegate/queue/dispatch (see above). There is no org-wide
+> queue; the optional Portfolio Manager is advisory-only and never dispatches.

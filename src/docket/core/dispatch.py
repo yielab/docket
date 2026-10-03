@@ -120,21 +120,14 @@ class HopResult:
     attempts: int = 1
     # The pipeline-spec step id this hop ran for. Defaults to "" when
     # constructed without one; ``_hop_record``/``_hop_from_record`` backfill it
-    # to ``role`` on both write and read, so a legacy queue record with no
-    # persisted ``stepId`` (or a hand-built HopResult in an existing test)
-    # replays exactly as before — the built-in default pipeline's step ids
-    # equal their role names, so this is never a behavior change for the four
-    # built-in roles, only a real distinction for a custom pipeline whose
-    # step id differs from its target role (see ``_replay_pipeline_position``).
+    # to ``role`` on both write and read -- the built-in default pipeline's step
+    # ids equal their role names, so this is only a real distinction for a
+    # custom pipeline whose step id differs from its target role (see
+    # ``_replay_pipeline_position``).
     step_id: str = ""
     # This hop's structured handoff artifact. ``None`` at construction
-    # time backfills in ``__post_init__`` to
-    # ``HandoffArtifact.from_legacy_output(output)`` — every ``HopResult``
-    # therefore always carries a real artifact once constructed, whether built
-    # explicitly with one (a live hop — see ``_execute_unit``) or reconstructed
-    # from a legacy persisted record with no ``artifact`` key at all
-    # (``_hop_from_record``'s backward-compatibility path), or simply
-    # hand-built by an existing test that only ever passed ``output=``.
+    # time backfills in ``__post_init__`` to ``HandoffArtifact.from_output(output)``,
+    # so every ``HopResult`` carries a real artifact once constructed.
     artifact: _handoff.HandoffArtifact | None = None
     # A mechanical gate whose command was unset — a real, intentional "no
     # check configured" state, not a failure. ``core/`` never prints; this
@@ -169,7 +162,7 @@ class HopResult:
 
     def __post_init__(self) -> None:
         if self.artifact is None:
-            self.artifact = _handoff.HandoffArtifact.from_legacy_output(self.output)
+            self.artifact = _handoff.HandoffArtifact.from_output(self.output)
 
     def rendered_artifact(self) -> str:
         """This hop's artifact rendered to text — never ``None`` after construction."""
@@ -238,7 +231,7 @@ def pod_task_list_path(project: str) -> Path:
     return _cfg.workspace_dir(lead_id) / "TASK_LIST.json"
 
 
-# Fields a v2 task record may lack when loaded from a legacy TASK_LIST.json.
+# Fields a task record may lack because enqueue_task does not write them.
 # ``hops`` is handled separately below — a shared mutable default would leak
 # the same list object across every backfilled task.
 _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
@@ -264,9 +257,7 @@ _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
 
 
 def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
-    """Backfill v2 fields onto a task dict in place (returns it) so a legacy queue file,
-    written before claims/resume/uuid ids existed, loads with no separate migration step.
-    """
+    """Fill every field ``enqueue_task`` does not write onto a task dict, in place (returns it)."""
     for key, default in _TASK_SCALAR_DEFAULTS.items():
         task.setdefault(key, default)
     if not isinstance(task.get("hops"), list):
@@ -951,7 +942,7 @@ def _prior_implementer_worktree(prior: list[HopResult]) -> str:
 def _hop_record(h: HopResult) -> dict[str, Any]:
     """Persisted shape of one hop (round-trips via ``_hop_from_record``; pod-dispatch.spec.md,
     "Structured handoff artifacts" and "Hop evidence"). ``artifact``/``verify``/``evidence`` are
-    persisted alongside legacy ``output``; ``verification_skipped`` stays an in-memory-only flag."""
+    persisted alongside ``output``; ``verification_skipped`` stays an in-memory-only flag."""
     return {
         "role": h.role,
         "member": h.member_id,
@@ -971,9 +962,9 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
 
 
 def _hop_from_record(rec: dict[str, Any]) -> HopResult:
-    """Reconstruct a HopResult from a persisted hop record (for resume). A legacy record with
-    no (or invalid) ``artifact``, ``verify``, or ``evidence`` key degrades each to its own
-    default -- see pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
+    """Reconstruct a HopResult from a persisted hop record (for resume). A missing or invalid
+    ``artifact``, ``verify``, or ``evidence`` key degrades each to its own default -- see
+    pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
     output = str(rec.get("output", ""))
     artifact_raw = rec.get("artifact")
     artifact: _handoff.HandoffArtifact | None = None
@@ -982,8 +973,6 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
             artifact = _handoff.HandoffArtifact.model_validate(artifact_raw)
         except Exception:
             artifact = None
-    if artifact is None:
-        artifact = _handoff.HandoffArtifact.from_legacy_output(output)
     next_step_raw = rec.get("nextStep")
     verify_raw = rec.get("verify")
     evidence_raw = rec.get("evidence")
@@ -1074,9 +1063,8 @@ def _replay_pipeline_position(
         if isinstance(gate, _pipeline.VerdictGate) and gate.rework is not None:
             verdict = hop.artifact.verdict if hop.artifact is not None else None
             if verdict is None:
-                # New-format records persist the normalized verdict in the
-                # artifact. Legacy/malformed records have no usable value and
-                # retain their pre-artifact raw-output fallback.
+                # A record whose artifact carries no verdict falls back to
+                # parsing the hop's raw output.
                 verdict = _orch.parse_verdict(gate, hop.output)
             when_set = _orch.normalize_values(gate.rework.when, gate.case_sensitive)
             cycles_so_far = rework_counts.get(step_id, 0)

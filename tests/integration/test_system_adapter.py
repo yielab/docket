@@ -1,11 +1,7 @@
-"""docket.edges.adapters.system — docker/git wrappers, gateway stub.
+"""docket.edges.adapters.system — docker/git wrappers.
 
-Fakes `subprocess.run` with monkeypatch so no real docker/git is ever invoked. Covers
-gateway_active's honest always-inactive stub, docker availability + ps, git branch lookup, and
-git changed-files probe. There is no daemon gateway to start/restart/probe. gateway_active
-survives as a stable, always-honest stub because `docket snapshot` and the `serve` read API still
-expose a `gateway` field to external consumers (specs/data/serve-read-api.spec.md); restart_gateway
-has no equivalent external observer, so it has no stub and no test here.
+Fakes `subprocess.run` with monkeypatch so no real docker/git is ever invoked. Covers docker
+availability, git branch lookup, and git changed-files probe.
 """
 
 from __future__ import annotations
@@ -29,17 +25,6 @@ class _FakeCompleted:
         self.stderr = ""
 
 
-# ── gateway_active (honest no-op stub) ──────────────────────────────────────────
-
-
-def test_gateway_active_always_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("gateway_active must never shell out -- no daemon exists")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    assert system.gateway_active() is False
-
-
 # ── docker ──────────────────────────────────────────────────────────────────────
 
 
@@ -51,37 +36,6 @@ def test_docker_available_true(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_docker_available_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(system, "_which", lambda b: False)
     assert system.docker_available() is False
-
-
-def test_docker_ps_returns_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(system, "docker_available", lambda: True)
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *a, **k: _FakeCompleted(returncode=0, stdout="alpha\nbeta\n\n"),
-    )
-    assert system.docker_ps() == ["alpha", "beta"]
-
-
-def test_docker_ps_empty_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(system, "docker_available", lambda: False)
-    assert system.docker_ps() == []
-
-
-def test_docker_ps_handles_daemon_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(system, "docker_available", lambda: True)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=1))
-    assert system.docker_ps() == []
-
-
-def test_docker_ps_handles_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(system, "docker_available", lambda: True)
-
-    def raise_fnf(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise FileNotFoundError
-
-    monkeypatch.setattr(subprocess, "run", raise_fnf)
-    assert system.docker_ps() == []
 
 
 # ── git ─────────────────────────────────────────────────────────────────────────

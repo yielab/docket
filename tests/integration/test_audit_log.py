@@ -368,7 +368,6 @@ class TestChainVerify:
         result = _audit.verify_chain()
         assert result.break_at is None
         assert result.chained == 5
-        assert result.legacy == 0
         assert result.total_lines == 5
 
     def test_tampered_middle_line_detected_at_right_position(self, audit_home: Path) -> None:
@@ -405,30 +404,26 @@ class TestChainVerify:
         assert "malformed" in result.break_at.reason
         assert result.total_lines == 1
 
-    def test_legacy_unchained_line_is_not_tampering(self, audit_home: Path) -> None:
+    def test_an_unchained_line_is_a_break(self, audit_home: Path) -> None:
         logf = audit_home / "audit.log"
-        legacy = {
+        unchained = {
             "ts": "2026-06-01T00:00:00Z",
             "user": "alice",
             "pid": 1,
             "action": "gates.enable",
             "detail": "",
         }
-        logf.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+        logf.write_text(json.dumps(unchained) + "\n", encoding="utf-8")
         logf.chmod(0o600)
 
-        _audit.audit_log("keys.add", "AFTER_LEGACY")
+        _audit.audit_log("keys.add", "AFTER_UNCHAINED")
 
         result = _audit.verify_chain()
-        assert result.break_at is None
-        assert result.legacy == 1
-        assert result.chained == 1
-        # The chain restarts fresh right after the legacy line.
-        entries = _audit.read_audit()
-        assert entries[1]["seq"] == 1
-        assert entries[1]["prev_hash"] == _audit.GENESIS_HASH
+        assert result.break_at is not None
+        assert result.break_at.line == 1
+        assert "no seq/prev_hash" in result.break_at.reason
 
-    def test_legacy_lines_dont_crash_the_viewer(self, audit_home: Path) -> None:
+    def test_unchained_lines_dont_crash_the_viewer(self, audit_home: Path) -> None:
         logf = audit_home / "audit.log"
         logf.write_text(
             '{"ts": "x", "user": "a", "pid": 1, "action": "gates.enable", "detail": ""}\n',
@@ -461,29 +456,6 @@ class TestChainVerify:
         assert result.chained == 1  # only "SECOND" is in the current file
         assert result.total_lines == 1  # rotated-away "FIRST" isn't in this count either
         assert result.continued_from_seq == 1  # verified against audit.log.1's "FIRST"
-
-    def test_rotation_over_a_legacy_tail_still_starts_a_fresh_genesis_chain(
-        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Backward compat: a legacy (pre-chain) last line has no seq/prev_hash
-        to continue from, so rotating it away is still an honest restart at
-        seq=1/GENESIS_HASH."""
-        logf = audit_home / "audit.log"
-        legacy_line = json.dumps(
-            {"ts": "2026-06-01T00:00:00Z", "user": "alice", "pid": 1, "action": "x", "detail": ""}
-        )
-        logf.write_text(legacy_line + "\n", encoding="utf-8")
-        logf.chmod(0o600)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
-
-        _audit.audit_log("keys.add", "AFTER_ROTATED_LEGACY")
-
-        entries = _audit.read_audit()
-        assert entries[0]["seq"] == 1
-        assert entries[0]["prev_hash"] == _audit.GENESIS_HASH
-        result = _audit.verify_chain()
-        assert result.break_at is None
-        assert result.continued_from_seq is None
 
 
 class TestRotationErasureDetection:
@@ -626,7 +598,7 @@ class TestAuditVerifyCommand:
     ) -> None:
         # Raw JSONL is a scripting contract, so route it through the core
         # reader without normalising whitespace or opening the file in CLI.
-        raw = '{ "action": "legacy", "detail": "A" }\n'
+        raw = '{ "action": "unchained", "detail": "A" }\n'
         (audit_home / "audit.log").write_text(raw, encoding="utf-8")
 
         rc = audit_cli.run_audit(json_out=True)
@@ -654,9 +626,9 @@ class TestAuditVerifyCommand:
     def test_verify_tampered_log_reports_total_lines(
         self, audit_home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # VerifyResult.total_lines is rendered in the one place it adds
-        # information chained+legacy can't (how much of the file lies beyond
-        # the detected break, since counting stops there).
+        # VerifyResult.total_lines is rendered where it adds information
+        # chained can't (how much of the file lies beyond the detected break,
+        # since counting stops there).
         _audit.audit_log("keys.add", "A")
         _audit.audit_log("keys.add", "B")
         _audit.audit_log("keys.add", "C")

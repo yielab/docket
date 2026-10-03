@@ -72,7 +72,7 @@ def _audit(tool: str, detail: str = "") -> None:
 
 
 def tool_status() -> dict[str, Any]:
-    """Fleet-wide status snapshot: gateway state, channels, every agent's
+    """Fleet-wide status snapshot: channels, every agent's
     model/registration/cost, and total recorded spend. Identical shape to
     `docket serve`'s `GET /status.json` (see serve-read-api.spec.md)."""
     _audit("status")

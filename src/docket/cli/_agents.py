@@ -48,7 +48,6 @@ _ADD_VALUE_FLAGS = frozenset(
     {
         "--from",
         "--codebase",
-        "--path",
         "--name",
         "--with",
         "--pod",
@@ -82,7 +81,6 @@ def _parse_add_args(
         for flag, setter in (
             ("--from", "from"),
             ("--codebase", "cb"),
-            ("--path", "cb"),
             ("--name", "nm"),
             ("--blueprint", "bp"),
             ("--recipe", "rc"),
@@ -185,9 +183,8 @@ def run_init(all_args: list[str]) -> int:
     """Initialize a project pod, deriving ordinary defaults from the cwd (intentionally
     non-interactive with zero args: cwd is the location, its basename the pod id).
     Explicit args/options override; ``--from`` retains the declarative path."""
-    want_gates = "--no-gates" not in all_args
     want_portfolio = "--portfolio" in all_args
-    project_args = [arg for arg in all_args if arg not in ("--gates", "--no-gates", "--portfolio")]
+    project_args = [arg for arg in all_args if arg != "--portfolio"]
 
     foundation_missing = not _cfg.FLEET_FILE.is_file()
     if not foundation_missing:
@@ -204,7 +201,6 @@ def run_init(all_args: list[str]) -> int:
 
         ui.info("First project: preparing Docket's shared workstation foundation...")
         bootstrap_rc = _install.bootstrap_workstation(
-            want_gates=want_gates,
             assume_yes=True,
             want_portfolio=want_portfolio,
             continuing_to_project=True,
@@ -690,12 +686,6 @@ def _create_workspace(
     # Seed the files the turn loop's system-prompt composition re-reads every turn.
     _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
 
-    # Quarantine any self-authoring base-assistant scaffolding so identity stays
-    # docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
-    from docket.core import identity as _identity
-
-    _identity.quarantine_scaffolding(ws)
-
     ws.chmod(0o700)
     (ws / "memory").chmod(0o700)
 
@@ -726,7 +716,6 @@ def _provision_agent(
     _create_workspace(agent_id, name, codebase, stack, description, model)
 
     meta_data: dict[str, Any] = {
-        "schemaVersion": 1,
         "kind": "project",
         "name": name,
         "codebase": codebase,
@@ -748,7 +737,7 @@ def _provision_agent(
     # (and no daemon session directory to pre-create; core/session.py creates
     # a session's storage lazily).
     with contextlib.suppress(Exception):
-        _fleet.add_agent(agent_id, model, session_key, project_key)
+        _fleet.add_agent(agent_id)
 
     audit_log("agent.add", f"{agent_id} model={model} source={source}")
 
@@ -975,9 +964,9 @@ def run_delete(agent_id: str | None) -> int:
 
 def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None = None) -> int:
     """Dispatch `docket maintain`; returns the exit code. ``extra`` carries flags
-    following ``mode`` (``--no-distill-first``/``--distill-first``) — Typer allows/ignores
-    unknown options so they land here, the pattern every ``ctx.args`` subcommand uses."""
-    bad = find_unknown_flag(extra or [], frozenset({"--no-distill-first", "--distill-first"}))
+    following ``mode`` (``--no-distill-first``) — Typer allows/ignores unknown options so
+    they land here, the pattern every ``ctx.args`` subcommand uses."""
+    bad = find_unknown_flag(extra or [], frozenset({"--no-distill-first"}))
     if bad is not None:
         ui.error(f"docket maintain: unrecognized flag '{bad}'")
         return 2
@@ -999,9 +988,7 @@ def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None
     action = mode or "check"
     args = extra or []
     # Distillation defaults ON: `clean`/`reset` must not bare-delete
-    # undistilled memory without an explicit opt-out. `--distill-first` is
-    # accepted too, as a no-op affirmation of the default, so it is a real,
-    # recognized token either way.
+    # undistilled memory without an explicit opt-out.
     distill_first = "--no-distill-first" not in args
 
     if action == "check":
@@ -1202,7 +1189,7 @@ def _maintain_distill(agent_id: str, ws: Path) -> int:
 
 
 def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
-    """clean: delete memory/*.md log files. `--distill-first` (default on) distills
+    """clean: delete memory/*.md log files. By default it distills
     pending logs into MEMORY.md and archives the originals before any deletion; a
     failed distillation aborts here untouched — see `_run_distillation`'s contract."""
     if not sys.stdin.isatty():

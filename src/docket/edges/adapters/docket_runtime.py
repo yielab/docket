@@ -40,11 +40,9 @@ from docket.core.runtime_driver import (
     DOCKET_PREGRANTS,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
-    ProvisionResult,
     SessionSlice,
     SessionSummary,
     SessionTurn,
-    TeardownResult,
     TurnResult,
     UsageReport,
     UsageTotals,
@@ -457,32 +455,6 @@ class DocketDriver:
             retry_after_s=result.retry_after_s,
         )
 
-    def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
-        """Honest no-op, not a silent ``ok=True`` standing in for real work: there is no daemon
-        to register with, and ``run_turn`` needs nothing pre-created -- it reads
-        ``.docket-meta.json`` fresh and ``core/session.py`` creates session storage lazily.
-        ``capabilities().supports_provisioning`` is ``False`` so this is never mistaken for a
-        real registration step."""
-        return ProvisionResult(
-            ok=True,
-            message=(
-                "no daemon to register with; a docket-native agent needs no "
-                "provisioning step beyond the workspace/meta docket already writes"
-            ),
-        )
-
-    def teardown(self, agent_id: str) -> TeardownResult:
-        """Honest no-op: no daemon to unregister from, and deliberately not reaching for
-        something to delete. A session is keyed by its full session KEY
-        (``agent:<id>:<project>``), not the bare id, so guessing at and deleting "this agent's"
-        session files here would be exactly the silent destructive action this codebase's
-        approval/audit stack exists to gate; ``docket delete`` already removes the whole
-        workspace directly."""
-        return TeardownResult(
-            ok=True,
-            message="no daemon to unregister from; session-file cleanup is not this driver's concern",
-        )
-
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         """Enumerate this agent's sessions. A directory name is the percent-encoded session KEY
         (``agent:<id>:<project>``), not the bare id, so matching by the ``agent:<id>:`` prefix
@@ -581,9 +553,6 @@ class DocketDriver:
             # MODEL_PRICING powers comparative estimates only, never a
             # billing claim.
             reports_cost_usd=False,
-            # provision/teardown are honest no-ops (see their docstrings):
-            # there is no daemon to register or unregister an agent with.
-            supports_provisioning=False,
             # list_sessions/read_new_turns/usage read real, durable
             # docket-owned session storage (core/session.py).
             supports_sessions=True,

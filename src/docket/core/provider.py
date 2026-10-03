@@ -14,9 +14,7 @@ own copy.
 `register_provider` verifies a document against its live `/models` route with the resolved
 credential (`edges/adapters/llm.py::probe_models` does the socket work; `verify_endpoint` here
 stays pure) and classifies the result instead of collapsing it to a boolean -- see
-model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4. `migrate_fleet_providers` ports a
-pre-catalog `fleet.json -> providers` block in once; a literal API key there moves into the
-secret store, referenced by name, never copied into the document.
+model-profiles.spec.md "Provider readiness" 3 and ADR 0011 §4.
 """
 
 from __future__ import annotations
@@ -324,9 +322,7 @@ def _load_global_providers() -> dict[str, ProviderSpec]:
 
 
 def load_catalog() -> Catalog:
-    """The merged provider catalog. Runs the one-shot ``fleet.json -> providers`` migration
-    first (idempotent -- a no-op once migrated, or when there was nothing to migrate)."""
-    migrate_fleet_providers()
+    """The merged provider catalog: a global document overrides the built-in of the same name."""
     entries: dict[str, ProviderSpec] = {}
     scopes: dict[str, str] = {}
     for name, spec in _load_builtin_providers().items():
@@ -409,110 +405,6 @@ def resolve_credential(spec: ProviderSpec) -> tuple[str, str]:
         if value:
             return value, "store"
     return "", "none"
-
-
-def _is_loopback(base_url: str) -> bool:
-    return "127.0.0.1" in base_url or "localhost" in base_url
-
-
-def _is_placeholder_key(value: str) -> bool:
-    return value.strip() in ("", "local")
-
-
-def _all_zero_cost(raw_models: Any) -> bool:
-    if not isinstance(raw_models, list) or not raw_models:
-        return False
-    for entry in raw_models:
-        if not isinstance(entry, dict):
-            return False
-        cost = entry.get("cost")
-        if not isinstance(cost, dict):
-            return False
-        if float(cost.get("input", 1) or 0) != 0 or float(cost.get("output", 1) or 0) != 0:
-            return False
-    return True
-
-
-def _migrate_one(name: str, block: dict[str, Any]) -> bool:
-    """Port one ``fleet.json -> providers`` block into the global catalog. Returns True when a
-    literal credential value was moved into the central secret store (for the audit count)."""
-    base_url = str(block.get("baseUrl") or "").strip()
-    if not base_url:
-        return False
-
-    raw_models = block.get("models")
-    models: list[ModelRow] = []
-    if isinstance(raw_models, list):
-        for entry in raw_models:
-            if not isinstance(entry, dict):
-                continue
-            model_id = str(entry.get("id") or "").strip()
-            if not model_id:
-                continue
-            ctx = entry.get("contextWindow")
-            max_tok = entry.get("maxTokens")
-            models.append(
-                ModelRow(
-                    id=model_id,
-                    contextWindow=ctx if isinstance(ctx, int) and ctx > 0 else None,
-                    maxTokens=max_tok if isinstance(max_tok, int) and max_tok > 0 else None,
-                )
-            )
-
-    is_local = _is_loopback(base_url) or _all_zero_cost(raw_models)
-
-    raw_key = str(block.get("apiKey") or "").strip()
-    moved_secret = False
-    if _is_placeholder_key(raw_key):
-        auth = AuthSpec(type="none")
-    else:
-        from docket.core import audit as _audit
-        from docket.core import secrets as _secrets
-
-        credential_name = f"{name.upper().replace('-', '_')}_API_KEY"
-        secrets = _secrets.load_secrets()
-        secrets[credential_name] = raw_key
-        _secrets.save_secrets(secrets)
-        _secrets.touch_meta(credential_name, "added")
-        _audit.audit_log(
-            "provider.migrate", f"moved {name}'s apiKey into the secret store as {credential_name}"
-        )
-        moved_secret = True
-        auth = AuthSpec(type="bearer", credentials=[credential_name])
-
-    spec = ProviderSpec(
-        name=name,
-        dialect="openai-chat",
-        base_url=base_url,
-        auth=auth,
-        local=is_local,
-        models=models,
-        note="",
-    )
-    save_provider(spec)
-    return moved_secret
-
-
-def migrate_fleet_providers() -> None:
-    """Port ``fleet.json -> providers`` into the global catalog once, then clear the fleet
-    field. A no-op once migrated, or when there was nothing to migrate."""
-    from docket.core import fleet as _fleet
-
-    cfg = _fleet.load_fleet()
-    if not cfg.providers:
-        return
-
-    for name, block in cfg.providers.items():
-        if isinstance(block, dict):
-            _migrate_one(name, block)
-
-    def _clear(current: dict[str, Any]) -> dict[str, Any] | None:
-        if not current.get("providers"):
-            return None
-        current["providers"] = {}
-        return current
-
-    _store.read_modify_write(_cfg.FLEET_FILE, _clear)
 
 
 @dataclass(frozen=True)

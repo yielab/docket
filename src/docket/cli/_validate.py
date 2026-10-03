@@ -60,11 +60,6 @@ def run_validate(args: list[str]) -> int:
                 f"note: {path} has no 'kind:' -- add 'kind: {document.kind}' "
                 "(files without it stop loading one release after v1)"
             )
-        if document.kind == "role" and "editRights" in document.doc:
-            ui.console.print(
-                f"note: {path} 'editRights' is retired -- accepted and ignored "
-                "('deniedTools' is the capability statement)"
-            )
         ui.console.print(f"ok {path} ({document.kind} {document.name})")
 
     if not target.is_file():

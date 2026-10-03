@@ -3,8 +3,7 @@
 Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
 docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket models`'s
 display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
-now "rank anchors" with an honest caption; `docket auth` is a removed command that prints the
-retirement notice at rc=1 rather than faking success; a `local` preset prices as "$0 (local)",
+now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local)",
 never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
 dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
@@ -19,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import register_local_provider, repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -236,13 +235,9 @@ def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[i
 
 
 def _register_provider(home: Path, name: str, model_id: str) -> None:
-    fleet = json.loads((home / "fleet.json").read_text())
-    fleet.setdefault("providers", {})[name] = {
-        "baseUrl": "http://127.0.0.1:9999/v1",
-        "apiKey": "local",
-        "models": [{"id": model_id, "contextWindow": 16384, "maxTokens": 8192}],
-    }
-    (home / "fleet.json").write_text(json.dumps(fleet))
+    register_local_provider(
+        home, name, [{"id": model_id, "contextWindow": 16384, "maxTokens": 8192}]
+    )
 
 
 class TestNonAnthropicPresetShowsNoResidue:
@@ -305,59 +300,6 @@ class TestLocalPresetCli:
         assert "$0 (local)" in out
         assert "n/a" not in out
         assert "$0.00" not in out
-
-
-def _run_removed(args: list[str], home: Path) -> tuple[int, str, str]:
-    """`docket auth` retirement is enforced by `__main__.py::_REMOVED`, which only intercepts
-    at the `python -m docket` / console-script entry point (see
-    `test_console_script_entry_point.py`'s module docstring) -- invoking the raw Typer `app`
-    through `CliRunner` the way `_run` above does bypasses it entirely (Click reports "no such
-    command", rc=2, not the retirement notice). This drives the real entry point instead."""
-    import subprocess
-    import sys as _sys
-
-    env = {**os.environ, "DOCKET_HOME": str(home)}
-    result = subprocess.run(
-        [_sys.executable, "-m", "docket", *args], capture_output=True, text=True, env=env
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
-class TestAuthIsRemoved:
-    """`docket auth` has no docket-native replacement and no compatibility layer: every
-    subcommand -- including bare `docket auth` -- prints the `_REMOVED` retirement notice and
-    exits 1, the same treatment `docket team`/`docket workflow` got. See
-    `__main__.py::_REMOVED["auth"]`; `cli/_keys.py` has no `run_auth` or `--provider` parsing
-    to fall back onto."""
-
-    def test_login_prints_the_removed_notice(self, tmp_path: Path) -> None:
-        from docket.__main__ import _REMOVED
-
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run_removed(["auth", "login"], home)
-        assert rc == 1
-        combined = out + err
-        for line in _REMOVED["auth"]:
-            assert line in combined
-        assert "Traceback" not in combined
-
-    def test_bare_auth_also_removed(self, tmp_path: Path) -> None:
-        from docket.__main__ import _REMOVED
-
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run_removed(["auth"], home)
-        assert rc == 1
-        combined = out + err
-        for line in _REMOVED["auth"]:
-            assert line in combined
-
-    def test_notice_names_both_real_paths(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run_removed(["auth", "setup"], home)
-        assert rc == 1
-        combined = out + err
-        assert "docket keys add" in combined
-        assert "docket models provider add" in combined
 
 
 # ---------------------------------------------------------------------------

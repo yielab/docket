@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import register_local_provider, repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
@@ -48,21 +48,8 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _register_openai(oc_dir: Path) -> None:
-    (oc_dir / "fleet.json").write_text(
-        json.dumps(
-            {
-                "agents": [],
-                "bindings": [],
-                "providers": {
-                    "openai": {
-                        "baseUrl": "http://127.0.0.1:9999/v1",
-                        "apiKey": "local",
-                        "models": [{"id": "gpt-4.1-mini"}],
-                    }
-                },
-            }
-        )
-    )
+    (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    register_local_provider(oc_dir, "openai", [{"id": "gpt-4.1-mini"}])
 
 
 def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[int, str, str]:

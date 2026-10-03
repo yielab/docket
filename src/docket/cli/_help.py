@@ -1,7 +1,7 @@
 """docket help — full help text.
 
 Uses raw ANSI escapes via plain print() rather than Rich markup to preserve
-literal square-bracketed tokens (`[id]`, `[N]`, `[--debug]`, `[agent-id]`)
+literal square-bracketed tokens (`[id]`, `[N]`, `[agent-id]`)
 that Rich's markup parser would otherwise swallow.
 
 The MODEL POLICY model names are resolved live from the role→model registry.
@@ -65,8 +65,8 @@ def run_help(topic: str | None = None) -> int:
                         → Each has its own workspace, memory, and Telegram group
 
 {B}USAGE{R}
-  docket [--debug] <command> [agent-id] [args]
-  If agent-id is omitted an interactive picker is shown (fzf or numbered list).
+  docket <command> [agent-id] [args]
+  If agent-id is omitted an interactive numbered picker is shown.
 
 {B}LIFECYCLE{R}
   {G}init{R}               Initialize everything needed + this project's minimum pod

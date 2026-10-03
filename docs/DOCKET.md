@@ -116,9 +116,7 @@ Through Phase 18, Docket was a control plane wrapped around a separate agent dae
 Anti-Corruption Layer owned that daemon's state shape, every agent turn ran in its process, and
 config changes restarted its gateway. **Phase 19 (decision D-19) removed that architecture
 outright, not incrementally.** There is no external agent binary, shared daemon config,
-auth-profile store, ACL module, or gateway service to restart —
-`edges/adapters/system.py`'s `gateway_active()` survives only as a stable, always-`False` call
-site, not a live integration. docket runs the agent turn itself
+auth-profile store, ACL module, or gateway service to restart. docket runs the agent turn itself
 (`core/agent_loop.py`) and talks through one non-streaming OpenAI-compatible chat-completions
 adapter; built-in gateways or explicitly registered compatible endpoints supply the base URL
 (`edges/adapters/llm.py`, stdlib `urllib`, no vendor SDK).
@@ -134,12 +132,11 @@ coupling to it — parsing an agent turn's result, reading a session's on-disk J
 token/cost usage — had started leaking around the ACL rather than being contained by it.
 `core/runtime_driver.py` is the fix that outlived the daemon it was first built for: a single
 typed `Protocol` — `RuntimeDriver` — that `core/` and `cli/` program against instead of a concrete
-driver's on-disk knowledge. It has six members plus one ingestion helper:
+driver's on-disk knowledge. It has four members plus one ingestion helper:
 
 - `run_turn` — one costed agent turn: the hot path `core/dispatch.py`'s pipeline calls for every
   hop, and, per decision D-18, docket's own self-originated LLM calls (memory distillation, see
   [Memory Management](#memory-management))
-- `provision` / `teardown` — register/unregister an agent with the backing runtime
 - `list_sessions` / `usage` — durable-session enumeration and token/cost aggregation
 - `capabilities` — what this driver instance can actually promise (for example, whether it
   reports a real USD cost at all), so a caller never hardcodes an assumption about the one
@@ -209,13 +206,10 @@ by docket, through `edges/store.py`:
   `portRangeStart`/`portRangeCount`/`scratchDir`
 - **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
   isolation flags. Provider endpoints live in `docket-providers.json` (`core/provider.py`,
-  the catalog of `kind: provider` documents) since Phase 29; a legacy `providers` block is
-  migrated out of `fleet.json` on first catalog read
+  the catalog of `kind: provider` documents) since Phase 29
 
 The org-wide default model lives in `~/.docket/docket-models.json`'s `default` field, not
-`fleet.json` — `get_default_model`/`set_default_model` read/write it there. A legacy `fleet.json`
-value from before this split is migrated in on first read and then cleared, so `docket-models.json`
-stays the single source of record.
+`fleet.json`, so `docket-models.json` is the single source of record.
 
 This is a narrower split than it looks: `fleet.json` deliberately does **not** duplicate `model`/
 `sessionKey`/`projectKey` — those stay `.docket-meta.json`'s job alone. Before Phase 19, the
@@ -250,8 +244,8 @@ stores, all under `~/.docket/`:
 - **The audit log** (`core/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
   `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket audit verify` can
-  walk the chain and report the first broken link; a missing file or a pre-chain legacy line is an
-  honest chain restart, not tampering. Rotation does **not** restart the chain: the first entry
+  walk the chain and report the first broken link; a missing file is an honest chain start, not
+  tampering, and a line without `seq`/`prev_hash` is reported as a break. Rotation does **not** restart the chain: the first entry
   after a size-triggered rotation names the generation it continues, checked against the single
   backup (`audit.log.1`), and an unsubstantiated claim is reported as a break. That makes erasure
   *evident*, not impossible — deleting `audit.log` and `audit.log.1` together still looks like a
@@ -442,7 +436,7 @@ call the Lead makes.
 
 ### Implementer
 
-**Role:** Code implementation specialist (replaces the old global "programmer")
+**Role:** Code implementation specialist
 
 **Capabilities:**
 - Runs **inside the project workspace**, with full read/write on the project
@@ -527,8 +521,8 @@ a narrowed subset; the Implementer gets all of them.
 
 Shared across all projects, created lazily by the first `docket init`. The `manager` is a cross-cutting
 coordinator — **not** a router with a classifier, and it does not compress prompts into briefs.
-Its own task queue (`docket team`) was retired in Phase 12: per-pod dispatch
-(`docket pod <project> delegate/queue/dispatch`) is the only queue now, and the manager role is
+It has no task queue of its own: per-pod dispatch
+(`docket pod <project> delegate/queue/dispatch`) is the only queue, and the manager role is
 transitional, being superseded by per-pod Leads.
 
 ### Manager
@@ -658,11 +652,10 @@ The Implementer reads:
 Context stays scoped to one project's pod
 ```
 
-There is no generated `SNAPSHOT.md`, and `docket context` no longer has `snapshot`/`index`/
-`search`/`compress` subcommands — they, and the per-agent index/snapshot artifacts they wrote,
-were removed because nothing read them back (there is no separate semantic memory index today —
+There is no generated `SNAPSHOT.md`, and `docket context` has only `show` and `project` (any
+other action exits 2). There is no separate semantic memory index —
 docket's own turn loop has no `memory_search` tool of its own; an agent searches its memory files
-the same way it reads any other file, with `read`/`grep`). What actually scopes a pod's context is
+the same way it reads any other file, with `read`/`grep`. What actually scopes a pod's context is
 the **workspace startup contract** docket provisions on `docket add`/`docket init` and
 `docket doctor` re-seeds if a workspace is missing one or has a stale version:
 
@@ -728,7 +721,7 @@ agent whose memory is being distilled to write the summary, through the same
 `RuntimeDriver.run_turn` every dispatch hop uses — no new SDK dependency, no direct provider call.
 
 `docket maintain <id> clean` and `reset` run distillation **first by default** before their own
-memory-clearing step (`--no-distill-first` opts back out to the old bare-delete behavior) — so
+memory-clearing step (`--no-distill-first` opts out and deletes without distilling) — so
 routine maintenance never quietly throws away undistilled history. The contract fails **closed**:
 a driver failure or an empty reply leaves the daily logs exactly where they were, and the
 subsequent delete is aborted rather than proceeding over lost content. "Nothing to distill" (no
@@ -826,8 +819,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 ### Features Implemented ✅
 
 - [x] Memory management system (`docket context show/project`)
-- [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`) — replaces the
-  retired `docket team` queue
+- [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`)
 - [x] Workspace startup contract generation (`WORKFLOW_AUTO.md`/`MEMORY.md`/`HEARTBEAT.md`) +
   `docket doctor` re-seeding of a missing or stale one
 - [x] Per-pod context isolation (workspace + session key)
@@ -837,15 +829,14 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Cost tracking & optimization
 - [x] Declarative role archetypes (`docket roles`) and pod blueprints (`docket init --blueprint`)
 - [x] Docket-native pipeline format + executor (`docket pipeline validate/plan/run`), generalized
-  mechanical/verdict/approval gates and bounded rework, replacing the retired `docket workflow`
-  ("Lobster") dialect
+  mechanical/verdict/approval gates and bounded rework
 - [x] Typed handoff artifacts between hops + a per-role token-budgeted context compiler
 - [x] Run registry and cancellation (`docket runs`)
 - [x] Declarative policy engine on the live dispatch path (`docket policies`)
 - [x] RuntimeDriver port — one typed protocol, one shipped driver (`core/runtime_driver.py`,
   `edges/adapters/docket_runtime.py`'s `DocketDriver`)
 - [x] docket as an MCP server (`docket mcp serve`, optional `[mcp]` extra)
-- [x] Memory distillation (`docket maintain distill`, and `clean`/`reset --distill-first`)
+- [x] Memory distillation (`docket maintain distill`; `clean`/`reset` distill first by default)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket audit verify`)
 - [x] Harness mode (`docket harness run`/`docket harness status`) — a versioned, non-interactive

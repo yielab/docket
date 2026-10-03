@@ -33,8 +33,6 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
     fleet_file.chmod(0o600)
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(_cfg, "SITES_DIR", home / "Sites", raising=True)
-    monkeypatch.setattr(_cfg, "LOG_DIR", home / "logs", raising=True)
     monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
     _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
     return home
@@ -50,7 +48,7 @@ def _ids(home: Path) -> set[str]:
 class TestConfig:
     def test_is_an_org_specialist_role(self) -> None:
         assert _cfg.is_specialist(PM)
-        assert _cfg.role_scope(PM) == "org"
+        assert PM in _cfg.ORG_ROLES
 
     def test_not_auto_installed_but_in_display_order(self) -> None:
         # Opt-in: never in the default install/missing-check order …
@@ -73,7 +71,7 @@ class TestProvisioning:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
-        rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True, want_portfolio=False)
+        rc = _install.bootstrap_workstation(assume_yes=True, want_portfolio=False)
         assert rc == 0
         assert _ids(home) == set(_ORG_SPECIALISTS)
         assert PM not in _ids(home)
@@ -83,7 +81,7 @@ class TestProvisioning:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
-        rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True, want_portfolio=True)
+        rc = _install.bootstrap_workstation(assume_yes=True, want_portfolio=True)
         assert rc == 0
         assert PM in _ids(home)
         # Pods still function: the org specialists are all there too.
@@ -110,7 +108,7 @@ class TestProvisioning:
         from docket.core import memory as _mem
 
         home = _seed(tmp_path, monkeypatch)
-        _install.bootstrap_workstation(want_gates=False, assume_yes=True, want_portfolio=True)
+        _install.bootstrap_workstation(assume_yes=True, want_portfolio=True)
 
         ws = home / "workspaces" / PM
         assert ws.stat().st_mode & 0o777 == 0o700
@@ -129,7 +127,7 @@ class TestProvisioning:
 
     def test_idempotent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _seed(tmp_path, monkeypatch)
-        _install.bootstrap_workstation(want_gates=False, assume_yes=True, want_portfolio=True)
+        _install.bootstrap_workstation(assume_yes=True, want_portfolio=True)
         _install._provision_portfolio_manager()  # run the step again directly
         registered = [a for a in _ids(home) if a == PM]
         assert registered == [PM]  # exactly one, not duplicated
@@ -138,7 +136,7 @@ class TestProvisioning:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
-        _install.bootstrap_workstation(want_gates=False, assume_yes=True, want_portfolio=True)
+        _install.bootstrap_workstation(assume_yes=True, want_portfolio=True)
         # The specialist section renders only when at least one project exists.
         proj = home / "workspaces" / "projects" / "demo"
         proj.mkdir(parents=True)

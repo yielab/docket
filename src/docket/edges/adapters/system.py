@@ -7,8 +7,7 @@ Imports ``docket.core.security`` for ``match_high_risk``. ``run_verify_cmd`` is 
 here that runs a free-form command through a real shell (``shell=True``); every other function
 builds a fixed argv itself -- see ``specs/functional/security-gates.spec.md`` for the scoping
 rationale, which also covers the exec-sandbox section below (mechanism only; the decision to use
-one belongs to ``core/tools.py``'s ``ToolContext.sandbox``). ``gateway_active`` is an honest,
-always-``False`` stub (no daemon exists) -- see ``specs/data/serve-read-api.spec.md``.
+one belongs to ``core/tools.py``'s ``ToolContext.sandbox``).
 """
 
 from __future__ import annotations
@@ -103,35 +102,9 @@ def secret_tool_clear(service: str, key: str) -> bool:
     return result.returncode == 0
 
 
-def gateway_active() -> bool:
-    """No daemon gateway exists; always returns ``False``. Kept as a stable
-    call site for existing callers -- see ``specs/data/serve-read-api.spec.md``."""
-    return False
-
-
 def docker_available() -> bool:
     """Return True if a docker binary is on PATH (does not verify daemon reachability)."""
     return _which("docker")
-
-
-def docker_ps() -> list[str]:
-    """Return running container names, or [] if docker is unavailable or unreachable; degrades
-    gracefully, never raises. No production caller yet -- kept for a future `docket gates isolate`
-    status check; re-evaluate if still uncalled when isolation grows another feature."""
-    if not docker_available():
-        return []
-    try:
-        result = subprocess.run(
-            ["docker", "ps", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return []
-    if result.returncode != 0:
-        return []
-    return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 # ── exec sandbox ─────────────────────────────────────────────────────────────

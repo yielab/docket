@@ -140,13 +140,13 @@ class TestCmdEdit:
     def test_specialist_workspace_opened(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         # Create specialist workspace
-        spec_ws = oc_dir / "workspaces" / "programmer"
+        spec_ws = oc_dir / "workspaces" / "knowledge"
         spec_ws.mkdir(parents=True)
         (spec_ws / ".docket-meta.json").write_text(
-            json.dumps({"kind": "specialist", "name": "programmer"})
+            json.dumps({"kind": "specialist", "name": "knowledge"})
         )
-        (spec_ws / "SOUL.md").write_text("# Programmer\nI write code.\n")
-        rc, out, _ = _run(["edit", "programmer"], oc_dir, env={"EDITOR": "true"})
+        (spec_ws / "SOUL.md").write_text("# Knowledge\nI retrieve.\n")
+        rc, out, _ = _run(["edit", "knowledge"], oc_dir, env={"EDITOR": "true"})
         assert rc == 0
         assert "Edits saved" in out
 
@@ -162,7 +162,7 @@ class TestCmdSnapshot:
         rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        for key in ("timestamp", "gateway", "channels", "agents", "totalCostUsd"):
+        for key in ("timestamp", "channels", "agents", "totalCostUsd"):
             assert key in data, f"Missing key: {key}"
 
     def test_includes_project_agent(self, tmp_path: Path) -> None:
@@ -236,16 +236,16 @@ class TestCmdSnapshot:
 
     def test_specialist_included_when_workspace_exists(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        spec_ws = oc_dir / "workspaces" / "programmer"
+        spec_ws = oc_dir / "workspaces" / "knowledge"
         spec_ws.mkdir(parents=True)
         (spec_ws / ".docket-meta.json").write_text(
-            json.dumps({"kind": "specialist", "name": "Programmer"})
+            json.dumps({"kind": "specialist", "name": "Knowledge"})
         )
         rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
-        assert "programmer" in ids
+        assert "knowledge" in ids
 
     def test_specialist_not_included_when_no_workspace(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -253,7 +253,7 @@ class TestCmdSnapshot:
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
-        assert "programmer" not in ids
+        assert "knowledge" not in ids
 
     def test_total_cost_usd_is_float(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

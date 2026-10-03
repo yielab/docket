@@ -1,6 +1,6 @@
 """Internal workstation bootstrap used lazily by the first ``docket init``.
 
-`bootstrap_workstation(want_gates, assume_yes)` returns the process exit code (0 on success,
+`bootstrap_workstation(assume_yes)` returns the process exit code (0 on success,
 1 when a hard preflight fails); the project initializer returns that code to the CLI.
 
 There is no external daemon: this provisions a purely docket-native home (directory
@@ -26,13 +26,12 @@ from docket.core import models_policy as _mp
 from docket.core import policy as _policy
 from docket.core import provider as _provider
 from docket.core import secrets as _secrets
-from docket.core.security import apply_approval_routing
 from docket.edges import store
 
 
 def _check_dependencies() -> list[str]:
-    """Return MISSING required deps (python3/git); also report optional fzf.
-    Docket owns its runtime, so only its direct tools belong in this check."""
+    """Return MISSING required deps (python3/git). Docket owns its runtime, so only its
+    direct tools belong in this check."""
     missing: list[str] = []
 
     py = shutil.which("python3") or shutil.which("python")
@@ -52,13 +51,6 @@ def _check_dependencies() -> list[str]:
     else:
         missing.append("git")
 
-    if missing:
-        return missing
-
-    if shutil.which("fzf"):
-        ui.success("fzf: found (optional, improves UX)")
-    else:
-        ui.warn("fzf not found (optional) — install with: brew install fzf")
     return missing
 
 
@@ -87,8 +79,7 @@ def _step_model_readiness(model: str) -> int:
 
 
 def _harden_perms() -> None:
-    """Harden docket-owned secrets/config file permissions to 0600. Always runs
-    regardless of --gates/--no-gates: file hygiene, not approval policy."""
+    """Harden docket-owned secrets/config file permissions to 0600."""
     hardened: list[str] = []
     for path in (_cfg.FLEET_FILE, _secrets.SECRETS_FILE, _secrets.SECRETS_META_FILE):
         if not path.is_file():
@@ -108,27 +99,12 @@ def _harden_perms() -> None:
         ui.success("Docket-owned config/secrets permissions already owner-only (600)")
 
 
-def _step_security(want_gates: bool) -> None:
-    """Step 6 — harden secrets/config perms + approval-routing posture (the one thing
-    --no-gates opts out of; the tool-call gate itself is always active).
+def _step_security() -> None:
+    """Step 6 — harden secrets/config perms. The tool-call gate itself is always active.
     See specs/functional/security-gates.spec.md."""
     _harden_perms()
-
     ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
-    ui.dim("  Nothing to enable/disable there — see: docket gates status")
-
-    if not want_gates:
-        ui.dim(
-            "Approval-routing posture not recorded for this workstation (--no-gates) — "
-            "nothing on the live path reads this flag regardless (see: docket doctor)."
-        )
-        return
-
-    tg = apply_approval_routing()
-    ui.success(
-        f"Approval-routing posture recorded as on (mode=session); {tg} channel-bound agent(s)"
-    )
-    ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
+    ui.dim("  See: docket gates status")
 
 
 def _step_policies() -> None:
@@ -254,12 +230,6 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
         codebase="(none — shared org specialist, not scoped to one project)",
     )
 
-    # Quarantine any self-authoring base-assistant scaffolding so identity
-    # stays docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
-    from docket.core import identity as _identity
-
-    _identity.quarantine_scaffolding(ws)
-
     with contextlib.suppress(OSError):
         ws.chmod(0o700)
         (ws / "memory").chmod(0o700)
@@ -280,7 +250,7 @@ def _provision_specialists() -> None:
         else:
             ui.info(f"Creating {spec} agent...")
             spec_dir.mkdir(parents=True, exist_ok=True)
-            _fleet.add_agent(spec, spec_model)
+            _fleet.add_agent(spec)
             why = _cfg.ROLE_WHY.get(spec, "")
             ui.success(f"{spec}: created ({spec_model} — {why})")
 
@@ -292,7 +262,7 @@ def _provision_specialists() -> None:
                 meta_file,
                 {
                     "kind": "specialist",
-                    "scope": _cfg.role_scope(spec),
+                    "scope": "org",
                     "role": spec,
                     "name": spec,
                     "model": spec_model,
@@ -347,7 +317,7 @@ def _provision_portfolio_manager() -> None:
     else:
         ui.info(f"Creating {role} agent...")
         ws.mkdir(parents=True, exist_ok=True)
-        _fleet.add_agent(role, model)
+        _fleet.add_agent(role)
         ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
 
     if ws.is_dir():
@@ -357,7 +327,7 @@ def _provision_portfolio_manager() -> None:
                 meta_file,
                 {
                     "kind": "specialist",
-                    "scope": _cfg.role_scope(role),  # → "org"
+                    "scope": "org",
                     "role": role,
                     "name": role,
                     "model": model,
@@ -372,14 +342,12 @@ def _provision_portfolio_manager() -> None:
 
 
 def bootstrap_workstation(
-    want_gates: bool = True,
     assume_yes: bool = False,
     want_portfolio: bool = False,
     continuing_to_project: bool = False,
 ) -> int:
     """Bootstrap a docket-native home + specialist agents; returns the process exit code.
-    want_gates only records approval-routing posture (the tool-call gate itself is always
-    active regardless — see `_step_security`); want_portfolio adds the opt-in Portfolio Manager."""
+    want_portfolio adds the opt-in Portfolio Manager."""
     ui.header("Preparing Shared Workstation Foundation")
     ui.console.print()
     ui.info("One Docket home with shared org specialists, policies, and security defaults.")
@@ -433,8 +401,6 @@ def bootstrap_workstation(
 
     ui.header("Step 2: Creating directory structure")
     _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-    _cfg.SITES_DIR.mkdir(parents=True, exist_ok=True)
-    _cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(_cfg.DOCKET_HOME, 0o700)
         # WORKSPACES_DIR is an intermediate dir of the mkdir(parents=True) call above --
@@ -443,13 +409,10 @@ def bootstrap_workstation(
         os.chmod(_cfg.PROJECTS_DIR, 0o700)
     ui.success("Directories created")
     ui.console.print(f"  {_cfg.PROJECTS_DIR}")
-    ui.console.print(f"  {_cfg.SITES_DIR}")
     ui.console.print()
 
     ui.header("Step 3: Configuring the default model")
-    # Persists into docket-models.json's `default` -- the one place a
-    # default model lives; `set_default_model` no longer writes fleet.json.
-    _fleet.set_default_model(selected_model)
+    _mp.write_registry({"default": selected_model})
     ui.success("Default model configured")
     ui.console.print(f"  Default model: {selected_model}")
     ui.console.print()
@@ -467,7 +430,7 @@ def bootstrap_workstation(
     ui.console.print()
 
     ui.header("Step 6: Configuring security best practices")
-    _step_security(want_gates)
+    _step_security()
     ui.console.print()
 
     ui.header("Step 7: Guardrail policies")
@@ -520,7 +483,6 @@ def _print_summary() -> None:
     ui.console.print("[bold]Configuration:[/bold]")
     ui.console.print(f"  Fleet registry: {_cfg.FLEET_FILE}")
     ui.console.print(f"  Projects: {_cfg.PROJECTS_DIR}")
-    ui.console.print(f"  Sites: {_cfg.SITES_DIR}")
     ui.console.print()
     ui.console.print("[bold]Cost Management:[/bold]")
     ui.console.print(f"  Default model: {_cfg.DEFAULT_MODEL}")

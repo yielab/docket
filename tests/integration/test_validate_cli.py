@@ -16,7 +16,6 @@ _GOOD_ROLE = (
     "name: security-vetter\n"
     "scope: org\n"
     "modelClass: cheap\n"
-    "editRights: none\n"
     "soulTemplate: You vet things.\n"
     "agentsTemplate: Vetting protocol.\n"
 )
@@ -39,26 +38,25 @@ def test_a_directory_with_one_good_role_and_one_bad_kind_file_exits_one(
     assert out.index("bad.yaml") < out.index("good.yaml")
 
 
-_LEGACY_ROLE_WITH_EDIT_RIGHTS = (
-    "name: legacy-vetter\n"
+_ROLE_WITHOUT_KIND = (
+    "name: plain-vetter\n"
     "scope: org\n"
     "modelClass: cheap\n"
-    "editRights: read-only\n"
     "soulTemplate: You vet things.\n"
     "agentsTemplate: Vetting protocol.\n"
 )
 
 
-def test_a_role_file_carrying_edit_rights_loads_ok_with_a_note(
+def test_a_role_file_without_kind_loads_ok_with_a_note(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     roles_dir = tmp_path / "roles"
     roles_dir.mkdir()
-    (roles_dir / "legacy.yaml").write_text(_LEGACY_ROLE_WITH_EDIT_RIGHTS, encoding="utf-8")
+    (roles_dir / "plain.yaml").write_text(_ROLE_WITHOUT_KIND, encoding="utf-8")
 
     rc = run_validate([str(tmp_path)])
     out = capsys.readouterr().out
 
     assert rc == 0
     assert "ok " in out
-    assert "editRights" in out and "retired" in out
+    assert "no 'kind:'" in out

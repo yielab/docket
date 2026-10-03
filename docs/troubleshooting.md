@@ -29,16 +29,13 @@ catalog).
 
 **How to diagnose:**
 ```bash
-docket doctor
-# Look for a flagged stale/aliased model name
+docket info <agent-id>      # the agent's resolved model
+docket models               # the role-to-model mapping
 ```
 
 **How to fix:**
 ```bash
-# Auto-fix with docket
-docket doctor --fix
-
-# Or update each agent's model individually
+# Update one agent's model
 docket profile <agent-id> anthropic/claude-haiku-4-5
 
 # Re-resolve all policy-following agents at once
@@ -226,12 +223,6 @@ credential; `docket maintain <agent-id> distill` (or `clean`/`reset`) if the con
 past what the model accepts. On a small-context endpoint the usual overflow is tool output: lower
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30,000 characters per tool result; about 2,500 suits a
 16k-token window).
-
-### "docket doctor" flags a model but a turn otherwise succeeds
-```bash
-docket doctor          # look for the flagged stale/aliased model name
-docket doctor --fix    # apply the fix
-```
 
 ## Trace Export
 
@@ -476,20 +467,11 @@ docket scope <p>-implementer reset
 grep "Session Key" ~/.docket/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
 ```
 
-### Leftover global `programmer`/`reviewer`/`tester`?
-A pre-pods install may have left a shared worker workspace behind. `docket doctor` flags it and
-backfills `scope` on legacy metadata — run it and follow its advice:
-```bash
-docket doctor
-```
-
 ## Memory & Context
 
-There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context` has no
-`search`/`index`/`snapshot`/`compress` subcommand — those were removed because the per-agent
-index/snapshot artifacts they wrote were read by nothing else (see
-[Removed Commands](commands.md#removed-commands)). There is also no separate semantic memory
-index today: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
+There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context` has only `show`
+and `project` (any other action exits 2). There is no separate semantic memory
+index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
 its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
 memory contract is: `WORKFLOW_AUTO.md` (the runtime-forced startup file, re-read after every
 context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated

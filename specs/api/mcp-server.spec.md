@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -131,7 +131,7 @@ those shapes are a deliberate byte-for-byte match with `docket serve`'s existing
 
 ### `status`
 
-**Purpose**: Fleet-wide status snapshot — gateway state, enabled channels, every agent's
+**Purpose**: Fleet-wide status snapshot — enabled channels, every agent's
 model/registration/cost, and total recorded spend.
 **Arguments**: none.
 **Output**: identical shape to `docket serve`'s `GET /status.json` (see `serve-read-api.spec.md`).
@@ -372,9 +372,8 @@ concern, not docket's — see Scope above).
 // → CallToolRequest {"name": "status", "arguments": {}}
 // ← CallToolResult (structuredContent)
 {
-  "apiVersion": "2",
+  "apiVersion": "3",
   "timestamp": "2026-07-30T12:00:00Z",
-  "gateway": "inactive",
   "channels": ["telegram"],
   "agents": [ /* ... */ ],
   "totalCostUsd": 0.0
@@ -392,6 +391,12 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-03)
+
+- **`status` follows `/status.json` to API version 3 (legacy purge).** The always-`"inactive"`
+  `gateway` key is gone from the `status` tool's output (it is `serve.build_status()`, the same
+  payload); the purpose line and the representative example drop it and show `apiVersion` `"3"`.
 
 ### Version 1.7.0 (2026-09-29)
 

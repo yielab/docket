@@ -532,8 +532,6 @@ def _plan_members(
 
     for raw_role in member_roles:
         canon = str(raw_role).strip().lower()
-        if canon == "programmer":
-            canon = "implementer"
         if not canon:
             continue
         arch = registry.get(canon)

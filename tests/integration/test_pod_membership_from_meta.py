@@ -52,7 +52,6 @@ def _register_security_reviewer() -> None:
             "soulTemplate": "You review ${project} for security issues.",
             "agentsTemplate": "Report APPROVE or REQUEST-CHANGES.",
             "gateContract": {"kind": "none"},
-            "editRights": "read-only",
             "toolProfile": "read-only",
         }
     )

@@ -6,7 +6,7 @@
 > tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
 > it executes — there is no external daemon in the loop any more, and nothing to bypass it. That
 > chokepoint is **always active**: an argument-aware command classifier plus the `pre_tool_call`
-> policy hook decide `allow`/`ask`/`deny` for every call, regardless of `--gates`/`--no-gates`. A
+> policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. A
 > dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
 > shell interpreter, ...) is routed to **docket's own approval store** and blocks the call until a
 > human answers — the same store a pod-dispatch hop held on a `requireApprovalRoles`/pipeline
@@ -33,19 +33,10 @@
 > gate's pending approval already used. See "The operator loop" below for how a human actually
 > learns a task is waiting.
 >
-> `--no-gates` (on `docket init`) does **not** turn the tool-call gate off — it cannot be turned
-> off, and it does not change how an "ask" verdict is answered either. What `--gates`/`--no-gates`
-> on `docket init` actually controls is `security.approvalRoutingState`/`approvalRoutingMode`, a
-> recorded, audited posture flag that `docket gates status` and `docket doctor` report — nothing on
-> the live path (`core/tools.py`, `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`,
-> `serve.py`) reads it. `docket gates enable`/`disable` are **retired**: they print a notice
-> pointing at `docket doctor` and exit non-zero, writing nothing — `docket init` is now the only
-> writer of that flag. An "ask" verdict always blocks the call and always sits in docket's own
-> approval store, answerable identically by the CLI, HTTP, MCP, and Telegram channels whether this
-> flag is on or off; docket never pushes a prompt to any of them on its own, so there is no
-> "channel actively watching" for this flag to turn on (see telegram-integration.spec.md's
-> Command-grammar requirements 7-8: inbound-only, no notification on a newly-created approval).
-> Wiring this flag into a real consumer is an open maintainer decision this repo has not made.
+> An "ask" verdict always blocks the call and always sits in docket's own approval store,
+> answerable identically by the CLI, HTTP, MCP, and Telegram channels; docket never pushes a
+> prompt to any of them on its own (see telegram-integration.spec.md's Command-grammar
+> requirements 7-8: inbound-only, no notification on a newly-created approval).
 > Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
 > separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
 > every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
@@ -71,12 +62,7 @@ without HITL approval" plus the stay-in-this-pod rule. Nothing instructs an agen
 These are **prompt-level constraints**: agents are instructed to follow them. On top of that,
 docket's own tool-call chokepoint is always active regardless of the prompt: non-allowlisted
 dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval before they run —
-see the status note above for who can answer, and for the `git`/`npm` carve-out. A first `docket
-init` also records approval-**routing** posture as on by default (`docket gates status`
-reports it); that posture flag is recorded and audited but not read by the approval path itself,
-so opting out with `--no-gates` on `docket init` changes nothing about who can answer an "ask"
-verdict — CLI, HTTP, MCP, and Telegram always can. `docket gates enable`/`disable` are retired
-(they print a notice and exit non-zero, writing nothing); `docket init` is the only writer left.
+see the status note above for who can answer, and for the `git`/`npm` carve-out.
 
 ### 2. A Reviewer Can Veto (when the pod has one)
 
@@ -210,8 +196,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   `enable --privacy`) lists each newly shared class and the destination host and asks; off a TTY
   it refuses without `--yes`. Narrowing never asks. Every change is an `exporter.privacy` audit
   entry (`from`, `to`, `host`). Each exported session also carries `docket.privacy`, so the
-  destination shows what it was allowed to receive. The retired `payload` field loads as
-  `minimal` and can never widen anything.
+  destination shows what it was allowed to receive.
 - **A running `docket serve` keeps the level it started with.** Export starts once per process,
   so a change — narrowing included — reaches a long-running `serve --dispatch` only after it
   restarts. A one-shot `dispatch` or `harness run` picks it up at once. `DOCKET_NO_EXPORT=1`
@@ -370,7 +355,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no install flag disables it.** `--no-gates` (on `docket init`) only records approval-routing posture as off, a flag nothing on the live path reads, and does not change how an "ask" verdict is answered. `docket gates enable`/`disable` are retired — they print a notice and exit non-zero, writing nothing; `docket init` is the only writer left. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
 
 ---
 
@@ -379,7 +364,7 @@ quietly closes.
 None of this needs a human to run day to day — it's here for when you want to check it yourself:
 
 ```bash
-docket gates status       # gate always active; approval-routing posture; isolation mode
+docket gates status       # gate always active; isolation mode
 docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
 docket policies list      # installed guardrail policies
 docket doctor             # catches a broken policy file before a live turn does, and more

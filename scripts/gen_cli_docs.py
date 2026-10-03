@@ -22,7 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 COMMANDS_MD = ROOT / "docs" / "commands.md"
-MAIN_MODULE = SRC / "docket" / "__main__.py"
 
 sys.path.insert(0, str(SRC))
 
@@ -35,59 +34,6 @@ def _load_click_group():
     from docket.cli import app
 
     return typer.main.get_command(app)
-
-
-def _load_aliases_and_removed() -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
-    """Read the `_ALIASES`/`_REMOVED` literals as a syntax tree, because importing
-    `__main__.py` would run the CLI: it calls `main()` at module scope."""
-    tree = ast.parse(MAIN_MODULE.read_text(encoding="utf-8"), filename=str(MAIN_MODULE))
-    aliases: dict[str, str] = {}
-    removed: dict[str, tuple[str, ...]] = {}
-
-    def _str(node: ast.expr) -> str:
-        assert isinstance(node, ast.Constant) and isinstance(node.value, str)
-        return node.value
-
-    # Walk top-level statements in source order (not `ast.walk`'s traversal
-    # order): `_REMOVED["wf"] = _REMOVED["workflow"]` below the main `_REMOVED
-    # = {...}` literal depends on the literal having been processed first.
-    for node in tree.body:
-        target: ast.expr | None = None
-        value: ast.expr | None = None
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target, value = node.targets[0], node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            # `_REMOVED: dict[str, tuple[str, ...]] = {...}` is an AnnAssign,
-            # not a plain Assign.
-            target, value = node.target, node.value
-
-        if target is None or value is None:
-            continue
-
-        if isinstance(target, ast.Name) and target.id == "_ALIASES":
-            assert isinstance(value, ast.Dict)
-            for k, v in zip(value.keys, value.values, strict=True):
-                aliases[_str(k)] = _str(v)
-        elif isinstance(target, ast.Name) and target.id == "_REMOVED":
-            assert isinstance(value, ast.Dict)
-            for k, v in zip(value.keys, value.values, strict=True):
-                assert isinstance(v, ast.Tuple)
-                removed[_str(k)] = tuple(_str(elt) for elt in v.elts)
-        elif (
-            isinstance(target, ast.Subscript)
-            and isinstance(target.value, ast.Name)
-            and target.value.id == "_REMOVED"
-            and isinstance(value, ast.Subscript)
-            and isinstance(value.value, ast.Name)
-            and value.value.id == "_REMOVED"
-        ):
-            # `_REMOVED["wf"] = _REMOVED["workflow"]` — an already-removed
-            # name aliasing onto another removed name's message tuple.
-            new_key = _str(target.slice)
-            src_key = _str(value.slice)
-            removed[new_key] = removed[src_key]
-
-    return aliases, removed
 
 
 # --- grouping (structural, script-owned) -----------------------------------------
@@ -128,9 +74,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
 ]
 
-_TOC_SLUG_OVERRIDES = {
-    "Command Aliases": "command-aliases",
-}
+_TOC_SLUG_OVERRIDES: dict[str, str] = {}
 
 
 def _slug(heading: str) -> str:
@@ -191,7 +135,7 @@ def _render_help_body(help_text: str) -> str:
     return text.replace("[", "\\[").replace("]", "\\]")
 
 
-def _render_command(name: str, cmd, aliases_by_target: dict[str, list[str]]) -> str:
+def _render_command(name: str, cmd) -> str:
     out = [f"### {name}\n"]
     out.append(f"**Usage:** `{_usage_line(name, cmd)}`\n")
     params = _param_lines(cmd)
@@ -201,19 +145,10 @@ def _render_command(name: str, cmd, aliases_by_target: dict[str, list[str]]) -> 
         out.append("\n")
     help_text = cmd.help or cmd.get_short_help_str(limit=10_000) or ""
     out.append(_render_help_body(help_text) + "\n")
-    alias_names = aliases_by_target.get(name, [])
-    alias_str = ", ".join(f"`{a}`" for a in alias_names) if alias_names else "None"
-    out.append(f"\n**Aliases:** {alias_str}\n")
     return "\n".join(out)
 
 
 _GLOBAL_OPTIONS = """\
-### --debug
-
-Deprecated, hidden no-op: still accepted so existing scripts do not exit 2, sets nothing,
-emits nothing; use the command's normal error output, `docket doctor`, traces and audit
-records instead.
-
 ### --help / -h
 
 Show Typer's auto-generated help for `docket` or any subcommand.
@@ -259,8 +194,8 @@ _EXIT_CODES = """\
 | Code | Meaning |
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by all `_REMOVED` command notices, `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or the internal `_json` bridge's bad or missing verb |
+| 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `context`, `maintain`) |
 
 No command emits any other exit code today.
 """
@@ -319,7 +254,7 @@ def _os_environ_call_name(node: ast.Call) -> str | None:
 
 def _os_environ_subscript_name(node: ast.Subscript) -> str | None:
     """Return the literal name in `os.environ["NAME"]` (read or assigned --
-    `os.environ["DEBUG"] = "1"` is exactly the shape `--debug` uses)."""
+    `os.environ["NAME"] = "1"`)."""
     val = node.value
     if not (
         isinstance(val, ast.Attribute)
@@ -409,12 +344,6 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "Root of everything docket owns — the only state root; no external daemon directory exists",
         "`~/.docket`",
     ),
-    (
-        ("SITES_DIR",),
-        "Default parent directory for project codebases, created by `docket init`'s setup step",
-        "`~/Sites`",
-    ),
-    (("DOCKET_LOG_DIR",), "Directory for docket-owned log files", "`/tmp/docket`"),
     (
         ("TRACES_DIR",),
         "Root of per-session trace JSONL files (`docket trace`)",
@@ -851,13 +780,6 @@ def render(check_only: bool = False) -> str:
     commands = {
         name: cmd for name, cmd in group.commands.items() if not getattr(cmd, "hidden", False)
     }
-    aliases, removed = _load_aliases_and_removed()
-
-    aliases_by_target: dict[str, list[str]] = {}
-    for alias, target in aliases.items():
-        aliases_by_target.setdefault(target, []).append(alias)
-    for target in aliases_by_target:
-        aliases_by_target[target].sort()
 
     grouped_names = {name for _heading, names in GROUPS for name in names}
     remaining = sorted(set(commands) - grouped_names - {"help"})
@@ -890,8 +812,6 @@ def render(check_only: bool = False) -> str:
         lines.append(f"- [{heading}](#{_slug(heading)})")
     for heading in (
         "Global Options",
-        "Command Aliases",
-        "Removed Commands",
         "Exit Codes",
         "Environment Variables",
         "Tips & Tricks",
@@ -903,51 +823,13 @@ def render(check_only: bool = False) -> str:
     for heading, names in GROUPS:
         lines.append(f"## {heading}\n")
         for name in names:
-            lines.append(_render_command(name, commands[name], aliases_by_target))
+            lines.append(_render_command(name, commands[name]))
             lines.append("\n---\n")
 
     lines.append("## Global Options\n")
     help_cmd = commands["help"]
     help_body = _render_help_body(help_cmd.help or "")
     lines.append(_GLOBAL_OPTIONS.format(help_body=help_body))
-    lines.append("\n---\n")
-
-    lines.append("## Command Aliases\n")
-    lines.append(
-        "Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` map — "
-        "the single source of truth. `docket <alias>` rewrites to `docket <command>` before "
-        "argument parsing.\n"
-    )
-    lines.append("| Alias | Command |")
-    lines.append("|-------|---------|")
-    for alias in sorted(aliases):
-        lines.append(f"| `{alias}` | `{aliases[alias]}` |")
-    lines.append("")
-    unaliased = sorted(
-        name for name in commands if name not in aliases_by_target and name != "help"
-    )
-    lines.append("`" + "`, `".join(unaliased) + "`, `help` have no alias.\n")
-    lines.append("\n---\n")
-
-    lines.append("## Removed Commands\n")
-    lines.append(
-        "These command names are **not aliases** — typing them prints a migration notice and "
-        "exits 1 (`src/docket/__main__.py`'s `_REMOVED` map). They do not run anything.\n"
-    )
-    lines.append("| Removed name | Notice |")
-    lines.append("|---|---|")
-    seen_messages: dict[tuple[str, ...], list[str]] = {}
-    order: list[tuple[str, ...]] = []
-    for name, messages in removed.items():
-        if messages not in seen_messages:
-            seen_messages[messages] = []
-            order.append(messages)
-        seen_messages[messages].append(name)
-    for messages in order:
-        names = ", ".join(f"`{n}`" for n in sorted(seen_messages[messages]))
-        notice = " ".join(messages).replace("|", "\\|")
-        lines.append(f"| {names} | {notice} |")
-    lines.append("")
     lines.append("\n---\n")
 
     lines.append("## Exit Codes\n")

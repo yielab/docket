@@ -189,7 +189,6 @@ def _assert_shared_oracle(outcome: dict[str, object]) -> None:
     chain = outcome["audit_chain"]
     assert isinstance(chain, dict)
     assert chain["break"] is None
-    assert chain["legacy"] == 0
     if chain["exists"]:
         assert chain["chained"] == chain["lines"]
 

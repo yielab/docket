@@ -96,13 +96,6 @@ class TestFakeDriver:
         fail_result = fake.run_turn("demo-reviewer", "s", "m", 30)
         assert fail_result == _rd.TurnResult(False, "", 0.0, {}, "reviewer down", failure_kind=None)
 
-    def test_provision_and_teardown_record_calls(self) -> None:
-        fake = FakeDriver()
-        assert fake.provision("demo-lead", "/ws/demo-lead", "m") == _rd.ProvisionResult(True, "")
-        assert fake.teardown("demo-lead") == _rd.TeardownResult(True, "")
-        assert fake.provision_calls == [("demo-lead", "/ws/demo-lead", "m")]
-        assert fake.teardown_calls == ["demo-lead"]
-
     def test_list_sessions_and_usage_default_empty(self) -> None:
         fake = FakeDriver()
         assert fake.list_sessions("demo-lead") == []

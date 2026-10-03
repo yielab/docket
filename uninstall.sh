@@ -7,8 +7,7 @@ set -euo pipefail
 # Honor the same prefix install.sh used (DOCKET_PREFIX), defaulting to ~/.local.
 INSTALL_DIR="${DOCKET_PREFIX:-${HOME}/.local}"
 BIN_FILE="${INSTALL_DIR}/bin/docket"
-LIB_DIR="${INSTALL_DIR}/lib/docket-cli"     # Bash lib (pre-cutover installs)
-LEGACY_LIB_DIR="${INSTALL_DIR}/lib/docket"  # Python venv (current) / very old layout
+LIB_DIR="${INSTALL_DIR}/lib/docket"  # the Python venv install.sh creates
 
 echo ""
 echo "=================================="
@@ -16,8 +15,8 @@ echo "  Docket CLI Uninstaller"
 echo "=================================="
 echo ""
 
-# Check if docket is installed (current or legacy lib path)
-if [[ ! -f "$BIN_FILE" ]] && [[ ! -d "$LIB_DIR" ]] && [[ ! -d "$LEGACY_LIB_DIR" ]]; then
+# Check if docket is installed
+if [[ ! -f "$BIN_FILE" ]] && [[ ! -d "$LIB_DIR" ]]; then
   echo "✓ Docket is not installed"
   exit 0
 fi
@@ -28,9 +27,6 @@ if [[ -f "$BIN_FILE" ]]; then
 fi
 if [[ -d "$LIB_DIR" ]]; then
   echo "  • $LIB_DIR"
-fi
-if [[ -d "$LEGACY_LIB_DIR" ]]; then
-  echo "  • $LEGACY_LIB_DIR (legacy)"
 fi
 echo ""
 
@@ -52,15 +48,11 @@ if [[ -f "$BIN_FILE" ]]; then
   echo "  ✓ Removed $BIN_FILE"
 fi
 
-# Remove library directory (current + legacy)
+# Remove the venv
 if [[ -d "$LIB_DIR" ]]; then
   echo "→ Removing library files..."
   rm -rf "$LIB_DIR"
   echo "  ✓ Removed $LIB_DIR"
-fi
-if [[ -d "$LEGACY_LIB_DIR" ]]; then
-  rm -rf "$LEGACY_LIB_DIR"
-  echo "  ✓ Removed $LEGACY_LIB_DIR (legacy)"
 fi
 
 echo ""

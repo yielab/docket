@@ -205,8 +205,7 @@ class RoleArchetype:
 
 def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     """Parse one archetype from its camelCase wire form (overlay JSON or a user YAML file).
-    Raises `ArchetypeError` on any missing/invalid field. A retired `editRights` key, if
-    present, is accepted and simply never read (ADR 0012)."""
+    Raises `ArchetypeError` on any missing/invalid field."""
     if not isinstance(doc, dict):
         raise ArchetypeError(f"archetype {name!r}: definition must be a mapping")
 

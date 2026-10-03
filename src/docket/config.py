@@ -33,8 +33,6 @@ PROJECTS_DIR = WORKSPACES_DIR / "projects"
 # pod_scratch_dir()/pod_work_dir() below. Distinct from a pod's *workspace*
 # (WORKSPACES_DIR/projects/<pod>-<role>), which is per-member, not per-pod.
 PODS_DIR = WORKSPACES_DIR / "pods"
-SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
-LOG_DIR = Path(os.environ.get("DOCKET_LOG_DIR", "/tmp/docket"))
 
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
 AUDIT_LOG = DOCKET_HOME / "audit.log"
@@ -195,51 +193,20 @@ TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
 # so it is never auto-provisioned or flagged missing on a default install.
 PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
 
-# `programmer`/`reviewer`/`tester` are kept in both sets below even though
-# they are per-pod roles, not global specialists (ORG_ROLES/PROJECT_ROLES is
-# the live scope split -- see role_scope() below). This is deliberate, not a
-# leftover: `docket doctor` (`cli/_doctor.py`'s
-# `_check_metadata_backfill`/`_managed_workspace_ids`) and
-# `core/models_policy.py`'s `policy_agent_ids` both walk this set to detect
-# and heal a GLOBAL `~/.docket/workspaces/<role>/` directory left over from
-# before pods existed -- a real, still-possible on-disk state this codebase
-# intentionally still recognizes. Removing these three would blind that
-# detection, not just delete dead code.
-SPECIALIST_ROLES: frozenset[str] = frozenset(
-    ["manager", "programmer", "reviewer", "tester", "knowledge", "security", PORTFOLIO_MANAGER_ROLE]
-)
-
 META_FILE = ".docket-meta.json"
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
-# Same rationale as SPECIALIST_ROLES above: programmer/reviewer/tester stay
-# here so doctor/models_policy can find a legacy global workspace by name.
-SPECIALIST_ORDER: tuple[str, ...] = (
-    "manager",
-    "programmer",
-    "reviewer",
-    "tester",
-    "knowledge",
-    "security",
-)
-
-# Org agents are shared across projects; project roles are per-pod (provisioned by docket add).
+# Org agents are shared across projects; project roles live in pods (provisioned by docket add).
 ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager", PORTFOLIO_MANAGER_ROLE])
-PROJECT_ROLES: frozenset[str] = frozenset(["programmer", "reviewer", "tester"])
 
 # Install order: shared org agents only. Portfolio Manager is excluded — it is opt-in and
 # must never be auto-provisioned or flagged "missing" on a standard install.
-ORG_SPECIALIST_ORDER: tuple[str, ...] = tuple(r for r in SPECIALIST_ORDER if r in ORG_ROLES)
+ORG_SPECIALIST_ORDER: tuple[str, ...] = ("manager", "knowledge", "security")
 
 # Display order includes the opt-in Portfolio Manager. Consumers skip entries whose workspace
 # doesn't exist, so the Portfolio Manager appears only after `first docket init --portfolio`.
 ORG_DISPLAY_ORDER: tuple[str, ...] = (*ORG_SPECIALIST_ORDER, PORTFOLIO_MANAGER_ROLE)
-
-
-def role_scope(role: str) -> str:
-    """Returns 'project' for per-pod workers, 'org' for shared specialists."""
-    return "project" if role in PROJECT_ROLES else "org"
 
 
 ROLE_WHY: dict[str, str] = {
@@ -259,7 +226,7 @@ TELEGRAM_GROUP_NAMES: dict[str, str] = {
 
 
 def is_specialist(agent_id: str) -> bool:
-    return agent_id in SPECIALIST_ROLES
+    return agent_id in ORG_ROLES
 
 
 def workspace_dir(agent_id: str) -> Path:

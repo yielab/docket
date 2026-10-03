@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -142,8 +142,6 @@ commands. Six modes **MUST** be supported.
 - Verify and fix missing workspace directory → recreate
 - Regenerate missing core files from templates
 - Reset invalid permissions to 700/600
-- Backfill a specialist's missing `.docket-meta.json` from the role→model policy; the fleet
-  registry does not track per-agent models, so the policy resolver is the only source.
 - Re-register a missing fleet registration
 - Clean up orphaned Telegram bindings
 
@@ -159,12 +157,12 @@ commands. Six modes **MUST** be supported.
 - Preserve .docket-meta.json
 
 #### reset - Deep Memory
-- Everything from `clean`, including the same `--distill-first` default/`--no-distill-first`
+- Everything from `clean`, including the same distill-first default, `--no-distill-first`
   opt-out and fail-closed abort behaviour
 - Clear MEMORY.md summary — **unless** a distillation actually ran this invocation (there were
   pending logs and it succeeded), in which case MEMORY.md was *just* refreshed with the distilled
-  summary and this step is skipped, so `--distill-first` never immediately erases the summary it
-  exists to preserve
+  summary and this step is skipped, so the default distillation never immediately erases the
+  summary it exists to preserve
 - Clear HEARTBEAT.md tasks — for a pod **Lead**, this also clears the docket-owned dispatch
   ledger region dispatch mechanically maintains (ROADMAP Phase 17 C-3; see
   pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"). If a task is genuinely `running` in
@@ -251,6 +249,8 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions|distill] [--no-di
 - `0`: Success
 - `1`: Any error (unknown agent, invalid arguments, permission problems, driver failures —
   docket's CLI-wide convention; see ../api/cli-interface.spec.md)
+- `2`: A usage error — an unknown option or command (Click), or an unrecognized `maintain` flag;
+  `--no-distill-first` is the only flag `maintain` accepts
 
 ## Examples
 
@@ -308,7 +308,7 @@ After successful creation:
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.docket permissions |
 | Workspace corrupted | Missing files | Run `docket maintain check` |
-| Distillation turn failed (model error, timeout, no credential) | `docket maintain distill`, or `clean`/`reset` with `--distill-first` (the default) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
+| Distillation turn failed (model error, timeout, no credential) | `docket maintain distill`, or `clean`/`reset` (distillation is their default) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
 
 ## Performance Criteria
 
@@ -318,11 +318,22 @@ After successful creation:
 - Maintain (clean, `--no-distill-first`): < 500ms
 - Maintain (rebuild): < 3 seconds
 - Maintain (check): < 5 seconds
-- Maintain (distill, or clean/reset with `--distill-first`): bounded by one driver turn
+- Maintain (distill, or clean/reset with the default distillation): bounded by one driver turn
   (`config.DISTILL_TIMEOUT_S`, default 120s) rather than a fixed local-operation budget — it is a
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.15.0 (2026-10-03)
+
+- Legacy compatibility removed (no users; maintainer decision 2026-10-03): `maintain
+  --distill-first` (a no-op affirmation of the default) is gone, so passing it is now an
+  unrecognized flag (exit 2); `clean`/`reset`/error-recovery/performance text now describe
+  distillation as the default rather than naming that flag. Return Codes gains `2` for usage
+  errors.
+- Dropped the `check` bullet claiming a specialist's missing `.docket-meta.json` is backfilled:
+  the only implementation was `docket doctor`'s metadata backfill, deleted with the other legacy
+  migrations; `maintain check` never did it.
 
 ### Version 1.14.0 (2026-09-25)
 

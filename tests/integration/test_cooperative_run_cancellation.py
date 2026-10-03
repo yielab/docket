@@ -213,7 +213,7 @@ def _write_agent_meta(agent_id: str, codebase: Path) -> None:
         "created": "2026-09-12T00:00:00+00:00",
     }
     (workspace / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(agent_id, meta["model"], meta["sessionKey"], "demo")
+    _fleet.add_agent(agent_id)
 
 
 def test_docket_runs_cancel_reaches_a_real_bash_sleep(

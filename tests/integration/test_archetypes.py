@@ -41,7 +41,6 @@ class TestClosedEnums:
             "soulTemplate": "hello ${project}",
             "agentsTemplate": "hi ${project}",
             "gateContract": {"kind": "none"},
-            "editRights": "write",
             "toolProfile": "x",
         }
         doc.update(overrides)
@@ -54,12 +53,6 @@ class TestClosedEnums:
     def test_unknown_model_class_rejected(self) -> None:
         with pytest.raises(arch.ArchetypeError, match="modelClass"):
             arch.from_wire("custom", self._base_doc(modelClass="medium"))
-
-    def test_edit_rights_is_accepted_and_dropped(self) -> None:
-        # editRights is retired (ADR 0012): any value, even a pre-retirement invalid
-        # one, loads -- and never resurfaces from to_wire().
-        parsed = arch.from_wire("custom", self._base_doc(editRights="sometimes"))
-        assert "editRights" not in parsed.to_wire()
 
     def test_unknown_gate_contract_kind_rejected(self) -> None:
         with pytest.raises(arch.ArchetypeError, match="gate contract kind"):
@@ -219,7 +212,6 @@ class TestRegistryOverlay:
             "soulTemplate": "hi ${project}",
             "agentsTemplate": "hi ${project}",
             "gateContract": {"kind": "none"},
-            "editRights": "write",
             "toolProfile": "x",
             "description": "coordinates content production",
         }
@@ -243,7 +235,6 @@ class TestRegistryOverlay:
             "soulTemplate": "custom lead soul for ${project}",
             "agentsTemplate": "custom lead agents for ${project}",
             "gateContract": {"kind": "none"},
-            "editRights": "none",
             "toolProfile": "coordination",
             "description": "customized lead",
         }
@@ -282,7 +273,6 @@ class TestRegistryOverlay:
             "version: 1\n"
             "scope: pod\n"
             "modelClass: cheap\n"
-            "editRights: write\n"
             "toolProfile: x\n"
             "gateContract:\n"
             "  kind: none\n"
@@ -352,7 +342,6 @@ class TestRolesCli:
             "version: 1\n"
             "scope: pod\n"
             "modelClass: cheap\n"
-            "editRights: write\n"
             "toolProfile: x\n"
             "gateContract:\n"
             "  kind: none\n"
@@ -382,7 +371,6 @@ class TestRolesCli:
             "version: 1\n"
             "scope: galaxy\n"
             "modelClass: cheap\n"
-            "editRights: write\n"
             "toolProfile: x\n"
             "gateContract:\n"
             "  kind: none\n"

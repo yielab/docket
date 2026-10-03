@@ -18,7 +18,6 @@ from docket.core.archetypes import (
     ArchetypeError,
     GateContract,
     RoleArchetype,
-    add_user_archetype,
     find_overlay_problems,
     from_wire,
     normalize_role,
@@ -97,7 +96,6 @@ class TestHopInstructionWireFormat:
             "soulTemplate": "x",
             "agentsTemplate": "y",
             "gateContract": {"kind": "none"},
-            "editRights": "read-only",
             "toolProfile": "read-only",
             "hopInstruction": "Do the thing.",
         }
@@ -113,44 +111,10 @@ class TestHopInstructionWireFormat:
             "soulTemplate": "x",
             "agentsTemplate": "y",
             "gateContract": {"kind": "none"},
-            "editRights": "read-only",
             "toolProfile": "read-only",
         }
         arch = from_wire("custom-role", doc)
         assert arch.hop_instruction == ""
-
-
-class TestEditRightsRetired:
-    """`editRights` is retired (ADR 0012 §2 rule 7): accepted on read, never written --
-    `deniedTools` is the only capability statement left."""
-
-    def _doc(self) -> dict[str, object]:
-        return {
-            "name": "custom-role",
-            "version": 1,
-            "scope": "pod",
-            "modelClass": "cheap",
-            "soulTemplate": "x",
-            "agentsTemplate": "y",
-            "gateContract": {"kind": "none"},
-            "editRights": "write",
-            "toolProfile": "read-only",
-        }
-
-    def test_a_document_carrying_edit_rights_loads_and_drops_it(self) -> None:
-        arch = from_wire("custom-role", self._doc())
-        assert "editRights" not in arch.to_wire()
-
-    def test_pod_overlay_written_by_roles_add_carries_no_edit_rights(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        repoint_docket_home(monkeypatch, tmp_path / ".docket")
-
-        add_user_archetype(self._doc(), project="acme")
-
-        overlay_path = _cfg.pod_config_dir("acme") / "roles.json"
-        written = json.loads(overlay_path.read_text(encoding="utf-8"))
-        assert "editRights" not in written["roles"]["custom-role"]
 
 
 #: Sample render() variables covering every placeholder any built-in/starter
@@ -228,7 +192,6 @@ class TestFindOverlayProblems:
                             "soulTemplate": "x",
                             "agentsTemplate": "y",
                             "gateContract": {"kind": "none"},
-                            "editRights": "read-only",
                             "toolProfile": "read-only",
                         }
                     }
@@ -276,7 +239,6 @@ def _write_vetter_overlay(path: Path, denied_tools: list[str]) -> None:
                         "soulTemplate": "x",
                         "agentsTemplate": "y",
                         "gateContract": {"kind": "none"},
-                        "editRights": "read-only",
                         "toolProfile": "read-only",
                         "deniedTools": denied_tools,
                     }
@@ -358,7 +320,6 @@ _SECURITY_VETTER_LONG: dict[str, object] = {
     "name": "security-vetter",
     "scope": "pod",
     "modelClass": "strong",
-    "editRights": "read-only",
     "description": "read-only security pass over the implementer's change",
     "tokenBudget": 6000,
     "deniedTools": ["write", "edit", "bash"],

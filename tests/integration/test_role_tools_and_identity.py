@@ -2,7 +2,7 @@
 
 `core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
 called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
-not just told not to via SOUL.md prose. `core/identity.py`'s `system_prompt_for_agent` reads
+not just told not to via SOUL.md prose. `core/identity.py`'s `compose_agent_prompt` reads
 SOUL.md, the live persona, resolved project roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
@@ -142,7 +142,6 @@ class TestArchetypeDeniedToolsAreData:
             "soulTemplate": "hi ${project}",
             "agentsTemplate": "hi ${project}",
             "gateContract": {"kind": "none"},
-            "editRights": "read-only",
             "toolProfile": "observer",
             "deniedTools": ["write", "edit", "bash"],
         }
@@ -390,7 +389,7 @@ class TestSystemPromptForAgent:
         (ws / "SOUL.md").write_text("# SOUL.md\nYou are the Lead.\n")
         (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO.md\nLEGACY-PRIVATE-STARTUP\n")
 
-        prompt = _identity.system_prompt_for_agent("id-agent")
+        prompt = _identity.compose_agent_prompt("id-agent").text
 
         assert "You are the Lead" in prompt
         assert "Docket live runtime contract" in prompt
@@ -410,7 +409,7 @@ class TestSystemPromptForAgent:
             "KEEP-CUSTOM-RULE\n"
         )
 
-        prompt = _identity.system_prompt_for_agent("runtime-rules-agent")
+        prompt = _identity.compose_agent_prompt("runtime-rules-agent").text
 
         assert "OPEN-PRIVATE-STATE" not in prompt
         assert "KEEP-RED-LINE" in prompt
@@ -422,7 +421,7 @@ class TestSystemPromptForAgent:
         (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nlegacy startup\n")
         (ws / "AGENTS.md").write_text("CUSTOM-AGENT-RULE-WITHOUT-HEADINGS\n")
 
-        prompt = _identity.system_prompt_for_agent("custom-rules-agent")
+        prompt = _identity.compose_agent_prompt("custom-rules-agent").text
 
         assert "CUSTOM-AGENT-RULE-WITHOUT-HEADINGS" in prompt
 
@@ -435,7 +434,7 @@ class TestSystemPromptForAgent:
         (ws / "TOOLS.md").write_text("TOOL-NOTES\n")
         (ws / "MEMORY.md").write_text("DURABLE-MEMORY\n")
 
-        prompt = _identity.system_prompt_for_agent("context-agent")
+        prompt = _identity.compose_agent_prompt("context-agent").text
 
         assert "already loaded" in prompt
         assert prompt.count("Never access Docket private control files") == 1
@@ -450,7 +449,7 @@ class TestSystemPromptForAgent:
         assert ordered == sorted(ordered)
 
         (ws / "HEARTBEAT.md").write_text("UPDATED-CHECKPOINT\n")
-        refreshed = _identity.system_prompt_for_agent("context-agent")
+        refreshed = _identity.compose_agent_prompt("context-agent").text
         assert "UPDATED-CHECKPOINT" in refreshed
         assert "ACTIVE-CHECKPOINT" not in refreshed
 
@@ -465,7 +464,7 @@ class TestSystemPromptForAgent:
         (ws / "AGENTS.md").write_text("KEEP-AGENT-RULE\n")
         (ws / "MEMORY.md").write_text("memory-detail-" * 1000)
 
-        prompt = _identity.system_prompt_for_agent("bounded-context-agent")
+        prompt = _identity.compose_agent_prompt("bounded-context-agent").text
 
         assert "KEEP-ACTIVE-ACTION" in prompt
         assert "KEEP-AGENT-RULE" in prompt
@@ -479,7 +478,7 @@ class TestSystemPromptForAgent:
         (ws / "HEARTBEAT.md").write_text("## Ledger\nACTIVE-LEDGER-LINE\n")
         (ws / "TOOLS.md").write_text("Run the verify gate: VERIFY-GATE-LINE\n")
 
-        prompt = _identity.system_prompt_for_agent("bloated-soul-agent")
+        prompt = _identity.compose_agent_prompt("bloated-soul-agent").text
 
         assert "ACTIVE-LEDGER-LINE" in prompt
         assert "VERIFY-GATE-LINE" in prompt
@@ -497,7 +496,7 @@ class TestSystemPromptForAgent:
         (ws / "TOOLS.md").write_text("VERIFY-GATE-LINE\n")
         (ws / "MEMORY.md").write_text("DURABLE-MEMORY-LINE\n")
 
-        prompt = _identity.system_prompt_for_agent("modest-agent")
+        prompt = _identity.compose_agent_prompt("modest-agent").text
 
         assert "[... " not in prompt
         assert "omitted:" not in prompt
@@ -514,7 +513,7 @@ class TestSystemPromptForAgent:
         ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "🔭"})
         (ws / "SOUL.md").write_text("# SOUL.md\nbody\n")
 
-        prompt = _identity.system_prompt_for_agent("persona-agent")
+        prompt = _identity.compose_agent_prompt("persona-agent").text
 
         assert "Orion" in prompt and "🔭" in prompt
 
@@ -528,15 +527,15 @@ class TestSystemPromptForAgent:
         meta.persona = Persona(name="Freshly Set")
         _store.write_json(_cfg.meta_path("lagging-agent"), meta)
 
-        prompt = _identity.system_prompt_for_agent("lagging-agent")
+        prompt = _identity.compose_agent_prompt("lagging-agent").text
 
         assert "Freshly Set" in prompt
 
     def test_unprovisioned_agent_composes_to_empty(self) -> None:
-        assert _identity.system_prompt_for_agent("nobody-here") == ""
+        assert _identity.compose_agent_prompt("nobody-here").text == ""
 
     def test_empty_agent_id_composes_to_empty(self) -> None:
-        assert _identity.system_prompt_for_agent("") == ""
+        assert _identity.compose_agent_prompt("").text == ""
 
     def test_instructions_md_reaches_the_prompt_right_after_soul(self) -> None:
         ws = _write_meta("operator-instructions-agent")

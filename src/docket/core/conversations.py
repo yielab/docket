@@ -248,12 +248,6 @@ def load(path: Path | None = None) -> ConversationRegistry:
         return ConversationRegistry()
 
 
-def save(reg: ConversationRegistry, path: Path | None = None) -> None:
-    """Persist the registry atomically via edges/store.py."""
-    p = path or _cfg.CONVERSATIONS_FILE
-    _store.write_json(p, reg.model_dump(by_alias=True))
-
-
 # --- durable mutations --------------------------------------------------------
 
 

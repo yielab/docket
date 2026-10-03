@@ -501,27 +501,11 @@ def policy_eval_detail(
     return best
 
 
-def policy_eval(
-    role: str,
-    hook: str,
-    text: str,
-    *,
-    trusted: bool = False,
-    project: str = "",
-    call: ToolCallFacts | None = None,
-) -> str:
-    """Return the winning action for (role, hook, text); most restrictive wins.
-
-    Thin wrapper over :func:`policy_eval_detail` for callers that only need the action, kept so
-    every existing caller/test is unaffected."""
-    return policy_eval_detail(role, hook, text, trusted=trusted, project=project, call=call).action
-
-
 def policy_test(
     hook: str, role: str, text: str, *, project: str = "", call: ToolCallFacts | None = None
 ) -> str:
     """Dry-run the evaluator (no trace emission)."""
-    return policy_eval(role, hook, text, project=project, call=call)
+    return policy_eval_detail(role, hook, text, project=project, call=call).action
 
 
 @dataclass

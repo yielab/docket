@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.11.0
+**Version**: 1.12.0
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -16,7 +16,7 @@ document, the built-in + global catalog, pure activation classification, and
 shipped wire encoding and transport; `edges/adapters/exporters/__init__.py` builds a `SpanSink`
 from a resolved `ExporterSpec` (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts
 the pipeline lazily and flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -421,10 +421,10 @@ document rather than replace it:
 83. `ExporterSpec.privacy_classes` **MUST** return the resolved `frozenset[str]` of granted
     content classes for the same input — the empty set when neither field is set.
 84. A document that still carries the retired `payload` and/or `payloadMaxChars` keys **MUST**
-    load successfully: those keys **MUST NOT** reach `privacy`/`share`/`content_max_chars` or
-    widen `privacy_label` past `"minimal"`, and each such key present on the document **MUST**
-    be named, in the order encountered, in `ExporterSpec.legacy_fields` (ADR 0015 rule 7).
-    `legacy_fields` **MUST NOT** be written back out by `save_exporter`/`export_exporter`.
+    load successfully, with those keys ignored like any other undeclared key: they **MUST NOT**
+    reach `privacy`/`share`/`content_max_chars` or widen `privacy_label` past `"minimal"`
+    (ADR 0015 rule 7), and they are not written back out by `save_exporter`/`export_exporter`.
+    Nothing records or reports that they were present (`ExporterSpec` has no `legacy_fields`).
 85. Every built-in exporter document under `templates/exporters/` **MUST** declare `privacy:
     minimal` (or omit `privacy`/`share` entirely) — including `otel-collector`, whose prior
     `payload: full` is retired, since a collector forwards to whatever its own config names.
@@ -480,8 +480,7 @@ document rather than replace it:
     **MUST** print the privacy label per exporter and its `--json` form's `exporters` entries
     **MUST** carry `privacy: {label, classes}` in place of a bare label string; `docket doctor`
     **MUST** add one informational line (not counted as an issue) per enabled exporter at
-    `conversation`/`full` sharing to a non-loopback host, and one per exporter still carrying a
-    legacy `payload`/`payloadMaxChars` field, naming `docket exporters privacy <name> <level>`.
+    `conversation`/`full` sharing to a non-loopback host.
 
 ### Preview
 
@@ -679,7 +678,6 @@ class ExporterSpec(BaseModel):
     content_max_chars: int = 4000                # alias "contentMaxChars"
     enabled: bool = False
     note: str = ""
-    legacy_fields: list[str] = []                # e.g. ["payload"]; never re-serialized
 
     @property
     def privacy_label(self) -> str: ...           # core.privacy.resolve(privacy, share)[0]
@@ -1104,6 +1102,13 @@ The pod's tasks then parked on `bash` calls the curated allowlist refuses (`pyth
 stayed clean.
 
 ## Changelog
+
+### Version 1.12.0 (2026-10-03)
+
+- **Legacy purge.** `ExporterSpec.legacy_fields` is gone: requirement 84 now says a retired
+  `payload`/`payloadMaxChars` key is ignored like any undeclared key (privacy still defaults to
+  `minimal`; nothing records the key), and requirement 97 drops the `docket doctor` line about
+  retired fields. The interface block and the generated exporter schema no longer list the field.
 
 ### Version 1.11.0 (2026-09-29)
 

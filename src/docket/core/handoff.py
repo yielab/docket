@@ -14,9 +14,8 @@ docstring) and composes the next hop's message from ``HandoffArtifact.render()``
 — never from a hop's raw output directly — then fits the rendered text to the
 role's token budget via ``core/context.py``'s ``compile_artifact``. The
 artifact is persisted alongside its hop record so ``--resume`` recovers it
-exactly; a legacy queued task has hops with no persisted ``artifact`` at all
-— ``from_legacy_output`` is the documented degrade path for that case (treat
-the old raw text as ``summary``, every other field at its default).
+exactly; ``from_output`` builds one from raw text alone (``summary``, every
+other field at its default).
 
 **What dispatch populates today, honestly:**
 
@@ -153,18 +152,11 @@ class HandoffArtifact(BaseModel):
     }
 
     @classmethod
-    def from_legacy_output(cls, output: str) -> HandoffArtifact:
-        """Degrade a pre-artifact hop's raw text into an artifact.
-
-        A legacy queued/persisted task has hops whose only recorded content
-        is ``output`` — a plain string, no ``artifact`` key at all.
-        ``core/dispatch.py``'s ``_hop_from_record`` calls this for exactly
-        that case so ``--resume`` (and any in-memory replay) treats the old
-        raw text as ``summary``. ``HopResult.__post_init__`` calls this same
-        path for any hop constructed without an explicit artifact, so a
-        hand-built ``HopResult`` (as many existing tests use) degrades
-        identically.
-        """
+    def from_output(cls, output: str) -> HandoffArtifact:
+        """An artifact carrying only *output* as its ``summary``.
+        ``HopResult.__post_init__`` uses it for any hop constructed without an explicit
+        artifact, including one read back from a record whose ``artifact`` is missing or
+        invalid."""
         return cls(summary=output)
 
     def render(self) -> str:

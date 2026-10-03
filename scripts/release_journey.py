@@ -296,7 +296,6 @@ def _clean_environment(world: Path) -> dict[str, str]:
         {
             "DOCKET_HOME": str(home),
             "DOCKET_SERVICE_MANAGER": "none",
-            "DOCKET_LOG_DIR": str(world / "logs"),
             "DISPATCH_RETRY_BACKOFF_S": "0",
             "HOME": str(user_home),
             "NO_COLOR": "1",

@@ -55,8 +55,6 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     repoint_docket_home(monkeypatch, home)
-    # Force gateway "down" for deterministic gateway fields.
-    monkeypatch.setattr(serve.utils, "gateway_active", lambda: False)
     return home
 
 
@@ -69,7 +67,6 @@ class TestBuildStatus:
         assert set(st.keys()) == {
             "apiVersion",
             "timestamp",
-            "gateway",
             "channels",
             "agents",
             "totalCostUsd",
@@ -77,9 +74,6 @@ class TestBuildStatus:
 
     def test_api_version_field(self, fake_home: Path) -> None:
         assert serve.build_status()["apiVersion"] == serve.SERVE_API_VERSION
-
-    def test_gateway_inactive_string(self, fake_home: Path) -> None:
-        assert serve.build_status()["gateway"] == "inactive"
 
     def test_channels_from_acl(self, fake_home: Path) -> None:
         assert serve.build_status()["channels"] == ["telegram"]
@@ -130,7 +124,6 @@ class TestRenderMetrics:
             "docket_agent_cost_usd",
             "docket_agent_turns_total",
             "docket_cost_usd_total",
-            "docket_gateway_up",
             "docket_approvals_pending_total",
         ):
             assert name in text
@@ -139,12 +132,10 @@ class TestRenderMetrics:
         text = serve.render_metrics()
         assert "# HELP docket_agents_total Number of project agents" in text
         assert "# TYPE docket_agents_total gauge" in text
-        assert "# HELP docket_gateway_up Gateway service active (1) or not (0)" in text
 
-    def test_agents_total_and_gateway_value(self, fake_home: Path) -> None:
+    def test_agents_total_value(self, fake_home: Path) -> None:
         lines = serve.render_metrics().splitlines()
         assert "docket_agents_total 1" in lines
-        assert "docket_gateway_up 0" in lines
 
     def test_per_agent_labels(self, fake_home: Path) -> None:
         lines = serve.render_metrics().splitlines()
@@ -162,12 +153,8 @@ class TestRenderMetrics:
 
 
 class TestRenderHealth:
-    def test_health_down(self, fake_home: Path) -> None:
-        assert serve.render_health() == '{"status":"ok","gateway":0}\n'
-
-    def test_health_up(self, fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(serve.utils, "gateway_active", lambda: True)
-        assert serve.render_health() == '{"status":"ok","gateway":1}\n'
+    def test_health_body(self, fake_home: Path) -> None:
+        assert serve.render_health() == '{"status":"ok"}\n'
 
 
 # ── live HTTP round-trip (port 0) ─────────────────────────────────────────────
@@ -184,7 +171,7 @@ class TestHttpServer:
         try:
             base = f"http://127.0.0.1:{port}"
             with urllib.request.urlopen(base + "/health", timeout=5) as r:
-                assert json.loads(r.read().decode()) == {"status": "ok", "gateway": 0}
+                assert json.loads(r.read().decode()) == {"status": "ok"}
             with urllib.request.urlopen(base + "/status.json", timeout=5) as r:
                 status = json.loads(r.read().decode())
                 assert status["agents"][0]["id"] == "myshop"

@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.15.0
+**Version**: 3.0.0
 **Status**: Stable
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -35,7 +35,7 @@ It does NOT cover the write endpoints' request handling (`POST /approvals/<token
 request/response body — those are implementation details gated by `Authorization: Bearer <token>`
 and documented in `src/docket/serve.py`.
 
-**API version:** `2`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
+**API version:** `3`  (`SERVE_API_VERSION = "3"` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
 `/health`) require no auth. `/approvals`, `/inbox`, `/runs`, `/runs/<id>`, and the write endpoints
 all require `Authorization: Bearer <token>`.
@@ -74,13 +74,13 @@ All responses are served from `127.0.0.1` (localhost only). Responses include
 
 ### GET /status.json
 
-Full fleet snapshot. Keys are **stable**; additional keys may be added in minor versions.
+Full fleet snapshot, served at `/status.json` only (there is no bare `/status` alias since API
+version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 ```json
 {
-  "apiVersion": "2",
+  "apiVersion": "3",
   "timestamp":  "2026-06-25T10:00:00Z",
-  "gateway":    "active | inactive",
   "channels":   ["telegram"],
   "agents": [
     {
@@ -104,8 +104,7 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
 
 | Field | Type | Notes |
 |---|---|---|
-| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"2"`. |
-| `gateway` | `"active" \| "inactive"` | Compatibility field. Docket owns its runtime, so the shipped `gateway_active()` stub returns `False` and this is always `"inactive"`. |
+| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"3"`. |
 | `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].scope` | `"project" \| "org"` | `project` for pod agents, `org` for shared specialists. |
 | `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
@@ -124,7 +123,6 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_agent_cost_usd{agent,model}` | gauge | Cumulative cost per agent (USD). |
 | `docket_agent_turns_total{agent}` | gauge | Total turns per agent. |
 | `docket_cost_usd_total` | gauge | Total cost across all agents (USD). |
-| `docket_gateway_up` | gauge | `1` = gateway active, `0` = inactive. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
 | `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh from `core/inbox.py::build_inbox(now=..., since=None)` on every scrape, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
 | `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`core/tools.py`'s `dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`). Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. Sourced entirely from trace JSONL (see the durability note below). |
@@ -180,11 +178,10 @@ should be measured against production data, not asserted here.
 Liveness check. Always returns HTTP 200 while the process is alive.
 
 ```json
-{"status":"ok","gateway":0}
+{"status":"ok"}
 ```
 
-`gateway` is retained for API compatibility and is always `0`: Docket has no external gateway
-process. Liveness is represented by the HTTP 200 and `status="ok"`.
+The body is exactly that object. Liveness is represented by the HTTP 200 and `status="ok"`.
 
 ### GET /runs
 
@@ -225,8 +222,10 @@ resolved against — `{}` for every source except `webhook` (see `POST /dispatch
 `cancellation` (added W26-C10a, additive) is the persisted cross-process cancellation signal. Its
 nullable `requestedAt`, `observedAt`, and `stoppedAt` timestamps distinguish an operator request
 from execution observing that request and from execution fully stopping. `reason` and `source` are
-bounded, non-secret context; the lifecycle does not persist a redundant derived phase. Records
-without `cancellation` mean no request. A queued request writes all three timestamps and terminal
+bounded, non-secret context; the lifecycle does not persist a redundant derived phase. Every run
+record is created with a `cancellation` object whose timestamps are all `null` (no request); a
+record whose `cancellation` is missing or not an object is malformed and fails closed like any
+other malformed lifecycle (see Validation). A queued request writes all three timestamps and terminal
 `cancelled` in one atomic transition because no body started. A running request writes
 `requestedAt` once and remains nonterminal until its owning `execute` call observes and stops;
 observation and stop are monotonic and idempotent.
@@ -431,7 +430,7 @@ Request body:
 | `description` | string | Yes | `400` if absent or empty. |
 | `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization `enqueue_task` already applies to the CLI/MCP callers. |
 | `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue (see `core.dispatch.enqueue_task`'s `trusted` parameter). Omitted, it preserves the CLI/MCP default exactly (trusted). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (today: whether the `prompt-injection` policy id is skipped). |
-| `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket pod <p> delegate --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. `core.dispatch.enqueue_task` has no `brief` parameter yet, so even a well-formed one is `422`, naming the missing parameter — nothing is silently dropped, and nothing here guesses the eventual shape (see `cli/_pod.py::_pod_delegate`'s identical contention note). |
+| `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket pod <p> delegate --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. A well-formed one is passed to `core.dispatch.enqueue_task(brief=...)`, which appends it to the task description as a `## Pre-brief` section and persists it on the task's `brief` field — the same path `delegate --brief` takes. |
 
 Success response (task queued, `pending`):
 
@@ -640,7 +639,6 @@ Tack-granted approval must not be indistinguishable from a CI job's.
 ## Validation
 
 - `apiVersion` MUST be a string matching `SERVE_API_VERSION` in `src/docket/serve.py`.
-- `gateway` MUST be exactly `"active"` or `"inactive"`.
 - `agents[*].scope` MUST be `"project"` or `"org"`.
 - `agents[*].budgetUsd` MUST be a float or `null`.
 - `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
@@ -727,14 +725,14 @@ curl -s http://127.0.0.1:7331/status.json | jq .
 ```bash
 curl -s http://127.0.0.1:7331/metrics
 # docket_agents_total 3
-# docket_gateway_up 0
+# docket_cost_usd_total 0
 ```
 
 ### Health check
 
 ```bash
 curl -s http://127.0.0.1:7331/health
-# {"status":"ok","gateway":0}
+# {"status":"ok"}
 ```
 
 ### Trigger a dispatch and poll its run (curl)
@@ -756,6 +754,17 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.0.0 (2026-10-03)
+
+- **`SERVE_API_VERSION` 2 → 3 (legacy purge): the daemon `gateway` residue is gone.**
+  `/status.json` no longer carries `gateway`, `/health`'s body is exactly `{"status":"ok"}`, the
+  `docket_gateway_up` metric is removed, and the undocumented bare `/status` alias of
+  `/status.json` is dropped. `POST /tasks/<project>`'s `brief` row is corrected: a well-formed
+  brief passes through to `enqueue_task` (which already takes `brief`); the row still
+  claimed a `422`, and the inert signature-check shim behind that claim is deleted. The internal cost
+  payload behind `/metrics` dropped fields it never rendered; no metric changed. A run record
+  with no `cancellation` key is now malformed (it used to read as "no request").
 
 ### Version 2.15.0 (2026-09-29)
 

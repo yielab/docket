@@ -1,7 +1,7 @@
 """fleet.json — docket's own agent-fleet registry (models + read/write API).
 
-Agent registration, channel bindings, gates/isolation flags, and the
-org-wide default model are read/written **only** by docket, through
+Agent registration, channel bindings, and isolation flags are read/written
+**only** by docket, through
 ``edges/store.py`` — nothing else ever writes ``fleet.json``. The single-writer
 contract makes cross-runtime configuration drift structurally impossible:
 with one writer, "an older docket version partially wrote this" is still
@@ -25,7 +25,6 @@ for fleet and agent-metadata state. These are docket-owned formats read through
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,30 +55,14 @@ class FleetBinding(BaseModel):
     peer_id: str = Field("", alias="peerId")
 
 
-class FleetDefaults(BaseModel):
-    """Read-only remnant. ``model`` is ported into docket-models.json's ``default``
-    on first read, then cleared -- ``get_default_model``/``set_default_model``
-    never write it again."""
-
-    model_config = _LENIENT
-
-    model: str = ""
-
-
 class FleetSecurity(BaseModel):
-    """Gates/isolation/approval-routing flags (see security-gates.spec.md)."""
+    """Workspace-isolation flags (see security-gates.spec.md)."""
 
     model_config = _LENIENT
 
     isolation_enabled: bool = Field(False, alias="isolationEnabled")
     # 'unset' | 'off' | a sandbox mode string (e.g. 'non-main').
     isolation_mode: str = Field("unset", alias="isolationMode")
-    # 'unset' | 'on' | 'off' — a real tri-state, not a bool, so "never
-    # configured" and "explicitly turned off" stay distinguishable (the same
-    # shape as isolation_mode above; a bare `enabled: bool` cannot tell those
-    # two apart).
-    approval_routing_state: str = Field("unset", alias="approvalRoutingState")
-    approval_routing_mode: str = Field("", alias="approvalRoutingMode")
 
 
 class FleetConfig(BaseModel):
@@ -90,11 +73,6 @@ class FleetConfig(BaseModel):
     agents: list[FleetAgent] = Field(default_factory=list)
     bindings: list[FleetBinding] = Field(default_factory=list)
     security: FleetSecurity = Field(default_factory=lambda: FleetSecurity())
-    defaults: FleetDefaults = Field(default_factory=lambda: FleetDefaults())
-    # Superseded by core/provider.py's catalog (docket-providers.json). Read exactly once by
-    # `core.provider.migrate_fleet_providers` on the first `load_catalog()` call, then cleared;
-    # removal of this field is deferred one release (ADR 0011).
-    providers: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -163,64 +141,9 @@ def agent_count() -> int:
     return len(load_fleet().agents)
 
 
-def get_default_model() -> str:
-    """Return docket's one default model id: docket-models.json's ``default``.
-    Ports a legacy fleet.json value forward first via
-    ``_migrate_legacy_default_model``, which is never read live otherwise."""
-    _migrate_legacy_default_model()
-    from docket.core import models_policy as _mp
-
-    _, _, default_model = _mp.load_registry()
-    return default_model
-
-
-def set_default_model(model: str) -> None:
-    """Write docket's one default model id to the models registry.
-
-    fleet.json's own ``defaults.model`` field is not written again."""
-    _migrate_legacy_default_model()
-    from docket.core import models_policy as _mp
-
-    _mp.write_registry({"default": model})
-
-
-def _migrate_legacy_default_model() -> None:
-    """Port a non-empty fleet.json ``defaults.model`` into the models registry.
-    Skips a registry that already has its own ``default``; always clears the
-    fleet field after, so a later call is a no-op."""
-    fleet_cfg = load_fleet()
-    legacy = fleet_cfg.defaults.model
-    if not legacy:
-        return
-    from docket.core import models_policy as _mp
-
-    registry_has_default = False
-    try:
-        if _cfg.MODEL_REGISTRY_FILE.exists():
-            raw = json.loads(_cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8"))
-            registry_has_default = bool(raw.get("default"))
-    except Exception:
-        registry_has_default = False
-    if not registry_has_default:
-        _mp.write_registry({"default": legacy})
-    fleet_cfg.defaults.model = ""
-    _save_fleet(fleet_cfg)
-
-
-def add_agent(
-    agent_id: str,
-    model: str = "",
-    session_key: str = "",
-    project_key: str = "",
-) -> None:
-    """Register agent_id in the fleet (no-op if already present).
-
-    ``model``/``session_key``/``project_key`` are accepted for call-site
-    compatibility (callers historically pass all four) but are not stored
-    here — ``.docket-meta.json`` (``AgentMeta``) is their one real home;
-    duplicating them in the fleet registry would recreate the drift this
-    module's docstring describes.
-    """
+def add_agent(agent_id: str) -> None:
+    """Register agent_id in the fleet (no-op if already present). Model and session keys live
+    in ``.docket-meta.json`` (``AgentMeta``), never here."""
     cfg = load_fleet()
     if not agent_registered(agent_id, cfg):
         cfg.agents.append(FleetAgent(id=agent_id))
@@ -314,12 +237,6 @@ def get_isolation_enabled(cfg: FleetConfig | None = None) -> bool:
     return (cfg or load_fleet()).security.isolation_enabled
 
 
-def set_isolation_enabled(enabled: bool) -> None:
-    cfg = load_fleet()
-    cfg.security.isolation_enabled = enabled
-    _save_fleet(cfg)
-
-
 def get_isolation_mode() -> str:
     """Return the fleet's sandbox isolation mode ('unset' if never configured)."""
     return load_fleet().security.isolation_mode
@@ -338,27 +255,6 @@ def disable_sandbox_isolation() -> None:
     cfg = load_fleet()
     cfg.security.isolation_mode = "off"
     cfg.security.isolation_enabled = False
-    _save_fleet(cfg)
-
-
-def get_approval_routing() -> tuple[str, str]:
-    """Return (state, mode) for exec-approval routing; state is 'on' | 'off' | 'unset'."""
-    sec = load_fleet().security
-    return (sec.approval_routing_state, sec.approval_routing_mode)
-
-
-def set_approval_routing(enabled: bool, mode: str = "session") -> None:
-    """Write the fleet's exec-approval routing state."""
-    cfg = load_fleet()
-    cfg.security.approval_routing_state = "on" if enabled else "off"
-    cfg.security.approval_routing_mode = mode
-    _save_fleet(cfg)
-
-
-def disable_approval_routing() -> None:
-    """Turn exec-approval routing off."""
-    cfg = load_fleet()
-    cfg.security.approval_routing_state = "off"
     _save_fleet(cfg)
 
 

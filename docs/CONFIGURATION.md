@@ -97,9 +97,7 @@ the agent ran `git commit` itself, its changes stay **uncommitted** in the workt
 and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
 there too. `docket delete` also deletes that branch when it is merged into your
 current branch; an unmerged branch is kept, with the removal command printed. Reviewer and Tester run with the codebase root as
-their working directory, so a test run can leave caches in your checkout. Outside the repo,
-`docket init` also creates `~/Sites` (`SITES_DIR`) and `/tmp/docket` (`DOCKET_LOG_DIR`) if they
-are missing.
+their working directory, so a test run can leave caches in your checkout.
 
 To try any of this without touching your real setup, point `HOME` (or `DOCKET_HOME`) at a scratch
 directory. Every docket path resolves under it.
@@ -532,8 +530,7 @@ path, not the only one; `bash` can still reach the network through allowlisted i
 
 **Isolation.** `docket gates isolate on` runs tools inside Docker or bwrap, and refuses the turn
 when neither is usable. The image is `DOCKET_SANDBOX_IMAGE`. This sets `isolationEnabled` in
-`fleet.json`, the only `security` flag the live path enforces. (`docket gates enable|disable` is
-retired: the flag it wrote was never read on the live path.)
+`fleet.json`, the only `security` flag the live path enforces.
 
 ### 3.7 Give agents external tools (MCP)
 
@@ -942,10 +939,6 @@ argument) and re-run `enable` -- it re-probes with the stored credential before 
 | `docket exporters remove <name>` | Removes a global override; a built-in reverts to its shipped defaults instead of disappearing |
 | `docket exporters export <name> [<file>]` | Writes the effective document back out, short-form YAML |
 
-The retired `payload`/`payloadMaxChars` fields still load, always as `minimal` — they never
-widen what an exporter shares — and `docket doctor` names the `docket exporters privacy` command
-that replaces them.
-
 A pod names the destinations it wants in `pod.yaml`'s `exporters:` list (validated against the
 live catalog by `apply`/`validate`/`init --recipe`; unknown names refuse before anything is
 written); the list is recorded and reported, never itself the thing that turns an exporter on --
@@ -1068,7 +1061,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
-| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode,approvalRoutingState,approvalRoutingMode}` | init, `wire`, `gates` | isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode}` | init, `wire`, `gates` | isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `models provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `models provider add/remove/export`. Malformed entries are named by `docket doctor`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
@@ -1123,7 +1116,7 @@ what you changed on top of one.
 | `portRangeStart`, `portRangeCount`, `scratchDir` | Implementer environment `DOCKET_PORT_BASE/COUNT`, `DOCKET_SCRATCH_DIR` | provisioning |
 | `persona` | the persona block in the system prompt | `persona set/clear` |
 | `sessionKey`, `projectKey` | shown by `docket scope`; dispatch builds its own per-task session key | `scope` |
-| `templateVersion`, `schemaVersion`, `kind`, `scope`, `stack`, `name`, `description`, `created` | informational. `stack` and `name` fill templates at provisioning | provisioning |
+| `templateVersion`, `kind`, `scope`, `stack`, `name`, `description`, `created` | informational. `stack` and `name` fill templates at provisioning | provisioning |
 
 The Markdown files are covered in [§2](#2-how-the-files-reach-a-running-agent) (what reaches the
 model) and [§3.2](#32-change-what-an-agent-is-told) (what to edit, and what overwrites it). Only

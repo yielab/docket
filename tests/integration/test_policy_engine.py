@@ -3,8 +3,7 @@
 Exercises ``core/policy.py``'s ``pre_input``/``pre_output`` hooks wired into the real dispatch
 path, not just the CLI's dry-run printer. TestInstallPolicies covers the shared
 ``install_policies()`` producer; TestPolicyEvalDetail covers the ``PolicyHit``-returning evaluator
-underneath the unchanged ``policy_eval``/``policy_test`` (every existing caller keeps working
-unmodified); TestEnqueuePreInputGate and TestPreOutputGate cover the hooks themselves: block
+underneath ``policy_test``; TestEnqueuePreInputGate and TestPreOutputGate cover the hooks themselves: block
 rejects before/fails a hop and stops the pipeline, require_approval persists a real approval
 record, redact scrubs the stored/carried text, allow/warn pass it through, and every non-allow
 hit emits ``guardrail_check`` (block also ``guardrail_block``). See
@@ -64,7 +63,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id)
 
 
 def _seed_lean_pod(project: str = "myapp") -> None:
@@ -180,7 +179,7 @@ class TestInstallPolicies:
         assert not result.template_dir.is_dir()
 
 
-# ── policy_eval_detail() — PolicyHit underneath the unchanged policy_eval() ──────
+# ── policy_eval_detail() — PolicyHit underneath the unchanged policy_eval_detail().action ──────
 
 
 class TestPolicyEvalDetail:
@@ -198,8 +197,8 @@ class TestPolicyEvalDetail:
 
     def test_policy_eval_thin_wrapper_matches_detail_action(self) -> None:
         _write_policy("kill-switch", "pre_input", "DELETE PROD", "block")
-        assert _policy.policy_eval("lead", "pre_input", "DELETE PROD") == "block"
-        assert _policy.policy_eval("lead", "pre_input", "harmless text") == "allow"
+        assert _policy.policy_eval_detail("lead", "pre_input", "DELETE PROD").action == "block"
+        assert _policy.policy_eval_detail("lead", "pre_input", "harmless text").action == "allow"
 
     def test_most_restrictive_wins_detail(self) -> None:
         _write_policy("warn-only", "pre_input", "secret", "warn")

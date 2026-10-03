@@ -1,8 +1,6 @@
-"""Agent identity: Docket-owned persona + quarantine of foreign scaffolding.
+"""Agent identity: Docket-owned persona and prompt composition.
 
-Guards the congruence fix (agent-structure-analysis.md §6): identity is a pure
-function of docket metadata (persona → name → role), rendered into SOUL.md; the
-self-authored IDENTITY.md/BOOTSTRAP.md files are pollution to be quarantined.
+Identity is a pure function of docket metadata (persona → name → role), rendered into SOUL.md.
 """
 
 from __future__ import annotations
@@ -105,27 +103,6 @@ class TestUpsertPersonaBlock:
 
     def test_no_persona_no_change(self) -> None:
         assert I.upsert_persona_block(self.SOUL, None) == self.SOUL
-
-
-class TestQuarantineScaffolding:
-    def test_moves_scaffolding_reversibly(self, tmp_path: Path) -> None:
-        (tmp_path / "IDENTITY.md").write_text("pick a name\n")
-        (tmp_path / "BOOTSTRAP.md").write_text("you just woke up\n")
-        (tmp_path / "SOUL.md").write_text("# role\n")
-        archived = I.quarantine_scaffolding(tmp_path)
-        assert set(archived) == {"IDENTITY.md", "BOOTSTRAP.md"}
-        assert not (tmp_path / "IDENTITY.md").exists()
-        assert not (tmp_path / "BOOTSTRAP.md").exists()
-        # reversible: moved, not deleted
-        assert (tmp_path / ".docket-archive" / "IDENTITY.md").is_file()
-        assert (tmp_path / ".docket-archive" / "BOOTSTRAP.md").is_file()
-        # docket-owned files untouched
-        assert (tmp_path / "SOUL.md").is_file()
-
-    def test_idempotent_when_clean(self, tmp_path: Path) -> None:
-        (tmp_path / "SOUL.md").write_text("# role\n")
-        assert I.quarantine_scaffolding(tmp_path) == []
-        assert I.quarantine_scaffolding(tmp_path) == []
 
 
 class TestRuntimeWorkspaceContextReporting:

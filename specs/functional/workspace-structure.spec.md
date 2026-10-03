@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -15,7 +15,7 @@ requirement 5: `templates/exporters/` joins `templates/providers/` as read-only 
 `docket-exporters.json`/`exporters-health.json` are documented in
 observability-export.spec.md, not here — this spec's scope is the workspace and template layer,
 not `DOCKET_HOME`'s own top-level registry files (see "Shipped-data templates").
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -28,7 +28,7 @@ This specification covers:
 
 - The directory and files that make up a project-agent (and pod-member) workspace
 - The org-specialist layout
-- Permission invariants and scaffolding quarantine
+- Permission invariants
 - The boundary between a provisioned *workspace* (covered above) and shipped, read-only
   *package data* under `src/docket/templates/` (`templates/policies/`, and P26-20's
   `templates/recipes/<name>/`) — see "Shipped-data templates" below
@@ -77,7 +77,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
      `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket maintain
-     distill` (and `clean`/`reset` when `--distill-first` is on, the default; ROADMAP Phase 17
+     distill` (and `clean`/`reset`, which distill first by default; ROADMAP Phase 17
      C-2) writes daily logs into instead of deleting them, one dated subdirectory per distillation
      run. Never created at provisioning, never read by the runtime contract (a plain
      `memory/*.md` glob does not descend into it), and never counted as a "missing" file by
@@ -94,12 +94,13 @@ covers the resulting file set for either workspace kind, not blueprint selection
 4. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
    workspace under `projects/`; the pod **Lead's** workspace additionally holds
    `TASK_LIST.json`, the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md).
-5. Self-authoring scaffolding (`IDENTITY.md`, `BOOTSTRAP.md`) **MUST NOT** remain
-   live in a managed workspace: provisioning and `docket doctor` quarantine it to
-   `.docket-archive/` (identity is docket-owned — role + optional persona from metadata).
+5. *Removed (2026-10-03):* the `IDENTITY.md`/`BOOTSTRAP.md` quarantine to `.docket-archive/`.
+   docket never reads either file (identity is docket-owned — role + optional persona from
+   metadata, rendered into `SOUL.md`), so neither provisioning, `docket init` nor `docket
+   doctor` moves or deletes one; a file of that name in a workspace is inert.
 6. `INSTRUCTIONS.md` **MAY** exist in any project-agent workspace, pod member or not.
    Unlike every other file above it is **operator-owned**: docket **MUST NOT** create,
-   write, regenerate, or quarantine it at any point — not at provisioning, not by
+   write, regenerate, move, or delete it at any point — not at provisioning, not by
    `docket pod <p> sync`, not by `set-verify`'s TOOLS.md rewrite, not by `docket maintain
    rebuild`, and not by `docket doctor --fix`. When present, its content is composed into
    the live prompt immediately after `SOUL.md` (agent-loop.spec.md requirement 30) so an
@@ -287,8 +288,6 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ### Invariants
 
 - Directory permissions **MUST** be `700` and file permissions `600`.
-- No live `IDENTITY.md`/`BOOTSTRAP.md` in a managed workspace (quarantined to
-  `.docket-archive/`).
 - A project agent is `workspaceKind: codebase` or `workspaceKind: workdir`, never both — a
   `workdir`-kind member's contract files never reference a codebase.
 - A pod Lead's `HEARTBEAT.md` dispatch region (see requirement 1) **MUST NOT** be the only thing
@@ -299,6 +298,14 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.16.0 (2026-10-03)
+
+- Legacy compatibility removed (no users; maintainer decision 2026-10-03). Requirement 5 (the
+  `IDENTITY.md`/`BOOTSTRAP.md` quarantine to `.docket-archive/` by provisioning and `docket
+  doctor`) is marked removed: docket never reads those files, so the quarantine guarded nothing
+  on the live path. Its invariant and the Scope bullet go with it. The `memory/.distilled/`
+  note no longer names the deleted `--distill-first` flag.
 
 ### Version 1.15.0 (2026-09-27)
 

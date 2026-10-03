@@ -14,16 +14,11 @@ class DocketCli < Formula
   license "Apache-2.0"
   version "0.2.0-beta.3"
 
-  # Deliberately no Homebrew Bash dependency: bin/docket, the only shell this
-  # formula installs, runs on the Bash 3.2 macOS ships. The dependency existed
-  # for a 4.0 floor the shell surface never actually needed.
+  # No Homebrew Bash dependency: bin/docket, the only shell this formula
+  # installs, runs on the Bash 3.2 macOS ships.
   depends_on "python@3.11"
 
-  # fzf is optional — docket falls back to a numbered picker without it
-  depends_on "fzf" => :optional
-
-  # docket has no external daemon dependency (Phase 19 clean break) — the
-  # Python package is the whole product; every command dispatches to it.
+  # The Python package is the whole product; every command dispatches to it.
   include Language::Python::Virtualenv
 
   def install
@@ -47,7 +42,7 @@ class DocketCli < Formula
       server. It has no other external service dependency.
 
       Get started:
-        docket install                 # bootstrap docket's home + specialist agents
+        docket init                    # run inside a codebase: sets up docket and its first pod
         docket keys add ANTHROPIC_API_KEY   # or point at a local endpoint
 
       See the quick-start guide:

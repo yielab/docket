@@ -193,7 +193,6 @@ class TestConfigExplainScopeLabels:
                 "name": "reviewer",
                 "scope": "pod",
                 "modelClass": "cheap",
-                "editRights": "read-only",
                 "soulTemplate": "# shadowed reviewer\n${role}",
                 "agentsTemplate": "# shadowed reviewer agents\n${role}",
                 "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},

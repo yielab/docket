@@ -51,8 +51,7 @@ def run_audit_verify() -> int:
 
     Returns 0 when the current file is clean (or absent — nothing to
     verify), 1 when the first broken link is found (reported with its line
-    number). Legacy (pre-chain) lines are reported as unchained, never as
-    tampering.
+    number). A line without ``seq``/``prev_hash`` is a broken link.
     """
     result = _audit.verify_chain()
 
@@ -61,12 +60,9 @@ def run_audit_verify() -> int:
         return 0
 
     if result.break_at is not None:
-        # total_lines is only informative here: counting (chained/legacy) stops
-        # at the break, so "line X of N" is the one place this field tells the
-        # operator something chained+legacy can't (how much of the file lies
-        # beyond the detected break). In the clean-chain summary below,
-        # chained+legacy always sums to total_lines, so repeating it there
-        # would be redundant — this is the field's one renderer (G-4b).
+        # total_lines is only informative here: counting stops at the break, so
+        # "line X of N" tells the operator how much of the file lies beyond it.
+        # In the clean-chain summary below, chained always equals total_lines.
         ui.error(
             f"Tamper check FAILED at line {result.break_at.line} of {result.total_lines}: "
             f"{result.break_at.reason}"
@@ -74,10 +70,7 @@ def run_audit_verify() -> int:
         ui.dim(f"  file: {_cfg.AUDIT_LOG}")
         return 1
 
-    summary = f"{result.chained} chained line(s) verified clean"
-    if result.legacy:
-        summary += f", {result.legacy} legacy (unchained) line(s) skipped"
-    ui.success(summary + ".")
+    ui.success(f"{result.chained} chained line(s) verified clean.")
 
     if result.continued_from_seq is not None:
         ui.dim(
@@ -87,7 +80,7 @@ def run_audit_verify() -> int:
     elif result.rotated_backup:
         ui.dim(
             "  A rotated backup exists (audit.log.1), but this chain does not "
-            "claim continuity from it (it started fresh after a pre-chain/legacy "
-            "line) — verify only checks the current file."
+            "claim continuity from it (it started fresh) — verify only checks the "
+            "current file."
         )
     return 0

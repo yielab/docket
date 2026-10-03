@@ -33,17 +33,6 @@ ROLE_CLASS: dict[str, str] = {
     "portfolio-manager": "cheap",
 }
 
-# Old/short model-id → current canonical model-id. Unrelated to the retired
-# tier vocabulary (no entry here resolves through a tier name any more).
-MODEL_ALIASES: dict[str, str] = {
-    "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
-    "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
-    "anthropic/claude-sonnet-3-5": "anthropic/claude-sonnet-4-6",
-    "anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4-6",
-    "anthropic/claude-opus-3": "anthropic/claude-opus-4-6",
-    "anthropic/claude-opus-4": "anthropic/claude-opus-4-6",
-}
-
 _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
 
@@ -152,70 +141,15 @@ def _init_role_models(tiers: dict[str, str]) -> dict[str, str]:
     return result
 
 
-def _init_role_overrides_from_tiers(profiles: dict[str, Any]) -> dict[str, str]:
-    """Derive per-role overrides from legacy tier-anchor values (migration helper)."""
-    tiers = dict(rank_anchors())
-    for tier in ("economy", "standard", "premium"):
-        m = profiles.get(tier)
-        if isinstance(m, str) and _MODEL_ID_RE.match(m):
-            tiers[tier] = m
-    return _init_role_models(tiers)
-
-
-def migrate_legacy_profiles() -> str | None:
-    """One-shot migration: legacy ``profiles:`` tier overrides -> ``roles:``.
-    Idempotent -- a no-op once ``profiles:`` is gone or ``roles:`` exists
-    (left as residual for ``docket doctor``; see ``has_residual_profiles_key``).
-    Returns a summary to print (this module never prints), or ``None`` if unchanged."""
-    path = cfg.MODEL_REGISTRY_FILE
-    if not path.exists():
-        return None
-    try:
-        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-    profiles = reg.get("profiles")
-    if not isinstance(profiles, dict) or not profiles:
-        return None
-    if reg.get("roles"):
-        return None  # roles: already present — leave profiles: for doctor to flag
-
-    reg["roles"] = _init_role_overrides_from_tiers(profiles)
-    del reg["profiles"]
-    _store.write_json(path, reg)
-    return (
-        "Migrated legacy 'profiles:' tier overrides in docket-models.json to "
-        "'roles:' (one-time). The 'profiles:' key is no longer read."
-    )
-
-
-def has_residual_profiles_key() -> bool:
-    """True if docket-models.json still has a residual ``profiles:`` key
-    (used by ``docket doctor``): the one-shot migration found ``roles:``
-    already present and left ``profiles:`` untouched, or hasn't run yet."""
-    path = cfg.MODEL_REGISTRY_FILE
-    if not path.exists():
-        return False
-    try:
-        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
-    return bool(reg.get("profiles"))
-
-
 def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     """Return (role_models, tiers, default_model) from docket-models.json.
-    Falls back to built-in defaults on any read/parse error; self-migrates a
-    legacy ``profiles:`` key first (see ``migrate_legacy_profiles``).
+    Falls back to built-in defaults on any read/parse error.
 
     ``tiers`` are registry-overridable via ``rankAnchors``, applied *before*
     role defaults are derived so an overridden anchor reshapes every
     cheap/strong-class role default too. Malformed entries (unknown anchor,
     bad model id) are silently ignored, like ``default``/``roles`` below.
     """
-    migrate_legacy_profiles()  # silent, idempotent — see the CLI layer for the warning
-
     tiers = dict(rank_anchors())
     default_model = cfg.DEFAULT_MODEL
 
@@ -375,13 +309,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     warnings); raises ValueError on hard failure."""
     warnings: list[str] = []
 
-    # 1. Known alias (old/short model id → current canonical id).
-    if model in MODEL_ALIASES:
-        resolved = MODEL_ALIASES[model]
-        warnings.append(f"Model alias '{model}' → '{resolved}'.")
-        return resolved, warnings
-
-    # 2. Well-formed provider/model — accepted; warn if unpriced (never for a
+    # 1. Well-formed provider/model — accepted; warn if unpriced (never for a
     #    local endpoint, which is honestly priced at $0, not "unknown").
     if _MODEL_ID_RE.match(model):
         provider = model.split("/", 1)[0]
@@ -400,7 +328,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
                 )
         return model, warnings
 
-    # 3. Malformed (includes the retired tier names economy/standard/premium).
+    # 2. Malformed.
     role_models, _, _ = load_registry()
     lines = "\n".join(f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES)
     raise ValueError(
@@ -431,7 +359,7 @@ def policy_agent_ids() -> list[str]:
     from docket.core.utils import project_ids
 
     ids: list[str] = list(project_ids())
-    for spec in cfg.SPECIALIST_ORDER:
+    for spec in cfg.ORG_SPECIALIST_ORDER:
         if (cfg.WORKSPACES_DIR / spec).is_dir():
             ids.append(spec)
     return ids

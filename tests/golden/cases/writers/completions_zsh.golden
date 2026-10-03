@@ -27,7 +27,7 @@ _docket() {
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
     'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
-    'gates:Manage docket'\''s approval-routing and workspace-isolation posture'
+    'gates:Show docket'\''s tool-call gate and manage workspace isolation'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set/prune)'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
@@ -73,20 +73,20 @@ _docket() {
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
-    runs|run)        compadd list show cancel prune ;;
-    conversations|conv) compadd list show resume set prune ;;
+    runs)            compadd list show cancel prune ;;
+    conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates|security)  compadd status enable disable isolate classes ;;
-    keys|key|secret) compadd add list remove rotate setup validate export ;;
+    gates)           compadd status isolate classes ;;
+    keys)            compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;
-    policies|policy) compadd list show init test validate ;;
-    recipes|recipe)  compadd list show ;;
-    roles|role)      compadd list show add validate ;;
-    completions|completion) compadd bash zsh ;;
-    cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
+    policies)        compadd list show init test validate ;;
+    recipes)         compadd list show ;;
+    roles)           compadd list show add validate ;;
+    completions)     compadd bash zsh ;;
+    cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
+    info|delete|profile|wire|unwire|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

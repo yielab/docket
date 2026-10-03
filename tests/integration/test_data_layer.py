@@ -1,4 +1,4 @@
-"""Data layer — models, store, fleet registry, _json bridge."""
+"""Data layer — models, store, fleet registry."""
 
 from __future__ import annotations
 
@@ -89,12 +89,6 @@ class TestAgentMeta:
         dumped = meta.model_dump(by_alias=True)
         assert dumped.get("futureField") == "x"
 
-    def test_schema_version_defaults(self) -> None:
-        from docket.core.models import SCHEMA_VERSION, AgentMeta
-
-        meta = AgentMeta.model_validate({"kind": "specialist", "role": "reviewer"})
-        assert meta.schema_version == SCHEMA_VERSION
-
     def test_specialist_kind(self) -> None:
         from docket.core.models import AgentKind, AgentMeta
 
@@ -111,9 +105,7 @@ class TestAgentMeta:
         assert meta.scope == AgentScope.project
         assert meta.model_dump(by_alias=True)["scope"] == "project"
 
-    def test_scope_explicit_value_is_respected_over_inference(self) -> None:
-        # A specialist explicitly marked org stays org even if its role would
-        # otherwise infer project — explicit always wins.
+    def test_scope_explicit_value_is_respected(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
 
         meta = AgentMeta.model_validate(
@@ -129,27 +121,11 @@ class TestAgentMeta:
         with pytest.raises(ValidationError):
             AgentMeta.model_validate({"kind": "project", "scope": "global"})
 
-    def test_scope_backfill_project_agent(self) -> None:
+    def test_scope_defaults_to_project(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
 
         meta = AgentMeta.model_validate({"kind": "project"})
         assert meta.scope == AgentScope.project
-
-    def test_scope_backfill_org_specialist(self) -> None:
-        # security/knowledge (and, for now, manager) are cross-cutting → org.
-        from docket.core.models import AgentMeta, AgentScope
-
-        for role in ("security", "knowledge", "manager"):
-            meta = AgentMeta.model_validate({"kind": "specialist", "role": role})
-            assert meta.scope == AgentScope.org, role
-
-    def test_scope_backfill_project_specialist(self) -> None:
-        # programmer/reviewer/tester become per-pod project workers → project.
-        from docket.core.models import AgentMeta, AgentScope
-
-        for role in ("programmer", "reviewer", "tester"):
-            meta = AgentMeta.model_validate({"kind": "specialist", "role": role})
-            assert meta.scope == AgentScope.project, role
 
 
 # ── fleet models ──────────────────────────────────────────────
@@ -165,7 +141,6 @@ class TestFleetConfig:
         cfg = FleetConfig.model_validate(raw)
         assert len(cfg.agents) == 1
         assert cfg.agents[0].id == "myshop"
-        assert cfg.defaults.model == "anthropic/claude-sonnet-4-6"
         assert len(cfg.bindings) == 1
         assert cfg.bindings[0].agent_id == "myshop"
 
@@ -181,10 +156,6 @@ class TestFleetConfig:
         cfg = FleetConfig.model_validate(raw)
         dumped = cfg.model_dump(by_alias=True)
         assert dumped["newTopLevelKey"] == 42
-
-    # Auth-profiles were a daemon-owned concept with no docket-native
-    # replacement -- deleted outright, not moved. `docket auth` itself is a
-    # removed command now (__main__.py's _REMOVED["auth"]).
 
 
 # ── store ─────────────────────────────────────────────────────────────────────
@@ -363,7 +334,7 @@ class TestFleet:
     def test_add_remove_agent(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 
-        _fleet.add_agent("newbot", "anthropic/claude-haiku-4-5", "agent:newbot:proj")
+        _fleet.add_agent("newbot")
         assert _fleet.agent_registered("newbot")
         _fleet.remove_agent("newbot")
         assert not _fleet.agent_registered("newbot")
@@ -371,7 +342,7 @@ class TestFleet:
     def test_add_agent_idempotent(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 
-        _fleet.add_agent("myshop", "anthropic/claude-haiku-4-5")
+        _fleet.add_agent("myshop")
         # Should not duplicate
         assert len(_fleet.list_agents()) == 1
 
@@ -398,54 +369,8 @@ class TestFleet:
         from docket.core import fleet as _fleet
 
         assert not _fleet.get_isolation_enabled()
-        _fleet.set_isolation_enabled(True)
+        _fleet.set_sandbox_isolation(mode="non-main")
         assert _fleet.get_isolation_enabled()
-
-    def test_default_model(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
-
-        assert _fleet.get_default_model() == "anthropic/claude-sonnet-4-6"
-        _fleet.set_default_model("anthropic/claude-haiku-4-5")
-        assert _fleet.get_default_model() == "anthropic/claude-haiku-4-5"
-
-    def test_set_default_model_writes_the_models_registry(self, oc_env: Path) -> None:
-        """`set_default_model` must land in docket-models.json, not fleet.json --
-        that registry is the one place a default model lives."""
-        from docket.core import fleet as _fleet
-        from docket.core import models_policy as _mp
-
-        _fleet.set_default_model("openai/gpt-4.1-mini")
-        _, _, default_model = _mp.load_registry()
-        assert default_model == "openai/gpt-4.1-mini"
-        raw = json.loads((oc_env / "fleet.json").read_text())
-        assert raw.get("defaults", {}).get("model", "") == ""
-
-    def test_default_model_reflects_a_direct_registry_write(self, oc_env: Path) -> None:
-        """A write straight to docket-models.json (what `models set default`/
-        `models preset` do) must be visible to `get_default_model` without a
-        separate fleet.json write -- there is only one default of record."""
-        from docket.core import fleet as _fleet
-        from docket.core import models_policy as _mp
-
-        _mp.write_registry({"default": "openai/gpt-4.1"})
-        assert _fleet.get_default_model() == "openai/gpt-4.1"
-
-    def test_legacy_fleet_default_migrates_into_registry_once(self, oc_env: Path) -> None:
-        """An old fleet.json `defaults.model` (pre-migration) is ported into the
-        registry on first read, then cleared so it never diverges again."""
-        from docket.core import fleet as _fleet
-
-        raw = json.loads((oc_env / "fleet.json").read_text())
-        raw.setdefault("defaults", {})["model"] = "openai/gpt-4.1-nano"
-        (oc_env / "fleet.json").write_text(json.dumps(raw))
-        assert not (oc_env / "docket-models.json").exists()
-
-        assert _fleet.get_default_model() == "openai/gpt-4.1-nano"
-
-        reg = json.loads((oc_env / "docket-models.json").read_text())
-        assert reg["default"] == "openai/gpt-4.1-nano"
-        after = json.loads((oc_env / "fleet.json").read_text())
-        assert after["defaults"]["model"] == ""
 
     def test_meta_get_set(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
@@ -480,87 +405,3 @@ class TestFleet:
 # fleet.json as the single source of truth for registration/bindings/gates/
 # defaults, and .docket-meta.json the single source for model/sessionKey,
 # there is nothing left to drift between.
-
-# ── _json bridge (CLI) ────────────────────────────────────────────────────────
-
-
-class TestJsonBridge:
-    """Test the _json CLI command end-to-end, in-process via CliRunner."""
-
-    @pytest.fixture(autouse=True)
-    def _use_oc_env(self, oc_env: Path) -> None:
-        """Every test below runs against the ``oc_env`` fixture's isolated home."""
-
-    def _run(self, *args: str) -> tuple[int, str, str]:
-        from docket.cli import app
-
-        result = _runner.invoke(app, ["_json", *args])
-        return result.exit_code, result.stdout.strip(), result.stderr.strip()
-
-    def test_meta_get(self) -> None:
-        rc, out, _ = self._run("meta-get", "myshop", "name")
-        assert rc == 0
-        assert out == "My Shop"
-
-    def test_meta_get_default(self) -> None:
-        rc, out, _ = self._run("meta-get", "myshop", "nofield", "fallback")
-        assert rc == 0
-        assert out == "fallback"
-
-    def test_meta_set(self) -> None:
-        rc, _, _ = self._run("meta-set", "myshop", "description", "New desc")
-        assert rc == 0
-        rc2, out, _ = self._run("meta-get", "myshop", "description")
-        assert rc2 == 0
-        assert out == "New desc"
-
-    def test_agent_registered_yes(self) -> None:
-        rc, out, _ = self._run("agent-registered", "myshop")
-        assert rc == 0
-        assert out == "1"
-
-    def test_agent_registered_no(self) -> None:
-        rc, out, _ = self._run("agent-registered", "ghost")
-        assert rc == 1
-        assert out == "0"
-
-    def test_binding_get(self) -> None:
-        rc, out, _ = self._run("binding-get", "myshop")
-        assert rc == 0
-        assert out == "-999"
-
-    def test_binding_get_missing(self) -> None:
-        rc, out, _ = self._run("binding-get", "nobody")
-        assert rc == 0
-        assert out == ""
-
-    # The retired raw dotted-path lookup verbs have no
-    # successor in the _json bridge (fleet.json is read through a validated
-    # model, not dotted-path string lookups).
-
-    def test_unknown_verb_exits_2(self) -> None:
-        rc, _, err = self._run("nonexistent-verb")
-        assert rc == 2
-        assert "unknown verb" in err
-
-    def test_default_model_get(self) -> None:
-        rc, out, _ = self._run("default-model-get")
-        assert rc == 0
-        assert out == "anthropic/claude-sonnet-4-6"
-
-    def test_default_model_set_and_get_round_trip(self) -> None:
-        rc, _, _ = self._run("default-model-set", "anthropic/claude-haiku-4-5")
-        assert rc == 0
-        rc2, out, _ = self._run("default-model-get")
-        assert rc2 == 0
-        assert out == "anthropic/claude-haiku-4-5"
-
-    def test_default_model_get_reflects_a_direct_registry_write(self) -> None:
-        """`models set default`/`models preset` write docket-models.json directly
-        -- `default-model-get` must see that value, not a stale fleet.json copy."""
-        from docket.core import models_policy as _mp
-
-        _mp.write_registry({"default": "openai/gpt-4.1"})
-        rc, out, _ = self._run("default-model-get")
-        assert rc == 0
-        assert out == "openai/gpt-4.1"

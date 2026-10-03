@@ -48,12 +48,9 @@ def _ids(home: Path) -> list[str]:
 
 
 class TestNormalizeRoleAgainstRegistry:
-    def test_legacy_roles_still_normalize(self) -> None:
+    def test_builtin_roles_normalize(self) -> None:
         for role in ("lead", "implementer", "reviewer", "tester"):
             assert pod.normalize_role(role) == role
-
-    def test_programmer_alias_still_works(self) -> None:
-        assert pod.normalize_role("programmer") == "implementer"
 
     def test_starter_role_accepted(self) -> None:
         assert pod.normalize_role("researcher") == "researcher"
@@ -79,7 +76,6 @@ class TestNormalizeRoleAgainstRegistry:
                 "soulTemplate": "hi ${project}",
                 "agentsTemplate": "hi ${project}",
                 "gateContract": {"kind": "none"},
-                "editRights": "write",
                 "toolProfile": "x",
             }
         )

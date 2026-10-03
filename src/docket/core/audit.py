@@ -2,7 +2,8 @@
 Appends one JSON line per change to ``$DOCKET_HOME/audit.log`` (0600): who/when/what, secret
 VALUES never logged. Tamper evidence: each line carries a monotonic ``seq`` and ``prev_hash``
 (SHA-256 of the prior line); ``verify_chain()`` reports the first broken link, and a missing/
-empty file or pre-chain legacy line is an honest **chain restart**, never tampering. Rotation
+empty file is an honest **chain start**, never tampering. A line without ``seq``/``prev_hash``
+is a break. Rotation
 does NOT restart the chain: the first entry after it declares what generation it continues,
 checked against the single backup (``audit.log.1``); an unsubstantiated claim is a break --
 evident, not prevented, since deleting both files together still yields an indistinguishable
@@ -29,7 +30,7 @@ from filelock import FileLock, Timeout
 import docket.config as _cfg
 
 # Sentinel prev_hash for the first entry of a chain (fresh log, or the first
-# entry appended after a legacy line / rotation boundary). Deliberately the
+# entry appended after a corrupt line / rotation boundary). Deliberately the
 # same length as a real SHA-256 hex digest so chain-start entries are
 # structurally uniform with every other entry.
 GENESIS_HASH = "0" * 64
@@ -106,8 +107,8 @@ def _last_line(logf: Path) -> str | None:
 
 
 def _chain_head(logf: Path) -> tuple[int, str]:
-    """Return (next_seq, prev_hash) for the next append: missing/empty file, pre-chain line, or
-    corrupt line all restart the chain at seq=1/``GENESIS_HASH`` -- honest, not a defect.
+    """Return (next_seq, prev_hash) for the next append: a missing/empty file starts the chain at
+    seq=1/``GENESIS_HASH``; so does a corrupt last line, which ``verify_chain`` reports as a break.
     """
     line = _last_line(logf)
     if line is None:
@@ -140,7 +141,7 @@ def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
         marker = _rotation_marker_path(logf)
         # Persist intent before the rename. If the process dies after the
         # rename and before append, only this marker authorizes recovery from
-        # the backup; an unrelated legacy backup must not affect a fresh log.
+        # the backup; an unrelated stale backup must not affect a fresh log.
         marker.write_text("pending\n", encoding="utf-8")
         os.chmod(marker, 0o600)
     except OSError:
@@ -302,7 +303,6 @@ class VerifyResult:
     exists: bool
     total_lines: int
     chained: int
-    legacy: int
     break_at: ChainBreak | None
     rotated_backup: bool
     continued_from_seq: int | None = None
@@ -352,22 +352,20 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
     file's entries are re-hashed, but its first entry may *claim* to continue a rotated-away
     generation, checked against ``audit.log.1``; the three resulting states (genesis /
     continued-verified / continued-unverifiable) are specs/functional/audit.spec.md
-    Requirement 9. Legacy lines (missing ``seq``/``prev_hash``) are counted separately, reset
-    expectations for the next chained line, and are never reported as breaks.
+    Requirement 9. A line missing ``seq``/``prev_hash`` is a break.
     """
     rotated = logf.with_suffix(logf.suffix + ".1").exists()
 
     if not logf.is_file():
-        return VerifyResult(False, 0, 0, 0, None, rotated)
+        return VerifyResult(False, 0, 0, None, rotated)
 
     try:
         text = logf.read_text(encoding="utf-8")
     except OSError:
-        return VerifyResult(False, 0, 0, 0, None, rotated)
+        return VerifyResult(False, 0, 0, None, rotated)
 
     lines = [ln for ln in text.splitlines() if ln.strip()]
     chained = 0
-    legacy = 0
     expected_seq: int | None = None
     expected_prev: str | None = None
     continued_from_seq: int | None = None
@@ -380,17 +378,20 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                 True,
                 len(lines),
                 chained,
-                legacy,
                 ChainBreak(i, "malformed JSON line, cannot verify"),
                 rotated,
                 continued_from_seq,
             )
 
         if "seq" not in entry or "prev_hash" not in entry:
-            legacy += 1
-            expected_seq = None
-            expected_prev = None
-            continue
+            return VerifyResult(
+                True,
+                len(lines),
+                chained,
+                ChainBreak(i, "line has no seq/prev_hash, cannot verify"),
+                rotated,
+                continued_from_seq,
+            )
 
         try:
             seq = int(entry["seq"])
@@ -399,7 +400,6 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                 True,
                 len(lines),
                 chained,
-                legacy,
                 ChainBreak(i, "non-integer seq, cannot verify"),
                 rotated,
                 continued_from_seq,
@@ -409,18 +409,16 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
         if expected_seq is None:
             is_chain_start = i == 1
             if seq == 1 and prev_hash == GENESIS_HASH:
-                pass  # genuine genesis chain (or a restart after a legacy tail)
+                pass  # genuine genesis chain
             elif is_chain_start and seq > 1 and prev_hash != GENESIS_HASH:
                 # Only the file's very first entry can legitimately claim a
-                # rotation continuation -- a restart after a mid-file legacy
-                # line never can, since audit_log() never produces one there.
+                # rotation continuation.
                 gap = _verify_rotation_continuation(logf, seq, prev_hash)
                 if gap is not None:
                     return VerifyResult(
                         True,
                         len(lines),
                         chained,
-                        legacy,
                         ChainBreak(i, gap),
                         rotated,
                         continued_from_seq,
@@ -431,7 +429,6 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                     True,
                     len(lines),
                     chained,
-                    legacy,
                     ChainBreak(i, f"expected chain restart at seq=1, found seq={seq}"),
                     rotated,
                     continued_from_seq,
@@ -441,7 +438,6 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                     True,
                     len(lines),
                     chained,
-                    legacy,
                     ChainBreak(i, "expected GENESIS prev_hash at chain start"),
                     rotated,
                     continued_from_seq,
@@ -452,7 +448,6 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                     True,
                     len(lines),
                     chained,
-                    legacy,
                     ChainBreak(i, f"seq out of order (expected {expected_seq}, found {seq})"),
                     rotated,
                     continued_from_seq,
@@ -462,7 +457,6 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
                     True,
                     len(lines),
                     chained,
-                    legacy,
                     ChainBreak(i, "prev_hash mismatch — an earlier line was altered or removed"),
                     rotated,
                     continued_from_seq,
@@ -472,7 +466,7 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
         expected_seq = seq + 1
         expected_prev = _hash_entry(entry)
 
-    return VerifyResult(True, len(lines), chained, legacy, None, rotated, continued_from_seq)
+    return VerifyResult(True, len(lines), chained, None, rotated, continued_from_seq)
 
 
 def verify_chain() -> VerifyResult:
@@ -481,9 +475,9 @@ def verify_chain() -> VerifyResult:
     """
     logf = _cfg.AUDIT_LOG
     if not logf.parent.is_dir():
-        return VerifyResult(False, 0, 0, 0, None, False)
+        return VerifyResult(False, 0, 0, None, False)
     try:
         with _with_audit_lock(logf):
             return _verify_chain_unlocked(logf)
     except (OSError, Timeout):
-        return VerifyResult(False, 0, 0, 0, None, False)
+        return VerifyResult(False, 0, 0, None, False)

@@ -313,17 +313,10 @@ def _write_member_workspace(
     # agent trusts about where to `cd`.
     _mem.seed_contract(ws, project=project, codebase=told_root, stack=stack, work_dir=work_dir)
 
-    # Keep pod-member identity docket-owned: quarantine any self-authoring
-    # scaffolding (IDENTITY.md/BOOTSTRAP.md) so it can't split the member's identity.
-    from docket.core import identity as _identity
-
-    _identity.quarantine_scaffolding(ws)
-
     with contextlib.suppress(OSError):
         ws.chmod(0o700)
 
     meta: dict[str, object] = {
-        "schemaVersion": 1,
         "kind": "project",
         "scope": "project",
         "role": member.role,
@@ -430,7 +423,7 @@ def provision_member(
     )
     # Registration is fleet.json only -- there is no daemon to register with
     # (see cli/_agents.py's run_add for the identical reasoning).
-    _fleet.add_agent(member.member_id, member.model, member.session_key, project_key)
+    _fleet.add_agent(member.member_id)
     return (True, "", fallback_reason)
 
 

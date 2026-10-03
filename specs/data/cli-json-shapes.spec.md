@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Complete
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -145,14 +145,8 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
   "issues":  "number",
   "checks": {
     "python3":     { "ok": "boolean", "path": "string | null" },
-    "fzf":         { "available": "boolean", "path": "string | null" },
     "fleet":       "{ ok: true, path, agents, bindings } | { ok: false, path, error }",
     "agents":      "array of { id, ok, tg, issues }",
-    "modelConfig": {
-      "ok": "boolean",
-      "invalid": "array of { id, model, suggest }"
-    },
-    "modelRegistry": { "migrated": "string | null", "residualProfilesKey": "boolean" },
     "dispatchLedger": "array of { project, ok, missingFromLedger, staleInLedger }",
     "budget":      "array of agent budget status objects",
     "runaway":     "array of agent runaway detection objects",
@@ -160,10 +154,12 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
       "keys": "array of { name, state, detail }",
       "missingForAgents": "array of { agent, model, needsKey }"
     },
+    "providerCatalog": {
+      "ok": "boolean",
+      "problems": "array of { name, reason } (malformed global provider documents)"
+    },
     "securityGates": {
       "toolCallGate": "always-on",
-      "approvalRouting": "string (fleet approvalRoutingState, 'unset' when absent)",
-      "routingMode": "string (fleet approvalRoutingMode, may be empty)",
       "isolation": "string (isolation mode, 'unset' when absent)"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
@@ -386,7 +382,6 @@ The snapshot command writes to a file (or stdout). The outer shape:
 ```json
 {
   "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
-  "gateway":      "inactive (legacy field; there is no gateway process)",
   "channels":     "array of strings (channels present in Docket fleet bindings)",
   "agents":       "array of agent objects (see below)",
   "totalCostUsd": "number"
@@ -421,7 +416,7 @@ list --json` / `docket info <id> --json` for those.
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
 | `/status.json` | `application/json` | `docket snapshot`'s shape plus a top-level `apiVersion` and per-agent `scope`/`budgetUsd` (full schema: `specs/data/serve-read-api.spec.md`) |
-| `/health` | `application/json` | `{"status":"ok","gateway":0}` (`gateway` is always `0`) |
+| `/health` | `application/json` | `{"status":"ok"}` |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
 | `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
 | `/runs/<id>` | `application/json` | Same as `docket runs show <id> --json` (auth required) |
@@ -433,7 +428,6 @@ docket_agents_total <N>
 docket_agent_cost_usd{agent="<id>",model="<model>"} <F>
 docket_agent_turns_total{agent="<id>"} <N>
 docket_cost_usd_total <F>
-docket_gateway_up <0|1>
 docket_approvals_pending_total <N>
 docket_tool_calls_total{decision="<allow|ask|deny>"} <N>
 docket_policy_hits_total{policy_id="<id>",hook="<hook>",action="<action>"} <N>
@@ -489,6 +483,15 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.17.0 (2026-10-03)
+
+- **Legacy purge.** `doctor --json` drops `checks.fzf`, `checks.modelConfig`,
+  `checks.modelRegistry` and `securityGates.approvalRouting`/`routingMode` (the checks behind
+  them are deleted); `checks.providerCatalog` (`{ok, problems}`), already emitted but never listed
+  here, is added. `snapshot` drops `gateway`; the `/health` row is `{"status":"ok"}` and
+  `docket_gateway_up` is gone from the metrics list (serve API version 3). `docket cost --json`
+  is unchanged.
 
 ### Version 1.16.0 (2026-09-28)
 

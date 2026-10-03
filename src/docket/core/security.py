@@ -171,7 +171,7 @@ class CommandVerdict:
 
 
 def _split_segments_with_redirect_flags(command: str) -> list[tuple[list[str], bool]]:
-    """Same walk as :func:`split_command_segments`, plus whether an output redirect
+    """Split a shell command into per-invocation token lists, plus whether an output redirect
     attached to each segment -- kept internal, used only by ``classify_command``."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
@@ -205,18 +205,6 @@ def _split_segments_with_redirect_flags(command: str) -> list[tuple[list[str], b
         if idx < len(segment):
             cleaned.append((segment[idx:], flag))
     return cleaned
-
-
-def split_command_segments(command: str) -> list[list[str]]:
-    """Split a shell command into per-invocation token lists.
-
-    ``ls -la && git push origin main`` -> ``[["ls", "-la"], ["git", "push",
-    "origin", "main"]]``; leading ``VAR=value`` assignments are dropped so
-    the binary is always the first token. Raises ``ValueError`` on input
-    shlex cannot tokenize -- the caller treats that as unclassifiable, never
-    as safe.
-    """
-    return [tokens for tokens, _redirected in _split_segments_with_redirect_flags(command)]
 
 
 def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> CommandVerdict:
@@ -293,27 +281,6 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
         "all binaries allowlisted, no high-risk class matched",
         bin_name=os.path.basename(segment_pairs[0][0][0]),
     )
-
-
-def apply_approval_routing() -> int:
-    """Route gated-tool-call approval prompts to each agent's session channel.
-
-    Writes fleet.json's approval-routing state to on/session. Returns the
-    count of channel-bound agents (informational) -- a readiness signal, not
-    a guarantee: a bound agent only receives a prompt once ``docket serve
-    --telegram`` is running with a bot token configured.
-    """
-    _fleet.set_approval_routing(enabled=True, mode="session")
-    count = 0
-    for aid in _fleet.all_agent_ids():
-        if _fleet.get_binding(aid):
-            count += 1
-    return count
-
-
-def disable_approval_routing() -> None:
-    """Turn approval-routing off in fleet.json."""
-    _fleet.disable_approval_routing()
 
 
 def apply_workspace_isolation() -> None:

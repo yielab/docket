@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import register_local_provider, repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
@@ -314,21 +314,8 @@ class TestCmdModels:
 
     def test_models_preset_apply(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        (oc_dir / "fleet.json").write_text(
-            json.dumps(
-                {
-                    "agents": [],
-                    "bindings": [],
-                    "providers": {
-                        "openai": {
-                            "baseUrl": "http://127.0.0.1:9999/v1",
-                            "apiKey": "local",
-                            "models": [{"id": "gpt-4.1-mini"}],
-                        }
-                    },
-                }
-            )
-        )
+        (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        register_local_provider(oc_dir, "openai", [{"id": "gpt-4.1-mini"}])
         rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
@@ -352,26 +339,12 @@ class TestCmdModels:
 
     def test_local_preset_selects_the_exact_registered_model(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        (oc_dir / "fleet.json").write_text(
-            json.dumps(
-                {
-                    "agents": [],
-                    "bindings": [],
-                    "providers": {
-                        "local": {
-                            "baseUrl": "http://127.0.0.1:8081/v1",
-                            "apiKey": "local",
-                            "models": [
-                                {
-                                    "id": "qwen-live-id",
-                                    "contextWindow": 16384,
-                                    "maxTokens": 8192,
-                                }
-                            ],
-                        }
-                    },
-                }
-            )
+        (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        register_local_provider(
+            oc_dir,
+            "local",
+            [{"id": "qwen-live-id", "contextWindow": 16384, "maxTokens": 8192}],
+            base_url="http://127.0.0.1:8081/v1",
         )
 
         rc, out, err = _run(["models", "preset", "local"], oc_dir)

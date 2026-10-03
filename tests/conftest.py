@@ -174,3 +174,27 @@ def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     home = tmp_path / "_autouse_docket_home"
     for attr, leaf in _DOCKET_HOME_PATHS:
         monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
+
+
+def register_local_provider(
+    home: Path,
+    name: str,
+    models: list[dict[str, object]],
+    base_url: str = "http://127.0.0.1:9999/v1",
+) -> None:
+    """Write a keyless loopback provider document into *home*'s global catalog."""
+    from docket.core import provider as _provider
+
+    with pytest.MonkeyPatch.context() as mp:
+        repoint_docket_home(mp, home)
+        _provider.save_provider(
+            _provider.ProviderSpec.model_validate(
+                {
+                    "name": name,
+                    "baseUrl": base_url,
+                    "auth": {"type": "none"},
+                    "local": True,
+                    "models": models,
+                }
+            )
+        )

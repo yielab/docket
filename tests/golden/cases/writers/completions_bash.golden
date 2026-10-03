@@ -37,20 +37,20 @@ _docket_complete() {
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
-    runs|run)        words="list show cancel prune" ;;
-    conversations|conv) words="list show resume set prune" ;;
+    runs)            words="list show cancel prune" ;;
+    conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
-    gates|security)  words="status enable disable isolate classes" ;;
-    keys|key|secret) words="add list remove rotate setup validate export" ;;
+    gates)           words="status isolate classes" ;;
+    keys)            words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
     trace)           words="tail export ingest expire" ;;
-    policies|policy) words="list show init test validate" ;;
-    recipes|recipe)  words="list show" ;;
-    roles|role)      words="list show add validate" ;;
-    completions|completion) words="bash zsh" ;;
-    cost|usage)      [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
+    policies)        words="list show init test validate" ;;
+    recipes)         words="list show" ;;
+    roles)           words="list show add validate" ;;
+    completions)     words="bash zsh" ;;
+    cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
+    info|delete|profile|wire|unwire|logs|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac

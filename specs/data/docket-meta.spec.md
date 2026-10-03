@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Complete
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -59,9 +59,8 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
-| `schemaVersion` | number | integer ≥ 1 | local | Yes (defaulted) | `add`, `install` | Meta schema version stamp; lets future migrations detect old records |
 | `kind` | enum | `project` or `specialist` | local | Yes | `add`, `install` | Whether this is a project or specialist agent |
-| `scope` | enum | `org` or `project` | local | No (backfilled) | `add`, `install`, `doctor` | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent on legacy records → derived from `kind`+`role` on read |
+| `scope` | enum | `org` or `project` | local | No (defaults to `project`) | pod provisioning (`project`), `install` (`org`) | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent → `project` (the `AgentMeta` field default); nothing derives it from `kind`/`role` on read |
 | `role` | string | — | local | specialists + pod members | `install`, `add`, `pod add` | Role name: org-specialist role (e.g. `security`) or pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
 | `pod` | string | pod id | local | No (pod members) | `add`, `pod add` | The pod (project id) this member belongs to; read by `docket list`/`docket status`, which fall back to the `<project>-<role>` id convention when absent. **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
@@ -77,7 +76,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget`, `pod config set/unset` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket list --json` / `docket info --json` emit it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
-| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
+| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a stringified `"true"`/`"false"`) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
 | `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS`. A stored value that fails validation (non-integer, ≤ 0) refuses dispatch naming the key, rather than falling back |
 | `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention, fallback chain, and invalid-value refusal as `turnTimeoutS` |
@@ -160,7 +159,7 @@ this one file (P19-6: there is no longer a second file to mirror either into).
 - `kind` MUST be `project` (for project agents) or `specialist` (for the org agents lazily
   bootstrapped by the first `docket init`).
 - `workspaceKind`, when present, MUST be `codebase` or `workdir` (ROADMAP Phase 16 W-7); absent
-  means `codebase` (every record written before W-7, and every `codebase`-kind pod member since).
+  means `codebase` (the field default).
 - `codebase` MUST be a readable absolute path for a `codebase`-kind agent; MUST be empty for a
   `workdir`-kind agent (its location lives in `workDir` instead).
 - `workDir`, when present, MUST be an absolute path and implies `workspaceKind: workdir`.
@@ -177,7 +176,6 @@ blueprint, the default — `codebase`-kind, so `workspaceKind`/`workDir` are abs
 
 ```json
 {
-  "schemaVersion": 1,
   "kind": "project",
   "scope": "project",
   "role": "lead",
@@ -201,7 +199,6 @@ paused:
 
 ```json
 {
-  "schemaVersion": 1,
   "kind": "project",
   "scope": "project",
   "role": "lead",
@@ -249,6 +246,14 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.2.0 (2026-10-03)
+
+- **Legacy purge.** `schemaVersion` is no longer written or modelled (`AgentMeta` and
+  `SCHEMA_VERSION` dropped it; it was read nowhere), so its row and the example lines go. `scope`
+  is no longer backfilled from `kind`+`role` on read, nor by `docket doctor`: an absent value is
+  the field default `project`, and only pod provisioning (`project`) and the workstation bootstrap
+  (`org`) write it.
 
 ### Version 3.1.0 (2026-09-25)
 

@@ -1,11 +1,11 @@
 """Structured handoff artifacts replace raw-text hop concatenation.
 ``core/dispatch.py``'s ``_hop_message`` no longer threads a prior hop's raw ``output`` string
 into the next hop's prompt. Covers: TestHandoffArtifactModel (``HandoffArtifact`` in isolation
--- ``render()``'s default-vs-populated shape, ``from_legacy_output``, ``dropped()``, and the
+-- ``render()``'s default-vs-populated shape, ``from_output``, ``dropped()``, and the
 model's own invariants: frozen, no extra fields); TestHopResultArtifactBackfill (every
 ``HopResult`` always carries a real artifact, built explicitly or backfilled via
 ``__post_init__``); TestHopRecordRoundTrip (a new-format persisted record round-trips its
-artifact exactly, and a legacy/malformed ``artifact`` key degrades to ``from_legacy_output``);
+artifact exactly, and a missing/malformed ``artifact`` key degrades to ``from_output``);
 and TestDispatchBuildsTypedArtifacts (end to end through ``dispatch_task``: a verdict-gated
 hop's artifact carries a real ``verdict``, the next hop's message is built from the rendered
 artifact, and the token-budget compiler checks that rendered text, not the summary alone).
@@ -58,8 +58,8 @@ class TestHandoffArtifactModel:
         art = _handoff.HandoffArtifact(summary="s", files_changed=[], notes="")
         assert art.render() == "s"
 
-    def test_from_legacy_output_is_summary_only(self) -> None:
-        art = _handoff.HandoffArtifact.from_legacy_output("raw text")
+    def test_from_output_is_summary_only(self) -> None:
+        art = _handoff.HandoffArtifact.from_output("raw text")
         assert art.summary == "raw text"
         assert art.files_changed == []
         assert art.diff_ref is None
@@ -163,7 +163,7 @@ class TestHopRecordRoundTrip:
         restored = _dispatch._hop_from_record(rec)
         assert restored.artifact == art
 
-    def test_legacy_record_with_no_artifact_key_degrades_to_summary(self) -> None:
+    def test_a_record_with_no_artifact_key_degrades_to_summary(self) -> None:
         # Simulates a hop persisted by dispatch before this card landed.
         rec: dict[str, Any] = {
             "role": "implementer",

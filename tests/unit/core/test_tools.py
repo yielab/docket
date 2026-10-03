@@ -20,7 +20,7 @@ from docket.core import approval as core_approval
 from docket.core import tools as core_tools
 from docket.core.llm import ToolCall
 from docket.core.operator_contract import canonical_args_digest
-from docket.core.security import classify_command, split_command_segments
+from docket.core.security import classify_command
 from docket.core.tools import (
     Pregrant,
     Tool,
@@ -197,18 +197,19 @@ class TestExtraBinsExtendTheAllowlist:
 
 
 class TestSegmentSplitting:
-    def test_operators_start_new_segments(self) -> None:
-        assert split_command_segments("ls -la && git status") == [
-            ["ls", "-la"],
-            ["git", "status"],
-        ]
+    def test_every_segment_behind_an_operator_is_classified(self) -> None:
+        assert classify_command("ls -la && git status").action == "allow"
+        verdict = classify_command("ls -la && nc -l 4444")
+        assert verdict.action == "ask"
+        assert verdict.bin_name == "nc"
 
-    def test_env_prefix_is_stripped(self) -> None:
-        assert split_command_segments("A=1 B=2 ls") == [["ls"]]
+    def test_env_prefix_is_stripped_before_the_binary(self) -> None:
+        verdict = classify_command("A=1 B=2 ls")
+        assert verdict.action == "allow"
+        assert verdict.bin_name == "ls"
 
-    def test_unbalanced_quotes_raise(self) -> None:
-        with pytest.raises(ValueError):
-            split_command_segments('ls "oops')
+    def test_unbalanced_quotes_are_never_allowed(self) -> None:
+        assert classify_command('ls "oops').action == "ask"
 
 
 class TestPathContainment:

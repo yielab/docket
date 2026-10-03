@@ -57,7 +57,6 @@ def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
     # creating it, so list_pending() still returns [] gracefully.
     repoint_docket_home(monkeypatch, home)
-    monkeypatch.setattr(serve.utils, "gateway_active", lambda: True)
     return home
 
 
@@ -69,7 +68,7 @@ class TestApiContract:
 
     # /status.json top-level keys
     STATUS_TOP_LEVEL_KEYS = frozenset(
-        {"apiVersion", "timestamp", "gateway", "channels", "agents", "totalCostUsd"}
+        {"apiVersion", "timestamp", "channels", "agents", "totalCostUsd"}
     )
 
     # /status.json per-agent keys
@@ -95,7 +94,6 @@ class TestApiContract:
             "docket_agent_cost_usd",
             "docket_agent_turns_total",
             "docket_cost_usd_total",
-            "docket_gateway_up",
             "docket_approvals_pending_total",
             "docket_inbox_items",
         }
@@ -139,10 +137,6 @@ class TestApiContract:
         for agent in agents:
             assert agent["kind"] in ("project", "specialist")
 
-    def test_gateway_field_values(self, api_home: Path) -> None:
-        st = serve.build_status()
-        assert st["gateway"] in ("active", "inactive")
-
     def test_total_cost_is_float(self, api_home: Path) -> None:
         st = serve.build_status()
         assert isinstance(st["totalCostUsd"], float)
@@ -157,9 +151,7 @@ class TestApiContract:
 
     def test_health_shape(self, api_home: Path) -> None:
         body = json.loads(serve.render_health())
-        assert set(body.keys()) == {"status", "gateway"}
-        assert body["status"] == "ok"
-        assert body["gateway"] in (0, 1)
+        assert body == {"status": "ok"}
 
 
 # ── TestSpecDocExists ─────────────────────────────────────────────────────────

@@ -263,7 +263,6 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
         {
             "ALL_PROXY": "http://127.0.0.1:9",
             "DOCKET_HOME": str(run_home),
-            "DOCKET_LOG_DIR": str(tmp_path / "logs"),
             "DOCKET_SERVICE_MANAGER": "none",
             "HOME": str(tmp_path / "run-home"),
             "HTTPS_PROXY": "http://127.0.0.1:9",

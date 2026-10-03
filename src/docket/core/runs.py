@@ -198,9 +198,7 @@ def _valid_timestamp(value: object) -> bool:
 def _cancellation_lifecycle(
     rec: dict[str, Any],
 ) -> tuple[CancellationLifecycle, bool]:
-    """Parse a lifecycle without mutating legacy records that omit it."""
-    if "cancellation" not in rec:
-        return CancellationLifecycle(), True
+    """Parse a record's cancellation lifecycle; ``False`` when it is missing or malformed."""
     raw = rec.get("cancellation")
     if not isinstance(raw, dict):
         return CancellationLifecycle(), False
@@ -335,7 +333,7 @@ def _finish_run_transition(
 ) -> bool:
     """Atomically apply one terminal transition and report whether it won."""
     if state not in _TERMINAL_STATES:
-        raise RunError(f"finish_run: invalid terminal state {state!r}")
+        raise RunError(f"invalid terminal state {state!r}")
 
     applied = False
     observed_now = False

@@ -26,18 +26,6 @@ def last_activity(agent_id: str) -> str:
     return memory.last_activity(cfg.workspace_dir(agent_id))
 
 
-def gateway_active() -> bool:
-    """Return True if a daemon gateway is active.
-
-    There is no daemon gateway any more, so this always returns False -- see
-    ``edges/adapters/system.py``'s ``gateway_active``, which this only
-    forwards to.
-    """
-    from docket.edges.adapters import system as _system
-
-    return _system.gateway_active()
-
-
 def si_format(n: int) -> str:
     """Format a token count with SI suffix (e.g. 1_234_567 → '1.2M')."""
     f = float(n)

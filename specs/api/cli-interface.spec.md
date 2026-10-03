@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.58.0
+**Version**: 1.59.0
 **Status**: Complete
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -43,18 +43,18 @@ Homebrew formula hashes that exact archive, so including the formula would make
 the published input depend on its own output digest.
 
 The `[project.scripts]` console-command object MUST be the same entry point that
-`python -m docket` runs (`docket.__main__:main`), not the bare Typer `app` object.
-An installed `docket` MUST therefore honour the removed-command retirement notices
-and the alias table exactly as `python -m docket` does: a removed command prints
-its notice and exits 1, and an alias resolves to its target command, from the
-console script as much as from module invocation.
+`python -m docket` runs (`docket.__main__:main`), which only invokes the Typer
+app, so an installed `docket` and `python -m docket` parse every argv identically.
+There is no command alias table and no retired-command notice: a name that is not
+a registered command (including one docket used to have) is Click's ordinary
+unknown-command usage error (`No such command`, exit 2).
 
 - `global-options` MUST precede the command (see [Options](#options)).
 - `command` MUST be one of the entries in the Command Registry below.
 - `arguments` are positional and command-specific (see [Arguments](#arguments)).
 
 When a required `agent-id` argument is omitted, commands that operate on a single agent
-MUST fall back to interactive selection (fzf when available, otherwise a numbered menu).
+MUST fall back to interactive selection (a numbered menu).
 The per-command entries in the Command Registry are the authoritative source for each
 command's exact syntax.
 
@@ -77,7 +77,7 @@ Options are `--long` flags, some with a `-short` alias. The global options liste
 accepted by every command; command-specific options are listed per command in the Command
 Registry. Conventions:
 
-- Boolean flags default to `false` and take no value (e.g. `--force`, `--debug`).
+- Boolean flags default to `false` and take no value (e.g. `--force`, `--json`).
 - Value options take exactly one argument (e.g. `--model <provider/model>`, `--days <N>`).
 - `--help` MUST be honored before any other parsing and exit 0 (there is no `-h` short form).
 - Unknown options MUST produce a clear error and exit non-zero (Typer's usage error, exit 2 —
@@ -97,11 +97,10 @@ docket [global-options] <command> [command-options] [arguments]
 |--------|-------|-------------|---------|
 | --help | - | Show help message | - |
 | --version | -V | Show version info | - |
-| --debug | - | Deprecated, hidden no-op — accepted for backward compatibility, writes nothing | false |
 
-These three are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
-`--quiet`, `--config` or `--no-color`; state location is chosen with `DOCKET_HOME`, not a config
-file flag.
+These two are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
+`--debug`, `--quiet`, `--config` or `--no-color` (any of them is an unknown option, exit 2);
+state location is chosen with `DOCKET_HOME`, not a config file flag.
 
 ## Command Registry
 
@@ -133,7 +132,7 @@ endpoint may pass without a key.
 - `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops`);
   omitted defaults to `software` — unchanged from pre-W-7 `docket add`. An unknown name fails
   cleanly (exit 1) before any prompt is shown
-- `--codebase <path>` / `--path <path>`: Explicit location, skipping its interactive prompt
+- `--codebase <path>`: Explicit location, skipping its interactive prompt
 - `--name <text>`: Explicit display name, skipping its interactive prompt
 - `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester. Applies only to
   the `software` blueprint
@@ -229,7 +228,7 @@ terminal; there is no `--force` or `--keep-logs`
 
 #### docket maintain
 **Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
-**Syntax**: `docket maintain [agent-id] [mode] [--no-distill-first | --distill-first]`
+**Syntax**: `docket maintain [agent-id] [mode] [--no-distill-first]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 - `mode` (optional): Maintenance level (default: `check`)
@@ -248,12 +247,15 @@ terminal; there is no `--force` or `--keep-logs`
   to `memory/.distilled/<day>/`. Runs without a confirmation prompt (non-destructive to the logs
   it processes); a driver failure or an empty reply leaves every file untouched and exits 1
 **Options** (`clean`/`reset` only):
-- `--distill-first` (default): run `distill`'s summarize-then-archive step before the command's
+- By default `clean`/`reset` run `distill`'s summarize-then-archive step before the command's
   own destructive step; a failed distillation aborts the whole command before anything is deleted
-- `--no-distill-first`: skip distillation and delete/clear immediately — the pre-C-2 behavior
+- `--no-distill-first`: skip distillation and delete/clear immediately
+Any other flag (including `--distill-first`, which there is no need to pass) is an unrecognized
+flag: an error naming it, exit 2.
 **Output**: Maintenance progress and confirmation
 **Return**: 0 on success (including a cancelled confirmation); 1 if the agent is not found, the
-mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
+mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails; 2 on an unrecognized
+flag
 
 ### Configuration Commands
 
@@ -330,11 +332,10 @@ api-keys.spec.md).
 
 `docket auth` (provider API-key status plus honest-gone `login`/`key`/`setup` stubs) was
 **retired** in Phase 29 (D-45) — the provider catalog (`docket models provider add`, above
-`docket keys`) replaced the daemon-era shape that command was reporting the absence of. Running
-`docket auth <anything>` prints a removed-command notice that points at `docket keys add` for
-storing a credential and `docket models provider add` for registering an endpoint. The former
-`status`/`login`/`key`/`setup` actions are dropped outright — no compatibility layer, no
-`--provider` flag. (ROADMAP decision D-45 is the durable retirement record.)
+`docket keys`) replaced the daemon-era shape that command was reporting the absence of. `auth`
+is not a registered command: `docket auth <anything>` is an ordinary unknown-command error
+(exit 2). Store a credential with `docket keys add`; register an endpoint with `docket models
+provider add`. (ROADMAP decision D-45 is the durable retirement record.)
 
 #### docket validate
 **Purpose**: Validate role, pipeline, policy, and pod configuration documents (see
@@ -356,10 +357,10 @@ its `pod.yaml` sets one; a file target prints neither
 
 `docket workflow` (the Lobster YAML surface: author/validate/plan a `.lobster.yml` template)
 was **retired** in Phase 16 (D-16) — its validator silently ignored four constructs its own
-template emitted, so docket was linting a dialect it could not fully execute. Running
-`docket workflow <anything>` (or its former `wf` alias) prints a removed-command notice pointing
-at `docket pipeline validate` / `docket pipeline plan` / `docket pipeline run` — the single
-pipeline dialect docket actually executes (`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
+template emitted, so docket was linting a dialect it could not fully execute. `workflow` (and
+`wf`) are not registered commands — invoking one is an ordinary unknown-command error (exit 2).
+The single pipeline dialect docket executes is `docket pipeline validate` / `plan` / `run`
+(`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
 existing `<workspace>/workflows/*.lobster.yml` files are left on disk untouched, but no longer
 read by docket. (The former workflow-integration.spec.md was removed 2026-07-30; ROADMAP
 decision D-16 is the durable retirement record.)
@@ -398,8 +399,9 @@ error, or a dispatch whose run record ends `failed` because a task failed — th
 
 `docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
 dispatcher and never executed anything. Delegation now belongs to each project's pod
-(pod-dispatch.spec.md). Running `docket team <anything>` prints a removed-command notice that
-maps each old subcommand to its pod equivalent below. (The former team-coordination.spec.md
+(pod-dispatch.spec.md). `team` is not a registered command — `docket team <anything>` is an
+ordinary unknown-command error (exit 2); use `docket pod <project> delegate|queue|dispatch`
+below. (The former team-coordination.spec.md
 was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 
 #### docket pod
@@ -579,8 +581,11 @@ lookup, 1 on a missing token
 **Purpose**: Inspect and manage an agent's memory/context
 **Syntax**: `docket context [agent-id] [action]`
 **Actions**:
-- `show`: Recent activity overview (default; any unrecognized action falls through to this)
+- `show`: Recent activity overview (default)
 - `project`: Show project-level context
+
+Any other action prints `docket context: unknown action '<action>' (expected: show, project)`
+and exits 2; it never falls through to `show`.
 
 `search`/`snapshot`/`index`/`compress` and the `SNAPSHOT.md` artifact were **removed** — see the
 CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory (`memory_search`/
@@ -589,7 +594,7 @@ real, named gap
 rather than a capability delegated elsewhere. Folding logs into `MEMORY.md` is
 `docket maintain <id> distill`.
 **Output**: Context view or action confirmation
-**Return**: 0 on success, 1 if not found
+**Return**: 0 on success, 1 if not found, 2 on an unknown action
 
 #### docket edit
 **Purpose**: Open an agent's workspace files in `$EDITOR`
@@ -622,9 +627,10 @@ visibility, not shared workspace or session state.
 - `--fix`: Apply auto-fixes for detected drift
 **Output**: System health report
 **Checks** (ROADMAP Phase 19 P19-7b — no daemon left to check status of):
-- Required commands availability (`python3`, etc.)
+- Required command availability (`python3`; no optional binaries are probed)
 - Fleet registry (`fleet.json`) and agent-registration validity
-- Model config/registry drift
+- Malformed `docket-models.json` entries (unknown rank anchor or role, bad model id) that the
+  registry loader would silently ignore
 - Workspace permissions and template drift
 - Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture
 - Global guardrail policy files, plus every provisioned pod's own `config/` overlay
@@ -634,6 +640,8 @@ visibility, not shared workspace or session state.
   with the file and the failing field, e.g. an unknown `auth.type`
 - Enabled exporters' recorded health (`exporters-health.json`) — a non-zero `failed` count
   since the exporter's last success is named with `docket exporters test <name>` as the fix
+
+When issues are found the footer points at `docket maintain [id] check`.
 **Return**: 0 if healthy, 1 when any issue is flagged
 
 #### docket cost
@@ -655,7 +663,7 @@ visibility, not shared workspace or session state.
 **Syntax**: `docket snapshot [--output <file>]`
 **Options**:
 - `--output <file>`: Write JSON to a file instead of stdout
-**Output**: JSON object (gateway status, channels, agents)
+**Output**: JSON object (`timestamp`, `channels`, `agents`, `totalCostUsd`)
 **Return**: 0 on success
 
 #### docket serve
@@ -679,18 +687,13 @@ With `--dispatch`, also logs each dispatch hop
 ### Security and Gates
 
 #### docket gates
-**Purpose**: Report/manage docket's own tool-call gate posture. **ROADMAP Phase 19 P19-3
-made the gate itself (the policy engine + argument-aware command classifier) unconditionally
-active on every tool call docket dispatches — there is nothing left to "enable"; ROADMAP Phase
-19 P19-7b then deleted the daemon this command used to configure**, so what remains is strictly
-narrower: approval-routing destination and isolation-mode posture.
-**Syntax**: `docket gates <action>`
+**Purpose**: Report docket's own tool-call gate and manage workspace isolation. The gate itself
+(the policy engine + argument-aware command classifier) is unconditionally active on every tool
+call docket dispatches — there is nothing to enable or disable — so what this command manages is
+isolation-mode posture.
+**Syntax**: `docket gates [status | isolate <on|off> | classes]`
 **Actions**:
-- `status`: Report the gate as always-active, plus current approval-routing/isolation posture
-- `enable [--force]`: Turn approval routing on (`fleet.json`'s `approvalRoutingState`); `--force`
-  is accepted for CLI compatibility but is a no-op — there is no exec-approval-allowlist
-  config left to (re-)apply
-- `disable`: Turn approval routing off
+- `status` (default): Report the gate as always-active, plus the current isolation mode
 - `isolate <on|off>`: Turn exec isolation on or off. `DocketDriver` reads this flag on every
   turn (`edges/adapters/docket_runtime.py`, `get_isolation_enabled`): with it on, `bash` runs in
   the docker/bwrap jail and a turn fails closed when no backend is available (see
@@ -700,13 +703,18 @@ narrower: approval-routing destination and isolation-mode posture.
   `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
   security-gates.spec.md v0.11.0 for why prod-deploy's `git`/`npm` overlap is no longer merely
   documented policy
+
+Any other subcommand (including `enable`/`disable`, which do not exist) prints
+`docket gates: unknown subcommand '<sub>'` plus the usage and exits 2; any flag after the
+subcommand is an unrecognized flag (exit 2). There is no approval-routing flag to report or set.
 **Output**: Gates status or update confirmation
-**Return**: 0 on success
+**Return**: 0 on success; 1 when `isolate on` finds no `docker` on PATH; 2 on an unknown
+subcommand or flag
 
 #### docket audit
 **Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
 (see audit.spec.md for the exact recorded families and the coverage gap)
-**Syntax**: `docket audit [N | --json | verify]`
+**Syntax**: `docket audit [N | verify] [--json]`
 **Arguments**:
 - `N` (optional): Number of recent entries to show (default: 20)
 **Options/Actions**:
@@ -725,8 +733,8 @@ single agent turn to repoint the harness at (`DocketDriver.run_turn` is only rea
 dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
 private port, not fixing a bug. (That was true when CL-J landed; since Phase 24, `docket harness
 run` is such an entry point — see harness-mode.spec.md — but no eval harness was rebuilt on it.)
-Running `docket eval` (or its former `evals` alias) prints a
-removed-command notice saying so plainly. `tests/evals/` and `cli/_eval.py` are deleted; `docket
+`eval` (and `evals`) are not registered commands — invoking one is an ordinary unknown-command
+error (exit 2). `tests/evals/` and `cli/_eval.py` are deleted; `docket
 doctor` no longer prints an eval-results advisory section. (The former eval.spec.md was removed
 2026-08-04; ROADMAP decision CL-J is the durable retirement record.)
 
@@ -996,8 +1004,8 @@ owned this, and now there is no daemon at all to contrast it with)
 
 ### Telegram Commands
 
-`docket telegram` is accepted as a silent argv alias for `docket wire` (it is not a separate
-command and does not appear in `docket --help`).
+The Telegram binding commands are `docket wire` and `docket unwire`. There is no `docket
+telegram` command or alias (it is an ordinary unknown-command error, exit 2).
 
 #### docket wire
 **Purpose**: Bind a channel group/peer to an agent (see telegram-integration.spec.md). With
@@ -1117,7 +1125,10 @@ ended badly" from "the run never started", which a printed message cannot do for
 and 1 only for a missing token.
 
 No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
-unknown option or command, before any command body runs) exit `2`. (Earlier revisions of this
+unknown option or command, before any command body runs — including every retired command name
+and former alias) exit `2`. Commands that parse their own trailing arguments report the same
+class of usage error with `2` too: an unrecognized flag (`find_unknown_flag`), an unknown
+`docket gates` subcommand, or an unknown `docket context` action. (Earlier revisions of this
 spec described codes 2–9 and 127 per failure kind; those were never implemented — removed in
 v1.5.0.)
 
@@ -1156,9 +1167,8 @@ the contract-level summary follows.
 
 ### Project Picker
 When agent-id is omitted for commands that need it:
-1. Try fzf if available
-2. Fall back to numbered menu
-3. Allow typing ID directly
+1. Show a numbered menu (there is no fzf integration)
+2. Allow typing ID directly
 
 ### Confirmation Prompts
 Required for destructive operations:
@@ -1237,16 +1247,39 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Docket's supported state root is `~/.docket` (or `DOCKET_HOME`). It does not import state from a
   retired runtime; the first `docket init` writes a Docket-owned home.
 
-### Deprecated Features
-- `docket install` and `docket setup` do not exist. Package installation belongs to the package
-  manager; first-project initialization bootstraps global state lazily.
-- `docket reset <level>` → Use `docket maintain clean|reset|rebuild`
-- `docket repair` → Use `docket maintain check`
-- `docket cleanup` → Use `docket maintain sessions`
-- `docket model` → Use `docket profile`
+### Retired Names
+- docket carries no backward-compatibility layer for its own CLI: no alias table, no
+  retired-command notices, no deprecated no-op flags. A command name docket used to have
+  (`install`, `setup`, `reset`, `repair`, `cleanup`, `model`, `team`, `workflow`, `eval`,
+  `auth`, …) or a former alias (`show`, `rm`, `telegram`, …) is an ordinary unknown command
+  (exit 2). Package installation belongs to the package manager; first-project initialization
+  bootstraps global state lazily.
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.59.0 (2026-10-03)
+
+- **Legacy compatibility removed (no users; maintainer decision 2026-10-03).** `__main__.py`
+  no longer carries `_REMOVED` (retired-command notices) or `_ALIASES`; `main()` only invokes
+  the Typer app. Every retired command name (`team`, `workflow`/`wf`, `eval`/`evals`, `auth`,
+  `reset`, `repair`, …) and former alias (`show`, `rm`, `remove`, `telegram`, `key`, `secret`,
+  `log`, `usage`, `check`, `security`, `export`, `completion`, `policy`) is an ordinary unknown
+  command (Click, `No such command`, exit 2). Installed Distribution, the `auth`/`workflow`/
+  `team`/`eval` paragraphs, Telegram Commands and Backwards Compatibility rewritten accordingly.
+- Removed: the hidden global `--debug` (now an unknown option, exit 2) and the hidden `_json`
+  command; `init --path` (use `--codebase`); `maintain --distill-first` (distillation stays the
+  default; the flag is now an unrecognized flag, exit 2); `audit`'s positional `--json` (the
+  `--json` option stays; syntax now `docket audit [N | verify] [--json]`).
+- `docket gates`: `enable`/`disable` and `--force` are gone with the approval-routing flag they
+  wrote; `status` reports the gate and isolation only; an unknown subcommand prints an error plus
+  usage and exits 2.
+- `docket context`: an unknown action now exits 2 instead of falling through to `show`.
+- The interactive picker is a numbered menu only (fzf was never invoked); doctor's checks list
+  drops the stale-model check and names the `docket-models.json` entry check instead, and its
+  footer points at `docket maintain [id] check`; `docket snapshot` output has no `gateway` field.
+- Return Code Convention states that pass-through usage errors (unrecognized flag, unknown
+  `gates` subcommand or `context` action) exit 2 like Click's own.
 
 ### Version 1.58.0 (2026-09-29)
 

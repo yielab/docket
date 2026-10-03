@@ -1,14 +1,9 @@
-"""The installed console-script entry point, and `_ALIASES` resolution.
+"""The installed console-script entry point.
 
-`pyproject.toml`'s `[project.scripts]` maps `docket` to an object every pip/uv/Homebrew
-install actually runs, which must be `docket.__main__:main` and never the bare Typer `app`
-directly -- pointing it at `app` bypasses the `_REMOVED` notices and `_ALIASES` table
-entirely, and `test_removed_commands.py`'s `python -m docket` cannot catch that regression.
-
-This resolves the entry point the way pip's generated launcher does --
-`importlib.metadata.entry_points(group="console_scripts")` -- and drives that object through
-one removed command and one alias, so a regression fails here even though `python -m docket`
-still passes.
+`pyproject.toml`'s `[project.scripts]` maps `docket` to the object every pip/uv/Homebrew install
+runs. This resolves it the way pip's generated launcher does --
+`importlib.metadata.entry_points(group="console_scripts")` -- and drives it, so a broken target
+fails here even though `python -m docket` still passes.
 """
 
 from __future__ import annotations
@@ -40,32 +35,30 @@ def _run_entry_point(args: list[str], tmp_path: Path) -> subprocess.CompletedPro
     return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
 
 
-def test_entry_point_targets_main_not_the_raw_typer_app() -> None:
+def test_entry_point_targets_main() -> None:
     assert _entry_point_target() == "docket.__main__:main"
 
 
-def test_entry_point_honours_removed_command_notice(tmp_path: Path) -> None:
-    result = _run_entry_point(["team", "delegate", "fix login"], tmp_path)
-    assert result.returncode == 1
-    assert "docket team was retired" in result.stdout
-
-
-def test_entry_point_resolves_an_alias(tmp_path: Path) -> None:
-    # "show" aliases to "info"; --help is side-effect-free and proves the rewrite
-    # happened without depending on any project/agent state.
-    result = _run_entry_point(["show", "--help"], tmp_path)
+def test_entry_point_runs_a_command(tmp_path: Path) -> None:
+    result = _run_entry_point(["info", "--help"], tmp_path)
     assert result.returncode == 0
     assert "Detailed status of one agent" in result.stdout
 
 
-def test_module_invocation_still_works_unguarded(tmp_path: Path) -> None:
-    """`python -m docket` must be unaffected by guarding `main()` under `__name__`."""
+def test_a_retired_command_name_is_an_unknown_command(tmp_path: Path) -> None:
+    """No old name is resolved or explained: it fails like any other unknown command."""
+    result = _run_entry_point(["team", "delegate", "fix login"], tmp_path)
+    assert result.returncode == 2
+    assert "No such command" in result.stderr
+
+
+def test_module_invocation_runs_the_app(tmp_path: Path) -> None:
     env = {**os.environ, "DOCKET_HOME": str(tmp_path / ".docket")}
     result = subprocess.run(
-        [sys.executable, "-m", "docket", "team"], capture_output=True, text=True, env=env
+        [sys.executable, "-m", "docket", "info", "--help"], capture_output=True, text=True, env=env
     )
-    assert result.returncode == 1
-    assert "docket team was retired" in result.stdout
+    assert result.returncode == 0
+    assert "Detailed status of one agent" in result.stdout
 
 
 def test_importing_dunder_main_has_no_side_effect() -> None:

@@ -14,8 +14,8 @@ AGENT TYPES
                         → Each has its own workspace, memory, and Telegram group
 
 USAGE
-  docket [--debug] <command> [agent-id] [args]
-  If agent-id is omitted an interactive picker is shown (fzf or numbered list).
+  docket <command> [agent-id] [args]
+  If agent-id is omitted an interactive numbered picker is shown.
 
 LIFECYCLE
   init               Initialize everything needed + this project's minimum pod

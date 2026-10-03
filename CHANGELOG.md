@@ -58,8 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its last answer, carried on the root and aliased by the built-in `langfuse` document), verified live with canaries at three levels; at
   `minimal` no canary reached the collector, Langfuse or the local trace. Compared with the
   pre-release `payload: metadata` default, an approval's command line and error text no longer
-  leave at `minimal`. A document still carrying `payload` loads as `minimal`, and `docket doctor`
-  names the command that replaces it. Export pipelines start once per process, so a running
+  leave at `minimal`. Export pipelines start once per process, so a running
   `docket serve` applies a level change after a restart.
 - **Traces can go to OpenTelemetry and Langfuse (Phase 32, D-48, ADR 0014).** A destination is
   a `kind: exporter` document (`core/exporter.py`): endpoint, auth (`bearer`/`header`/`basic`/
@@ -316,6 +315,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Unknown `docket gates` and `docket context` subcommands exit 2.** `gates` used to print its
+  usage and exit 0, and `context` silently fell through to `show`; both now name the unknown
+  subcommand and exit 2.
+- **`docket audit verify` reports an unchained line as a break.** A line without `seq`/
+  `prev_hash` used to be counted as "legacy", skipped, and treated as a chain restart; it now
+  fails verification at that line, like any other break.
+- **The `serve` API version is 3.** `/status.json` (and the MCP `status` tool) no longer carry a
+  `gateway` field, `/health` answers `{"status":"ok"}`, and the `docket_gateway_up` metric is
+  gone. The undocumented bare `/status` route is gone; use `/status.json`.
 - **The docs open with the newcomer path.** The quick start is rebuilt as install → register a
   model → create the team (recipe, plain, or a committed `.docket/`) → run a task → read the
   record → export, edit, validate, apply → run unattended, with the terminal output of one real
@@ -341,10 +349,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gates. A research, content or ops pod used to run only its Lead; it now runs more hops and spends
   more tokens per dispatch pass. Software and agentic-product pods, and any pod whose Lead has no or
   an unknown blueprint, behave exactly as before.
-- **`--debug` is a hidden, deprecated no-op.** It set `DEBUG=1` and nothing in docket read it;
-  the flag is still accepted so existing scripts do not start exiting 2, but it is gone from
-  `docket --help` and `docket help`. `docket models` no longer claims prices can be overridden in
-  `docket-models.json`; no pricing overlay is read.
+- **`docket models` no longer claims prices can be overridden in `docket-models.json`**; no
+  pricing overlay is read.
 
 - **A prompt's context budget follows the resolved model's context window instead of a fixed
   ~24 KB for every model.** A 200k-window endpoint now fits a full identity/memory/task-ledger
@@ -359,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   composition's `prompt_composed` trace event lists each section's size and whether it was full,
   truncated or omitted.
 - **There is one default model of record.** `docket-models.json`'s `default` is now the only
-  source; the separate, sometimes-diverging `fleet.json` default is migrated in and dropped. A
+  source; the separate, sometimes-diverging `fleet.json` default is no longer read. A
   provider's display name derives from `--model` unless `--name` is given, instead of every entry
   showing the shipped local model's caption.
 - **Built-in role templates no longer instruct an agent to do something the runtime forbids.**
@@ -396,10 +402,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written in a second the cursor had already partly delivered, to a session file that sorts
   earlier, was dropped while another was delivered twice. Events from the still-open second are
   now held back until it closes; the cursor format is unchanged.
-- **The installed `docket` command honours aliases and removed-command notices.** The console
-  script pointed at the bare Typer app, so on a pip or uv install `docket team` printed a generic
-  "No such command" and `docket show` did not resolve. `docket help <command>` now prints that
-  command's usage, or exits 1 naming an unknown command.
+- **`docket help <command>` prints that command's usage**, or exits 1 naming an unknown command.
 - **`docs/contracts/harness-v1/schema.json` validates as JSON Schema.** Its nested `$ref`s
   pointed at definitions the document did not contain, so a standard validator failed on
   `#/definitions/HarnessResult`. The contract stays `1.0.0`; no field changed.
@@ -456,8 +459,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docket delete` removes a pod member's merged branch and its provisioning lock directory.** A
   merged `docket/<pod>/<member>` branch and stale lock entries used to survive teardown; an
   unmerged branch is still kept, with the command to remove it printed. Newly created workspace
-  and pod directories are now `0700`, and `docket init --no-gates` no longer prints "recorded as
-  off" while writing nothing.
+  and pod directories are now `0700`.
 - **A deterministic dispatch refusal now fails the task instead of orphaning it.** A refusal
   raised inside a claimed task — an unknown pod member, an invalid stored setting, a membership
   mismatch — used to leave the task `running` with no process behind it and no way to resume; it
@@ -470,16 +472,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`docket auth`** is a removed command: every `docket auth <anything>` prints the
-  removed-command notice pointing at `docket keys add <NAME>` and `docket models provider add`,
-  and exits 1. `docket keys setup` walks the provider catalog instead of a fixed five-provider
-  list. The `#### docket auth` section left `specs/api/cli-interface.spec.md` (1.42.0).
+- **Every compatibility path is gone.** docket has no installed base to migrate, so code that only
+  kept an old name, flag, route or file shape working was deleted.
+  - **Command aliases:** `show`, `rm`, `remove`, `telegram`, `key`, `secret`, `log`, `usage`,
+    `check`, `security`, `export`, `completion` and `policy` are unknown commands. Use `info`,
+    `delete`, `wire`, `keys`, `logs`, `cost`, `doctor`, `gates`, `snapshot`, `completions` and
+    `policies`.
+  - **Removed-command notices:** `auth`, `team`, `workflow`/`wf`, `eval`/`evals`, `model`,
+    `tier`, `billing`, `credits`, `monitor`/`mon`, `memory`/`mem`, `smart`, `ai`, `mode`,
+    `terminal`/`term` and the top-level `reset`, `repair`, `fix`, `cleanup` and `clean` no longer
+    print a notice; they are plain unknown commands.
+  - **Flags and subcommands:** the hidden `--debug` flag and hidden `_json` command;
+    `docket gates enable`/`disable` and `gates ... --force`; `docket init --gates`/`--no-gates`
+    and `init --path` (use `--codebase`); `docket profile <id> policy` (use `default`);
+    `docket models ls` (use `list`); the trailing count in `docket pod <p> add <role> <N>` (use
+    `--count`/`-n`); `docket maintain --distill-first` (distilling first is the default;
+    `--no-distill-first` remains); `--json` in place of `docket audit`'s count argument (the
+    `--json` flag is unchanged); `programmer` as
+    a pod role alias for `implementer` (`programmer` stays a role-policy key for
+    `docket models set`).
+  - **Approval-routing posture:** the `approvalRoutingState`/`approvalRoutingMode` flag that
+    nothing on the live path read, and the "Approval routing" line in `docket gates status`. The
+    tool-call gate is always on; `docket gates` manages only isolation (`status`, `isolate`,
+    `classes`).
+  - **Migrations of old files:** a `defaults.model` or `providers` block in `fleet.json`, a
+    `profiles:` key in `docket-models.json`, the old Anthropic model-id aliases (`claude-3.x` to
+    `4.x`), and an exporter's `payload`/`payloadMaxChars` keys are no longer read or converted.
+  - **`docket doctor` checks:** stale model names, the `profiles:` key, a stray workspace `.env`,
+    leftover global specialist workspaces, metadata backfill, and quarantining a model-written
+    `IDENTITY.md`/`BOOTSTRAP.md` into `.docket-archive/`. `doctor --json` drops the `fzf`,
+    `approvalRouting`, `routingMode`, `modelConfig` and `modelRegistry` keys. The doctor footer
+    now points at `docket maintain [id] check` instead of the removed `docket repair`.
+  - **The `gateway` field** in `docket snapshot`, `/status.json` and the MCP `status` tool, which
+    always read `inactive`.
+  - **fzf:** the agent picker is the numbered one; fzf was never invoked and is no longer an
+    optional Homebrew dependency.
+  - **`SITES_DIR` and `DOCKET_LOG_DIR`:** `docket init` no longer creates `~/Sites` or
+    `/tmp/docket`; nothing wrote there.
+  - **`docket install`** in the install script and Homebrew caveats: there is no such command;
+    first-time setup is `docket init`.
+- **`docket auth` is gone.** Store a key with `docket keys add <NAME>`; register an endpoint
+  with `docket models provider add`. `docket keys setup` walks the provider catalog instead of a
+  fixed five-provider list.
 - **docket no longer writes an API key into every workspace's `.env` file.** Stored keys are
   resolved only where they are read; `keys add` under the `keyring` backend either stores through
   `secret-tool` or refuses with an honest message instead of silently doing nothing.
-- **`docket gates enable`/`docket gates disable` are retired.** They wrote an approval-routing
-  flag nothing on the live turn path read. Both now print a removed-command notice pointing at
-  `docket pod <p> config set approvalMode`.
 
 ## [0.2.0-beta.3] - 2026-09-18
 

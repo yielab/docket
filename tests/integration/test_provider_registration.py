@@ -23,7 +23,6 @@ from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 from docket.cli import app as _app
-from docket.core import fleet as _fleet
 from docket.core import provider as _prov
 from docket.edges.adapters.llm import ProbeResult
 
@@ -238,29 +237,3 @@ def test_remove_refuses_for_a_built_in_with_no_global_override(
     result = _runner.invoke(_app, ["models", "provider", "remove", "anthropic"])
     assert result.exit_code == 1
     assert "built-in" in result.stderr.lower()
-
-
-# ── the fleet.json → catalog migration ──────────────────────────────────────────
-
-
-def test_fleet_providers_migrate_into_the_catalog(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A pre-catalog `fleet.json -> providers` block (`_fleet.load_fleet`'s own shape) still
-    resolves through `load_catalog`, and is ported into the document once."""
-    home = _seed(tmp_path, monkeypatch)
-    fleet_cfg = json.loads((home / "fleet.json").read_text())
-    fleet_cfg["providers"] = {
-        "legacy": {
-            "baseUrl": "http://127.0.0.1:8082/v1",
-            "apiKey": "local",
-            "models": [{"id": "m", "contextWindow": 8192, "maxTokens": 2048}],
-        }
-    }
-    (home / "fleet.json").write_text(json.dumps(fleet_cfg))
-
-    catalog = _prov.load_catalog()
-
-    assert catalog.get("legacy") is not None
-    assert catalog.source_of("legacy") == "global"
-    assert _fleet.load_fleet().providers == {}

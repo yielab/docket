@@ -25,10 +25,14 @@ from docket.edges import store
 
 def run_context(agent_id: str, ws: Path, sub: str | None, extra: list[str]) -> int:
     """Dispatch the context subcommand. Returns the process exit code."""
-    if (sub or "show") == "project":
+    action = sub or "show"
+    if action == "project":
         _context_project(agent_id, ws)
-    else:
+    elif action == "show":
         _context_show(agent_id, ws)
+    else:
+        ui.error(f"docket context: unknown action '{action}' (expected: show, project)")
+        return 2
     return 0
 
 
@@ -82,9 +86,8 @@ def _context_show(agent_id: str, ws: Path) -> None:
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     activity = last_activity(agent_id)
 
-    # There is no daemon gateway log to tail any more; session size reads
-    # docket's own durable per-session storage (core/session.py) for this
-    # agent's *current* session key, rather than a daemon JSONL file.
+    # Session size reads docket's own durable per-session storage (core/session.py)
+    # for this agent's *current* session key.
     session_size = "n/a"
     with contextlib.suppress(Exception):
         raw = store.read_json(_cfg.meta_path(agent_id))

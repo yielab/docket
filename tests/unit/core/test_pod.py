@@ -84,9 +84,12 @@ class TestPodOf:
 
 
 class TestNormalizeRole:
-    def test_programmer_aliases_to_implementer(self) -> None:
-        assert pod.normalize_role("programmer") == "implementer"
+    def test_role_is_case_insensitive(self) -> None:
         assert pod.normalize_role("Implementer") == "implementer"
+
+    def test_an_old_role_name_is_not_an_alias(self) -> None:
+        with pytest.raises(pod.PodError):
+            pod.normalize_role("programmer")
 
     def test_unknown_role_raises(self) -> None:
         with pytest.raises(pod.PodError):
@@ -108,7 +111,6 @@ def _write_vetter_overlay(path: Path, denied_tools: list[str] | None = None) -> 
                     "soulTemplate": "x",
                     "agentsTemplate": "y",
                     "gateContract": {"kind": "none"},
-                    "editRights": "read-only",
                     "toolProfile": "read-only",
                     "deniedTools": denied_tools or [],
                 }

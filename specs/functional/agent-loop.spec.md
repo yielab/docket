@@ -1,12 +1,12 @@
 # Agent Loop Specification
 
-**Version**: 1.29.0
+**Version**: 1.30.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
 agent's SOUL.md/persona and one runtime-safe projection of its startup contract
-(`core.identity.system_prompt_for_agent`) — see the
+(`core.identity.compose_agent_prompt`) — see the
 "Per-role tool narrowing" and "System prompt composition" requirements below. **Wave 17** gave
 `DocketDriver` an `mcp_loader` seam, called before this loop's registry-narrowing step, so a
 configured MCP server's tools are reachable from a live turn and correctly narrowed by role — see
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -51,7 +51,7 @@ This specification covers:
   driver's tool-containment root resolution and its `capabilities()` honesty contract
 - That `run_agent_turn` narrows its tool registry by role (via
   `core.archetypes.registry_for_role`) and composes a system prompt (via
-  `core.identity.system_prompt_for_agent`), once per turn, and what effect each has on the
+  `core.identity.compose_agent_prompt`), once per turn, and what effect each has on the
   messages sent to the backend and persisted to session history (ROADMAP Phase 19 P19-12)
 - The live trigger and adapter for `core.session.compact_session`: ordering, non-recursion,
   measured usage accounting, failure behavior, and privacy-safe trace payloads (W20-C2)
@@ -161,10 +161,9 @@ This specification does NOT cover:
 20. `run_turn`'s tool-containment root **MUST** be resolved with the precedence: an explicit
     worktree directory, then the agent's codebase, then its work directory, then its bare
     docket workspace directory.
-21. `provision`/`teardown` **MUST** return `ok=True` without performing any daemon
-    registration side effect (there is no daemon), and **MUST** say so in their `message`.
-22. `capabilities().supports_provisioning` **MUST** be `False`, so a caller cannot mistake
-    `provision`/`teardown`'s no-op for a real registration step.
+21. Removed (2026-10-03): the `provision`/`teardown` no-ops are deleted from the driver and the
+    `RuntimeDriver` port — `run_turn` needs nothing pre-registered.
+22. Removed (2026-10-03): `DriverCapabilities.supports_provisioning` is deleted with them.
 23. `capabilities().reports_cost_usd` **MUST** be `False`.
 24. `capabilities().supports_sessions` **MUST** be `True`, and `list_sessions`/
     `read_new_turns`/`usage` **MUST** read `core/session.py`'s durable storage, never a daemon
@@ -196,7 +195,7 @@ This specification does NOT cover:
 ### System prompt composition (ROADMAP Phase 19 P19-12)
 
 29. `run_agent_turn` **MUST** compose a system prompt via
-    `core.identity.system_prompt_for_agent(ctx.agent_id, project_roots=ctx.roots)` once per turn
+    `core.identity.compose_agent_prompt(ctx.agent_id, project_roots=ctx.roots, ...)` once per turn
     and, when non-empty,
     prepend it as a `system`-role message ahead of the turn's history and incoming user message.
     An empty result (no workspace, no identity files, no `agent_id`) **MUST NOT** add an empty
@@ -671,8 +670,6 @@ class DocketDriver:                            # implements core.runtime_driver.
         self, agent_id, session_key, message, timeout=300, env=None, *, on_spawn=None,
         trace_project=None, trace_session_key=None,
     ) -> TurnResult: ...
-    def provision(self, agent_id, workspace, model) -> ProvisionResult: ...
-    def teardown(self, agent_id) -> TeardownResult: ...
     def list_sessions(self, agent_id) -> list[SessionSummary]: ...
     def read_new_turns(self, agent_id, session_id, offset) -> SessionSlice: ...
     def usage(self, agent_id) -> UsageReport: ...
@@ -796,6 +793,14 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.30.0 (2026-10-03)
+
+- **Legacy purge.** Requirements 21-22 are marked removed: `DocketDriver.provision`/`teardown`,
+  `ProvisionResult`/`TeardownResult`, the matching `RuntimeDriver` members and
+  `DriverCapabilities.supports_provisioning` are deleted; the module API block drops them. The
+  system-prompt entry point is named `core.identity.compose_agent_prompt` (the
+  `system_prompt_for_agent` wrapper is deleted; `run_agent_turn` already called the former).
 
 ### Version 1.29.0 (2026-09-29)
 

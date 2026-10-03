@@ -36,18 +36,16 @@ The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the w
 A **shared team** created lazily by the first `docket init` — genuinely cross-cutting, one instance for
 the whole fleet (`scope: org`):
 
-- **manager** — cross-cutting coordination (transitional; `docket team`'s own task queue was
-  retired — per-pod dispatch is the only queue now — so this role is being superseded by
-  per-pod Leads).
+- **manager** — cross-cutting coordination (transitional; it has no task queue of its own —
+  per-pod dispatch is the only queue — so this role is being superseded by per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
 - **portfolio-manager** *(optional, `docket init --portfolio` on the first init)* — advisory cross-pod
   planner over fleet *metadata* (which pods exist, their queues, budgets, health). Never a pod
   member, never edits code, never dispatches into pods.
 
-> The old "shared `programmer`/`reviewer`/`tester` workers" are **gone**. Implement/review/test
-> are now per-pod roles, each with its own isolated workspace, so no worker agent ever serves
-> two projects. `docket doctor` flags any leftover global worker from a pre-pods install.
+> Implement/review/test are per-pod roles, each with its own isolated workspace, so no worker
+> agent ever serves two projects.
 
 ---
 
@@ -311,23 +309,6 @@ docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed p
 file of its own. Writing a pipeline file lets you change the step order, add a parallel fan-out,
 or swap in a different gate — without touching pod membership at all.
 
-> **`docket workflow` is gone.** An older Lobster YAML dialect (`docket workflow validate|plan`)
-> used to live here; its own validator silently ignored constructs its own template emitted, so
-> docket was linting a format it could not fully run. It was retired outright (ROADMAP decision
-> D-16) rather than migrated — running it now prints a removed-command notice:
->
-> ```text
-> $ docket workflow validate myflow
-> docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator ignored four constructs its own template emitted).
-> Use: docket pipeline validate   (was: workflow <id> validate <name>)
-> Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>)
-> Use: docket pipeline run        to actually execute a pipeline
-> Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer read by docket.
-> ```
->
-> Any old `.lobster.yml` files are left on disk untouched; docket just never reads them again.
-> `docket pipeline` below is the one dialect docket actually executes.
-
 ### Zero migration: nothing changes until you opt in
 
 A pod with no pipeline file behaves **exactly** like `core/dispatch.py`'s hardcoded pipeline
@@ -341,8 +322,7 @@ Installing this feature changes nothing about an existing pod until you write a 
 ### `docket pipeline validate` — check a file before you point a pod at it
 
 Pure structural validation, no project or pod involved. Every level of the document rejects an
-unrecognized key — a typo fails loudly instead of being silently ignored (the exact defect that
-got Lobster retired):
+unrecognized key — a typo fails loudly instead of being silently ignored:
 
 ```bash
 $ docket pipeline validate workflows/release.yml
@@ -589,9 +569,7 @@ pipeline; it has no way to supply a `--file` of its own, only variable *values*.
 
 ## There is now one queue: per-pod dispatch
 
-`docket team` (the org manager's own delegate/queue/start/done/cancel task queue) was
-**retired** — the old manager queue was never dispatched, so it added ceremony without running
-anything. **Per-pod dispatch is the only queue now:**
+There is no org-level task queue. **Per-pod dispatch is the only queue:**
 
 | | **Per-pod dispatch** |
 |---|---|
@@ -742,7 +720,7 @@ Agents record intent in `modelSource`: `policy` (follow the role) or `pinned` (e
 
 ```bash
 docket list                     # every pod member + org specialist
-docket doctor                   # health + auto-fix; flags legacy global workers
+docket doctor                   # health + auto-fix
 ```
 
 
@@ -848,7 +826,7 @@ Telegram" sections — kept in one place rather than duplicated here.
 
 **Org specialists** (`scope: org`, shared once):
 - manager / knowledge / security; optional advisory portfolio-manager.
-- `docket team` (the old org task queue) was retired — per-pod dispatch is the only queue now;
+- There is no org-level task queue — per-pod dispatch is the only queue;
   the portfolio-manager is advisory-only and never dispatches or touches a project's code.
 
 **Engineer:**
@@ -859,7 +837,7 @@ delegate → dispatch → Lead → Implementer → (Reviewer) → (Tester) → y
 ```
 
 **Pipelines** (`docket pipeline validate/plan/run`, `docket runs list/show/cancel`):
-- `docket workflow`/Lobster is retired (D-16) — the docket-native pipeline is the one dialect
+- The docket-native pipeline is the one dialect
   docket executes, and a pod with no pipeline file runs the built-in one unchanged.
 - Every dispatch — CLI, `--follow`, a schedule, a webhook, or the sweep loop — lands one record
   in the run registry; `docket runs cancel` kills an in-flight hop's process group for real.

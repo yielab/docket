@@ -199,9 +199,7 @@ class TestHeartbeatLedgerLifecycle:
 
 class TestConversationAutoPopulation:
     def _seed_conversation(self, agent_id: str, peer_id: str = "-100") -> None:
-        reg = _conv.load()
-        _, reg = _conv.record(reg, agent_id=agent_id, peer_id=peer_id, now="2026-01-01T00:00:00")
-        _conv.save(reg)
+        _conv.record_durable(agent_id=agent_id, peer_id=peer_id, now="2026-01-01T00:00:00")
 
     def test_hop_updates_last_message_and_task_ref(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -300,16 +298,13 @@ class TestConversationAutoPopulation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        reg = _conv.load()
-        _, reg = _conv.record(
-            reg,
+        _conv.record_durable(
             agent_id="demo-lead",
             peer_id="-100",
             now="2026-01-01T00:00:00",
             topic="release planning",
             status=_conv.ConversationStatus.waiting,
         )
-        _conv.save(reg)
 
         _dispatch.enqueue_task("demo", "keep my topic")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())

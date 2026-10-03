@@ -58,11 +58,6 @@ class TestBashCompletionsMatchRegistry:
         out = capsys.readouterr().out
         assert _parse_bash_commands(out) == _live_command_names()
 
-    def test_hidden_json_bridge_is_excluded(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _completions.run_completions("bash")
-        out = capsys.readouterr().out
-        assert "_json" not in _parse_bash_commands(out)
-
 
 class TestZshCompletionsMatchRegistry:
     def test_advertises_exactly_the_live_command_set(
@@ -71,36 +66,6 @@ class TestZshCompletionsMatchRegistry:
         _completions.run_completions("zsh")
         out = capsys.readouterr().out
         assert _parse_zsh_commands(out) == _live_command_names()
-
-    def test_hidden_json_bridge_is_excluded(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _completions.run_completions("zsh")
-        out = capsys.readouterr().out
-        assert "_json" not in _parse_zsh_commands(out)
-
-
-class TestRetiredCommandsNeverAdvertised:
-    """`team` and tier names were retired; a completion script
-    that still offers them is exactly the drift this guard exists to kill."""
-
-    @pytest.mark.parametrize("shell", ["bash", "zsh"])
-    def test_team_and_tier_absent(self, shell: str, capsys: pytest.CaptureFixture[str]) -> None:
-        _completions.run_completions(shell)
-        out = capsys.readouterr().out
-        assert "team" not in out
-        for tier in ("economy", "standard", "premium", "tier"):
-            assert tier not in out
-
-    @pytest.mark.parametrize("shell", ["bash", "zsh"])
-    def test_eval_not_advertised_as_a_command(
-        self, shell: str, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`docket eval` is not a command. The bare substring "eval"
-        legitimately survives in the completion scripts' own install
-        instructions, so this checks the *parsed command set*, not raw text."""
-        _completions.run_completions(shell)
-        out = capsys.readouterr().out
-        names = _parse_bash_commands(out) if shell == "bash" else _parse_zsh_commands(out)
-        assert "eval" not in names
 
 
 class TestCommandsPresent:

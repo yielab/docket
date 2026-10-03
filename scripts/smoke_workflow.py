@@ -628,16 +628,6 @@ def _approval_tool_verdict(
     )
 
 
-def _approval_private_tool_violation(
-    home: Path,
-    record: dict[str, Any],
-    allowed_project_roots: tuple[Path, ...],
-) -> tuple[bool, str | None]:
-    """Compatibility projection for focused classifier tests."""
-    resolved, verdict = _approval_tool_verdict(home, record, allowed_project_roots)
-    return resolved, verdict.marker
-
-
 def _relative_project_root(identity: object, allowed_project_roots: tuple[Path, ...]) -> Path:
     normalized = str(identity).casefold()
     if len(allowed_project_roots) > 1 and normalized.split("-")[-1] != "lead":
@@ -1705,7 +1695,6 @@ def _run(
             {
                 "DOCKET_HOME": str(home),
                 "DOCKET_SERVICE_MANAGER": "none",
-                "DOCKET_LOG_DIR": str(world / "logs"),
                 "NO_COLOR": "1",
                 "NO_PROXY": "127.0.0.1,localhost",
                 "PYTHONUNBUFFERED": "1",
@@ -2248,7 +2237,6 @@ def _run_operator_loop_scenario(
             {
                 "DOCKET_HOME": str(home),
                 "DOCKET_SERVICE_MANAGER": "none",
-                "DOCKET_LOG_DIR": str(world / "logs"),
                 "NO_COLOR": "1",
                 "NO_PROXY": "127.0.0.1,localhost",
                 "no_proxy": "127.0.0.1,localhost",

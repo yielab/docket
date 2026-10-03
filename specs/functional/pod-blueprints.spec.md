@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.20.0
+**Version**: 1.21.0
 **Status**: Implemented
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -33,7 +33,7 @@ This specification covers:
 This specification does NOT cover:
 
 - The archetype schema itself (`name`, `scope`, `modelClass`, `soulTemplate`, `agentsTemplate`,
-  `gateContract`, `editRights`, `toolProfile`) — see `role-archetypes.spec.md`. A blueprint's
+  `gateContract`, `toolProfile`, `deniedTools`) — see `role-archetypes.spec.md`. A blueprint's
   `roles` list is a roster of archetype names; this spec does not redefine what an archetype is
 - The pipeline format itself (steps, gates, rework edges, variables) — see
   `pipeline-format.spec.md`. A blueprint's `defaultPipeline` is one `PipelineSpec` value; this spec
@@ -62,7 +62,7 @@ This specification does NOT cover:
    present (absent/empty is valid for both).
 2. `workspaceKind` **MUST** be one of exactly `"codebase"` | `"workdir"` — a closed enum, matching
    the same "closed typed sets docket can reason about" discipline `role-archetypes.spec.md`
-   applies to `scope`/`modelClass`/`gateContract.kind`/`editRights`.
+   applies to `scope`/`modelClass`/`gateContract.kind`.
 3. `roles`' first entry **MUST** be `"lead"`, and `"lead"` **MUST** appear exactly once — a pod has
    exactly one orchestrator (`core/pod.py`'s pre-existing singleton-Lead invariant, unaffected by
    this spec). Every other entry is an open archetype-name reference: any built-in, starter-library,
@@ -535,6 +535,13 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.21.0 (2026-10-03)
+
+- Stopped naming `editRights` as an archetype field (no users; legacy compatibility removed —
+  `editRights` no longer gets any special handling anywhere). The "does NOT cover" archetype field
+  list now names `deniedTools` instead, and Blueprint schema requirement 2's list of closed sets
+  is `scope`/`modelClass`/`gateContract.kind`, matching role-archetypes.spec.md 1.22.0.
 
 ### Version 1.20.0 (2026-09-27)
 

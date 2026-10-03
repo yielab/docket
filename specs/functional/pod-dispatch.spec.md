@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.26.0
+**Version**: 6.27.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -891,7 +891,7 @@ was seeded once at binding time.)*
    Its `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real
    verdict marker, but the same field `_replay_pipeline_position`'s route-counts rebuild already
    keys a backward/self route by (see the comment at its `hop.next_step` handling); a plain
-   `HandoffArtifact.from_legacy_output` fallback would leave `verdict` `None` there and
+   `HandoffArtifact.from_output` fallback would leave `verdict` `None` there and
    mis-key every reconstructed route as `"fail"`.
 5. **Terminal routes settle immediately.** A route resolving to `"fail"` (or an `on:` target
    that names no known step id) moves the task straight to `failed`; one resolving to `"stop"`
@@ -1431,7 +1431,7 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    **reserved**: the schema and `DROP_ORDER` account for it so a future producer needs no schema
    migration, but no dispatch code writes it). `HopResult.artifact` **MUST** always be set once a
    hop is constructed — a hop built without one explicitly backfills via
-   `HandoffArtifact.from_legacy_output(output)` (treating the raw text as `summary`, every other
+   `HandoffArtifact.from_output(output)` (treating the raw text as `summary`, every other
    field at its default) in `__post_init__`.
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
@@ -1444,13 +1444,12 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    not structurally carry.
 3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the
    persisted `hops[]` entry, dumped via `HandoffArtifact.model_dump()`) so `--resume` recovers it
-   exactly, not just the raw `output` string it was already persisting. A hop record persisted
-   before this version (or any record whose `artifact` value fails to validate) **MUST** degrade
-   via `HandoffArtifact.from_legacy_output` — the backward-compatibility requirement this card
-   added; a pre-W-5 queue file **MUST** still resume correctly with no separate migration step.
-   Replay **MUST** use a persisted artifact's normalized `verdict` without reparsing its raw model
-   prose. A record with no usable persisted verdict may fall back to parsing the raw output to
-   preserve pre-artifact resume behavior.
+   exactly, not just the raw `output` string it was already persisting. A hop record whose
+   `artifact` is missing or fails to validate **MUST** degrade to
+   `HandoffArtifact.from_output(output)` (via `HopResult.__post_init__`) rather than fail the
+   resume. Replay **MUST** use a persisted artifact's normalized `verdict` without reparsing its
+   raw model prose. A record whose artifact carries no verdict falls back to parsing the hop's
+   raw output.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
    (`notes`, `diff_ref`, `files_changed`, `verdict` — `summary` is deliberately never included, it
    is the artifact's minimum viable content) and a `dropped(field)` helper that returns a copy with
@@ -1903,6 +1902,14 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.27.0 (2026-10-03)
+
+- **Legacy purge, wording only for dispatch.** `HandoffArtifact.from_legacy_output` is renamed
+  `from_output`; "Structured handoff artifacts" requirements 1 and 3 and the operator-answer
+  synthetic hop use the new name, and requirement 3 describes a missing or invalid `artifact`
+  degrading through `HopResult.__post_init__` instead of a "pre-W-5"/legacy-record compatibility
+  path. Resume behaviour is unchanged.
 
 ### Version 6.26.0 (2026-10-03)
 

@@ -39,7 +39,7 @@ DEFAULT_INTERVAL = 30
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
 # authenticated write/read-registry endpoints (/dispatch, /runs).
 # Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
-SERVE_API_VERSION = "2"
+SERVE_API_VERSION = "3"
 
 _SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
 
@@ -116,7 +116,6 @@ def build_status() -> dict[str, Any]:
     """Build the /status.json payload. Schema, versioned by ``SERVE_API_VERSION``:
     specs/data/serve-read-api.spec.md (GET /status.json).
     """
-    gateway = "active" if utils.gateway_active() else "inactive"
     channels = fleet.channel_names()
     registered = {a.id for a in fleet.list_agents()}
 
@@ -139,7 +138,6 @@ def build_status() -> dict[str, Any]:
     return {
         "apiVersion": SERVE_API_VERSION,
         "timestamp": _utc_timestamp(),
-        "gateway": gateway,
         "channels": channels,
         "agents": agents,
         "totalCostUsd": round(total_cost, 6),
@@ -147,7 +145,7 @@ def build_status() -> dict[str, Any]:
 
 
 def _cost_json() -> dict[str, Any]:
-    """Per-project cost payload: {agents:[{id,model,costUsd,turns,...}], totalUsd}.
+    """Per-project cost payload: {agents:[{id,model,costUsd,turns}], totalUsd}.
     Project agents only -- specialists are excluded.
     """
     from docket.edges import store
@@ -157,21 +155,15 @@ def _cost_json() -> dict[str, Any]:
     for pid in utils.project_ids():
         raw = store.read_json(cfg.meta_path(pid))
         model = str(raw.get("model", cfg.DEFAULT_MODEL))
-        budget_raw = raw.get("budgetUsd")
         totals = utils.aggregate_cost(pid)
         cost = totals.cost_usd
         total += cost
-        budget_val = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
         agents.append(
             {
                 "id": pid,
                 "model": model,
-                "input": totals.input_tokens,
-                "output": totals.output_tokens,
                 "costUsd": round(cost, 6),
-                "pricingKnown": True,
                 "turns": totals.turns,
-                "budgetUsd": budget_val,
             }
         )
     return {"agents": agents, "totalUsd": round(total, 6)}
@@ -324,7 +316,6 @@ def _loop_metrics() -> LoopMetrics:
 def render_metrics() -> str:
     """Render Prometheus-format metrics (no trailing newline; callers append it)."""
     d = _cost_json()
-    gw = "1" if utils.gateway_active() else "0"
 
     lines: list[str] = [
         "# HELP docket_agents_total Number of project agents",
@@ -349,9 +340,6 @@ def render_metrics() -> str:
         "# HELP docket_cost_usd_total Total cost across all agents (USD)",
         "# TYPE docket_cost_usd_total gauge",
         "docket_cost_usd_total " + str(d.get("totalUsd", 0)),
-        "# HELP docket_gateway_up Gateway service active (1) or not (0)",
-        "# TYPE docket_gateway_up gauge",
-        "docket_gateway_up " + gw,
         "# HELP docket_approvals_pending_total Pending approvals awaiting a human decision",
         "# TYPE docket_approvals_pending_total gauge",
         "docket_approvals_pending_total " + str(pending),
@@ -450,9 +438,8 @@ def render_metrics() -> str:
 
 
 def render_health() -> str:
-    """Render the /health body: ``{"status":"ok","gateway":N}\\n`` (N is 1 or 0)."""
-    gw = 1 if utils.gateway_active() else 0
-    return f'{{"status":"ok","gateway":{gw}}}\n'
+    """Render the /health body: ``{"status":"ok"}\\n``."""
+    return '{"status":"ok"}\n'
 
 
 def render_status() -> str:
@@ -869,7 +856,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         full_path = self.path
         path = full_path.split("?", 1)[0].rstrip("/")
-        if path in ("/status.json", "/status"):
+        if path == "/status.json":
             self._send(render_status().encode("utf-8"), "application/json")
         elif path == "/metrics":
             self._send((render_metrics() + "\n").encode("utf-8"), "text/plain; version=0.0.4")
@@ -1097,21 +1084,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             if not isinstance(brief_raw, dict):
                 self._send_json_error("brief must be an object", 400)
                 return
-            import inspect
-
             from pydantic import ValidationError
 
             try:
                 _oc.TaskBrief.model_validate(brief_raw)
             except ValidationError as exc:
                 self._send_json_error(f"invalid brief: {exc}", 422)
-                return
-            if "brief" not in inspect.signature(_dispatch.enqueue_task).parameters:
-                self._send_json_error(
-                    "brief is not yet supported: core.dispatch.enqueue_task has no "
-                    "'brief' parameter",
-                    422,
-                )
                 return
             brief = brief_raw
 

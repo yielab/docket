@@ -329,12 +329,10 @@ class TestPodDelegateBrief:
     def test_a_valid_brief_is_enqueued_and_stored_on_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`core.dispatch.enqueue_task` accepts `brief` -- `--brief` passes the
-        validated document through instead of refusing it."""
+        """`--brief` passes the validated document through to the task."""
         _seed_pod(tmp_path, monkeypatch)
         brief_path = tmp_path / "brief.json"
         brief_path.write_text(json.dumps({"objective": "fix the flaky test"}))
-        assert _pod._ENQUEUE_ACCEPTS_BRIEF is True
 
         _pod._pod_delegate("demo", ["--brief", str(brief_path), "fix it"])
 

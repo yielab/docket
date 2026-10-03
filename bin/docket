@@ -21,7 +21,6 @@ while [[ -L "$REAL_SCRIPT" ]]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
 DOCKET_CLI_ROOT="${DOCKET_CLI_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-export DOCKET_CLI_ROOT
 
 if [[ -n "${DOCKET_PYTHON:-}" ]]; then
   exec $DOCKET_PYTHON -m docket "$@"

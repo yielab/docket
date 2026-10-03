@@ -2,7 +2,7 @@
 
 Four subcommands:
   * ``validate <file>`` — pure structural validation of a pipeline YAML file
-    (``core.pipeline.validate_pipeline``); no project or pod involved.
+    (``core.pipeline.load_pipeline``); no project or pod involved.
   * ``plan <project> [--file <path>]`` — render the resolved step plan for
     *project*'s pod, from the real executor (``core.orchestrator.
     resolve_plan``/``render_plan``) — never a second, drift-prone

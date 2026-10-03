@@ -29,7 +29,6 @@ from docket.core import pod_provisioning as _pp
 from docket.core.audit import audit_log
 from docket.core.utils import (
     aggregate_cost,
-    gateway_active,
     last_activity,
     project_ids,
 )
@@ -89,11 +88,7 @@ def _default(
     version: bool = typer.Option(
         False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version"
     ),
-    debug: bool = typer.Option(
-        False, "--debug", hidden=True, help="Deprecated no-op, kept for compatibility"
-    ),
 ) -> None:
-    del debug  # accepted so existing scripts do not start exiting 2; writes nothing
     if ctx.invoked_subcommand is None:
         ui.console.print("[bold]docket[/bold] — project agent manager")
         ui.console.print("  docket init          initialize this project (Lead + Implementer)")
@@ -388,8 +383,8 @@ def cmd_init(ctx: typer.Context) -> None:
                              no `docket blueprints add <file>` to register a
                              custom one. See
                              specs/functional/pod-blueprints.spec.md.
-      --codebase <path>,    the codebase path (or, for a workdir-kind
-      --path <path>         blueprint, the pod's shared working directory) --
+      --codebase <path>     the codebase path (or, for a workdir-kind
+                             blueprint, the pod's shared working directory) --
                              same value as the `path` positional; supplying it
                              up front skips its interactive prompt.
       --name <name>         display name -- same value as the 1st positional;
@@ -454,8 +449,8 @@ def cmd_info(
 
     Shows identity, codebase/stack, model and its source, session/project
     keys, creation time, workspace path, and Telegram binding for one agent --
-    pulled from `.docket-meta.json`. With no agent id given, uses fzf for
-    interactive selection if available, falling back to a numbered picker."""
+    pulled from `.docket-meta.json`. With no agent id given, shows a numbered
+    picker."""
     from docket.cli._agents import run_info
 
     raise typer.Exit(run_info(agent_id, json_out))
@@ -563,8 +558,7 @@ def cmd_maintain(
                         `memory/<archive-dir>/`
 
     `--no-distill-first` (clean/reset only) skips the automatic pre-delete
-    distillation and deletes/clears memory undistilled; `--distill-first` is
-    also accepted as a no-op affirmation of the default.
+    distillation and deletes/clears memory undistilled.
 
     Memory is never bare-deleted: before clean deletes `memory/*.md`, or reset
     clears memory + HEARTBEAT.md, docket runs one driver-backed turn that
@@ -572,10 +566,8 @@ def cmd_maintain(
     same work `distill` does standalone. A failed distillation aborts the
     delete outright; nothing is touched. `failure_kind` (`timeout`,
     `daemon_error`, `invalid_output`) tells you whether to just retry or
-    whether the model's output needs a closer look (`daemon_error` is the
-    failure-kind name's literal value -- a name that predates the daemon's
-    removal and now just means "the turn didn't complete cleanly," not a live
-    external process). When a reset runs a real distillation, MEMORY.md is
+    whether the model's output needs a closer look (`daemon_error` means the
+    turn didn't complete cleanly). When a reset runs a real distillation, MEMORY.md is
     left freshly distilled rather than immediately cleared again in the same
     breath.
 
@@ -612,13 +604,8 @@ def cmd_context(
                       section headers
 
     Both subcommands are read-only and touch only the named agent's own
-    workspace. The `search`/`index`/`snapshot`/`compress` subcommands were
-    removed: the per-agent index/snapshot/gzip-archive artifacts they wrote
-    were read by nothing else in docket (the archive even hid old logs from
-    an agent's own read/grep-based recall), and there is no separate semantic
-    memory index to replace them with. Use `docket snapshot` for a
-    whole-fleet JSON export. `memory`/`mem` are removed top-level commands,
-    not aliases of `context`."""
+    workspace; any other action exits 2. Use `docket snapshot` for a
+    whole-fleet JSON export."""
     from docket.cli._context import run_context
 
     extra: list[str] = list(ctx.args)
@@ -913,10 +900,8 @@ def cmd_profile(
     `--resume` clears an auto-pause (e.g. a reached budget cap) -- when the
     target is a pod's Lead it also un-blocks that pod's blocked tasks so
     dispatch can claim them again, and writes a `profile.resume` audit entry.
-
-    Tier names (economy/standard/premium) are hard-rejected as a model
-    argument -- there is no shim; use a full `provider/model` id, or
-    `docket models` to see/set the role policy's model classes."""
+    A model argument must be a full `provider/model` id; `docket models`
+    shows and sets the role policy."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -1015,7 +1000,7 @@ def cmd_profile(
         ui.console.print()
         return
 
-    if model in ("default", "policy"):
+    if model == "default":
         role_models, _, _ = _mp.load_registry()
         new_model = _mp.resolve_role_model(role, role_models, project=_pod_core.pod_of(aid) or "")
         new_src = "policy"
@@ -1058,10 +1043,8 @@ def cmd_persona(
     assigns a display name; `clear` removes it (back to role/name).
 
     Stored in `.docket-meta.json` (`persona`) and rendered into `SOUL.md`;
-    survives `maintain rebuild`. `docket doctor` quarantines the
-    base-assistant self-authoring scaffolding a model may leave behind
-    (IDENTITY.md/BOOTSTRAP.md) from managed workspaces -- use this command
-    instead to give an agent a friendly name."""
+    survives `maintain rebuild`. Use this command to give an agent a
+    friendly name."""
     from docket.core import identity as _identity
     from docket.core.models import AgentMeta, Persona
 
@@ -1134,8 +1117,7 @@ def cmd_keys(
 ) -> None:
     """API key management (add/list/remove/rotate/validate/export/setup).
 
-    Docket's model client reads keys centrally -- there is no per-agent file
-    sync of any kind; nothing on the live turn path ever read one.
+    Docket's model client reads keys centrally.
 
     Subcommands:
       list (default)     masked table of stored keys with a format badge and
@@ -1218,18 +1200,13 @@ def cmd_models(ctx: typer.Context) -> None:
     shows n/a (or "n/a (bring your own)" for an OpenRouter/AI Gateway route
     other than the explicit free router, and "$0 (local)" for a
     local/ollama/lmstudio provider -- never a fabricated dollar figure).
-    Tier names (economy/standard/premium) are rejected everywhere a
-    model/role value is expected, including here; an invalid model prints
-    the current role policy table alongside the error."""
+    An invalid model prints the current role policy table alongside the
+    error."""
     args = ctx.args
     sub = args[0] if args else "list"
     rest = args[1:]
 
-    migration_note = _mp.migrate_legacy_profiles()
-    if migration_note:
-        ui.warn(migration_note)
-
-    if sub in ("list", "ls", ""):
+    if sub in ("list", ""):
         _cmd_models_list()
     elif sub == "set":
         if len(rest) < 2:
@@ -1561,8 +1538,7 @@ def cmd_pod(
                         against the open role-archetype registry
                         (`docket roles`), not a hardcoded
                         implementer|reviewer|tester list -- a blueprint role
-                        or any user-defined archetype works too; `programmer`
-                        is accepted as an alias for `implementer`. The Lead
+                        or any user-defined archetype works too. The Lead
                         is unique and cannot be added this way. Duplicated
                         roles get `-2`, `-3` ids. `--count`/`-n` adds several
                         at once. `--verify "<cmd>"` sets the mechanical
@@ -1819,9 +1795,8 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     """View an agent's latest memory log.
 
     Prints the most recent `memory/YYYY-MM-DD.md` file's first 40 lines (with
-    a note if there are more). There is no gateway or daemon log to tail any
-    more -- docket has no external process producing one; memory logs are
-    the durable, docket-owned activity record. For active tasks, read
+    a note if there are more). Memory logs are the durable, docket-owned
+    activity record. For active tasks, read
     HEARTBEAT.md directly (`docket edit <id>`) or use
     `docket context <id> show`. Shows the single latest file only, not a
     rolling tail across days -- use `tail -f` on the file directly for live
@@ -1862,10 +1837,6 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
             ui.console.print(f"  [dim]... ({len(lines) - 40} more lines)[/dim]")
     else:
         ui.console.print("  [dim]No memory logs yet.[/dim]")
-
-    # There is no daemon gateway log to tail for a channel-bound agent's
-    # group traffic; memory logs above remain the durable, docket-owned
-    # activity record.
     ui.console.print()
 
 
@@ -2017,23 +1988,15 @@ def cmd_doctor(
     repairs, missing workspace files, session-key resync) -- this mutates
     state.
 
-    Runs (in order): required dependencies (python3 required, fzf optional --
-    no external daemon binary to check for any more); per-project agent
+    Runs (in order): required dependencies (python3); per-project agent
     workspace/registration/binding checks; model validity across every
-    registered agent; a legacy `docket-models.json` `profiles:` key advisory;
-    the dispatch task ledger (`TASK_LIST.json` vs. the pod Lead's
+    registered agent; the dispatch task ledger (`TASK_LIST.json` vs. the pod Lead's
     HEARTBEAT.md dispatch ledger must agree -- a mismatch prints exactly
     which task ids are missing/stale, and `--fix` re-syncs the ledger, always
     safe since TASK_LIST.json is dispatch's own source of truth); budget-cap
     sanity and runaway-session detection; key hygiene and provider coverage;
     security-gate configuration; template/runtime-contract version (reseeds
-    a missing or stale WORKFLOW_AUTO.md); a leftover pre-Phase-10 global
-    programmer/reviewer/tester workspace advisory; scaffolding quarantine
-    (IDENTITY.md/BOOTSTRAP.md a model may leave behind); eval-results
-    freshness. There is no "external config valid JSON"/"gateway service
-    running" check any more -- docket has no external daemon or gateway
-    process to validate, and no second registry to detect drift against
-    `.docket-meta.json`.
+    a missing or stale WORKFLOW_AUTO.md).
 
     `doctor` is diagnostic-only by default; `--fix` is not read-only -- it
     mutates workspace files and permissions to correct detected drift.
@@ -2049,27 +2012,18 @@ def cmd_doctor(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def cmd_gates(ctx: typer.Context) -> None:
-    """Manage docket's approval-routing and workspace-isolation posture.
+    """Show docket's tool-call gate and manage workspace isolation.
 
     The tool-call gate itself -- the policy engine plus the argument-aware
     high-risk command classifier, both evaluated in `core/tools.py`'s
     `dispatch_tool` chokepoint on every call docket's turn loop makes -- is
-    always active and cannot be turned off. `enable`/`disable` are retired:
-    they only flipped a recorded approval-routing flag that nothing on the
-    live path (`core/tools.py`, `core/approval.py`,
-    `core/telegram.py`, `core/agent_loop.py`, `serve.py`) ever read -- an
-    "ask" verdict always sits in docket's own approval store, answerable
-    identically by the CLI, HTTP, MCP, and Telegram channels regardless.
-    What this command still manages is whether tool execution runs inside
-    a Docker sandbox (isolate), which the live turn does consult.
+    always active and cannot be turned off. An "ask" verdict sits in
+    docket's own approval store, answerable identically by the CLI, HTTP,
+    MCP, and Telegram channels.
 
     Subcommands:
       status (default)  reports that the tool-call gate is always active,
-                          plus approval-routing on/off/unset and
-                          workspace-isolation mode
-      enable, disable   retired -- print a notice pointing at `docket
-                          doctor` for today's posture and exit non-zero;
-                          they no longer write anything
+                          plus the workspace-isolation mode
       isolate on|off    records whether tool execution should run inside a
                           Docker sandbox. `on` requires docker on PATH --
                           errors, exit 1, if missing. Enforced on the live
@@ -2095,27 +2049,23 @@ def cmd_gates(ctx: typer.Context) -> None:
                           Read-only; the pattern list is not yet
                           user-configurable.
 
-    `docket init` still records approval-routing posture as on by default
-    (pass --no-gates to skip that write) even though `gates enable`/
-    `disable` are retired -- `docket init` is a separate writer with its
-    own default. Approvals are answerable headlessly via `docket
-    approve`/`docket deny` or `POST /approvals/<token>` (`docket serve`),
-    or MCP, in addition to Telegram -- all four channels are audit-logged.
-    See specs/functional/security-gates.spec.md."""
+    Any other subcommand prints usage and exits 2. Approvals are answerable
+    headlessly via `docket approve`/`docket deny` or `POST
+    /approvals/<token>` (`docket serve`), or MCP, in addition to Telegram --
+    all four channels are audit-logged. See
+    specs/functional/security-gates.spec.md."""
     from docket.cli._flags import find_unknown_flag
     from docket.cli._gates import run_gates
 
     args = list(ctx.args)
     sub = args[0] if args else None
     rest = args[1:]
-    bad = find_unknown_flag(rest, frozenset({"--force"}))
+    bad = find_unknown_flag(rest, frozenset())
     if bad is not None:
         ui.error(f"docket gates: unrecognized flag '{bad}'")
         raise typer.Exit(2)
-    force = "--force" in rest
-    positional = [a for a in rest if a != "--force"]
-    want = positional[0] if positional else "on"
-    raise typer.Exit(run_gates(sub, want=want, force=force))
+    want = rest[0] if rest else "on"
+    raise typer.Exit(run_gates(sub, want=want))
 
 
 @app.command(
@@ -2176,8 +2126,7 @@ def cmd_runs(ctx: typer.Context) -> None:
 
     A run record's `source` is one of cli|webhook|schedule|sweep|mcp;
     `state` is one of queued|running|succeeded|failed|cancelled. A failed
-    run carries the exception text in `error` -- no dispatch call site
-    silently discards an exception any more. Persisted to
+    run carries the exception text in `error`. Persisted to
     `~/.docket/docket-runs.json`. `show` and both JSON read surfaces expose
     cancellation requestedAt/observedAt/stoppedAt; a missing stop timestamp
     means the executor has not fully returned yet. `POST /dispatch/<project>`
@@ -2311,7 +2260,7 @@ def cmd_mcp(ctx: typer.Context) -> None:
 
 @app.command("audit")
 def cmd_audit(
-    arg: str | None = typer.Argument(None, help="Last-N count, 'verify', or --json"),
+    arg: str | None = typer.Argument(None, help="Last-N count, or 'verify'"),
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
 ) -> None:
     """Show the audit log, or verify its tamper-evidence chain.
@@ -2329,11 +2278,11 @@ def cmd_audit(
     (millisecond resolution), user, pid, action, detail, prev_hash), never
     containing secret values. Every line chains to the previous one via a
     SHA-256 prev_hash (stdlib hashlib, no new dependency); `verify` detects a
-    hand-tampered line -- lines written before this chain existed are
-    treated as legacy/unchained, never as tampering. Rotates to a
-    single-generation `audit.log.1` backup once past AUDIT_LOG_MAX_BYTES
-    (default 5 MiB, env-overridable); `verify` only checks the current file
-    -- a rotation starts a fresh chain. Best-effort and never raises; there
+    hand-tampered line, and a line without `seq`/`prev_hash` is a break.
+    Rotates to a single-generation `audit.log.1` backup once past
+    AUDIT_LOG_MAX_BYTES (default 5 MiB, env-overridable); the first entry
+    after a rotation claims continuity, and `verify` checks that claim
+    against the backup. Best-effort and never raises; there
     is no environment kill switch -- recording cannot be silently disabled.
     Always exits 0 for the listing forms (malformed lines are skipped, not
     fatal); `verify` exits 1 on a detected broken chain link."""
@@ -2343,9 +2292,7 @@ def cmd_audit(
         raise typer.Exit(run_audit_verify())
 
     limit: int | None = None
-    if arg == "--json":
-        json_out = True
-    elif arg and arg.isdigit():
+    if arg and arg.isdigit():
         limit = int(arg)
     raise typer.Exit(run_audit(limit=limit, json_out=json_out))
 
@@ -2366,16 +2313,14 @@ def cmd_snapshot(
 
     Every project agent and specialist, its model, registration/binding
     status, last activity, and measured cost, plus the channel list. `-o`/
-    `--output <path>` writes the JSON to a file instead of stdout. `gateway`
-    is a legacy field kept for shape stability -- docket has no external
-    gateway process, so it always reads "inactive". `costUsd`/`totalCostUsd`
-    are 0.0 for the same reason `docket cost` shows no recorded spend today:
+    `--output <path>` writes the JSON to a file instead of stdout.
+    `costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows
+    no recorded spend today:
     this is a snapshot of measured-token agents, not of billed dollars.
     Useful for backups, dashboards, or feeding fleet state into another
     tool."""
     import datetime as _dt
 
-    gw = "active" if gateway_active() else "inactive"
     fleet_state = _fleet.load_fleet()
     channels = _fleet.channel_names(fleet_state)
     registered_ids = {a.id for a in _fleet.list_agents(fleet_state)}
@@ -2410,7 +2355,7 @@ def cmd_snapshot(
             }
         )
 
-    for spec in _cfg.SPECIALIST_ORDER:
+    for spec in _cfg.ORG_SPECIALIST_ORDER:
         ws = _cfg.WORKSPACES_DIR / spec
         if not ws.is_dir():
             continue
@@ -2436,7 +2381,6 @@ def cmd_snapshot(
     timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = {
         "timestamp": timestamp,
-        "gateway": gw,
         "channels": channels,
         "agents": agents_out,
         "totalCostUsd": round(total_cost, 6),
@@ -2529,7 +2473,7 @@ def cmd_completions(shell: str | None = typer.Argument(None)) -> None:
 
     The top-level command-name list is generated live from the real Typer
     command registry, so it can never drift from `docket --help`.
-    Second-level subcommand words (e.g. `gates status enable disable isolate
+    Second-level subcommand words (e.g. `gates status isolate
     classes`) are hand-maintained in the completion templates, since those
     subcommands are parsed manually rather than being Click subgroups --
     only the top-level command list is regression-tested against drift, so
@@ -2793,8 +2737,8 @@ def cmd_approve(approval_id: str | None = typer.Argument(None)) -> None:
     docket itself, from an in-turn `ask` verdict on a tool call
     (`dispatch_tool`, blocking that call until answered), a pod-dispatch hop
     held on a requireApprovalRoles/pipeline approval step, or a task a
-    guardrail policy flagged at enqueue. There is no separate daemon prompt
-    any more -- this store is the only approval mechanism, and
+    guardrail policy flagged at enqueue. This store is the only approval
+    mechanism, and
     `docket approve`/`docket deny` (plus the HTTP and MCP equivalents, and a
     Telegram reply in a wired chat) are the only ways to answer it, each
     audit-logged with the channel that answered. See also `docket deny`."""
@@ -2863,106 +2807,3 @@ def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     from docket.cli._help import run_help
 
     raise typer.Exit(run_help(topic))
-
-
-# Invocation: python -m docket _json <verb> [arg ...]
-# Exit codes: 0 = success, 1 = error, 2 = unknown verb.
-@app.command(
-    "_json",
-    hidden=True,
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def cmd_json(ctx: typer.Context) -> None:
-    """Internal: JSON store bridge for the Bash layer."""
-    argv = ctx.args
-    if not argv:
-        print("_json: verb required", file=sys.stderr)
-        raise typer.Exit(2)
-
-    verb = argv[0]
-    a = argv[1:]
-
-    def _die(msg: str) -> None:
-        print(f"_json {verb}: {msg}", file=sys.stderr)
-        raise typer.Exit(1)
-
-    try:
-        if verb == "meta-get":
-            if len(a) < 2:
-                _die("usage: meta-get <id> <field> [default]")
-            print(_fleet.meta_get(a[0], a[1], a[2] if len(a) > 2 else ""))
-
-        elif verb == "meta-set":
-            if len(a) < 3:
-                _die("usage: meta-set <id> <field> <value>")
-            _fleet.meta_set(a[0], a[1], a[2])
-
-        elif verb == "agent-registered":
-            if not a:
-                _die("usage: agent-registered <id>")
-            if _fleet.agent_registered(a[0]):
-                print("1")
-            else:
-                print("0")
-                raise typer.Exit(1)
-
-        elif verb == "agent-add":
-            if len(a) < 2:
-                _die("usage: agent-add <id> <model> [session_key] [project_key]")
-            _fleet.add_agent(a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else "")
-
-        elif verb == "agent-remove":
-            if not a:
-                _die("usage: agent-remove <id>")
-            _fleet.remove_agent(a[0])
-
-        elif verb == "model-set-both":
-            if len(a) < 2:
-                _die("usage: model-set-both <id> <model>")
-            _fleet.set_model_both(a[0], a[1])
-
-        elif verb == "binding-get":
-            if not a:
-                _die("usage: binding-get <id> [channel]")
-            print(_fleet.get_binding(a[0], a[1] if len(a) > 1 else "telegram"))
-
-        elif verb == "binding-upsert":
-            if len(a) < 2:
-                _die("usage: binding-upsert <id> <peer_id> [channel] [peer_kind]")
-            _fleet.upsert_binding(
-                a[0],
-                a[1],
-                a[2] if len(a) > 2 else "telegram",
-                a[3] if len(a) > 3 else "group",
-            )
-
-        elif verb == "binding-remove":
-            if not a:
-                _die("usage: binding-remove <id> [channel]")
-            _fleet.remove_binding(a[0], a[1] if len(a) > 1 else None)
-
-        elif verb == "isolation-get":
-            print(_json.dumps(_fleet.get_isolation_enabled()))
-
-        elif verb == "isolation-set":
-            if not a:
-                _die("usage: isolation-set <true|false>")
-            _fleet.set_isolation_enabled(a[0].lower() in ("1", "true", "yes"))
-
-        elif verb == "default-model-get":
-            print(_fleet.get_default_model())
-
-        elif verb == "default-model-set":
-            if not a:
-                _die("usage: default-model-set <model>")
-            _fleet.set_default_model(a[0])
-
-        else:
-            print(f"_json: unknown verb '{verb}'", file=sys.stderr)
-            raise typer.Exit(2)
-
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        print(f"_json {verb}: {exc}", file=sys.stderr)
-        raise typer.Exit(1) from exc

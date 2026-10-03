@@ -207,7 +207,7 @@ class TestParseAddArgs:
             None,
             False,
         )
-        assert _parse_add_args(["--path=/src/y"]) == (None, "/src/y", None, None, None, False)
+        assert _parse_add_args(["--codebase=/src/y"]) == (None, "/src/y", None, None, None, False)
 
     def test_name_flag(self) -> None:
         assert _parse_add_args(["--name", "My App"]) == (

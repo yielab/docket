@@ -2,8 +2,7 @@
 documents (ADR 0014 §4) -- a deliberate copy of `core/provider.py`'s shape (name, dialect,
 endpoint, named credentials, never a value) with the model/price/preset fields dropped and
 destination-shaped ones added: `resource`/`aliases`, `events`, `privacy`/`share` (what a
-document shares beyond structure -- ADR 0015 §1; retired `payload`/`payloadMaxChars` load as
-`minimal`, named in `legacy_fields`), and `enabled` (a present credential never activates an
+document shares beyond structure -- ADR 0015 §1), and `enabled` (a present credential never activates an
 exporter by itself). Two scopes, nearest-wins by name: built-in and global
 (`config.EXPORTERS_FILE`, the operator's own).
 
@@ -31,10 +30,6 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CREDENTIAL_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _CREDENTIAL_VALUE_RE = re.compile(r"^[A-Za-z0-9/_\-+.]{20,}$")
 _RESERVED_HEADERS = frozenset({"authorization", "content-type", "accept"})
-
-# The retired `payload`/`payloadMaxChars` keys (ADR 0015 rule 7) -- a document still carrying
-# either loads as `minimal` and names the key in `legacy_fields`, never a wider level.
-_LEGACY_KEYS: tuple[str, ...] = ("payload", "payloadMaxChars")
 
 ExporterState = Literal["enabled", "needs credential", "disabled", "unreachable"]
 
@@ -130,24 +125,6 @@ class ExporterSpec(BaseModel):
     content_max_chars: int = Field(4000, alias="contentMaxChars", gt=0, le=100_000)
     enabled: bool = False
     note: str = ""
-    legacy_fields: list[str] = Field(default_factory=list, exclude=True)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _capture_legacy_fields(cls, data: Any) -> Any:
-        """A document still carrying the retired `payload`/`payloadMaxChars` keys (ADR 0015
-        rule 7) drops them here and names them in `legacy_fields` -- they never reach a field,
-        so they can never widen `privacy` past its unset default."""
-        if not isinstance(data, dict):
-            return data
-        found = [key for key in _LEGACY_KEYS if key in data]
-        if not found:
-            return data
-        data = dict(data)
-        for key in found:
-            data.pop(key)
-        data["legacy_fields"] = found
-        return data
 
     @model_validator(mode="after")
     def _resolve_privacy(self) -> ExporterSpec:

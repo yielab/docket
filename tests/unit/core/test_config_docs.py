@@ -54,7 +54,6 @@ def test_a_role_file_without_kind_loads_deprecated_and_matches_parse_yaml_file(
         "name: custom-role\n"
         "scope: org\n"
         "modelClass: cheap\n"
-        "editRights: none\n"
         "soulTemplate: You are the custom role.\n"
         "agentsTemplate: Custom role protocol.\n"
     )

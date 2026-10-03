@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.17.0
+**Version**: 2.18.0
 **Status**: Active
-**Last Updated**: 2026-09-13
+**Last Updated**: 2026-10-03
 
 ## Overview
 
@@ -115,7 +115,9 @@ Requirements:
    `typer.testing.CliRunner`; exact user-visible text belongs to the golden suite. `integration/`
    spawns a process only when the process boundary (signals, sandbox, cancellation, `PATH` stubs)
    is what the test proves.
-5. **Removed commands are one parametrized guard** over `__main__._REMOVED`, not one file each.
+5. *Removed (2026-10-03):* the parametrized guard over `__main__._REMOVED` is gone with the
+   table itself. A retired command name is an ordinary unknown command (exit 2), pinned in
+   `integration/test_console_script_entry_point.py`, not a per-name guard.
 6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
    `integration/`; `agent/` tests that build artifacts carry the `slow` marker.
 7. **Docstrings and comments follow the repository comment policy**: a module docstring is at
@@ -127,7 +129,7 @@ Requirements:
    lane headers, agent-lane budget, no-subprocess-in-unit, duration ceilings, comment hygiene.
 
 Enforcement status: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the `agent-lane`
-CI job runs `uv run pytest tests/agent`) and rule 5 already held before the W31-C1 move. W31-C2
+CI job runs `uv run pytest tests/agent`). W31-C2
 landed guards for rules 2, 3, 4, 6 and part of 8: `tests/guards/test_layout.py` checks the
 unit↔module mapping and `SUBJECT` match (a small named exemption covers files that predate the
 mirror-by-name convention), and separately checks every `src/` module over 150 lines against a
@@ -138,8 +140,7 @@ offender in one assertion, with no filename-match requirement; `tests/guards/tes
 `agent/` file and the no-`subprocess`-in-`unit/` rule; `tests/guards/test_agent_lane_budget.py`
 ratchets the lane's total against a committed baseline (5,151 lines today) that may only fall;
 `tests/conftest.py` fails a test's own report past its
-lane's duration ceiling; `tests/guards/test_removed_commands.py` replaces four per-removal files
-with one parametrized guard over `__main__._REMOVED`. Rule 7 and the rest of rule 8 are enforced
+lane's duration ceiling. Rule 7 and the rest of rule 8 are enforced
 by `tests/guards/test_comment_hygiene.py`, which ratchets the docstring-length counts against
 `scripts/maint/comment-baseline.json` over `src` and `tests`; note that
 `scripts/maint/comment_lint.py --check` exits non-zero on archaeology only, so a green lint says
@@ -418,6 +419,14 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.18.0 (2026-10-03)
+
+- Rule 5 marked removed: `__main__._REMOVED` and `_ALIASES` were deleted (no users; legacy
+  compatibility removed), and `tests/guards/test_removed_commands.py` with them. A retired
+  command name now fails like any unknown command (exit 2, `No such command`), which
+  `integration/test_console_script_entry_point.py` pins. The enforcement-status paragraph drops
+  its two mentions of the guard.
 
 ### Version 2.17.0 (2026-09-13)
 

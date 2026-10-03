@@ -342,12 +342,11 @@ class TestMetricFormatting:
     def test_stable_pre_p20_2_metrics_are_unaffected(self) -> None:
         # docket_agent_cost_usd/docket_agent_turns_total only ever emit label
         # lines when an agent exists (this fixture seeds none) -- check the
-        # four metrics with an unconditional HELP header instead.
+        # metrics with an unconditional HELP header instead.
         text = serve.render_metrics()
         for name in (
             "docket_agents_total",
             "docket_cost_usd_total",
-            "docket_gateway_up",
             "docket_approvals_pending_total",
         ):
             assert f"# HELP {name} " in text

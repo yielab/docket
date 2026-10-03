@@ -151,7 +151,6 @@ class TestJsonProbe:
             "python3",
             "fleet",
             "agents",
-            "modelConfig",
             "budget",
             "runaway",
             "keyHygiene",
@@ -259,22 +258,6 @@ class TestChecks:
         out = capsys.readouterr().out
         assert issues == 1
         assert "missing TOOLS.md" in out
-
-    def test_models_stale_flagged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch, meta_model="anthropic/claude-haiku-3-5")
-        issues = _doctor._check_models()
-        out = capsys.readouterr().out
-        assert issues == 1
-        assert "invalid model" in out.lower()
-
-    def test_models_valid(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _doctor._check_models() == 0
-        assert "All agent models are valid" in capsys.readouterr().out
 
     def test_budget_no_cap(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -408,55 +391,12 @@ class TestChecks:
         assert issues == 0
         assert "Tool-call gate: always active" in out
 
-    def test_security_gates_reports_approval_routing_and_isolation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        fleet = json.loads((home / "fleet.json").read_text())
-        fleet["security"]["approvalRoutingState"] = "on"
-        fleet["security"]["approvalRoutingMode"] = "session"
-        (home / "fleet.json").write_text(json.dumps(fleet))
-
-        issues = _doctor._check_security_gates()
-        out = capsys.readouterr().out
-        assert issues == 0
-        assert "Approval routing: on (mode=session)" in out
-
     def test_template_version_current(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
         assert _doctor._check_template_version(["myshop"]) == 0
         assert f"v{_doctor.TEMPLATE_VERSION} (current)" in capsys.readouterr().out
-
-    def test_metadata_backfill_idempotent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _doctor._check_metadata_backfill(["myshop"]) == 0
-        assert "metadata" in capsys.readouterr().out.lower()
-
-    def test_scope_backfilled_for_legacy_meta(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        # A meta written before `scope` existed gets it backfilled.
-        home = _seed(tmp_path, monkeypatch)
-        meta_p = home / "workspaces" / "projects" / "myshop" / ".docket-meta.json"
-        data = json.loads(meta_p.read_text())
-        data.pop("scope", None)
-        meta_p.write_text(json.dumps(data))
-        _doctor._check_metadata_backfill(["myshop"])
-        assert json.loads(meta_p.read_text())["scope"] == "project"
-
-    def test_legacy_project_role_singleton_flagged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        # A leftover global programmer/reviewer/tester workspace is flagged.
-        home = _seed(tmp_path, monkeypatch)
-        (home / "workspaces" / "programmer").mkdir(parents=True)
-        _doctor._check_metadata_backfill(["myshop"])
-        out = capsys.readouterr().out
-        assert "programmer" in out and "legacy shared specialist" in out
 
 
 # ── specialists join the runtime contract healer ──────────────────
@@ -592,58 +532,6 @@ class TestFullRun:
         # The "no agents" notice is a warn() → stdout (mirrors Bash).
         assert "No project agents found" in captured.out
         assert rc == 0
-
-
-class TestWorkspaceEnvFiles:
-    """A stray workspace `.env` has no reader on the live turn path -- credentials resolve
-    through `core/secrets.py` directly, never a per-agent file. `--fix` deletes it."""
-
-    def test_flags_a_stray_env_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
-        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
-
-        issues = _doctor._check_workspace_env_files(["myshop"], do_fix=False)
-        out = capsys.readouterr().out
-
-        assert issues == 1
-        assert "myshop" in out and "stray .env" in out
-        assert env_file.is_file()
-
-    def test_fix_removes_the_stray_env_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch)
-        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
-        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
-
-        issues = _doctor._check_workspace_env_files(["myshop"], do_fix=True)
-        out = capsys.readouterr().out
-
-        assert issues == 0
-        assert not env_file.exists()
-        assert "removed stray .env" in out
-
-    def test_no_env_file_is_healthy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _doctor._check_workspace_env_files(["myshop"], do_fix=False) == 0
-        assert capsys.readouterr().out == ""
-
-    def test_full_doctor_run_with_fix_heals_a_stray_env_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        home = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        env_file = home / "workspaces" / "projects" / "myshop" / ".env"
-        env_file.write_text('ANTHROPIC_API_KEY="sk-ant-x"\n')
-
-        rc = _doctor.run_doctor(json_out=False, do_fix=True)
-
-        assert rc == 0
-        assert not env_file.exists()
 
 
 class TestGuardrailPolicies:

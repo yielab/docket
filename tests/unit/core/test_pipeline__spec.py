@@ -36,7 +36,6 @@ from docket.core.pipeline import (
     normalize_pipeline,
     step_instructions_by_id,
     unresolved_step_variables,
-    validate_pipeline,
 )
 
 SUBJECT = "docket.core.pipeline"
@@ -126,10 +125,10 @@ class TestRoundTrip:
         assert fanout.parallel[0].agent == "myapp-implementer"
 
     def test_validate_pipeline_wrapper_matches_load(self) -> None:
-        assert validate_pipeline(FULL_YAML) == []
+        assert load_pipeline(FULL_YAML).errors == []
         broken = FULL_YAML + "\nbogusTopLevelKey: true\n"
-        assert validate_pipeline(broken) == load_pipeline(broken).errors
-        assert validate_pipeline(broken) != []
+        assert load_pipeline(broken).errors == load_pipeline(broken).errors
+        assert load_pipeline(broken).errors != []
 
 
 # ── TestUnknownKeyRejected ───────────────────────────────────────────────────

@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import getpass as _getpass
 import hashlib as _hashlib
-import inspect as _inspect
 import json as _json
 import sys
 from dataclasses import asdict, dataclass
@@ -62,12 +61,6 @@ teardown_member = _pp.teardown_member
 free_pod_resources = _pp.free_pod_resources
 purge_pod_history = _pp.purge_pod_history
 pod_member_ids = _pp.pod_member_ids
-
-# `core.dispatch.enqueue_task` has no `brief` keyword yet -- `_pod_delegate`'s `--brief`
-# validates the file and refuses to enqueue rather than guessing how to pass it through
-# (see that function's docstring). Checked once, at import time, so this refusal turns
-# itself off the moment a later card adds the parameter.
-_ENQUEUE_ACCEPTS_BRIEF = "brief" in _inspect.signature(_dispatch.enqueue_task).parameters
 
 
 def _actor() -> str:
@@ -511,12 +504,6 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
         except (OSError, _json.JSONDecodeError, ValidationError) as exc:
             ui.error(f"Invalid brief file '{brief_path}': {exc}")
             raise typer.Exit(1) from exc
-        if not _ENQUEUE_ACCEPTS_BRIEF:
-            ui.error(
-                "delegate --brief is not yet supported: core.dispatch.enqueue_task has "
-                "no 'brief' parameter."
-            )
-            raise typer.Exit(1)
         brief = raw
 
     description = " ".join(rest)
@@ -1261,7 +1248,7 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
-    """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]`` (or a trailing integer).
+    """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]``.
     ``--verify`` (Implementer only; warned-and-ignored otherwise) sets the mechanical
     verification gate `dispatch.py` runs after the new member's hop."""
     role: str | None = None
@@ -1283,9 +1270,7 @@ def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
             verify_cmd = tok[len("--verify=") :]
             i += 1
             continue
-        if tok.isdigit():
-            count = int(tok)
-        elif role is None:
+        if role is None:
             role = tok
         i += 1
     return role, count, verify_cmd

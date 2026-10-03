@@ -8,9 +8,7 @@ layer does the file writes and gateway restart) — plus the one I/O entry point
 composes a turn's system prompt from this agent's own on-disk identity files.
 
 The persona lives in ``SOUL.md`` between HTML markers so it can be upserted
-idempotently without disturbing the rest of the (role-derived) SOUL, and so a
-just-reset agent reading SOUL sees a docket-controlled identity rather than a
-self-authored ``IDENTITY.md``.
+idempotently without disturbing the rest of the (role-derived) SOUL.
 
 Without this module, ``core/agent_loop.py`` would compose no system prompt at all —
 ``SOUL.md`` (identity, scope, session key), the docket-owned persona, and a
@@ -21,7 +19,7 @@ priority under the static-context budget. That is not decoration: a just-reset
 agent cannot resume from a HEARTBEAT it was told to find under project-tool roots
 that deliberately exclude its private workspace.
 
-``system_prompt_for_agent`` is the single function ``run_agent_turn`` calls, once
+``compose_agent_prompt`` is the single function ``run_agent_turn`` calls, once
 per turn. It re-reads the persona from ``.docket-meta.json`` rather than trusting
 whatever ``SOUL.md`` already has upserted, because ``AgentMeta.display_name()`` is
 the one documented source of truth for a display name — folding the *live* persona
@@ -57,13 +55,13 @@ PromptSectionStatus = Literal["full", "truncated", "omitted"]
 PERSONA_BEGIN = "<!-- docket-persona:begin -->"
 PERSONA_END = "<!-- docket-persona:end -->"
 
-#: The identity file `system_prompt_for_agent` reads alongside
+#: The identity file `compose_agent_prompt` reads alongside
 #: ``WORKFLOW_AUTO.md`` — kept as a local constant (not re-exported from
 #: elsewhere) since no other module currently needs the bare filename.
 SOUL_FILE = "SOUL.md"
 
 #: An operator-owned free-text file composed right after ``SOUL.md``. Docket
-#: never writes, regenerates, or quarantines this file -- it is the durable
+#: never writes or regenerates this file -- it is the durable
 #: home for instructions an operator wants every turn to see, so they survive
 #: a template/archetype re-render that would otherwise overwrite them.
 INSTRUCTIONS_FILE = "INSTRUCTIONS.md"
@@ -96,15 +94,6 @@ _RUNTIME_CONTEXT_NOTE = (
 _RUNTIME_CONTEXT_FOOTER = "\n\n# End runtime-loaded Docket workspace state"
 _PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, memory/, and .docket"
 
-#: Base-assistant scaffolding a self-authoring runtime may leave behind, and that
-#: must not linger in a docket-managed
-#: workspace. ``BOOTSTRAP.md`` ("you just woke up, figure out who you are") and the
-#: empty ``IDENTITY.md`` ("pick a name") self-author a drifting identity that fights
-#: the docket-generated, role-derived ``SOUL.md`` — the exact split-brain that made a
-#: pod Lead behave like a free-roaming assistant. docket owns identity via metadata +
-#: SOUL, so these are pollution to quarantine (see agent-structure-analysis.md §6).
-SCAFFOLDING_FILES = ("IDENTITY.md", "BOOTSTRAP.md")
-
 
 @dataclass(frozen=True)
 class PromptSectionReport:
@@ -126,21 +115,6 @@ class PromptComposition:
     # composition (no prompt material), describing what would have applied.
     budget_tokens: int = _cfg.CONTEXT_TOKEN_BUDGET_DEFAULT
     budget_source: _context.BudgetSource = "default"
-
-
-def quarantine_scaffolding(ws: Path) -> list[str]:
-    """Move any base-assistant scaffolding in *ws* into ``.docket-archive/``. Returns the
-    archived filenames (empty if none); reversible (moved, not deleted) and idempotent.
-    This module owns on-disk identity layout, so it does its own file I/O here."""
-    archived: list[str] = []
-    for name in SCAFFOLDING_FILES:
-        src = ws / name
-        if src.is_file():
-            dest_dir = ws / ".docket-archive"
-            dest_dir.mkdir(exist_ok=True)
-            src.replace(dest_dir / name)
-            archived.append(name)
-    return archived
 
 
 def parse_persona_label(label: str) -> Persona:
@@ -208,7 +182,7 @@ def compose_system_prompt(
 ) -> str:
     """Fold SOUL.md, the live persona, operator instructions, opt-in project
     instructions, the skills index, and a runtime contract into one system prompt. Pure — no
-    I/O (``system_prompt_for_agent`` below is the I/O entry point). *soul_text* is passed
+    I/O (``compose_agent_prompt`` below is the I/O entry point). *soul_text* is passed
     through ``upsert_persona_block`` unconditionally (idempotent no-op if already
     matching) so the persona reflects *persona* as given, not whatever ``SOUL.md`` had
     on disk. *instructions_text* (already fit to budget by the caller) is placed right
@@ -701,20 +675,3 @@ def compose_agent_prompt(
         + context_reports
     )
     return PromptComposition(text, sections, budget_tokens, budget_source)
-
-
-def system_prompt_for_agent(
-    agent_id: str,
-    *,
-    project_roots: tuple[Path, ...] = (),
-    context_window_tokens: int | None = None,
-    max_output_tokens: int | None = None,
-) -> str:
-    """Read *agent_id*'s identity plus bounded private state and compose a prompt.
-    Thin wrapper over :func:`compose_agent_prompt` for callers that only need the text."""
-    return compose_agent_prompt(
-        agent_id,
-        project_roots=project_roots,
-        context_window_tokens=context_window_tokens,
-        max_output_tokens=max_output_tokens,
-    ).text

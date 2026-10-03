@@ -72,8 +72,7 @@ def count_specs() -> int:
 def count_commands() -> int:
     """Top-level commands registered on the Typer `app`, introspected live.
 
-    Hidden commands (internal plumbing like `_json`) don't count as part of
-    the public surface, so they're excluded.
+    Hidden commands don't count as part of the public surface, so they're excluded.
     """
     sys.path.insert(0, str(ROOT / "src"))
     import typer.main

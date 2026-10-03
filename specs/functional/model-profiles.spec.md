@@ -1,10 +1,10 @@
 # Model Policy Specification
 
-**Version**: 2.17.0
+**Version**: 2.18.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above both policy and pin, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -21,15 +21,14 @@ This specification covers:
 - The agent roles the policy knows about and their built-in model classes
 - The user registry overlay (`~/.docket/docket-models.json`), including the registry-
   overridable rank-anchor seed table (`rankAnchors`)
-- Model intent per agent (`modelSource: policy | pinned`) and migration inference
+- Model intent per agent (`modelSource: policy | pinned`) and its inference on read
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
 - The built-in provider presets (`docket models preset`), including the free/local path
 - The provider catalog (`core/provider.py`): `kind: provider` documents, the built-in/global
-  scopes, `docket-providers.json`, and the one-shot `fleet.json -> providers` migration
+  scopes, and `docket-providers.json`
 - Hosted OpenAI-compatible gateway endpoint and credential resolution
-- Removed tier names and the private internal rank-anchor seed table; the one-shot legacy
-  `profiles:` registry migration
+- Removed tier names and the private internal rank-anchor seed table
 - The pricing table used for cost estimation, including local-provider and marketplace-
   provider (OpenRouter/Vercel AI Gateway) pricing honesty
 
@@ -81,9 +80,8 @@ feasibility spike remains in ROADMAP and Git history.
    well-formed entries **MUST** override the built-in role defaults. Unknown role names
    **MUST** be ignored silently — `load_registry` (`core/models_policy.py`) skips them with no
    warning, the same tolerance it gives a malformed `rankAnchors`/`default` entry.
-2. A legacy registry containing only a `profiles` map **MUST** keep working: the rank
-   anchors are overridden first, then role defaults re-derive from them, then any `roles`
-   entries overlay on top.
+2. Removed (2026-10-03): the legacy `profiles` map is no longer read or migrated; like any
+   key other than `default`, `roles` and `rankAnchors`, it is ignored.
 3. A corrupt registry **MUST** keep built-in defaults (no crash) and **MUST NOT** warn —
    `load_registry` falls back silently on any read/parse error.
 4. The registry **MAY** contain a `rankAnchors` map (`{"economy"|"standard"|"premium":
@@ -98,9 +96,8 @@ feasibility spike remains in ROADMAP and Git history.
    **MUST** run `core.models_policy.find_registry_problems` and report every entry
    `load_registry` ignored — an unknown `rankAnchors`/`roles` name, a value failing the model
    id pattern, or an unreadable/malformed registry file — naming the file and a dotted key
-   locator (`rankAnchors.<anchor>`, `roles.<role>`, or `default`) plus the reason. This is a
-   distinct finding from the advisory residual-`profiles:`-key check above and never edits
-   the registry (ROADMAP P26-12).
+   locator (`rankAnchors.<anchor>`, `roles.<role>`, or `default`) plus the reason. It never
+   edits the registry (ROADMAP P26-12).
 
 ### Model intent per agent
 
@@ -109,9 +106,10 @@ feasibility spike remains in ROADMAP and Git history.
 2. Agents created without an explicit model, or with a model equal to their role's policy
    model, **MUST** be stamped `policy`; an explicit divergent model **MUST** be stamped
    `pinned`.
-3. Agents predating this field **MUST** have it inferred on read: model equals the role's
-   policy model → `policy`, otherwise → `pinned` (so a pre-existing agent is never silently
-   moved to a different model). `docket doctor` **MUST** backfill the field persistently.
+3. An agent whose metadata has no `modelSource` **MUST** have it inferred on read
+   (`core.models_policy.agent_model_source`): no model, or a model equal to the role's policy
+   model → `policy`, otherwise → `pinned` (so such an agent is never silently moved to a
+   different model). Nothing writes the inferred value back.
 4. A pipeline step's own `model` (`pipeline-format.spec.md`'s "Steps" Requirement 10) **MUST**
    sit above both `policy` and `pinned` resolution, for that one hop only, and **MUST NOT**
    change `modelSource` or `model` in `.docket-meta.json` — a pinned agent stays pinned, and a
@@ -166,10 +164,9 @@ feasibility spike remains in ROADMAP and Git history.
    <model>` both **MUST** fail with an error naming a full `provider/model` id, not resolve.
    Removed in 0.2.0 per the D-2 deprecation-window exit; see ROADMAP.md D-2.
 2. The three rank values survive as a private internal seed table (`_RANK_ANCHORS` in
-   `core/models_policy.py`, defaulting to Anthropic ids) used to (a) pick each role's default
-   model — `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles —
-   and (b) reconstruct per-role overrides when migrating a legacy `profiles:` registry key
-   (see Legacy registry migration below). "Private" means **not accepted as a CLI argument
+   `core/models_policy.py`, defaulting to Anthropic ids) used to pick each role's default
+   model — `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles.
+   "Private" means **not accepted as a CLI argument
    under the tier names** — `docket models set economy <model>` still fails per rule 1 above.
    It is, however, **registry-overridable** (see User registry overlay's `rankAnchors`, Phase
    18 L-2) and **is displayed** (read-only) by `docket models`, labeled "rank anchors" — a
@@ -183,17 +180,13 @@ feasibility spike remains in ROADMAP and Git history.
    along with `tests/evals/` and eval.spec.md, so that carve-out no longer exists — tier names
    now have **zero** surviving user-facing use anywhere, closing rule 1 without exception.
 
-### Legacy registry migration
+### Legacy registry migration (removed)
 
-1. On first load of a user's `~/.docket/docket-models.json`, if it has a `profiles:` key
-   but no `roles:` key, docket **MUST** derive equivalent per-role overrides from the
-   `profiles:` tier-anchor values (using the same cheap/strong-class mapping as the built-in
-   seed) and write them under `roles:`, then remove `profiles:`. This migration **MUST** run
-   at most once — a no-op on every subsequent load.
-2. If a registry already has both `profiles:` and `roles:`, the migration **MUST NOT** touch
-   `profiles:` (it is left as a residual key rather than silently discarded).
-3. `docket doctor` **SHOULD** flag a residual `profiles:` key found under the condition in
-   (2) as an advisory, non-blocking finding.
+1. Removed (2026-10-03): there is no `profiles:` → `roles:` migration. A `profiles:` key is
+   ignored (User registry overlay requirement 2).
+2. Removed (2026-10-03): with no migration there is no residual key to preserve.
+3. Removed (2026-10-03): `docket doctor` has no residual-`profiles:` advisory, and `docket models`
+   prints no migration warning.
 
 ### Presets (docket models preset)
 
@@ -273,12 +266,9 @@ feasibility spike remains in ROADMAP and Git history.
 ### The default model (single source)
 
 1. `docket-models.json`'s `default` key **MUST** be the only default model of record. Nothing
-   else is consulted on the live path — an org-wide default written by an older docket version
-   under `fleet.json`'s `defaults.model` field is never read there again once migrated (rule 2).
-2. On first read after upgrade, a non-empty `fleet.json` `defaults.model` **MUST** be ported into
-   the registry's `default` (only when the registry does not already have an explicit `default` of
-   its own), and the `fleet.json` field **MUST** then be cleared. This runs at most once — a
-   no-op on every later read, the same shape as the `profiles:` → `roles:` migration above.
+   else is consulted — `fleet.json` has no default-model field (`FleetDefaults` is deleted), and
+   a `defaults.model` left in an old file is ignored.
+2. Removed (2026-10-03): there is no `fleet.json` `defaults.model` → registry migration.
 3. `docket init`'s default-model step and `docket models set default` / `preset` / `reset`
    **MUST** write only to the registry — never to `fleet.json`.
 
@@ -310,22 +300,14 @@ feasibility spike remains in ROADMAP and Git history.
    **MUST** return the merged result; `Catalog.get(name)` and `Catalog.source_of(name)`
    (`"built-in"` / `"global"` / `""`) **MUST** read it. A global write that leaves
    `presets`/`marketplace`/`credentialPrefix`/`pricesAsOf` unset **MUST** inherit each from a
-   built-in of the same name (`core.provider.save_provider`), so registering a local endpoint or
-   migrating a legacy block under a built-in's name does not erase presets or pricing the
-   built-in still means.
+   built-in of the same name (`core.provider.save_provider`), so registering a local endpoint
+   under a built-in's name does not erase presets or pricing the built-in still means.
 3. `docket models provider add` **MUST** write a `ProviderSpec` to the global scope through
    `core.provider.save_provider`, never to `fleet.json`. Re-running with identical arguments
    **MUST** write nothing (idempotent).
-4. On first `load_catalog()` call, a non-empty `fleet.json` `providers` block **MUST** be ported
-   into the global scope once, then cleared — the same one-shot shape as the `profiles:` →
-   `roles:` and `defaults.model` → registry migrations above. A placeholder `apiKey`
-   (`"local"`/empty) **MUST** become `auth: {type: none}`; a loopback base URL or an all-zero
-   model cost **MUST** set `local: true`; a literal non-placeholder `apiKey` **MUST** be moved
-   into Docket's central secret store under `<NAME>_API_KEY` and referenced by that name in
-   `auth.credentials`, audited as `provider.migrate` — the value **MUST NOT** appear in
-   `docket-providers.json`. The display-only `api`/`name`/`reasoning`/`input` fields a
-   pre-catalog block carried **MUST** be dropped; they have no field in the document (see
-   version 2.11.0 changelog).
+4. Removed (2026-10-03): there is no `fleet.json` `providers` → catalog migration
+   (`migrate_fleet_providers` and `FleetConfig.providers` are deleted); `load_catalog()` reads
+   only the built-in and global scopes, and a `providers` block left in `fleet.json` is ignored.
 5. `edges/adapters/llm.py`'s `resolve_endpoint` **MUST** resolve a catalog entry's base URL and
    exact model row directly from the document, and its credential through
    `core.provider.resolve_credential`. A provider absent from the catalog **MUST** fall back to
@@ -433,20 +415,9 @@ left uncatalogued — gateways can route and re-price by provider/account — an
 }
 ```
 
-`default`, `roles`, and `rankAnchors` are the only keys `models_policy.load_registry` reads (plus
-the legacy `profiles` key, migrated below). There is no user pricing overlay: prices come only
+`default`, `roles`, and `rankAnchors` are the only keys `models_policy.load_registry` reads.
+There is no user pricing overlay: prices come only
 from the built-in `MODEL_PRICING` snapshot, and any other key is ignored.
-
-### Registry file shape (legacy, pre-migration — auto-converted on load)
-
-```json
-{
-  "default": "anthropic/claude-sonnet-4-6",
-  "profiles": { "economy": "openai/gpt-4.1-nano" }
-}
-```
-
-Loading the file above migrates it once to `{"default": "...", "roles": {"manager": "openai/gpt-4.1-nano", "reviewer": "openai/gpt-4.1-nano", "tester": "openai/gpt-4.1-nano", "knowledge": "openai/gpt-4.1-nano"}}` (the `economy` value fanned out to the cheap-class roles — there is no `task` role; see Built-in policy above) and drops `profiles:`.
 
 ### Return Codes
 
@@ -527,6 +498,18 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.18.0 (2026-10-03)
+
+- **Legacy purge: every one-shot migration is deleted.** The `profiles:` → `roles:` registry
+  migration (with `has_residual_profiles_key`, the doctor advisory and the `docket models`
+  warning), the `fleet.json` `defaults.model` → registry migration (`FleetDefaults`, fleet's
+  `get/set_default_model`), and the `fleet.json` `providers` → catalog migration
+  (`migrate_fleet_providers`, `FleetConfig.providers`) are gone; their requirements are marked
+  removed and the legacy registry example is dropped. Old keys are ignored. `MODEL_ALIASES` (old
+  Anthropic ids rewritten by `validate_model`) and doctor's stale-model check are deleted too.
+  "Model intent" requirement 3: `modelSource` is still inferred on read, but `docket doctor` no
+  longer backfills it.
 
 ### Version 2.17.0 (2026-09-27)
 

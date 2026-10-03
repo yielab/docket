@@ -1,6 +1,6 @@
 """Structured handoff artifacts (`core/handoff.py`).
 
-Pure-function tests: `HandoffArtifact.render()`/`dropped()`/`from_legacy_output()`'s existing
+Pure-function tests: `HandoffArtifact.render()`/`dropped()`/`from_output()`'s existing
 contract, plus this card's addition -- `parse_brief` (the last fenced ```json block that
 validates as a `TaskBrief`, `None` on any other outcome), `render_brief`'s fixed field order,
 and `HandoffArtifact.brief` never being shed by a token-budgeted consumer (it is excluded from
@@ -124,8 +124,8 @@ class TestHandoffArtifactBrief:
     def test_brief_defaults_to_none(self) -> None:
         assert HandoffArtifact(summary="plain hop, no brief").brief is None
 
-    def test_from_legacy_output_carries_no_brief(self) -> None:
-        assert HandoffArtifact.from_legacy_output("legacy text").brief is None
+    def test_from_output_carries_no_brief(self) -> None:
+        assert HandoffArtifact.from_output("raw text").brief is None
 
     def test_render_appends_a_brief_section_when_present(self) -> None:
         brief = TaskBrief(objective="add a widget", acceptance=["widget renders"])

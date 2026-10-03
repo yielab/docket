@@ -203,28 +203,6 @@ class TestPrivacyFields:
             _exporter.load_exporter_document(doc)
         assert "secrets" in str(excinfo.value)
 
-    def test_a_global_document_with_the_retired_payload_key_loads_as_minimal(self) -> None:
-        _store.write_json(
-            _cfg.EXPORTERS_FILE,
-            {
-                "exporters": {
-                    "langfuse": {
-                        "kind": "exporter",
-                        "name": "langfuse",
-                        "payload": "full",
-                        "enabled": True,
-                    }
-                }
-            },
-        )
-
-        spec = _exporter.load_catalog().get("langfuse")
-
-        assert spec is not None
-        assert spec.privacy_label == "minimal"
-        assert spec.privacy_classes == frozenset()
-        assert spec.legacy_fields == ["payload"]
-
 
 class TestAuthArity:
     def test_basic_requires_exactly_two_ordered_credentials(self) -> None:

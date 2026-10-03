@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.4.1
+**Version**: 1.5.0
 **Status**: Active
-**Last Updated**: 2026-09-19
+**Last Updated**: 2026-10-03
 
 ## Overview
 
@@ -132,8 +132,8 @@ original acceptance criteria (load balancing, a monitoring dashboard, 100+ concu
 were never implemented either — they were aspirational when written. Real, working delegation
 with actual execution lives in **Epic: Pod Lifecycle (Phase 10)** below, specifically
 **Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes this epic entirely.
-Running `docket team <anything>` prints a removed-command notice mapping to the pod
-equivalent. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
+`team` is no longer a registered command (`docket team` is an ordinary unknown-command error,
+exit 2); use the `docket pod <project>` actions. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
 retains them; the durable retirement record is ROADMAP decision D-11.
 
 ## Epic: Workflow Automation (Retired, D-16 / W-3)
@@ -144,9 +144,9 @@ Lobster validator/planner authored, linted, and dry-ran a `.lobster.yml` templat
 executed one (conditional branching, calling other workflows, retries, and progress/token
 tracking were never implemented — a separate "Lobster daemon" was always meant to run the
 YAML, and it never existed). The single pipeline dialect docket actually executes lives in
-`pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its executor (W-2, shipped); running
-`docket workflow <anything>` prints a removed-command notice pointing at the `docket pipeline
-validate`/`plan`/`run` names. The retired WF-001/WF-002 story bodies were removed when this
+`pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its executor (W-2, shipped), driven by
+`docket pipeline validate`/`plan`/`run`; `workflow` is no longer a registered command (`docket
+workflow` is an ordinary unknown-command error, exit 2). The retired WF-001/WF-002 story bodies were removed when this
 epic was retired — git history retains them; the durable retirement record is ROADMAP decision
 D-16.
 
@@ -405,6 +405,12 @@ card that will make it true — none exists for these).
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.5.0 (2026-10-03)
+- Legacy compatibility removed (no users; maintainer decision 2026-10-03): `docket team` and
+  `docket workflow` no longer print a removed-command notice; both are ordinary unknown
+  commands (exit 2). The two retired epics now say so and name the pod/pipeline commands
+  directly.
 
 ### Version 1.4.1 (2026-09-19)
 - Doc-truth pass against the shipped CLI, no behavior change:

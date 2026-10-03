@@ -12,11 +12,9 @@ DocketDriver``), plus a ``FakeDriver`` test double. This is containment of
 coupling, not speculative plugin-framework generality — a second real driver still
 needs a §4.5 trigger (upstream stall/breakage) or a paying user.
 
-The six required members mirror an agent's whole lifecycle: ``run_turn`` (one
+The required members mirror an agent's whole lifecycle: ``run_turn`` (one
 costed agent turn, the hot path -- ``core/dispatch.py``'s pipeline and docket's own
-self-originated LLM calls go through this); ``provision``/``teardown`` (register/
-unregister with the backing runtime — an honest no-op for ``DocketDriver``, which
-backs onto no external registry); ``list_sessions``/``usage`` (durable-session
+self-originated LLM calls go through this); ``list_sessions``/``usage`` (durable-session
 enumeration and token/cost aggregation, keeping on-disk format knowledge out of
 ``core/``); ``capabilities`` (what this driver instance can actually promise, e.g.
 whether it reports real USD cost, so callers never hardcode an assumption about the
@@ -84,25 +82,6 @@ class TurnResult:
     # signature regardless of declaration order, so this stays addable without
     # breaking the positional call sites the class docstring warns about.
     retry_after_s: float | None = field(default=None, kw_only=True)
-
-
-# ── provision / teardown ─────────────────────────────────────────────────────
-
-
-@dataclass
-class ProvisionResult:
-    """Outcome of registering one agent with the driver's backing runtime."""
-
-    ok: bool
-    message: str = ""
-
-
-@dataclass
-class TeardownResult:
-    """Outcome of unregistering one agent from the driver's backing runtime."""
-
-    ok: bool
-    message: str = ""
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────
@@ -208,7 +187,6 @@ class DriverCapabilities:
 
     driver_name: str
     reports_cost_usd: bool
-    supports_provisioning: bool
     supports_sessions: bool
 
 
@@ -245,14 +223,6 @@ class RuntimeDriver(Protocol):
         ignore them. ``model``, when given, wins over *agent_id*'s own configured model
         for this one call only -- a pipeline step's own override (pipeline-format.spec.md
         "Steps" Req. 10) -- and is never persisted."""
-        ...
-
-    def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
-        """Register *agent_id* with the backing runtime."""
-        ...
-
-    def teardown(self, agent_id: str) -> TeardownResult:
-        """Unregister *agent_id* from the backing runtime."""
         ...
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:

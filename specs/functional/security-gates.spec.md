@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.29.0
+**Version**: 0.30.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -8,8 +8,8 @@ MCP, and Telegram producers, all answering identically; isolation is opt-in and 
 enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
 in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
-P26-5, a pod's own `approvalMode` setting). The approval-routing posture flag `docket gates
-enable`/`disable` used to write is retired -- see Enablement requirement 2. Cancellation reaches
+P26-5, a pod's own `approvalMode` setting). There is no approval-routing posture flag: it and
+every command that wrote or displayed it are deleted -- see Enablement requirement 2. Cancellation reaches
 an in-flight `bash` command, the one handler D-30's "may finish" rule no longer covers. A pod may
 also extend the curated allowlist for its own turns only, via `PodSettings.allowCommands` and
 `ToolContext.allow_commands` — see Tool-approval gates requirement 1 and In-turn tool-call gate
@@ -168,35 +168,26 @@ are owned here, not there.
 
 1. The tool-call gate itself (`core/tools.py`'s policy engine + argument-aware command
    classifier) **MUST** be unconditionally active on every tool call docket dispatches — there
-   is nothing to "enable" here since Phase 19 P19-3; project initialization never skips it, and
-   `--no-gates` does not turn it off (superseded requirement: pre-P19-7b this item described
-   the retired installer applying a daemon exec-approval allowlist by default, with `--no-gates` as
-   an escape hatch that skipped that daemon config entirely — that daemon config no longer
-   exists to skip).
-2. What `--gates`/`--no-gates` on the first `docket init` controls is **approval-routing
-   posture** (`core/fleet.py`'s `FleetSecurity.approval_routing_state`/`approval_routing_mode`):
-   a recorded, audited flag that `docket gates status` and `docket doctor` report. **The flag
-   changes nothing about delivery.** `rg -n 'approval_routing|approvalRouting' src/` finds only
-   one writer left (`core/fleet.py`/`core/security.py`, driven by `docket init`) and the two
-   display readers (`cli/_gates.py`, `cli/_doctor.py`) — no reader exists in `core/tools.py`,
-   `core/approval.py`, `core/telegram.py`, `core/agent_loop.py`, or `serve.py`. The tool-call gate
-   itself is unconditionally active regardless of this flag's value, and an `ask` verdict always
-   sits in docket's own approval store where the CLI, HTTP, MCP, and Telegram channels answer it
-   identically whether the flag is on or off; none of them consults it. Docket also never pushes
-   an approval prompt to any channel on its own — see telegram-integration.spec.md's
-   Command-grammar requirements 7-8 (inbound-only, no notification on a newly-created approval) —
-   so there is no prompt delivery for this flag to affect even in principle. **Resolved (ROADMAP
-   P26-16): `docket gates enable`/`disable` are retired.** They were the flag's only other
-   writer, and the maintainer decision this requirement previously left open — wire the flag into
-   a real consumer, or retire the commands — is answered: retire. Both subcommands now print a
-   removed-command notice naming `docket doctor` for today's posture and exit non-zero; neither
-   writes fleet.json any more. The notice may mention that a wired, per-pod approval setting is
-   planned, but **MUST NOT** claim any such command exists yet. `docket init`'s `--gates`/
-   `--no-gates` write is untouched by this retirement; `--no-gates` **MUST NOT** claim a posture
-   was "recorded" for the branch that writes nothing.
+   is nothing to "enable" here since Phase 19 P19-3, and project initialization has no option
+   that skips it.
+2. **There is no approval-routing posture (deleted 2026-10-03, closing W34-A1).** The
+   `security.approvalRoutingState`/`approvalRoutingMode` fleet.json fields, their
+   `core/fleet.py` accessors, `core/security.py`'s `apply_approval_routing`/
+   `disable_approval_routing`, `docket init`'s `--gates`/`--no-gates` options, the retired
+   `docket gates enable`/`disable` subcommands, and the posture lines in `docket gates status`
+   and `docket doctor` (human and `--json`) are all gone. The flag had a writer and two display
+   readers and no reader on the live path (`core/tools.py`, `core/approval.py`,
+   `core/telegram.py`, `core/agent_loop.py`, `serve.py`), so deleting it changed no delivery
+   behaviour. A `fleet.json` that still carries the keys loads (the fleet models tolerate extra
+   keys) and nothing reads them. An `ask` verdict always sits in docket's own approval store,
+   where the CLI, HTTP, MCP, and Telegram channels answer it identically; docket never pushes an
+   approval prompt to any channel on its own — see telegram-integration.spec.md's Command-grammar
+   requirements 7-8 (inbound-only, no notification on a newly-created approval). `docket gates`
+   with any subcommand other than `status`, `isolate` or `classes` (`enable`/`disable`
+   included) **MUST** print an unknown-subcommand error plus usage and exit 2, and an
+   unrecognised flag (e.g. `--force`) **MUST** exit 2.
 3. There **MUST** be a way to verify gate status (`docket doctor`, `docket gates status`) —
-   reporting the gate as always-active plus current routing/isolation posture. `docket gates
-   status`/`isolate`/`classes` **MUST** keep working unchanged by requirement 2's retirement.
+   reporting the gate as always-active plus the current isolation posture.
 
 ### High-risk action classes (implemented, FD-3)
 
@@ -749,7 +740,7 @@ either.
    the same reason: docker is not installed on every developer machine, bwrap is a Linux-only
    binary docket has never previously depended on, and turning a jail on by default for a codebase
    that does not have Rack CLI's own testing behind it risks breaking ordinary tool calls in ways
-   `--no-gates` never did (the P19-3 gate only ever narrows *which* commands need a human; a
+   the gate never does (the P19-3 gate only ever narrows *which* commands need a human; a
    filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
    path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
    `"off"` until an operator has verified docker or bwrap works on their fleet's hosts**, then opt
@@ -1011,22 +1002,19 @@ pre-grants", this section governs for `--answers stdin` only.
 ```bash
 # The tool-call gate itself (policy engine + high-risk command classifier) is unconditionally
 # active (Phase 19 P19-3) -- nothing below turns IT on or off. These commands manage
-# approval-routing and isolation posture only (core/fleet.py's FleetSecurity), per cli/_gates.py.
-docket gates status            # MUST report the gate as always-active, plus routing/isolation posture
-docket gates enable             # RETIRED: MUST print a removed-command notice naming
-docket gates disable            #   `docket doctor` for today's posture and exit non-zero;
-                                #   MUST NOT write fleet.json (see Enablement requirement 2)
+# isolation posture only (core/fleet.py's FleetSecurity), per cli/_gates.py.
+docket gates status            # MUST report the gate as always-active, plus isolation posture
+docket gates <other>           # any other subcommand (enable/disable included): MUST print an
+                                #   unknown-subcommand error plus usage and exit 2
 docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker on
                                 #   PATH to turn on). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
                                 #   turn (audited isolation.refused) when no docker/bwrap backend is
                                 #   usable -- see Exec sandbox requirement 9
 docket gates classes           # MUST list the documented high-risk action classes, read-only
-docket init                    # the tool-call gate needs no install step (always active); this
-                                #   MUST record approval-routing posture as on by default
-docket init --no-gates      # MUST skip the approval-routing posture write entirely, and MUST NOT
-                                #   claim a posture was "recorded" for the branch that writes nothing
-docket doctor                  # MUST report gate status, approval routing, and isolation posture
+docket init                    # the tool-call gate needs no install step (always active); there
+                                #   is no --gates/--no-gates option (Enablement requirement 2)
+docket doctor                  # MUST report gate status and isolation posture
 ```
 
 ### Approval channels
@@ -1452,6 +1440,16 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.30.0 (2026-10-03)
+
+- **Approval-routing posture deleted (legacy purge; W34-A1 closed by deletion).** Enablement
+  requirement 2 now says the flag does not exist: the fleet.json `approvalRoutingState`/
+  `approvalRoutingMode` fields and accessors, `security.apply/disable_approval_routing`,
+  `docket init --gates/--no-gates`, the `gates enable`/`disable` stubs and their `--force`, and
+  the posture lines in `gates status`/`doctor` are gone. An unknown `gates` subcommand now exits 2
+  with usage (it printed usage and exited 0). Requirement 3 and the `docket gates` interface
+  block drop routing posture.
 
 ### Version 0.29.0 (2026-10-03)
 

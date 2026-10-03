@@ -5,10 +5,8 @@ it in a Typer command and raises ``typer.Exit(code)``. Secrets live in
 ``~/.docket/secrets.json`` / ``secrets.meta.json`` (``core/secrets.py``) —
 docket-owned JSON written through ``edges/store.py``.
 
-``docket auth`` is a removed command: there is no docket-native login flow, and the provider
-catalog (``docket models provider add``, ``core/provider.py``) is the credential-status surface
-now. There is no ``run_auth`` here — see ``__main__.py``'s ``_REMOVED["auth"]`` for the
-retirement notice. ``_keys_setup`` below is the interactive wizard onto stored credentials; it
+The provider catalog (``docket models provider add``, ``core/provider.py``) is the
+credential-status surface. ``_keys_setup`` below is the interactive wizard onto stored credentials; it
 walks the provider catalog (``core/provider.py::load_catalog``) rather than a fixed provider
 list, so it never lags a newly cataloged provider.
 """

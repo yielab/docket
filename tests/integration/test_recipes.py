@@ -101,7 +101,7 @@ def test_recipe_pipeline_validates(recipe_dir: Path) -> None:
     if not pipeline_file.is_file():
         pytest.skip(f"{recipe_dir.name} is a policy pack: no pipeline.yaml")
     text = pipeline_file.read_text(encoding="utf-8")
-    assert _pipeline.validate_pipeline(text) == []
+    assert _pipeline.load_pipeline(text).errors == []
 
 
 @pytest.mark.parametrize(
@@ -548,7 +548,6 @@ def test_export_writes_only_this_pods_own_scope_never_global(
             "name": "global-role",
             "scope": "org",
             "modelClass": "cheap",
-            "editRights": "write",
             "toolProfile": "full",
             "tokenBudget": 4000,
             "soulTemplate": "# SOUL\n",

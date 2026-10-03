@@ -117,8 +117,8 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
 fi
 
 echo "Next steps:"
-echo "  docket install   — bootstrap docket's home + specialist agents"
-echo "  docket add       — create your first project pod"
+echo "  docket init      — run inside a codebase: sets up docket and its first pod"
+echo "  docket add       — add an agent to the current pod"
 echo "  docket doctor    — verify system health"
 echo ""
 echo "Optional — shell completions:"

@@ -76,7 +76,7 @@ def test_every_methodology_recipe_has_its_three_files() -> None:
 @pytest.mark.parametrize("name", RECIPE_NAMES)
 def test_recipe_pipeline_validates(name: str) -> None:
     text = (_recipe_dir(name) / "pipeline.yaml").read_text(encoding="utf-8")
-    assert _pipeline.validate_pipeline(text) == []
+    assert _pipeline.load_pipeline(text).errors == []
 
 
 def test_tdd_check_red_routes_pass_to_fail_and_fail_to_green() -> None:

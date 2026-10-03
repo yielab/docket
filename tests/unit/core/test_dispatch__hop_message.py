@@ -76,7 +76,6 @@ class TestCustomRoleFallsBackToArchetype:
                 "soulTemplate": "x",
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
-                "editRights": "read-only",
                 "toolProfile": "read-only",
             }
         )
@@ -93,7 +92,6 @@ class TestCustomRoleFallsBackToArchetype:
                 "soulTemplate": "x",
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "none"},
-                "editRights": "write",
                 "toolProfile": "write",
                 "hopInstruction": "Draft the release notes.",
             }
@@ -120,7 +118,6 @@ class TestStepInstructionsOverride:
                 "soulTemplate": "x",
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "verdict", "regexes": ["APPROVE", "REQUEST-CHANGES"]},
-                "editRights": "read-only",
                 "toolProfile": "read-only",
             }
         )
@@ -153,7 +150,6 @@ class TestStepInstructionsOverride:
                 "soulTemplate": "x",
                 "agentsTemplate": "y",
                 "gateContract": {"kind": "none"},
-                "editRights": "none",
                 "toolProfile": "coordination",
                 "hopInstruction": "You are the Lead. Plan for the Researcher.",
             }

@@ -32,12 +32,6 @@ RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
 RUNAWAY_COST_THRESHOLD = _cfg.RUNAWAY_COST_THRESHOLD
 KEY_MAX_AGE_DAYS = _cfg.KEY_MAX_AGE_DAYS
 
-_STALE_MODELS: dict[str, str] = {
-    "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
-    "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
-    "anthropic/claude-sonnet-3-5": "anthropic/claude-sonnet-4-6",
-}
-
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 
 
@@ -91,8 +85,8 @@ def _batch_gating_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, bool
 
 
 def _check_dependencies() -> int:
-    """python3 (required) and fzf (optional): docket owns its runtime, so only its
-    direct dependencies are probed."""
+    """python3 (required): docket owns its runtime, so only its direct dependencies are
+    probed."""
     issues = 0
 
     py = shutil.which("python3")
@@ -101,13 +95,6 @@ def _check_dependencies() -> int:
     else:
         ui.console.print("[red]✗[/red] python3 not found — required for JSON operations")
         issues += 1
-
-    fzf = shutil.which("fzf")
-    if fzf:
-        ui.success(f"fzf: {fzf}")
-    else:
-        ui.warn("fzf not installed — interactive pickers will use numbered fallback")
-        ui.console.print("  Install with: brew install fzf")
 
     return issues
 
@@ -146,44 +133,6 @@ def _check_project_agents(ids: list[str]) -> int:
         else:
             ui.success(f"  {aid}: OK  →  group {tg}")
     return issues
-
-
-def _check_models() -> int:
-    """Flag stale/aliased model names across every registered agent's meta."""
-    ui.console.print()
-    ui.console.print("[bold]Model Configuration[/bold]")
-    invalid: list[str] = []
-    for a in _fleet.list_agents():
-        model = _fleet.meta_get(a.id, "model", "")
-        if model in _STALE_MODELS:
-            invalid.append(f"{a.id}: {model}")
-    if not invalid:
-        ui.success("  All agent models are valid")
-        return 0
-    ui.console.print("[red]✗[/red]   Found invalid model configurations:")
-    for line in invalid:
-        ui.console.print(f"    {line}")
-    ui.console.print("  Fix with: docket doctor --fix")
-    return len(invalid)
-
-
-def _check_legacy_model_registry() -> int:
-    """One-shot ``profiles:`` → ``roles:`` migration report + residual-key warning.
-
-    Advisory — never affects the issue count. Migration/residual-key rules: see
-    specs/functional/model-profiles.spec.md. A residual key is a manual cleanup, not a health
-    defect."""
-    ui.console.print()
-    ui.console.print("[bold]Model registry (docket-models.json):[/bold]")
-    note = _mp.migrate_legacy_profiles()
-    if note:
-        ui.success(f"  {note}")
-    if _mp.has_residual_profiles_key():
-        ui.warn("  Residual 'profiles:' key found (alongside 'roles:') — it is no longer read.")
-        ui.dim("    Remove it from docket-models.json; 'roles:' is the source of truth.")
-    elif not note:
-        ui.success("  No legacy 'profiles:' key")
-    return 0
 
 
 def _check_model_registry_entries() -> int:
@@ -431,7 +380,7 @@ _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 def _check_exporters() -> int:
     """Warn for every enabled exporter whose health shows a failure since its last success,
     plus informational lines (not counted as issues) for a `conversation`/`full` exporter
-    reaching a non-loopback host and any retired `payload` field still on a document."""
+    reaching a non-loopback host."""
     ui.console.print()
     ui.console.print("[bold]Exporters:[/bold]")
     catalog = _exporter.load_catalog()
@@ -454,35 +403,19 @@ def _check_exporters() -> int:
                 host = urlsplit(spec.endpoint).hostname or spec.endpoint
                 if host not in _LOOPBACK_HOSTS:
                     ui.info(f"  {name}: privacy '{spec.privacy_label}' shares content with {host}")
-    for name in sorted(catalog.entries):
-        spec = catalog.entries[name]
-        if spec.legacy_fields:
-            fields = ", ".join(spec.legacy_fields)
-            ui.info(
-                f"  {name}: retired field(s) {fields} are ignored — "
-                f"docket exporters privacy {name} <level>"
-            )
     return issues
 
 
 def _check_security_gates() -> int:
-    """Approval-routing/isolation posture + the always-on tool-call gate.
+    """Isolation posture + the always-on tool-call gate.
 
     The gate itself is unconditionally active on every tool call docket dispatches (see
     specs/functional/security-gates.spec.md) — there is no "is it enabled" question left to ask,
-    only where an approval prompt routes and whether execution is sandboxed."""
+    only whether execution is sandboxed."""
     ui.console.print()
     ui.console.print("[bold]Security gates:[/bold]")
 
     ui.success("  Tool-call gate: always active (policy engine + high-risk command classifier)")
-
-    r_state, r_mode = _fleet.get_approval_routing()
-    if r_state == "on":
-        ui.success(f"  Approval routing: on (mode={r_mode or '?'})")
-    elif r_state == "off":
-        ui.warn("  Approval routing: off — gated prompts have nowhere configured to go")
-    else:
-        ui.dim("  Approval routing: not configured — set with docket init (no --no-gates)")
 
     iso = _fleet.get_isolation_mode()
     if iso in ("non-main", "all"):
@@ -558,29 +491,6 @@ def _check_pod_config_overlays() -> int:
     return broken
 
 
-def _check_workspace_env_files(ids: list[str], do_fix: bool) -> int:
-    """Flag leftover per-agent `.env` files from the retired key-sync path -- nothing on the
-    live turn path reads them; the model client resolves credentials through
-    `core/secrets.py` directly (see specs/functional/api-keys.spec.md). `--fix` deletes them."""
-    stray = [aid for aid in ids if (_cfg.workspace_dir(aid) / ".env").is_file()]
-    if not stray:
-        return 0
-    ui.console.print()
-    ui.console.print("[bold]Workspace .env files (retired key-sync artifact):[/bold]")
-    issues = 0
-    for aid in stray:
-        issues += 1
-        env_file = _cfg.workspace_dir(aid) / ".env"
-        if do_fix:
-            env_file.unlink()
-            ui.success(f"  {aid}: removed stray .env")
-            issues -= 1
-        else:
-            ui.console.print(f"[red]✗[/red]   {aid}: stray .env — nothing reads it")
-            ui.console.print("    Fix with: docket doctor --fix")
-    return issues
-
-
 def _check_template_version(ids: list[str]) -> int:
     """Template/prompt version drift (advisory — never fails)."""
     if not ids:
@@ -642,59 +552,6 @@ def _check_pod_sync(ids: list[str]) -> int:
     return 0
 
 
-def _check_metadata_backfill(ids: list[str]) -> int:
-    """Backfill kind/role/modelSource taxonomy for specialists + project agents."""
-    ui.console.print()
-    ui.console.print("[bold]Agent metadata (taxonomy):[/bold]")
-    backfilled = 0
-
-    for spec in _cfg.SPECIALIST_ORDER:
-        sdir = _cfg.WORKSPACES_DIR / spec
-        if not sdir.is_dir():
-            continue
-        if (sdir / _cfg.META_FILE).is_file():
-            continue
-        sm = _mp.resolve_role_model(spec)
-        meta = {
-            "kind": "specialist",
-            "role": spec,
-            "name": spec,
-            "model": sm,
-            "modelSource": _mp.agent_model_source(spec),
-        }
-        path = sdir / _cfg.META_FILE
-        store.write_json(path, meta)
-        ui.success(f"  {spec}: meta backfilled (kind=specialist, model={sm})")
-        backfilled += 1
-
-    for aid in ids:
-        fixed: list[str] = []
-        if not _fleet.meta_get(aid, "kind", ""):
-            _fleet.meta_set(aid, "kind", "project")
-            fixed.append("kind")
-        if not _fleet.meta_get(aid, "modelSource", ""):
-            _fleet.meta_set(aid, "modelSource", _mp.agent_model_source(aid))
-            fixed.append("modelSource")
-        if not _fleet.meta_get(aid, "scope", ""):
-            _fleet.meta_set(aid, "scope", "project")
-            fixed.append("scope")
-        if fixed:
-            ui.success(f"  {aid}: backfilled {' '.join(fixed)}")
-            backfilled += 1
-
-    for role in sorted(_cfg.PROJECT_ROLES):
-        if (_cfg.WORKSPACES_DIR / role).is_dir():
-            ui.warn(
-                f"  {role}: legacy shared specialist — project roles now live in "
-                f"pods. Recreate via a pod (docket pod <project> add {role}) and "
-                f"remove the global '{role}' workspace."
-            )
-
-    if backfilled == 0:
-        ui.success("  All agents have kind/role/scope/modelSource metadata")
-    return 0
-
-
 def _check_runtime_contract(ids: list[str]) -> int:
     """Ensure each managed workspace has a current durability contract (``WORKFLOW_AUTO.md``,
     composed into the system prompt every turn).
@@ -732,37 +589,10 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
     """Project pod members plus any provisioned org specialists — all docket-managed,
     including the opt-in Portfolio Manager (``docket init --portfolio``), never
     auto-installed."""
-    specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
+    specialists = [r for r in _cfg.ORG_SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
     if _cfg.workspace_dir(_cfg.PORTFOLIO_MANAGER_ROLE).is_dir():
         specialists.append(_cfg.PORTFOLIO_MANAGER_ROLE)
     return list(ids) + specialists
-
-
-def _check_scaffolding(ids: list[str]) -> int:
-    """Quarantine self-authoring scaffolding leaking into managed workspaces.
-
-    See specs/functional/workspace-structure.spec.md requirement 5: IDENTITY.md/BOOTSTRAP.md
-    fight docket's role-derived SOUL.md, so this moves them to .docket-archive/ (reversible).
-    Advisory — never fails."""
-    from docket.core import identity as _identity
-
-    ui.console.print()
-    ui.console.print("[bold]Agent identity (docket-owned):[/bold]")
-    cleaned = 0
-    for aid in _managed_workspace_ids(ids):
-        ws = _cfg.workspace_dir(aid)
-        if not ws.is_dir():
-            continue
-        archived = _identity.quarantine_scaffolding(ws)
-        if archived:
-            ui.success(
-                f"  {aid}: archived {', '.join(archived)} → .docket-archive/ "
-                "(identity is docket-owned; set a display name with 'docket persona')"
-            )
-            cleaned += 1
-    if cleaned == 0:
-        ui.success("  No stray self-authored scaffolding in managed workspaces")
-    return 0
 
 
 def _fmt_num(s: str) -> str:
@@ -789,7 +619,7 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     keys = _secrets.secrets_keys()
     if not keys:
         return []
-    meta = _secrets.secrets_meta()
+    meta = _secrets.load_secrets_meta()
     now = _dt.datetime.now(_dt.UTC)
 
     def parse(ts: str) -> _dt.datetime | None:
@@ -863,30 +693,6 @@ def _doctor_json_agents(
             {"id": aid, "ok": not a_issues, "tg": tg_map.get(aid, ""), "issues": a_issues}
         )
     return issues, agents_json
-
-
-def _doctor_json_model_config(
-    fleet: _fleet.FleetConfig | None,
-) -> tuple[int, list[dict[str, str]]]:
-    """Stale/aliased model names across every registered agent, JSON shape of `_check_models`."""
-    issues = 0
-    invalid_models: list[dict[str, str]] = []
-    for a in fleet.agents if fleet else []:
-        model = _fleet.meta_get(a.id, "model", "")
-        if model in _STALE_MODELS:
-            invalid_models.append({"id": a.id, "model": model, "suggest": _STALE_MODELS[model]})
-            issues += 1
-    return issues, invalid_models
-
-
-def _doctor_json_model_registry() -> dict[str, Any]:
-    """Legacy `profiles:` migration state, JSON shape of `_check_legacy_model_registry`.
-    Advisory — never contributes to the issue count."""
-    legacy_migration_note = _mp.migrate_legacy_profiles()
-    return {
-        "migrated": legacy_migration_note,
-        "residualProfilesKey": _mp.has_residual_profiles_key(),
-    }
 
 
 def _doctor_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
@@ -972,12 +778,9 @@ def _doctor_json_key_hygiene(
 
 
 def _doctor_json_security() -> dict[str, Any]:
-    """Approval-routing/isolation posture, JSON shape of `_check_security_gates`."""
-    r_state, r_mode = _fleet.get_approval_routing()
+    """Gate/isolation posture, JSON shape of `_check_security_gates`."""
     return {
         "toolCallGate": "always-on",
-        "approvalRouting": r_state,
-        "routingMode": r_mode,
         "isolation": _fleet.get_isolation_mode(),
     }
 
@@ -1012,14 +815,12 @@ def _doctor_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
 
 
 def _doctor_json() -> dict[str, Any]:
-    """Assemble the machine-readable health report — the docket-owned schema (no
-    legacy daemon/gateway keys); channel-binding presence is covered per agent
-    below."""
+    """Assemble the machine-readable health report; channel-binding presence is
+    covered per agent below."""
     issues = 0
     ids = project_ids()
 
     has_py = shutil.which("python3")
-    has_fzf = shutil.which("fzf")
     if not has_py:
         issues += 1
 
@@ -1028,11 +829,6 @@ def _doctor_json() -> dict[str, Any]:
 
     agents_issues, agents_json = _doctor_json_agents(ids, fleet)
     issues += agents_issues
-
-    model_issues, invalid_models = _doctor_json_model_config(fleet)
-    issues += model_issues
-
-    model_registry = _doctor_json_model_registry()
 
     ledger_issues, dispatch_ledger_results = _doctor_json_dispatch_ledger()
     issues += ledger_issues
@@ -1054,11 +850,8 @@ def _doctor_json() -> dict[str, Any]:
         "issues": issues,
         "checks": {
             "python3": {"ok": bool(has_py), "path": has_py or None},
-            "fzf": {"available": bool(has_fzf), "path": has_fzf or None},
             "fleet": fleet_data,
             "agents": agents_json,
-            "modelConfig": {"ok": not invalid_models, "invalid": invalid_models},
-            "modelRegistry": model_registry,
             "dispatchLedger": dispatch_ledger_results,
             "budget": budget_results,
             "runaway": runaway_results,
@@ -1091,8 +884,6 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues = 0
     issues += _check_dependencies()
     issues += _check_project_agents(ids)
-    issues += _check_models()
-    _check_legacy_model_registry()
     issues += _check_model_registry_entries()
     issues += _check_archetype_overlay()
     issues += _check_schedule_config()
@@ -1106,18 +897,14 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_security_gates()
     issues += _check_policies()
     issues += _check_pod_config_overlays()
-    issues += _check_workspace_env_files(ids, do_fix)
     _check_template_version(ids)
     _check_pod_sync(ids)
-    _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
-    _check_scaffolding(ids)
 
     ui.console.print()
     if issues == 0:
         ui.success("All checks passed — docket is healthy.")
         return 0
     ui.console.print(f"[red][bold]{issues} critical issue(s) found.[/bold][/red]")
-    ui.console.print("  Project issues:  docket repair [id]")
-    ui.console.print("  Model issues:    docket doctor --fix")
+    ui.console.print("  Project issues:  docket maintain [id] check")
     return 1

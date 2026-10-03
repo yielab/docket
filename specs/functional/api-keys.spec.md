@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Complete
-**Last Updated**: 2026-09-27
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -49,8 +49,7 @@ This specification does NOT cover provider key *format* rules (see input-validat
 ### Propagation
 
 1. Keys **MUST NOT** be propagated to any per-agent file. There is no per-agent `.env` (or
-   equivalent) sync path — nothing on the live turn path ever read one; `docket doctor --fix`
-   deletes any workspace `.env` left over from a docket version prior to 1.4.0.
+   equivalent) sync path — nothing on the live turn path ever read one.
 2. Docket's model endpoint resolver **MUST** read the selected provider credential directly from
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
    need to export the key after `docket keys add`.
@@ -131,6 +130,12 @@ does not.
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.7.0 (2026-10-03)
+
+- Propagation 1 no longer promises that `docket doctor --fix` deletes a workspace `.env` left
+  by a pre-1.4.0 docket: that doctor check was removed with the other legacy cleanups (no users;
+  legacy compatibility removed). The no-propagation rule itself is unchanged.
 
 ### Version 1.6.0 (2026-09-27)
 

@@ -63,7 +63,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id)
 
 
 def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = None) -> None:

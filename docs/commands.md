@@ -15,8 +15,6 @@ Complete reference for all docket commands, rendered from each command's own `--
 - [Security & Audit](#security-audit)
 - [Observability Commands](#observability-commands)
 - [Global Options](#global-options)
-- [Command Aliases](#command-aliases)
-- [Removed Commands](#removed-commands)
 - [Exit Codes](#exit-codes)
 - [Environment Variables](#environment-variables)
 - [Tips & Tricks](#tips-tricks)
@@ -36,9 +34,6 @@ its source, Telegram binding, and last activity. Telegram status reflects
 docket's own channel bindings (`~/.docket/fleet.json`); the session column
 shows the agent's current project key. `--json` emits the same listing as
 one JSON document instead of the Rich table, for scripting.
-
-
-**Aliases:** None
 
 
 ---
@@ -99,8 +94,8 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          no `docket blueprints add <file>` to register a
                          custom one. See
                          specs/functional/pod-blueprints.spec.md.
-  --codebase <path>,    the codebase path (or, for a workdir-kind
-  --path <path>         blueprint, the pod's shared working directory) --
+  --codebase <path>     the codebase path (or, for a workdir-kind
+                         blueprint, the pod's shared working directory) --
                          same value as the `path` positional; supplying it
                          up front skips its interactive prompt.
   --name <name>         display name -- same value as the 1st positional;
@@ -153,9 +148,6 @@ Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
 re-prompted); the project name is suggested from that directory's name.
 
 
-**Aliases:** None
-
-
 ---
 
 ### add
@@ -176,9 +168,6 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
   --verify "<cmd>"    set the new Implementer's mechanical verify gate
 
 
-**Aliases:** None
-
-
 ---
 
 ### status
@@ -193,9 +182,6 @@ and task counts. `docket list` remains the detailed global agent
 inventory; `docket doctor` remains the global technical health check.
 
 
-**Aliases:** None
-
-
 ---
 
 ### info
@@ -206,11 +192,8 @@ Detailed status of one agent.
 
 Shows identity, codebase/stack, model and its source, session/project
 keys, creation time, workspace path, and Telegram binding for one agent --
-pulled from `.docket-meta.json`. With no agent id given, uses fzf for
-interactive selection if available, falling back to a numbered picker.
-
-
-**Aliases:** `show`
+pulled from `.docket-meta.json`. With no agent id given, shows a numbered
+picker.
 
 
 ---
@@ -234,9 +217,6 @@ outright rather than deleting a shared, fleet-wide agent. A deleted
 member's git worktree is removed, but its dedicated branch remains in the
 source repository so committed code is not silently destroyed; remove
 that branch separately after reviewing it.
-
-
-**Aliases:** `remove`, `rm`
 
 
 ---
@@ -270,8 +250,7 @@ Subcommands:
                     `memory/<archive-dir>/`
 
 `--no-distill-first` (clean/reset only) skips the automatic pre-delete
-distillation and deletes/clears memory undistilled; `--distill-first` is
-also accepted as a no-op affirmation of the default.
+distillation and deletes/clears memory undistilled.
 
 Memory is never bare-deleted: before clean deletes `memory/*.md`, or reset
 clears memory + HEARTBEAT.md, docket runs one driver-backed turn that
@@ -279,19 +258,14 @@ summarizes pending logs into MEMORY.md and archives the originals -- the
 same work `distill` does standalone. A failed distillation aborts the
 delete outright; nothing is touched. `failure_kind` (`timeout`,
 `daemon_error`, `invalid_output`) tells you whether to just retry or
-whether the model's output needs a closer look (`daemon_error` is the
-failure-kind name's literal value -- a name that predates the daemon's
-removal and now just means "the turn didn't complete cleanly," not a live
-external process). When a reset runs a real distillation, MEMORY.md is
+whether the model's output needs a closer look (`daemon_error` means the
+turn didn't complete cleanly). When a reset runs a real distillation, MEMORY.md is
 left freshly distilled rather than immediately cleared again in the same
 breath.
 
 Preserves identity (`.docket-meta.json`, fleet registration). clean/
 reset/rebuild prompt for confirmation and require a TTY -- a
 non-interactive call is cancelled, not silently applied.
-
-
-**Aliases:** None
 
 
 ---
@@ -310,9 +284,6 @@ key has the form `agent:<id>:<project>` and prevents cross-project
 contamination between parallel work on the same agent; changing it
 updates `.docket-meta.json` only -- it prints a reminder to update
 SOUL.md yourself, it does not rewrite the file.
-
-
-**Aliases:** None
 
 
 ---
@@ -337,16 +308,8 @@ Subcommands:
                   section headers
 
 Both subcommands are read-only and touch only the named agent's own
-workspace. The `search`/`index`/`snapshot`/`compress` subcommands were
-removed: the per-agent index/snapshot/gzip-archive artifacts they wrote
-were read by nothing else in docket (the archive even hid old logs from
-an agent's own read/grep-based recall), and there is no separate semantic
-memory index to replace them with. Use `docket snapshot` for a
-whole-fleet JSON export. `memory`/`mem` are removed top-level commands,
-not aliases of `context`.
-
-
-**Aliases:** None
+workspace; any other action exits 2. Use `docket snapshot` for a
+whole-fleet JSON export.
 
 
 ---
@@ -364,13 +327,8 @@ Subcommands: (show, default) current persona + role; `set "<label>"`
 assigns a display name; `clear` removes it (back to role/name).
 
 Stored in `.docket-meta.json` (`persona`) and rendered into `SOUL.md`;
-survives `maintain rebuild`. `docket doctor` quarantines the
-base-assistant self-authoring scaffolding a model may leave behind
-(IDENTITY.md/BOOTSTRAP.md) from managed workspaces -- use this command
-instead to give an agent a friendly name.
-
-
-**Aliases:** None
+survives `maintain rebuild`. Use this command to give an agent a
+friendly name.
 
 
 ---
@@ -395,8 +353,7 @@ Subcommands:
                     against the open role-archetype registry
                     (`docket roles`), not a hardcoded
                     implementer|reviewer|tester list -- a blueprint role
-                    or any user-defined archetype works too; `programmer`
-                    is accepted as an alias for `implementer`. The Lead
+                    or any user-defined archetype works too. The Lead
                     is unique and cannot be added this way. Duplicated
                     roles get `-2`, `-3` ids. `--count`/`-n` adds several
                     at once. `--verify "<cmd>"` sets the mechanical
@@ -517,9 +474,6 @@ own pod -- there is no cross-pod dispatch path. See
 specs/functional/pod-dispatch.spec.md.
 
 
-**Aliases:** None
-
-
 ---
 
 ### pipeline
@@ -583,9 +537,6 @@ shape-validated only, never checked against the live role registry. See
 specs/functional/pipeline-format.spec.md.
 
 
-**Aliases:** None
-
-
 ---
 
 ### roles
@@ -628,9 +579,6 @@ overlays by name, and a malformed overlay entry is skipped rather than
 crashing a live fleet. See specs/functional/role-archetypes.spec.md.
 
 
-**Aliases:** None
-
-
 ---
 
 ### recipes
@@ -646,9 +594,6 @@ pipeline/mixed) and description. `show <name|dir> \[--json\]` prints one
 recipe's description, scope, directory, derived summary, and README
 body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
 `docket init --recipe` remain the only writers.
-
-
-**Aliases:** None
 
 
 ---
@@ -689,9 +634,6 @@ polling, stop it during setup so it does not receive the one-time
 command first.
 
 
-**Aliases:** `telegram`
-
-
 ---
 
 ### unwire
@@ -704,9 +646,6 @@ Remove a channel binding (Telegram by default).
 remove. Removes the entry from docket's own fleet registry
 (`~/.docket/fleet.json`); the agent can still function without it, but
 approvals then require CLI, HTTP, or MCP interaction.
-
-
-**Aliases:** None
 
 
 ---
@@ -736,9 +675,6 @@ memory/ (resumed on its next turn via the durability contract); this
 registry tracks state only.
 
 
-**Aliases:** None
-
-
 ---
 
 ## Keys & Authentication
@@ -749,8 +685,7 @@ registry tracks state only.
 
 API key management (add/list/remove/rotate/validate/export/setup).
 
-Docket's model client reads keys centrally -- there is no per-agent file
-sync of any kind; nothing on the live turn path ever read one.
+Docket's model client reads keys centrally.
 
 Subcommands:
   list (default)     masked table of stored keys with a format badge and
@@ -786,9 +721,6 @@ OS keyring (secret-tool) instead of secrets.json, which then keeps only
 a name index; remove clears the keyring entry too.
 
 
-**Aliases:** `key`, `secret`
-
-
 ---
 
 ## Utility Commands
@@ -800,16 +732,12 @@ a name index; remove clears the keyring entry too.
 View an agent's latest memory log.
 
 Prints the most recent `memory/YYYY-MM-DD.md` file's first 40 lines (with
-a note if there are more). There is no gateway or daemon log to tail any
-more -- docket has no external process producing one; memory logs are
-the durable, docket-owned activity record. For active tasks, read
+a note if there are more). Memory logs are the durable, docket-owned
+activity record. For active tasks, read
 HEARTBEAT.md directly (`docket edit <id>`) or use
 `docket context <id> show`. Shows the single latest file only, not a
 rolling tail across days -- use `tail -f` on the file directly for live
 monitoring. Memory logs rotate daily.
-
-
-**Aliases:** `log`
 
 
 ---
@@ -825,9 +753,6 @@ TOOLS.md (project commands), HEARTBEAT.md (active tasks), and
 .docket-meta.json (metadata). Respects $EDITOR, falling back to `vi` if
 unset. Be careful editing `.docket-meta.json` by hand -- use
 `docket maintain <id> check` to fix drift afterward.
-
-
-**Aliases:** None
 
 
 ---
@@ -848,13 +773,8 @@ the role policy. `--budget <USD>` sets a per-agent spend cap (0 = none).
 `--resume` clears an auto-pause (e.g. a reached budget cap) -- when the
 target is a pod's Lead it also un-blocks that pod's blocked tasks so
 dispatch can claim them again, and writes a `profile.resume` audit entry.
-
-Tier names (economy/standard/premium) are hard-rejected as a model
-argument -- there is no shim; use a full `provider/model` id, or
-`docket models` to see/set the role policy's model classes.
-
-
-**Aliases:** None
+A model argument must be a full `provider/model` id; `docket models`
+shows and sets the role policy.
 
 
 ---
@@ -902,12 +822,8 @@ surfaces the first time an agent actually calls the endpoint; pricing
 shows n/a (or "n/a (bring your own)" for an OpenRouter/AI Gateway route
 other than the explicit free router, and "$0 (local)" for a
 local/ollama/lmstudio provider -- never a fabricated dollar figure).
-Tier names (economy/standard/premium) are rejected everywhere a
-model/role value is expected, including here; an invalid model prints
-the current role policy table alongside the error.
-
-
-**Aliases:** None
+An invalid model prints the current role policy table alongside the
+error.
 
 
 ---
@@ -947,9 +863,6 @@ by turn count; budget management works off the token-based estimate the
 pod-dispatch gate itself computes, not this command's dollar column.
 
 
-**Aliases:** `usage`
-
-
 ---
 
 ### doctor
@@ -964,31 +877,20 @@ report; `--fix` applies auto-fixes for detected drift (permission
 repairs, missing workspace files, session-key resync) -- this mutates
 state.
 
-Runs (in order): required dependencies (python3 required, fzf optional --
-no external daemon binary to check for any more); per-project agent
+Runs (in order): required dependencies (python3); per-project agent
 workspace/registration/binding checks; model validity across every
-registered agent; a legacy `docket-models.json` `profiles:` key advisory;
-the dispatch task ledger (`TASK_LIST.json` vs. the pod Lead's
+registered agent; the dispatch task ledger (`TASK_LIST.json` vs. the pod Lead's
 HEARTBEAT.md dispatch ledger must agree -- a mismatch prints exactly
 which task ids are missing/stale, and `--fix` re-syncs the ledger, always
 safe since TASK_LIST.json is dispatch's own source of truth); budget-cap
 sanity and runaway-session detection; key hygiene and provider coverage;
 security-gate configuration; template/runtime-contract version (reseeds
-a missing or stale WORKFLOW_AUTO.md); a leftover pre-Phase-10 global
-programmer/reviewer/tester workspace advisory; scaffolding quarantine
-(IDENTITY.md/BOOTSTRAP.md a model may leave behind); eval-results
-freshness. There is no "external config valid JSON"/"gateway service
-running" check any more -- docket has no external daemon or gateway
-process to validate, and no second registry to detect drift against
-`.docket-meta.json`.
+a missing or stale WORKFLOW_AUTO.md).
 
 `doctor` is diagnostic-only by default; `--fix` is not read-only -- it
 mutates workspace files and permissions to correct detected drift.
 Review its findings before running with `--fix` on a workspace you
 haven't backed up.
-
-
-**Aliases:** `check`
 
 
 ---
@@ -1015,9 +917,6 @@ Subcommands:
                     set/default source. Composes existing resolvers only
                     -- writes nothing, adds no new configuration surface.
                     See specs/data/cli-json-shapes.spec.md.
-
-
-**Aliases:** None
 
 
 ---
@@ -1062,9 +961,6 @@ blocked, not run. Per-task dispatch is traced (`docket trace`) for
 auditability.
 
 
-**Aliases:** None
-
-
 ---
 
 ### completions
@@ -1079,16 +975,13 @@ fish) -- an unknown shell name errors with exit 1.
 
 The top-level command-name list is generated live from the real Typer
 command registry, so it can never drift from `docket --help`.
-Second-level subcommand words (e.g. `gates status enable disable isolate
+Second-level subcommand words (e.g. `gates status isolate
 classes`) are hand-maintained in the completion templates, since those
 subcommands are parsed manually rather than being Click subgroups --
 only the top-level command list is regression-tested against drift, so
 hand-maintained subcommand words for `pipeline`, `conversations`,
 `runs`, and `persona` can and have drifted out of sync with their real
 subcommands.
-
-
-**Aliases:** `completion`
 
 
 ---
@@ -1108,9 +1001,6 @@ plus a `note:` line for a file loaded without a top-level `kind:` key.
 Exits 1 if any file is invalid.
 
 
-**Aliases:** None
-
-
 ---
 
 ### snapshot
@@ -1121,16 +1011,12 @@ Export system state snapshot as JSON.
 
 Every project agent and specialist, its model, registration/binding
 status, last activity, and measured cost, plus the channel list. `-o`/
-`--output <path>` writes the JSON to a file instead of stdout. `gateway`
-is a legacy field kept for shape stability -- docket has no external
-gateway process, so it always reads "inactive". `costUsd`/`totalCostUsd`
-are 0.0 for the same reason `docket cost` shows no recorded spend today:
+`--output <path>` writes the JSON to a file instead of stdout.
+`costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows
+no recorded spend today:
 this is a snapshot of measured-token agents, not of billed dollars.
 Useful for backups, dashboards, or feeding fleet state into another
 tool.
-
-
-**Aliases:** `export`
 
 
 ---
@@ -1192,9 +1078,6 @@ masked when listed. Every `mcp servers add`/`remove` is audit-logged.
 See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md.
 
 
-**Aliases:** None
-
-
 ---
 
 ## Security & Audit
@@ -1203,27 +1086,18 @@ See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md.
 
 **Usage:** `docket gates`
 
-Manage docket's approval-routing and workspace-isolation posture.
+Show docket's tool-call gate and manage workspace isolation.
 
 The tool-call gate itself -- the policy engine plus the argument-aware
 high-risk command classifier, both evaluated in `core/tools.py`'s
 `dispatch_tool` chokepoint on every call docket's turn loop makes -- is
-always active and cannot be turned off. `enable`/`disable` are retired:
-they only flipped a recorded approval-routing flag that nothing on the
-live path (`core/tools.py`, `core/approval.py`,
-`core/telegram.py`, `core/agent_loop.py`, `serve.py`) ever read -- an
-"ask" verdict always sits in docket's own approval store, answerable
-identically by the CLI, HTTP, MCP, and Telegram channels regardless.
-What this command still manages is whether tool execution runs inside
-a Docker sandbox (isolate), which the live turn does consult.
+always active and cannot be turned off. An "ask" verdict sits in
+docket's own approval store, answerable identically by the CLI, HTTP,
+MCP, and Telegram channels.
 
 Subcommands:
   status (default)  reports that the tool-call gate is always active,
-                      plus approval-routing on/off/unset and
-                      workspace-isolation mode
-  enable, disable   retired -- print a notice pointing at `docket
-                      doctor` for today's posture and exit non-zero;
-                      they no longer write anything
+                      plus the workspace-isolation mode
   isolate on|off    records whether tool execution should run inside a
                       Docker sandbox. `on` requires docker on PATH --
                       errors, exit 1, if missing. Enforced on the live
@@ -1249,16 +1123,11 @@ Subcommands:
                       Read-only; the pattern list is not yet
                       user-configurable.
 
-`docket init` still records approval-routing posture as on by default
-(pass --no-gates to skip that write) even though `gates enable`/
-`disable` are retired -- `docket init` is a separate writer with its
-own default. Approvals are answerable headlessly via `docket
-approve`/`docket deny` or `POST /approvals/<token>` (`docket serve`),
-or MCP, in addition to Telegram -- all four channels are audit-logged.
-See specs/functional/security-gates.spec.md.
-
-
-**Aliases:** `security`
+Any other subcommand prints usage and exits 2. Approvals are answerable
+headlessly via `docket approve`/`docket deny` or `POST
+/approvals/<token>` (`docket serve`), or MCP, in addition to Telegram --
+all four channels are audit-logged. See
+specs/functional/security-gates.spec.md.
 
 
 ---
@@ -1282,17 +1151,14 @@ Stored at `~/.docket/audit.log` -- one JSON object per line (seq, ts
 (millisecond resolution), user, pid, action, detail, prev_hash), never
 containing secret values. Every line chains to the previous one via a
 SHA-256 prev_hash (stdlib hashlib, no new dependency); `verify` detects a
-hand-tampered line -- lines written before this chain existed are
-treated as legacy/unchained, never as tampering. Rotates to a
-single-generation `audit.log.1` backup once past AUDIT_LOG_MAX_BYTES
-(default 5 MiB, env-overridable); `verify` only checks the current file
--- a rotation starts a fresh chain. Best-effort and never raises; there
+hand-tampered line, and a line without `seq`/`prev_hash` is a break.
+Rotates to a single-generation `audit.log.1` backup once past
+AUDIT_LOG_MAX_BYTES (default 5 MiB, env-overridable); the first entry
+after a rotation claims continuity, and `verify` checks that claim
+against the backup. Best-effort and never raises; there
 is no environment kill switch -- recording cannot be silently disabled.
 Always exits 0 for the listing forms (malformed lines are skipped, not
 fatal); `verify` exits 1 on a detected broken chain link.
-
-
-**Aliases:** None
 
 
 ---
@@ -1325,9 +1191,6 @@ call it could have governed fails closed (`block`, attributed to the
 file) until it is fixed or removed, and `docket doctor` reports it.
 
 
-**Aliases:** `policy`
-
-
 ---
 
 ### plugins
@@ -1341,9 +1204,6 @@ Subcommand: `list \[--pod <p>\]` prints every predicate a policy's `when:
 pod's own `config/plugins/`, each with its scope, file and sha256.
 Docket never loads a plugin from a codebase; `docket pod <p> apply` is
 what copies a recipe's `plugins/*.py` into pod scope.
-
-
-**Aliases:** None
 
 
 ---
@@ -1363,14 +1223,11 @@ idempotent no-op -- a warning, but exit 0. An apr-* token is created by
 docket itself, from an in-turn `ask` verdict on a tool call
 (`dispatch_tool`, blocking that call until answered), a pod-dispatch hop
 held on a requireApprovalRoles/pipeline approval step, or a task a
-guardrail policy flagged at enqueue. There is no separate daemon prompt
-any more -- this store is the only approval mechanism, and
+guardrail policy flagged at enqueue. This store is the only approval
+mechanism, and
 `docket approve`/`docket deny` (plus the HTTP and MCP equivalents, and a
 Telegram reply in a wired chat) are the only ways to answer it, each
 audit-logged with the channel that answered. See also `docket deny`.
-
-
-**Aliases:** None
 
 
 ---
@@ -1385,9 +1242,6 @@ Denies a pending HITL approval token from docket's own approval store
 ($APPROVALS_DIR). With no token, lists pending approvals; with a token,
 denies it. Same token format, idempotency, and provenance rules as
 `docket approve` -- see its help for the full contract.
-
-
-**Aliases:** None
 
 
 ---
@@ -1405,9 +1259,6 @@ advancing it, and `--since <iso>` overrides the stored cursor for one call witho
 it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns.
 
 
-**Aliases:** None
-
-
 ---
 
 ### chat
@@ -1422,9 +1273,6 @@ answers. On a TTY, a pending question is followed by one prompt per schema prope
 then answered through the same `core.answers.answer_task` every other surface calls
 (`channel="cli"`, `actor=<OS user>`). Off a TTY, or with no pending question, this only
 ever displays -- use `docket pod <p> answer` to answer non-interactively.
-
-
-**Aliases:** None
 
 
 ---
@@ -1457,17 +1305,13 @@ and running records are never touched.
 
 A run record's `source` is one of cli|webhook|schedule|sweep|mcp;
 `state` is one of queued|running|succeeded|failed|cancelled. A failed
-run carries the exception text in `error` -- no dispatch call site
-silently discards an exception any more. Persisted to
+run carries the exception text in `error`. Persisted to
 `~/.docket/docket-runs.json`. `show` and both JSON read surfaces expose
 cancellation requestedAt/observedAt/stoppedAt; a missing stop timestamp
 means the executor has not fully returned yet. `POST /dispatch/<project>`
 (see `docket serve`) returns {"run": "<id>"} immediately, before any
 dispatch work is attempted; `GET /runs/<id>` and `GET /runs?project=`
 mirror this command over HTTP (Bearer-authed, same as /approvals).
-
-
-**Aliases:** None
 
 
 ---
@@ -1489,9 +1333,6 @@ Each dispatch hop writes events such as tool_call, cost_charged,
 approval_requested.
 
 
-**Aliases:** None
-
-
 ---
 
 ### metrics
@@ -1506,9 +1347,6 @@ trace data. `-r`/`--role` filters to a specific agent role; `-p`/
 METRICS_WINDOW env-overridable) sets the rolling window size in
 sessions. Output: success rate, duration (mean/p95), cost (total/mean),
 and guardrail trip counts.
-
-
-**Aliases:** None
 
 
 ---
@@ -1545,9 +1383,6 @@ is `live`, `finished` (with a best-effort reconstructed result), or
 `unknown`.
 
 
-**Aliases:** None
-
-
 ---
 
 ### exporters
@@ -1575,9 +1410,6 @@ without `--yes` -- narrowing never asks. `preview <name> \[--session <id>\] \[--
 <level>|--share a,b\] \[--json\]` projects a local session through the
 exporter's policy and prints what it would send -- no network call, no
 write.
-
-
-**Aliases:** None
 
 
 ---
@@ -1609,9 +1441,6 @@ before relying on it. Every other subcommand here only edits the catalog;
 ever send anything.
 
 
-**Aliases:** None
-
-
 ---
 
 ### notify
@@ -1628,18 +1457,9 @@ whose `on` matches, and prints the counts; `--dry-run` prints what would be sent
 without delivering or advancing the dedupe snapshot.
 
 
-**Aliases:** None
-
-
 ---
 
 ## Global Options
-
-### --debug
-
-Deprecated, hidden no-op: still accepted so existing scripts do not exit 2, sets nothing,
-emits nothing; use the command's normal error output, `docket doctor`, traces and audit
-records instead.
 
 ### --help / -h
 
@@ -1682,62 +1502,13 @@ docket -V
 
 ---
 
-## Command Aliases
-
-Every alias below is drawn directly from `src/docket/__main__.py`'s `_ALIASES` map — the single source of truth. `docket <alias>` rewrites to `docket <command>` before argument parsing.
-
-| Alias | Command |
-|-------|---------|
-| `check` | `doctor` |
-| `completion` | `completions` |
-| `export` | `snapshot` |
-| `key` | `keys` |
-| `log` | `logs` |
-| `policy` | `policies` |
-| `remove` | `delete` |
-| `rm` | `delete` |
-| `secret` | `keys` |
-| `security` | `gates` |
-| `show` | `info` |
-| `telegram` | `wire` |
-| `usage` | `cost` |
-
-`add`, `approve`, `audit`, `channels`, `chat`, `config`, `context`, `conversations`, `deny`, `edit`, `exporters`, `harness`, `inbox`, `init`, `list`, `maintain`, `mcp`, `metrics`, `models`, `notify`, `persona`, `pipeline`, `plugins`, `pod`, `profile`, `recipes`, `roles`, `runs`, `scope`, `serve`, `status`, `trace`, `unwire`, `validate`, `help` have no alias.
-
-
----
-
-## Removed Commands
-
-These command names are **not aliases** — typing them prints a migration notice and exits 1 (`src/docket/__main__.py`'s `_REMOVED` map). They do not run anything.
-
-| Removed name | Notice |
-|---|---|
-| `reset` | docket reset was renamed → use: docket maintain [id] <clean\|reset\|rebuild> |
-| `fix`, `repair` | docket repair was renamed → use: docket maintain [id] check |
-| `clean`, `cleanup` | docket cleanup was renamed → use: docket maintain [id] sessions |
-| `model` | docket model was renamed → use: docket profile [id] <provider/model\|default>, or docket models for the role policy |
-| `tier` | docket tier was removed — tier names (economy/standard/premium) are no longer accepted anywhere (removed in 0.2.0). Use: docket profile [id] <provider/model\|default> to pin/unpin one agent, or docket models for the role policy |
-| `billing`, `credits` | docket billing was renamed → use: docket cost [id] |
-| `mon`, `monitor` | docket monitor was renamed → use: docket cost [id] |
-| `mem`, `memory` | docket memory was renamed → use: docket context [id] [show\|project] |
-| `ai`, `smart` | docket smart was removed — smart routing was placebo (prose in SOUL.md does not change the gateway model) Use: docket models (role policy) or docket profile [id] <provider/model> to set the actual model |
-| `mode`, `term`, `terminal` | docket mode / docket terminal has been removed. Use: docket models (role policy) or docket profile [id] <provider/model> to choose models. |
-| `team` | docket team was retired — pods own delegation now, with real execution (the old manager queue was never dispatched). Use: docket pod <project> delegate "<task>"  (was: team delegate "<task>") Use: docket pod <project> queue                (was: team queue) Use: docket pod <project> dispatch              to actually run queued tasks Org-wide portfolio view is initialized automatically by the first docket init. Any old manager TASK_LIST.json from a legacy install is untouched on disk but no longer read by docket. |
-| `wf`, `workflow` | docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator ignored four constructs its own template emitted). Use: docket pipeline validate   (was: workflow <id> validate <name>) Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>) Use: docket pipeline run        to actually execute a pipeline Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer read by docket. |
-| `eval`, `evals` | docket eval was removed — the specialist-role eval harness (tests/evals/) was dead code: it shelled out to the daemon deleted in Phase 19 and skipped silently instead of failing, which is why nobody noticed. There is no replacement command: no CLI entry point runs a single agent turn to call (DocketDriver.run_turn is only reached from pod dispatch and maintain distill), so repointing the harness would mean inventing new surface against a private port, not fixing a bug. tests/evals/ has been deleted; docket doctor no longer prints eval-results hints. |
-| `auth` | docket auth was removed -- store a provider key with: docket keys add <NAME>; register an endpoint with: docket models provider add |
-
-
----
-
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by all `_REMOVED` command notices, `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or the internal `_json` bridge's bad or missing verb |
+| 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `context`, `maintain`) |
 
 No command emits any other exit code today.
 
@@ -1749,8 +1520,6 @@ No command emits any other exit code today.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
-| `SITES_DIR` | Default parent directory for project codebases, created by `docket init`'s setup step | `~/Sites` |
-| `DOCKET_LOG_DIR` | Directory for docket-owned log files | `/tmp/docket` |
 | `TRACES_DIR` | Root of per-session trace JSONL files (`docket trace`) | `$DOCKET_HOME/traces` |
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket gates`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |

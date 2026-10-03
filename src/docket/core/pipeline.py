@@ -863,12 +863,6 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
     return PipelineLoadResult(spec=spec, errors=[], source="file")
 
 
-def validate_pipeline(text: str) -> list[str]:
-    """Structural validation only; returns [] on success. Thin wrapper over
-    :func:`load_pipeline`, kept separate for callers that only want the error list."""
-    return load_pipeline(text).errors
-
-
 # Mirrors core/dispatch.py's Reviewer/Tester verdict conventions exactly —
 # ``tests/unit/core/test_pipeline__spec.py`` cross-checks these two patterns
 # and the role order below directly against ``dispatch.py``'s own constants,

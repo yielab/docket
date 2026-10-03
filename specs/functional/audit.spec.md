@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -39,7 +39,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 ### Recording (audit_log helper)
 
 1. **Implemented action families:**
-   - `gates.enable` / `gates.disable` / `gates.isolate` (`cli/_gates.py`)
+   - `gates.isolate` (`cli/_gates.py`)
    - `approval.grant` / `approval.deny`, with a channel tag (`core/approval.py`). A winning
      pending-to-terminal transition writes exactly one matching approval entry; a concurrent
      losing or terminal no-op writes none.
@@ -125,7 +125,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    leaves no entry, and this spec **MUST NOT** be cited
    as evidence that it would. That boundary is D-9's "docket orchestrates hops" line, not a gap a
    future card closes.
-3. `action` **MUST** be a dotted verb (e.g. `gates.enable`, `approval.grant`); `detail`
+3. `action` **MUST** be a dotted verb (e.g. `gates.isolate`, `approval.grant`); `detail`
    **MUST** be a human-readable target (an id, key NAME, model id). Secret VALUES
    **MUST NOT** ever be written to the log.
 4. Each entry **MUST** record `ts` (UTC ISO-8601, millisecond resolution — see
@@ -172,15 +172,16 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    (stdlib `hashlib`, no new dependency) of the immediately preceding entry's
    canonical JSON form (`json.dumps(entry, sort_keys=True, separators=(",",
    ":"))`). The first entry of a genesis chain **MUST** use the sentinel
-   `prev_hash="0"*64` (`GENESIS_HASH`). A **chain restart** — starting a fresh
+   `prev_hash="0"*64` (`GENESIS_HASH`). A **chain start** — a fresh
    `seq=1`/`GENESIS_HASH` entry with no claim on anything before it — is the
-   correct, honest behavior (not a defect) in two cases: (a) the log is
-   missing or empty, or (b) the immediately preceding line predates this
-   requirement and carries no `seq`/`prev_hash` (a "legacy" line), including
-   when that legacy line was the last thing in a generation that then
-   rotated away (Rotation Requirement 2). A size-triggered rotation over a
-   generation that **does** have a chained tail is **not** a restart — see
-   Requirement 9c.
+   correct, honest behavior (not a defect) when the log is missing or empty.
+   Every line **MUST** carry `seq`/`prev_hash`: a line without them is a
+   break (Viewing Requirement 5), not a restart. The writer still starts a
+   fresh `seq=1`/`GENESIS_HASH` entry after a last line it cannot chain from
+   (malformed JSON, no `seq`/`prev_hash`, non-integer `seq`), but `docket
+   audit verify` reports that unusable line itself as the break. A
+   size-triggered rotation over a generation that has a chained tail is
+   **not** a restart — see Requirement 9c.
 9c. **Rotation continuation (W18-1).** When the generation being rotated away
    (Rotation Requirement 1) has a chained tail — a last line carrying
    `seq`/`prev_hash` — the new current file's first entry **MUST NOT** reset
@@ -192,11 +193,9 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    check it against the single retained backup (`audit.log.1`) and
    distinguish three states for the current file's first entry:
    - **genesis** — `seq=1` and `prev_hash=GENESIS_HASH`. No predecessor is
-     claimed (a fresh install, or a restart after a legacy tail per
-     Requirement 9). Never a break, regardless of what `audit.log.1`
-     contains — a pre-W18-1 log's rotations never made this claim, so an old
-     log **MUST** continue to verify exactly as it did before this
-     requirement existed (backward compatibility).
+     claimed (a fresh install, or a rotation over a generation with no
+     chained tail — Rotation Requirement 2). Never a break, regardless of
+     what `audit.log.1` contains.
    - **continued, verified** — `seq>1`, `prev_hash != GENESIS_HASH`, and
      `audit.log.1`'s last line has `seq = (claimed seq) - 1` and recomputes to
      the claimed `prev_hash`. Reported clean; the verifier additionally
@@ -224,9 +223,10 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    line count) remains visible, not that generation's content. `docket audit
    verify` (see Viewing) walks the chain and reports the first line where a
    stored `prev_hash` does not match the recomputed hash of the entry before
-   it, or a first-entry continuation claim that cannot be substantiated —
-   these are the only things a legacy line or a genesis chain-restart can
-   never trigger, by construction.
+   it, a line it cannot verify (malformed JSON, no `seq`/`prev_hash`,
+   non-integer `seq`), or a first-entry continuation claim that cannot be
+   substantiated. A genesis chain start never triggers a break, by
+   construction.
 10. `core/trace.py`'s `trace_event()` (a sibling append-only store, not part of
     this log) **MUST** distinguish a suppressed write (`DOCKET_NO_TRACE=1`)
     from a real one and from a rejected (invalid `event_type`) call — it
@@ -246,9 +246,9 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 2. The entry that triggers rotation **MUST** carry forward the rotated
    generation's chain (`seq + 1`, `prev_hash` of its final entry) rather than
    restarting at `seq=1`/`GENESIS_HASH` — **unless** the rotated generation's
-   own last line had nothing chained to continue from (empty file, or a
-   legacy line with no `seq`/`prev_hash`), in which case a fresh genesis
-   chain is still the correct, honest result (Requirement 9c).
+   own last line had nothing chained to continue from (empty file, or a last
+   line with no usable `seq`/`prev_hash`), in which case the new file starts a
+   fresh genesis chain (Requirement 9c).
 3. `docket audit verify` **MUST** verify only the current `audit.log`'s own
    entries, but **MUST** check a first-entry continuation claim (2, above)
    against `audit.log.1` and report a break when that claim cannot be
@@ -277,24 +277,26 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 2. `docket audit --json` **MUST** emit the raw JSONL unmodified (stable for scripting).
 3. When no log exists yet, the command **MUST** explain where entries will be recorded
    and exit 0.
-4. Malformed lines **MUST** be skipped, never crash the display. A legacy line
-   (missing `seq`/`prev_hash`) **MUST** display normally, not as an error.
+4. Malformed lines **MUST** be skipped, never crash the display. A line
+   missing `seq`/`prev_hash` still displays normally in the listing; only
+   `docket audit verify` treats it as a break.
 5. `docket audit verify` **MUST** walk the current log's hash chain and:
    - exit 0 and report "no audit log yet" when the file does not exist;
-   - exit 0 and report the count of chained and legacy (unchained) lines when
-     the chain verifies clean. When the first entry made a rotation-
+   - exit 0 and report the count of chained lines when the chain verifies
+     clean. When the first entry made a rotation-
      continuation claim (Requirement 9c) that was substantiated against
      `audit.log.1`, the report **MUST** additionally say so — naming the seq
      it continues from — rather than reporting a plain clean chain
      indistinguishable from a fresh install;
    - exit 1 and report the **first** broken link's line number and reason
      when tampering is detected — a `prev_hash` mismatch, an out-of-order
-     `seq`, malformed JSON, **or** a first-entry continuation claim that
-     `audit.log.1` cannot substantiate (missing, unreadable, or its tail
-     doesn't match — Requirement 9c's "continued, unverifiable" state).
-   A legacy line, or the first line of a genuine genesis chain restart,
-   **MUST NOT** be reported as a break — only an actual hash/seq mismatch, or
-   an unsubstantiated continuation claim, counts as tampering.
+     `seq`, malformed JSON, a line with no `seq`/`prev_hash` (reason `line has
+     no seq/prev_hash, cannot verify`), a non-integer `seq`, **or** a
+     first-entry continuation claim that `audit.log.1` cannot substantiate
+     (missing, unreadable, or its tail doesn't match — Requirement 9c's
+     "continued, unverifiable" state).
+   The first line of a genuine genesis chain **MUST NOT** be reported as a
+   break.
 
 ## Interface Contracts
 
@@ -324,9 +326,9 @@ A `models.preset` entry, showing the multi-role-in-one-line shape (Requirement 1
  "prev_hash": "9c2e7a…64 hex chars"}
 ```
 
-A line written before this version lacks `seq`/`prev_hash` entirely — readers
-and `docket audit verify` MUST treat that shape as valid legacy input, not as
-a parse error.
+Every field above is required. A line lacking `seq`/`prev_hash` still parses
+for `docket audit` and `docket audit --json`, but `docket audit verify`
+reports it as a break.
 
 ### Return Codes
 
@@ -339,11 +341,11 @@ a parse error.
 ### Recording and viewing changes
 
 ```bash
-$ docket gates enable
+$ docket gates isolate on
 $ docket approve apr-1234…
 
 $ docket audit 2
-  2026-07-30T08:00:00.041Z  alice       gates.enable      routing=on force=False
+  2026-07-30T08:00:00.041Z  alice       gates.isolate     on
   2026-07-30T08:00:11.902Z  alice       approval.grant    token=apr-1234… project=mywebsite channel=cli
 ```
 
@@ -359,10 +361,9 @@ $ docket audit verify   # after a line was hand-edited
 
 The failure message's `of 214` names the current file's total line count
 (`VerifyResult.total_lines`, G-4b) — the one place this figure adds
-information `chained`/`legacy` can't, since counting stops at the break. The
-clean-chain summary above does not repeat it: there, `chained` already sums to
-the total (every line is either chained or legacy), so restating it would be
-redundant.
+information `chained` can't, since counting stops at the break. The
+clean-chain summary above does not repeat it: there, `chained` always equals
+the total, so restating it would be redundant.
 
 ### Verifying across a rotation (W18-1)
 
@@ -403,8 +404,8 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
 - Concurrent successful audit writes are serialized as one contiguous hash chain; a failed write
   leaves neither a partial line nor a false successful result.
 - Recording cannot be disabled by an environment variable.
-- A legacy line, or a genuine genesis chain-restart, is never reported as
-  tampering.
+- A genuine genesis chain start is never reported as tampering; a line
+  without `seq`/`prev_hash` always is.
 - A rotation-continuation claim that `audit.log.1` cannot substantiate IS
   reported as tampering (Requirement 9c) — this is new as of Version 2.7.0
   and is the one exception to "only an actual hash/seq mismatch counts".
@@ -416,6 +417,15 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.11.0 (2026-10-03)
+
+- **No legacy lines (legacy purge).** A line without `seq`/`prev_hash` is now a break in
+  `docket audit verify` (reason `line has no seq/prev_hash, cannot verify`) instead of being
+  counted as "legacy", skipped and treated as a chain restart; `VerifyResult.legacy` and the
+  "legacy (unchained) lines skipped" summary are gone. A missing/empty file still starts a fresh
+  chain and rotation continuation (9c) is unchanged. `gates.enable`/`gates.disable` leave the
+  action list (the commands are deleted); examples use `gates.isolate`.
 
 ### Version 2.10.0 (2026-09-26)
 

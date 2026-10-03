@@ -61,12 +61,9 @@ class PodMember:
 
 
 def normalize_role(role: str, project: str = "") -> str:
-    """Map user input to a canonical pod role (accepts the ``programmer`` alias). Validates
-    against the live archetype registry, including *project*'s own overlay when given —
+    """Map user input to a canonical pod role. Validates against the live archetype registry, including *project*'s own overlay when given —
     not a hardcoded list, so any registered archetype name is accepted."""
     r = role.strip().lower()
-    if r == "programmer":
-        r = "implementer"
     valid = _role_names(project)
     if r not in valid:
         raise PodError(f"unknown pod role {role!r}; valid roles: {', '.join(valid)}")

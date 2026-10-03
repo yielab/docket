@@ -21,10 +21,8 @@ from dataclasses import dataclass, field
 from docket.core.runtime_driver import (
     DriverCapabilities,
     FailureKind,
-    ProvisionResult,
     SessionSlice,
     SessionSummary,
-    TeardownResult,
     TurnResult,
     UsageReport,
     UsageTotals,
@@ -46,14 +44,10 @@ class FakeDriver:
     error: str = "boom"
     failure_kind: FailureKind | None = None
 
-    provision_ok: bool = True
-    teardown_ok: bool = True
     sessions_by_agent: dict[str, list[SessionSummary]] = field(default_factory=dict)
     usage_by_agent: dict[str, UsageReport] = field(default_factory=dict)
 
     calls: list[tuple[str, str, str, int, dict[str, str] | None]] = field(default_factory=list)
-    provision_calls: list[tuple[str, str, str]] = field(default_factory=list)
-    teardown_calls: list[str] = field(default_factory=list)
 
     def __call__(
         self,
@@ -91,18 +85,6 @@ class FakeDriver:
             return TurnResult(False, "", 0.0, {}, self.error, failure_kind=self.failure_kind)
         return TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
 
-    def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
-        self.provision_calls.append((agent_id, workspace, model))
-        return ProvisionResult(
-            ok=self.provision_ok, message="" if self.provision_ok else "provision failed"
-        )
-
-    def teardown(self, agent_id: str) -> TeardownResult:
-        self.teardown_calls.append(agent_id)
-        return TeardownResult(
-            ok=self.teardown_ok, message="" if self.teardown_ok else "teardown failed"
-        )
-
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         return list(self.sessions_by_agent.get(agent_id, []))
 
@@ -124,6 +106,5 @@ class FakeDriver:
         return DriverCapabilities(
             driver_name="fake",
             reports_cost_usd=self.cost > 0,
-            supports_provisioning=True,
             supports_sessions=True,
         )

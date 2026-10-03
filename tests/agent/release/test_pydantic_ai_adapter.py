@@ -309,7 +309,6 @@ def _scenario_source(scenario: GovernanceScenario, *, parity: bool = False) -> s
                     "exists": verification.exists,
                     "lines": verification.total_lines,
                     "chained": verification.chained,
-                    "legacy": verification.legacy,
                     "break": (
                         None
                         if verification.break_at is None

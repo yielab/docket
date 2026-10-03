@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-# Bump when adding required fields or changing semantics of existing ones.
-# Records without this field are implicitly version 1 (the current shape).
-SCHEMA_VERSION = 1
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentKind(StrEnum):
@@ -33,17 +29,11 @@ class AgentScope(StrEnum):
 class WorkspaceKind(StrEnum):
     """Whether a project agent's workspace is anchored to a codebase or a plain working
     directory (mutually exclusive). ``codebase`` is a git-tracked project directory
-    (every legacy agent is implicitly this); ``workdir`` assumes no codebase, for
+    (the default); ``workdir`` assumes no codebase, for
     objectives that aren't "build a web site"."""
 
     codebase = "codebase"
     workdir = "workdir"
-
-
-# Backfill inference for legacy metas written before ``scope`` existed.
-# The authoritative split lives in config.py; this inline set exists only so a
-# legacy record can resolve its scope on read without importing config.
-_PROJECT_SPECIALIST_ROLES = frozenset({"programmer", "reviewer", "tester"})
 
 
 class Persona(BaseModel):
@@ -72,8 +62,6 @@ class AgentMeta(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    schema_version: int = Field(SCHEMA_VERSION, alias="schemaVersion")
-
     kind: AgentKind
     scope: AgentScope = Field(AgentScope.project)
     name: str = ""
@@ -83,8 +71,7 @@ class AgentMeta(BaseModel):
     role: str = ""
     # Which pod blueprint provisioned this agent (e.g. "software", "research")
     # and whether its workspace is anchored to a codebase or a plain working
-    # directory. Absent/default on every legacy record — a legacy agent is
-    # implicitly `workspace_kind: codebase`, exactly what it already is.
+    # directory.
     blueprint: str = ""
     workspace_kind: WorkspaceKind = Field(WorkspaceKind.codebase, alias="workspaceKind")
     work_dir: str = Field("", alias="workDir")
@@ -127,13 +114,13 @@ class AgentMeta(BaseModel):
 
     def is_paused(self) -> bool:
         """Real ``bool`` for the ``paused`` flag; the one place any caller should read
-        it, since pydantic coerces a legacy string on ``model_validate``. See
+        it, since pydantic coerces a string value on ``model_validate``. See
         ``coerce_paused`` for the raw-dict equivalent."""
         return self.paused
 
     @staticmethod
     def coerce_paused(value: object) -> bool:
-        """Coerce a raw (possibly legacy) ``paused`` value to a real ``bool``. Guards a
+        """Coerce a raw (possibly stringified) ``paused`` value to a real ``bool``. Guards a
         type bug: comparing a JSON boolean against the *string* ``"true"`` is never equal
         to Python ``True``, so a paused agent could silently display as not-paused. Every
         raw-dict read site (and ``core/dispatch.py``'s claim-time refusal) should call
@@ -142,17 +129,3 @@ class AgentMeta(BaseModel):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() == "true"
-
-    @model_validator(mode="before")
-    @classmethod
-    def _backfill_scope(cls, data: object) -> object:
-        """Derive ``scope`` for records written before it existed. Only fills when
-        absent — an explicit ``scope`` is always respected."""
-        if not isinstance(data, dict) or "scope" in data:
-            return data
-        if str(data.get("kind", "")) == AgentKind.specialist.value:
-            role = str(data.get("role", ""))
-            scope = AgentScope.project if role in _PROJECT_SPECIALIST_ROLES else AgentScope.org
-        else:
-            scope = AgentScope.project
-        return {**data, "scope": scope.value}

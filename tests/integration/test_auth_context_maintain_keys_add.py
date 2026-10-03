@@ -60,21 +60,6 @@ def _run(
     return result.exit_code, result.stdout, result.stderr
 
 
-def _run_removed(args: list[str], home: Path) -> tuple[int, str, str]:
-    """`__main__.py::_REMOVED` only intercepts at the `python -m docket` entry point, not the
-    raw Typer `app` object `_run` above drives through `CliRunner` -- that path reports Click's
-    "no such command" (rc=2) for a retired command instead of the retirement notice. Retired
-    commands (`docket auth`, `docket team`, ...) must be exercised through the real entry point."""
-    import os
-    import subprocess
-
-    env = {**os.environ, "DOCKET_HOME": str(home)}
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args], capture_output=True, text=True, env=env
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
 def _setup_agent(
     tmp_path: Path,
     agent_id: str = "test-agent",
@@ -123,43 +108,6 @@ def _setup_bare(tmp_path: Path) -> Path:
     home.mkdir(exist_ok=True)
     (home / "fleet.json").write_text(json.dumps(FLEET_EMPTY))
     return home
-
-
-# ---------------------------------------------------------------------------
-# TestCmdAuth
-# ---------------------------------------------------------------------------
-
-
-class TestCmdAuth:
-    """`docket auth` is a removed command -- every subcommand, including bare `docket auth`,
-    prints the `_REMOVED` notice and exits 1. See `__main__.py::_REMOVED`."""
-
-    def test_bare_auth_is_removed(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run_removed(["auth"], home)
-        assert rc == 1
-        combined = out + err
-        assert "docket auth was removed" in combined.lower()
-        assert "docket keys add" in combined.lower()
-
-    def test_unknown_subcommand_still_removed(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run_removed(["auth", "foobar"], home)
-        assert rc == 1
-        combined = out + err
-        assert "docket auth was removed" in combined.lower()
-
-    def test_login_is_removed_not_a_gone_message(self, tmp_path: Path) -> None:
-        # There is no daemon to shell out to, and no docket-native replacement was ever
-        # built -- `docket auth login` is not a live command that reports "gone" any more,
-        # it is a removed command that prints the retirement notice, same as `docket team`.
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run_removed(["auth", "login"], home)
-        assert rc == 1
-        combined = out + err
-        assert "docket auth was removed" in combined.lower()
-        assert "docket keys add" in combined.lower()
-        assert "docket models provider add" in combined.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -293,14 +241,6 @@ class TestCmdMaintain:
         assert rc == 2
         combined = out + err
         assert "--bogus" in combined
-
-    def test_clean_accepts_distill_first_affirmation(self, tmp_path: Path) -> None:
-        """`--distill-first` is a documented no-op affirmation of the default, not an error."""
-        home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["maintain", "test-agent", "clean", "--distill-first"], home)
-        assert rc == 0
-        combined = out + err
-        assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -603,6 +543,6 @@ class TestCmdAdd:
 def test_auth_context_maintain_keys_add_not_exit_127(tmp_path: Path) -> None:
     """These commands must not fall through to an unported stub (exit 127)."""
     home = _setup_bare(tmp_path)
-    for cmd in [["auth"], ["keys", "list"]]:
+    for cmd in [["keys", "list"]]:
         rc, _, _ = _run(cmd, home)
         assert rc != 127, f"docket {' '.join(cmd)} still exits 127"

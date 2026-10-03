@@ -1455,8 +1455,8 @@ class TestRootResolutionPrecedence:
             worktreeDir=str(worktree),
         )
         _write_meta("demo-reviewer", role="reviewer", codebase=str(origin))
-        _fleet.add_agent("demo-implementer", "test/model", "agent:demo:default", "default")
-        _fleet.add_agent("demo-reviewer", "test/model", "agent:demo:default", "default")
+        _fleet.add_agent("demo-implementer")
+        _fleet.add_agent("demo-reviewer")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
 
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -1470,27 +1470,15 @@ class TestRootResolutionPrecedence:
         assert _tool_reply(backend) == "implementation"
 
 
-# ── provision / teardown / capabilities ──────────────────────────────────────
+# ── capabilities ──────────────────────────────────────
 
 
-class TestProvisionTeardownCapabilities:
-    def test_provision_is_an_honest_noop(self) -> None:
-        result = DocketDriver().provision("some-agent", "/tmp/ws", "test/model")
-        assert result.ok is True
-        assert "no daemon" in result.message
-
-    def test_teardown_is_an_honest_noop(self) -> None:
-        result = DocketDriver().teardown("some-agent")
-        assert result.ok is True
-        assert "no daemon" in result.message
-
+class TestCapabilities:
     def test_capabilities_reports_this_driver_honestly(self) -> None:
         caps = DocketDriver().capabilities()
         assert caps.driver_name == "docket"
         # cost_usd is never populated by this driver -- see run_turn/usage.
         assert caps.reports_cost_usd is False
-        # Provision/teardown are no-ops because Docket owns its local state.
-        assert caps.supports_provisioning is False
         # list_sessions/read_new_turns/usage are real, unlike a driver with
         # no durable store at all.
         assert caps.supports_sessions is True
@@ -1638,7 +1626,7 @@ class TestIsolationWiring:
             "sandbox_availability",
             lambda: SandboxAvailability(backend="docker", docker=True, bwrap=False),
         )
-        _fleet.set_isolation_enabled(True)
+        _fleet.set_sandbox_isolation(mode="non-main")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=_probe_registry
@@ -1664,7 +1652,7 @@ class TestIsolationWiring:
             "sandbox_availability",
             lambda: SandboxAvailability(backend="none", docker=False, bwrap=False),
         )
-        _fleet.set_isolation_enabled(True)
+        _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
 
         result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
@@ -1692,7 +1680,7 @@ class TestIsolationWiring:
         monkeypatch.setattr(_system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(_system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        _fleet.set_isolation_enabled(True)
+        _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
 
         result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
@@ -1704,7 +1692,7 @@ class TestIsolationWiring:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # End-to-end through fleet: drive the real `docket gates isolate on`
-        # CLI path (not `set_isolation_enabled` directly, and not a
+        # CLI path (not `set_sandbox_isolation` directly, and not a
         # hand-built `ToolContext`), then confirm a real turn observes
         # exactly the flag it wrote.
         _write_meta("solo-agent")
@@ -1988,7 +1976,6 @@ def _pod_overlay_denying(project: str, role: str, denied: list[str]) -> None:
                         "soulTemplate": "x",
                         "agentsTemplate": "y",
                         "gateContract": {"kind": "none"},
-                        "editRights": "read-only",
                         "toolProfile": "read-only",
                         "deniedTools": denied,
                     }

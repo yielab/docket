@@ -754,11 +754,12 @@ def test_live_approval_classifies_raw_trace_arguments_not_wrapping_prose(tmp_pat
         "context": {"tool": "bash", "callId": call_id},
     }
 
-    assert _smoke._approval_private_tool_violation(
+    resolved, verdict = _smoke._approval_tool_verdict(
         home,
         approval,
         _smoke._smoke_allowed_project_roots(home),
-    ) == (True, None)
+    )
+    assert (resolved, verdict.marker) == (True, None)
 
 
 def test_live_approval_uses_latest_matching_trace_when_call_ids_collide(tmp_path: Path) -> None:
@@ -819,11 +820,12 @@ def test_live_approval_uses_latest_matching_trace_when_call_ids_collide(tmp_path
         "context": {"tool": "bash", "callId": call_id},
     }
 
-    assert _smoke._approval_private_tool_violation(
+    resolved, verdict = _smoke._approval_tool_verdict(
         home,
         approval,
         _smoke._smoke_allowed_project_roots(home),
-    ) == (True, ".docket")
+    )
+    assert (resolved, verdict.marker) == (True, ".docket")
 
 
 @pytest.mark.parametrize(

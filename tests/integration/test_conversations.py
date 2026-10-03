@@ -16,8 +16,13 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _conversations as cli
 from docket.core import conversations as C
+from docket.edges import store as _store
 
 SUBJECT = "docket.cli"
+
+
+def _write(reg: C.ConversationRegistry, path: Path) -> None:
+    _store.write_json(path, reg.model_dump(by_alias=True))
 
 
 def _reg(*convs: C.Conversation) -> C.ConversationRegistry:
@@ -109,7 +114,7 @@ class TestLoadSave:
     def test_round_trip(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
         _, r = C.record(_reg(), agent_id="docket-lead", peer_id="-5", now="t0", topic="audit")
-        C.save(r, p)
+        _write(r, p)
         loaded = C.load(p)
         assert len(loaded.conversations) == 1
         c = loaded.conversations[0]
@@ -123,7 +128,7 @@ class TestLoadSave:
     def test_saved_json_uses_aliases(self, tmp_path: Path) -> None:
         p = tmp_path / "c.json"
         _, r = C.record(_reg(), agent_id="a", peer_id="-1", now="t0", task_ref="HEARTBEAT#1")
-        C.save(r, p)
+        _write(r, p)
         text = p.read_text()
         assert "agentId" in text and "taskRef" in text  # camelCase aliases on disk
 
@@ -241,7 +246,7 @@ class TestLockedMutations:
 
     def test_prune_closed_durable_removes_old_done_keeps_active(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
-        C.save(
+        _write(
             _reg(
                 C.Conversation(
                     id="a",
@@ -266,7 +271,7 @@ class TestLockedMutations:
 
     def test_prune_closed_durable_dry_run_reports_without_deleting(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
-        C.save(
+        _write(
             _reg(
                 C.Conversation(
                     id="a",
@@ -308,7 +313,7 @@ class TestPruneCli:
     ) -> None:
         p = tmp_path / "conversations.json"
         monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
-        C.save(
+        _write(
             _reg(
                 C.Conversation(
                     id="a",
@@ -329,7 +334,7 @@ class TestPruneCli:
     ) -> None:
         p = tmp_path / "conversations.json"
         monkeypatch.setattr(_cfg, "CONVERSATIONS_FILE", p, raising=True)
-        C.save(
+        _write(
             _reg(
                 C.Conversation(
                     id="a",

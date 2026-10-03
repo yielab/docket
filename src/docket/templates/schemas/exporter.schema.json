@@ -149,13 +149,6 @@
       "default": "",
       "title": "Note",
       "type": "string"
-    },
-    "legacy_fields": {
-      "items": {
-        "type": "string"
-      },
-      "title": "Legacy Fields",
-      "type": "array"
     }
   },
   "required": [

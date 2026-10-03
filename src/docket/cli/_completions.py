@@ -27,8 +27,8 @@ from docket import ui
 def _top_level_commands() -> list[tuple[str, str]]:
     """(name, one-line help) for every visible top-level command, in
     registration order, read live from `docket.cli.app` — see module
-    docstring. Hidden commands (e.g. the internal `_json` bridge) are
-    excluded; they're not part of the public CLI surface.
+    docstring. Hidden commands are excluded; they're not part of the public
+    CLI surface.
     """
     from typer.core import TyperGroup
     from typer.main import get_command
@@ -92,20 +92,20 @@ _docket_complete() {
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
-    runs|run)        words="list show cancel prune" ;;
-    conversations|conv) words="list show resume set prune" ;;
+    runs)            words="list show cancel prune" ;;
+    conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
-    gates|security)  words="status enable disable isolate classes" ;;
-    keys|key|secret) words="add list remove rotate setup validate export" ;;
+    gates)           words="status isolate classes" ;;
+    keys)            words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
     trace)           words="tail export ingest expire" ;;
-    policies|policy) words="list show init test validate" ;;
-    recipes|recipe)  words="list show" ;;
-    roles|role)      words="list show add validate" ;;
-    completions|completion) words="bash zsh" ;;
-    cost|usage)      [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
+    policies)        words="list show init test validate" ;;
+    recipes)         words="list show" ;;
+    roles)           words="list show add validate" ;;
+    completions)     words="bash zsh" ;;
+    cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
+    info|delete|profile|wire|unwire|logs|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac
@@ -146,20 +146,20 @@ __ZSH_COMMANDS__
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
-    runs|run)        compadd list show cancel prune ;;
-    conversations|conv) compadd list show resume set prune ;;
+    runs)            compadd list show cancel prune ;;
+    conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates|security)  compadd status enable disable isolate classes ;;
-    keys|key|secret) compadd add list remove rotate setup validate export ;;
+    gates)           compadd status isolate classes ;;
+    keys)            compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;
-    policies|policy) compadd list show init test validate ;;
-    recipes|recipe)  compadd list show ;;
-    roles|role)      compadd list show add validate ;;
-    completions|completion) compadd bash zsh ;;
-    cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
+    policies)        compadd list show init test validate ;;
+    recipes)         compadd list show ;;
+    roles)           compadd list show add validate ;;
+    completions)     compadd bash zsh ;;
+    cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
+    info|delete|profile|wire|unwire|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

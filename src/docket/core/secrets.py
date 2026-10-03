@@ -59,11 +59,6 @@ def secret_value(name: str) -> str | None:
     return clean or None
 
 
-def secrets_meta() -> dict[str, Any]:
-    """Return the raw secrets.meta.json contents."""
-    return load_secrets_meta()
-
-
 def secret_values() -> list[str]:
     """Return the stored secret VALUES (for trace/Telegram redaction).
 
