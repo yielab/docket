@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.28.0
+**Version**: 0.29.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -969,9 +969,11 @@ without asking again.
    `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
    shape `approval_unavailable_error` uses, plus `approval_token`. See agent-loop.spec.md, "The
    approval_parked stop".
-8. **Harness mode is unaffected.** `docket harness run` always sets
-   `DOCKET_APPROVAL_MODE=refuse` (unchanged); `approval_parked` cannot occur on that path, and
-   `core/harness.py`'s wire contract is untouched by this section.
+8. **Harness mode is unaffected, except under `--answers stdin`.** `docket harness run` sets
+   `DOCKET_APPROVAL_MODE=refuse` unless the caller passes `--answers stdin` (Contract 1.1, P35-5),
+   which sets `wait` for that run; see "The harness answer channel" below. `approval_parked`
+   cannot occur on the default path, and `core/harness.py`'s wire contract is untouched by this
+   section.
 
 ### The harness answer channel (implemented, ROADMAP Phase 35 P35-5)
 
@@ -1450,6 +1452,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.29.0 (2026-10-03)
+
+- **Harness answer channel (P35-5, ADR 0017).** New section "The harness answer channel": under
+  `docket harness run --answers stdin`, an approval is resolved by an answer line on stdin
+  (`accept` grants, `decline`/`cancel` deny), audited with `channel=harness`; content is screened
+  by `pre_input` before it is applied. Item 8 is corrected: the refuse-always statement holds
+  only for the default path.
 
 ### Version 0.28.0 (2026-09-29)
 

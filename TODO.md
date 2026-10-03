@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 72 (Phase 35, D-51) · opened 2026-09-29
+> ## ▶ ACTIVE BOARD — WAVE 73 (Phase 35, D-51) · opened 2026-09-29
 >
 > **Ten cards over Waves 71–75**, one worker per card (Sonnet, or Haiku where the card says so)
 > in an isolated worktree under one integrator. docket becomes the governed harness of a
@@ -26,7 +26,8 @@
 > Worker packets: [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
 > **Wave 71 (P35-1..P35-4) is DONE, merged to `develop`** (`9dd0a7f`, `7b42f86`, `e7dc098`,
 > `44e35e4`; harness-mode.spec.md's P35-3 stub reconciled in `72cebea`; spec version bumps in
-> `c90d4e6`). Not pushed. **Wave 72 (P35-5, P35-7, P35-8) is ready to claim.** Phase 35 closes
+> `c90d4e6`). **Wave 72 (P35-5, P35-7, P35-8) is DONE** (`75b7e3f`, `9537491`, `920076b`; see the
+> Wave 72 block below). Not pushed. **Wave 73 (P35-6) is ready to claim.** Phase 35 closes
 > when the Wave 75 rollup merges green. Phases 36–38 are planned below and are **not claimable**
 > until their phase opens.
 >
@@ -270,7 +271,21 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 
 ---
 
-## ▶ WAVE 72 ACTIVE — Phase 35, docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)
+## ▶ WAVE 73 ACTIVE — Phase 35, docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)
+
+**Wave 72 done 2026-10-03** — P35-8 `920076b` (CONTRIBUTING counts re-trued `82d3117`), P35-7
+`9537491`, P35-5 `75b7e3f`; merged to `develop`, not pushed; each branch gated green after
+rebase. P35-5 and P35-7 were cut from the stale `6525b52`; P35-5/P35-7 reset to `f394be2`
+after finding it, P35-8 did not and was rebased. Rollup commit: spec bumps (harness-mode 1.3.0,
+security-gates 0.29.0, pod-dispatch 6.26.0), item 8 of security-gates corrected. **Caveats carried
+forward:** (1) P35-7's `run_recipe_task` has **no `env` parameter** the packet named: dispatch has
+no caller-env seam and `core/dispatch.py` was not on its list. P35-9 must settle how a recipe run
+gets a per-run `DOCKET_APPROVAL_MODE` before it can pass `wait`. (2) P35-5: a denied or timed-out
+approval ends as a tool result, run status `ok`, exit 0; a caller reading only exit or status
+cannot tell it from a clean run. Visible on trace and audit only. Decide at the Phase 35 close
+whether the result carries it. (3) P35-5 sets `TOOL_APPROVAL_TIMEOUT` process-wide for the run
+(the env route needed edits outside its list). (4) A pre-existing `ruff` failure in
+`tests/unit/core/test_context.py` (P35-1's test) was fixed in `ad64810` so the lint gate is green.
 
 **Wave 71 done 2026-09-29** — P35-1 `9dd0a7f`, P35-2 `7b42f86`, P35-3 `e7dc098`, P35-4 `44e35e4`,
 harness-mode.spec.md's P35-3 stub reconciled `72cebea`, spec version bumps `c90d4e6`. All merged
@@ -496,7 +511,7 @@ base (no `verify` key).
 
 ### P35-5 — questions on stdout, answers on stdin (`--answers stdin`)
 
-**Status:** TODO · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:** the P35-5 stub in
+**Status:** DONE (`75b7e3f`) · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:** the P35-5 stub in
 `harness-mode.spec.md`; `security-gates.spec.md` new section "The harness answer channel"
 
 **Trigger:** ADR 0017 §2; Tack M3 item 2 and U8 `decisions: Supported`.
@@ -575,7 +590,7 @@ not passed).
 
 ### P35-7 — the in-place recipe runner (core)
 
-**Status:** TODO · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:**
+**Status:** DONE (`9537491`; `env` parameter not added, see the Wave 72 block) · **Size:** M · **Wave:** 72 · **Model:** Sonnet · **Spec:**
 `pod-dispatch.spec.md` new section "In-place ephemeral pods"
 
 **Trigger:** ADR 0017 §3. Harness mode must run a pipeline without a second executor.
@@ -609,7 +624,7 @@ the base (module missing).
 
 ### P35-8 — `requireVerify`: a missing verify command fails instead of advancing
 
-**Status:** TODO · **Size:** S · **Wave:** 72 · **Model:** Haiku · **Spec:**
+**Status:** DONE (`920076b`) · **Size:** S · **Wave:** 72 · **Model:** Haiku · **Spec:**
 `pod-dispatch.spec.md` new section "Required verification"
 
 **Trigger:** ADR 0017 §4. `_evaluate_mechanical_gate` advances when `verifyCmd` is empty.

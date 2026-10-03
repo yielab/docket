@@ -1,9 +1,9 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
-(P35-2, P35-3) is opt-in and partially implemented -- see "Contract 1.1" below.
-**Last Updated**: 2026-09-29
+(P35-2, P35-3, P35-5) is opt-in and partially implemented -- see "Contract 1.1" below.
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -312,6 +312,13 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   `task`, or enforce `limits` -- those are Sections 3-6 above, each owned by a later card.
 
 ## Changelog
+
+### Version 1.3.0 (2026-10-03)
+
+- **Answers on stdin (P35-5, ADR 0017).** Section 5 is implemented and live: `--answers stdin`
+  and `--answer-timeout S` under `--contract 1.1`, one MCP-shaped `AnswerLine` per stdin line.
+  The approval rules are in `security-gates.spec.md`, "The harness answer channel". The default
+  `--contract 1.0` wire is unchanged.
 
 ### Version 1.2.0 (2026-09-29)
 

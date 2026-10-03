@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.25.0
+**Version**: 6.26.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-03
 
 ## Purpose
 
@@ -1903,6 +1903,16 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.26.0 (2026-10-03)
+
+- **Required verification (P35-8, ADR 0017).** New section "Required verification": the
+  `requireVerify` pod setting (default false). When true, an Implementer hop with no `verifyCmd`
+  fails with `verification_missing` instead of advancing. The default path is byte-identical.
+- **In-place ephemeral pods (P35-7, ADR 0017).** New section "In-place ephemeral pods":
+  `core/harness_pipeline.py::run_recipe_task` provisions a recipe pod whose Implementer runs in
+  the codebase itself, with no worktree, every member pinned to one model. The `env` parameter
+  the packet named is not in the signature; see the card.
 
 ### Version 6.25.0 (2026-09-29)
 
