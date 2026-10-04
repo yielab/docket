@@ -268,11 +268,13 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_export_cmd(project, extra)
     elif action == "corrections":
         _pod_corrections(project, extra)
+    elif action == "evidence":
+        _pod_evidence(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
             "delegate | answer | explain | pregrant | queue | dispatch | config | sync | "
-            "apply | export | corrections."
+            "apply | export | corrections | evidence."
         )
         raise typer.Exit(1)
 
@@ -1284,6 +1286,42 @@ def _pod_corrections(project: str, extra: list[str]) -> None:
 
         table.add_row(ts, kind, role, task, text)
 
+    ui.console.print(table)
+
+
+def _pod_evidence(project: str, extra: list[str]) -> None:
+    """``docket pod <project> evidence <task> [--json]``: what the task's hops kept.
+    ``--json`` prints the evidence-v1 document exactly as ``core.evidence`` builds it."""
+    from docket.core import evidence as _evidence
+
+    task_ids = [a for a in extra if not a.startswith("--")]
+    if len(task_ids) != 1:
+        ui.error("Usage: docket pod <project> evidence <task-id> [--json]")
+        raise typer.Exit(1)
+    try:
+        ev = _evidence.task_evidence(project, task_ids[0])
+    except _evidence.EvidenceNotFound as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+
+    if "--json" in extra:
+        print(ev.model_dump_json(by_alias=True))
+        return
+
+    table = Table(title=f"Evidence - {project} {ev.task_id} ({ev.status})")
+    for col in ("HOP", "ROLE", "OK", "VERDICT", "VERIFY", "COMMIT", "TOKENS IN", "TOKENS OUT"):
+        table.add_column(col)
+    for hop in ev.hops:
+        table.add_row(
+            hop.step_id,
+            hop.role,
+            "yes" if hop.ok else "no",
+            hop.verdict or "-",
+            str(hop.verify.exit_code) if hop.verify else "-",
+            hop.commit[:8] if hop.commit else "-",
+            str(hop.usage.input) if hop.usage else "-",
+            str(hop.usage.output) if hop.usage else "-",
+        )
     ui.console.print(table)
 
 

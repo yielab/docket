@@ -275,6 +275,13 @@ not already carried by a task's `approvalToken`) items; a client distinguishes t
 presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket mcp serve`'s
 `inbox` tool for the same state — one assembly function, three surfaces.
 
+### GET /tasks/&lt;project&gt;/&lt;id&gt;/evidence
+
+**Added (P36-4).** Requires `Authorization: Bearer <token>` exactly like `GET /tasks/<project>`
+(`401` first, then the project-id check). Body is `core.evidence.task_evidence(project,
+id).model_dump_json(by_alias=True)`, the evidence-v1 document, byte-for-byte what `docket pod
+<project> evidence <id> --json` prints. An unknown task is `404 {"ok": false, "error": ...}`.
+
 ### GET /tasks/&lt;project&gt;
 
 **Added 2.4.0 (Phase 22, P22-2).** Requires `Authorization: Bearer <token>`. Wraps
@@ -754,6 +761,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Unreleased (P36-4)
+
+- **`GET /tasks/<project>/<id>/evidence`**: authenticated evidence-v1 read over
+  `core.evidence.task_evidence`; `404` for an unknown task. Additive, no version bump.
 
 ### Version 3.0.0 (2026-10-03)
 

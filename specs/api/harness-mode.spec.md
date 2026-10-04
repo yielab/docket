@@ -373,7 +373,10 @@ task, and reports its hops through `HarnessResultV11.task`.
    under `--answers stdin`, else `refuse`. `run_recipe_task` therefore takes no `env` argument. The
    mode is a pod setting, not a driver env key, so each hop of the recipe reads the same value and
    no second channel exists.
-4. **Result.** `task` is `{status, hops, brief}`. `status` is the task record's own status. Each
+4. **Result.** `task` is `{status, hops, brief}`. `status` is the task record's own status. `task.evidence` is
+   the task's evidence-v1 document (`core.evidence.task_evidence(project, task_id)` dumped by
+   alias), the same one `docket pod <p> evidence <task> --json` and `GET
+   /tasks/<p>/<id>/evidence` serve, and `null` when no task record exists. Each
    hop is `{role, stepId, ok, verdict, verify, evidence}`, in order, read from the task record
    after the last dispatch. `brief` is the Lead's typed intake brief when one parsed, else `null`.
    `files` is collected as in Section 4. `usage` sums the measured counts of every pod member.
@@ -430,6 +433,11 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P36-4)
+
+- **`task.evidence` is evidence-v1.** Section 6 item 4. The schema already types it as
+  `object or null`, so no schema change and no version bump.
 
 ### Unreleased (P36-7)
 

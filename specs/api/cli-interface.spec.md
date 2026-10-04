@@ -415,6 +415,10 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 - `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
+- `evidence <task-id> [--json]`: Show what a task's hops kept (evidence-v1, built by
+  `core.evidence.task_evidence`): a table of hop, role, ok, verdict, verify exit code, short
+  commit and measured tokens in/out. `--json` prints that document byte-for-byte as `GET
+  /tasks/<project>/<id>/evidence` returns it. An unknown task prints an error and exits `1`
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
   `pipeline.yaml`, a small `pod.yaml` naming
   `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
@@ -1257,6 +1261,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Unreleased (P36-4)
+
+- `docket pod <project> evidence <task-id> [--json]`: new action over `core.evidence`. No version
+  bump.
 
 ### Version 1.59.0 (2026-10-03)
 

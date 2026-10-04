@@ -917,6 +917,21 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Unauthorized", 401)
                 return
             self._send_json_error("Missing project", 400)
+        elif path.startswith("/tasks/") and path.endswith("/evidence"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project, _, task_id = path[len("/tasks/") : -len("/evidence")].partition("/")
+            if self._reject_bad_project_id(project):
+                return
+            from docket.core import evidence as _evidence
+
+            try:
+                doc = _evidence.task_evidence(project, task_id)
+            except _evidence.EvidenceNotFound as exc:
+                self._send_json_error(str(exc), 404)
+                return
+            self._send(doc.model_dump_json(by_alias=True).encode("utf-8"), "application/json")
         elif path.startswith("/tasks/"):
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)

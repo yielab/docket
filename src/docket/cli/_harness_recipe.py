@@ -17,6 +17,7 @@ from typing import Any
 
 from docket.cli import _harness as _h
 from docket.cli import _harness_answers as _answers
+from docket.core import evidence as _evidence
 from docket.core import harness
 from docket.core import harness_pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
@@ -116,6 +117,19 @@ def _hop_view(hop: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _task_evidence(run: _pipeline.RecipeRun | None) -> dict[str, Any] | None:
+    """The run's evidence-v1 document, built by ``core.evidence`` (None when no task ran)."""
+    task_id = run.task.get("id") if run is not None else None
+    if run is None or not task_id:
+        return None
+    try:
+        return _evidence.task_evidence(run.project, str(task_id)).model_dump(
+            by_alias=True, mode="json"
+        )
+    except _evidence.EvidenceNotFound:
+        return None
+
+
 def _task_status(
     record: dict[str, Any], hops: list[dict[str, Any]], error: str
 ) -> tuple[harness.HarnessResultStatus, harness.BlockedInfo | None, str]:
@@ -154,6 +168,7 @@ def _finish(
     task = harness.HarnessTask(
         status=str(record.get("status", "")),
         hops=[_hop_view(h) for h in hops],
+        evidence=_task_evidence(run),
         brief=record.get("brief"),
     )
     result = harness.result_from_v11(
