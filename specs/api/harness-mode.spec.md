@@ -169,9 +169,9 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
 **Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
 contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 ships the models, generated
 schema, fixtures, and the `--contract` flag that selects which version is stamped on every line.
-P35-3 (Section 3), P35-5 (Section 5) and P35-6 (Section 4) have landed live. One behavior remains
-planned (Section 6 below): `task` stays `null` until recipe runs exist. Process lifecycle events
-ride the `event` stream itself, independent of the result fields.
+P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4) and P35-9 (Section 6) have landed live.
+`task` is populated by recipe runs and stays `null` otherwise. Process lifecycle events ride the
+`event` stream itself, independent of the result fields.
 
 ### 1. Selecting the contract
 
@@ -195,7 +195,7 @@ ride the `event` stream itself, independent of the result fields.
 | Field | Type | Rule |
 |---|---|---|
 | `files` | array of `FileChange` | Which files the run touched (Section 4). `[]` when nothing was written. |
-| `task` | `HarnessTask` or null | Recipe/task-run state. `null` until P35-9 populates it (Section 6). |
+| `task` | `HarnessTask` or null | Recipe/task-run state. `null` unless the run is a recipe run (Section 6). |
 | `limits` | `Limits` | Caller-declared ceilings echoed back. `{"maxTokens": null}` unless `--max-tokens` was given (Section 4). |
 
 `FileChange` is `{path: string, op: "write"|"edit"|"delete"|"unknown"}`.
@@ -294,7 +294,8 @@ elicitation result shape) to this process's stdin, while the run is live. The re
    it sets that config attribute for the run and restores it afterwards.
 3. **Reading.** One `AnswerLine` per stdin line. A line that does not validate, or that names a
    different run's token, is ignored with one stderr line that never echoes the line's contents.
-   A `questionId` answer is ignored with a stderr line until recipe runs (Section 6) exist.
+   A `questionId` answer is routed to a recipe run's open question (Section 6); outside a recipe
+   run it is ignored with a stderr line.
 4. **Timeout.** An approval with no answer by its deadline is denied (`approval_timeout`). The
    refusal is an ordinary tool result: the model sees it, and the run ends by its turn's own
    outcome, so exit 0 is possible with status `ok`.
@@ -309,12 +310,51 @@ timed out, a malformed or foreign line that is never echoed, a content line held
 `tests/unit/cli/test__harness_answers.py`. `tests/fixtures/harness-contract/v1.1/asked-answered.ndjson`
 and `answer-lines.ndjson` remain hand-authored samples of the shape.
 
-### 6. Recipe runs -- Planned, owned by P35-9
+### 6. Recipe runs -- Implemented and live (P35-9)
 
-Status: **Planned -- owned by P35-9.** `docket harness run --recipe NAME` executing a shipped
-recipe in place and reporting its progress through `HarnessResultV11.task`. This section is a
-placeholder until that card lands; `tests/fixtures/harness-contract/v1.1/recipe-ok.ndjson` is a
-hand-authored sample of the shape.
+`docket harness run --contract 1.1 --recipe NAME|DIR --task ...` runs one recipe, in place, for one
+task, and reports its hops through `HarnessResultV11.task`.
+
+1. **Arguments.** `--recipe` takes a name or directory that `docket recipes` resolves. It is
+   mutually exclusive with `--role` (exit 2), needs `--contract 1.1` (exit 2 under 1.0), and
+   refuses `--max-tokens` and `--agent-id` (exit 2): a recipe run's turns are dispatched by the
+   pod, so the single-agent turn bound and id do not reach them. `--verify CMD` (valid only with
+   `--recipe`) sets the Implementer's verify command, validated as `docket add --verify` is. An
+   unknown recipe is refused (exit 2) before any pod exists. `--task`/`--task-file`, `--model`,
+   `--timeout`, `--token-file`, `--policy`, `--answers` and `--answer-timeout` keep their meaning.
+2. **Execution.** `core.harness_pipeline.run_recipe_task` provisions one ephemeral in-place pod on
+   the workspace, applies the recipe, pins every member to `--model`, and dispatches the task.
+   `requireVerify` is always true on that pod, so an Implementer hop with no verify command fails
+   with `verifyCmd required but not set`.
+3. **Approval mode (decision).** The run's approval mode is the ephemeral pod's Lead `approvalMode`
+   setting, written through the typed `PodSettings` writer and read by dispatch on every hop: `wait`
+   under `--answers stdin`, else `refuse`. `run_recipe_task` therefore takes no `env` argument. The
+   mode is a pod setting, not a driver env key, so each hop of the recipe reads the same value and
+   no second channel exists.
+4. **Result.** `task` is `{status, hops, brief}`. `status` is the task record's own status. Each
+   hop is `{role, stepId, ok, verdict, verify, evidence}`, in order, read from the task record
+   after the last dispatch. `brief` is the Lead's typed intake brief when one parsed, else `null`.
+   `files` is collected as in Section 4. `usage` sums the measured counts of every pod member.
+   `model.served` is `""`, since a recipe run has no single turn to read it from.
+5. **Status.** A task `done` maps to `ok` (exit 0). A `failed` task maps to `failed`. A hop error
+   naming `approval_unavailable` maps to `blocked`, with `blocked` parsed as in Section 4's v1
+   mapping. A task left `waiting_input` or `waiting_approval` maps to `blocked`. A `cancelled`
+   task maps to `cancelled`. Every non-`ok` exit is 1.
+6. **Answers.** Under `--answers stdin`, a `questionId` line whose id is the open question's id is
+   applied with `core.answers.answer_task` (channel `harness`), and the task is dispatched again
+   from its own route. A line for another question is ignored with a stderr line. End of stdin, or
+   `--answer-timeout` elapsing with no answer, leaves the task parked, which maps to `blocked`.
+   Without `--answers stdin` no question can be answered, so a parked task is `blocked`.
+7. **Stream.** Trace events from every pod member stream as ordinary `event` lines, the same relay
+   a single-agent run uses.
+
+Verified by `tests/integration/test_harness_cli.py::TestRecipeRun` (the `tdd` hops and the
+`check-red` command step; a failing verify with its `exitCode`; the `intake` question answered on
+stdin and reaching the Lead's re-entry; an unanswered question ending `blocked`; a refused
+approval ending `blocked` with its rule; the usage refusals), and by
+`tests/integration/test_harness_pipeline.py` (`TestRequireVerify`, `TestResumeAfterQuestion`).
+`tests/fixtures/harness-contract/v1.1/recipe-ok.ndjson` remains a hand-authored sample of the
+shape.
 
 ### 7. Output
 
@@ -342,10 +382,19 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   refusal reached afterward (a later usage error, a `preflight` refusal, an `agent_meta_for`
   usage error) MUST stamp the version that was selected, not the default.
 - **Behavior beyond the stamp.** Under `--contract 1.1`, `files` is populated (Section 4) and
-  process lifecycle events ride the stream (Section 3). `task` stays `null` until Section 6, and
-  `limits` changes only with `--max-tokens` (Section 4).
+  process lifecycle events ride the stream (Section 3). `task` is populated by a recipe run
+  (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P35-9)
+
+- **Recipe runs (P35-9).** Section 6 is implemented and live: `docket harness run --contract 1.1
+  --recipe NAME|DIR` runs one recipe in place for one task, populates `HarnessResultV11.task`, and
+  routes `questionId` answer lines to the open question. `--recipe` is refused with `--role`,
+  `--max-tokens`, `--agent-id` and under `--contract 1.0`; `--verify CMD` is new and needs
+  `--recipe`. The approval mode travels as the ephemeral pod's Lead setting, so `run_recipe_task`
+  takes no `env`. The v1.1 shapes are unchanged. The version bump is left to the integrator.
 
 ### Unreleased (P35-6)
 

@@ -360,6 +360,17 @@ def _extract_field(text: str, *keys: str) -> str:
     return ""
 
 
+def blocked_info(error: str) -> BlockedInfo:
+    """The ``blocked`` object for an ``approval_unavailable`` error string."""
+    return BlockedInfo(
+        tool=_extract_field(error, "tool"),
+        call_id=_extract_field(error, "call_id", "callId", "call"),
+        denial_kind="approval_unavailable",
+        policy_id=_extract_field(error, "policy_id", "policyId"),
+        reason=_extract_field(error, "reason") or error,
+    )
+
+
 def result_from(turn: TurnResult, usage: UsageReport, run: dict[str, Any]) -> HarnessResult:
     """Translate one driver outcome into the published, versioned result."""
     # Status precedence: a genuinely completed turn is "ok"; a cooperative
@@ -375,16 +386,7 @@ def result_from(turn: TurnResult, usage: UsageReport, run: dict[str, Any]) -> Ha
     else:
         status = "failed"
 
-    blocked = None
-    if status == "blocked":
-        error = turn.error or ""
-        blocked = BlockedInfo(
-            tool=_extract_field(error, "tool"),
-            call_id=_extract_field(error, "call_id", "callId", "call"),
-            denial_kind="approval_unavailable",
-            policy_id=_extract_field(error, "policy_id", "policyId"),
-            reason=_extract_field(error, "reason") or error,
-        )
+    blocked = blocked_info(turn.error or "") if status == "blocked" else None
 
     totals = usage.totals
     variables = run.get("variables") or {}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import queue
 import re
 import sys
 import threading
@@ -38,8 +39,11 @@ def _say(message: str) -> None:
     print(f"docket harness: {message}", file=sys.stderr, flush=True)
 
 
-def handle_line(line: str, token: str) -> None:
-    """Apply one stdin line to the run *token*. Never raises for a bad line."""
+def handle_line(
+    line: str, token: str, questions: queue.Queue[harness.AnswerLine | None] | None = None
+) -> None:
+    """Apply one stdin line to the run *token*. Never raises for a bad line. A question answer
+    goes to *questions* when a recipe run is waiting for one, else it is ignored."""
     text = line.strip()
     if not text:
         return
@@ -54,7 +58,10 @@ def handle_line(line: str, token: str) -> None:
 
     answer = answer_line.answer
     if answer.questionId is not None:
-        _say("answer line ignored: question answers need --recipe")
+        if questions is None:
+            _say("answer line ignored: question answers need --recipe")
+        else:
+            questions.put(answer_line)
         return
     target = answer.approvalToken or ""
     if not _APPROVAL_TOKEN.fullmatch(target):
@@ -81,19 +88,26 @@ def handle_line(line: str, token: str) -> None:
 
 
 @contextlib.contextmanager
-def serve(token: str, stop: threading.Event) -> Iterator[None]:
-    """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*."""
+def serve(
+    token: str,
+    stop: threading.Event,
+    questions: queue.Queue[harness.AnswerLine | None] | None = None,
+) -> Iterator[None]:
+    """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*. At EOF a
+    *questions* queue gets its ``None`` end marker, so a waiting question stops waiting."""
 
     def _pump() -> None:
         for line in sys.stdin:
             if stop.is_set():
                 return
             try:
-                handle_line(line, token)
+                handle_line(line, token, questions)
             except Exception:
                 # An answer that cannot be applied leaves its approval pending, and
                 # the deadline denies it. Say so without the line's contents.
                 _say("answer line ignored: internal error")
+        if questions is not None:
+            questions.put(None)
 
     thread = threading.Thread(target=_pump, name="harness-answers", daemon=True)
     thread.start()
@@ -104,13 +118,18 @@ def serve(token: str, stop: threading.Event) -> Iterator[None]:
 
 
 @contextlib.contextmanager
-def guard(answers_raw: str | None, answer_timeout_raw: str | None, token: str) -> Iterator[None]:
+def guard(
+    answers_raw: str | None,
+    answer_timeout_raw: str | None,
+    token: str,
+    questions: queue.Queue[harness.AnswerLine | None] | None = None,
+) -> Iterator[None]:
     """Run the answer reader and the wait bound for ``--answers stdin``; otherwise a no-op."""
     if answers_raw != "stdin":
         yield
         return
     timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
-    with serve(token, threading.Event()), wait_budget(timeout):
+    with serve(token, threading.Event(), questions), wait_budget(timeout):
         yield
 
 

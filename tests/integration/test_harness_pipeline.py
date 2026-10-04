@@ -79,6 +79,9 @@ def _run(
     workspace: Path | None = None,
     model: str = "test-model",
     approval_mode: Literal["wait", "park", "refuse"] = "refuse",
+    verify_cmd: str = "true",
+    recipe: str | None = None,
+    next_answer: Any = None,
 ) -> Any:
     from docket.core import harness_pipeline as hp
 
@@ -86,11 +89,13 @@ def _run(
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
     return hp.run_recipe_task(
         workspace or _workspace(tmp_path),
-        str(_recipe(tmp_path)),
+        recipe or str(_recipe(tmp_path)),
         "in-place task",
         model=model,
         approval_mode=approval_mode,
         timeout=60,
+        verify_cmd=verify_cmd,
+        next_answer=next_answer,
     )
 
 
@@ -145,6 +150,84 @@ class TestInPlaceRun:
         run = _run(tmp_path, monkeypatch, backend)
 
         assert pod.PodSettings.load_for(run.project).budget_usd == 4.0
+
+
+class TestRequireVerify:
+    def test_the_ephemeral_lead_carries_require_verify(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _ScriptedBackend([_final("lead plan"), _final("implementer done")])
+        run = _run(tmp_path, monkeypatch, backend)
+
+        assert pod.PodSettings.load_for(run.project).require_verify is True
+
+    def test_the_verify_command_is_recorded_on_the_implementer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _ScriptedBackend([_final("lead plan"), _final("implementer done")])
+        run = _run(tmp_path, monkeypatch, backend, verify_cmd="true")
+
+        assert _fleet.meta_get(f"{run.project}-implementer", "verifyCmd", "") == "true"
+
+    def test_an_implementer_with_no_verify_command_fails_the_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _ScriptedBackend([_final("lead plan"), _final("implementer done")])
+        run = _run(tmp_path, monkeypatch, backend, verify_cmd="")
+
+        assert run.task["status"] == "failed"
+        assert "verifyCmd required" in run.task["reason"]
+
+
+_INTAKE_NEEDS_INPUT = (
+    "Need one thing.\n```json\n"
+    '{"objective": "add rate limiting", "acceptance": ["429 after 100"], '
+    '"resources": [], "questions": ["Which branch?"]}\n```\nNEEDS-INPUT'
+)
+
+
+class TestResumeAfterQuestion:
+    def test_an_answer_resumes_the_parked_question_at_the_lead(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core.harness import Answer
+
+        backend = _ScriptedBackend(
+            [
+                _final(_INTAKE_NEEDS_INPUT),
+                _final("ready\nREADY"),
+                _final("implementer done"),
+                _final("APPROVE"),
+            ]
+        )
+        seen: list[dict[str, Any]] = []
+
+        def _answer(question: dict[str, Any]) -> Answer:
+            seen.append(question)
+            return Answer(
+                questionId=question["id"], action="accept", content={"q1": "use the main branch"}
+            )
+
+        run = _run(tmp_path, monkeypatch, backend, recipe="intake", next_answer=_answer)
+
+        assert len(seen) == 1
+        assert run.task["status"] == "done"
+        assert [h["role"] for h in run.hops] == [
+            "lead",
+            "operator",
+            "lead",
+            "implementer",
+            "reviewer",
+        ]
+        assert "use the main branch" in str(backend.calls[1])
+
+    def test_without_an_answer_source_the_task_waits_for_input(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _ScriptedBackend([_final(_INTAKE_NEEDS_INPUT)])
+        run = _run(tmp_path, monkeypatch, backend, recipe="intake")
+
+        assert run.task["status"] == "waiting_input"
 
 
 class TestRefusals:

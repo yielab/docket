@@ -25,6 +25,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket.cli import _harness_answers as _answers
+from docket.cli import _harness_recipe as _recipe
 from docket.core import harness
 from docket.core import policy as _policy
 from docket.core import runs as _runs
@@ -105,6 +106,22 @@ def _write_token_file(path: Path, token: str) -> None:
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(body)
     os.replace(staging, path)
+
+
+def _task_text(task_text: str | None, task_file_raw: str | None) -> str:
+    """The task message: the ``--task`` text, or the ``--task-file`` contents."""
+    if task_file_raw is None:
+        assert task_text is not None  # narrowed by _usage_error
+        return task_text
+    return Path(task_file_raw).expanduser().read_text(encoding="utf-8")
+
+
+def _policy_problem(policy_paths: list[Path]) -> str | None:
+    for policy_path in policy_paths:
+        problem = _policy.validate_policy(policy_path)
+        if problem:
+            return f"invalid --policy: {problem}"
+    return None
 
 
 def _workspace_relative(root: Path, raw: str, base: Path) -> str | None:
@@ -379,11 +396,13 @@ def _run(args: list[str]) -> int:
     token_file_raw = _flag(args, "--token-file")
     max_tokens_raw = _flag(args, "--max-tokens")
     policy_raws = _flags(args, "--policy")
+    recipe_raw = _flag(args, "--recipe")
 
     problem = (
         _usage_error(workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw)
         or _answers_usage_error(answers_raw, answer_timeout_raw, task_file_raw, contract_raw)
         or _v11_usage_error(token_file_raw, max_tokens_raw, policy_raws, contract_raw)
+        or _recipe.usage_error(args, contract_raw)
     )
     if problem:
         # An invalid --contract itself has no known version to stamp; every
@@ -401,20 +420,14 @@ def _run(args: list[str]) -> int:
     if refusal is not None:
         return _refuse(refusal.reason, contract_version)
 
-    if task_file_raw is not None:
-        try:
-            task = Path(task_file_raw).expanduser().read_text(encoding="utf-8")
-        except OSError as exc:
-            return _refuse(f"could not read --task-file {task_file_raw!r}: {exc}", contract_version)
-    else:
-        assert task_text is not None
-        task = task_text
+    try:
+        task = _task_text(task_text, task_file_raw)
+    except OSError as exc:
+        return _refuse(f"could not read --task-file {task_file_raw!r}: {exc}", contract_version)
 
     policy_paths = [Path(p).expanduser() for p in policy_raws]
-    for policy_path in policy_paths:
-        problem = _policy.validate_policy(policy_path)
-        if problem:
-            return _refuse(f"invalid --policy: {problem}", contract_version)
+    if policy_problem := _policy_problem(policy_paths):
+        return _refuse(policy_problem, contract_version)
 
     timeout = int(timeout_raw) if timeout_raw is not None else _DEFAULT_TIMEOUT
     max_tokens = int(max_tokens_raw) if max_tokens_raw is not None else None
@@ -467,6 +480,9 @@ def _run(args: list[str]) -> int:
             },
         }
     )
+
+    if recipe_raw is not None:
+        return _recipe.run_recipe(args, token=token, workspace=workspace, task=task, emit=_emit)
 
     def _handle_sigterm(signum: int, frame: object) -> None:
         _runs.cancel_run(token)

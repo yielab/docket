@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 SUBJECT = "docket.cli._harness"
 
@@ -1294,3 +1295,227 @@ class TestAnswersOnStdin:
         assert "conflicts" in result["error"]
         assert "--task-file" in result["error"]
         assert not (tmp_path / "home").exists()
+
+
+# ── (g) recipe runs (contract 1.1) ────────────────────────────────────────────
+
+
+def _recipe_args(workspace: Path, recipe: str, *extra: str) -> list[str]:
+    return [
+        "run",
+        "--workspace",
+        str(workspace),
+        "--task",
+        "add the thing",
+        "--model",
+        "local/x",
+        "--contract",
+        "1.1",
+        "--recipe",
+        recipe,
+        *extra,
+    ]
+
+
+_RED = "red: one failing test written"
+_GREEN = "green: the test passes"
+_INTAKE_BRIEF = (
+    "Need one thing.\n```json\n"
+    '{"objective": "add rate limiting", "acceptance": ["429 after 100"], '
+    '"resources": [], "questions": ["Which branch?"]}\n```\nNEEDS-INPUT'
+)
+
+
+def _assert_result_validates_v11(result: dict[str, Any]) -> None:
+    schema_path = REPO_ROOT / "docs" / "contracts" / "harness-v1.1" / "schema.json"
+    document = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = Draft202012Validator({**document, "$ref": "#/definitions/HarnessResult"})
+    validator.validate(result)
+
+
+class TestRecipeRun:
+    def test_tdd_streams_its_hops_and_ends_with_a_task_block(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [_final_response(_RED), _final_response(_GREEN), _final_response("PASS")]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_recipe_args(workspace, "tdd", "--verify", "true"), env, timeout=120)
+
+        assert proc.returncode == 0, proc.stderr
+        lines = _parse_ndjson(proc.stdout)
+        result = lines[-1]
+        assert result["v"] == "1.1.0"
+        assert result["status"] == "ok"
+        assert result["task"]["status"] == "done"
+        roles = [hop["role"] for hop in result["task"]["hops"]]
+        assert roles == ["implementer", "check-red", "implementer", "tester"]
+        assert result["task"]["hops"][3]["verdict"] == "pass"
+        _assert_result_validates_v11(result)
+
+    def test_a_failing_verify_ends_failed_with_its_exit_code(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [_final_response(_RED), _final_response(_GREEN), _final_response("FAIL")]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_recipe_args(workspace, "tdd", "--verify", "false"), env, timeout=120)
+
+        assert proc.returncode == 1, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert result["status"] == "failed"
+        assert result["task"]["status"] == "failed"
+        verified = [hop for hop in result["task"]["hops"] if hop["verify"] is not None]
+        assert verified[-1]["verify"]["exitCode"] == 1
+        _assert_result_validates_v11(result)
+
+    def test_the_intake_question_is_answered_on_stdin_and_reaches_the_lead(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _final_response(_INTAKE_BRIEF),
+                _final_response("ready\nREADY"),
+                _final_response("built"),
+                _final_response("APPROVE"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(
+            _recipe_args(workspace, "intake", "--verify", "true", "--answers", "stdin"),
+            env,
+            tmp_path / "stderr.txt",
+        )
+        asked = run.wait_for_event("input_requested")
+        question_id = asked["event"]["payload"]["questionId"]
+        answer = {"questionId": question_id, "action": "accept", "content": {"q1": "use main"}}
+        run.write_raw(json.dumps({"v": "1.1.0", "token": asked["token"], "answer": answer}))
+        run.close_stdin()
+        returncode, lines = run.finish(timeout=120)
+
+        assert returncode == 0, (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        result = lines[-1]
+        assert result["status"] == "ok"
+        assert result["task"]["status"] == "done"
+        assert [h["role"] for h in result["task"]["hops"]] == [
+            "lead",
+            "operator",
+            "lead",
+            "implementer",
+            "reviewer",
+        ]
+        assert "use main" in json.dumps(server.requests[1])
+        _assert_result_validates_v11(result)
+
+    def test_a_refused_approval_ends_blocked_with_the_rule(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("bash", _PUSH_CALL),
+                _final_response(_RED),
+                _final_response(_GREEN),
+                _final_response("PASS"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_recipe_args(workspace, "tdd", "--verify", "true"), env, timeout=120)
+
+        assert proc.returncode == 1, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert result["status"] == "blocked"
+        assert result["blocked"]["tool"] == "bash"
+        assert result["blocked"]["denial_kind"] == "approval_unavailable"
+        _assert_result_validates_v11(result)
+
+    def test_an_unanswered_question_ends_blocked(self, tmp_path: Path, llm_server: Any) -> None:
+        server = llm_server([_final_response(_INTAKE_BRIEF)])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_recipe_args(workspace, "intake", "--verify", "true"), env, timeout=120)
+
+        assert proc.returncode == 1, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert result["status"] == "blocked"
+        assert result["task"]["status"] == "waiting_input"
+        _assert_result_validates_v11(result)
+
+    def test_recipe_with_role_is_a_usage_error(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness([*_recipe_args(workspace, "tdd"), "--role", "reviewer"], env)
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert result["v"] == "1.1.0"
+        assert "--role" in result["error"]
+        assert not (tmp_path / "home").exists()
+
+    def test_recipe_with_contract_1_0_is_refused(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        args = _recipe_args(workspace, "tdd")
+        args[args.index("1.1")] = "1.0"
+
+        proc = _run_harness(args, env)
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert result["v"] == "1.0.0"
+        assert "--contract 1.1" in result["error"]
+
+    def test_an_unknown_recipe_is_refused_before_any_pod_exists(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        env = _child_env(home, "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(_recipe_args(workspace, "no-such-recipe-anywhere"), env)
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert "no-such-recipe-anywhere" in result["error"]
+        projects = home / "workspaces" / "projects"
+        assert not projects.is_dir() or not any(projects.iterdir())
+
+    @pytest.mark.parametrize("extra", [["--max-tokens", "100"], ["--agent-id", "x"]])
+    def test_flags_a_recipe_run_cannot_honour_are_refused(
+        self, tmp_path: Path, extra: list[str]
+    ) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness([*_recipe_args(workspace, "tdd"), *extra], env)
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[0])
+        assert result["status"] == "refused"
+        assert extra[0] in result["error"]
