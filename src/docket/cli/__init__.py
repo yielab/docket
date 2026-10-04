@@ -2725,7 +2725,10 @@ def cmd_policies(ctx: typer.Context) -> None:
 
 
 @app.command("approve")
-def cmd_approve(approval_id: str | None = typer.Argument(None)) -> None:
+def cmd_approve(
+    approval_id: str | None = typer.Argument(None),
+    reason: str = typer.Option("", "--reason", help="Reason for the approval"),
+) -> None:
     """Approve a pending tool-action.
 
     Grants a pending HITL approval token from docket's own approval store
@@ -2744,7 +2747,7 @@ def cmd_approve(approval_id: str | None = typer.Argument(None)) -> None:
     audit-logged with the channel that answered. See also `docket deny`."""
     from docket.cli._approve import run_approve
 
-    raise typer.Exit(run_approve(approval_id))
+    raise typer.Exit(run_approve(approval_id, reason=reason))
 
 
 @app.command("deny")

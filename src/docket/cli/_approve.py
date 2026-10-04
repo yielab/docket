@@ -3,7 +3,7 @@
   docket approve <token>    Grant a pending HITL approval
   docket approve            List pending approvals
 
-``run_approve(token)`` returns the process exit code.
+``run_approve(token, reason)`` returns the process exit code.
 
 A grant is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
 if *token* gated a dispatch task (``waiting_approval``, this exact token), that
@@ -12,6 +12,8 @@ next dispatch run. A no-op for any other approval (or an already-resolved one).
 """
 
 from __future__ import annotations
+
+import getpass
 
 import docket.config as _cfg
 from docket import ui
@@ -22,8 +24,8 @@ from docket.core import dispatch as _dispatch
 def _help() -> int:
     ui.header("docket approve")
     ui.console.print()
-    ui.console.print("  docket approve <token>    Grant a pending HITL approval")
-    ui.console.print("  docket approve            List pending approvals")
+    ui.console.print("  docket approve <token> [--reason TEXT]    Grant a pending HITL approval")
+    ui.console.print("  docket approve                            List pending approvals")
     ui.console.print()
     ui.console.print(f"  Approvals are stored at: {_cfg.APPROVALS_DIR}")
     ui.console.print()
@@ -58,15 +60,23 @@ def _list() -> int:
     return 0
 
 
-def run_approve(token: str | None = None) -> int:
+def run_approve(token: str | None = None, reason: str = "") -> int:
     """Grant *token* (pending → granted), or list pending when token is omitted."""
     if not token:
         return _list()
     if token in ("-h", "--help"):
         return _help()
 
+    # Only include actor when there's a reason to record
+    actor = ""
+    if reason:
+        try:
+            actor = getpass.getuser()
+        except Exception:
+            actor = ""
+
     try:
-        _ap.approval_grant(token, channel="cli")
+        _ap.approval_grant(token, channel="cli", actor=actor, reason=reason)
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
         _dispatch.resolve_waiting_approval(token, "granted")

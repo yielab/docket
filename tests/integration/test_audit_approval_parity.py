@@ -158,6 +158,24 @@ class TestGrantDenyViaCli:
         assert len(denies) == 1
         assert denies[0]["payload"] == {"token": token}
 
+    def test_approve_with_reason_records_actor_and_reason(self, home: Path) -> None:
+        token = _ap.approval_create("proj-cli-approve-reason", "reviewer", "ok")
+        rc = approve_cli.run_approve(token, reason="looks good")
+        assert rc == 0
+
+        entry = _last_audit_entry("approval.grant")
+        assert "actor=" in entry["detail"]
+        assert "reason=" in entry["detail"]
+
+    def test_deny_with_reason_records_actor_and_reason(self, home: Path) -> None:
+        token = _ap.approval_create("proj-cli-deny-reason", "reviewer", "nope")
+        rc = deny_cli.run_deny(token, reason="not ready")
+        assert rc == 0
+
+        entry = _last_audit_entry("approval.deny")
+        assert "actor=" in entry["detail"]
+        assert "reason=" in entry["detail"]
+
 
 # ── HTTP channel (serve.py webhook) ─────────────────────────────────────────────
 

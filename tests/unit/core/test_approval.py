@@ -198,6 +198,23 @@ class TestGrantDenyViaEndpoint:
         status, _ = _post(f"{url}/approvals/{apr_token}", {}, token)
         assert status == 400
 
+    def test_deny_with_reason_records_in_audit(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        apr_token = _approval.approval_create("proj-http-reason", "implementer", "deploy")
+        status, body = _post(
+            f"{url}/approvals/{apr_token}", {"action": "deny", "reason": "not ready"}, token
+        )
+        assert status == 200
+        assert body["ok"] is True
+        assert _approval.approval_get(apr_token)["state"] == "denied"
+
+        # Check audit log contains reason
+        audit_lines = _audit.read_audit()
+        deny_lines = [line for line in audit_lines if line.get("action") == "approval.deny"]
+        assert len(deny_lines) > 0
+        last_line = deny_lines[-1]
+        assert "reason=" in last_line["detail"]
+
     def test_double_grant_returns_409(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         apr_token = _approval.approval_create("proj9", "implementer", "x")

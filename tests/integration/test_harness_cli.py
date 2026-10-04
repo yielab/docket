@@ -1180,6 +1180,37 @@ class TestAnswersOnStdin:
         # The second model request carries the refused tool result: the push never ran.
         assert "approval denied" in json.dumps(server.requests[-1]["messages"])
 
+    def test_a_decline_with_reason_records_reason_in_audit(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        # Send decline with reason
+        token = requested["token"]
+        approval_token = requested["event"]["payload"]["token"]
+        answer = {
+            "approvalToken": approval_token,
+            "action": "decline",
+            "content": {"reason": "not approved"},
+        }
+        run.write_raw(json.dumps({"v": "1.1.0", "token": token, "answer": answer}))
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["status"] == "ok"
+        [record] = _approval_records(home)
+        assert record["state"] == "denied"
+        audit_text = (home / "audit.log").read_text(encoding="utf-8")
+        assert "approval.deny" in audit_text
+        assert "reason=" in audit_text
+
     def test_no_answer_before_the_timeout_denies_the_call(
         self, tmp_path: Path, llm_server: Any
     ) -> None:

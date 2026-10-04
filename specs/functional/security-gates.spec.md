@@ -1608,6 +1608,16 @@ $ git clone https://anywhere.example/repo.git
   writing past the pipe buffer still returns its output rather than a false timeout. Every other
   handler, and a caller that never passes the callback, is unchanged.
 
+### Unreleased (P36-2)
+
+- P36-2 adds optional `reason` and `actor` parameters to `approval_grant` and `approval_deny`.
+  When `reason` is non-empty, it is screened with `policy_eval_detail("lead", "pre_input", reason, trusted=False)`;
+  a blocked reason raises `ApprovalError` and the approval remains pending. Both `reason` and `actor`
+  are added to the audit detail and trace payload only when non-empty. Three surfaces support it:
+  `docket approve|deny <token> --reason TEXT` (actor is the OS user), HTTP `POST /approvals/<token>`
+  with optional JSON `reason` field (actor is the channel name when reason is provided), and
+  harness stdin answer passing `content.reason` when it is a string (actor is "harness" when reason is provided).
+
 ### Version 0.18.0 (2026-09-12)
 
 - W30-C2 adds `ToolContext.approval_mode` (`"wait"` default, byte-identical; `"refuse"` for a
