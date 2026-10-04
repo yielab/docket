@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.27.0
+**Version**: 6.28.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -1940,19 +1940,18 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ## Changelog
 
-### Unreleased (P36-8)
+### Version 6.28.0 (2026-10-04)
 
-- A `consult` call in a hop parks the task `waiting_input` (hop persisted `parked`, question on
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
+
+- **P36-8.** A `consult` call in a hop parks the task `waiting_input` (hop persisted `parked`, question on
   the task) and `answer_task` re-runs the same step with the answer in its message; the task
   counts parked consultations in `consultations` (operator-loop.spec.md "Consult"). Version not
   bumped.
-
-### Unreleased (P36-3)
-
-- **Evidence v1.** New "Evidence v1" section: `core/evidence.py` models and `task_evidence`, hop
+- **P36-3.** **Evidence v1.** New "Evidence v1" section: `core/evidence.py` models and `task_evidence`, hop
   records persist measured `usage` and a `trace` link, `TurnResult.usage`, and
   `docs/contracts/evidence-v1/schema.json`. A hop's closing trace events are now written before
-  the hop is persisted, so its recorded `lastTs` covers them. No version bump.
+  the hop is persisted, so its recorded `lastTs` covers them.
 
 ### Version 6.27.0 (2026-10-03)
 

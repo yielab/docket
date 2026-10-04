@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.59.0
+**Version**: 1.60.0
 **Status**: Complete
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -1262,9 +1262,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
-### Unreleased (P36-4)
+### Version 1.60.0 (2026-10-04)
 
-- `docket pod <project> evidence <task-id> [--json]`: new action over `core.evidence`. No version
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
+
+- **P36-4.** `docket pod <project> evidence <task-id> [--json]`: new action over `core.evidence`. No version
   bump.
 
 ### Version 1.59.0 (2026-10-03)

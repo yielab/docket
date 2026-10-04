@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -711,27 +711,20 @@ Each JSONL line is a JSON object with these fields:
 
 ## Changelog
 
-### Unreleased (P36-8)
+### Version 1.1.0 (2026-10-04)
 
-- Consult: park and re-entry in pod dispatch, task-wide `maxConsultationsPerTask` count
-  (requirement section "Consult", items 4-5). Version not bumped.
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
 
-### Unreleased (P36-7)
-
-- Consult: the `consult` built-in, `maxConsultationsPerTask`, the `question_asked` trace event
-  and its harness routing (requirement section "Consult"). Version not bumped.
-
-### Unreleased (P36-5)
-
-- Corrections ledger: deny reasons, REQUEST-CHANGES texts and declined answers are appended
+- **P36-8.** Consult: park and re-entry in pod dispatch, task-wide `maxConsultationsPerTask` count
+  (requirement section "Consult", items 4-5).
+- **P36-7.** Consult: the `consult` built-in, `maxConsultationsPerTask`, the `question_asked` trace event
+  and its harness routing (requirement section "Consult").
+- **P36-5.** Corrections ledger: deny reasons, REQUEST-CHANGES texts and declined answers are appended
   to a per-pod JSONL ledger under the D-12 exemption, accessible via `docket pod <p>
   corrections [--json]`. Text is redacted and tail-bounded; write failures are logged, never
   fail the caller.
-
-### Unreleased (P36-1)
-
-- Contract 1.1: `QuestionV11`, `AnswerResultV11`, `Option`, `Recommendation`,
-  `validate_answer_v11` and the generated `operator-v1.1` schemas. Version not bumped.
+- **P36-1.** Contract 1.1: `QuestionV11`, `AnswerResultV11`, `Option`, `Recommendation`,
+  `validate_answer_v11` and the generated `operator-v1.1` schemas.
 
 ### Version 1.0.0 (2026-09-29)
 

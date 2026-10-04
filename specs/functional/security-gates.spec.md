@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.30.0
+**Version**: 0.31.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -1460,6 +1460,22 @@ $ git clone https://anywhere.example/repo.git
 
 ## Changelog
 
+### Version 0.31.0 (2026-10-04)
+
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
+
+- **P36-6.** P36-6 adds approval packs (In-turn tool-call gate requirement 8): `rationale` and `options` on
+  gated-call approvals and `approval_requested`, `ToolContext.rationale`, `approval_set_option`,
+  and the `approve_task` single-task pre-grant. `harness` joins `APPROVAL_CHANNELS` (it was already
+  the audit tag of a harness answer).
+- **P36-2.** P36-2 adds optional `reason` and `actor` parameters to `approval_grant` and `approval_deny`.
+  When `reason` is non-empty, it is screened with `policy_eval_detail("lead", "pre_input", reason, trusted=False)`;
+  a blocked reason raises `ApprovalError` and the approval remains pending. Both `reason` and `actor`
+  are added to the audit detail and trace payload only when non-empty. Three surfaces support it:
+  `docket approve|deny <token> --reason TEXT` (actor is the OS user), HTTP `POST /approvals/<token>`
+  with optional JSON `reason` field (actor is the channel name when reason is provided), and
+  harness stdin answer passing `content.reason` when it is a string (actor is "harness" when reason is provided).
+
 ### Version 0.30.0 (2026-10-03)
 
 - **Approval-routing posture deleted (legacy purge; W34-A1 closed by deletion).** Enablement
@@ -1626,23 +1642,6 @@ $ git clone https://anywhere.example/repo.git
   `ToolOutcome`. The poll drains the command's output while it waits, so an ordinary command
   writing past the pipe buffer still returns its output rather than a false timeout. Every other
   handler, and a caller that never passes the callback, is unchanged.
-
-### Unreleased (P36-6)
-
-- P36-6 adds approval packs (In-turn tool-call gate requirement 8): `rationale` and `options` on
-  gated-call approvals and `approval_requested`, `ToolContext.rationale`, `approval_set_option`,
-  and the `approve_task` single-task pre-grant. `harness` joins `APPROVAL_CHANNELS` (it was already
-  the audit tag of a harness answer). No version bump.
-
-### Unreleased (P36-2)
-
-- P36-2 adds optional `reason` and `actor` parameters to `approval_grant` and `approval_deny`.
-  When `reason` is non-empty, it is screened with `policy_eval_detail("lead", "pre_input", reason, trusted=False)`;
-  a blocked reason raises `ApprovalError` and the approval remains pending. Both `reason` and `actor`
-  are added to the audit detail and trace payload only when non-empty. Three surfaces support it:
-  `docket approve|deny <token> --reason TEXT` (actor is the OS user), HTTP `POST /approvals/<token>`
-  with optional JSON `reason` field (actor is the channel name when reason is provided), and
-  harness stdin answer passing `content.reason` when it is a string (actor is "harness" when reason is provided).
 
 ### Version 0.18.0 (2026-09-12)
 

@@ -1,6 +1,6 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below.
@@ -434,26 +434,19 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
 
 ## Changelog
 
-### Unreleased (P36-4)
+### Version 1.5.0 (2026-10-04)
 
-- **`task.evidence` is evidence-v1.** Section 6 item 4. The schema already types it as
-  `object or null`, so no schema change and no version bump.
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
 
-### Unreleased (P36-7)
-
-- **Consult questions.** Section 5 item 9: `question_asked` events, `questionId` routing to a
+- **P36-4.** **`task.evidence` is evidence-v1.** Section 6 item 4. The schema already types it as
+  `object or null`, so no schema change and
+- **P36-7.** **Consult questions.** Section 5 item 9: `question_asked` events, `questionId` routing to a
   waiting `consult` call, and `HarnessResultV11.question` on a blocked consultation (schema
-  regenerated; additive and optional). No version bump.
-
-### Unreleased (P36-6)
-
-- **Option ids on approval answers.** Section 5 item 8. `approval_requested` gains `rationale`
-  and `options` under 1.1 only. No schema change (`content` is free-form), no version bump.
-
-### Unreleased (P35-12)
-
-- **`files` excludes baseline-dirty and verify-produced paths.** Section 4 now states the
-  baseline snapshot and the verify-artifact exclusion. No schema change, no version bump.
+  regenerated; additive and optional).
+- **P36-6.** **Option ids on approval answers.** Section 5 item 8. `approval_requested` gains `rationale`
+  and `options` under 1.1 only. No schema change (`content` is free-form),
+- **P35-12.** **`files` excludes baseline-dirty and verify-produced paths.** Section 4 now states the
+  baseline snapshot and the verify-artifact exclusion. No schema change,
 
 ### Version 1.4.0 (2026-10-04)
 

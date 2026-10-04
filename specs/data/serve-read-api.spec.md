@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Stable
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -762,17 +762,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Changelog
 
-### Unreleased (P36-9)
+### Version 3.1.0 (2026-10-04)
 
-- **Three new escalation metrics on `/metrics` endpoint:**
+Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
+
+- **P36-9.** **Three new escalation metrics on `/metrics` endpoint:**
   - `docket_tasks_started_total` (counter): dispatch task claims, counted from dispatch-sourced `session_start` trace events with `"source": "dispatch"`; a resumed task's second `session_start` (`"resumed": true`) is not counted. Lifetime-of-storage count (resets on trace expiry).
   - `docket_questions_total{kind,outcome}` (counter): operator questions by (kind, outcome), where kind is from `question.kind` or defaults to "clarification"; outcome is answer action (accept/decline/cancel) or approval outcome (granted/denied/pending). Sourced from task `answers[]`, the audit log's `approval.grant`/`approval.deny` entries, and the pending approvals list. Lifetime-of-storage count.
   - `docket_decision_latency_seconds` (summary, `_sum` and `_count`): seconds from question `createdAt` to answer `answeredAt` for answered questions only. Calculated from timestamps on task records and audit log. No quantiles. Lifetime-of-storage count.
-
-### Unreleased (P36-4)
-
-- **`GET /tasks/<project>/<id>/evidence`**: authenticated evidence-v1 read over
-  `core.evidence.task_evidence`; `404` for an unknown task. Additive, no version bump.
+- **P36-4.** **`GET /tasks/<project>/<id>/evidence`**: authenticated evidence-v1 read over
+  `core.evidence.task_evidence`; `404` for an unknown task. Additive,
 
 ### Version 3.0.0 (2026-10-03)
 
