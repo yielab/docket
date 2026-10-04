@@ -765,8 +765,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ### Unreleased (P36-9)
 
 - **Three new escalation metrics on `/metrics` endpoint:**
-  - `docket_tasks_started_total` (counter): dispatch task claims, counted from dispatch-sourced `session_start` trace events with `"source": "dispatch"`. Lifetime-of-storage count (resets on trace expiry).
-  - `docket_questions_total{kind,outcome}` (counter): operator questions by (kind, outcome), where kind is from `question.kind` or defaults to "clarification"; outcome is answer action (accept/decline/cancel) or approval outcome (granted/denied/pending). Sourced from task `answers[]` and approval audit entries. Lifetime-of-storage count.
+  - `docket_tasks_started_total` (counter): dispatch task claims, counted from dispatch-sourced `session_start` trace events with `"source": "dispatch"`; a resumed task's second `session_start` (`"resumed": true`) is not counted. Lifetime-of-storage count (resets on trace expiry).
+  - `docket_questions_total{kind,outcome}` (counter): operator questions by (kind, outcome), where kind is from `question.kind` or defaults to "clarification"; outcome is answer action (accept/decline/cancel) or approval outcome (granted/denied/pending). Sourced from task `answers[]`, the audit log's `approval.grant`/`approval.deny` entries, and the pending approvals list. Lifetime-of-storage count.
   - `docket_decision_latency_seconds` (summary, `_sum` and `_count`): seconds from question `createdAt` to answer `answeredAt` for answered questions only. Calculated from timestamps on task records and audit log. No quantiles. Lifetime-of-storage count.
 
 ### Unreleased (P36-4)

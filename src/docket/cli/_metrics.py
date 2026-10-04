@@ -185,10 +185,7 @@ def run_metrics(
 
 
 def run_escalation_metrics() -> int:
-    """Print escalation metrics: task starts, questions, and decision latency.
-
-    Returns 0 on success.
-    """
+    """Print escalation metrics (task starts, questions, decision latency); returns 0."""
     from rich.table import Table
 
     from docket.core import escalation as _escalation

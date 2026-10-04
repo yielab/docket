@@ -7,7 +7,7 @@ and trace events (task_claim), not monotonic totals.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -85,9 +85,36 @@ class TestEscalationMetrics:
         metrics = _escalation.count_escalation_metrics()
         assert metrics.tasks_started_total == 1
 
+    def test_a_resumed_claim_is_not_a_new_start(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+        for resumed in (False, True):
+            _trace.trace_event(
+                "myproj",
+                "agent:myproj:task1",
+                "lead",
+                "session_start",
+                json.dumps({"source": "dispatch", "task": "task1", "resumed": resumed}),
+            )
+        assert _escalation.count_escalation_metrics().tasks_started_total == 1
+
+    def test_approvals_are_counted_from_the_real_audit_and_pending_list(self, home: Path) -> None:
+        from docket.core import approval as _approval
+
+        granted = _approval.approval_create("myproj", "implementer", "deploy")
+        denied = _approval.approval_create("myproj", "implementer", "deploy")
+        _approval.approval_create("myproj", "implementer", "deploy")
+        _approval.approval_grant(granted, channel="cli")
+        _approval.approval_deny(denied, channel="cli")
+        questions = _escalation.count_escalation_metrics().questions_total
+        assert questions[("approval", "granted")] == 1
+        assert questions[("approval", "denied")] == 1
+        assert questions[("approval", "pending")] == 1
+
     def test_questions_with_latency(self, home: Path) -> None:
         """Test latency from question createdAt to answer answeredAt."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         question_created = now - timedelta(seconds=30)
         answer_time = now
 
@@ -129,7 +156,7 @@ class TestEscalationMetrics:
 
     def test_question_kinds(self, home: Path) -> None:
         """Test that question kind field is used when present."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         task = {
             "id": "t2",
@@ -168,7 +195,7 @@ class TestEscalationMetrics:
 
     def test_multiple_answers_with_latency(self, home: Path) -> None:
         """Test multiple answers with different latencies."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         task = {
             "id": "t4",

@@ -9,7 +9,7 @@ when trace files expire or task records are deleted.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import docket.config as _cfg
 from docket.core import audit as _audit
@@ -41,12 +41,8 @@ class EscalationMetrics:
 
 
 def count_escalation_metrics() -> EscalationMetrics:
-    """Count escalation metrics across all projects.
-
-    - tasks_started_total: count of session_start trace events (dispatch claims)
-    - questions_total: count of answers by (kind, outcome) + approvals
-    - decision_latency_seconds_sum/count: latency from createdAt to answeredAt
-    """
+    """Count escalation metrics across all projects (see ``EscalationMetrics`` for each
+    field's source)."""
     tasks_started = _count_tasks_started()
     questions: dict[tuple[str, str], int] = {}
     latency_sum = 0.0
@@ -70,7 +66,7 @@ def count_escalation_metrics() -> EscalationMetrics:
                             created_str.replace("Z", "+00:00")
                         )
                         if question_created.tzinfo is None:
-                            question_created = question_created.replace(tzinfo=timezone.utc)
+                            question_created = question_created.replace(tzinfo=UTC)
                     except (ValueError, AttributeError):
                         pass
 
@@ -95,7 +91,7 @@ def count_escalation_metrics() -> EscalationMetrics:
                     try:
                         answered_at = datetime.fromisoformat(answered_at_str.replace("Z", "+00:00"))
                         if answered_at.tzinfo is None:
-                            answered_at = answered_at.replace(tzinfo=timezone.utc)
+                            answered_at = answered_at.replace(tzinfo=UTC)
                         delta = (answered_at - question_created).total_seconds()
                         if delta >= 0:  # Only count valid positive latencies
                             latency_sum += delta
@@ -127,10 +123,8 @@ def _count_tasks_started() -> int:
     import json as _json
 
     count = 0
-    home = _cfg.DOCKET_HOME
-
     for project in _all_projects():
-        traces_dir = home / "traces" / project
+        traces_dir = _cfg.TRACES_DIR / project
         if not traces_dir.exists():
             continue
         for trace_file in traces_dir.glob("*.jsonl"):
@@ -145,7 +139,8 @@ def _count_tasks_started() -> int:
                                 payload = _json.loads(payload)
                             except (ValueError, TypeError):
                                 continue
-                        if payload.get("source") == "dispatch":
+                        # A resumed task writes a second session_start; it is not a new claim.
+                        if payload.get("source") == "dispatch" and not payload.get("resumed"):
                             count += 1
             except (ValueError, OSError):
                 # Ignore corrupted trace files
@@ -155,13 +150,15 @@ def _count_tasks_started() -> int:
 
 
 def _add_approval_metrics(questions: dict[tuple[str, str], int]) -> None:
-    """Add approval resolutions to questions_total with kind='approval'."""
-    # Map audit action to approval outcome
-    action_to_outcome = {"approval_granted": "granted", "approval_denied": "denied"}
+    """Add approvals to questions_total with kind='approval': resolutions from the audit log's
+    ``approval.grant``/``approval.deny`` entries, plus the ones still pending."""
+    from docket.core import approval as _approval
 
+    outcomes = {"approval.grant": "granted", "approval.deny": "denied"}
     for entry in _audit.read_audit():
-        action = str(entry.get("action", ""))
-        if action in action_to_outcome:
-            outcome = action_to_outcome[action]
-            key = ("approval", outcome)
-            questions[key] = questions.get(key, 0) + 1
+        outcome = outcomes.get(str(entry.get("action", "")))
+        if outcome:
+            questions[("approval", outcome)] = questions.get(("approval", outcome), 0) + 1
+    pending = len(_approval.list_pending())
+    if pending:
+        questions[("approval", "pending")] = questions.get(("approval", "pending"), 0) + pending
