@@ -566,3 +566,98 @@ class TestPruneResolved:
 
         assert removed == 1
         assert not _approval_path(token).exists()
+
+
+class TestApprovalReasonAndActor:
+    """Test reason and actor parameters for grant/deny."""
+
+    def test_deny_with_reason_and_actor(
+        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A deny with reason and actor writes them to the audit log."""
+        token = _approval.approval_create("proj", "implementer", "action")
+
+        _approval.approval_deny(token, channel="cli", actor="testuser", reason="not ready")
+
+        rec = _approval.approval_get(token)
+        assert rec["state"] == "denied"
+
+        # Check audit log contains reason and actor
+        audit_lines = _audit.read_audit()
+        deny_lines = [line for line in audit_lines if line.get("action") == "approval.deny"]
+        assert len(deny_lines) > 0
+        last_line = deny_lines[-1]
+        assert "actor=testuser" in last_line["detail"]
+        assert "reason=" in last_line["detail"]
+
+    def test_deny_without_reason_matches_original_format(self, approvals_dir: Path) -> None:
+        """A deny without reason is byte-identical to the original format."""
+        token = _approval.approval_create("proj", "implementer", "action")
+
+        _approval.approval_deny(token, channel="cli")
+
+        # Check audit log format (should NOT include actor or reason)
+        audit_lines = _audit.read_audit()
+        deny_lines = [line for line in audit_lines if line.get("action") == "approval.deny"]
+        assert len(deny_lines) > 0
+        last_line = deny_lines[-1]
+        # The detail should have the exact format without actor/reason
+        assert last_line["detail"] == f"token={token} project=proj channel=cli"
+
+    def test_deny_with_blocked_reason_leaves_pending(
+        self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A deny with a reason that trips a pre_input block leaves the approval pending."""
+        token = _approval.approval_create("proj", "implementer", "action")
+
+        # Create a blocking policy
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        policy_doc = {
+            "id": "block-test",
+            "description": "Block test patterns",
+            "applies_to": ["*"],
+            "hook": "pre_input",
+            "match": {"type": "regex", "pattern": "DELETE PROD"},
+            "action": "block",
+            "message": "Blocked.",
+        }
+        (_cfg.POLICIES_DIR / "block-test.json").write_text(json.dumps(policy_doc), encoding="utf-8")
+
+        # Try to deny with a blocked reason
+        with pytest.raises(_approval.ApprovalError, match="Reason blocked by policy"):
+            _approval.approval_deny(token, channel="cli", reason="DELETE PROD")
+
+        # Check that the approval is still pending
+        rec = _approval.approval_get(token)
+        assert rec["state"] == "pending"
+
+    def test_grant_with_reason_and_actor(self, approvals_dir: Path) -> None:
+        """A grant with reason and actor writes them to the audit log."""
+        token = _approval.approval_create("proj", "implementer", "action")
+
+        _approval.approval_grant(token, channel="cli", actor="testuser", reason="looks good")
+
+        rec = _approval.approval_get(token)
+        assert rec["state"] == "granted"
+
+        # Check audit log contains reason and actor
+        audit_lines = _audit.read_audit()
+        grant_lines = [line for line in audit_lines if line.get("action") == "approval.grant"]
+        assert len(grant_lines) > 0
+        last_line = grant_lines[-1]
+        assert "actor=testuser" in last_line["detail"]
+        assert "reason=" in last_line["detail"]
+
+    def test_grant_without_reason_matches_original_format(self, approvals_dir: Path) -> None:
+        """A grant without reason is byte-identical to the original format."""
+        token = _approval.approval_create("proj", "implementer", "action")
+
+        _approval.approval_grant(token, channel="cli")
+
+        # Check audit log format (should NOT include actor or reason)
+        audit_lines = _audit.read_audit()
+        grant_lines = [line for line in audit_lines if line.get("action") == "approval.grant"]
+        assert len(grant_lines) > 0
+        last_line = grant_lines[-1]
+        # The detail should have the exact format without actor/reason
+        assert last_line["detail"] == f"token={token} project=proj channel=cli"

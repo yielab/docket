@@ -2,7 +2,7 @@
 
   docket deny <token>    Deny a pending HITL approval
 
-``run_deny(token)`` returns the process exit code.
+``run_deny(token, reason)`` returns the process exit code.
 
 A deny is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
 if *token* gated a dispatch task (``waiting_approval``, this exact token), that
@@ -12,6 +12,8 @@ for any other approval (or an already-resolved one).
 
 from __future__ import annotations
 
+import getpass
+
 from docket import ui
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
@@ -20,20 +22,28 @@ from docket.core import dispatch as _dispatch
 def _help() -> int:
     ui.header("docket deny")
     ui.console.print()
-    ui.console.print("  docket deny <token>    Deny a pending HITL approval")
+    ui.console.print("  docket deny <token> [--reason TEXT]    Deny a pending HITL approval")
     ui.console.print()
     ui.console.print("  List pending: docket approve")
     ui.console.print()
     return 0
 
 
-def run_deny(token: str | None = None) -> int:
+def run_deny(token: str | None = None, reason: str = "") -> int:
     """Deny *token* (pending → denied). Empty/help token prints usage."""
     if not token or token in ("-h", "--help"):
         return _help()
 
+    # Only include actor when there's a reason to record
+    actor = ""
+    if reason:
+        try:
+            actor = getpass.getuser()
+        except Exception:
+            actor = ""
+
     try:
-        _ap.approval_deny(token, channel="cli")
+        _ap.approval_deny(token, channel="cli", actor=actor, reason=reason)
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
         _dispatch.resolve_waiting_approval(token, "denied")

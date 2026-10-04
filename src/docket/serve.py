@@ -1006,11 +1006,16 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
 
         decision = "granted" if action == "grant" else "denied"
+        reason = req_body.get("reason", "")
+        if not isinstance(reason, str):
+            reason = ""
+        # Only pass actor when there's a reason to record
+        actor = channel if reason else ""
         try:
             if action == "grant":
-                approval.approval_grant(approval_token, channel=channel)
+                approval.approval_grant(approval_token, channel=channel, actor=actor, reason=reason)
             else:
-                approval.approval_deny(approval_token, channel=channel)
+                approval.approval_deny(approval_token, channel=channel, actor=actor, reason=reason)
             # If this token gated a dispatch task, genuinely resume
             # (grant) or kill (deny) it — see core/dispatch.py's
             # resolve_waiting_approval. A no-op for any other approval.

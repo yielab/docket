@@ -80,11 +80,19 @@ def handle_line(
             _say(f"answer line held by policy {hit.policy_id!r}; approval still pending")
             return
 
+    # Extract reason from content if it's a string
+    reason = ""
+    if answer.content is not None and isinstance(answer.content.get("reason"), str):
+        reason = answer.content["reason"]
+
+    # Only pass actor when there's a reason to record
+    actor = "harness" if reason else ""
+
     try:
         if answer.action == "accept":
-            _approval.approval_grant(target, channel="harness")
+            _approval.approval_grant(target, channel="harness", actor=actor, reason=reason)
         else:
-            _approval.approval_deny(target, channel="harness")
+            _approval.approval_deny(target, channel="harness", actor=actor, reason=reason)
     except (_approval.ApprovalNoop, _approval.ApprovalConflict):
         _say("answer ignored: approval already resolved")
     except _approval.ApprovalError:

@@ -2748,7 +2748,10 @@ def cmd_approve(approval_id: str | None = typer.Argument(None)) -> None:
 
 
 @app.command("deny")
-def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
+def cmd_deny(
+    approval_id: str | None = typer.Argument(None),
+    reason: str = typer.Option("", "--reason", help="Reason for the denial"),
+) -> None:
     """Deny a pending tool-action.
 
     Denies a pending HITL approval token from docket's own approval store
@@ -2757,7 +2760,7 @@ def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
     `docket approve` -- see its help for the full contract."""
     from docket.cli._deny import run_deny
 
-    raise typer.Exit(run_deny(approval_id))
+    raise typer.Exit(run_deny(approval_id, reason=reason))
 
 
 @app.command(

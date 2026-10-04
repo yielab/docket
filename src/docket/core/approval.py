@@ -283,26 +283,74 @@ def approval_get(token: str) -> dict[str, Any]:
     return _read(token)
 
 
-def approval_grant(token: str, channel: str = "unknown") -> None:
-    """Transition pending → granted, audit-logging ``channel``. Raises ApprovalNoop
-    if already granted, ApprovalConflict (naming the winner) if already
-    denied/expired, ApprovalError if the token is unknown."""
+def approval_grant(
+    token: str, channel: str = "unknown", *, actor: str = "", reason: str = ""
+) -> None:
+    """Transition pending → granted. Reason is screened against pre_input policy;
+    blocked reasons raise ApprovalError before resolving. See approval_deny for details."""
+    # Screen the reason against pre_input policies if non-empty
+    if reason:
+        from docket.core import policy as _policy
+
+        hit = _policy.policy_eval_detail("lead", "pre_input", reason, trusted=False)
+        if hit.action == "block":
+            raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
+
     data = _set_state(token, "granted")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
-    _emit_trace(project, f"{project}-approval", role, "approval_granted", {"token": token})
-    audit_log("approval.grant", f"token={token} project={project} channel={channel}")
+
+    # Build trace payload with actor and reason only when non-empty
+    trace_payload: dict[str, Any] = {"token": token}
+    if actor:
+        trace_payload["actor"] = actor
+    if reason:
+        trace_payload["reason"] = _redact(reason)
+
+    _emit_trace(project, f"{project}-approval", role, "approval_granted", trace_payload)
+
+    # Build audit detail with actor and reason only when non-empty
+    audit_detail = f"token={token} project={project} channel={channel}"
+    if actor:
+        audit_detail += f" actor={_redact(actor)}"
+    if reason:
+        audit_detail += f" reason={_redact(reason)}"
+    audit_log("approval.grant", audit_detail)
 
 
-def approval_deny(token: str, channel: str = "unknown") -> None:
-    """Transition pending → denied, audit-logging ``channel``. Raises ApprovalNoop
-    if already denied/expired, ApprovalConflict (naming the winner) if already
-    granted, ApprovalError if the token is unknown."""
+def approval_deny(
+    token: str, channel: str = "unknown", *, actor: str = "", reason: str = ""
+) -> None:
+    """Transition pending → denied. Reason is screened against pre_input policy;
+    blocked reasons raise ApprovalError before resolving."""
+    # Screen the reason against pre_input policies if non-empty
+    if reason:
+        from docket.core import policy as _policy
+
+        hit = _policy.policy_eval_detail("lead", "pre_input", reason, trusted=False)
+        if hit.action == "block":
+            raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
+
     data = _set_state(token, "denied")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
-    _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
-    audit_log("approval.deny", f"token={token} project={project} channel={channel}")
+
+    # Build trace payload with actor and reason only when non-empty
+    trace_payload: dict[str, Any] = {"token": token}
+    if actor:
+        trace_payload["actor"] = actor
+    if reason:
+        trace_payload["reason"] = _redact(reason)
+
+    _emit_trace(project, f"{project}-approval", role, "approval_denied", trace_payload)
+
+    # Build audit detail with actor and reason only when non-empty
+    audit_detail = f"token={token} project={project} channel={channel}"
+    if actor:
+        audit_detail += f" actor={_redact(actor)}"
+    if reason:
+        audit_detail += f" reason={_redact(reason)}"
+    audit_log("approval.deny", audit_detail)
 
 
 def list_pending() -> list[dict[str, Any]]:
