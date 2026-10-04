@@ -928,10 +928,10 @@ def _pod_dispatch(
             )
         elif res.status == "blocked":
             ui.warn(escape(f"  [{res.task_id}] blocked — {res.reason}"))
-        elif res.status == "waiting_approval":
+        elif res.status in ("waiting_approval", "waiting_input"):
             # Waiting on a human decision is an expected pause, not a
             # failure — same warn-not-error treatment as a budget block.
-            ui.warn(escape(f"  [{res.task_id}] waiting_approval — {res.reason}"))
+            ui.warn(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
         else:
             ui.error(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
     _flush_notify_after_dispatch()

@@ -119,6 +119,15 @@ Run against the local llama.cpp endpoint (`127.0.0.1:8081`, `/health` ok, 16k co
   rationale was empty (length 0). When told to explain first, the rationale was 130 characters of
   model prose (an invented justification, which is why it is shown as the model's claim and not as a
   fact). Both runs were accepted on stdin: exit 0, status `ok`, one approval `accepted`.
-- **Not exercised.** The pod-dispatch park and same-role re-entry (P36-8) was not run live, so the
-  resumed role seeing `REFUSED [approval_parked]` before the operator answer is unverified with a
-  real model. Only the in-process and subprocess seam tests cover it.
+- **Pod-dispatch park and re-entry (P36-8), run the same day.** A default `docket init` pod
+  (Lead, Implementer), `approvalMode park`, verify `fib(30) == 832040`, task: make the exponential
+  `calc.fib` fast, choosing `lru_cache` or an iterative loop through `consult` first. Dispatch 1:
+  the Lead called `consult` (kind `decision`, two options with risks, recommendation `lru_cache`),
+  the hop parked and the task went `waiting_input` (inbox: needsYou). `docket pod myapp answer
+  <task> --field optionId=iterative` chose the option the model had **not** recommended. Dispatch 2
+  (2m05s): the Lead re-entered, its reply opened "The operator chose the **iterative loop**
+  approach", it briefed the Implementer, which rewrote `fib` as a loop; verify exit 0, task `done`,
+  3 hops. The earlier `REFUSED [approval_parked]` tool result in the Lead's history did not confuse
+  it. `docket pod myapp evidence` listed the parked hop as `ok: no` with its measured tokens. Found
+  and fixed in the run: the CLI rendered `waiting_input` as an error (`✗`), now a warning like
+  `waiting_approval`.

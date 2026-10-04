@@ -179,8 +179,9 @@ and paths dirty before the run. Carried to the next phase, by name: the parked c
 crosses to the answering process through an in-process registry (it fails closed out of process);
 `approve_task` is scoped to one turn; `question.taskId` in a single-turn harness consult is the
 session key; options are not rendered in Telegram or channel notifications. A live run on the local
-endpoint called `consult` and showed an approval pack (ADR 0018 "Live run"); the pod-dispatch park
-was not exercised against a real model. Reasoning in
+endpoint called `consult` and showed an approval pack, and a live pod dispatch parked a Lead's
+`consult`, took the operator's non-recommended option and finished `done` on it (ADR 0018 "Live
+run"). Reasoning in
 [docs/adr/0018-consultation-packs-and-evidence-v1.md](docs/adr/0018-consultation-packs-and-evidence-v1.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in

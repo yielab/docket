@@ -200,6 +200,27 @@ class TestNoTtyNoChangePath:
         _pod._pod_dispatch("demo", [])  # must not raise
 
 
+class TestWaitingStatesAreNotErrors:
+    def test_waiting_input_is_a_warning_not_an_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A parked question is an expected pause, rendered like waiting_approval."""
+        from docket.core.dispatch import TaskResult
+
+        _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stderr.isatty", lambda: False)
+        parked = TaskResult(task_id="t1", status="waiting_input", hops=[], reason="parked")
+        monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [parked])
+        calls: list[str] = []
+        monkeypatch.setattr(_pod.ui, "warn", lambda msg: calls.append("warn"))
+        monkeypatch.setattr(_pod.ui, "error", lambda msg: calls.append("error"))
+
+        _dispatch.enqueue_task("demo", "ask first")
+        _pod._pod_dispatch("demo", [])
+
+        assert calls == ["warn"]
+
+
 def _fake_task_result() -> Any:
     from docket.core.dispatch import TaskResult
 

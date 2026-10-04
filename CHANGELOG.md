@@ -423,6 +423,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A task paused on a question is a warning, not an error.** `docket pod <p> dispatch` rendered
+  `waiting_input` with the error marker; it now renders like `waiting_approval` (found in the
+  Phase 36 live run).
+
 - **A canonical role file that says `kind: role` loads as written.** `load_role_file` treated
   the `kind:` key as proof of the short form and normalized a canonical document, dropping its
   `deniedTools`/`gateContract`/templates and then failing on a missing `<name>.md`; a document
