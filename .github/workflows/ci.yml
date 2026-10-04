@@ -91,6 +91,9 @@ jobs:
       - name: CLI reference drift check
         run: uv run python scripts/gen_cli_docs.py --check
 
+      - name: Evidence schema drift check
+        run: uv run python scripts/gen_evidence_schema.py --check
+
       - name: Recipe library drift check
         run: uv run python scripts/gen_recipe_docs.py --check
 

@@ -161,6 +161,12 @@ class HopResult:
     # to ``None`` rather than raising. Round-tripped by ``_hop_record``/``_hop_from_record``
     # the same way as ``verify``.
     evidence: dict[str, Any] | None = None
+    # Measured endpoint tokens for this hop's turn, ``{"input", "output"}``, or ``None`` when the
+    # driver reported none. Never an estimate. See pod-dispatch.spec.md, "Evidence v1".
+    usage: dict[str, int] | None = None
+    # The hop's trace link, ``{"project", "session", "firstTs", "lastTs"}``: the session id the
+    # hop's events were written under and the window they fall in. ``None`` when tracing is off.
+    trace: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -960,6 +966,8 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "parked": h.parked,
         "verify": h.verify,
         "evidence": h.evidence,
+        "usage": h.usage,
+        "trace": h.trace,
     }
 
 
@@ -978,6 +986,8 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     next_step_raw = rec.get("nextStep")
     verify_raw = rec.get("verify")
     evidence_raw = rec.get("evidence")
+    usage_raw = rec.get("usage")
+    trace_raw = rec.get("trace")
     return HopResult(
         role=str(rec.get("role", "")),
         member_id=str(rec.get("member", "")),
@@ -992,6 +1002,8 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         parked=bool(rec.get("parked", False)),
         verify=verify_raw if isinstance(verify_raw, dict) else None,
         evidence=evidence_raw if isinstance(evidence_raw, dict) else None,
+        usage=usage_raw if isinstance(usage_raw, dict) else None,
+        trace=trace_raw if isinstance(trace_raw, dict) else None,
     )
 
 
@@ -1557,6 +1569,26 @@ def _apply_output_guardrails(
     return hop_output, hop_ok, hop_error
 
 
+def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
+    """The turn's measured tokens as the hop record's ``usage`` block, or ``None``."""
+    if run_res.usage is None:
+        return None
+    return {"input": run_res.usage.input_tokens, "output": run_res.usage.output_tokens}
+
+
+def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
+    """The hop's trace link; ``lastTs`` is refreshed once the hop's closing events are written
+    (``_persist_hop_and_trace``). ``None`` under ``DOCKET_NO_TRACE``."""
+    if _cfg.no_trace() or not first_ts:
+        return None
+    return {
+        "project": ctx.project,
+        "session": ctx.session_id,
+        "firstTs": first_ts,
+        "lastTs": _trace._now_iso(),
+    }
+
+
 def _build_hop_result(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -1567,6 +1599,7 @@ def _build_hop_result(
     hop_ok: bool,
     hop_error: str,
     attempt: int,
+    first_ts: str = "",
 ) -> HopResult:
     """Build this hop's persisted record and handoff artifact. The verdict is parsed once,
     guarded on ``hop_ok`` (not ``run_res.ok``) since a ``pre_output`` block can fail an
@@ -1604,6 +1637,8 @@ def _build_hop_result(
         step_id=node.step_id,
         artifact=artifact,
         evidence=evidence,
+        usage=_hop_usage(run_res),
+        trace=_hop_trace_link(ctx, first_ts),
     )
 
 
@@ -1653,9 +1688,6 @@ def _persist_hop_and_trace(
     if parked_token is not None:
         hop.parked = True
 
-    if ctx.on_hop is not None:
-        ctx.on_hop(hop)
-
     _trace_locked(
         ctx.project,
         ctx.session_id,
@@ -1673,6 +1705,14 @@ def _persist_hop_and_trace(
             _json.dumps({"role": role}),
             cost_usd=run_res.cost_usd,
         )
+
+    # The hop's closing events are written, so its trace window can now be closed; this precedes
+    # `on_hop` so the persisted record's `lastTs` covers them (evidence-v1).
+    if hop.trace is not None:
+        hop.trace["lastTs"] = _trace._now_iso()
+
+    if ctx.on_hop is not None:
+        ctx.on_hop(hop)
 
     if not hop_ok:
         if run_res.failure_kind == "run_cancelled":
@@ -1989,12 +2029,13 @@ def _execute_unit(
         return approval_outcome
 
     message, env = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
+    hop_first_ts = _trace._now_iso()
     run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
 
     hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
 
     hop = _build_hop_result(
-        ctx, node, role, member_id, run_res, hop_output, hop_ok, hop_error, attempt
+        ctx, node, role, member_id, run_res, hop_output, hop_ok, hop_error, attempt, hop_first_ts
     )
 
     early_outcome = _persist_hop_and_trace(

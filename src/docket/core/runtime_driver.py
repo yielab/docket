@@ -28,7 +28,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from docket.core.llm import TokenUsage
 
 # ── run_turn ──────────────────────────────────────────────────────────────────
 
@@ -87,6 +90,9 @@ class TurnResult:
     # signature regardless of declaration order, so this stays addable without
     # breaking the positional call sites the class docstring warns about.
     retry_after_s: float | None = field(default=None, kw_only=True)
+    # Measured endpoint token counts for this turn (never an estimate); ``None`` when the
+    # driver reports none (evidence-v1 then records null usage for the hop).
+    usage: TokenUsage | None = field(default=None, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

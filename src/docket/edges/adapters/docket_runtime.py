@@ -466,6 +466,7 @@ class DocketDriver:
             result.error,
             failure_kind=result.failure_kind,
             retry_after_s=result.retry_after_s,
+            usage=result.usage if result.usage.total_tokens else None,
         )
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
