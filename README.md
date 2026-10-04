@@ -103,9 +103,8 @@ authenticated `POST /dispatch/<project>`, the MCP `dispatch` tool, or `docket se
 `docket pod <p> config set approvalMode refuse` makes an unattended pod fail fast instead of
 waiting on nobody; `budgetUsd` pauses it on a labelled estimate. `docket harness run` executes one
 agent for one turn for your own orchestrator, with a versioned result and exit codes 0 / 1 / 2.
-With `--contract 1.1` it also takes a task file, answers approvals on stdin, reports written files
-and its approvals, answers an agent's `consult` question, and runs one `--recipe` for one task
-whose evidence (`docket pod <p> evidence <task>`) comes back on the result.
+With `--contract 1.1` it also takes a task file, answers approvals on stdin, reports written files,
+approvals, `consult` questions, and runs one `--recipe` for one task, returning its evidence.
 
 *Limit:* one machine, one operator, no queue of workers and no tenant axis. A small local model
 still varies run to run; a 16k-context endpoint is the honest integration test.
