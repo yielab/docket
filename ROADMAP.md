@@ -145,8 +145,9 @@ triggers" section for the full reasoning). Board archived in
 is parked, except `cli-interface.spec.md` coverage for `docket inbox`/`channels`/`notify`/
 `pregrant`/`explain interruptions`, named there for a follow-up card rather than backfilled under
 this close's time budget.
-**Phase 35 (docket in a harness-agnostic factory, D-51) opened 2026-09-29**: ten cards over
-Waves 71–75. It was triggered by the maintainer's request to architect docket's part of the
+**Phase 35 (docket in a harness-agnostic factory, D-51) opened 2026-09-29, closed 2026-10-04**: ten
+cards over Waves 71–75. Carried to the next phase: the process-wide approval timeout for a run and
+the answer reader's daemon thread (both in the archived Wave 73 block). It was triggered by the maintainer's request to architect docket's part of the
 structured-agentic-engineering plan, and by facts read in the consumer:
 - Tack runs docket as one of four interchangeable harnesses and no longer polls its HTTP API;
 - Tack's U8 is blocked because no `harness-v1.1` exists;
