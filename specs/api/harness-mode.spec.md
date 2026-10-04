@@ -422,7 +422,8 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
     ADR 0017, and a section 7 sentence naming the seam test.
 - **Deferred to the next phase, not in this contract.** A process-wide `TOOL_APPROVAL_TIMEOUT`
   bound for the run (Wave 72 caveat 3; the per-run env route needed edits outside the owning
-  card's list), and the daemon reader thread for `--answers stdin` (Wave 72 caveat 5).
+  card's list), and the answer reader's daemon thread for `--answers stdin`, which is not joined
+  and blocks in `sys.stdin` (`cli/_harness_answers.py::serve`; TODO.md, Phase 35 close).
 
 ### Version 1.3.0 (2026-10-03)
 
