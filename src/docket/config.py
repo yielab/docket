@@ -358,6 +358,10 @@ AGENT_LOOP_MAX_TOOL_CALLS = int(os.environ.get("AGENT_LOOP_MAX_TOOL_CALLS", "40"
 AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS = int(
     os.environ.get("AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", "3")
 )
+# AGENT_LOOP_NO_PROGRESS_ROUNDS: stop a turn after this many consecutive tool
+# rounds whose every call/result pair was already seen earlier in the turn
+# (a model re-reading, or flipping an edit back and forth). 0 disables.
+AGENT_LOOP_NO_PROGRESS_ROUNDS = int(os.environ.get("AGENT_LOOP_NO_PROGRESS_ROUNDS", "3"))
 # TOOL_MAX_OUTPUT_CHARS: ceiling on ONE tool result's text before
 # edges/adapters/toolbox.py truncates it (visibly — silently short output
 # would be read as "that is all there is"). This is a context bound, not a

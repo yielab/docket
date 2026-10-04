@@ -1809,7 +1809,10 @@ class TestStopConditions:
     ) -> None:
         backend = InfiniteToolBackend()
         config = _loop.LoopConfig(
-            max_iterations=1000, max_tool_calls=1000, wall_clock_timeout_s=5.0
+            max_iterations=1000,
+            max_tool_calls=1000,
+            wall_clock_timeout_s=5.0,
+            no_progress_rounds=0,
         )
         # A fake clock: 0, 1, 2, 3, ... seconds per call -- crosses the 5s
         # budget on the 6th check without any real time passing.

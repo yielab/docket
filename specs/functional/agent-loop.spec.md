@@ -603,6 +603,22 @@ This specification does NOT cover:
     never reaches the published harness-v1 wire contract. That contract is unchanged by this
     section.
 
+### The no_progress stop (Phase 37, ADR 0019 section 4)
+
+77. After each round of tool calls the loop **MUST** compute a round fingerprint: the set of
+    `(tool name, canonical JSON of the parsed arguments with sorted keys, ok, sha256 of the tool
+    output text)` over that round's calls. Denied and refused results count like any other, since
+    their text is part of the digest. A round with no tool calls never counts.
+78. The loop **MUST** keep the fingerprints seen in the turn and count consecutive rounds whose
+    fingerprint was already seen; any new fingerprint resets the count. When the count reaches
+    `LoopConfig.no_progress_rounds` the loop **MUST** stop with `stop_reason="no_progress"`,
+    `ok=False` and `failure_kind="invalid_output"`, after the round's atomic persistence, with no
+    further backend call; its error **MUST** name the repeated tool(s). The approval and
+    denial stops (requirements 57-60, 70, 75) take precedence within the same round.
+79. `no_progress_rounds` **MUST** default to `config.AGENT_LOOP_NO_PROGRESS_ROUNDS` (3, overridable
+    through the environment variable of the same name); `0` **MUST** disable the check. Detection
+    is per turn only, never across turns.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -611,13 +627,14 @@ This specification does NOT cover:
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
-    "tool_denials", "run_cancelled", "approval_unavailable", "approval_parked",
+    "tool_denials", "run_cancelled", "approval_unavailable", "approval_parked", "no_progress",
 ]
 
 class LoopConfig:                              # frozen
     max_iterations: int         # default config.AGENT_LOOP_MAX_ITERATIONS
     max_tool_calls: int         # default config.AGENT_LOOP_MAX_TOOL_CALLS
     max_consecutive_tool_denials: int # default config.AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
+    no_progress_rounds: int     # default config.AGENT_LOOP_NO_PROGRESS_ROUNDS; 0 disables
     wall_clock_timeout_s: float # default config.AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
     token_budget: int           # default config.AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int      # default config.AGENT_LOOP_REQUEST_TIMEOUT_S
@@ -793,6 +810,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Unreleased
+
+- **Requirements 77-79: the `no_progress` stop.** A turn stops when `no_progress_rounds` (default 3)
+  consecutive tool rounds each repeat an already-seen round fingerprint.
 
 ### Version 1.30.0 (2026-10-03)
 

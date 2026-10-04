@@ -55,6 +55,9 @@ reported as ``AgentLoopResult.stop_reason``:
   Terminal on its own for the same reason as ``approval_unavailable``: there
   is somebody who *could* eventually answer, but not on this thread, right
   now — the task resumes elsewhere once a human resolves the token.
+- ``no_progress`` — ``LoopConfig.no_progress_rounds`` consecutive tool rounds
+  each repeated a round already seen earlier in the turn (same tools, same
+  canonical arguments, same outcomes). ``0`` disables the check.
 - ``timeout`` — wall-clock budget exceeded, checked between iterations
   (``LoopConfig.wall_clock_timeout_s``). This does not interrupt an in-flight
   HTTP call already underway; ``ChatBackend.complete``'s own per-request
@@ -158,6 +161,7 @@ from docket.core.llm import (
     ChatMessage,
     ChatResponse,
     TokenUsage,
+    ToolCall,
     ToolSpec,
     system,
     tool_result,
@@ -189,6 +193,7 @@ StopReason = Literal[
     "run_cancelled",
     "approval_unavailable",
     "approval_parked",
+    "no_progress",
 ]
 
 _FINALIZATION_INSTRUCTION = (
@@ -217,6 +222,7 @@ class LoopConfig:
     max_iterations: int = _cfg.AGENT_LOOP_MAX_ITERATIONS
     max_tool_calls: int = _cfg.AGENT_LOOP_MAX_TOOL_CALLS
     max_consecutive_tool_denials: int = _cfg.AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
+    no_progress_rounds: int = _cfg.AGENT_LOOP_NO_PROGRESS_ROUNDS
     wall_clock_timeout_s: float = _cfg.AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
     token_budget: int = _cfg.AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int = _cfg.AGENT_LOOP_REQUEST_TIMEOUT_S
@@ -797,6 +803,43 @@ class _FitOutcome:
     attempts: int = 0
 
 
+class _ProgressDetector:
+    """Counts consecutive tool rounds whose fingerprint was already seen this turn."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._seen: set[frozenset[tuple[str, str, bool, str]]] = set()
+        self._repeats = 0
+        self._names: list[str] = []
+
+    @staticmethod
+    def entry(call: ToolCall, ok: bool, output: str) -> tuple[str, str, bool, str]:
+        try:
+            args = json.dumps(json.loads(call.arguments), sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError):
+            args = str(call.arguments)
+        return (call.name, args, ok, hashlib.sha256(output.encode("utf-8")).hexdigest())
+
+    def observe(self, entries: list[tuple[str, str, bool, str]]) -> bool:
+        """Record one round; True when the repeat count has reached the limit."""
+        if self.limit <= 0 or not entries:
+            return False
+        fingerprint = frozenset(entries)
+        if fingerprint in self._seen:
+            self._repeats += 1
+            self._names = sorted({e[0] for e in entries})
+        else:
+            self._seen.add(fingerprint)
+            self._repeats = 0
+        return self._repeats >= self.limit
+
+    def error(self) -> str:
+        return (
+            f"no progress: {self._repeats} consecutive tool rounds repeated earlier "
+            f"results; repeated tool(s)={','.join(self._names)}"
+        )
+
+
 @dataclass
 class _TurnState:
     """Turn-scoped state threaded through ``run_agent_turn``'s phases as attributes,
@@ -829,6 +872,7 @@ class _TurnState:
     task_message_index: int = -1
     finalization_attempted: bool = False
     consecutive_denial_kinds: list[ToolDenialKind] = field(default_factory=list)
+    progress: _ProgressDetector | None = None
 
     @classmethod
     def create(
@@ -1683,6 +1727,7 @@ class _TurnState:
         batch_cancelled = False
         approval_unavailable: ToolResult | None = None
         approval_parked: ToolResult | None = None
+        round_entries: list[tuple[str, str, bool, str]] = []
         self.ctx.rationale = assistant_msg.content or ""
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
@@ -1718,6 +1763,7 @@ class _TurnState:
             elif result.decision == "allow" and result.executed:
                 self.consecutive_denial_kinds.clear()
             tool_msgs.append(tool_result(call, tool_output))
+            round_entries.append(_ProgressDetector.entry(call, result.ok, tool_output))
             if result.denial_kind == "run_cancelled" or self.cancellation_requested():
                 batch_cancelled = True
             if result.denial_kind == "approval_unavailable" and approval_unavailable is None:
@@ -1776,7 +1822,22 @@ class _TurnState:
                 ),
                 failure_kind="invalid_output",
             )
-        return None
+        return self.stop_if_no_progress(round_entries)
+
+    def stop_if_no_progress(
+        self, round_entries: list[tuple[str, str, bool, str]]
+    ) -> AgentLoopResult | None:
+        """Stop once enough consecutive rounds repeat already-seen results."""
+        if self.progress is None:
+            self.progress = _ProgressDetector(self.cfg.no_progress_rounds)
+        if not self.progress.observe(round_entries):
+            return None
+        return self.done(
+            ok=False,
+            stop_reason="no_progress",
+            error=self.progress.error(),
+            failure_kind="invalid_output",
+        )
 
     # Returns None to keep looping.
     def run_iteration(self) -> AgentLoopResult | None:

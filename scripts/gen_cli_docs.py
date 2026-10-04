@@ -554,6 +554,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`40`",
     ),
     (
+        ("AGENT_LOOP_NO_PROGRESS_ROUNDS",),
+        "Stops a turn after this many consecutive tool rounds that only repeat earlier results; `0` disables",
+        "`3`",
+    ),
+    (
         ("AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS",),
         "Stops a denial-only loop before it consumes the iteration/tool/token limits",
         "`3`",
