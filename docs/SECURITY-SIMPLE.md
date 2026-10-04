@@ -39,6 +39,11 @@
 > requirements 7-8). Notifications exist since Phase 34, but only through an opt-in `kind: channel`
 > you enable yourself; every channel ships off except your own console (see "The operator loop"
 > below).
+>
+> A gated call's approval now carries a `rationale` (the model's own preceding sentence, screened
+> and truncated, so a claim to weigh and not a verified fact) and the options `approve_once`,
+> `approve_task` (identical calls within one turn only) and `deny`; `--reason` on approve/deny is
+> screened and audited with the answering channel.
 > Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
 > separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
 > every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the

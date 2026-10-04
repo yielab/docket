@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Consultation packs and evidence-v1 (Phase 36, D-53, ADR 0018).** An agent can now ask the
+  operator a structured question and an operator can see what a task did, from one builder on
+  every surface.
+  - `consult` is a built-in `read` tool: the model asks a `decision`-kind question with options and
+    an optional recommendation (operator-v1.1 `QuestionV11`, schemas under
+    `docs/contracts/operator-v1.1/`). In a single harness turn it is a `question_asked` event
+    answered on stdin by `questionId` with an `optionId`; under `refuse` the turn ends `blocked`
+    with the question on the v1.1 result. In a pod hop it parks the task `waiting_input` and
+    `answer_task` re-enters the same role with the answer. `maxConsultationsPerTask` caps it task-wide.
+  - Approval packs: a gated call carries a screened, 500-character-bounded `rationale` taken from the
+    model's preceding text, and three options (`approve_once`, `approve_task`, `deny`).
+    `approve_task` pre-grants identical calls within the turn only. `docket approve|deny --reason`,
+    HTTP `reason` and a harness `content.reason` record why, with an `actor`, in the audit entry.
+  - evidence-v1 (`core/evidence.py`, `docs/contracts/evidence-v1/`): per-hop measured usage and a
+    trace link for a task, read through `docket pod <p> evidence <task> [--json]`,
+    `GET /tasks/<p>/<id>/evidence` and the harness result's `task.evidence`. All three come from
+    one builder. Usage is `null` when the endpoint reports zero.
+  - Corrections ledger: deny reasons, Reviewer `REQUEST-CHANGES` texts and declined answers append to
+    `<DOCKET_HOME>/corrections/<project>.jsonl`, read with `docket pod <p> corrections`.
+  - Escalation metrics: `docket_tasks_started_total`, `docket_questions_total{kind,outcome}` and
+    `docket_decision_latency_seconds` on `/metrics`, and `docket metrics --escalation`. They are
+    lifetime-of-current-storage counts, not monotonic totals.
+  - Harness `files` no longer lists paths that were already dirty before the run or that the verify
+    command produced (P35-12).
+  - Known limits: the parked consult question crosses to the answering process through an in-process
+    registry (out of process it fails closed); `approve_task` does not survive a parked and resumed
+    hop; a single-turn consult's `question.taskId` is the session key; options are not rendered in
+    Telegram or channel notifications.
+
 - **Harness contract 1.1 is complete for an external supervisor (Phase 35, D-51, ADR 0017).**
   `docket harness run --contract 1.1` (opt-in; `--contract 1.0` stays byte-identical) adds
   process lifecycle events for `bash` (`process_started`/`process_exited`, with `pgid` and

@@ -214,6 +214,14 @@ its fixtures validates against that committed file. It adds, all under the one `
 - **Approvals on the result.** `approvals` lists each approval the run requested and its outcome
   (`accepted`, `declined`, `timed_out` or `unanswered`). A denied approval still ends the run by its
   turn's own outcome, so a caller reads `approvals`, not only `status`, to tell them apart.
+- **Consultation and approval packs.** `question_asked` events carry an operator-v1.1 question
+  (`kind`, `options`, optional `recommendation`); the caller answers with a `questionId` line
+  carrying `{"optionId": ...}`. `approval_requested` carries a `rationale` and three `options`
+  (`approve_once`, `approve_task`, `deny`); a `content.reason` on the answer is screened and audited.
+  A blocked consultation under the default `refuse` mode puts the question on the result.
+- **Evidence.** A recipe result's `task.evidence` is the evidence-v1 document for the task, identical
+  to `docket pod <p> evidence <task> --json`
+  ([schema](contracts/evidence-v1/schema.json)).
 
 > This is unrelated to [DEVELOPMENT-HARNESS.md](DEVELOPMENT-HARNESS.md), which documents the
 > *contributor*-side context harness — skill routing, hooks, token-efficient validation — for
@@ -978,6 +986,29 @@ replies to a message it received; a bound chat's push notification, when the `te
 is enabled and that chat id is explicitly listed in its `actors`, is this separate, opt-in
 mechanism, never the bot module sending on its own initiative (see SECURITY-SIMPLE.md and
 telegram-integration.spec.md).
+
+### Consultation, approval packs, evidence and escalation metrics
+
+An agent that needs a human decision has two ways to ask. A gated tool call becomes an approval
+whose pack carries the model's own preceding sentence as a `rationale` (screened, truncated to 500
+characters, and a claim by the model rather than a fact) and three options: `approve_once`,
+`approve_task` (identical calls within the same turn only; it is not carried across a parked and
+resumed hop) and `deny`. `docket approve|deny <token> --reason TEXT`, the HTTP approval POST's
+`reason` and the harness answer's `content.reason` record why, with an `actor`, in the audit entry.
+The `consult` built-in (kind `read`) asks a typed question with options and an optional
+recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
+role with the answer in its message, bounded per task by `maxConsultationsPerTask`. The parked
+question reaches the answering process through an in-process registry, so out of process the answer
+fails closed. Options are not rendered in Telegram or channel notifications.
+
+`docket pod <p> evidence <task-id> [--json]` (also `GET /tasks/<p>/<id>/evidence`) prints the
+evidence-v1 document for a task: per-hop measured token usage (null when the endpoint reports zero)
+and a trace link made of the session key and a one-second window. A corrections ledger at
+`<DOCKET_HOME>/corrections/<project>.jsonl` collects deny reasons, Reviewer `REQUEST-CHANGES` texts
+and declined answers, read with `docket pod <p> corrections [--json]`.
+`docket metrics --escalation` and `/metrics` add `docket_tasks_started_total`,
+`docket_questions_total{kind,outcome}` and `docket_decision_latency_seconds`. Like the other
+counters they are lifetime-of-current-storage counts and must not be alerted on as monotonic.
 
 ### Pipeline resolution and generalized gates
 

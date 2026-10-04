@@ -101,3 +101,24 @@ integrator owns two tests that cross the seams:
   schemas;
 - **one task's evidence**, read through the CLI `--json`, HTTP and the harness, compared byte for
   byte.
+
+### Live run (2026-10-04)
+
+Run against the local llama.cpp endpoint (`127.0.0.1:8081`, `/health` ok, 16k context,
+`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), a throwaway `DOCKET_HOME`, `docket harness run --contract 1.1
+--answers stdin`, model `local/local-model` (Qwen3.6-35B-A3B).
+
+- **consult.** Task: choose between an in-memory dict and a SQLite file and call `consult` first.
+  The model called `consult` (one `question_asked` event, kind `decision`), the question was answered
+  by `questionId` with the first option, the `consult` tool result was `ok`, and the run ended exit 0,
+  status `ok`, two model turns. `question.taskId` was `agent:<harness-project>:default`, the session
+  key, as recorded under the carried items below.
+- **approval pack.** Task: run `git push origin production`. The bash call was gated
+  (`prod-deploy`) and the `approval_requested` payload carried the three options (`approve_once`,
+  `approve_task`, `deny`). With no instruction the model wrote no text before the call and the
+  rationale was empty (length 0). When told to explain first, the rationale was 130 characters of
+  model prose (an invented justification, which is why it is shown as the model's claim and not as a
+  fact). Both runs were accepted on stdin: exit 0, status `ok`, one approval `accepted`.
+- **Not exercised.** The pod-dispatch park and same-role re-entry (P36-8) was not run live, so the
+  resumed role seeing `REFUSED [approval_parked]` before the operator answer is unverified with a
+  real model. Only the in-process and subprocess seam tests cover it.
