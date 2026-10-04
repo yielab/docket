@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v1.1/answer.schema.json",
+  "title": "AnswerResultV11",
+  "additionalProperties": false,
+  "description": "operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``. The\ncross-check against the question lives in ``validate_answer_v11``.",
+  "properties": {
+    "action": {
+      "enum": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content"
+    },
+    "optionId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Optionid"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "type": "object"
+}

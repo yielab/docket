@@ -521,6 +521,24 @@ document constrains it to the MCP elicitation subset. Every document carries `$i
 `$schema`. `--check` exits 1 when any file on disk is stale; there is no package copy (contrast
 `config-v1`, which ships one inside the wheel).
 
+### Contract 1.1 (`docs/contracts/operator-v1.1/`)
+
+An additive extension in `docket.core.operator_contract`; v1 models and schemas are unchanged.
+
+- `QuestionKind` = `approval | clarification | decision`.
+- `Option{id, label, description, risks: list[str], estimatedTokens: int | None}` and
+  `Recommendation{optionId, rationale, evidenceRefs: list[str]}` (camelCase aliases on the wire).
+- `QuestionV11(Question)` adds `kind` (required), `options` (default empty) and `recommendation`
+  (optional). Option ids MUST be unique and a recommendation's `optionId` MUST name an option.
+- `AnswerResultV11(AnswerResult)` adds `optionId`.
+- `validate_answer_v11(question, answer)`: when `action` is `accept` and the question has options,
+  `optionId` is required and MUST name an option; `decline`/`cancel` need none. It then applies
+  `validate_answer` to `content`.
+- `scripts/gen_operator_schemas.py` also renders `question.schema.json` and `answer.schema.json`
+  (with `Option` and `Recommendation` as `$defs`) there, `$id`
+  `https://docket.dev/schemas/operator-v1.1/<name>.schema.json`; `--check` covers both directories.
+  No producer or consumer of these models exists yet.
+
 ## Examples
 
 ### The A2A mapping
@@ -608,6 +626,11 @@ a == b  # True regardless of argument dict key order
   functions, never by hand-building an equivalent dict.
 
 ## Changelog
+
+### Unreleased (P36-1)
+
+- Contract 1.1: `QuestionV11`, `AnswerResultV11`, `Option`, `Recommendation`,
+  `validate_answer_v11` and the generated `operator-v1.1` schemas. Version not bumped.
 
 ### Version 1.0.0 (2026-09-29)
 

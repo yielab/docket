@@ -14,11 +14,14 @@ from docket.core.operator_contract import (
     A2A_STATES,
     EVENT_KINDS,
     AnswerResult,
+    AnswerResultV11,
     ApprovalView,
     CloudEvent,
     InboxView,
+    Option,
     Question,
     QuestionSchema,
+    QuestionV11,
     TaskBrief,
     TaskView,
     a2a_state,
@@ -26,6 +29,7 @@ from docket.core.operator_contract import (
     make_event,
     new_question_id,
     validate_answer,
+    validate_answer_v11,
     validate_requested_schema,
 )
 
@@ -346,3 +350,81 @@ class TestCanonicalArgsDigest:
         digest = canonical_args_digest("bash", {"command": "ls"})
         assert len(digest) == 16
         int(digest, 16)
+
+
+# ── operator-v1.1 ─────────────────────────────────────────────────────────────
+
+_V11_SCHEMA = {"type": "object", "properties": {"note": {"type": "string"}}}
+
+
+def _opt(oid: str) -> Option:
+    return Option(id=oid, label=oid.upper(), description=f"do {oid}")
+
+
+def _question_v11(**overrides: object) -> QuestionV11:
+    fields: dict[str, object] = {
+        "id": "q-0123456789ab",
+        "taskId": "t-1",
+        "pod": "alpha",
+        "step": "ask",
+        "message": "Which way?",
+        "requestedSchema": _V11_SCHEMA,
+        "createdAt": "2026-10-04T00:00:00Z",
+        "kind": "decision",
+        "options": [_opt("a"), _opt("b")],
+    }
+    fields.update(overrides)
+    return QuestionV11(**fields)
+
+
+class TestQuestionV11:
+    def test_valid_with_recommendation(self) -> None:
+        q = _question_v11(recommendation={"optionId": "a", "rationale": "cheaper"})
+        assert q.recommendation is not None
+        assert q.recommendation.option_id == "a"
+        assert q.recommendation.evidence_refs == []
+        assert q.options[0].risks == [] and q.options[0].estimated_tokens is None
+
+    def test_unknown_recommendation_option_id(self) -> None:
+        with pytest.raises(ValidationError, match="recommendation"):
+            _question_v11(recommendation={"optionId": "zzz", "rationale": "x"})
+
+    def test_duplicate_option_ids(self) -> None:
+        with pytest.raises(ValidationError, match="duplicate"):
+            _question_v11(options=[_opt("a"), _opt("a")])
+
+    def test_bad_kind(self) -> None:
+        with pytest.raises(ValidationError):
+            _question_v11(kind="chat")
+
+    def test_inherits_requested_schema_validation(self) -> None:
+        with pytest.raises(ValidationError):
+            _question_v11(requestedSchema={"type": "array"})
+
+
+class TestValidateAnswerV11:
+    def test_accept_without_option_id_when_options_exist(self) -> None:
+        with pytest.raises(ValueError, match="optionId"):
+            validate_answer_v11(_question_v11(), AnswerResultV11(action="accept"))
+
+    def test_accept_with_unknown_option_id(self) -> None:
+        answer = AnswerResultV11(action="accept", optionId="nope")
+        with pytest.raises(ValueError, match="nope"):
+            validate_answer_v11(_question_v11(), answer)
+
+    def test_accept_with_known_option_id(self) -> None:
+        answer = AnswerResultV11(action="accept", optionId="b")
+        assert validate_answer_v11(_question_v11(), answer) is answer
+
+    def test_decline_without_option_id_is_fine(self) -> None:
+        answer = AnswerResultV11(action="decline")
+        assert validate_answer_v11(_question_v11(), answer) is answer
+
+    def test_accept_without_options_needs_no_option_id(self) -> None:
+        answer = AnswerResultV11(action="accept")
+        assert validate_answer_v11(_question_v11(options=[]), answer) is answer
+
+    def test_content_still_validated_against_schema(self) -> None:
+        answer = AnswerResultV11(action="accept", optionId="a", content={"note": 3})
+        with pytest.raises(ValueError, match="note"):
+            validate_answer_v11(_question_v11(), answer)

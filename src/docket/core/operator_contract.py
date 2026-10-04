@@ -13,7 +13,7 @@ import json
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 A2A_STATES: tuple[str, ...] = (
     "SUBMITTED",
@@ -174,6 +174,65 @@ class AnswerResult(BaseModel):
     content: dict[str, Any] | None = None
 
 
+QuestionKind = Literal["approval", "clarification", "decision"]
+
+
+class Option(BaseModel):
+    """One choice a v1.1 question offers."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    label: str
+    description: str
+    risks: list[str] = Field(default_factory=list)
+    estimated_tokens: int | None = Field(None, alias="estimatedTokens")
+
+
+class Recommendation(BaseModel):
+    """The option the asker recommends, with its reasons and evidence."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    option_id: str = Field(alias="optionId")
+    rationale: str
+    evidence_refs: list[str] = Field(default_factory=list, alias="evidenceRefs")
+
+
+class QuestionV11(Question):
+    """operator-v1.1 question: a ``Question`` plus ``kind``, ``options`` and a
+    ``recommendation``."""
+
+    kind: QuestionKind
+    options: list[Option] = Field(default_factory=list)
+    recommendation: Recommendation | None = None
+
+    @field_validator("options")
+    @classmethod
+    def _unique_option_ids(cls, v: list[Option]) -> list[Option]:
+        ids = [o.id for o in v]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"duplicate option ids: {dupes}")
+        return v
+
+    @model_validator(mode="after")
+    def _recommendation_names_option(self) -> QuestionV11:
+        rec = self.recommendation
+        if rec is not None and rec.option_id not in {o.id for o in self.options}:
+            raise ValueError(f"recommendation optionId {rec.option_id!r} names no option")
+        return self
+
+
+class AnswerResultV11(AnswerResult):
+    """operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``. The
+    cross-check against the question lives in ``validate_answer_v11``."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    option_id: str | None = Field(None, alias="optionId")
+
+
 _TYPE_CHECKERS: dict[str, Any] = {
     "string": lambda v: isinstance(v, str),
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
@@ -206,6 +265,18 @@ def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
         if enum is not None and value not in enum:
             raise ValueError(f"property {name!r} is not one of {enum!r}")
     return result
+
+
+def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> AnswerResultV11:
+    """``validate_answer`` plus the option check: an ``accept`` on a question that has
+    options MUST carry an ``optionId`` naming one. Raises ``ValueError``."""
+    if answer.action == "accept" and question.options:
+        if answer.option_id is None:
+            raise ValueError("accept requires optionId when the question has options")
+        if answer.option_id not in {o.id for o in question.options}:
+            raise ValueError(f"optionId {answer.option_id!r} names no option")
+    validate_answer(question, answer)
+    return answer
 
 
 class ApprovalView(BaseModel):
