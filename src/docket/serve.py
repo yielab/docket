@@ -313,6 +313,41 @@ def _loop_metrics() -> LoopMetrics:
     return m
 
 
+def _escalation_metrics_lines() -> list[str]:
+    """Render escalation metrics (task claims, questions, latency) as Prometheus lines."""
+    from docket.core import escalation as _escalation
+
+    esc = _escalation.count_escalation_metrics()
+
+    lines: list[str] = [
+        "# HELP docket_tasks_started_total Number of dispatch task claims (session_start"
+        " trace events); lifetime-of-storage count, resets on trace expiry",
+        "# TYPE docket_tasks_started_total counter",
+        "docket_tasks_started_total " + str(esc.tasks_started_total),
+        "# HELP docket_questions_total Questions asked to operators, by kind and outcome;"
+        " lifetime-of-storage count, resets on task deletion",
+        "# TYPE docket_questions_total counter",
+    ]
+    for (kind, outcome), count in sorted(esc.questions_total.items()):
+        lines.append(
+            'docket_questions_total{kind="'
+            + _esc(kind)
+            + '",outcome="'
+            + _esc(outcome)
+            + '"} '
+            + str(count)
+        )
+
+    lines += [
+        "# HELP docket_decision_latency_seconds Seconds from question createdAt to"
+        " answeredAt, answered questions only; lifetime-of-storage count",
+        "# TYPE docket_decision_latency_seconds summary",
+        "docket_decision_latency_seconds_sum " + str(esc.decision_latency_seconds_sum),
+        "docket_decision_latency_seconds_count " + str(esc.decision_latency_seconds_count),
+    ]
+    return lines
+
+
 def render_metrics() -> str:
     """Render Prometheus-format metrics (no trailing newline; callers append it)."""
     d = _cost_json()
@@ -433,6 +468,8 @@ def render_metrics() -> str:
         "docket_turn_duration_seconds_sum " + str(loop.turn_duration_seconds_sum),
         "docket_turn_duration_seconds_count " + str(loop.turn_duration_seconds_count),
     ]
+
+    lines += _escalation_metrics_lines()
 
     return "\n".join(lines)
 

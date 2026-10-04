@@ -2676,6 +2676,9 @@ def cmd_metrics(
     role: str = typer.Option("", "--role", "-r", help="Restrict to one role"),
     project: str = typer.Option("", "--project", "-p", help="Restrict to one project"),
     window: int | None = typer.Option(None, "--window", "-w", help="Window in days"),
+    escalation: bool = typer.Option(
+        False, "--escalation", help="Show escalation metrics (task starts, questions, latency)"
+    ),
 ) -> None:
     """Show session success-rate and drift metrics.
 
@@ -2684,9 +2687,14 @@ def cmd_metrics(
     `--project` to a specific project; `-w`/`--window N` (default 50,
     METRICS_WINDOW env-overridable) sets the rolling window size in
     sessions. Output: success rate, duration (mean/p95), cost (total/mean),
-    and guardrail trip counts."""
-    from docket.cli._metrics import run_metrics
+    and guardrail trip counts.
 
+    `--escalation` prints escalation metrics instead: task starts (dispatch claims),
+    operator questions by kind and outcome, and decision latency."""
+    from docket.cli._metrics import run_escalation_metrics, run_metrics
+
+    if escalation:
+        raise typer.Exit(run_escalation_metrics())
     raise typer.Exit(run_metrics(role=role, project=project, window=window))
 
 

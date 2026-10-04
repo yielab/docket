@@ -125,6 +125,9 @@ class TestRenderMetrics:
             "docket_agent_turns_total",
             "docket_cost_usd_total",
             "docket_approvals_pending_total",
+            "docket_tasks_started_total",
+            "docket_questions_total",
+            "docket_decision_latency_seconds",
         ):
             assert name in text
 

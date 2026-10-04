@@ -1348,6 +1348,9 @@ METRICS_WINDOW env-overridable) sets the rolling window size in
 sessions. Output: success rate, duration (mean/p95), cost (total/mean),
 and guardrail trip counts.
 
+`--escalation` prints escalation metrics instead: task starts (dispatch claims),
+operator questions by kind and outcome, and decision latency.
+
 
 ---
 

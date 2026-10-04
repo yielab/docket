@@ -182,3 +182,52 @@ def run_metrics(
 
     _compute_and_print(str(traces_dir), role, project, win)
     return 0
+
+
+def run_escalation_metrics() -> int:
+    """Print escalation metrics: task starts, questions, and decision latency.
+
+    Returns 0 on success.
+    """
+    from rich.table import Table
+
+    from docket.core import escalation as _escalation
+
+    ui.header("docket metrics --escalation")
+    ui.console.print()
+
+    metrics = _escalation.count_escalation_metrics()
+
+    # Print tasks started
+    ui.console.print(f"Tasks started (dispatch claims): {metrics.tasks_started_total}")
+    ui.console.print()
+
+    # Print questions table if any
+    if metrics.questions_total:
+        table = Table(title="Operator Questions")
+        table.add_column("Kind", style="cyan")
+        table.add_column("Outcome", style="magenta")
+        table.add_column("Count", style="green", justify="right")
+
+        for (kind, outcome), count in sorted(metrics.questions_total.items()):
+            table.add_row(kind, outcome, str(count))
+
+        ui.console.print(table)
+        ui.console.print()
+    else:
+        ui.console.print("No questions recorded.")
+        ui.console.print()
+
+    # Print decision latency
+    if metrics.decision_latency_seconds_count > 0:
+        mean_latency = metrics.decision_latency_seconds_sum / metrics.decision_latency_seconds_count
+        ui.console.print(
+            f"Decision latency: mean={mean_latency:.2f}s, count={metrics.decision_latency_seconds_count}"
+        )
+    else:
+        ui.console.print("No decision latency data available.")
+
+    ui.console.print()
+    ui.info("These are lifetime-of-storage counts; they reset when traces/tasks expire.")
+
+    return 0
