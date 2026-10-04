@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -238,9 +239,77 @@ class Limits(BaseModel):
     maxTokens: int | None = None
 
 
+ApprovalOutcome = Literal["accepted", "declined", "timed_out", "refused_content", "unanswered"]
+
+
+class ApprovalEntry(BaseModel):
+    """One approval a run asked for and how it ended; ``token`` is the approval's own token.
+
+    ``tool``/``callId`` name the paused call. See ``ApprovalLedger`` for how ``outcome`` is set."""
+
+    token: str
+    tool: str
+    callId: str
+    outcome: ApprovalOutcome
+
+
+class ApprovalLedger:
+    """Folds approval trace events and stdin answers into ``ApprovalEntry`` records."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._requests: dict[str, tuple[str, str]] = {}
+        self._answers: dict[str, ApprovalOutcome] = {}
+        self._granted: set[str] = set()
+        self._denied: set[str] = set()
+
+    def observe(self, record: Mapping[str, Any]) -> None:
+        payload = record.get("payload")
+        if not isinstance(payload, Mapping):
+            return
+        token = str(payload.get("token", ""))
+        if not token:
+            return
+        event_type = record.get("event_type")
+        with self._lock:
+            if event_type == "approval_requested":
+                self._requests.setdefault(
+                    token, (str(payload.get("tool", "")), str(payload.get("callId", "")))
+                )
+            elif event_type == "approval_granted":
+                self._granted.add(token)
+            elif event_type == "approval_denied":
+                self._denied.add(token)
+
+    def answered(self, token: str, action: str) -> None:
+        """Record a stdin answer that this process applied: call only after the grant or deny
+        succeeded, so a deny that lost a race to the timeout is never recorded as an answer."""
+        with self._lock:
+            self._answers[token] = "accepted" if action == "accept" else "declined"
+
+    def finish(self, *, cancelled: bool) -> list[ApprovalEntry]:
+        """The entries for every approval the run requested, in request order."""
+        with self._lock:
+            entries: list[ApprovalEntry] = []
+            for token, (tool, call_id) in self._requests.items():
+                if token in self._answers:
+                    outcome = self._answers[token]
+                elif token in self._granted:
+                    outcome = "accepted"
+                elif token in self._denied:
+                    outcome = "unanswered" if cancelled else "timed_out"
+                else:
+                    outcome = "unanswered"
+                entries.append(
+                    ApprovalEntry(token=token, tool=tool, callId=call_id, outcome=outcome)
+                )
+            return entries
+
+
 class HarnessResultV11(_VersionedEnvelopeV11):
-    """The 1.1 terminal result: every v1.0 field, plus files/task/limits.
-    The empty defaults below are not yet populated by any live path."""
+    """The 1.1 terminal result: every v1.0 field, plus files, task, limits and approvals.
+    ``files`` and ``limits`` are populated on every run; ``task`` only by a recipe run;
+    ``approvals`` lists each approval the run requested (empty when it asked for none)."""
 
     token: str
     status: HarnessResultStatus
@@ -254,6 +323,7 @@ class HarnessResultV11(_VersionedEnvelopeV11):
     files: list[FileChange] = Field(default_factory=list)
     task: HarnessTask | None = None
     limits: Limits = Field(default_factory=Limits)
+    approvals: list[ApprovalEntry] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -421,6 +491,7 @@ def result_from_v11(
     files: Sequence[FileChange] = (),
     task: HarnessTask | None = None,
     limits: Limits | None = None,
+    approvals: Sequence[ApprovalEntry] = (),
 ) -> HarnessResultV11:
     """The v1.1 sibling of ``result_from``: same status/blocked/usage mapping,
     reused rather than re-derived, plus the caller-supplied v1.1-only fields."""
@@ -439,4 +510,5 @@ def result_from_v11(
         files=list(files),
         task=task,
         limits=limits if limits is not None else Limits(),
+        approvals=list(approvals),
     )

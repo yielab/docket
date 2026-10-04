@@ -169,7 +169,8 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
 **Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
 contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 ships the models, generated
 schema, fixtures, and the `--contract` flag that selects which version is stamped on every line.
-P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4) and P35-9 (Section 6) have landed live.
+P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4), P35-9 (Section 6) and P35-11 (`approvals`,
+Section 2 and Section 5) have landed live.
 `task` is populated by recipe runs and stays `null` otherwise. Process lifecycle events ride the
 `event` stream itself, independent of the result fields.
 
@@ -197,6 +198,7 @@ P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4) and P35-9 (Section 6) ha
 | `files` | array of `FileChange` | Which files the run touched (Section 4). `[]` when nothing was written. |
 | `task` | `HarnessTask` or null | Recipe/task-run state. `null` unless the run is a recipe run (Section 6). |
 | `limits` | `Limits` | Caller-declared ceilings echoed back. `{"maxTokens": null}` unless `--max-tokens` was given (Section 4). |
+| `approvals` | array of `ApprovalEntry` | Every approval the run requested, in request order, each `{token, tool, callId, outcome}` (Section 5, "Approvals on the result"). `[]` when the run asked for none. |
 
 `FileChange` is `{path: string, op: "write"|"edit"|"delete"|"unknown"}`.
 
@@ -302,6 +304,14 @@ elicitation result shape) to this process's stdin, while the run is live. The re
 5. **Event.** The `approval_requested` event carries `tool` and `callId` of the call it pauses on.
    A caller matches its answer on `token` (the run) and `payload.token` (the approval).
 6. **Stdout.** Stdout stays NDJSON only. Every answer diagnostic goes to stderr.
+7. **Approvals on the result (P35-11).** `HarnessResultV11.approvals` lists every approval the run
+   requested, from the run's own `approval_requested` trace events. `outcome` is `accepted` or
+   `declined` for an answer line this process applied; `timed_out` when the wait bound denied it
+   with no answer (fail closed); `unanswered` when the run ended with it still pending, or was
+   cancelled while it waited. `refused_content` is reserved: a content line held by a `pre_input`
+   policy leaves the approval pending, so its final outcome is the later answer or `timed_out`. The
+   `status` and exit code do not change. A denied or timed-out approval still ends the run by its
+   turn's own outcome, so `approvals` is the field a caller reads to tell that apart from a clean run.
 
 Verified by `tests/integration/test_harness_cli.py::TestAnswersOnStdin` (granted, declined,
 timed out, a malformed or foreign line that is never echoed, a content line held by a
@@ -386,6 +396,14 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P35-11)
+
+- **Approvals on the result (P35-11).** `HarnessResultV11.approvals` (Section 2, and Section 5
+  item 7) reports each approval a run requested and how it ended. A denied or timed-out approval
+  still ends the run as before, so `status` and the exit code are unchanged. The v1.0 shapes are
+  unchanged. `docs/contracts/harness-v1.1/schema.json` is regenerated, and its `HarnessResult`
+  description now matches the model. The version bump is left to the integrator.
 
 ### Unreleased (P35-9)
 

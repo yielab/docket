@@ -123,6 +123,7 @@ def _finish(
     token: str,
     workspace: Path,
     written: harness.WrittenFiles,
+    approvals: harness.ApprovalLedger,
     run: _pipeline.RecipeRun | None,
     error: str,
 ) -> int:
@@ -143,6 +144,7 @@ def _finish(
         files=_h._touched_files(workspace, written.changes),
         task=task,
         limits=harness.Limits(),
+        approvals=approvals.finish(cancelled=status == "cancelled"),
     ).model_copy(update={"status": status, "error": reason, "blocked": blocked})
     print(result.model_dump_json())
     print(f"docket harness: run {token} finished status={status}", file=sys.stderr)
@@ -170,6 +172,7 @@ def run_recipe(
     stdin_answers = answers_raw == "stdin"
     answer_timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
     written = harness.WrittenFiles()
+    approvals = harness.ApprovalLedger()
     box: list[_pipeline.RecipeRun] = []
     error = ""
 
@@ -200,12 +203,13 @@ def run_recipe(
     old_handler = signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         with (
-            _answers.guard(answers_raw, answer_timeout_raw, token, questions),
+            _answers.guard(answers_raw, answer_timeout_raw, token, questions, approvals),
             _trace.subscribe(emit),
             _trace.subscribe(written.observe),
+            _trace.subscribe(approvals.observe),
         ):
             _runs.execute(token, _invoke)
     finally:
         signal.signal(signal.SIGTERM, old_handler)
 
-    return _finish(token, workspace, written, box[0] if box else None, error)
+    return _finish(token, workspace, written, approvals, box[0] if box else None, error)

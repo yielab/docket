@@ -56,6 +56,42 @@
       "title": "Answer",
       "type": "object"
     },
+    "ApprovalEntry": {
+      "description": "One approval a run asked for and how it ended; ``token`` is the approval's own token.\n\n``tool``/``callId`` name the paused call. See ``ApprovalLedger`` for how ``outcome`` is set.",
+      "properties": {
+        "callId": {
+          "title": "Callid",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "declined",
+            "timed_out",
+            "refused_content",
+            "unanswered"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "tool",
+        "callId",
+        "outcome"
+      ],
+      "title": "ApprovalEntry",
+      "type": "object"
+    },
     "BlockedInfo": {
       "description": "Which policy rule stopped the run, when ``status`` is ``\"blocked\"``.",
       "properties": {
@@ -286,8 +322,15 @@
       "type": "object"
     },
     "HarnessResult": {
-      "description": "The 1.1 terminal result: every v1.0 field, plus files/task/limits.\nThe empty defaults below are not yet populated by any live path.",
+      "description": "The 1.1 terminal result: every v1.0 field, plus files, task, limits and approvals.\n``files`` and ``limits`` are populated on every run; ``task`` only by a recipe run;\n``approvals`` lists each approval the run requested (empty when it asked for none).",
       "properties": {
+        "approvals": {
+          "items": {
+            "$ref": "#/$defs/ApprovalEntry"
+          },
+          "title": "Approvals",
+          "type": "array"
+        },
         "blocked": {
           "anyOf": [
             {

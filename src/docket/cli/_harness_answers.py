@@ -40,10 +40,14 @@ def _say(message: str) -> None:
 
 
 def handle_line(
-    line: str, token: str, questions: queue.Queue[harness.AnswerLine | None] | None = None
+    line: str,
+    token: str,
+    questions: queue.Queue[harness.AnswerLine | None] | None = None,
+    ledger: harness.ApprovalLedger | None = None,
 ) -> None:
     """Apply one stdin line to the run *token*. Never raises for a bad line. A question answer
-    goes to *questions* when a recipe run is waiting for one, else it is ignored."""
+    goes to *questions* when a recipe run is waiting for one, else it is ignored. An approval
+    decision that this call applies is recorded on *ledger* for the result's ``approvals``."""
     text = line.strip()
     if not text:
         return
@@ -85,6 +89,9 @@ def handle_line(
         _say("answer ignored: approval already resolved")
     except _approval.ApprovalError:
         _say("answer ignored: unknown approval")
+    else:
+        if ledger is not None:
+            ledger.answered(target, answer.action)
 
 
 @contextlib.contextmanager
@@ -92,6 +99,7 @@ def serve(
     token: str,
     stop: threading.Event,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
+    ledger: harness.ApprovalLedger | None = None,
 ) -> Iterator[None]:
     """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*. At EOF a
     *questions* queue gets its ``None`` end marker, so a waiting question stops waiting."""
@@ -101,7 +109,7 @@ def serve(
             if stop.is_set():
                 return
             try:
-                handle_line(line, token, questions)
+                handle_line(line, token, questions, ledger)
             except Exception:
                 # An answer that cannot be applied leaves its approval pending, and
                 # the deadline denies it. Say so without the line's contents.
@@ -123,13 +131,14 @@ def guard(
     answer_timeout_raw: str | None,
     token: str,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
+    ledger: harness.ApprovalLedger | None = None,
 ) -> Iterator[None]:
     """Run the answer reader and the wait bound for ``--answers stdin``; otherwise a no-op."""
     if answers_raw != "stdin":
         yield
         return
     timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
-    with serve(token, threading.Event(), questions), wait_budget(timeout):
+    with serve(token, threading.Event(), questions, ledger), wait_budget(timeout):
         yield
 
 

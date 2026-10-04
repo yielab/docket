@@ -305,3 +305,74 @@ def test_merge_keeps_one_entry_per_path_and_the_first_op_named() -> None:
         harness.FileChange(path="a.txt", op="edit"),
         harness.FileChange(path="b.txt", op="write"),
     ]
+
+
+# ── approvals ledger ──────────────────────────────────────────────────────────
+
+
+def _trace_record(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {"event_type": event_type, "payload": payload}
+
+
+def _requested(token: str, tool: str = "bash", call_id: str = "call-1") -> dict[str, Any]:
+    return _trace_record(
+        "approval_requested", {"token": token, "action": "x", "tool": tool, "callId": call_id}
+    )
+
+
+def test_a_ledger_with_no_requests_reports_nothing() -> None:
+    assert harness.ApprovalLedger().finish(cancelled=False) == []
+
+
+def test_an_answered_approval_keeps_its_call_and_the_answer_outcome() -> None:
+    ledger = harness.ApprovalLedger()
+    ledger.observe(_requested("apr-1"))
+    ledger.observe(_trace_record("approval_denied", {"token": "apr-1"}))
+    ledger.answered("apr-1", "decline")
+    [entry] = ledger.finish(cancelled=False)
+    assert entry.model_dump() == {
+        "token": "apr-1",
+        "tool": "bash",
+        "callId": "call-1",
+        "outcome": "declined",
+    }
+
+
+def test_a_denial_no_answer_produced_is_timed_out_unless_the_run_was_cancelled() -> None:
+    ledger = harness.ApprovalLedger()
+    ledger.observe(_requested("apr-1"))
+    ledger.observe(_trace_record("approval_denied", {"token": "apr-1"}))
+    [entry] = ledger.finish(cancelled=False)
+    assert entry.outcome == "timed_out"
+
+    cancelled = harness.ApprovalLedger()
+    cancelled.observe(_requested("apr-2"))
+    cancelled.observe(_trace_record("approval_denied", {"token": "apr-2"}))
+    [entry] = cancelled.finish(cancelled=True)
+    assert entry.outcome == "unanswered"
+
+
+def test_a_pending_approval_at_the_end_is_unanswered() -> None:
+    ledger = harness.ApprovalLedger()
+    ledger.observe(_requested("apr-1"))
+    [entry] = ledger.finish(cancelled=False)
+    assert entry.outcome == "unanswered"
+
+
+def test_a_lost_race_to_the_timeout_is_not_recorded_as_the_answer() -> None:
+    # answered() is only called once approval_grant/deny succeeded; a deny that
+    # lost to the timeout never reaches it, so the timeout's denial stands.
+    ledger = harness.ApprovalLedger()
+    ledger.observe(_requested("apr-1"))
+    ledger.observe(_trace_record("approval_denied", {"token": "apr-1"}))
+    [entry] = ledger.finish(cancelled=False)
+    assert entry.outcome == "timed_out"
+
+
+def test_result_from_v11_carries_the_approvals_and_defaults_to_none() -> None:
+    turn = TurnResult(True, "done", 0.0, {"model": "m"}, "")
+    result = harness.result_from_v11(turn, _usage(), _run())
+    assert result.approvals == []
+    entry = harness.ApprovalEntry(token="apr-1", tool="bash", callId="c", outcome="accepted")
+    result = harness.result_from_v11(turn, _usage(), _run(), approvals=[entry])
+    assert result.approvals == [entry]

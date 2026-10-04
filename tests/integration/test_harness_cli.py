@@ -1519,3 +1519,110 @@ class TestRecipeRun:
         result = json.loads(proc.stdout.strip().splitlines()[0])
         assert result["status"] == "refused"
         assert extra[0] in result["error"]
+
+
+class TestApprovalsOnTheResult:
+    """The v1.1 result says how each approval a run asked for ended."""
+
+    def test_a_declined_approval_is_reported_with_its_call_and_the_run_still_ends_ok(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        payload = requested["event"]["payload"]
+        run.write_answer(requested["token"], payload["token"], "decline")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        result = lines[-1]
+        assert result["status"] == "ok"
+        assert payload["tool"] == "bash" and payload["callId"] == "call-1"
+        assert result["approvals"] == [
+            {
+                "token": payload["token"],
+                "tool": "bash",
+                "callId": "call-1",
+                "outcome": "declined",
+            }
+        ]
+        _assert_result_validates_v11(result)
+
+    def test_an_accepted_approval_is_reported_as_accepted(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(_answered_args(workspace), env, tmp_path / "stderr.txt")
+        requested = run.wait_for_event("approval_requested")
+        payload = requested["event"]["payload"]
+        run.write_answer(requested["token"], payload["token"], "accept")
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        assert lines[-1]["approvals"] == [
+            {"token": payload["token"], "tool": "bash", "callId": "call-1", "outcome": "accepted"}
+        ]
+        _assert_result_validates_v11(lines[-1])
+
+    def test_an_approval_nobody_answers_is_reported_as_timed_out(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(
+            _answered_args(workspace, "--answer-timeout", "1"), env, tmp_path / "stderr.txt"
+        )
+        requested = run.wait_for_event("approval_requested")
+        payload = requested["event"]["payload"]
+        run.close_stdin()
+        returncode, lines = run.finish()
+
+        assert returncode == 0
+        result = lines[-1]
+        assert result["status"] == "ok"
+        assert result["approvals"] == [
+            {"token": payload["token"], "tool": "bash", "callId": "call-1", "outcome": "timed_out"}
+        ]
+        _assert_result_validates_v11(result)
+
+    def test_a_clean_run_reports_no_approvals(self, tmp_path: Path, llm_server: Any) -> None:
+        server = llm_server([_final_response("nothing to approve")])
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", server.base_url)
+
+        proc = _run_harness(
+            [
+                "run",
+                "--workspace",
+                str(workspace),
+                "--task",
+                "say hi",
+                "--model",
+                "local/x",
+                "--contract",
+                "1.1",
+            ],
+            env,
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert result["approvals"] == []
+        _assert_result_validates_v11(result)

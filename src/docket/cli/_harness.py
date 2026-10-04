@@ -202,6 +202,7 @@ def _final_result(
     *,
     files: list[harness.FileChange] | None = None,
     max_tokens: int | None = None,
+    approvals: list[harness.ApprovalEntry] | None = None,
 ) -> harness.HarnessResult | harness.HarnessResultV11:
     if contract_version == harness.HARNESS_CONTRACT_V11:
         return harness.result_from_v11(
@@ -210,6 +211,7 @@ def _final_result(
             run_rec,
             files=files or [],
             limits=harness.Limits(maxTokens=max_tokens),
+            approvals=approvals or [],
         )
     return harness.result_from(turn, usage_report, run_rec)
 
@@ -299,13 +301,15 @@ def _execute_turn(
     answer_timeout_raw: str | None,
     emit: Callable[[dict[str, Any]], None],
     written: harness.WrittenFiles,
+    approvals: harness.ApprovalLedger,
 ) -> list[_RunOutcome]:
-    """Run the turn with the stdout relay and the written-files tracker subscribed, bracketed
-    by the session's start and end trace events."""
+    """Run the turn with the stdout relay and the written-files and approvals trackers subscribed,
+    bracketed by the session's start and end trace events."""
     with (
-        _answers.guard(answers_raw, answer_timeout_raw, token),
+        _answers.guard(answers_raw, answer_timeout_raw, token, ledger=approvals),
         _trace.subscribe(emit),
         _trace.subscribe(written.observe),
+        _trace.subscribe(approvals.observe),
     ):
         _trace.trace_event(
             agent_id, session_key, role, "session_start", json.dumps({"source": "harness"})
@@ -350,6 +354,7 @@ def _finish(
     contract_version: str,
     results: list[_RunOutcome],
     written: harness.WrittenFiles,
+    approvals: harness.ApprovalLedger,
     max_tokens: int | None,
 ) -> int:
     """Print the one terminal result line and map its status to the exit code."""
@@ -362,13 +367,17 @@ def _finish(
         )
 
     usage_report = driver.usage(agent_id)
-    files = (
-        _touched_files(workspace, written.changes)
-        if contract_version == harness.HARNESS_CONTRACT_V11
-        else None
-    )
+    v11 = contract_version == harness.HARNESS_CONTRACT_V11
+    files = _touched_files(workspace, written.changes) if v11 else None
+    entries = approvals.finish(cancelled=turn.failure_kind == "run_cancelled") if v11 else None
     result = _final_result(
-        contract_version, turn, usage_report, run_rec, files=files, max_tokens=max_tokens
+        contract_version,
+        turn,
+        usage_report,
+        run_rec,
+        files=files,
+        max_tokens=max_tokens,
+        approvals=entries,
     )
     print(result.model_dump_json())
     print(f"docket harness: run {token} finished status={result.status}", file=sys.stderr)
@@ -494,6 +503,7 @@ def _run(args: list[str]) -> int:
     if max_tokens is not None:
         env[DOCKET_TURN_TOKEN_BUDGET] = str(max_tokens)
     written = harness.WrittenFiles()
+    approvals = harness.ApprovalLedger()
 
     try:
         results = _execute_turn(
@@ -509,6 +519,7 @@ def _run(args: list[str]) -> int:
             answer_timeout_raw=answer_timeout_raw,
             emit=_emit,
             written=written,
+            approvals=approvals,
         )
     finally:
         signal.signal(signal.SIGTERM, old_handler)
@@ -521,6 +532,7 @@ def _run(args: list[str]) -> int:
         contract_version=contract_version,
         results=results,
         written=written,
+        approvals=approvals,
         max_tokens=max_tokens,
     )
 
