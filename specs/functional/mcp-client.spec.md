@@ -288,6 +288,20 @@ This specification does NOT cover:
     `kind`, so an operator (or an audit trail reader) can see which trust level a given load ran
     under without re-reading the config file.
 
+### Untrusted tool results
+
+35. The text of a remote tool's result **MUST** be evaluated, inside the adapted tool's handler,
+    through `core.policy.policy_eval_detail(ctx.role, "pre_input", text, trusted=False)`; *text*
+    is the outcome's `content` when it succeeded and its `error` when it did not. A result with
+    no text **MUST** pass unchanged and unaudited.
+36. A `block` or `require_approval` result **MUST** replace the outcome with `ok=False` whose
+    error names the server and the policy id (never the result text), and **MUST** be audited
+    (`mcp_client.tool_result_blocked`, naming server, tool, policy and action). A `redact`
+    result **MUST** return the text passed through `core.trace.redact`, and a `warn` result
+    **MUST** return it unchanged; both **MUST** be audited (`mcp_client.tool_result_warn`).
+    `allow`, or no hit, passes the outcome byte-identical with no audit entry. Built-in tool
+    results and `fetch` are out of scope.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.mcp_tools`)
@@ -556,6 +570,11 @@ dispatch_tool(
   never as an ordinary turn outcome.
 
 ## Changelog
+
+### Unreleased
+
+- Requirements 35-36 added: a remote tool's result is screened through `pre_input` as untrusted
+  input (block/redact/warn), audited as `mcp_client.tool_result_blocked`/`_warn`.
 
 ### Version 1.6.0 (2026-09-26)
 

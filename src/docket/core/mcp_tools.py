@@ -24,6 +24,7 @@ import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core.audit import audit_log
 from docket.core.tools import Tool, ToolContext, ToolRegistry
+from docket.core.trace import redact as _redact
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
 
@@ -222,6 +223,37 @@ def _screen_description(role: str, server_name: str, remote: McpRemoteTool) -> s
     return None
 
 
+def _screen_result(
+    role: str, server_name: str, tool_name: str, outcome: ToolOutcome
+) -> ToolOutcome:
+    """Screen one remote tool result as untrusted input through the `pre_input` hook: block
+    refuses, redact strips secrets, warn passes; each non-allow hit is audited. See the spec's
+    "Untrusted tool results" section."""
+    text = outcome.content if outcome.ok else outcome.error
+    if not text:
+        return outcome
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    detail = (
+        f"server={server_name!r} tool={tool_name!r} policy={hit.policy_id!r} action={hit.action}"
+    )
+    if hit.action in ("block", "require_approval"):
+        audit_log("mcp_client.tool_result_blocked", detail)
+        return ToolOutcome(
+            False,
+            error=(
+                f"result from MCP server {server_name!r} blocked by policy "
+                f"{hit.policy_id!r} (action={hit.action})"
+            ),
+        )
+    if hit.action in ("warn", "redact"):
+        audit_log("mcp_client.tool_result_warn", detail)
+    if hit.action == "redact":
+        if outcome.ok:
+            return ToolOutcome(True, content=_redact(text))
+        return ToolOutcome(False, error=_redact(text))
+    return outcome
+
+
 def _build_tool(
     name: str,
     remote: McpRemoteTool,
@@ -242,12 +274,11 @@ def _build_tool(
     if not isinstance(parameters, dict) or parameters.get("type") != "object":
         parameters = {"type": "object", "properties": {}, "required": []}
 
-    def _handler(args: dict[str, Any], _ctx: ToolContext) -> ToolOutcome:
-        # No policy/approval logic here -- by the time a handler runs,
-        # dispatch_tool has already gated the call. This closure only ever
-        # runs the underlying protocol exchange, exactly like a built-in
-        # tool's own handler in core/tools.py's builtin_registry().
-        return call_tool(config, remote.name, args, timeout)
+    def _handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+        # dispatch_tool has already gated the call; this runs the protocol exchange, then
+        # screens what the remote server sent back, which is untrusted like its description.
+        outcome = call_tool(config, remote.name, args, timeout)
+        return _screen_result(ctx.role, config.name, remote.name, outcome)
 
     description = f"[MCP:{config.name}] {remote.description}".strip()
     return Tool(
