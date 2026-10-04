@@ -10727,3 +10727,286 @@ every Phase 35 spec: version, status and changelog bumps
 **Acceptance:** all gates green; the seam test fails when any one card's piece is reverted
 (prove it once for the answer line and once for `files`).
 
+## ☑ WAVE 81 COMPLETE — Phase 36 CLOSED 2026-10-04 — consultation packs and evidence-v1 (D-53), Waves 76–81 (opened 2026-10-04)
+
+Reasoning in [docs/adr/0018-consultation-packs-and-evidence-v1.md](docs/adr/0018-consultation-packs-and-evidence-v1.md).
+Phase 35 closed at `184e02e` (archived in `docs/cycles-ended/todo-waves.md`). Phase 36 closed 2026-10-04
+at the integrator close commit on `develop`; not pushed.
+
+**Carried past the close (named, not parked as cards):** the parked consult question crosses to the
+answering process through an in-process registry; `approve_task` is scoped to one turn;
+`question.taskId` in a single-turn harness consult is the session key; options are not rendered in
+Telegram or channel notifications (deferred by ADR 0018); a resumed role sees `REFUSED
+[approval_parked]` before the operator answer, and the pod-dispatch park was not run against a real
+model (ADR 0018 "Live run").
+
+**Contract rule (the W30 seam lesson, as in Phase 35).** P36-1 owns every operator-v1.1 model,
+and P36-3 owns every evidence-v1 model. Later cards build values through those models, never
+through a hand-built dict. When a card adds a field to a published contract (operator, harness or
+evidence), it regenerates that contract's schema with its generator script, never by hand, and
+v1 bytes stay the same.
+
+**Workers.** Each card runs in an isolated worktree that is reset to `develop` before editing. The
+worker diffs from `git merge-base`, commits on its branch, and never merges, pushes, stashes, or
+edits `TODO.md`/`ROADMAP.md`/`CONTRIBUTING.md`. The integrator rebases, gates, merges, and bumps
+spec versions.
+
+| Wave | Cards (parallel inside the wave) | Hot file and function ownership |
+| --- | --- | --- |
+| 76 | P35-12 ∥ P36-1 ∥ P36-2 | `cli/_harness.py::_touched_files` and its callers' snapshot, `core/dispatch.py::_evaluate_mechanical_gate` (verify fingerprint only), `edges/adapters/system.py` (status fingerprint) → P35-12; `core/operator_contract.py` (all v1.1 models), `scripts/gen_operator_schemas.py`, `docs/contracts/operator-v1.1/` (new), `operator-loop.spec.md` new section → P36-1; `core/approval.py::approval_grant`/`approval_deny`, `cli` approve/deny `--reason`, `serve.py` approval POST body (`reason` only), `security-gates.spec.md` → P36-2 |
+| 77 | P36-3 | `core/evidence.py` (new), `core/dispatch.py::HopResult`/`_hop_record`/`_hop_from_record` and the hop's usage capture, `scripts/gen_evidence_schema.py` (new), `docs/contracts/evidence-v1/` (new), `pod-dispatch.spec.md` |
+| 78 | P36-4 ∥ P36-5 ∥ P36-6 | `cli/_pod.py` (`evidence` branch), `serve.py` (the evidence GET route), `cli/_harness_recipe.py::_hop_view` → P36-4; `core/corrections.py` (new), one call each in `approval_deny`, `core/answers.py` decline, the Reviewer `REQUEST-CHANGES` site in `core/dispatch.py`, `cli/_pod.py` (`corrections` branch) → P36-5; `core/tools.py` (the approval request path), `core/agent_loop.py` (the rationale hand-off), `core/approval.py::approval_create`, the harness `approval_requested` payload → P36-6 |
+| 79 | P36-7 ∥ P36-9 | `core/tools.py` (`_consult_tool`), `core/archetypes.py::BUILTIN_TOOL_KINDS`, `core/pod.py` (`maxConsultationsPerTask`), `cli/_harness.py`/`_harness_answers.py` (consult questions) → P36-7; `serve.py::render_metrics`, `cli` `metrics --escalation` → P36-9 |
+| 80 | P36-8 | `core/dispatch.py` (consult park and re-entry), `core/answers.py` (consult answers) |
+| 81 | P36-10 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
+
+`cli/_pod.py` is shared by P36-4 and P36-5 in Wave 78. Each adds exactly one `elif` branch and
+its own `_pod_<verb>` function, and the integrator resolves the adjacent-line conflict.
+
+Every card follows the §"How to use this board" definition of done.
+
+### P35-12 — `files` stops reporting verify artifacts and pre-existing dirt (Phase 35 follow-up)
+
+**Status:** DONE `c70ec56` (fingerprint snapshots of baseline-dirty and verify-produced paths; internal `verify.touched`) · **Size:** S · **Model:** Sonnet · **Spec:**
+`harness-mode.spec.md` §4
+
+**Trigger:** the P35-10 live run (ADR 0017 "Live run"): `files` listed `__pycache__/*.pyc`
+produced by `--verify "python3 -m compileall -q ."`.
+
+**Goal:** `files` means "what this run changed":
+- paths dirty before the run and unchanged at the end are dropped;
+- paths that appeared or changed only during a verify command are dropped;
+- in both cases the model's own traced write/edit wins.
+
+The mechanism is a snapshot (fingerprints), not a name list. Paths the model wrote with `bash`
+still appear.
+
+**Acceptance:**
+- A verify artifact is absent from `files`, and the seam test asserts it.
+- A pre-existing dirty file the run did not touch is absent.
+- A pre-existing dirty file the run edited is present.
+- The P35-6 bash-untracked test still passes.
+
+### P36-1 — operator-v1.1: kind, options, recommendation, optionId
+
+**Status:** DONE `d1ff7a0` · **Size:** M · **Wave:** 76 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md`
+new section "Contract 1.1"
+
+**Goal:** in `core/operator_contract.py`:
+- `QuestionKind` = `approval|clarification|decision`;
+- `Option{id, label, description, risks: list[str], estimatedTokens: int|None}`;
+- `Recommendation{optionId, rationale, evidenceRefs: list[str]}`;
+- `QuestionV11` = `Question` plus `kind`, `options`, `recommendation`. A validator checks that
+  the recommendation's `optionId` names an option and that option ids are unique;
+- `AnswerResultV11` = `AnswerResult` plus `optionId`. With `action: accept` and options present,
+  `optionId` is required and must name an option.
+
+`scripts/gen_operator_schemas.py` also writes `docs/contracts/operator-v1.1/`.
+
+**Non-goals:** any producer or consumer of the new models (P36-6, P36-7, P36-8); changing v1.
+
+**Acceptance:**
+- v1 schema files are byte-identical.
+- The v1.1 schemas are generated, and the generator's `--check` mode covers them.
+- Unit tests cover each validator: unknown `optionId`, duplicate ids, `accept` without
+  `optionId`.
+
+### P36-2 — approval grant and deny gain `reason` and `actor`
+
+**Status:** DONE `8897657` + `70154af` (second commit: the `pre_input` screen of `reason`) · **Size:** S · **Wave:** 76 · **Model:** Haiku · **Spec:** `security-gates.spec.md`
+
+**Goal:**
+- `approval_grant(token, channel="unknown", *, actor="", reason="")` and the same for
+  `approval_deny`.
+- A non-empty `reason` is screened with `core.policy.policy_eval_detail("lead", "pre_input",
+  reason, trusted=False)`. A blocked reason raises the module's existing error, and nothing is
+  resolved.
+- The audit detail gains `actor=` and `reason=` (redacted like every audit field), and the trace
+  payload gains `actor` and `reason` when non-empty.
+- Surfaces:
+  - `docket approve|deny <token> --reason TEXT`, where the actor is the OS user;
+  - the HTTP approval POST accepts an optional `reason` (the actor is the channel);
+  - the harness stdin answer passes `content.reason` when it is a string.
+
+**Non-goals:** Telegram/MCP reason syntax; storing reasons anywhere else (P36-5).
+
+**Acceptance:**
+- A CLI deny with `--reason` writes an audit line carrying the reason and actor.
+- A reason that trips a `pre_input` block leaves the approval pending.
+- With no reason, the audit line and trace payload are byte-identical to today.
+
+### P36-3 — evidence-v1: the model, per-hop tokens and trace link, the schema
+
+**Status:** DONE `bb62855` (trace link = session `agent:<project>:<taskId>` + a one-second window; usage `null` when the endpoint reports zero) · **Size:** M · **Wave:** 77 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md`
+new section "Evidence v1"
+
+**Goal:**
+- `core/evidence.py` holds the Pydantic models: `HopEvidence{role, stepId, ok, verdict, verify,
+  commit, baseCommit, diffStat, usage{input, output}, trace{project, session, firstTs, lastTs}}`
+  and `TaskEvidence{v: "1.0.0", pod, taskId, status, hops[]}`.
+- `task_evidence(project, task_id) -> TaskEvidence` is the one builder, reading the persisted
+  task record.
+- Dispatch records each hop's measured `TokenUsage` (from the turn result, never estimated) and
+  the trace session id plus first and last event timestamps on the hop record. That is the
+  identifier `GET /traces` and `docket trace` accept, so verify it.
+- `scripts/gen_evidence_schema.py` (with `--check`) writes `docs/contracts/evidence-v1/schema.json`.
+
+**Non-goals:** surfaces (P36-4); scores or verdicts about the evidence (ADR 0017 §5); dollars.
+
+**Acceptance:**
+- A scripted 3-hop dispatch yields `task_evidence` with three hops and non-zero measured usage
+  on each.
+- The trace link resolves to that hop's events through the existing trace reader.
+- The schema `--check` passes in CI's docs job.
+- Old task records without the new fields still build (fields null).
+
+### P36-4 — evidence-v1 surfaces: CLI, HTTP, harness
+
+**Status:** DONE `f01f03c` (one builder behind CLI, HTTP and `task.evidence`) · **Size:** M · **Wave:** 78 · **Model:** Sonnet · **Spec:** `serve-read-api.spec.md`,
+`cli-interface.spec.md`, `harness-mode.spec.md` §6
+
+**Goal:**
+- `docket pod <p> evidence <task> [--json]` (`--json` prints `task_evidence(...).model_dump_json`).
+- `GET /tasks/<p>/<id>/evidence`, Bearer-authenticated like `/tasks/<p>`, 404 for an unknown
+  task.
+- The harness v1.1 recipe result's `task.evidence` is the same document.
+
+All three call `core.evidence.task_evidence`.
+
+**Acceptance:**
+- One task's evidence through the CLI `--json`, HTTP and the harness compares equal.
+- An unauthenticated GET returns 401.
+- `gen_cli_docs --check` passes after the docs are regenerated.
+
+### P36-5 — the corrections ledger
+
+**Status:** DONE `f514658` · **Size:** M · **Wave:** 78 · **Model:** Haiku · **Spec:** `operator-loop.spec.md`
+new section "Corrections"
+
+**Goal:**
+- `core/corrections.py::record(project, kind, *, task_id, role, text, source)`, where kind is
+  `deny_reason|request_changes|declined_answer`. It appends one JSON line to
+  `$DOCKET_HOME/corrections/<project>.jsonl` (D-12 exemption, file mode 0600, the text redacted
+  like trace payloads), and `read(project) -> list[dict]`.
+- Writers, one call each:
+  - `approval_deny` when a reason is given;
+  - `core/answers.py` on `decline`;
+  - the Reviewer hop when its verdict is `REQUEST-CHANGES` (the hop output text, tail-bounded).
+- `docket pod <p> corrections [--json]`.
+
+**Non-goals:** deriving directives (cut by ADR 0018); a deny without a project (skip it).
+
+**Acceptance:**
+- Each of the three writers produces one line.
+- The file is 0600.
+- `corrections --json` round-trips.
+- A failed write never fails the deny, answer or hop (log it to stderr through the existing
+  helper).
+
+### P36-6 — approval packs: rationale and three options
+
+**Status:** DONE `0edeafd` (`approve_task` pre-grant lives in the turn's `ToolContext` only, so it does not cross a parked and resumed hop; the v1.0 stream strips the pack keys) · **Size:** M · **Wave:** 78 · **Model:** Sonnet · **Spec:** `security-gates.spec.md`,
+`harness-mode.spec.md` §5
+
+**Goal:**
+- The assistant text content of the message that made a gated call becomes its `rationale`:
+  screened with `pre_input` as untrusted (a blocked rationale becomes `""` and is traced), then
+  truncated to `APPROVAL_RATIONALE_MAX_CHARS = 500`.
+- `approval_create` stores `rationale` and `options` (three `operator_contract` v1.1 `Option`s:
+  `approve_once`, `approve_task`, `deny`) on the approval record and on the `approval_requested`
+  payload.
+- The harness v1.1 stdin answer accepts `content.optionId`:
+  - `approve_task` grants and records a single-task pre-grant through the existing pre-grant
+    path;
+  - `deny` uses `content.reason` (P36-2).
+
+  Regenerate the harness v1.1 schema if a model changes.
+
+**Non-goals:** rendering options in Telegram or notifications (deferred by ADR 0018).
+
+**Acceptance:**
+- A scripted turn whose message says "need to run the tests" before a gated `bash` call shows
+  that rationale on `approval_requested`.
+- A 2,000-char rationale is truncated.
+- An injection-shaped rationale is blanked.
+- `approve_task` pre-grants a second identical call in the same task.
+- The v1.0 harness stream is byte-identical.
+
+### P36-7 — the `consult` tool: single turn, harness stdio, refuse, the cap
+
+**Status:** DONE `aeaa538` (`question.taskId` in a single-turn harness consult is the session key) · **Size:** M · **Wave:** 79 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md`
+"Consult", `harness-mode.spec.md` §5
+
+**Goal:**
+- A built-in `consult` tool, kind `read`, in `BUILTIN_TOOL_KINDS`. Its arguments are `kind`
+  (`clarification|decision`), `message`, `options[]` (at least two) and `recommendation`, and
+  they are validated through P36-1's `QuestionV11`. An invalid call is an error result.
+- Under harness `--answers stdin`: the `question_asked` event (or the existing question event
+  name, if one exists in `EVENT_TYPES`) carries the question. The stdin reader routes a
+  `questionId` answer to the waiting call, and the tool result is the chosen option and content.
+  `--answer-timeout` bounds the wait, and on timeout it returns "no answer, decide yourself".
+- Under `refuse`: the turn ends `blocked`, and the question pack is in the v1.1 result.
+- Pod setting `maxConsultationsPerTask` (default 3): past the cap the tool returns an error
+  result without asking.
+
+**Non-goals:** park and re-entry in pod dispatch (P36-8).
+
+**Acceptance:**
+- A scripted turn that consults and gets an answer line receives the chosen `optionId`.
+- A consult without a recommendation is refused.
+- The fourth consult in a task is refused without a question event.
+- A Reviewer can consult.
+- The result validates against the committed harness v1.1 schema.
+
+### P36-8 — `consult` parks in pod dispatch and re-enters
+
+**Status:** DONE `b6abb3d` (the parked question crosses processes through an in-process registry and fails closed out of process) · **Size:** M · **Wave:** 80 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md`
+"Consult"
+
+**Goal:**
+- Under `park` (and pod dispatch generally), a consult ends the hop with the task
+  `waiting_input`. The question (P36-1 model, `kind`, options) goes on the task the way
+  `_run_input_step` mints one.
+- `answer_task` resumes **the same role's step**, with the answer in its next message.
+- The inbox shows it under `needsYou`.
+- The recipe-mode harness (`P35-9`'s answer source) answers it unchanged.
+
+**Acceptance:**
+- An Implementer consult parks the task.
+- `docket pod <p> answer` with an `optionId` resumes the Implementer, and the answer is in its
+  message.
+- A declined answer resumes it with "declined", and P36-5 records it.
+- `intake` behaviour is unchanged.
+
+### P36-9 — escalation metrics
+
+**Status:** DONE `2c29680` + `a30ef7e` + `42980b5` (the integrator fixed the approval source to read real audit actions and TRACES_DIR) · **Size:** S · **Wave:** 79 · **Model:** Haiku · **Spec:** `serve-read-api.spec.md`
+metrics section
+
+**Goal:** in `serve.py::render_metrics`:
+- `docket_tasks_started_total` (dispatch claims, from the trace);
+- `docket_questions_total{kind,outcome}` (from task `answers[]` and approval resolutions);
+- `docket_decision_latency_seconds` as a summary (`_sum`, `_count`) from question `createdAt` to
+  `answeredAt`.
+
+`docket metrics --escalation` prints the same numbers as a table. These are lifetime-of-storage
+counts, as CLAUDE.md limit 4 says.
+
+**Acceptance:** a fixture home with two answered questions and one approval produces the
+expected lines, and the metric names pass the existing name-format test.
+
+### P36-10 — integrator: seams, live run, docs, close
+
+**Status:** DONE in the close commit that archives this section (seams `1b73f03`, live run and docs `a8302d6`, spec bumps, counts) · **Size:** M · **Wave:** 81 · **Model:** the integrating session
+
+**Goal:**
+- **Seam tests:**
+  - consult over the real `docket harness run --contract 1.1` subprocess, every line validated
+    against the committed harness v1.1 and operator-v1.1 schemas;
+  - evidence equality across CLI, HTTP and harness.
+
+  Prove each red once by reverting one card's piece.
+- **Live run** on `127.0.0.1:8081`: one consult and one approval pack.
+- **Close:** docs (D-37), CHANGELOG, spec bumps, `metrics.py --check`, and the board archived
+  with `scripts/maint/split_board.py`.
+

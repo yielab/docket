@@ -606,5 +606,13 @@
     "heading": "☑ WAVE 73 COMPLETE — Phase 35 CLOSED 2026-10-04 — docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)",
     "bytes": 29104,
     "sha256": "b2f5b8a8d4c96161d15250b8c056363b76d90c33c9ded47a2427abd2bca639b2"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 81 COMPLETE — Phase 36 CLOSED 2026-10-04 — consultation packs and evidence-v1 (D-53), Waves 76–81 (opened 2026-10-04)",
+    "bytes": 16391,
+    "sha256": "a3d14a551ac32a99273c4761f210cede21b98615c30b477b0978849cea130b41"
   }
 ]

@@ -169,13 +169,18 @@ Reasoning and reversals in
 [docs/adr/0017-docket-in-a-harness-agnostic-factory.md](docs/adr/0017-docket-in-a-harness-agnostic-factory.md);
 packets in [.agents/handoffs/wave-71-worker-packets.md](.agents/handoffs/wave-71-worker-packets.md).
 
-**Phase 36 (consultation packs and evidence-v1, D-53) opened 2026-10-04.** Eleven cards over Waves
-76–81: operator-v1.1 (`Question.kind`, `options[]`, `recommendation`, `Answer.optionId`),
+**Phase 36 (consultation packs and evidence-v1, D-53) opened 2026-10-04, closed 2026-10-04.** Eleven
+cards over Waves 76–81: operator-v1.1 (`Question.kind`, `options[]`, `recommendation`, `Answer.optionId`),
 `reason`/`actor` on approval grant and deny, approval packs (the model's rationale plus three
 options), a `consult` built-in tool for every role capped by `maxConsultationsPerTask`, a per-pod
 corrections ledger, evidence-v1 (one document behind the CLI, HTTP and the harness), and escalation
 metrics. Wave 76 is a Phase 35 follow-up: the harness `files` list stops reporting verify artifacts
-and paths dirty before the run. Reasoning in
+and paths dirty before the run. Carried to the next phase, by name: the parked consult question
+crosses to the answering process through an in-process registry (it fails closed out of process);
+`approve_task` is scoped to one turn; `question.taskId` in a single-turn harness consult is the
+session key; options are not rendered in Telegram or channel notifications. A live run on the local
+endpoint called `consult` and showed an approval pack (ADR 0018 "Live run"); the pod-dispatch park
+was not exercised against a real model. Reasoning in
 [docs/adr/0018-consultation-packs-and-evidence-v1.md](docs/adr/0018-consultation-packs-and-evidence-v1.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
