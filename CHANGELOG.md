@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Harness contract 1.1 is complete for an external supervisor (Phase 35, D-51, ADR 0017).**
+  `docket harness run --contract 1.1` (opt-in; `--contract 1.0` stays byte-identical) adds
+  process lifecycle events for `bash` (`process_started`/`process_exited`, with `pgid` and
+  `exitCode` or `signal`); `--answers stdin` with `--answer-timeout` for approvals and recipe
+  questions; `files` on the result (written and edited paths, plus `git status` in a git
+  workspace); `--token-file`, `--max-tokens`, `--policy`; `--recipe NAME|DIR` with `--verify`,
+  reporting the hops in a `task` block; and `approvals` on the result, so a denied or timed-out
+  approval is visible without changing `status` or the exit code. The committed schema is
+  `docs/contracts/harness-v1.1/schema.json`, and an integration test validates every line of a
+  real subprocess run against it. Approval mode for a recipe run travels as the ephemeral pod's
+  setting, not an environment variable.
+- **Mechanisms for the recipe runner (Phase 35, P35-7).** `core/harness_pipeline.py` runs one
+  recipe in place on an ephemeral pod for one task, through the same dispatch the pod uses.
+- **Fixes (Phase 35).** Pod dispatch keeps its evidence (verify output, commit, base and
+  diffstat); `requireVerify` makes a missing verify command fail a hop instead of advancing; a
+  `guardrail_block` event carries the action, not the policy id; pod-scoped roles get their own
+  token budget. Process groups for `bash` are cancellable by `docket runs cancel` and by SIGTERM
+  on the harness.
+
 - **The operator loop: tasks park instead of blocking, and every human touchpoint speaks one
   contract (Phase 34, D-50, ADR 0016).** An unattended pod's gated tool call no longer blocks a
   hop for 120s with nobody watching: `approvalMode: park` (the default for `serve --dispatch`'s

@@ -34,9 +34,11 @@
 > learns a task is waiting.
 >
 > An "ask" verdict always blocks the call and always sits in docket's own approval store,
-> answerable identically by the CLI, HTTP, MCP, and Telegram channels; docket never pushes a
-> prompt to any of them on its own (see telegram-integration.spec.md's Command-grammar
-> requirements 7-8: inbound-only, no notification on a newly-created approval).
+> answerable identically by the CLI, HTTP, MCP, and Telegram channels. The Telegram bot itself
+> is inbound-only and never messages a chat first (telegram-integration.spec.md's Command-grammar
+> requirements 7-8). Notifications exist since Phase 34, but only through an opt-in `kind: channel`
+> you enable yourself; every channel ships off except your own console (see "The operator loop"
+> below).
 > Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
 > separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
 > every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
@@ -161,6 +163,9 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   — the `fetch` tool is domain-allowlisted and the *inspectable* path, but not yet the *only* one.
   Tracked as an open gap, not glossed over. It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
+- **Only `bash` is jailed.** The command gate above, and the opt-in Docker/bwrap isolation, apply
+  to `bash` calls. The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
+  `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials and policy, not by a sandbox.
 - **A pod can widen its own allowlist** with `docket pod <p> config set allowCommands pytest,uv`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so

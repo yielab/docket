@@ -169,27 +169,51 @@ and the same `core/tools.py` chokepoint, policy hooks, audit and trace: no secon
 
 stdout carries the wire contract only: newline-delimited `HarnessEvent` lines (docket's existing
 `core/trace.py` vocabulary, inside a versioned envelope) followed by exactly one `HarnessResult`
-line; every log goes to stderr. Approvals are forced non-interactive
+line; every log goes to stderr. By default approvals are non-interactive
 (`ToolContext.approval_mode = "refuse"`, carried to the driver as the `DOCKET_APPROVAL_MODE` key
 of `run_turn`'s `env` dict -- an internal coordinate, not a variable an operator can export): a
-verdict that
-would otherwise block the calling thread in `wait_for_approval` for up to `TOOL_APPROVAL_TIMEOUT`
-instead ends the run immediately with `status: blocked` and a `denial_kind` of
-`approval_unavailable`, naming the tool, call id, policy id and reason. Exit codes are the one
+verdict that would otherwise block the calling thread ends the run immediately with `status:
+blocked` and a `denial_kind` of `approval_unavailable`, naming the tool, call id, policy id and
+reason. Under `--contract 1.1 --answers stdin` the run waits instead, and the caller answers (see
+below). Exit codes are the one
 place this CLI departs from its flat 0/1 convention (`specs/api/cli-interface.spec.md`): `0` the
 result is `ok`; `1` it ended `failed`, `blocked`, or `cancelled`; `2` refused before any turn
 began — for example a missing `DOCKET_LLM_BASE_URL`, a `DOCKET_HOME` that resolves to the
 operator's own default home, or `DOCKET_NO_TRACE=1` (harness mode refuses to run unobserved rather
 than run silently).
 
-The contract is versioned (every line carries a `v` field, `HARNESS_CONTRACT_VERSION`, currently
-`1.0.0`) and published: its JSON
+The contract is versioned (every line carries a `v` field) and published. `--contract 1.0` is the
+default and is byte-identical to the original wire (`v` `1.0.0`). Its JSON
 Schema is generated from the Pydantic models in `core/harness.py` at
 [`docs/contracts/harness-v1/schema.json`](contracts/harness-v1/schema.json) and pinned
 byte-for-byte by a regenerate-and-diff test, with example transcripts at
 `tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`. Full design reasoning
 is in [ADR 0001](adr/0001-harness-mode.md); the wire-level requirements are in
 [`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md).
+
+**Contract 1.1** (`--contract 1.1`, `v` `1.1.0`, ADR 0017, Phase 35) is opt-in and is the contract an
+external supervisor integrates against. Its schema is
+[`docs/contracts/harness-v1.1/schema.json`](contracts/harness-v1.1/schema.json), and every line of
+its fixtures validates against that committed file. It adds, all under the one `run` command:
+
+- **Process lifecycle.** A `bash` call emits `process_started` and `process_exited` events
+  (`pgid`, and either `exitCode` or `signal`), so a caller can see a live process group and signal it.
+- **Answers on stdin.** `--answers stdin` with `--answer-timeout S` makes approvals wait. The caller
+  writes one answer line per decision to stdin (`accept` or `decline`, or `cancel`), and a
+  `questionId` line answers a recipe run's question. Stdout stays NDJSON.
+- **Written files.** The result's `files` lists each path the run wrote or edited, plus, in a git
+  workspace, what `git status` reports. Paths are relative to the workspace.
+- **Token file and limits.** `--token-file PATH` writes the run token (mode 0600) before the first
+  model request. `--max-tokens N` bounds the turn's measured tokens, and `--policy FILE`
+  (repeatable) adds validated policies for the run.
+- **Recipe runs.** `--recipe NAME|DIR`, with `--verify CMD` and `--task` or `--task-file`, runs one
+  recipe in place for one task, and the result's `task` block lists its hops. It is mutually
+  exclusive with `--role`, and refuses `--max-tokens` and `--agent-id`. `requireVerify` is set, so an
+  Implementer hop with no verify command fails. A `--recipe` name is one of `docket recipes list`
+  (for example `tdd`); a pod blueprint name such as `software` is not a recipe and is refused.
+- **Approvals on the result.** `approvals` lists each approval the run requested and its outcome
+  (`accepted`, `declined`, `timed_out` or `unanswered`). A denied approval still ends the run by its
+  turn's own outcome, so a caller reads `approvals`, not only `status`, to tell them apart.
 
 > This is unrelated to [DEVELOPMENT-HARNESS.md](DEVELOPMENT-HARNESS.md), which documents the
 > *contributor*-side context harness — skill routing, hooks, token-efficient validation — for

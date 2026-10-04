@@ -141,6 +141,12 @@ An unanswered question never fails a task. Nobody said no, so it becomes `blocke
 - The `docket inbox` cursor is an operator file written through `edges/store.py`. `GET /inbox`
   takes `since` and returns `next`, so a polling consumer like Tack owns its own cursor. docket
   keeps no per-consumer state and pushes nothing to Tack.
+- **Correction (2026-10-04, P35-10).** Tack does not poll docket. Tack dropped its docket poller
+  and spawns `docket harness run --contract 1.1` as a subprocess instead; the harness contract is
+  specified in `specs/api/harness-mode.spec.md`, "Contract 1.1". The `/inbox` route and the
+  `docket inbox` cursor described above still exist for any other caller, but they are not
+  Tack's integration path, and the sentence "Tack polls" in "What stands, unchanged" is no longer
+  true. The decision text above is kept as written, because it was the decision at the time.
 
 ### 7. Notifications: events derived from inbox transitions, delivered by `kind: channel`
 
