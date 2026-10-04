@@ -598,5 +598,13 @@
     "heading": "◆ PHASE 34 — COMPLETE (opened 2026-09-28, closed 2026-09-29): the operator loop (D-50)",
     "bytes": 47193,
     "sha256": "2fd96d0c4d0e0b92034d598140386a9782ba45b9c88f3a2f2ddf149a346537f2"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 73 COMPLETE — Phase 35 CLOSED 2026-10-04 — docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29)",
+    "bytes": 29104,
+    "sha256": "b2f5b8a8d4c96161d15250b8c056363b76d90c33c9ded47a2427abd2bca639b2"
   }
 ]
