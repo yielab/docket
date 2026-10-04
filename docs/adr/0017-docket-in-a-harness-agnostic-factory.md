@@ -147,3 +147,36 @@ it drives the real `docket harness run --contract 1.1` subprocess the way Tack d
 
 It asserts each against the committed schema. Two green cards with one broken seam is the Wave
 30 failure; this test is the guard.
+
+## Live run (P35-10, 2026-10-04)
+
+Run against the local llama.cpp endpoint at `127.0.0.1:8081` (Qwen3.6-35B-A3B GGUF, `--ctx-size
+16384`) with `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`. Each run used a throwaway `DOCKET_HOME` and a
+scratch workspace, never the operator's `~/.docket`. Everything below is from the stdout and
+stderr of those runs.
+
+- **`--recipe software`: not runnable.** `software` is a pod blueprint, not a recipe. The run
+  was refused before any turn, exit 2: `unknown recipe 'software'`, listing the shipped recipes.
+  Recorded as the honest result of the requested command. The shipped recipes are `tdd`,
+  `spec-first`, `reflexion`, `dual-review`, `frugal`, `intake` and others.
+- **`--recipe tdd --verify "python3 -m compileall -q ."`, task from a file (`--contract 1.1`).**
+  Exit 1, `status` `failed`, `task.status` `failed`. The implementer hop wrote `test_add.py` and
+  edited `calc.py`, and its verify passed (exit 0). The `check-red` gate then found the test
+  already passing and routed to fail: `step 'check-red' outcome PASS routed to fail`. The gate
+  caught it. The local model wrote the implementation along with the test, so the red check
+  failed the task, as designed.
+  `files` also listed `__pycache__/*.pyc` written by the verify command, so `files` reports
+  verify-generated artifacts as well as the model's own writes. Usage 24,233 input and 638
+  output tokens over 8 turns.
+- **`--answers stdin`, one `bash` approval, answered `decline`.** Exit 0, `status` `ok`. The model
+  requested `git push origin production`, the harness emitted `approval_requested`, the consumer
+  wrote one `decline` line, and the run emitted `approval_denied`, then `session_end`.
+  `approvals` read `[{tool: "bash", outcome: "declined"}]`. `files` was `[]`. This is the P35-5
+  caveat, observed live: a denied approval ends `status` `ok` with exit 0, so a caller must read
+  `approvals`.
+- **A `bash` process lifecycle run** (`process_started`/`process_exited`) and the stdin accept path
+  are covered by the seam test, not repeated live.
+
+Verdict for the live check: the two requested runs produced the result lines above. The
+`software` run is a refusal, not a run. The `tdd` run ended `failed` at a real gate, which is
+correct behaviour and not a harness defect.
