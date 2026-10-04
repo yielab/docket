@@ -146,7 +146,9 @@ class HopResult:
     # resumes by re-running this exact index rather than advancing past it.
     parked: bool = False
     # Real evidence from this hop's mechanical verify gate (``_evaluate_mechanical_gate``):
-    # ``{"cmd", "exitCode", "durationS", "outputTail"}``, or ``None`` for a hop with no
+    # ``{"cmd", "exitCode", "durationS", "outputTail", "touched"}`` (``touched`` = absolute paths
+    # the verify command created or changed in a git checkout, internal: the harness drops them
+    # from its ``files`` and never publishes the key), or ``None`` for a hop with no
     # verify gate, or one whose gate had no ``verifyCmd`` configured (see
     # ``verification_skipped``). ``exitCode`` is ``0``/``1`` (``run_verify_cmd`` itself
     # carries no numeric exit code to relay). ``outputTail`` is already redacted -- see
@@ -1772,9 +1774,12 @@ def _evaluate_mechanical_gate(
     # timeout above — a 20-minute test suite and a hung LLM turn are no longer
     # forced to share one budget.
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
+    before_verify = _sys.git_worktree_fingerprint(cwd)
     verify_start = _time.monotonic()
     passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
     duration_s = _time.monotonic() - verify_start
+    after_verify = _sys.git_worktree_fingerprint(cwd)
+    produced = sorted(p for p, fp in after_verify.items() if before_verify.get(p) != fp)
     redacted = _trace.redact(raw_output)
     # Persisted regardless of pass/fail/route -- see HopResult.verify. `outputTail` is the
     # redacted string's own tail (never the raw one), so a secret is never one truncation
@@ -1784,6 +1789,7 @@ def _evaluate_mechanical_gate(
         "exitCode": 0 if passed else 1,
         "durationS": round(duration_s, 3),
         "outputTail": redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
+        "touched": produced,
     }
     label = "pass" if passed else "fail"
     if _match_on_route(node.on, label) is not None:

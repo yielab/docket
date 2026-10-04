@@ -249,6 +249,13 @@ itself).
      added paths are `write`, deleted paths `delete`, and any other change `unknown`. A path
      already named by a `write`/`edit` call keeps that call's op. A non-git workspace reports
      only the calls.
+   - `files` means what this run changed, not what was merely dirty or produced around it. The
+     harness fingerprints `git status` (status code, size, `mtime_ns`) before the turn or recipe
+     starts, and a git-reported path whose fingerprint is unchanged at the end is dropped. In a
+     recipe run, a path a hop's verify command created or changed (found by fingerprinting
+     before and after the command, recorded as internal `touched` on that hop's verify evidence,
+     never published) is dropped too. Neither rule drops a path the run's own `write`/`edit`
+     call touched, and a file a `bash` call created during the turn is still listed.
    - Paths are POSIX and relative to the workspace, outside paths are dropped, and each path
      appears once. Diff content is never reported.
 2. **`--token-file PATH`.** Written atomically (staged, then renamed) with mode `0600` after the
@@ -401,6 +408,11 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P35-12)
+
+- **`files` excludes baseline-dirty and verify-produced paths.** Section 4 now states the
+  baseline snapshot and the verify-artifact exclusion. No schema change, no version bump.
 
 ### Version 1.4.0 (2026-10-04)
 

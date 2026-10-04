@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import signal
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -186,3 +187,38 @@ class TestConsumerSeam:
             "tester",
         ]
         assert {"path": "a.txt", "op": "write"} in result["files"]
+
+    def test_a_recipe_run_does_not_list_what_its_verify_command_produced(
+        self,
+        tmp_path: Path,
+        llm_server: Any,  # noqa: F811 - the imported fixture
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("write", {"path": "a.txt", "content": "alpha"}, "call-1"),
+                _final_response(_RED),
+                _final_response(_GREEN),
+                _final_response("PASS"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        subprocess.run(["git", "-C", str(workspace), "init", "-q"], check=True)
+        (workspace / "already-dirty.txt").write_text("dirty before")
+        env = _child_env(home, server.base_url)
+        task = _write_task(tmp_path, "add the thing")
+        stderr = tmp_path / "stderr.txt"
+        args = _consumer_args(
+            workspace, task, "--recipe", "tdd", "--verify", "sh -c 'touch verify-artifact.txt'"
+        )
+
+        returncode, lines = _AnsweredRun(args, env, stderr).finish(timeout=180)
+
+        assert returncode == 0, stderr.read_text(encoding="utf-8")
+        _assert_every_line_validates(lines)
+        assert (workspace / "verify-artifact.txt").exists()
+        paths = [f["path"] for f in lines[-1]["files"]]
+        assert "a.txt" in paths
+        assert "verify-artifact.txt" not in paths
+        assert "already-dirty.txt" not in paths

@@ -25,6 +25,7 @@ from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.runtime_driver import TurnResult, UsageReport, UsageTotals
 from docket.edges.adapters import docket_runtime as _dr
+from docket.edges.adapters import system as _system
 
 _QuestionQueue = queue.Queue[harness.AnswerLine | None]
 
@@ -86,6 +87,23 @@ def _pod_usage(project: str) -> UsageReport:
     return UsageReport(totals=totals)
 
 
+def _published_verify(verify: Any) -> Any:
+    """A hop's verify evidence without the internal ``touched`` key."""
+    if isinstance(verify, dict):
+        return {k: v for k, v in verify.items() if k != "touched"}
+    return verify
+
+
+def _verify_touched(hops: list[dict[str, Any]]) -> list[str]:
+    """Absolute paths any hop's verify command created or changed."""
+    found: list[str] = []
+    for hop in hops:
+        verify = hop.get("verify")
+        if isinstance(verify, dict):
+            found.extend(str(p) for p in verify.get("touched") or [])
+    return found
+
+
 def _hop_view(hop: dict[str, Any]) -> dict[str, Any]:
     artifact = hop.get("artifact") or {}
     return {
@@ -93,7 +111,7 @@ def _hop_view(hop: dict[str, Any]) -> dict[str, Any]:
         "stepId": hop.get("stepId", hop.get("role", "")),
         "ok": hop.get("ok", False),
         "verdict": artifact.get("verdict") if isinstance(artifact, dict) else None,
-        "verify": hop.get("verify"),
+        "verify": _published_verify(hop.get("verify")),
         "evidence": hop.get("evidence"),
     }
 
@@ -126,6 +144,7 @@ def _finish(
     approvals: harness.ApprovalLedger,
     run: _pipeline.RecipeRun | None,
     error: str,
+    baseline: dict[str, tuple[str, int, int]] | None = None,
 ) -> int:
     record = run.task if run is not None else {}
     hops = run.hops if run is not None else []
@@ -141,7 +160,7 @@ def _finish(
         turn,
         usage,
         _runs.get_run(token) or {},
-        files=_h._touched_files(workspace, written.changes),
+        files=_h._touched_files(workspace, written.changes, baseline, _verify_touched(hops)),
         task=task,
         limits=harness.Limits(),
         approvals=approvals.finish(cancelled=status == "cancelled"),
@@ -171,6 +190,7 @@ def run_recipe(
     questions: _QuestionQueue = queue.Queue()
     stdin_answers = answers_raw == "stdin"
     answer_timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
+    baseline = _system.git_worktree_fingerprint(str(workspace))
     written = harness.WrittenFiles()
     approvals = harness.ApprovalLedger()
     box: list[_pipeline.RecipeRun] = []
@@ -212,4 +232,4 @@ def run_recipe(
     finally:
         signal.signal(signal.SIGTERM, old_handler)
 
-    return _finish(token, workspace, written, approvals, box[0] if box else None, error)
+    return _finish(token, workspace, written, approvals, box[0] if box else None, error, baseline)

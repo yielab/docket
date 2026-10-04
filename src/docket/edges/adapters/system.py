@@ -480,6 +480,20 @@ def git_worktree_changes(cwd: str) -> list[tuple[str, str]]:
     return changes
 
 
+def git_worktree_fingerprint(cwd: str) -> dict[str, tuple[str, int, int]]:
+    """Map every path `git_worktree_changes` reports to ``(status, size, mtime_ns)``, so two
+    snapshots can tell a path that changed between them from one that merely stayed dirty. A
+    path that no longer exists (a deletion) fingerprints as size and mtime ``-1``."""
+    prints: dict[str, tuple[str, int, int]] = {}
+    for code, path in git_worktree_changes(cwd):
+        try:
+            stat = os.stat(path)
+            prints[path] = (code, stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            prints[path] = (code, -1, -1)
+    return prints
+
+
 def git_worktree_add(repo_dir: str, worktree_path: str, branch: str) -> tuple[bool, str]:
     """Create a git worktree at ``worktree_path`` on a new branch ``branch``.
     Returns ``(success, error_message)``; degrades gracefully, returning

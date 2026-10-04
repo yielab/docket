@@ -147,13 +147,19 @@ def _inside_workspace(
 
 
 def _touched_files(
-    workspace: Path, written: Iterable[harness.FileChange]
+    workspace: Path,
+    written: Iterable[harness.FileChange],
+    baseline: dict[str, tuple[str, int, int]] | None = None,
+    verify_touched: Iterable[str] = (),
 ) -> list[harness.FileChange]:
-    """The run's own write/edit calls merged with what ``git status`` reports in the workspace's
-    repository, every path relative to the workspace and outside paths dropped."""
+    """The run's write/edit calls plus ``git status`` paths, minus those unchanged since
+    *baseline* or produced by a verify command; own calls are never dropped."""
+    skip = set(verify_touched)
+    base = baseline or {}
     git_changes = [
         harness.file_change_from_status(code, path)
-        for code, path in _system.git_worktree_changes(str(workspace))
+        for path, (code, _size, _mtime) in _system.git_worktree_fingerprint(str(workspace)).items()
+        if path not in skip and base.get(path) != (code, _size, _mtime)
     ]
     return harness.merge_file_changes(
         _inside_workspace(workspace, written), _inside_workspace(workspace, git_changes)
@@ -356,6 +362,7 @@ def _finish(
     written: harness.WrittenFiles,
     approvals: harness.ApprovalLedger,
     max_tokens: int | None,
+    baseline: dict[str, tuple[str, int, int]] | None = None,
 ) -> int:
     """Print the one terminal result line and map its status to the exit code."""
     run_rec = _runs.get_run(token) or {}
@@ -368,7 +375,7 @@ def _finish(
 
     usage_report = driver.usage(agent_id)
     v11 = contract_version == harness.HARNESS_CONTRACT_V11
-    files = _touched_files(workspace, written.changes) if v11 else None
+    files = _touched_files(workspace, written.changes, baseline) if v11 else None
     entries = approvals.finish(cancelled=turn.failure_kind == "run_cancelled") if v11 else None
     result = _final_result(
         contract_version,
@@ -504,6 +511,7 @@ def _run(args: list[str]) -> int:
         env[DOCKET_TURN_TOKEN_BUDGET] = str(max_tokens)
     written = harness.WrittenFiles()
     approvals = harness.ApprovalLedger()
+    baseline = _system.git_worktree_fingerprint(str(workspace))
 
     try:
         results = _execute_turn(
@@ -534,6 +542,7 @@ def _run(args: list[str]) -> int:
         written=written,
         approvals=approvals,
         max_tokens=max_tokens,
+        baseline=baseline,
     )
 
 

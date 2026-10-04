@@ -1518,6 +1518,10 @@ any CLI rendering of this evidence.*
      applied to the `verification_failed` trace event's `output` field. A secret held in
      `core/secrets.py` and echoed by the verify command **MUST NOT** appear anywhere in a persisted
      `outputTail`.
+   - `touched` (`list[str]`, internal, unreleased P35-12): absolute paths a git status snapshot
+     taken immediately before and after the command shows as created or changed by it
+     (`system.git_worktree_fingerprint`). Empty off a git checkout. The harness drops them from
+     its `files`; it is never published in the harness `verify` block.
 2. This requirement adds evidence storage only. The existing `verification_failed` trace event
    (cmd + redacted output) and the `tool_result` "passed"/"skipped" trace events **MUST** remain
    byte-for-byte unchanged; `verify` is a new field on the hop record, not a new trace event and not

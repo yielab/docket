@@ -474,6 +474,54 @@ class TestWrittenPathsAndLimits:
         result = _parse_ndjson(proc.stdout)[-1]
         assert {"path": "made-by-bash.txt", "op": "write"} in result["files"]
 
+    def test_a_file_dirty_before_the_run_and_untouched_by_it_is_not_listed(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("write", {"path": "a.txt", "content": "alpha"}, "call-1"),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        subprocess.run(["git", "-C", str(workspace), "init", "-q"], check=True)
+        (workspace / "already-dirty.txt").write_text("dirty before")
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace), env)
+
+        assert proc.returncode == 0, proc.stderr
+        paths = [f["path"] for f in _parse_ndjson(proc.stdout)[-1]["files"]]
+        assert paths == ["a.txt"]
+
+    def test_a_file_dirty_before_the_run_that_the_run_edits_is_listed(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response(
+                    "edit",
+                    {"path": "already-dirty.txt", "old_string": "before", "new_string": "after"},
+                    "call-1",
+                ),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        subprocess.run(["git", "-C", str(workspace), "init", "-q"], check=True)
+        (workspace / "already-dirty.txt").write_text("dirty before")
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace), env)
+
+        assert proc.returncode == 0, proc.stderr
+        files = _parse_ndjson(proc.stdout)[-1]["files"]
+        assert {"path": "already-dirty.txt", "op": "edit"} in files
+
     def test_the_token_file_is_0600_and_complete_before_the_first_request(
         self, tmp_path: Path, llm_server: Any
     ) -> None:
