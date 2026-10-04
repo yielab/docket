@@ -85,10 +85,23 @@ def handle_line(
     if answer.content is not None and isinstance(answer.content.get("reason"), str):
         reason = answer.content["reason"]
 
+    option_id = ""
+    if answer.content is not None and "optionId" in answer.content:
+        raw_option = answer.content["optionId"]
+        option_id = raw_option if isinstance(raw_option, str) else ""
+        if option_id not in _approval.APPROVAL_OPTION_IDS:
+            _say("answer line ignored: unknown option")
+            return
+        if (option_id == "deny") != (answer.action != "accept"):
+            _say("answer line ignored: option does not match action")
+            return
+
     # Only pass actor when there's a reason to record
     actor = "harness" if reason else ""
 
     try:
+        if option_id == "approve_task":
+            _approval.approval_set_option(target, option_id)
         if answer.action == "accept":
             _approval.approval_grant(target, channel="harness", actor=actor, reason=reason)
         else:

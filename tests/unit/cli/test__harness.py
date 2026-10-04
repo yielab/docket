@@ -211,3 +211,17 @@ class TestStatus:
             "cached_tokens": 1,
             "turns": 2,
         }
+
+
+def test_v10_event_line_omits_the_approval_pack_and_v11_keeps_it() -> None:
+    from docket.core.harness import HARNESS_CONTRACT_V11
+
+    record = {
+        "ts": "t",
+        "event_type": "approval_requested",
+        "payload": {"token": "a", "tool": "bash", "rationale": "r", "options": [], "x": 1},
+    }
+    v10 = _harness._event_line("1.0", "run", 0, record).model_dump()
+    assert v10["event"]["payload"] == {"token": "a", "tool": "bash", "x": 1}
+    v11 = _harness._event_line(HARNESS_CONTRACT_V11, "run", 0, record).model_dump()
+    assert v11["event"]["payload"]["rationale"] == "r"

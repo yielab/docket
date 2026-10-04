@@ -1683,6 +1683,7 @@ class _TurnState:
         batch_cancelled = False
         approval_unavailable: ToolResult | None = None
         approval_parked: ToolResult | None = None
+        self.ctx.rationale = assistant_msg.content or ""
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
                 self.project,

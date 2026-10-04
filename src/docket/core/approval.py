@@ -34,7 +34,44 @@ from docket.edges import store as _store
 # accept a channel from outside the process (``serve.py``'s
 # ``POST /approvals/<token>``) MUST validate against this set rather than
 # passing an arbitrary string through to ``approval_grant``/``approval_deny``.
-APPROVAL_CHANNELS: frozenset[str] = frozenset({"cli", "http", "mcp", "telegram", "timeout", "tack"})
+APPROVAL_RATIONALE_MAX_CHARS = 500
+
+# The three choices every gated call offers (ADR 0018 decision 3): id, label, description.
+_PACK_OPTIONS: tuple[tuple[str, str, str], ...] = (
+    ("approve_once", "Approve once", "Run this call now; ask again next time."),
+    ("approve_task", "Approve for this task", "Run this call and any identical one in this task."),
+    ("deny", "Deny", "Refuse this call; a reason can be given."),
+)
+APPROVAL_OPTION_IDS: frozenset[str] = frozenset(o[0] for o in _PACK_OPTIONS)
+
+
+def approval_options() -> list[dict[str, Any]]:
+    """The three pack options, built through the operator-v1.1 ``Option`` model."""
+    from docket.core.operator_contract import Option
+
+    return [
+        Option(id=i, label=label, description=desc).model_dump(by_alias=True, exclude_none=True)
+        for i, label, desc in _PACK_OPTIONS
+    ]
+
+
+def screen_rationale(text: str) -> tuple[str, bool]:
+    """Screen the assistant text behind a gated call as untrusted input, then bound it.
+    Returns ``(rationale, blocked)``; a blocked rationale is ``""``."""
+    text = (text or "").strip()
+    if not text:
+        return "", False
+    from docket.core import policy as _policy
+
+    hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False)
+    if hit.action == "block":
+        return "", True
+    return _redact(text)[:APPROVAL_RATIONALE_MAX_CHARS], False
+
+
+APPROVAL_CHANNELS: frozenset[str] = frozenset(
+    {"cli", "http", "mcp", "telegram", "timeout", "tack", "harness"}
+)
 
 # Every state a resolved approval record can end in. Only "pending" is live; the sweep
 # below must never touch a pending record regardless of age.
@@ -153,10 +190,15 @@ def approval_create(
     *,
     context: dict[str, Any] | None = None,
     expires_at: str | None = None,
+    rationale: str | None = None,
+    rationale_blocked: bool = False,
 ) -> str:
     """Persist a pending approval and return its token. ``context`` is optional caller
     data stored verbatim, never redacted; always ``{}`` when omitted. ``expires_at``,
-    when given, is the record's own deadline -- the sweep honours it over ``APPROVAL_TIMEOUT``."""
+    when given, is the record's own deadline -- the sweep honours it over ``APPROVAL_TIMEOUT``.
+    ``rationale`` (already screened and bounded; ``""`` when none) makes this a gated-call
+    pack: the record and ``approval_requested`` gain ``rationale`` and the three ``options``.
+    ``None`` leaves both out."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -178,6 +220,9 @@ def approval_create(
     }
     if expires_at:
         data["expiresAt"] = expires_at
+    if rationale is not None:
+        data["rationale"] = rationale
+        data["options"] = approval_options()
     _store.write_json(_approval_path(token), data)
 
     # The call a paused approval is for, when the caller names it. A caller answering
@@ -187,6 +232,11 @@ def approval_create(
     for key in ("tool", "callId"):
         if (context or {}).get(key):
             requested[key] = str((context or {})[key])
+    if rationale is not None:
+        requested["rationale"] = rationale
+        requested["options"] = data["options"]
+        if rationale_blocked:
+            requested["rationaleBlocked"] = True
     _emit_trace(
         project,
         f"{project}-approval-{os.getpid()}",
@@ -195,6 +245,26 @@ def approval_create(
         requested,
     )
     return token
+
+
+def approval_set_option(token: str, option_id: str) -> None:
+    """Record the pack option a caller chose on a still-pending approval, so the waiting
+    turn can act on it once the grant lands. Unknown ids and resolved records raise."""
+    if option_id not in APPROVAL_OPTION_IDS:
+        raise ApprovalError(f"unknown option {option_id!r}")
+    path = _approval_path(token)
+
+    def record(data: dict[str, Any]) -> dict[str, Any]:
+        if not path.is_file():
+            raise ApprovalError(f"Approval not found: {token}")
+        if data.get("state") != "pending":
+            raise ApprovalNoop(f"Not pending: {token}")
+        ctx = dict(data.get("context") or {})
+        ctx["optionId"] = option_id
+        data["context"] = ctx
+        return data
+
+    _store.read_modify_write(path, record)
 
 
 def create_pregrant(

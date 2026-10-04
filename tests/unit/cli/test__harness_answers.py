@@ -159,3 +159,46 @@ class TestWaitBudget:
             inside = cfg.TOOL_APPROVAL_TIMEOUT
             assert inside == 7
         assert before == cfg.TOOL_APPROVAL_TIMEOUT
+
+
+class TestOptionIds:
+    @staticmethod
+    def _answer(token: str, action: str, content: dict[str, str] | None) -> str:
+        answer: dict[str, object] = {"approvalToken": token, "action": action}
+        if content is not None:
+            answer["content"] = content
+        return _line(answer)
+
+    def test_approve_task_records_the_option_and_grants(self, home: Path) -> None:
+        t = approval.approval_create("p", "r", "act", rationale="")
+        _harness_answers.handle_line(self._answer(t, "accept", {"optionId": "approve_task"}), RUN)
+        rec = approval.approval_get(t)
+        assert rec["state"] == "granted" and rec["context"]["optionId"] == "approve_task"
+
+    def test_approve_once_and_bare_accept_grant_without_an_option_record(self, home: Path) -> None:
+        a = approval.approval_create("p", "r", "act", rationale="")
+        b = approval.approval_create("p", "r", "act", rationale="")
+        _harness_answers.handle_line(self._answer(a, "accept", {"optionId": "approve_once"}), RUN)
+        _harness_answers.handle_line(self._answer(b, "accept", None), RUN)
+        for t in (a, b):
+            rec = approval.approval_get(t)
+            assert rec["state"] == "granted" and "optionId" not in rec["context"]
+
+    def test_deny_option_declines_with_the_reason(self, home: Path) -> None:
+        t = approval.approval_create("p", "r", "act", rationale="")
+        content = {"optionId": "deny", "reason": "no"}
+        _harness_answers.handle_line(self._answer(t, "decline", content), RUN)
+        assert _state(t) == "denied"
+
+    def test_unknown_option_is_ignored_and_stays_pending(
+        self, home: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        t = approval.approval_create("p", "r", "act", rationale="")
+        _harness_answers.handle_line(self._answer(t, "accept", {"optionId": "bogus"}), RUN)
+        assert _state(t) == "pending"
+        assert "unknown option" in capsys.readouterr().err
+
+    def test_option_that_contradicts_the_action_is_ignored(self, home: Path) -> None:
+        t = approval.approval_create("p", "r", "act", rationale="")
+        _harness_answers.handle_line(self._answer(t, "decline", {"optionId": "approve_once"}), RUN)
+        assert _state(t) == "pending"

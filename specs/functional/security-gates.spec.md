@@ -994,6 +994,25 @@ pre-grants", this section governs for `--answers stdin` only.
 7. **Credential values never appear in a string.** Neither the stderr diagnostics nor the trace
    carry a line's text. `approval_requested` carries the call's `tool` and `callId` only, so a
    caller learns which call it is answering without the call's arguments.
+8. **Approval packs (P36-6, ADR 0018 decision 3).** An approval made for a gated tool call (wait
+   and park postures) carries a pack on its record and on `approval_requested`, as additive
+   fields: `rationale` and `options`.
+   - `rationale` is the assistant text of the message that made the call
+     (`ToolContext.rationale`, set by the agent loop per tool-call batch). It is screened with
+     `policy_eval_detail("lead", "pre_input", text, trusted=False)`, redacted, and truncated to
+     `APPROVAL_RATIONALE_MAX_CHARS` (500). A `block` hit makes it `""` and adds
+     `rationaleBlocked: true` to the payload. The key is always present for a gated call, `""` when
+     there is no text. Approvals created outside a tool call carry neither key.
+   - `options` is exactly three operator-v1.1 `Option`s, built through the model, in order:
+     `approve_once`, `approve_task`, `deny`.
+   - `approve_task`: a harness answer with `content.optionId = "approve_task"` records the option
+     on the pending record (`approval_set_option`) before the grant. When the waiting call sees a
+     granted record with that option, it creates a pre-grant for that exact call
+     (`create_pregrant`, channel `harness`, tool and canonical argument digest) and adds it to
+     `ToolContext.pregrants`, so one identical later call in the same turn context runs without a
+     new approval. It is single-use.
+   - Harness contract 1.0 omits `rationale`, `options` and `rationaleBlocked` from the
+     `approval_requested` event it relays; its stream is byte-identical to before.
 
 ## Interface Contracts
 
@@ -1607,6 +1626,13 @@ $ git clone https://anywhere.example/repo.git
   `ToolOutcome`. The poll drains the command's output while it waits, so an ordinary command
   writing past the pipe buffer still returns its output rather than a false timeout. Every other
   handler, and a caller that never passes the callback, is unchanged.
+
+### Unreleased (P36-6)
+
+- P36-6 adds approval packs (In-turn tool-call gate requirement 8): `rationale` and `options` on
+  gated-call approvals and `approval_requested`, `ToolContext.rationale`, `approval_set_option`,
+  and the `approve_task` single-task pre-grant. `harness` joins `APPROVAL_CHANNELS` (it was already
+  the audit tag of a harness answer). No version bump.
 
 ### Unreleased (P36-2)
 

@@ -190,6 +190,9 @@ def _now_iso() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_PACK_KEYS = frozenset({"rationale", "options", "rationaleBlocked"})
+
+
 def _event_line(
     contract_version: str, token: str, seq: int, record: dict[str, Any]
 ) -> harness.HarnessEvent | harness.HarnessEventV11:
@@ -197,6 +200,10 @@ def _event_line(
         return harness.HarnessEventV11(
             token=token, seq=seq, ts=str(record.get("ts", "")), event=record
         )
+    if record.get("event_type") == "approval_requested" and isinstance(record.get("payload"), dict):
+        # The approval pack is additive in 1.1; contract 1.0 is frozen, so its stream omits it.
+        payload = {k: v for k, v in record["payload"].items() if k not in _PACK_KEYS}
+        record = {**record, "payload": payload}
     return harness.HarnessEvent(token=token, seq=seq, ts=str(record.get("ts", "")), event=record)
 
 

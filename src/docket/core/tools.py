@@ -73,6 +73,9 @@ class ToolContext:
     pregrants: tuple[Pregrant, ...] = ()
     approval_expires_at: str | None = None
     on_process: Callable[[str, dict[str, Any]], None] | None = None
+    # The assistant text of the message making the current call(s); the agent loop sets it
+    # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
+    rationale: str = ""
 
 
 @dataclass
@@ -436,15 +439,18 @@ def _resolve_ask_verdict(
         _park_call(call, tool, args, ctx, verdict, digest, result)
         return True
 
+    rationale, blocked = _approval.screen_rationale(ctx.rationale)
     token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",
         (f"tool call {tool.name!r}: {verdict.reason}; call={render_tool_call(tool.name, args)}")[
             :1000
         ],
-        context={"tool": tool.name, "callId": call.id},
+        context={"tool": tool.name, "callId": call.id, "argsDigest": digest},
+        rationale=rationale,
+        rationale_blocked=blocked,
     )
-    _wait_for_ask_approval(token, ctx, result)
+    _wait_for_ask_approval(token, ctx, result, tool.name, digest)
     return result.decision == "deny"
 
 
@@ -470,6 +476,7 @@ def _park_call(
         park_context["project"] = ctx.project
     if ctx.role:
         park_context["role"] = ctx.role
+    rationale, blocked = _approval.screen_rationale(ctx.rationale)
     token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",
@@ -478,6 +485,8 @@ def _park_call(
         ],
         context=park_context,
         expires_at=ctx.approval_expires_at,
+        rationale=rationale,
+        rationale_blocked=blocked,
     )
     result.decision = "deny"
     result.denial_kind = "approval_parked"
@@ -500,7 +509,9 @@ def _consume_matching_pregrant(ctx: ToolContext, tool_name: str, digest: str) ->
     return None
 
 
-def _wait_for_ask_approval(token: str, ctx: ToolContext, result: ToolResult) -> None:
+def _wait_for_ask_approval(
+    token: str, ctx: ToolContext, result: ToolResult, tool_name: str = "", digest: str = ""
+) -> None:
     """Block on *token* (the ``wait`` posture, the pre-existing in-turn gate) and fill
     *result* with the outcome, mutating it in place."""
     if ctx.cancellation_check is None:
@@ -533,6 +544,29 @@ def _wait_for_ask_approval(token: str, ctx: ToolContext, result: ToolResult) -> 
     # Granted: the call is now allowed, and falls through to execute.
     result.decision = "allow"
     result.reason = f"approved (token={token})"
+    _record_task_pregrant(token, ctx, tool_name, digest)
+
+
+def _record_task_pregrant(token: str, ctx: ToolContext, tool_name: str, digest: str) -> None:
+    """``approve_task``: a grant that chose that option also pre-grants one identical call
+    for the rest of this turn's context, through the existing ``create_pregrant`` path."""
+    if not tool_name or not digest:
+        return
+    try:
+        record = _approval.approval_get(token)
+        if (record.get("context") or {}).get("optionId") != "approve_task":
+            return
+        pre = _approval.create_pregrant(
+            ctx.project or "operator",
+            ctx.role or "tool",
+            tool_name,
+            digest,
+            channel="harness",
+            actor="approve_task",
+        )
+    except _approval.ApprovalError:
+        return
+    ctx.pregrants = (*ctx.pregrants, Pregrant(pre, tool_name, digest))
 
 
 # ── built-in tools ────────────────────────────────────────────────────────────
