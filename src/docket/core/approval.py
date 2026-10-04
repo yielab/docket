@@ -422,6 +422,20 @@ def approval_deny(
         audit_detail += f" reason={_redact(reason)}"
     audit_log("approval.deny", audit_detail)
 
+    # Record the denial reason to the corrections ledger (only if reason is given and project exists)
+    if reason and project != "operator":
+        from docket.core import corrections as _corrections
+
+        task_id = str(data.get("taskId", ""))
+        _corrections.record(
+            project,
+            "deny_reason",
+            task_id=task_id,
+            role=role,
+            text=reason,
+            source=channel,
+        )
+
 
 def list_pending() -> list[dict[str, Any]]:
     """Return every pending approval record in filename order; records that fail to

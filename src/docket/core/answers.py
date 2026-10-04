@@ -272,6 +272,20 @@ def answer_task(
     _record_answer_audit_and_trace(
         project, task_id, outcome, channel=channel, actor=actor, result=result
     )
+
+    # Record declined answers to the corrections ledger
+    if result.action == "decline":
+        from docket.core import corrections as _corrections
+
+        _corrections.record(
+            project,
+            "declined_answer",
+            task_id=task_id,
+            role="operator",
+            text="(declined)",
+            source="answer",
+        )
+
     return result
 
 

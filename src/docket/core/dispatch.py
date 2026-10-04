@@ -1854,6 +1854,20 @@ def _evaluate_verdict_gate(
                     rework_event,
                     _json.dumps({"cycle": ctx.rework_counts[node.step_id], "output": redacted}),
                 )
+
+                # Record REQUEST-CHANGES to the corrections ledger
+                if verdict and verdict.lower() == "request-changes":
+                    from docket.core import corrections as _corrections
+
+                    _corrections.record(
+                        ctx.project,
+                        "request_changes",
+                        task_id=ctx.task_id,
+                        role=role,
+                        text=hop_output,
+                        source="reviewer",
+                    )
+
                 return _UnitOutcome(kind="rework", hops=[hop], rework_target_index=target_index)
             # Rework budget exhausted (or, defensively, no valid target) —
             # this verdict is now terminal.

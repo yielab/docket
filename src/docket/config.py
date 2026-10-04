@@ -52,6 +52,7 @@ PLUGINS_DIR = Path(os.environ.get("PLUGINS_DIR", DOCKET_HOME / "plugins"))
 # .docket/skills/ and a pod's own pod_config_dir(project)/"skills".
 SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", DOCKET_HOME / "skills"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
+CORRECTIONS_DIR = Path(os.environ.get("CORRECTIONS_DIR", DOCKET_HOME / "corrections"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
 # RUNS_FILE: the persisted dispatch-run registry — one record per
 # `dispatch_pod` invocation, whatever triggered it (cli|webhook|schedule|sweep).

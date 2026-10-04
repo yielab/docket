@@ -266,11 +266,13 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_apply_cmd(project, extra)
     elif action == "export":
         _pod_export_cmd(project, extra)
+    elif action == "corrections":
+        _pod_corrections(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
             "delegate | answer | explain | pregrant | queue | dispatch | config | sync | "
-            "apply | export."
+            "apply | export | corrections."
         )
         raise typer.Exit(1)
 
@@ -1245,6 +1247,44 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
     _fleet.meta_set(lead_id, "schedule", coerced)
     audit_log("pod.config", f"project={project} action=set key=schedule value={coerced!r}")
     ui.success(f"Set schedule={coerced} for pod '{project}'.")
+
+
+def _pod_corrections(project: str, extra: list[str]) -> None:
+    """Show the pod's corrections ledger (deny reasons, REQUEST-CHANGES, declined answers).
+    ``docket pod <project> corrections [--json]`` prints a table or JSON."""
+    from docket.core import corrections as _corrections
+
+    as_json = "--json" in extra
+
+    records = _corrections.read(project)
+    if not records:
+        ui.warn(f"No corrections recorded for pod '{project}'.")
+        return
+
+    if as_json:
+        print(_json.dumps({"pod": project, "corrections": records}, indent=2))
+        return
+
+    table = Table(title=f"Corrections — {project}")
+    table.add_column("TIMESTAMP", style="dim")
+    table.add_column("KIND")
+    table.add_column("ROLE")
+    table.add_column("TASK")
+    table.add_column("TEXT", style="dim")
+
+    for record in records:
+        ts = str(record.get("ts", ""))[:19]  # YYYY-MM-DDTHH:MM:SS
+        kind = str(record.get("kind", ""))
+        role = str(record.get("role", ""))
+        task = str(record.get("taskId", ""))[:18]
+        text = str(record.get("text", ""))
+        # Truncate text to 80 chars
+        if len(text) > 80:
+            text = text[:77] + "..."
+
+        table.add_row(ts, kind, role, task, text)
+
+    ui.console.print(table)
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:

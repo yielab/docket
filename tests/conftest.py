@@ -103,6 +103,7 @@ def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("TRACES_DIR", "traces"),
     ("APPROVALS_DIR", "approvals"),
+    ("CORRECTIONS_DIR", "corrections"),
     ("POLICIES_DIR", "policies"),
     ("PLUGINS_DIR", "plugins"),
     ("SKILLS_DIR", "skills"),

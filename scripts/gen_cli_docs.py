@@ -370,6 +370,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`$DOCKET_HOME/approvals`",
     ),
     (
+        ("CORRECTIONS_DIR",),
+        "Per-pod append-only ledger of operator decisions and rejections (`docket pod <p> corrections`)",
+        "`$DOCKET_HOME/corrections`",
+    ),
+    (
         ("SCHEDULE_FILE",),
         "The persisted `docket schedule` registry",
         "`$DOCKET_HOME/docket-schedules.json`",

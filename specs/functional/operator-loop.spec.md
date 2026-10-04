@@ -625,7 +625,49 @@ a == b  # True regardless of argument dict key order
   delivery — every producer of those surfaces MUST construct its value through this module's
   functions, never by hand-building an equivalent dict.
 
+## Corrections
+
+Deny reasons, REQUEST-CHANGES review texts, and declined answers are appended to a per-pod
+append-only corrections ledger (`~/.docket/corrections/<project>.jsonl`) as a source of truth
+for operator decisions and rejections. The ledger is queried by `docket pod <p> corrections
+[--json]` (outputs a table or JSON array).
+
+### Schema
+
+Each JSONL line is a JSON object with these fields:
+
+- `ts` (string, ISO 8601): when the correction was recorded
+- `project` (string): the pod name
+- `kind` (string): one of `deny_reason`, `request_changes`, `declined_answer`
+- `taskId` (string): the task this correction applies to
+- `role` (string): the role making the decision (`reviewer`, `operator`, etc.)
+- `text` (string): the decision text, redacted (secret-shaped values replaced with
+  `[REDACTED]`) and tail-bounded to 4000 characters
+- `source` (string): where this came from (`cli`, `reviewer`, `answer`, etc.)
+
+### Writers
+
+1. **deny_reason**: recorded when `approval_deny()` is called with a non-empty `reason`
+   parameter (source: the approval's `channel`)
+2. **request_changes**: recorded when a Reviewer hop's verdict is `REQUEST-CHANGES` and a rework
+   is triggered (source: `"reviewer"`, text: the hop output)
+3. **declined_answer**: recorded when an answer to a parked input step has `action == "decline"`
+   (source: `"answer"`, text: always `"(declined)"`)
+
+### Guarantees
+
+- Write failures (OSError) are caught and logged, never fail the caller.
+- File mode is 0600 on creation.
+- Text is redacted with the same function as trace payloads.
+
 ## Changelog
+
+### Unreleased (P36-5)
+
+- Corrections ledger: deny reasons, REQUEST-CHANGES texts and declined answers are appended
+  to a per-pod JSONL ledger under the D-12 exemption, accessible via `docket pod <p>
+  corrections [--json]`. Text is redacted and tail-bounded; write failures are logged, never
+  fail the caller.
 
 ### Unreleased (P36-1)
 
