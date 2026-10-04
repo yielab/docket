@@ -1,9 +1,10 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
-(P35-2, P35-3, P35-5) is opt-in and partially implemented -- see "Contract 1.1" below.
-**Last Updated**: 2026-10-03
+(P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
+"Contract 1.1" below.
+**Last Updated**: 2026-10-04
 
 ## Purpose
 
@@ -166,11 +167,13 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
 
 ## Contract 1.1
 
-**Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
-contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 ships the models, generated
-schema, fixtures, and the `--contract` flag that selects which version is stamped on every line.
-P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4), P35-9 (Section 6) and P35-11 (`approvals`,
-Section 2 and Section 5) have landed live.
+**Status of this section: implemented (Phase 35 closed 2026-10-04).** ADR 0017 (D-51) opened a
+second, opt-in wire contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 shipped the
+models, generated schema, fixtures, and the `--contract` flag that selects which version is stamped
+on every line. P35-3 (Section 3), P35-5 (Section 5), P35-6 (Section 4), P35-9 (Section 6) and
+P35-11 (`approvals`, Section 2 and Section 5) have landed live. P35-10 is the integrator card: a
+consumer seam test drives the real subprocess against the committed schema, and the live run is
+recorded in ADR 0017.
 `task` is populated by recipe runs and stays `null` otherwise. Process lifecycle events ride the
 `event` stream itself, independent of the result fields.
 
@@ -372,7 +375,9 @@ The generated schema for the three v1.1 shapes (`HarnessEvent`, `HarnessResult`,
 is committed at `docs/contracts/harness-v1.1/schema.json`, produced by the same
 `scripts/harness_schema.py` script (`render_v11()`), with the same `$defs`-hoisting rule as
 v1's `render()`. A test regenerates it into memory and asserts byte equality with the committed
-file. Five hand-authored, line-validated example transcripts live at
+file. `tests/integration/test_harness_v11_consumer.py` (P35-10) drives the real `--contract 1.1`
+subprocess, reads `process_started`/`process_exited`, answers an approval on stdin, reads `files`
+and a `--recipe` `task` block, and validates every emitted line against that committed file. Five hand-authored, line-validated example transcripts live at
 `tests/fixtures/harness-contract/v1.1/{ok-files,asked-answered,cancelled-process,recipe-ok,
 answer-lines}.ndjson`; the first four end on a `HarnessResultV11` line like the v1 fixtures,
 and `answer-lines.ndjson` holds only `AnswerLine` lines (a stdin sample, not a stdout
@@ -397,30 +402,27 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
 
 ## Changelog
 
-### Unreleased (P35-11)
+### Version 1.4.0 (2026-10-04)
 
-- **Approvals on the result (P35-11).** `HarnessResultV11.approvals` (Section 2, and Section 5
-  item 7) reports each approval a run requested and how it ended. A denied or timed-out approval
-  still ends the run as before, so `status` and the exit code are unchanged. The v1.0 shapes are
-  unchanged. `docs/contracts/harness-v1.1/schema.json` is regenerated, and its `HarnessResult`
-  description now matches the model. The version bump is left to the integrator.
-
-### Unreleased (P35-9)
-
-- **Recipe runs (P35-9).** Section 6 is implemented and live: `docket harness run --contract 1.1
-  --recipe NAME|DIR` runs one recipe in place for one task, populates `HarnessResultV11.task`, and
-  routes `questionId` answer lines to the open question. `--recipe` is refused with `--role`,
-  `--max-tokens`, `--agent-id` and under `--contract 1.0`; `--verify CMD` is new and needs
-  `--recipe`. The approval mode travels as the ephemeral pod's Lead setting, so `run_recipe_task`
-  takes no `env`. The v1.1 shapes are unchanged. The version bump is left to the integrator.
-
-### Unreleased (P35-6)
-
-- **Written paths, token file, caller limits (P35-6).** Section 4 is implemented and live:
-  under `--contract 1.1`, `files` lists the run's write/edit calls (executed and ok) and, in a
-  git workspace, the `git status` changes; `--token-file`, `--max-tokens` and `--policy` are
-  accepted under `--contract 1.1` and refused under 1.0. The v1.1 shapes are unchanged. The
-  version bump is left to the integrator.
+- **Contract 1.1 complete (Phase 35 close, P35-10).** Every Contract 1.1 section is now
+  implemented and live. The version bump for the three cards below, which left it to the
+  integrator, is this one. The v1.0 shapes are unchanged.
+  - **Written paths, token file, caller limits (P35-6).** Section 4: `files`, `--token-file`,
+    `--max-tokens`, `--policy` under `--contract 1.1`.
+  - **Recipe runs (P35-9).** Section 6: `--recipe NAME|DIR` with `--verify`, `task` block,
+    `questionId` answers. Decisions: the approval mode travels as the ephemeral pod's Lead
+    `approvalMode` setting, so `run_recipe_task` takes no `env` parameter; `--verify` is added
+    because `requireVerify` without a verify command fails every hop; `--max-tokens` and
+    `--agent-id` are refused with `--recipe`.
+  - **Approvals on the result (P35-11).** Section 2 and Section 5 item 7: `approvals` lists each
+    approval with `accepted`, `declined`, `timed_out` or `unanswered`. This closes Wave 72
+    caveat 2: the status and exit code are unchanged, so a caller reads `approvals` to tell a
+    denied approval from a clean run.
+  - **Integrator (P35-10).** The consumer seam test, the schema-validated live run recorded in
+    ADR 0017, and a section 7 sentence naming the seam test.
+- **Deferred to the next phase, not in this contract.** A process-wide `TOOL_APPROVAL_TIMEOUT`
+  bound for the run (Wave 72 caveat 3; the per-run env route needed edits outside the owning
+  card's list), and the daemon reader thread for `--answers stdin` (Wave 72 caveat 5).
 
 ### Version 1.3.0 (2026-10-03)
 
