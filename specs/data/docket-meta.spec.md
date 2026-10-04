@@ -87,7 +87,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Its lifecycle is coupled to attempt-owned provisioning: rollback removes a scratch/workdir path only when that attempt created it, preserving pre-existing runtime contents and a successful same-project pod's directory. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
 | `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
-| `worktreeDir` / `worktreeBranch` | string | absolute path / branch name | local | No (pod members of a git codebase) | `add`, `pod add` | The member's own git worktree and its dedicated branch, set when provisioning could create one (a non-git codebase falls back to the flat workspace and writes neither). Consumed by dispatch and the driver — see pod-dispatch.spec.md. **Not fields on the `AgentMeta` Pydantic model** — round-trip through `extra="allow"` |
+| `inPlace` | bool | `true` | local | No (in-place pod Implementers) | in-place provisioning | Marks an Implementer that works in the codebase itself: dispatch makes no task worktree for it — see pod-dispatch.spec.md "Task worktrees". **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 | `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
 
 In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
@@ -246,6 +246,10 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Unreleased
+
+- `worktreeDir`/`worktreeBranch` removed (per-task worktrees are recorded on the task); `inPlace` added.
 
 ### Version 3.2.0 (2026-10-03)
 

@@ -12,6 +12,7 @@ one belongs to ``core/tools.py``'s ``ToolContext.sandbox``).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import subprocess
@@ -532,6 +533,19 @@ def git_worktree_remove(repo_dir: str, worktree_path: str) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, (result.stderr or result.stdout).strip()
     return True, ""
+
+
+def git_worktree_prune(repo_dir: str) -> None:
+    """Drop worktree records whose directory is gone; silent on every error."""
+    if not git_available():
+        return
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+        subprocess.run(
+            ["git", "-C", repo_dir, "worktree", "prune"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
 
 
 def git_branch_merged(repo_dir: str, branch: str, into: str) -> bool:

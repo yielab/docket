@@ -68,12 +68,10 @@ def dispatch(sub: str | None, extra: list[str]) -> None:
         _render_human(agent_id, report)
 
 
-def _roots_for(agent_id: str, meta: AgentMeta, worktree_dir: str) -> tuple[Path, ...]:
-    """The containment roots a real turn would resolve for *agent_id*: worktree >
-    codebase > work_dir > the agent's own workspace (mirrors
-    ``edges/adapters/docket_runtime.py``'s ``_resolve_roots``, reproduced for display)."""
-    if worktree_dir:
-        return (Path(worktree_dir),)
+def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
+    """The containment roots a standalone turn would resolve for *agent_id*: codebase >
+    work_dir > the agent's own workspace (mirrors ``edges/adapters/docket_runtime.py``'s
+    ``_resolve_roots``, reproduced for display; a dispatched task's worktree is per task)."""
     if meta.codebase:
         return (Path(meta.codebase),)
     if meta.work_dir:
@@ -274,8 +272,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
     readiness = _provider.model_readiness(model)
     provider_report = _provider_report(model)
 
-    worktree_dir = str(raw.get("worktreeDir") or "")
-    roots = _roots_for(agent_id, meta, worktree_dir)
+    roots = _roots_for(agent_id, meta)
     composition = _identity.compose_agent_prompt(
         agent_id,
         project_roots=roots,

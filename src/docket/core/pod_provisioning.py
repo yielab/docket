@@ -40,6 +40,9 @@ from docket.edges.adapters import system as _sys
 # core/archetypes.py's Red Lines templates).
 POD_TEMPLATE_VERSION = 3
 
+# Per-task git worktrees live under this directory of the Implementer's workspace.
+TASK_WORKTREES_DIRNAME = "tasks"
+
 # A verify command is stored and later run with shell=True (system.py's
 # run_verify_cmd) because real verify pipelines legitimately use `&&`/pipes/
 # redirects. This cap only bounds what gets persisted to .docket-meta.json and
@@ -72,7 +75,6 @@ class ProvisionedMember:
     member_id: str
     role: str
     model: str
-    worktree_fallback_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -130,29 +132,30 @@ def pod_member_ids(project: str) -> list[str]:
     return [mid for mid, _role, _idx in pod.members_of(all_ids, project)]
 
 
-def worktree_branch(project: str, member_id: str) -> str:
-    """Branch name for an Implementer's git worktree: ``docket/<project>/<member-id>``."""
-    return f"docket/{project}/{member_id}"
+def worktree_branch(project: str, task_id: str) -> str:
+    """Branch name for a task's git worktree: ``docket/<project>/<task-id>``."""
+    return f"docket/{project}/{task_id}"
 
 
-def provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:
-    """Try to provision a git worktree for a repo Implementer.
+def task_worktrees_dir(member_id: str) -> Path:
+    """Where an Implementer's per-task worktrees live: ``<member workspace>/tasks``."""
+    return _cfg.PROJECTS_DIR / member_id / TASK_WORKTREES_DIRNAME
 
-    Empty ``fallback_reason`` means success; on failure ``worktree_dir`` is empty too."""
-    if not codebase:
-        return "", ""  # no codebase — worktrees do not apply
-    if member.role != "implementer":
-        return "", ""
+
+def provision_task_worktree(
+    member_id: str, project: str, task_id: str, codebase: str
+) -> tuple[dict[str, str], str]:
+    """Create ``tasks/<task_id>`` on a new task branch from the codebase's HEAD. Returns
+    ``({dir, branch, baseCommit}, "")``, or ``({}, reason)`` when the task must run in place."""
     if not _sys.git_is_repo(codebase):
-        return "", f"codebase '{codebase}' is not a git repo — using flat workspace"
-    branch = worktree_branch(project, member.member_id)
-    # Place the worktree inside the docket workspace for this member so it is
-    # cleaned up with the workspace dir on teardown.
-    wt_path = str(_cfg.PROJECTS_DIR / member.member_id / "worktree")
+        return {}, f"codebase '{codebase}' is not a git repo -- running in place"
+    branch = worktree_branch(project, task_id)
+    wt_path = str(task_worktrees_dir(member_id) / task_id)
     ok, err = _sys.git_worktree_add(codebase, wt_path, branch)
     if not ok:
-        return "", f"git worktree add failed ({err}) — using flat workspace"
-    return wt_path, ""
+        return {}, f"git worktree add failed ({err}) -- running in place"
+    base = _sys.git_head_sha(wt_path) or ""
+    return {"dir": wt_path, "branch": branch, "baseCommit": base}, ""
 
 
 def _render_context(
@@ -271,22 +274,16 @@ def _write_member_workspace(
     port_range_start: int = 0,
     port_range_count: int = 0,
     scratch_dir: str = "",
-    worktree_dir: str = "",
     verify_cmd: str = "",
     work_dir: str = "",
     blueprint_name: str = "",
     budget_usd: float | None = None,
+    in_place: bool = False,
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
-    # The path this member is *told* to work in must be one its tool calls are
-    # allowed to reach: the driver's `_resolve_roots` returns the worktree
-    # ALONE when there is one, so naming the origin checkout here would advertise
-    # a path every read/write is then refused for -- a silent failure that burns
-    # the whole token budget on retries. Empty for every non-worktree member, so
-    # their files are byte-identical.
-    told_root = worktree_dir or codebase
+    told_root = codebase
     (ws / "SOUL.md").write_text(
         _member_soul(member, project, told_root, stack, description, work_dir=work_dir),
         encoding="utf-8",
@@ -338,9 +335,8 @@ def _write_member_workspace(
         meta["scratchDir"] = scratch_dir
     if member.role == "implementer" and verify_cmd:
         meta["verifyCmd"] = verify_cmd
-    if worktree_dir:
-        meta["worktreeDir"] = worktree_dir
-        meta["worktreeBranch"] = worktree_branch(project, member.member_id)
+    if in_place and member.role == "implementer":
+        meta["inPlace"] = True
     # Only stamped when this member was provisioned through a blueprint — a
     # bare `provision_members(...)` call (every existing test, and any future
     # non-blueprint caller) leaves meta exactly as before.
@@ -357,11 +353,11 @@ def _write_member_workspace(
     # Text files inherit the operator's umask when written above. Docket's
     # workspace contract is stricter (0700 directories, 0600 managed files),
     # so enforce it explicitly after the atomic metadata writer has also
-    # created its sibling lock file. The Implementer's ``worktree/`` is a Git
-    # checkout, not managed prompt state; never recurse into it or strip
+    # created its sibling lock file. The Implementer's ``tasks/`` holds Git
+    # checkouts, not managed prompt state; never recurse into it or strip
     # repository-owned executable bits.
     for path in ws.iterdir():
-        if path.name == "worktree" or path.is_symlink():
+        if path.name == TASK_WORKTREES_DIRNAME or path.is_symlink():
             continue
         with contextlib.suppress(OSError):
             path.chmod(0o700 if path.is_dir() else 0o600)
@@ -389,22 +385,14 @@ def provision_member(
     blueprint_name: str = "",
     budget_usd: float | None = None,
     in_place: bool = False,
-) -> tuple[bool, str, str]:
+) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
 
-    Returns ``(ok, message, worktree_fallback_reason)``; the caller renders the
-    fallback reason (empty except on the happy path) instead of this module
-    printing it. Does not restart the gateway -- the caller batches one restart
-    per command. Implementers get a git worktree on a dedicated branch, falling
-    back to the flat workspace when git is unavailable.
+    Returns ``(ok, message)``. Does not restart the gateway -- the caller batches one restart
+    per command. No worktree is made here: dispatch creates one per task at claim.
 
     ``work_dir``/``blueprint_name``/``budget_usd`` are all no-ops (no new meta
     keys) when unset, which is every non-blueprint caller."""
-    if in_place:
-        # In place: the Implementer works in the codebase itself, with no git worktree.
-        worktree_dir, fallback_reason = "", ""
-    else:
-        worktree_dir, fallback_reason = provision_worktree(member, project, codebase)
     _write_member_workspace(
         member,
         codebase,
@@ -415,16 +403,16 @@ def provision_member(
         port_range_start=port_range_start,
         port_range_count=port_range_count,
         scratch_dir=scratch_dir,
-        worktree_dir=worktree_dir,
         verify_cmd=verify_cmd,
         work_dir=work_dir,
         blueprint_name=blueprint_name,
         budget_usd=budget_usd,
+        in_place=in_place,
     )
     # Registration is fleet.json only -- there is no daemon to register with
     # (see cli/_agents.py's run_add for the identical reasoning).
     _fleet.add_agent(member.member_id)
-    return (True, "", fallback_reason)
+    return (True, "")
 
 
 def _provision_lock_dir(project: str) -> Path:
@@ -554,26 +542,29 @@ def _teardown_worktree_branch(codebase: str, branch: str) -> str:
 
 
 def teardown_member(member_id: str) -> tuple[bool, str]:
-    """Remove one pod member: fleet registration + workspace; worktree removed first.
+    """Remove one pod member: fleet registration + workspace; task worktrees removed first.
 
-    Does not free pod resources (caller's job). ``note`` reports a worktree branch left
+    Does not free pod resources (caller's job). ``note`` reports task branches left
     behind unmerged (see ``_teardown_worktree_branch``); empty otherwise."""
-    # Remove the git worktree first (before the workspace dir disappears).
+    # Remove the git worktrees first (before the workspace dir disappears).
     ws = _cfg.PROJECTS_DIR / member_id
     try:
         raw = _store.read_json(ws / _cfg.META_FILE)
-        worktree_dir = str(raw.get("worktreeDir", ""))
         codebase = str(raw.get("codebase", ""))
-        branch = str(raw.get("worktreeBranch", ""))
+        project = str(raw.get("pod", ""))
     except Exception:
-        worktree_dir = ""
         codebase = ""
-        branch = ""
-    if worktree_dir and codebase:
-        _ok, _err = _sys.git_worktree_remove(codebase, worktree_dir)
-    branch_note = ""
-    if branch and codebase:
-        branch_note = _teardown_worktree_branch(codebase, branch)
+        project = ""
+    notes: list[str] = []
+    tasks_dir = ws / TASK_WORKTREES_DIRNAME
+    if codebase and project and tasks_dir.is_dir():
+        for task_dir in sorted(p for p in tasks_dir.iterdir() if p.is_dir()):
+            _ok, _err = _sys.git_worktree_remove(codebase, str(task_dir))
+            note = _teardown_worktree_branch(codebase, worktree_branch(project, task_dir.name))
+            if note:
+                notes.append(note)
+        _sys.git_worktree_prune(codebase)
+    branch_note = "\n".join(notes)
 
     # No daemon to unregister from -- fleet.json only.
     with contextlib.suppress(Exception):
@@ -622,7 +613,7 @@ def provision_members(
     try:
         for m in members:
             member_verify_cmd = verify_cmd if (verify_cmd and m.role == "implementer") else ""
-            ok, msg, fallback = provision_member(
+            ok, msg = provision_member(
                 m,
                 codebase=codebase,
                 stack=stack,
@@ -645,7 +636,6 @@ def provision_members(
                     member_id=m.member_id,
                     role=m.role,
                     model=m.model,
-                    worktree_fallback_reason=fallback,
                 )
             )
     except Exception as exc:
@@ -778,7 +768,7 @@ def rendered_member_files(member_id: str) -> dict[str, str]:
     if not meta or not project or not role:
         return {}
     member = _member_from_meta(member_id, meta)
-    codebase = str(meta.get("worktreeDir") or meta.get("codebase", ""))
+    codebase = str(meta.get("codebase", ""))
     stack = str(meta.get("stack", ""))
     description = str(meta.get("description", ""))
     work_dir = str(meta.get("workDir", ""))

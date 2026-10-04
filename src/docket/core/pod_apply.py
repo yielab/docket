@@ -809,7 +809,7 @@ def apply(plan: ApplyPlan) -> ApplyResult:
                 file_dest.chmod(0o600)
 
     for member_write in plan._member_writes:
-        ok, msg, _fallback = _pp.provision_member(
+        ok, msg = _pp.provision_member(
             member_write.member,
             codebase=member_write.codebase,
             stack=member_write.stack,

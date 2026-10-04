@@ -211,13 +211,12 @@ class TestPipeline:
         assert runner.calls[1][1].startswith("agent:demo-implementer:demo:task:")
         assert runner.calls[1][1].endswith(":step:implementer")
 
-    def test_downstream_hops_receive_implementer_worktree(
+    def test_every_non_lead_hop_receives_the_task_worktree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
-        worktree = tmp_path / "implementer-worktree"
-        worktree.mkdir()
-        _fleet.meta_set("demo-implementer", "worktreeDir", str(worktree))
+        worktree = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "wt1"
+        worktree.mkdir(parents=True)
         calls: list[tuple[str, str, dict[str, str] | None]] = []
 
         def runner(
@@ -233,10 +232,23 @@ class TestPipeline:
                 output = "done"
             return _rd.TurnResult(True, output, 0.0, {})
 
-        task: dict[str, Any] = {"id": "wt1", "description": "work", "status": "pending"}
+        task: dict[str, Any] = {
+            "id": "wt1",
+            "description": "work",
+            "status": "pending",
+            "worktree": {"dir": str(worktree), "branch": "docket/demo/wt1", "baseCommit": "abc"},
+        }
         result = _dispatch.dispatch_task("demo", task, runner=runner)
 
         assert result.status == "done", result.reason
+        by_agent = {agent_id: (message, env) for agent_id, message, env in calls}
+        lead_message, lead_env = by_agent["demo-lead"]
+        assert "checkout" not in lead_message
+        assert lead_env is None
+        impl_message, impl_env = by_agent["demo-implementer"]
+        assert f"Your working checkout for this task: `{worktree}`" in impl_message
+        assert impl_env is not None
+        assert impl_env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
         downstream = [call for call in calls if call[0].endswith(("-reviewer", "-tester"))]
         assert len(downstream) == 2
         for _agent_id, message, env in downstream:
@@ -424,7 +436,7 @@ class TestHopEvidence:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-implementer", "worktreeDir", str(tmp_path))
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         _fleet.meta_set("demo-implementer", "verifyCmd", "echo ok")
         _dispatch.enqueue_task("demo", "Ship it")
 
@@ -444,7 +456,7 @@ class TestHopEvidence:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _fleet.meta_set("demo-implementer", "worktreeDir", str(tmp_path))
+        _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         secret_value = "zzqx-unleakable-canary-9000"
         _secrets.save_secrets({"LEAKY_KEY": secret_value})
         _fleet.meta_set("demo-implementer", "verifyCmd", f"echo {secret_value}; exit 1")

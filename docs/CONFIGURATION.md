@@ -1107,7 +1107,7 @@ what you changed on top of one.
 |---|---|---|
 | `model`, `modelSource` | the model this agent calls; whether policy changes follow it | `models`, `profile` |
 | `role`, `pod`, `blueprint` | tool narrowing, gate, pipeline choice (Lead) | provisioning |
-| `codebase`, `workDir`, `worktreeDir` | the directories tools may touch; verify cwd | provisioning |
+| `codebase`, `workDir` | the directories tools may touch; verify cwd (a dispatched task uses its own worktree) | provisioning |
 | `verifyCmd` | the mechanical gate after this member's hop | `pod set-verify`, `--verify` |
 | `budgetUsd`, `paused`, `pausedReason` | pod budget and auto-pause, **Lead only** | `profile --budget`, `--resume` |
 | `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` | pod dispatch, **Lead only** | hand-edit (§3.3) |

@@ -2,8 +2,8 @@
 
 A pod member learns where the code lives from docket-written files
 (``SOUL.md``, ``WORKFLOW_AUTO.md``, ``TOOLS.md``); its tool calls are
-separately contained by ``docket_runtime._resolve_roots``, which returns
-the git worktree **alone** when the member has one.
+separately contained by ``docket_runtime._resolve_roots``. A dispatched task's own
+worktree reaches the driver as the pipeline root instead, and the hop message names it.
 
 When those two disagree the failure is silent and expensive: every read
 of the advertised path is refused, the model retries other spellings, the
@@ -59,9 +59,7 @@ def _init_git_repo(path: Path) -> None:
 def _roots_for(member_id: str) -> tuple[Path, ...]:
     """Exactly what the driver will gate this member's tool calls against."""
     raw = json.loads((_cfg.workspace_dir(member_id) / _cfg.META_FILE).read_text())
-    return _resolve_roots(
-        AgentMeta.model_validate(raw), str(raw.get("worktreeDir") or ""), member_id
-    )
+    return _resolve_roots(AgentMeta.model_validate(raw), member_id)
 
 
 def _advertised_paths(text: str) -> list[Path]:
@@ -81,7 +79,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def _provision(member: PodMember, codebase: Path) -> None:
-    ok, _msg, _reason = provision_member(
+    ok, _msg = provision_member(
         member,
         codebase=str(codebase),
         stack="python",
@@ -130,7 +128,7 @@ def test_implementer_startup_contract_names_a_path_inside_its_own_roots(repo: Pa
 
 
 def test_implementer_tools_md_agrees_with_soul(repo: Path) -> None:
-    """TOOLS.md already used the worktree; SOUL.md must not contradict it."""
+    """TOOLS.md and SOUL.md name the same project root."""
     member = _make_member("implementer")
     _provision(member, repo)
 
@@ -143,19 +141,15 @@ def test_implementer_tools_md_agrees_with_soul(repo: Path) -> None:
     assert codebase_line == project_root
 
 
-def test_worktree_member_is_pointed_at_the_worktree_not_the_origin_repo(repo: Path) -> None:
-    """Concretely: the origin checkout is *not* what the implementer is told to edit."""
+def test_implementer_is_told_the_codebase_and_has_no_member_worktree(repo: Path) -> None:
+    """The per-task worktree is made at claim, so provisioning names only the codebase."""
     member = _make_member("implementer")
     _provision(member, repo)
 
     ws = _cfg.workspace_dir(member.member_id)
     raw = json.loads((ws / _cfg.META_FILE).read_text())
-    worktree = raw.get("worktreeDir")
-    assert worktree, "precondition: this member should have been given a worktree"
-
-    soul = (ws / "SOUL.md").read_text()
-    assert f"## Codebase\n{worktree}\n" in soul
-    # meta keeps the origin repo -- that is how teardown and `docket list` find it.
+    assert "worktreeDir" not in raw
+    assert f"## Codebase\n{repo}\n" in (ws / "SOUL.md").read_text()
     assert raw["codebase"] == str(repo)
 
 
@@ -163,15 +157,12 @@ def test_worktree_member_is_pointed_at_the_worktree_not_the_origin_repo(repo: Pa
 
 
 @pytest.mark.parametrize("role", ["lead", "reviewer", "tester"])
-def test_non_worktree_roles_are_still_told_the_codebase(repo: Path, role: str) -> None:
-    """Only the Implementer gets a worktree; everyone else keeps the plain codebase."""
+def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
+    """Every role is told the plain codebase."""
     member = _make_member(role)
     _provision(member, repo)
 
     ws = _cfg.workspace_dir(member.member_id)
-    raw = json.loads((ws / _cfg.META_FILE).read_text())
-    assert not raw.get("worktreeDir")
-
     soul = (ws / "SOUL.md").read_text()
     assert f"## Codebase\n{repo}\n" in soul
     contract = (ws / _mem.REQUIRED_STARTUP_FILE).read_text()
@@ -180,15 +171,13 @@ def test_non_worktree_roles_are_still_told_the_codebase(repo: Path, role: str) -
 
 
 def test_implementer_without_a_git_repo_is_unchanged(tmp_path: Path) -> None:
-    """A non-repo codebase falls back to the flat workspace -- no worktree, no rewrite."""
+    """A non-repo codebase is named as it is."""
     codebase = tmp_path / "plain"
     codebase.mkdir()
     member = _make_member("implementer", project="plainapp")
     _provision(member, codebase)
 
     ws = _cfg.workspace_dir(member.member_id)
-    raw = json.loads((ws / _cfg.META_FILE).read_text())
-    assert not raw.get("worktreeDir")
     assert f"## Codebase\n{codebase}\n" in (ws / "SOUL.md").read_text()
 
 
@@ -196,7 +185,7 @@ def test_implementer_without_a_git_repo_is_unchanged(tmp_path: Path) -> None:
 
 
 def test_doctor_contract_heal_keeps_the_member_inside_its_roots(repo: Path) -> None:
-    """Healing a stale contract must not restore the unreachable origin path."""
+    """Healing a stale contract must keep the member inside its roots."""
     from docket.cli._doctor import _check_runtime_contract
 
     member = _make_member("implementer")

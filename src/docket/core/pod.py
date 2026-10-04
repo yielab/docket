@@ -253,15 +253,15 @@ def policy_role_for(role: str) -> str:
     return arch.resolved_policy_role if arch is not None else role
 
 
-def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "") -> str:
+def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = "") -> str:
     """Resolve the real working directory for a pod member's mechanical operations. Preference
-    order: the member's own git **worktree** (set at provisioning, see ``cli/_pod.py``'s
-    ``_provision_worktree``) -> the pod's shared **codebase** root -> the member's own docket
-    **workspace** dir. Both the verification gate (``core/dispatch.py``) and the TOOLS.md
-    generator (``cli/_pod.py``) resolve through this one helper so they can never disagree
-    about which tree an implementer's work is checked against."""
-    if worktree_dir:
-        return worktree_dir
+    order: the running task's own git **worktree** (recorded at claim) -> the pod's shared
+    **codebase** root -> the member's own docket **workspace** dir. Both the verification gate
+    (``core/dispatch.py``) and the TOOLS.md generator (``cli/_pod.py``) resolve through this
+    one helper so they can never disagree about which tree an implementer's work is checked
+    against."""
+    if task_worktree:
+        return task_worktree
     if codebase:
         return codebase
     return str(_cfg.workspace_dir(member_id))

@@ -1389,7 +1389,7 @@ def _tool_reply(backend: _ScriptedBackend) -> str:
 
 
 class TestRootResolutionPrecedence:
-    """worktree > codebase > work_dir > bare workspace dir. Each case proven
+    """codebase > work_dir > bare workspace dir, with a task worktree root above all. Each case proven
     with the real `read` tool against a distinctly-labelled marker file, not
     by inspecting `_resolve_roots`'s logic directly."""
 
@@ -1427,36 +1427,38 @@ class TestRootResolutionPrecedence:
         )
         assert _tool_reply(backend) == "codebase"
 
-    def test_worktree_wins_over_codebase(self, tmp_path: Path) -> None:
-        codebase = tmp_path / "code2"
-        codebase.mkdir()
-        (codebase / "marker.txt").write_text("codebase2")
-        worktree = tmp_path / "wt"
-        worktree.mkdir()
-        (worktree / "marker.txt").write_text("worktree")
-        _write_meta("prec-d", codebase=str(codebase), worktreeDir=str(worktree))
-        backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
-        DocketDriver(backend_factory=lambda model: backend).run_turn(
-            "prec-d", "agent:prec-d:default", "go", 30
-        )
-        assert _tool_reply(backend) == "worktree"
-
-    def test_registered_same_pod_worktree_wins_for_reviewer(self, tmp_path: Path) -> None:
+    def test_task_worktree_root_wins_over_codebase(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin"
         origin.mkdir()
         (origin / "marker.txt").write_text("origin")
-        worktree = tmp_path / "worktree"
-        worktree.mkdir()
-        (worktree / "marker.txt").write_text("implementation")
-        _write_meta(
+        _write_meta("demo-implementer", role="implementer", codebase=str(origin))
+        _fleet.add_agent("demo-implementer")
+        task_dir = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "t1"
+        task_dir.mkdir(parents=True)
+        (task_dir / "marker.txt").write_text("task worktree")
+        backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
+
+        DocketDriver(backend_factory=lambda model: backend).run_turn(
             "demo-implementer",
-            role="implementer",
-            codebase=str(origin),
-            worktreeDir=str(worktree),
+            "agent:demo-implementer:default",
+            "go",
+            30,
+            {PIPELINE_WORKTREE_ENV: str(task_dir)},
         )
+
+        assert _tool_reply(backend) == "task worktree"
+
+    def test_task_worktree_root_wins_for_reviewer(self, tmp_path: Path) -> None:
+        origin = tmp_path / "origin"
+        origin.mkdir()
+        (origin / "marker.txt").write_text("origin")
+        _write_meta("demo-implementer", role="implementer", codebase=str(origin))
         _write_meta("demo-reviewer", role="reviewer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
         _fleet.add_agent("demo-reviewer")
+        task_dir = _cfg.PROJECTS_DIR / "demo-implementer" / "tasks" / "t1"
+        task_dir.mkdir(parents=True)
+        (task_dir / "marker.txt").write_text("implementation")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
 
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -1464,10 +1466,31 @@ class TestRootResolutionPrecedence:
             "agent:demo-reviewer:default",
             "go",
             30,
-            {PIPELINE_WORKTREE_ENV: str(worktree)},
+            {PIPELINE_WORKTREE_ENV: str(task_dir)},
         )
 
         assert _tool_reply(backend) == "implementation"
+
+    def test_pipeline_root_outside_every_tasks_dir_is_ignored(self, tmp_path: Path) -> None:
+        origin = tmp_path / "origin"
+        origin.mkdir()
+        (origin / "marker.txt").write_text("origin")
+        stray = tmp_path / "stray"
+        stray.mkdir()
+        (stray / "marker.txt").write_text("stray")
+        _write_meta("demo-implementer", role="implementer", codebase=str(origin))
+        _fleet.add_agent("demo-implementer")
+        backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
+
+        DocketDriver(backend_factory=lambda model: backend).run_turn(
+            "demo-implementer",
+            "agent:demo-implementer:default",
+            "go",
+            30,
+            {PIPELINE_WORKTREE_ENV: str(stray)},
+        )
+
+        assert _tool_reply(backend) == "origin"
 
 
 # ── capabilities ──────────────────────────────────────

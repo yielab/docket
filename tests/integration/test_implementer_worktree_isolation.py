@@ -1,14 +1,11 @@
-"""Git-worktree-native Implementer isolation.
+"""Per-task git worktrees for a pod Implementer.
 
 Acceptance criteria:
-  - provision_member() provisions the Implementer's workspace in a git worktree
-    when the codebase is a git repo.
-  - The worktree path and branch are recorded on the Implementer's meta.
-  - teardown_member() calls git_worktree_remove for that worktree.
-  - Non-repo pods (task pods, no codebase) are unaffected.
-  - Non-Implementer roles (lead, reviewer) are not given worktrees.
-  - git unavailable or non-repo codebase → flat-workspace fallback, no crash.
-  - suite green.
+  - provision_member() makes no worktree and records no worktree meta.
+  - provision_task_worktree() creates <member workspace>/tasks/<task id> on
+    docket/<project>/<task id>, recording the creation commit.
+  - teardown_member() removes every task worktree and reports unmerged branches.
+  - git unavailable or non-repo codebase -> a reason is returned, no crash.
 """
 
 from __future__ import annotations
@@ -25,7 +22,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 import docket.edges.adapters.system as _sys
 from docket.cli._pod import (
-    _provision_worktree,
+    _provision_task_worktree,
     _worktree_branch,
     provision_member,
     teardown_member,
@@ -106,76 +103,57 @@ def git_repo(tmp_path: Path) -> Path:
 
 class TestWorktreeBranchName:
     def test_format(self) -> None:
-        assert _worktree_branch("myapp", "myapp-implementer") == "docket/myapp/myapp-implementer"
-
-    def test_indexed(self) -> None:
-        branch = _worktree_branch("shop", "shop-implementer-2")
-        assert branch == "docket/shop/shop-implementer-2"
+        assert _worktree_branch("myapp", "task-1") == "docket/myapp/task-1"
 
 
-# ── TestProvisionWorktreeHelper ───────────────────────────────────────────────
+# ── TestProvisionTaskWorktree ─────────────────────────────────────────────────
 
 
-class TestProvisionWorktreeHelper:
-    def test_non_implementer_skipped(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("lead")
-        wt, reason = _provision_worktree(m, "myapp", str(git_repo))
-        assert wt == ""
-        assert reason == ""
-
-    def test_no_codebase_skipped(self, pod_home: Path) -> None:
-        m = _make_member("implementer")
-        wt, reason = _provision_worktree(m, "myapp", "")
-        assert wt == ""
-        assert reason == ""
-
+class TestProvisionTaskWorktree:
     def test_non_repo_codebase_fallback(self, tmp_path: Path, pod_home: Path) -> None:
         plain_dir = tmp_path / "notarepo"
         plain_dir.mkdir()
-        m = _make_member("implementer")
-        wt, reason = _provision_worktree(m, "myapp", str(plain_dir))
-        assert wt == ""
+        rec, reason = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(plain_dir))
+        assert rec == {}
         assert "not a git repo" in reason
 
     def test_git_unavailable_fallback(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("implementer")
         with mock.patch.object(_sys, "git_available", return_value=False):
-            wt, reason = _provision_worktree(m, "myapp", str(git_repo))
-        assert wt == ""
-        assert "git not found" in reason or "not a git repo" in reason
+            rec, reason = _provision_task_worktree(
+                "myapp-implementer", "myapp", "t1", str(git_repo)
+            )
+        assert rec == {}
+        assert reason
 
     def test_worktree_add_failure_fallback(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("implementer")
         with mock.patch.object(_sys, "git_worktree_add", return_value=(False, "some git error")):
-            wt, reason = _provision_worktree(m, "myapp", str(git_repo))
-        assert wt == ""
+            rec, reason = _provision_task_worktree(
+                "myapp-implementer", "myapp", "t1", str(git_repo)
+            )
+        assert rec == {}
         assert "worktree add failed" in reason
 
-    def test_worktree_created_for_repo(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("implementer")
-        wt, reason = _provision_worktree(m, "myapp", str(git_repo))
+    def test_worktree_created_under_member_tasks_dir(self, git_repo: Path, pod_home: Path) -> None:
+        rec, reason = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
         assert reason == ""
-        assert wt != ""
-        assert Path(wt).is_dir()
+        assert rec["dir"] == str(_cfg.PROJECTS_DIR / "myapp-implementer" / "tasks" / "t1")
+        assert Path(rec["dir"]).is_dir()
+        assert rec["branch"] == _worktree_branch("myapp", "t1")
+        assert _sys.git_current_branch(rec["dir"]) == rec["branch"]
+        assert rec["baseCommit"] == _sys.git_head_sha(str(git_repo))
 
-    def test_worktree_on_correct_branch(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("implementer")
-        wt, reason = _provision_worktree(m, "myapp", str(git_repo))
-        assert reason == ""
-        branch = _sys.git_current_branch(wt)
-        assert branch == _worktree_branch("myapp", m.member_id)
+    def test_two_tasks_get_two_directories(self, git_repo: Path, pod_home: Path) -> None:
+        one, _ = _provision_task_worktree("myapp-implementer", "myapp", "t1", str(git_repo))
+        two, _ = _provision_task_worktree("myapp-implementer", "myapp", "t2", str(git_repo))
+        assert one["dir"] != two["dir"]
+        assert one["branch"] != two["branch"]
 
 
-# ── TestProvisionMemberWorktree ───────────────────────────────────────────────
+# ── TestProvisionMemberMakesNoWorktree ────────────────────────────────────────
 
 
-class TestProvisionMemberWorktree:
-    def _provision(
-        self,
-        member: PodMember,
-        codebase: str,
-        projects_dir: Path,
-    ) -> dict[str, Any]:
+class TestProvisionMemberMakesNoWorktree:
+    def _provision(self, member: PodMember, codebase: str) -> dict[str, Any]:
         ok, msg = provision_member(
             member,
             codebase=codebase,
@@ -185,38 +163,18 @@ class TestProvisionMemberWorktree:
             project_key="default",
         )
         assert ok, msg
-        meta_path = projects_dir / member.member_id / _cfg.META_FILE
-        return json.loads(meta_path.read_text())
+        return json.loads((_cfg.PROJECTS_DIR / member.member_id / _cfg.META_FILE).read_text())
 
-    def test_worktree_dir_in_meta_for_repo(self, git_repo: Path, pod_home: Path) -> None:
+    def test_repo_implementer_has_no_worktree(self, git_repo: Path, pod_home: Path) -> None:
         m = _make_member("implementer")
-        meta = self._provision(m, str(git_repo), _cfg.PROJECTS_DIR)
-        assert "worktreeDir" in meta
-        assert "worktreeBranch" in meta
-        assert Path(meta["worktreeDir"]).is_dir()
-
-    def test_worktree_branch_value(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("implementer")
-        meta = self._provision(m, str(git_repo), _cfg.PROJECTS_DIR)
-        assert meta["worktreeBranch"] == _worktree_branch("myapp", m.member_id)
-
-    def test_no_worktree_for_task_pod(self, pod_home: Path) -> None:
-        m = _make_member("implementer")
-        meta = self._provision(m, "", _cfg.PROJECTS_DIR)
+        meta = self._provision(m, str(git_repo))
         assert "worktreeDir" not in meta
         assert "worktreeBranch" not in meta
-
-    def test_no_worktree_for_lead(self, git_repo: Path, pod_home: Path) -> None:
-        m = _make_member("lead")
-        meta = self._provision(m, str(git_repo), _cfg.PROJECTS_DIR)
-        assert "worktreeDir" not in meta
-
-    def test_fallback_no_worktree_dir_for_non_repo(self, tmp_path: Path, pod_home: Path) -> None:
-        plain = tmp_path / "plain"
-        plain.mkdir()
-        m = _make_member("implementer")
-        meta = self._provision(m, str(plain), _cfg.PROJECTS_DIR)
-        assert "worktreeDir" not in meta
+        assert not (_cfg.PROJECTS_DIR / m.member_id / "tasks").exists()
+        listing = subprocess.run(
+            ["git", "-C", str(git_repo), "worktree", "list"], capture_output=True, text=True
+        ).stdout
+        assert len(listing.strip().splitlines()) == 1
 
 
 # ── TestTeardownMemberWorktree ─────────────────────────────────────────────────
@@ -227,123 +185,64 @@ class TestTeardownMemberWorktree:
         ws.mkdir(parents=True, exist_ok=True)
         (ws / _cfg.META_FILE).write_text(json.dumps(meta))
 
-    def test_teardown_calls_worktree_remove(self, tmp_path: Path, pod_home: Path) -> None:
-        repo = tmp_path / "repo"
+    def _setup(self, tmp_path: Path, project: str, tasks: tuple[str, ...]) -> tuple[Path, str]:
+        repo = tmp_path / f"repo-{project}"
         repo.mkdir()
         _init_git_repo(repo)
-        m = _make_member("implementer")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        wt = ws / "worktree"
-        # Provision a real worktree so we can tear it down.
-        ok, err = _sys.git_worktree_add(str(repo), str(wt), _worktree_branch("myapp", m.member_id))
-        assert ok, err
-        self._write_meta(
-            ws,
-            {
-                "worktreeDir": str(wt),
-                "codebase": str(repo),
-                "worktreeBranch": _worktree_branch("myapp", m.member_id),
-            },
-        )
-        ok, _ = teardown_member(m.member_id)
-        assert ok
-        assert not wt.exists()
+        member_id = f"{project}-implementer"
+        ws = _cfg.PROJECTS_DIR / member_id
+        self._write_meta(ws, {"codebase": str(repo), "pod": project, "role": "implementer"})
+        for task in tasks:
+            _rec, reason = _provision_task_worktree(member_id, project, task, str(repo))
+            assert not reason, reason
+        return repo, member_id
 
-    def test_teardown_no_worktree_field_no_crash(self, pod_home: Path) -> None:
-        m = _make_member("implementer", "proj2")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        self._write_meta(ws, {"codebase": "", "role": "implementer"})
-        remove_calls: list[str] = []
-        with mock.patch.object(_sys, "git_worktree_remove", side_effect=remove_calls.append):
-            ok, _ = teardown_member(m.member_id)
-        assert ok
-        assert remove_calls == []
-
-    def test_teardown_worktree_remove_failure_does_not_prevent_cleanup(
-        self, git_repo: Path, pod_home: Path
-    ) -> None:
-        m = _make_member("implementer", "proj3")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        self._write_meta(
-            ws,
-            {
-                "worktreeDir": "/nonexistent/path",
-                "codebase": str(git_repo),
-            },
-        )
-        ok, _ = teardown_member(m.member_id)
-        assert ok
-        assert not ws.exists()
-
-    def test_teardown_deletes_branch_merged_into_codebases_current_branch(
-        self, tmp_path: Path, pod_home: Path
-    ) -> None:
-        repo = tmp_path / "repo4"
-        repo.mkdir()
-        _init_git_repo(repo)
-        m = _make_member("implementer", "proj4")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        wt = ws / "worktree"
-        branch = _worktree_branch("proj4", m.member_id)
-        ok, err = _sys.git_worktree_add(str(repo), str(wt), branch)
-        assert ok, err
-        # Freshly branched from the codebase's current HEAD -- trivially merged.
-        self._write_meta(
-            ws, {"worktreeDir": str(wt), "codebase": str(repo), "worktreeBranch": branch}
-        )
-        ok, _ = teardown_member(m.member_id)
-        assert ok
-        remaining = subprocess.run(
-            ["git", "-C", str(repo), "branch", "--list", branch],
-            capture_output=True,
-            text=True,
+    def _branches(self, repo: Path) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), "branch", "--list", "docket/*"], capture_output=True, text=True
         ).stdout
-        assert branch not in remaining
+
+    def test_teardown_removes_every_task_worktree(self, tmp_path: Path, pod_home: Path) -> None:
+        repo, member_id = self._setup(tmp_path, "proj1", ("t1", "t2"))
+        ok, _ = teardown_member(member_id)
+        assert ok
+        listing = subprocess.run(
+            ["git", "-C", str(repo), "worktree", "list"], capture_output=True, text=True
+        ).stdout
+        assert len(listing.strip().splitlines()) == 1
+        assert not (_cfg.PROJECTS_DIR / member_id).exists()
+
+    def test_teardown_without_tasks_dir_no_crash(self, pod_home: Path) -> None:
+        ws = _cfg.PROJECTS_DIR / "proj2-implementer"
+        self._write_meta(ws, {"codebase": "", "role": "implementer"})
+        with mock.patch.object(_sys, "git_worktree_remove") as remove:
+            ok, _ = teardown_member("proj2-implementer")
+        assert ok
+        remove.assert_not_called()
+
+    def test_teardown_deletes_merged_branches(self, tmp_path: Path, pod_home: Path) -> None:
+        repo, member_id = self._setup(tmp_path, "proj4", ("t1",))
+        ok, note = teardown_member(member_id)
+        assert ok
+        assert note == ""
+        assert "docket/proj4/t1" not in self._branches(repo)
 
     def test_teardown_keeps_unmerged_branch_and_reports_manual_command(
         self, tmp_path: Path, pod_home: Path
     ) -> None:
-        repo = tmp_path / "repo5"
-        repo.mkdir()
-        _init_git_repo(repo)
-        m = _make_member("implementer", "proj5")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        wt = ws / "worktree"
-        branch = _worktree_branch("proj5", m.member_id)
-        ok, err = _sys.git_worktree_add(str(repo), str(wt), branch)
-        assert ok, err
-        # Diverge the branch from the codebase's current HEAD.
+        repo, member_id = self._setup(tmp_path, "proj5", ("t1", "t2"))
+        wt = _cfg.PROJECTS_DIR / member_id / "tasks" / "t1"
         (wt / "extra.txt").write_text("unmerged work\n")
         subprocess.run(["git", "-C", str(wt), "add", "."], check=True, capture_output=True)
         subprocess.run(
             ["git", "-C", str(wt), "commit", "-m", "unmerged"], check=True, capture_output=True
         )
-        self._write_meta(
-            ws, {"worktreeDir": str(wt), "codebase": str(repo), "worktreeBranch": branch}
-        )
-        ok, msg = teardown_member(m.member_id)
+        ok, msg = teardown_member(member_id)
         assert ok
-        remaining = subprocess.run(
-            ["git", "-C", str(repo), "branch", "--list", branch],
-            capture_output=True,
-            text=True,
-        ).stdout
-        assert branch in remaining
-        assert branch in msg
-        assert "git branch -D" in msg
-
-    def test_teardown_no_branch_field_deletes_nothing(self, tmp_path: Path, pod_home: Path) -> None:
-        repo = tmp_path / "repo6"
-        repo.mkdir()
-        _init_git_repo(repo)
-        m = _make_member("implementer", "proj6")
-        ws = _cfg.PROJECTS_DIR / m.member_id
-        self._write_meta(ws, {"codebase": str(repo)})
-        delete_calls: list[str] = []
-        with mock.patch.object(_sys, "git_branch_delete", side_effect=delete_calls.append):
-            ok, _ = teardown_member(m.member_id)
-        assert ok
-        assert delete_calls == []
+        remaining = self._branches(repo)
+        assert "docket/proj5/t1" in remaining
+        assert "docket/proj5/t2" not in remaining
+        assert "git branch -D docket/proj5/t1" in msg
 
 
 # ── TestSystemAdapterWorktreeFunctions ───────────────────────────────────────

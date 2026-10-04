@@ -746,8 +746,8 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
 ### `DocketDriver` root resolution
 
-Given an agent whose metadata sets both `codebase` and a raw `worktreeDir` field, a `read`
-tool call resolves against the worktree directory, not the codebase — worktree wins.
+Given an Implementer whose hop is handed a pipeline root under its own `tasks/` directory, a
+`read` tool call resolves against that task worktree, not the codebase — the task worktree wins.
 
 ### A Reviewer cannot dispatch a write
 
@@ -815,6 +815,7 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 - **Requirements 77-79: the `no_progress` stop.** A turn stops when `no_progress_rounds` (default 3)
   consecutive tool rounds each repeat an already-seen round fingerprint.
+- `DocketDriver` root resolution example: the root is now a task worktree handed in by dispatch, not a member `worktreeDir`.
 
 ### Version 1.30.0 (2026-10-03)
 

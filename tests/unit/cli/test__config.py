@@ -20,24 +20,19 @@ SUBJECT = "docket.cli._config"
 
 
 class TestRootsFor:
-    def test_worktree_wins_over_everything(self) -> None:
-        meta = AgentMeta(kind="project", codebase="/repo", work_dir="/work")
-        roots = _config._roots_for("agent-1", meta, "/worktree")
-        assert roots == (Path("/worktree"),)
-
     def test_codebase_wins_over_work_dir(self) -> None:
         meta = AgentMeta(kind="project", codebase="/repo", work_dir="/work")
-        roots = _config._roots_for("agent-1", meta, "")
+        roots = _config._roots_for("agent-1", meta)
         assert roots == (Path("/repo"),)
 
     def test_work_dir_when_no_codebase(self) -> None:
         meta = AgentMeta(kind="project", work_dir="/work")
-        roots = _config._roots_for("agent-1", meta, "")
+        roots = _config._roots_for("agent-1", meta)
         assert roots == (Path("/work"),)
 
     def test_falls_back_to_the_agents_own_workspace(self) -> None:
         meta = AgentMeta(kind="project")
-        roots = _config._roots_for("agent-1", meta, "")
+        roots = _config._roots_for("agent-1", meta)
         assert roots == (_cfg.workspace_dir("agent-1"),)
 
 

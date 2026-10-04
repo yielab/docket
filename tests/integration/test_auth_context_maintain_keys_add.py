@@ -161,10 +161,10 @@ class TestCmdMaintain:
         combined = out + err
         assert "healthy" in combined.lower() or "ok" in combined.lower()
 
-    def test_check_preserves_repository_modes_inside_worktree(self, tmp_path: Path) -> None:
+    def test_check_preserves_repository_modes_inside_task_worktrees(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        executable = home / "workspaces" / "projects" / "test-agent" / "worktree" / "tool.sh"
-        executable.parent.mkdir()
+        executable = home / "workspaces" / "projects" / "test-agent" / "tasks" / "t1" / "tool.sh"
+        executable.parent.mkdir(parents=True)
         executable.write_text("#!/bin/sh\n")
         executable.chmod(0o755)
 

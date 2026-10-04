@@ -3,9 +3,9 @@
 `HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed fields
 (`core/handoff.py`'s module docstring documents the seam). Covers: TestImplementerDiffProbeUnit
 (`_implementer_diff_probe` in isolation, with `edges/adapters/system.py`'s git calls
-monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_task`
-call against a real git repo and worktree: the hop's artifact carries the actual changed file
-and checked-out branch); and TestDegradePaths (the three ways this must degrade to an empty,
+monkeypatched out); TestDispatchPopulatesRealDiff (end to end through a real `dispatch_pod`
+claim against a real git repo: the hop's artifact carries the actual changed file and the
+task worktree's branch); and TestDegradePaths (the three ways this must degrade to an empty,
 never exceptional, artifact -- a `workdir` pod, a non-git `codebase`, and no `git` binary --
 each pinned end to end through `dispatch_task` so a call-site change can't reintroduce a crash).
 """
@@ -37,8 +37,12 @@ class TestImplementerDiffProbeUnit:
 
         monkeypatch.setattr(_sys, "git_available", boom)
         monkeypatch.setattr(_fleet, "meta_get", boom)
-        assert _dispatch._implementer_diff_probe("demo-lead", "lead") == ([], None, None)
-        assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer") == ([], None, None)
+        assert _dispatch._implementer_diff_probe("demo-lead", "lead", {}) == ([], None, None)
+        assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer", {}) == (
+            [],
+            None,
+            None,
+        )
 
     def test_missing_git_binary_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
@@ -50,7 +54,7 @@ class TestImplementerDiffProbeUnit:
             raise AssertionError("must not call git_is_repo when git is unavailable")
 
         monkeypatch.setattr(_sys, "git_is_repo", boom)
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
+        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
     def test_non_repo_cwd_degrades_without_probing_further(
@@ -65,11 +69,12 @@ class TestImplementerDiffProbeUnit:
 
         monkeypatch.setattr(_sys, "git_changed_files", boom)
         monkeypatch.setattr(_sys, "git_current_branch", boom)
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
+        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
-    def test_real_probe_resolves_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        meta = {"worktreeDir": "/wt/demo-implementer", "codebase": "/src/demo"}
+    def test_real_probe_resolves_task_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        meta = {"codebase": "/src/demo"}
+        task = {"worktree": {"dir": "/wt/demo-implementer", "branch": "b", "baseCommit": "abc"}}
         monkeypatch.setattr(
             _fleet, "meta_get", lambda _id, field, default="": meta.get(field, default)
         )
@@ -84,15 +89,13 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_changed_files", lambda cwd: ["a.py", "b.py"])
         monkeypatch.setattr(_sys, "git_current_branch", lambda cwd: "pc/demo-implementer")
 
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
+        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", task)
         files_changed, diff_ref, evidence = result
         assert (files_changed, diff_ref) == (["a.py", "b.py"], "pc/demo-implementer")
-        # The commit/base/diffStat producers are real git calls against a nonexistent
-        # path here (unmocked, unlike the fields above) -- they degrade to None rather
-        # than raising, the same as any other non-repo target.
-        assert evidence == {"commit": None, "baseCommit": None, "diffStat": None}
-        # resolve_member_cwd prefers the worktree over the shared codebase --
-        # verified here, not just asserted by reading the source.
+        # The commit/diffStat producers are real git calls against a nonexistent path here
+        # (unmocked) -- they degrade to None rather than raising; the base is the recorded one.
+        assert evidence == {"commit": None, "baseCommit": "abc", "diffStat": None}
+        # resolve_member_cwd prefers the task worktree over the shared codebase.
         assert seen_cwds == ["/wt/demo-implementer"]
 
     def test_detached_head_reports_diff_ref_as_none_not_empty_string(
@@ -107,7 +110,7 @@ class TestImplementerDiffProbeUnit:
         monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: True)
         monkeypatch.setattr(_sys, "git_changed_files", lambda _cwd: [])
         monkeypatch.setattr(_sys, "git_current_branch", lambda _cwd: "")
-        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer")
+        result = _dispatch._implementer_diff_probe("demo-implementer", "implementer", {})
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None})
 
 
@@ -157,12 +160,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 class _ImplementerWritesFile:
     """A dispatch Runner simulating the Implementer changing a real file: writes into the
-    caller-resolved Implementer working tree (a real git worktree when the pod has one) before
-    returning, so the probe run right after sees a genuinely dirty tree, not a canned answer."""
+    task worktree the dispatcher hands the hop as its pipeline root before returning, so the
+    probe run right after sees a genuinely dirty tree, not a canned answer."""
 
-    def __init__(self, implementer_cwd: str) -> None:
-        self.implementer_cwd = implementer_cwd
+    def __init__(self) -> None:
         self.calls: list[str] = []
+        self.roots: list[str] = []
 
     def __call__(
         self,
@@ -172,12 +175,14 @@ class _ImplementerWritesFile:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> Any:
-        from docket.core.runtime_driver import TurnResult
+        from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV, TurnResult
 
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         if role == "implementer":
-            (Path(self.implementer_cwd) / "feature.py").write_text("print('new feature')\n")
+            root = (env or {})[PIPELINE_WORKTREE_ENV]
+            self.roots.append(root)
+            (Path(root) / "feature.py").write_text("print('new feature')\n")
         text = {"lead": "plan", "implementer": "did it"}[role]
         return TurnResult(True, text, 0.01, {})
 
@@ -213,17 +218,13 @@ class TestDispatchPopulatesRealDiff:
         _init_git_repo(repo_dir)
         _seed_pod(tmp_path, monkeypatch, "demo", codebase=str(repo_dir))
 
-        implementer_id = "demo-implementer"
-        worktree_dir = _fleet.meta_get(implementer_id, "worktreeDir", "")
-        # Provisioning gives a repo pod's Implementer a real git worktree -- if
-        # this is empty, the fixture didn't set up what this test assumes.
-        assert worktree_dir, "expected a provisioned git worktree for the Implementer"
-        expected_branch = _fleet.meta_get(implementer_id, "worktreeBranch", "")
-        assert expected_branch
-
-        task: dict[str, Any] = {"id": "t1", "description": "add a feature", "status": "pending"}
-        runner = _ImplementerWritesFile(worktree_dir)
-        res = _dispatch.dispatch_task("demo", task, runner=runner)
+        _dispatch.enqueue_task("demo", "add a feature")
+        runner = _ImplementerWritesFile()
+        (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+        recorded = _dispatch.read_tasks("demo")[0]["worktree"]
+        expected_branch = recorded["branch"]
+        assert recorded["dir"] and expected_branch
+        assert runner.roots == [recorded["dir"]]
 
         assert res.status == "done"
         implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -238,7 +239,7 @@ class TestDispatchPopulatesRealDiff:
         base_commit = implementer_hop.evidence["baseCommit"]
         assert commit is not None and len(commit) == 40
         assert all(c in "0123456789abcdef" for c in commit)
-        assert base_commit is not None and len(base_commit) == 40
+        assert base_commit == recorded["baseCommit"]
         assert isinstance(implementer_hop.evidence["diffStat"], dict)
         assert set(implementer_hop.evidence["diffStat"]) == {"files", "insertions", "deletions"}
 
@@ -296,8 +297,9 @@ class TestDegradePaths:
         implementer_id = "flatpod-implementer"
         assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
-        task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
-        res = _dispatch.dispatch_task("flatpod", task, runner=_PlainRunner())
+        _dispatch.enqueue_task("flatpod", "work")
+        (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
+        assert "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
 
         assert res.status == "done"
         implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -320,17 +322,13 @@ class TestDegradePaths:
         _init_git_repo(repo_dir)
         _seed_pod(tmp_path, monkeypatch, "gitless", codebase=str(repo_dir))
 
-        implementer_id = "gitless-implementer"
-        worktree_dir = _fleet.meta_get(implementer_id, "worktreeDir", "")
-        assert worktree_dir
-
         # Simulate "no git binary" only for the dispatch call itself -- the
         # pod was already provisioned (with real git) above.
         monkeypatch.setattr(_sys, "git_available", lambda: False)
 
-        task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
-        runner = _ImplementerWritesFile(worktree_dir)
-        res = _dispatch.dispatch_task("gitless", task, runner=runner)
+        _dispatch.enqueue_task("gitless", "work")
+        (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
+        assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
 
         assert res.status == "done"
         implementer_hop = next(h for h in res.hops if h.role == "implementer")

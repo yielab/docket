@@ -121,27 +121,24 @@ def _load_mcp_tools(registry: ToolRegistry, role: str, project: str = "") -> lis
     return _mcp.load_mcp_tools(registry, servers=servers, role=role)
 
 
-def _load_agent_meta(agent_id: str) -> tuple[AgentMeta | None, str]:
+def _load_agent_meta(agent_id: str) -> AgentMeta | None:
     """Read *agent_id*'s ``.docket-meta.json`` via ``edges/store.py``. Returns ``(None, "")`` for
     a missing or malformed record rather than raising, per the Protocol's "never raises for an
     ordinary failure" contract."""
     raw = _store.read_json(_cfg.meta_path(agent_id))
     if not raw:
-        return None, ""
+        return None
     try:
-        meta = AgentMeta.model_validate(raw)
+        return AgentMeta.model_validate(raw)
     except Exception:
-        return None, ""
-    worktree_dir = str(raw.get("worktreeDir") or "")
-    return meta, worktree_dir
+        return None
 
 
-def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> tuple[Path, ...]:
-    """The containment boundary ``dispatch_tool`` enforces: worktree > codebase > work_dir >
-    the agent's own workspace -- mirrors ``core.pod.resolve_member_cwd``, extended here (not
-    there) to also cover a ``workdir`` pod, which that helper's signature cannot express."""
-    if worktree_dir:
-        return (Path(worktree_dir),)
+def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
+    """The containment boundary ``dispatch_tool`` enforces: codebase > work_dir > the agent's
+    own workspace (a dispatched task's worktree arrives as the pipeline root instead) --
+    mirrors ``core.pod.resolve_member_cwd``, extended here (not there) to also cover a
+    ``workdir`` pod, which that helper's signature cannot express."""
     if meta is not None and meta.codebase:
         return (Path(meta.codebase),)
     if meta is not None and meta.work_dir:
@@ -150,7 +147,8 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
 
 
 def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> str:
-    """Accept a downstream root only when same-pod Implementer metadata owns it."""
+    """Accept a task root only when it is a directory under a same-pod Implementer's
+    ``tasks/`` worktree directory."""
     candidate = str((env or {}).get(PIPELINE_WORKTREE_ENV, "")).strip()
     project = _pod.pod_of(agent_id)
     if not candidate or project is None:
@@ -160,9 +158,8 @@ def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> s
         parsed = _pod.parse_member_id(registered.id, project)
         if parsed is None or parsed[0] != "implementer":
             continue
-        raw = _store.read_json(_cfg.meta_path(registered.id))
-        recorded = str(raw.get("worktreeDir") or "").strip()
-        if recorded and Path(recorded).resolve() == candidate_path:
+        tasks_dir = (_cfg.PROJECTS_DIR / registered.id / "tasks").resolve()
+        if candidate_path.parent == tasks_dir and candidate_path.is_dir():
             return str(candidate_path)
     return ""
 
@@ -358,7 +355,7 @@ class DocketDriver:
     ) -> TurnResult:
         """The turn itself, unwrapped from ``run_turn``'s export-pipeline start/flush so that
         wrapper stays short and this keeps the original, unindented turn logic."""
-        meta, worktree_dir = _load_agent_meta(agent_id)
+        meta = _load_agent_meta(agent_id)
         if meta is None:
             return TurnResult(
                 False,
@@ -419,7 +416,7 @@ class DocketDriver:
             session_key=session_key,
             roots=(Path(pipeline_worktree),)
             if pipeline_worktree
-            else _resolve_roots(meta, worktree_dir, agent_id),
+            else _resolve_roots(meta, agent_id),
             timeout=timeout,
             env=tool_env,
             role=meta.role,

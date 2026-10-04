@@ -154,8 +154,9 @@ covers the resulting file set for either workspace kind, not blueprint selection
 
 1. Workspace directories **MUST** be `700`.
 2. Workspace files **MUST** be `600`.
-3. A pod Implementer's `worktree/` is a checkout of the project codebase, not a Docket prompt/
-   metadata file set. Permission healing **MUST NOT** recursively rewrite that checkout's modes;
+3. A pod Implementer's `tasks/<taskId>/` directories are git worktrees of the project codebase,
+   created by dispatch at claim (pod-dispatch.spec.md "Task worktrees"), not a Docket prompt/
+   metadata file set. Permission healing **MUST NOT** recursively rewrite those checkouts' modes;
    executable bits and repository-owned permissions remain intact. Provisioning and maintenance
    enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
 
@@ -298,6 +299,11 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Unreleased
+
+- The Implementer's per-member `worktree/` is gone; `tasks/<taskId>/` holds one worktree per task
+  and is exempt from permission healing in its place.
 
 ### Version 1.16.0 (2026-10-03)
 

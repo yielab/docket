@@ -1,8 +1,8 @@
 """VerifyCmd correctness — worktree cwd, bounded shell surface, audited setter.
 
 Guards two defects: the verify gate running in ``meta["codebase"]`` (the shared repo root) even
-when a pod implementer has its own git-worktree isolation (``worktreeDir``), verifying a
-worktree implementer's work against stale or someone-else's code; and ``set-verify``/``--verify``
+when the task has its own recorded worktree (``task["worktree"]``), verifying a task's work
+against stale or someone-else's code; and ``set-verify``/``--verify``
 accepting an unvalidated, unaudited value that is later run with ``shell=True``.
 
 TestResolveMemberCwd covers ``core/pod.py``'s shared ``resolve_member_cwd``, used by both the
@@ -35,12 +35,12 @@ SUBJECT = "docket.core"
 
 
 class TestResolveMemberCwd:
-    def test_worktree_dir_wins_when_present(
+    def test_task_worktree_wins_when_present(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "projects", raising=True)
         cwd = _pod_core.resolve_member_cwd(
-            "demo-implementer", worktree_dir="/wt/demo", codebase="/src/demo"
+            "demo-implementer", task_worktree="/wt/demo", codebase="/src/demo"
         )
         assert cwd == "/wt/demo"
 
@@ -49,7 +49,7 @@ class TestResolveMemberCwd:
     ) -> None:
         monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "projects", raising=True)
         cwd = _pod_core.resolve_member_cwd(
-            "demo-implementer", worktree_dir="", codebase="/src/demo"
+            "demo-implementer", task_worktree="", codebase="/src/demo"
         )
         assert cwd == "/src/demo"
 
@@ -58,11 +58,11 @@ class TestResolveMemberCwd:
     ) -> None:
         projects_dir = tmp_path / "projects"
         monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir, raising=True)
-        cwd = _pod_core.resolve_member_cwd("demo-implementer", worktree_dir="", codebase="")
+        cwd = _pod_core.resolve_member_cwd("demo-implementer", task_worktree="", codebase="")
         assert cwd == str(projects_dir / "demo-implementer")
 
     def test_defaults_are_falsy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Calling with no worktree_dir/codebase args at all behaves like both unset.
+        # Calling with no task_worktree/codebase args at all behaves like both unset.
         projects_dir = tmp_path / "projects"
         monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir, raising=True)
         cwd = _pod_core.resolve_member_cwd("demo-implementer")
@@ -137,11 +137,15 @@ class TestDispatchVerifyCwd:
             "myapp-implementer",
             {
                 "codebase": str(codebase),
-                "worktreeDir": str(worktree),
                 "verifyCmd": "test -f WORKTREE_MARKER && ! test -f CODEBASE_MARKER",
             },
         )
-        task: dict[str, Any] = {"id": "cw1", "description": "work", "status": "pending"}
+        task: dict[str, Any] = {
+            "id": "cw1",
+            "description": "work",
+            "status": "pending",
+            "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
+        }
         res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
@@ -181,9 +185,14 @@ class TestDispatchVerifyCwd:
         _write_meta("myapp-lead")
         _write_meta(
             "myapp-implementer",
-            {"worktreeDir": str(worktree), "verifyCmd": "test -f WORKTREE_MARKER"},
+            {"verifyCmd": "test -f WORKTREE_MARKER"},
         )
-        task: dict[str, Any] = {"id": "cw4", "description": "work", "status": "pending"}
+        task: dict[str, Any] = {
+            "id": "cw4",
+            "description": "work",
+            "status": "pending",
+            "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
+        }
         res = _dispatch.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "failed"
 

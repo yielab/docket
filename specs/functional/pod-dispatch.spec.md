@@ -1123,8 +1123,8 @@ Every requirement below still holds byte-for-byte for the Implementer specifical
 
 1. After a **successful** Implementer hop, if the Implementer's `verifyCmd` is set, dispatch
    **MUST** run it via `run_verify_cmd` and treat a nonzero exit as a gate failure.
-2. The command **MUST** run in the Implementer's **worktree** directory if one is allocated
-   (`worktreeDir`, set at pod provisioning for a worktree-isolated pod); otherwise the pod's
+2. The command **MUST** run in the task's **worktree** directory if one is recorded
+   (`task["worktree"]["dir"]`, created at claim — see "Task worktrees"); otherwise the pod's
    shared `codebase` root; otherwise the Implementer's own docket workspace directory
    (`core/pod.py`'s `resolve_member_cwd` — the single helper shared with the TOOLS.md generator
    so the two can never disagree about which tree an Implementer's work is checked against).
@@ -1466,7 +1466,7 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    is constructed. Every other role (Lead, Reviewer, Tester, or any non-Implementer archetype)
    **MUST** get `([], None)` unconditionally — this probe is Implementer-only.
 2. The probe **MUST** resolve the member's working tree via `core.pod.resolve_member_cwd` — the
-   same worktree → shared codebase → member workspace-dir preference order the mechanical verify
+   same task worktree → shared codebase → member workspace-dir preference order the mechanical verify
    gate already uses (see "Implementer verification gate") — so the diff probe and the verify gate
    can never disagree about which tree is being inspected.
 3. When the resolved directory is a real git repository and a `git` binary is on `PATH`
@@ -1533,10 +1533,12 @@ any CLI rendering of this evidence.*
    collapsing to `None`:
    - `commit` (`str | None`): the resolved working tree's HEAD sha (`edges/adapters/system.py`'s
      `git_head_sha`), 40 hex characters when present.
-   - `baseCommit` (`str | None`): the merge-base of that HEAD with the pod's shared codebase
-     directory's own current branch (`git_current_branch` on `codebase`, then `git_merge_base` on
-     the Implementer's resolved worktree against that branch name) -- the codebase's branch, never
-     the worktree's own.
+   - `baseCommit` (`str | None`): for a task with a recorded worktree, the `baseCommit` recorded
+     on `task["worktree"]` at claim (the codebase HEAD the task branch was created from), so a
+     task's `diffStat` never includes another task's commits. For a task that runs in place, the
+     merge-base of that HEAD with the pod's shared codebase directory's own current branch
+     (`git_current_branch` on `codebase`, then `git_merge_base` on the resolved directory against
+     that branch name).
    - `diffStat` (`dict | None`): `{"files": int, "insertions": int, "deletions": int}` from
      `git_diff_stat(cwd, baseCommit)`, which diffs `baseCommit` against `cwd`'s current state
      (`git diff --shortstat`), or `None` when `baseCommit` is `None`.
@@ -1561,8 +1563,8 @@ any CLI rendering of this evidence.*
 ### In-place ephemeral pods
 
 1. A pod provisioned in place **MUST** give its Implementer no git worktree: the Implementer's
-   resolved working directory is the codebase the pod was provisioned on, and no `worktreeDir`
-   is recorded for it. The default provisioning path **MUST** remain unchanged: the keyword that
+   meta carries `inPlace: true`, dispatch records no `worktree` on its tasks, and the Implementer's
+   resolved working directory is the codebase the pod was provisioned on. The default provisioning path **MUST** remain unchanged: the keyword that
    selects in-place provisioning defaults to off.
 2. An in-place run **MUST** provision its pod through the same core provisioning function that
    `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
@@ -1578,14 +1580,35 @@ any CLI rendering of this evidence.*
    pod provisioned by the run, that task is the only pending one, and the run returns its
    persisted record and one record per hop that ran.
 
+### Task worktrees
+
+1. `docket add`/`docket init` **MUST NOT** create a git worktree for a repo Implementer, and
+   provisioning records no `worktreeDir`/`worktreeBranch` on any member. There is no per-member
+   worktree code path.
+2. At claim (`_claim_next_task`), for a task with no `worktree` recorded, a pod whose Implementer
+   has a `codebase` and is not `inPlace` **MUST** get `<Implementer workspace>/tasks/<taskId>`
+   created on a new branch `docket/<project>/<taskId>` from the codebase's HEAD, and **MUST**
+   record `task["worktree"] = {dir, branch, baseCommit}` through the task-list writer
+   (`edges/store.py`); `baseCommit` is the new worktree's HEAD, the creation commit.
+3. Every hop, verify gate and `when`/command cwd of that task **MUST** resolve to that directory.
+   A task that already records a worktree (parked `waiting_input`/`waiting_approval`, resumed, or
+   retried) **MUST** reuse it; claim never creates a second one.
+4. When git is missing, the codebase is not a repo, or `worktree add` fails, the task **MUST** run
+   in place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`.
+5. Removing the Implementer (`teardown_member`) **MUST** remove every task worktree under its
+   `tasks/` directory and delete each task branch merged into the codebase's current branch; a
+   branch that is not merged is kept and reported with the manual `git branch -D` command.
+6. Finished task worktrees are not retained or merged by docket; they live until the member is
+   removed.
+
 ### Downstream worktree continuity
 
-1. Once a successful Implementer hop has a registered `worktreeDir`, every later non-Lead,
-   non-Implementer hop **MUST** receive that effective checkout path in a short explicit prompt
-   note and as an internal dispatch→driver coordinate. It **MUST NOT** inspect the unchanged origin
-   checkout when judging or testing the Implementer's result.
-2. `DocketDriver` **MUST** accept that root only when it byte-resolves to a registered
-   Implementer's `worktreeDir` in the same pod. An absent, malformed, cross-pod, or unregistered
+1. When the task has a recorded worktree, every non-Lead hop (the Implementer included) **MUST**
+   receive that checkout path in a short explicit prompt note and as an internal dispatch→driver
+   coordinate. A downstream hop **MUST NOT** inspect the unchanged origin checkout when judging
+   or testing the Implementer's result.
+2. `DocketDriver` **MUST** accept that root only when it byte-resolves to a directory directly
+   under a same-pod Implementer's `tasks/` directory (`<member workspace>/tasks/<taskId>`). An absent, malformed, cross-pod, or unregistered
    path **MUST** be ignored; it is never a caller-controlled arbitrary root expansion.
 3. The coordinate **MUST** be removed before constructing the tool subprocess environment.
    Reviewer/Tester tool capabilities remain role-narrowed and unchanged; this changes what checkout
@@ -1939,6 +1962,13 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Unreleased
+
+- One git worktree per task: created at claim under `<Implementer workspace>/tasks/<taskId>`,
+  recorded as `task["worktree"]`, used by every hop, the verify gate and evidence `baseCommit`,
+  removed with the member; the per-member worktree (`worktreeDir`/`worktreeBranch`) is deleted
+  (see "Task worktrees").
 
 ### Version 6.28.0 (2026-10-04)
 

@@ -53,7 +53,7 @@ _MAX_VERIFY_CMD_LEN = _pp._MAX_VERIFY_CMD_LEN
 VerifyCmdError = _pp.VerifyCmdError
 _validate_verify_cmd = _pp.validate_verify_cmd
 _worktree_branch = _pp.worktree_branch
-_provision_worktree = _pp.provision_worktree
+_provision_task_worktree = _pp.provision_task_worktree
 _member_soul = _pp._member_soul
 _member_agents = _pp._member_agents
 _member_tools = _pp._member_tools
@@ -98,8 +98,8 @@ def provision_member(
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
     Thin rendering wrapper over `core.pod_provisioning.provision_member` — prints the
-    worktree-fallback notice (if any) and returns the legacy `(ok, message)` shape."""
-    ok, msg, fallback_reason = _pp.provision_member(
+    `(ok, message)` result."""
+    ok, msg = _pp.provision_member(
         member,
         codebase=codebase,
         stack=stack,
@@ -114,8 +114,6 @@ def provision_member(
         blueprint_name=blueprint_name,
         budget_usd=budget_usd,
     )
-    if fallback_reason:
-        ui.dim(escape(f"  [{member.member_id}] worktree fallback: {fallback_reason}"))
     return ok, msg
 
 
@@ -146,10 +144,8 @@ def parse_pod_roles(args: list[str]) -> tuple[str, ...]:
 
 
 def _render_created(members: list[_pp.ProvisionedMember]) -> list[str]:
-    """Render each provisioned member's success (+ worktree fallback) line."""
+    """Render each provisioned member's success line."""
     for m in members:
-        if m.worktree_fallback_reason:
-            ui.dim(escape(f"  [{m.member_id}] worktree fallback: {m.worktree_fallback_reason}"))
         ui.success(escape(f"  {m.member_id}  [{m.role}]  {m.model}"))
     return [m.member_id for m in members]
 
@@ -430,9 +426,8 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     verify_cmd = _fleet.meta_get(member_id, "verifyCmd", "")
     if not ((port_start_s and scratch) or verify_cmd):
         return
-    worktree_dir = _fleet.meta_get(member_id, "worktreeDir", "")
     raw_codebase = _fleet.meta_get(member_id, "codebase", "")
-    codebase = pod.resolve_member_cwd(member_id, worktree_dir, raw_codebase)
+    codebase = pod.resolve_member_cwd(member_id, "", raw_codebase)
     content = _member_tools(
         project,
         role,

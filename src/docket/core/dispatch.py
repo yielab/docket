@@ -43,6 +43,7 @@ from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
@@ -914,38 +915,44 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
     }
 
 
+def _task_worktree_dir(task: dict[str, Any]) -> str:
+    """The directory of the worktree recorded on *task* at claim, or empty when the task runs in
+    place (no recorded worktree, or a recorded fallback)."""
+    record = task.get("worktree")
+    return str(record.get("dir") or "") if isinstance(record, dict) else ""
+
+
 def _implementer_diff_probe(
-    member_id: str, role: str
+    member_id: str, role: str, task: dict[str, Any]
 ) -> tuple[list[str], str | None, dict[str, Any] | None]:
     """Real ``files_changed``/``diff_ref``/``evidence`` for an Implementer hop (every other
     role gets ``([], None, None)``); resolves the same working tree the verify gate uses via
     ``core.pod.resolve_member_cwd`` so the two can never disagree. ``evidence`` is
     ``HopResult.evidence``'s ``{"commit", "baseCommit", "diffStat"}`` shape, with each field
     independently ``None`` (never raising) when git is missing, the checkout is not a repo,
-    or the codebase's branch cannot be resolved. See pod-dispatch.spec.md, "Hop evidence"."""
+    or no base commit can be resolved. ``baseCommit`` is the task worktree's recorded creation
+    commit; an in-place task falls back to the merge-base with the codebase's current branch.
+    See pod-dispatch.spec.md, "Hop evidence"."""
     if role != "implementer":
         return [], None, None
-    worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
+    task_dir = _task_worktree_dir(task)
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-    cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
+    cwd = _pod.resolve_member_cwd(member_id, task_dir, member_codebase)
     if not _sys.git_available() or not _sys.git_is_repo(cwd):
         return [], None, {"commit": None, "baseCommit": None, "diffStat": None}
     files_changed = _sys.git_changed_files(cwd)
     diff_ref = _sys.git_current_branch(cwd) or None
     commit = _sys.git_head_sha(cwd)
-    base_branch = _sys.git_current_branch(member_codebase or cwd) or None
-    base_commit = _sys.git_merge_base(cwd, base_branch) if base_branch else None
+    recorded = task.get("worktree")
+    base_commit: str | None = None
+    if task_dir and isinstance(recorded, dict):
+        base_commit = str(recorded.get("baseCommit") or "") or None
+    else:
+        base_branch = _sys.git_current_branch(member_codebase or cwd) or None
+        base_commit = _sys.git_merge_base(cwd, base_branch) if base_branch else None
     diff_stat = _sys.git_diff_stat(cwd, base_commit) if base_commit else None
     evidence = {"commit": commit, "baseCommit": base_commit, "diffStat": diff_stat}
     return files_changed, diff_ref, evidence
-
-
-def _prior_implementer_worktree(prior: list[HopResult]) -> str:
-    """Effective checkout produced by the latest successful Implementer hop."""
-    for hop in reversed(prior):
-        if hop.role == "implementer" and hop.ok:
-            return str(_fleet.meta_get(hop.member_id, "worktreeDir", "") or "")
-    return ""
 
 
 def _hop_record(h: HopResult) -> dict[str, Any]:
@@ -1355,21 +1362,28 @@ def _compose_hop(
     )
     message += _consult_answer_note(ctx.task, node.step_id)
     pipeline_worktree = ""
-    if role not in {"lead", "implementer"}:
-        pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
+    if role != "lead":
+        pipeline_worktree = _task_worktree_dir(ctx.task)
         if pipeline_worktree:
-            checkout_note = (
-                "\nEffective implementation checkout for this downstream hop: "
-                f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
-                "codebase; keep your role's existing tool permissions."
-            )
-            if isinstance(node.gate, _pipeline.VerdictGate):
-                checkout_note += (
-                    " Your final reply must still contain one distinct recognized "
-                    "verdict marker at the start of a complete line; reasons may "
-                    "come before or after it."
+            if role == "implementer":
+                checkout_note = (
+                    "\nYour working checkout for this task: "
+                    f"`{pipeline_worktree}`. Make every change there, not in the origin "
+                    "codebase path named elsewhere in your instructions.\n"
                 )
-            checkout_note += "\n"
+            else:
+                checkout_note = (
+                    "\nEffective implementation checkout for this downstream hop: "
+                    f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
+                    "codebase; keep your role's existing tool permissions."
+                )
+                if isinstance(node.gate, _pipeline.VerdictGate):
+                    checkout_note += (
+                        " Your final reply must still contain one distinct recognized "
+                        "verdict marker at the start of a complete line; reasons may "
+                        "come before or after it."
+                    )
+                checkout_note += "\n"
             message += checkout_note
             composition.total_bytes += len(checkout_note.encode("utf-8"))
     _trace_locked(
@@ -1635,7 +1649,7 @@ def _build_hop_result(
     diff_ref: str | None = None
     evidence: dict[str, Any] | None = None
     if hop_ok:
-        files_changed, diff_ref, evidence = _implementer_diff_probe(member_id, role)
+        files_changed, diff_ref, evidence = _implementer_diff_probe(member_id, role, ctx.task)
     # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
     # the Lead role by construction -- any hop's reply can end in one -- but is `None`
     # for the overwhelming majority that never emit one, `_handoff.parse_brief` failing
@@ -1852,9 +1866,8 @@ def _evaluate_mechanical_gate(
         hop.verification_skipped = True
         return _UnitOutcome(kind="advance", hops=[hop])
 
-    worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-    cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
+    cwd = _pod.resolve_member_cwd(member_id, _task_worktree_dir(ctx.task), member_codebase)
     # The verify command gets its own timeout, decoupled from the agent-turn
     # timeout above — a 20-minute test suite and a hung LLM turn are no longer
     # forced to share one budget.
@@ -2186,9 +2199,9 @@ def _resolve_gate_override(task: dict[str, Any]) -> int | None:
 
 def _when_cwd(ctx: _UnitContext, prior: list[HopResult]) -> str:
     """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
-    both run against: the latest successful Implementer's worktree, falling back to the
-    pod Lead's own codebase (no Implementer has run yet, or the pod has none at all)."""
-    worktree = _prior_implementer_worktree(prior)
+    both run against: the task's own worktree, falling back to the pod Lead's own codebase
+    (the task runs in place, or the pod has no Implementer)."""
+    worktree = _task_worktree_dir(ctx.task)
     if worktree:
         return worktree
     lead_id = _pod.member_id(ctx.project, "lead")
@@ -2765,6 +2778,35 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     return bool(resume and status == "failed" and t.get("failureKind") in RESUMABLE_FAILURE_KINDS)
 
 
+def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
+    """Record ``task["worktree"]`` for a newly claimed task; a task that has one keeps it. No
+    codebase or an in-place Implementer records nothing; a failed ``worktree add`` records
+    ``fallbackReason`` and the task runs in place."""
+    if "worktree" in claimed:
+        return
+    implementer = _pod.member_id(project, "implementer")
+    codebase = str(_fleet.meta_get(implementer, "codebase", "") or "")
+    if not codebase or _fleet.meta_get(implementer, "inPlace", ""):
+        return
+    task_id = str(claimed.get("id", ""))
+    record, reason = _pp.provision_task_worktree(implementer, project, task_id, codebase)
+    stored: dict[str, Any] = (
+        record if record else {"dir": "", "branch": "", "baseCommit": "", "fallbackReason": reason}
+    )
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks = doc.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        for t in tasks:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["worktree"] = stored
+        return {"tasks": tasks}
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    claimed["worktree"] = stored
+
+
 def _claim_next_task(
     project: str, *, resume: bool
 ) -> tuple[dict[str, Any], list[HopResult]] | None:
@@ -2818,6 +2860,7 @@ def _claim_next_task(
     doc = _store.read_modify_write(pod_task_list_path(project), _fn)
     if claimed is None:
         return None
+    _ensure_task_worktree(project, claimed)
     resume_hops = [_hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
     tasks_after = doc.get("tasks")
     _mem.sync_dispatch_tasks(
