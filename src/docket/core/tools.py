@@ -80,6 +80,8 @@ class ToolContext:
     # `consult` budget for this context (one turn); `consult_count` is what it has spent.
     max_consultations: int = _consult.DEFAULT_MAX_CONSULTATIONS
     consult_count: int = 0
+    # Pod dispatch sets it: a consult parks the task (``waiting_input``) rather than waiting.
+    consult_park: bool = False
 
 
 @dataclass
@@ -385,6 +387,14 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
 
     try:
         outcome = tool.handler(args, ctx)
+    except _consult.ConsultParked as ex:
+        result.decision = "deny"
+        result.denial_kind = "approval_parked"
+        result.policy_id = "consult"
+        result.reason = str(ex)
+        result.error = result.reason
+        result.approval_token = f"{_consult.PARK_TOKEN_PREFIX}{ex.question_id}"
+        return result
     except _consult.ConsultUnavailable as ex:
         # Same terminal stop as an approval nobody can give (refuse mode).
         result.decision = "deny"

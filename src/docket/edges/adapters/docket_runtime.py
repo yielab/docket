@@ -436,6 +436,8 @@ class DocketDriver:
             ),
             approval_mode=approval_mode,
             max_consultations=max_consultations,
+            # A pod dispatch hop (it names its task): a consult parks the task.
+            consult_park=trace_task_id is not None,
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,

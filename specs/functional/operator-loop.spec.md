@@ -555,9 +555,8 @@ clarification or decision to its operator.
 2. **Budget.** The pod setting `maxConsultationsPerTask` (integer `>= 0`, default 3; 0 disables)
    reaches the turn as `ToolContext.max_consultations`: the driver pops the internal
    `DOCKET_MAX_CONSULTATIONS` env key, else reads the agent's pod setting. Counting is per
-   `ToolContext`, i.e. per turn; in harness single-turn mode that is per task. Dispatch-wide
-   per-task counting across hops needs dispatch's hop records and arrives with P36-8. A call past
-   the cap is an error result "consultation budget exhausted; decide yourself" with no
+   `ToolContext`, i.e. per turn; in harness single-turn mode that is per task. In pod dispatch
+   the count is task-wide (item 5). A call past the cap is an error result "consultation budget exhausted; decide yourself" with no
    `question_asked` event; an invalid call does not spend budget.
 3. **Wait (`approvalMode` `wait` with an answer reader).** The call traces `question_asked`
    (`{questionId, kind, mode, question}`; telemetry exports only `questionId`, `kind`, `mode`)
@@ -567,10 +566,27 @@ clarification or decision to its operator.
    content}`. No answer in time returns "no answer; decide yourself". The only answer reader is
    the harness stdin reader (harness-mode spec Section 5 item 9); with none open, the call
    returns the same "no answer" result at once without an event.
-4. **Refuse and park.** The call traces `question_asked` and ends the turn with the
+4. **Refuse.** The call traces `question_asked` and ends the turn with the
    `approval_unavailable` stop an unanswerable approval uses, so a harness run is `blocked` and
-   its 1.1 result carries the `question`. `park` outside pod dispatch is treated as `refuse`
-   until P36-8 adds park and re-entry.
+   its 1.1 result carries the `question`. `park` outside pod dispatch (no `consult_park`) is
+   treated as `refuse`; under pod dispatch `approvalMode: refuse` also keeps this behaviour.
+5. **Park and re-entry (pod dispatch, P36-8).** A turn run for a dispatch hop (the driver is
+   given the task id) sets `ToolContext.consult_park` unless its approval mode is `refuse`
+   (`wait` included: a pod hop has no stdin reader). A consult from any role then traces `question_asked`, ends the hop
+   with the `approval_parked` stop (token `consult:<questionId>`) and the hop is persisted
+   `parked`. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
+   (`taskId` = the real task id, `step` = the hop's step id), so the inbox lists it under
+   `needsYou` and `docket pod <p> answer`, HTTP, MCP and recipe-harness answers reach it through
+   `answer_task` unchanged; `optionId` travels in the answer `content`. `answer_task` validates a
+   v1.1 question with `validate_answer_v11` (accept needs a valid `optionId`; a refused answer
+   leaves the task `waiting_input`), records `answers[]`, and reopens the task `pending` with a
+   `consultAnswer` for the same step; the parked hop replays at its own index and its next
+   message ends with "Operator answered your consultation <id>: option <id> (<label>)" or
+   "... declined. Decide yourself." A decline records one `declined_answer` correction.
+   `maxConsultationsPerTask` counts task-wide: each parked consult increments the task's
+   `consultations`, and once it is non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the
+   setting minus that count as the hop's cap (a fourth consult after
+   three parked ones returns the budget-exhausted error). Intake `input` steps are unchanged.
 
 ## Examples
 
@@ -694,6 +710,11 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Unreleased (P36-8)
+
+- Consult: park and re-entry in pod dispatch, task-wide `maxConsultationsPerTask` count
+  (requirement section "Consult", items 4-5). Version not bumped.
 
 ### Unreleased (P36-7)
 

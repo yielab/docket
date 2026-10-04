@@ -139,3 +139,38 @@ class TestConsultUnderRefuse:
         assert result["question"]["kind"] == "decision"
         assert result["question"]["recommendation"]["optionId"] == "sqlite"
         assert len(server.requests) == 1
+
+
+class TestConsultInRecipeRun:
+    def test_a_question_id_line_answers_a_pod_consult_and_the_run_finishes(
+        self,
+        tmp_path: Path,
+        llm_server: Any,  # noqa: F811
+    ) -> None:
+        server = llm_server(
+            [
+                _final_response("ready\nREADY"),
+                _tool_call_response("consult", _CONSULT),
+                _final_response("built"),
+                _final_response("APPROVE"),
+            ]
+        )
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", server.base_url)
+        args = _args(workspace, "--answers", "stdin", "--verify", "true", "--recipe", "intake")
+
+        run = _AnsweredRun(args, env, tmp_path / "stderr.txt")
+        asked = run.wait_for_event("question_asked")
+        answer = {
+            "questionId": asked["event"]["payload"]["questionId"],
+            "action": "accept",
+            "content": {"optionId": "redis"},
+        }
+        run.write_raw(json.dumps({"v": "1.1.0", "token": asked["token"], "answer": answer}))
+        run.close_stdin()
+        returncode, lines = run.finish(timeout=120)
+
+        assert returncode == 0, (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        assert lines[-1]["task"]["status"] == "done"
+        assert "Operator answered your consultation" in json.dumps(server.requests[2]["messages"])

@@ -16,6 +16,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
+from docket.core import consult as _consult
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
@@ -24,7 +25,14 @@ from docket.core import policy as _policy
 from docket.core import trace as _trace
 from docket.core.audit import audit_log
 from docket.core.handoff import HandoffArtifact
-from docket.core.operator_contract import AnswerResult, Question, validate_answer
+from docket.core.operator_contract import (
+    AnswerResult,
+    AnswerResultV11,
+    Question,
+    QuestionV11,
+    validate_answer,
+    validate_answer_v11,
+)
 from docket.edges import store as _store
 
 __all__ = ["AnswerError", "AnswerRejected", "answer_task", "sweep_expired_questions"]
@@ -105,6 +113,11 @@ def _validate_and_screen(question: Question, result: AnswerResult) -> None:
         validate_answer(question, result)
     except ValueError as exc:
         raise AnswerError(str(exc)) from exc
+    _screen_content(result)
+
+
+def _screen_content(result: AnswerResult) -> None:
+    """Screen every string in *result*'s content through ``pre_input`` (``AnswerRejected``)."""
     for value in (result.content or {}).values():
         if isinstance(value, str):
             hit = _policy.policy_eval_detail("lead", "pre_input", value, trusted=False)
@@ -120,6 +133,7 @@ def _append_answer(
     channel: str,
     actor: str,
     ts: str,
+    option_id: str | None = None,
 ) -> None:
     """Append one entry to the task's durable ``answers[]`` and clear its ``question``."""
     answers_raw = t.get("answers")
@@ -134,10 +148,44 @@ def _append_answer(
             "channel": channel,
             "actor": actor,
             "answeredAt": ts,
+            **({"optionId": option_id} if option_id else {}),
         }
     )
     t["answers"] = answers
     t.pop("question", None)
+
+
+def _answer_consult(
+    t: dict[str, Any],
+    question_raw: dict[str, Any],
+    result: AnswerResult,
+    *,
+    channel: str,
+    actor: str,
+    ts: str,
+) -> QuestionV11:
+    """Resolve a parked ``consult``: validate its ``optionId`` (in *content*), record the answer
+    and reopen the task ``pending`` so the same role's step re-runs with the answer."""
+    try:
+        question = QuestionV11.model_validate(question_raw)
+        body = dict(result.content or {})
+        option_id = body.pop("optionId", None)
+        answer = AnswerResultV11.model_validate(
+            {"action": result.action, "content": body or None, "optionId": option_id}
+        )
+        validate_answer_v11(question, answer)
+    except (ValidationError, ValueError) as exc:
+        raise AnswerError(str(exc)) from exc
+    _screen_content(answer)
+    _append_answer(t, question, answer, channel=channel, actor=actor, ts=ts, option_id=option_id)
+    t["consultAnswer"] = {
+        "step": question.step,
+        "questionId": question.id,
+        "text": _consult.answer_text(question, answer, body),
+    }
+    t["status"] = "pending"
+    t.pop("blockedReason", None)
+    return question
 
 
 def _locate_parked_step(
@@ -250,6 +298,12 @@ def answer_task(
                 continue
             if t.get("status") != "waiting_input":
                 raise AnswerError(f"task {task_id!r} is not waiting_input")
+            raw = t.get("question")
+            if isinstance(raw, dict) and raw.get("kind") in ("clarification", "decision"):
+                consulted = _answer_consult(t, raw, result, channel=channel, actor=actor, ts=ts)
+                outcome["step"] = consulted.step
+                outcome["question_id"] = consulted.id
+                return {"tasks": tasks}
             question = _load_parked_question(t, task_id)
             _validate_and_screen(question, result)
             _append_answer(t, question, result, channel=channel, actor=actor, ts=ts)

@@ -32,6 +32,7 @@ import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
 from docket.core import blueprints as _blueprints
+from docket.core import consult as _consult
 from docket.core import conversations as _conv
 from docket.core import fleet as _fleet
 from docket.core import handoff as _handoff
@@ -1313,6 +1314,25 @@ def _gate_pre_hop_approval(
     )
 
 
+def _consult_answer_note(task: dict[str, Any], step_id: str) -> str:
+    """The operator's answer to this step's parked consultation, as a trailing message block
+    (empty when the step has none)."""
+    answer = task.get("consultAnswer")
+    if not isinstance(answer, dict) or answer.get("step") != step_id:
+        return ""
+    return f"\n\n{answer.get('text', '')}\n"
+
+
+def _consult_budget_env(ctx: _UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
+    """Once the task has parked consultations, this hop's cap is what the task has left
+    (``maxConsultationsPerTask`` minus them); before that the pod setting applies as is."""
+    used = ctx.task.get("consultations")
+    if not isinstance(used, int) or used <= 0:
+        return env
+    remaining = max(0, _pod_settings(ctx.project).max_consultations_per_task - used)
+    return {**(env or {}), _rd.DOCKET_MAX_CONSULTATIONS: str(remaining)}
+
+
 def _compose_hop(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -1333,6 +1353,7 @@ def _compose_hop(
         step_instructions=step_override,
         project=ctx.project,
     )
+    message += _consult_answer_note(ctx.task, node.step_id)
     pipeline_worktree = ""
     if role not in {"lead", "implementer"}:
         pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
@@ -1393,6 +1414,7 @@ def _compose_hop(
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours
             deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=expiry_hours)
             env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
+    env = _consult_budget_env(ctx, env)
     pregrants_raw = ctx.task.get("pregrants")
     if isinstance(pregrants_raw, list) and pregrants_raw:
         # Every pre-grant this task's human has already resolved (ADR 0016
@@ -1666,6 +1688,21 @@ def _parked_approval_token(error: str) -> str | None:
     return next((g for g in match.groups() if g is not None), None) or None
 
 
+def _parked_consult_question(
+    ctx: _UnitContext, hop: HopResult, token: str | None
+) -> dict[str, Any] | None:
+    """The question a parked ``consult`` left, rebound to this task and step (stored on the
+    task like an input step's), or ``None`` when *token* is not a consultation's."""
+    if token is None or not token.startswith(_consult.PARK_TOKEN_PREFIX):
+        return None
+    question = _consult.take_parked(token[len(_consult.PARK_TOKEN_PREFIX) :])
+    if question is None:
+        return None
+    question.task_id = ctx.task_id
+    question.step = hop.step_id or hop.role
+    return question.model_dump(by_alias=True)
+
+
 def _persist_hop_and_trace(
     ctx: _UnitContext,
     role: str,
@@ -1687,6 +1724,7 @@ def _persist_hop_and_trace(
     parked_token = None if hop_ok else _parked_approval_token(hop_error)
     if parked_token is not None:
         hop.parked = True
+    consult_question = _parked_consult_question(ctx, hop, parked_token)
 
     _trace_locked(
         ctx.project,
@@ -1720,6 +1758,13 @@ def _persist_hop_and_trace(
                 kind="cancelled",
                 hops=[hop],
                 reason="run cancellation requested",
+            )
+        if consult_question is not None:
+            return _UnitOutcome(
+                kind="waiting_input",
+                hops=[hop],
+                reason=f"{role} hop parked a consultation (question={consult_question['id']})",
+                question=consult_question,
             )
         if parked_token is not None:
             # Reuses the pre-hop gate's own event type (core/trace.py's
@@ -2684,6 +2729,7 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     task["hops"] = [_hop_record(h) for h in res.hops]
     task["costUsd"] = res.cost_usd
     task["claimId"] = None
+    task.pop("consultAnswer", None)  # delivered to the hop this result came from
     if res.status == "blocked":
         task["blockedReason"] = res.blocked_reason or res.reason
     elif res.status == "waiting_approval":
@@ -2691,6 +2737,8 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
         task["pendingApprovalIndex"] = res.pending_approval_index
     elif res.status == "waiting_input":
         task["question"] = res.question
+        if res.question and res.question.get("kind") in ("clarification", "decision"):
+            task["consultations"] = int(task.get("consultations") or 0) + 1
     else:
         task["completedAt"] = _now()
         if res.failure_kind:

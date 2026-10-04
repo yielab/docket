@@ -4,8 +4,9 @@ The call is validated through ``QuestionV11`` (operator-v1.1) and then, by appro
 ``wait`` traces a ``question_asked`` event and blocks until an answer reader delivers an
 answer (``submit``) or the wait bound passes; ``refuse``/``park`` trace the event and raise
 ``ConsultUnavailable``, which ``core/tools.py`` renders as the ``approval_unavailable`` stop.
-Park has no re-entry outside this module's wait, so it behaves as refuse. Counting is per
-``ToolContext`` (one turn), not across a dispatch's hops.
+In pod dispatch (``ctx.consult_park``) a non-refuse consult raises ``ConsultParked`` instead:
+the hop ends, the task parks ``waiting_input`` and ``core.answers`` re-enters the same role.
+The per-task count lives on the task; dispatch passes the remaining budget to each hop.
 
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.
 """
@@ -38,6 +39,7 @@ DEFAULT_MAX_CONSULTATIONS = 3
 NO_ANSWER = "no answer; decide yourself"
 BUDGET_EXHAUSTED = "consultation budget exhausted; decide yourself"
 QUESTION_EVENT = "question_asked"
+PARK_TOKEN_PREFIX = "consult:"
 
 # What an answer may carry besides ``optionId``: one free-text note.
 _REQUESTED_SCHEMA: dict[str, Any] = {
@@ -60,6 +62,14 @@ class ConsultUnavailable(Exception):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
+class ConsultParked(ConsultUnavailable):
+    """Pod dispatch parks this consultation's task; the question is read back by id."""
+
+    def __init__(self, question_id: str) -> None:
+        self.question_id = question_id
+        super().__init__("consultation parked for an operator answer")
+
+
 @dataclass
 class _Waiter:
     question: QuestionV11
@@ -69,6 +79,7 @@ class _Waiter:
 _LOCK = threading.Lock()
 _WAITING: dict[str, _Waiter] = {}
 _READERS = 0
+_PARKED: dict[str, QuestionV11] = {}
 
 
 @contextlib.contextmanager
@@ -92,6 +103,12 @@ def release_all() -> None:
         waiters = list(_WAITING.values())
     for waiter in waiters:
         waiter.answers.put(None)
+
+
+def take_parked(question_id: str) -> QuestionV11 | None:
+    """The question a parked consult left for dispatch (removed), or ``None`` if unknown."""
+    with _LOCK:
+        return _PARKED.pop(question_id, None)
 
 
 def is_waiting(question_id: str) -> bool:
@@ -118,6 +135,18 @@ def submit(question_id: str, action: str, content: dict[str, Any] | None) -> str
         return str(exc)
     waiter.answers.put(answer)
     return None
+
+
+def answer_text(
+    question: QuestionV11, answer: AnswerResultV11, content: dict[str, Any] | None
+) -> str:
+    """What the resumed role reads: the operator's answer to its parked consultation."""
+    head = f"Operator answered your consultation {question.id}:"
+    if answer.action != "accept":
+        return f"{head} declined. Decide yourself."
+    label = next((o.label for o in question.options if o.id == answer.option_id), "")
+    note = " ".join(str(v) for v in (content or {}).values())
+    return f"{head} option {answer.option_id} ({label}) {note}".rstrip()
 
 
 def build_question(args: dict[str, Any], ctx: ToolContext) -> QuestionV11:
@@ -206,6 +235,11 @@ def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     except ValueError as exc:
         return ConsultOutcome(False, error=f"invalid consultation: {exc}")
     ctx.consult_count += 1
+    if ctx.consult_park and ctx.approval_mode != "refuse":
+        _trace_question(question, ctx)
+        with _LOCK:
+            _PARKED[question.id] = question
+        raise ConsultParked(question.id)
     if ctx.approval_mode != "wait":
         _trace_question(question, ctx)
         raise ConsultUnavailable("a consultation needs an operator answer and none can be given")

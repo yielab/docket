@@ -198,6 +198,18 @@ class TestRefuse:
         result = _call(_args(), _ctx(approval_mode="park"))
         assert result.denial_kind == "approval_unavailable"
 
+    def test_pod_dispatch_parks_a_consult_and_leaves_its_question_for_dispatch(self) -> None:
+        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        assert result.denial_kind == "approval_parked"
+        qid = result.approval_token.removeprefix(_consult.PARK_TOKEN_PREFIX)
+        question = _consult.take_parked(qid)
+        assert question is not None and question.kind == "decision"
+        assert _consult.take_parked(qid) is None
+
+    def test_refuse_wins_over_pod_dispatch_parking(self) -> None:
+        result = _call(_args(), _ctx(approval_mode="refuse", consult_park=True))
+        assert result.denial_kind == "approval_unavailable"
+
 
 class TestCap:
     def test_the_call_past_the_cap_is_refused_without_a_question_event(

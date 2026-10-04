@@ -1940,6 +1940,13 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ## Changelog
 
+### Unreleased (P36-8)
+
+- A `consult` call in a hop parks the task `waiting_input` (hop persisted `parked`, question on
+  the task) and `answer_task` re-runs the same step with the answer in its message; the task
+  counts parked consultations in `consultations` (operator-loop.spec.md "Consult"). Version not
+  bumped.
+
 ### Unreleased (P36-3)
 
 - **Evidence v1.** New "Evidence v1" section: `core/evidence.py` models and `task_evidence`, hop
