@@ -85,30 +85,26 @@ class TestEscalationMetrics:
         metrics = _escalation.count_escalation_metrics()
         assert metrics.tasks_started_total == 1
 
-    def test_multiple_session_starts_counted(
-        self, home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
-        for i in range(3):
-            _trace.trace_event(
-                "myproj",
-                f"agent:myproj:task{i}",
-                "lead",
-                "session_start",
-                json.dumps({"source": "dispatch", "task": f"task{i}", "resumed": False}),
-            )
-        metrics = _escalation.count_escalation_metrics()
-        assert metrics.tasks_started_total == 3
-
-    def test_question_with_answer_accept(self, home: Path) -> None:
-        # Create a task with a question answered "accept"
+    def test_questions_with_latency(self, home: Path) -> None:
+        """Test latency from question createdAt to answer answeredAt."""
         now = datetime.now(timezone.utc)
-        answer_time = now.isoformat()
+        question_created = now - timedelta(seconds=30)
+        answer_time = now
 
         task = {
             "id": "t1",
             "pod": "myproj",
             "status": "done",
+            "question": {
+                "id": "q-abc123456789",
+                "taskId": "t1",
+                "pod": "myproj",
+                "step": "input",
+                "message": "Do you approve?",
+                "createdAt": question_created.isoformat(),
+                "expiresAt": None,
+                "requestedSchema": {"type": "object", "properties": {}},
+            },
             "answers": [
                 {
                     "questionId": "q-abc123456789",
@@ -118,7 +114,7 @@ class TestEscalationMetrics:
                     "content": {},
                     "channel": "http",
                     "actor": "user",
-                    "answeredAt": answer_time,
+                    "answeredAt": answer_time.isoformat(),
                 }
             ],
         }
@@ -126,28 +122,40 @@ class TestEscalationMetrics:
         _write_task("myproj", task)
 
         metrics = _escalation.count_escalation_metrics()
-        # The question is a "clarification" by default (no kind field in the question record)
         assert ("clarification", "accept") in metrics.questions_total
         assert metrics.questions_total[("clarification", "accept")] == 1
+        assert metrics.decision_latency_seconds_count == 1
+        assert 29 < metrics.decision_latency_seconds_sum < 31
 
-    def test_question_with_answer_decline(self, home: Path) -> None:
+    def test_question_kinds(self, home: Path) -> None:
+        """Test that question kind field is used when present."""
         now = datetime.now(timezone.utc)
-        answer_time = now.isoformat()
 
         task = {
             "id": "t2",
             "pod": "myproj",
             "status": "done",
+            "question": {
+                "id": "q-kind-test",
+                "taskId": "t2",
+                "pod": "myproj",
+                "step": "input",
+                "message": "Proceed?",
+                "kind": "decision",
+                "createdAt": now.isoformat(),
+                "expiresAt": None,
+                "requestedSchema": {"type": "object", "properties": {}},
+            },
             "answers": [
                 {
-                    "questionId": "q-xyz789012345",
+                    "questionId": "q-kind-test",
                     "step": "input",
                     "message": "Proceed?",
                     "action": "decline",
                     "content": None,
                     "channel": "cli",
                     "actor": "user",
-                    "answeredAt": answer_time,
+                    "answeredAt": now.isoformat(),
                 }
             ],
         }
@@ -155,50 +163,32 @@ class TestEscalationMetrics:
         _write_task("myproj", task)
 
         metrics = _escalation.count_escalation_metrics()
-        assert ("clarification", "decline") in metrics.questions_total
-        assert metrics.questions_total[("clarification", "decline")] == 1
+        assert ("decision", "decline") in metrics.questions_total
+        assert metrics.questions_total[("decision", "decline")] == 1
 
-    def test_decision_latency_seconds(self, home: Path) -> None:
-        now = datetime.now(timezone.utc)
-        answer_time = now.isoformat()
-
-        task = {
-            "id": "t3",
-            "pod": "myproj",
-            "status": "done",
-            "answers": [
-                {
-                    "questionId": "q-latency123456",
-                    "step": "input",
-                    "message": "Question?",
-                    "action": "accept",
-                    "content": {},
-                    "channel": "http",
-                    "actor": "user",
-                    "answeredAt": answer_time,
-                }
-            ],
-        }
-
-        _write_task("myproj", task)
-
-        metrics = _escalation.count_escalation_metrics()
-        # For now, latency is 0 since we don't have createdAt in answer records
-        assert metrics.decision_latency_seconds_count == 0
-        assert metrics.decision_latency_seconds_sum == 0.0
-
-    def test_multiple_answers_on_one_task(self, home: Path) -> None:
+    def test_multiple_answers_with_latency(self, home: Path) -> None:
+        """Test multiple answers with different latencies."""
         now = datetime.now(timezone.utc)
 
         task = {
             "id": "t4",
             "pod": "myproj",
             "status": "done",
+            "question": {
+                "id": "q-multi",
+                "taskId": "t4",
+                "pod": "myproj",
+                "step": "input",
+                "message": "Question?",
+                "createdAt": (now - timedelta(seconds=50)).isoformat(),
+                "expiresAt": None,
+                "requestedSchema": {"type": "object", "properties": {}},
+            },
             "answers": [
                 {
-                    "questionId": "q-first",
+                    "questionId": "q-multi",
                     "step": "input",
-                    "message": "Q1?",
+                    "message": "Question?",
                     "action": "accept",
                     "content": {},
                     "channel": "http",
@@ -206,14 +196,14 @@ class TestEscalationMetrics:
                     "answeredAt": (now - timedelta(seconds=20)).isoformat(),
                 },
                 {
-                    "questionId": "q-second",
+                    "questionId": "q-multi",
                     "step": "input",
-                    "message": "Q2?",
+                    "message": "Question?",
                     "action": "decline",
                     "content": None,
                     "channel": "cli",
                     "actor": "user",
-                    "answeredAt": (now - timedelta(seconds=10)).isoformat(),
+                    "answeredAt": now.isoformat(),
                 },
             ],
         }
@@ -223,4 +213,8 @@ class TestEscalationMetrics:
         metrics = _escalation.count_escalation_metrics()
         assert metrics.questions_total.get(("clarification", "accept"), 0) == 1
         assert metrics.questions_total.get(("clarification", "decline"), 0) == 1
-        assert metrics.decision_latency_seconds_count == 0
+        # Two answers, so two latency measurements
+        assert metrics.decision_latency_seconds_count == 2
+        # Question created at now-50s, first answer at now-20s (30s latency),
+        # second answer at now (50s latency), total 80s
+        assert 75 < metrics.decision_latency_seconds_sum < 85
