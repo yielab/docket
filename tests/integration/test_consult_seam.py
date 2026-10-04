@@ -1,6 +1,6 @@
-"""P36-10 seam: ``consult`` over the real ``docket harness run --contract 1.1`` subprocess.
+"""``consult`` over the real ``docket harness run --contract 1.1`` subprocess.
 
-Two cards exchange the question here: the consult tool (P36-7) builds a ``QuestionV11`` and the
+Two cards exchange the question here: the consult tool builds a ``QuestionV11`` and the
 harness answer router maps a ``questionId`` line back to the waiting call. Neither card's own
 suite crosses both halves, so this one drives the real process, answers on stdin and validates
 every stdout line against the **committed** harness v1.1 schema and the question payload against

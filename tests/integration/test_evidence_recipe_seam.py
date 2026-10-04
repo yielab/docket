@@ -1,4 +1,4 @@
-"""P36-10 seam: one task's evidence is identical through a real ``--recipe`` harness run and the
+"""Seam: one task's evidence is identical through a real ``--recipe`` harness run and the
 CLI ``docket pod <p> evidence <task> --json`` read against the same ``DOCKET_HOME``.
 
 ``test_evidence_surfaces.py`` compares the in-process builders; this one runs the real harness
