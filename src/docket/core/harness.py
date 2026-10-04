@@ -9,8 +9,9 @@ free to import from either the CLI distribution or the runtime closure.
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -29,8 +30,8 @@ HARNESS_CONTRACT_VERSION = "1.0.0"
 
 # A second, opt-in wire contract alongside the unchanged v1.0 one above --
 # the v1.0 classes below are untouched, so a caller pinned to them sees no
-# change; process lifecycle events, stdin answers, file reporting and
-# recipe runs are declared here but not yet produced by any live path.
+# change; recipe runs (`task`) are declared here but not yet produced by any
+# live path.
 HARNESS_CONTRACT_V11 = "1.1.0"
 HARNESS_CONTRACT_VERSIONS = (HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT_V11)
 
@@ -138,6 +139,65 @@ class FileChange(BaseModel):
 
     path: str
     op: Literal["write", "edit", "delete", "unknown"]
+
+
+_FILE_WRITE_TOOLS = frozenset({"write", "edit"})
+
+
+def file_change_from_tool_call(payload: Mapping[str, Any]) -> FileChange | None:
+    """The ``FileChange`` a ``tool_call`` trace payload records, or ``None`` when the call is
+    not a write/edit or names no path. Arguments are the JSON text the loop traced."""
+    tool = str(payload.get("tool", ""))
+    if tool not in _FILE_WRITE_TOOLS:
+        return None
+    try:
+        arguments = json.loads(str(payload.get("arguments", "")))
+    except ValueError:
+        return None
+    path = arguments.get("path") if isinstance(arguments, dict) else None
+    if not isinstance(path, str) or not path:
+        return None
+    return FileChange(path=path, op="write" if tool == "write" else "edit")
+
+
+def file_change_from_status(status: str, path: str) -> FileChange:
+    """The ``FileChange`` for one ``git status --porcelain`` entry (two-character ``status``)."""
+    if "D" in status:
+        return FileChange(path=path, op="delete")
+    if status == "??" or "A" in status:
+        return FileChange(path=path, op="write")
+    return FileChange(path=path, op="unknown")
+
+
+class WrittenFiles:
+    """The files a run's write/edit calls changed; a call counts once its result is executed and ok."""
+
+    def __init__(self) -> None:
+        self._pending: dict[str, FileChange] = {}
+        self.changes: list[FileChange] = []
+
+    def observe(self, record: Mapping[str, Any]) -> None:
+        payload = record.get("payload")
+        if not isinstance(payload, Mapping):
+            return
+        call_id = str(payload.get("callId", ""))
+        if record.get("event_type") == "tool_call":
+            change = file_change_from_tool_call(payload)
+            if change is not None:
+                self._pending[call_id] = change
+        elif record.get("event_type") == "tool_result":
+            change = self._pending.pop(call_id, None)
+            if change is not None and payload.get("executed") is True and payload.get("ok") is True:
+                self.changes.append(change)
+
+
+def merge_file_changes(*groups: Iterable[FileChange]) -> list[FileChange]:
+    """Union of *groups*, one entry per path; the first group to name a path decides its op."""
+    seen: dict[str, FileChange] = {}
+    for group in groups:
+        for change in group:
+            seen.setdefault(change.path, change)
+    return list(seen.values())
 
 
 class Answer(BaseModel):

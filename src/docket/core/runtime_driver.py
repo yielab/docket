@@ -64,6 +64,11 @@ DOCKET_PREGRANTS = "DOCKET_PREGRANTS"
 # ToolContext.approval_expires_at.
 DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
 
+# Same route again: a caller's measured-token ceiling for this one turn (a positive
+# integer, as text). Popped by DocketDriver into LoopConfig.token_budget, so an
+# unset value keeps the configured AGENT_LOOP_TOKEN_BUDGET default.
+DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
+
 
 @dataclass
 class TurnResult:

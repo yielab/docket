@@ -440,6 +440,46 @@ def git_changed_files(cwd: str) -> list[str]:
     return sorted(files)
 
 
+def git_worktree_changes(cwd: str) -> list[tuple[str, str]]:
+    """Return ``(status, absolute path)`` for every path ``git status`` reports in the repository
+    containing `cwd`, untracked files listed one by one. Degrades to ``[]`` -- never raises --
+    on a missing binary, non-repo directory, or timeout, like `git_changed_files`."""
+    if not git_available():
+        return []
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+        status = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain", "-z", "--untracked-files=all"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if top.returncode != 0 or status.returncode != 0:
+        return []
+    root = top.stdout.strip()
+    fields = status.stdout.split("\0")
+    changes: list[tuple[str, str]] = []
+    index = 0
+    while index < len(fields):
+        entry = fields[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        code, path = entry[:2], entry[3:]
+        # With -z a rename or copy is "XY new\0old\0": the original path is its own field.
+        if code[0] in "RC":
+            index += 1
+        changes.append((code, os.path.join(root, path)))
+    return changes
+
+
 def git_worktree_add(repo_dir: str, worktree_path: str, branch: str) -> tuple[bool, str]:
     """Create a git worktree at ``worktree_path`` on a new branch ``branch``.
     Returns ``(success, error_message)``; degrades gracefully, returning

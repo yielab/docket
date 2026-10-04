@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -104,7 +104,11 @@ class _ScriptedLLMServer:
     """A loopback ``ThreadingHTTPServer`` replaying a fixed script of
     OpenAI-compatible chat-completion bodies, one per POST."""
 
-    def __init__(self, responses: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        responses: list[dict[str, Any]],
+        on_request: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self.requests: list[dict[str, Any]] = []
         responses_ref = self.responses = list(responses)
         requests_ref = self.requests
@@ -114,6 +118,8 @@ class _ScriptedLLMServer:
                 length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(length)
                 requests_ref.append(json.loads(body.decode("utf-8")))
+                if on_request is not None:
+                    on_request(requests_ref[-1])
                 index = min(len(requests_ref) - 1, len(responses_ref) - 1)
                 payload = json.dumps(responses_ref[index]).encode("utf-8")
                 self.send_response(200)
@@ -143,8 +149,11 @@ class _ScriptedLLMServer:
 def llm_server() -> Iterator[Any]:
     servers: list[_ScriptedLLMServer] = []
 
-    def _start(responses: list[dict[str, Any]]) -> _ScriptedLLMServer:
-        server = _ScriptedLLMServer(responses)
+    def _start(
+        responses: list[dict[str, Any]],
+        on_request: Callable[[dict[str, Any]], None] | None = None,
+    ) -> _ScriptedLLMServer:
+        server = _ScriptedLLMServer(responses, on_request)
         servers.append(server)
         return server
 
@@ -309,7 +318,7 @@ class TestContract11Run:
             assert line["v"] == "1.1.0"
 
         assert result["status"] == "ok"
-        assert result["files"] == []
+        assert result["files"] == [{"path": "out.txt", "op": "write"}]
         assert result["task"] is None
         assert result["limits"] == {"maxTokens": None}
 
@@ -393,6 +402,229 @@ class TestContract11Run:
 
         event_types = [e["event"]["event_type"] for e in events]
         assert event_types.index("process_started") < event_types.index("process_exited")
+
+
+# ── (a3) written paths, token file, caller limits, policies (contract 1.1) ──
+
+
+def _contract_11_args(workspace: Path, *extra: str) -> list[str]:
+    return [
+        "run",
+        "--workspace",
+        str(workspace),
+        "--task",
+        "do the thing",
+        "--model",
+        "local/x",
+        "--contract",
+        "1.1",
+        *extra,
+    ]
+
+
+class TestWrittenPathsAndLimits:
+    def test_a_write_and_an_edit_are_both_listed_as_touched_files(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("write", {"path": "a.txt", "content": "alpha"}, "call-1"),
+                _tool_call_response(
+                    "edit",
+                    {"path": "b.txt", "old_string": "old", "new_string": "new"},
+                    "call-2",
+                ),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        (workspace / "b.txt").write_text("old text")
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace), env)
+
+        assert proc.returncode == 0, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert sorted(result["files"], key=lambda f: f["path"]) == [
+            {"path": "a.txt", "op": "write"},
+            {"path": "b.txt", "op": "edit"},
+        ]
+
+    def test_an_untracked_file_written_by_bash_appears_in_a_git_workspace(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("bash", {"command": "touch made-by-bash.txt"}),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        subprocess.run(["git", "-C", str(workspace), "init", "-q"], check=True)
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace), env)
+
+        assert proc.returncode == 0, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert {"path": "made-by-bash.txt", "op": "write"} in result["files"]
+
+    def test_the_token_file_is_0600_and_complete_before_the_first_request(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        token_file = tmp_path / "run-token.json"
+        seen: list[tuple[int, dict[str, Any]]] = []
+
+        def _inspect(_body: dict[str, Any]) -> None:
+            if not seen:
+                mode = token_file.stat().st_mode & 0o777
+                seen.append((mode, json.loads(token_file.read_text())))
+
+        server = llm_server([_final_response("done")], on_request=_inspect)
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace, "--token-file", str(token_file)), env)
+
+        assert proc.returncode == 0, proc.stderr
+        assert len(seen) == 1
+        mode, content = seen[0]
+        assert mode == 0o600
+        assert content["v"] == "1.1.0"
+        assert isinstance(content["pid"], int)
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert content["token"] == result["token"]
+        assert not list(tmp_path.glob("*.tmp"))
+
+        stderr_lines = [
+            line for line in proc.stderr.splitlines() if line.startswith("docket harness: run ")
+        ]
+        assert stderr_lines
+        assert stderr_lines[0].split()[3] == content["token"]
+        assert stderr_lines[0].split()[4].startswith("agent=")
+
+    def test_max_tokens_stops_the_turn_on_the_token_bound(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("write", {"path": "a.txt", "content": "alpha"}),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace, "--max-tokens", "10"), env)
+
+        assert proc.returncode == 1, proc.stderr
+        result = _parse_ndjson(proc.stdout)[-1]
+        assert result["status"] == "failed"
+        assert "token_budget=10" in result["error"]
+        assert result["limits"] == {"maxTokens": 10}
+        assert len(server.requests) == 1
+
+    def test_a_policy_that_blocks_bash_stops_the_call(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server(
+            [
+                _tool_call_response("bash", {"command": "touch ran.txt"}),
+                _final_response("done"),
+            ]
+        )
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        policy = tmp_path / "no-bash.json"
+        policy.write_text(
+            json.dumps(
+                {
+                    "id": "no-bash",
+                    "description": "Deny every shell command",
+                    "applies_to": ["*"],
+                    "hook": "pre_tool_call",
+                    "match": {"type": "regex", "pattern": "touch"},
+                    "action": "block",
+                    "message": "shell is off for this run",
+                }
+            )
+        )
+        env = _child_env(home, server.base_url)
+
+        proc = _run_harness(_contract_11_args(workspace, "--policy", str(policy)), env)
+
+        assert proc.returncode == 0, proc.stderr
+        events = _parse_ndjson(proc.stdout)[:-1]
+        assert not [e for e in events if e["event"]["event_type"] == "process_started"]
+        assert not (workspace / "ran.txt").exists()
+        assert (home / "policies" / "no-bash.json").is_file()
+
+    def test_a_malformed_policy_exits_2_before_any_run_is_created(self, tmp_path: Path) -> None:
+        policy = tmp_path / "broken.json"
+        policy.write_text("{not json")
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(_contract_11_args(workspace, "--policy", str(policy)), env)
+
+        assert proc.returncode == 2, proc.stderr
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        assert len(lines) == 1
+        result = json.loads(lines[0])
+        assert result["status"] == "refused"
+        assert "broken.json" in result["error"]
+        assert not (home / "docket-runs.json").exists()
+        assert not (home / "policies").exists()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--token-file", "{tmp}/t.json"],
+            ["--max-tokens", "10"],
+            ["--policy", "{tmp}/p.json"],
+        ],
+    )
+    def test_v11_flags_need_contract_1_1(self, tmp_path: Path, extra: list[str]) -> None:
+        (tmp_path / "p.json").write_text("{}")
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        args = [a.replace("{tmp}", str(tmp_path)) for a in extra]
+
+        proc = _run_harness(
+            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x", *args],
+            env,
+        )
+
+        assert proc.returncode == 2, proc.stderr
+        result = json.loads(proc.stdout.strip())
+        assert result["status"] == "refused"
+        assert result["v"] == "1.0.0"
+        assert "--contract 1.1" in result["error"]
+        assert not (tmp_path / "home").exists()
+
+    @pytest.mark.parametrize("value", ["0", "-3", "ten"])
+    def test_max_tokens_must_be_a_positive_integer(self, tmp_path: Path, value: str) -> None:
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+
+        proc = _run_harness(_contract_11_args(workspace, "--max-tokens", value), env)
+
+        assert proc.returncode == 2, proc.stderr
+        assert json.loads(proc.stdout.strip())["status"] == "refused"
+        assert not (tmp_path / "home").exists()
 
 
 # ── (b) blocked ───────────────────────────────────────────────────────────────

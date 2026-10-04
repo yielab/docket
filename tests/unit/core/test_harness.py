@@ -234,3 +234,74 @@ def test_answer_requires_exactly_one_target() -> None:
         harness.Answer(action="accept")
     ok = harness.Answer(approvalToken="a", action="accept")
     assert ok.questionId is None
+
+
+# ── written files ─────────────────────────────────────────────────────────────
+
+
+def _call(call_id: str, tool: str, arguments: str) -> dict[str, Any]:
+    return {
+        "event_type": "tool_call",
+        "payload": {"tool": tool, "callId": call_id, "arguments": arguments},
+    }
+
+
+def _outcome(call_id: str, *, executed: bool, ok: bool) -> dict[str, Any]:
+    return {
+        "event_type": "tool_result",
+        "payload": {"callId": call_id, "executed": executed, "ok": ok},
+    }
+
+
+def test_a_write_or_edit_call_is_a_file_change_and_others_are_not() -> None:
+    write = harness.file_change_from_tool_call(
+        {"tool": "write", "arguments": '{"path": "a.txt", "content": "x"}'}
+    )
+    edit = harness.file_change_from_tool_call(
+        {"tool": "edit", "arguments": '{"path": "b.txt", "old_string": "a"}'}
+    )
+    assert write == harness.FileChange(path="a.txt", op="write")
+    assert edit == harness.FileChange(path="b.txt", op="edit")
+    assert harness.file_change_from_tool_call({"tool": "bash", "arguments": "{}"}) is None
+    assert harness.file_change_from_tool_call({"tool": "write", "arguments": "not json"}) is None
+    assert harness.file_change_from_tool_call({"tool": "write", "arguments": "{}"}) is None
+
+
+def test_a_status_entry_maps_to_write_delete_or_unknown() -> None:
+    assert harness.file_change_from_status("??", "n.txt") == harness.FileChange(
+        path="n.txt", op="write"
+    )
+    assert harness.file_change_from_status(" D", "gone.txt") == harness.FileChange(
+        path="gone.txt", op="delete"
+    )
+    assert harness.file_change_from_status(" M", "m.txt") == harness.FileChange(
+        path="m.txt", op="unknown"
+    )
+
+
+def test_written_files_count_only_calls_whose_result_executed_and_ok() -> None:
+    tracker = harness.WrittenFiles()
+    for record in (
+        _call("c1", "write", '{"path": "kept.txt"}'),
+        _outcome("c1", executed=True, ok=True),
+        _call("c2", "write", '{"path": "blocked.txt"}'),
+        _outcome("c2", executed=False, ok=False),
+        _call("c3", "edit", '{"path": "failed.txt"}'),
+        _outcome("c3", executed=True, ok=False),
+    ):
+        tracker.observe(record)
+    assert tracker.changes == [harness.FileChange(path="kept.txt", op="write")]
+
+
+def test_merge_keeps_one_entry_per_path_and_the_first_op_named() -> None:
+    merged = harness.merge_file_changes(
+        [harness.FileChange(path="a.txt", op="edit")],
+        [
+            harness.FileChange(path="a.txt", op="unknown"),
+            harness.FileChange(path="b.txt", op="write"),
+        ],
+    )
+    assert merged == [
+        harness.FileChange(path="a.txt", op="edit"),
+        harness.FileChange(path="b.txt", op="write"),
+    ]

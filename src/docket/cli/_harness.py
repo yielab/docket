@@ -14,9 +14,11 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import shutil
 import signal
 import sys
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,11 +26,19 @@ from typing import Any
 import docket.config as _cfg
 from docket.cli import _harness_answers as _answers
 from docket.core import harness
+from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import trace as _trace
-from docket.core.runtime_driver import DOCKET_APPROVAL_MODE, TurnResult, UsageReport, UsageTotals
+from docket.core.runtime_driver import (
+    DOCKET_APPROVAL_MODE,
+    DOCKET_TURN_TOKEN_BUDGET,
+    TurnResult,
+    UsageReport,
+    UsageTotals,
+)
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
+from docket.edges.adapters import system as _system
 
 _DEFAULT_TIMEOUT = 300
 _DEFAULT_ROLE = "implementer"
@@ -49,6 +59,88 @@ def _flag(args: list[str], name: str) -> str | None:
         if a.startswith(name + "="):
             return a.split("=", 1)[1]
     return None
+
+
+def _flags(args: list[str], name: str) -> list[str]:
+    """Every value given to ``--name`` (or ``--name=value``), in order."""
+    values: list[str] = []
+    for i, a in enumerate(args):
+        if a == name and i + 1 < len(args):
+            values.append(args[i + 1])
+        elif a.startswith(name + "="):
+            values.append(a.split("=", 1)[1])
+    return values
+
+
+def _v11_usage_error(
+    token_file_raw: str | None,
+    max_tokens_raw: str | None,
+    policy_raws: list[str],
+    contract_raw: str,
+) -> str | None:
+    """Validate ``--token-file``, ``--max-tokens`` and ``--policy``; all need ``--contract 1.1``."""
+    if token_file_raw is None and max_tokens_raw is None and not policy_raws:
+        return None
+    if contract_raw != "1.1":
+        return "--token-file, --max-tokens and --policy need --contract 1.1"
+    if max_tokens_raw is not None:
+        try:
+            if int(max_tokens_raw) <= 0:
+                raise ValueError
+        except ValueError:
+            return f"--max-tokens must be a positive integer, got {max_tokens_raw!r}"
+    if token_file_raw is not None and not Path(token_file_raw).expanduser().parent.is_dir():
+        return f"--token-file directory does not exist: {token_file_raw!r}"
+    names = [Path(p).name for p in policy_raws]
+    if len(set(names)) != len(names):
+        return "--policy file names must be unique; each is copied into the policies directory"
+    return None
+
+
+def _write_token_file(path: Path, token: str) -> None:
+    """Write ``{"v", "token", "pid"}`` to *path* atomically, readable by its owner only."""
+    body = json.dumps({"v": harness.HARNESS_CONTRACT_V11, "token": token, "pid": os.getpid()})
+    staging = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(body)
+    os.replace(staging, path)
+
+
+def _workspace_relative(root: Path, raw: str, base: Path) -> str | None:
+    """*raw* as a POSIX path relative to *root* (the resolved workspace), or ``None`` when it
+    names a place outside the workspace."""
+    candidate = Path(raw) if Path(raw).is_absolute() else base / raw
+    try:
+        return candidate.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return None
+
+
+def _inside_workspace(
+    workspace: Path, changes: Iterable[harness.FileChange]
+) -> list[harness.FileChange]:
+    root = workspace.resolve()
+    inside: list[harness.FileChange] = []
+    for change in changes:
+        rel = _workspace_relative(root, change.path, workspace)
+        if rel is not None:
+            inside.append(harness.FileChange(path=rel, op=change.op))
+    return inside
+
+
+def _touched_files(
+    workspace: Path, written: Iterable[harness.FileChange]
+) -> list[harness.FileChange]:
+    """The run's own write/edit calls merged with what ``git status`` reports in the workspace's
+    repository, every path relative to the workspace and outside paths dropped."""
+    git_changes = [
+        harness.file_change_from_status(code, path)
+        for code, path in _system.git_worktree_changes(str(workspace))
+    ]
+    return harness.merge_file_changes(
+        _inside_workspace(workspace, written), _inside_workspace(workspace, git_changes)
+    )
 
 
 def run_harness(sub: str | None, args: list[str]) -> int:
@@ -86,10 +178,22 @@ def _event_line(
 
 
 def _final_result(
-    contract_version: str, turn: TurnResult, usage_report: UsageReport, run_rec: dict[str, Any]
+    contract_version: str,
+    turn: TurnResult,
+    usage_report: UsageReport,
+    run_rec: dict[str, Any],
+    *,
+    files: list[harness.FileChange] | None = None,
+    max_tokens: int | None = None,
 ) -> harness.HarnessResult | harness.HarnessResultV11:
     if contract_version == harness.HARNESS_CONTRACT_V11:
-        return harness.result_from_v11(turn, usage_report, run_rec)
+        return harness.result_from_v11(
+            turn,
+            usage_report,
+            run_rec,
+            files=files or [],
+            limits=harness.Limits(maxTokens=max_tokens),
+        )
     return harness.result_from(turn, usage_report, run_rec)
 
 
@@ -164,6 +268,101 @@ class _RunOutcome:
     turn: TurnResult
 
 
+def _execute_turn(
+    driver: _dr.DocketDriver,
+    *,
+    token: str,
+    agent_id: str,
+    role: str,
+    session_key: str,
+    task: str,
+    timeout: int,
+    env: dict[str, str],
+    answers_raw: str | None,
+    answer_timeout_raw: str | None,
+    emit: Callable[[dict[str, Any]], None],
+    written: harness.WrittenFiles,
+) -> list[_RunOutcome]:
+    """Run the turn with the stdout relay and the written-files tracker subscribed, bracketed
+    by the session's start and end trace events."""
+    with (
+        _answers.guard(answers_raw, answer_timeout_raw, token),
+        _trace.subscribe(emit),
+        _trace.subscribe(written.observe),
+    ):
+        _trace.trace_event(
+            agent_id, session_key, role, "session_start", json.dumps({"source": "harness"})
+        )
+
+        def _invoke() -> list[_RunOutcome]:
+            turn = driver.run_turn(
+                agent_id,
+                session_key,
+                task,
+                timeout,
+                env,
+                trace_project=agent_id,
+            )
+            if turn.failure_kind == "run_cancelled":
+                status = "cancelled"
+            elif not turn.ok:
+                status = "failed"
+            else:
+                status = "done"
+            return [_RunOutcome(token, status, turn.error, turn)]
+
+        results = _runs.execute(token, _invoke)
+
+        final_status = results[0].status if results else "failed"
+        _trace.trace_event(
+            agent_id,
+            session_key,
+            role,
+            "session_end",
+            json.dumps({"status": final_status}),
+        )
+    return results or []
+
+
+def _finish(
+    driver: _dr.DocketDriver,
+    *,
+    token: str,
+    agent_id: str,
+    workspace: Path,
+    contract_version: str,
+    results: list[_RunOutcome],
+    written: harness.WrittenFiles,
+    max_tokens: int | None,
+) -> int:
+    """Print the one terminal result line and map its status to the exit code."""
+    run_rec = _runs.get_run(token) or {}
+    if results:
+        turn = results[0].turn
+    else:
+        turn = TurnResult(
+            False, "", 0.0, {}, str(run_rec.get("error", "")) or "harness run did not complete"
+        )
+
+    usage_report = driver.usage(agent_id)
+    files = (
+        _touched_files(workspace, written.changes)
+        if contract_version == harness.HARNESS_CONTRACT_V11
+        else None
+    )
+    result = _final_result(
+        contract_version, turn, usage_report, run_rec, files=files, max_tokens=max_tokens
+    )
+    print(result.model_dump_json())
+    print(f"docket harness: run {token} finished status={result.status}", file=sys.stderr)
+
+    if result.status == "ok":
+        return 0
+    if result.status == "refused":
+        return 2
+    return 1
+
+
 def _run(args: list[str]) -> int:
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 
@@ -177,10 +376,15 @@ def _run(args: list[str]) -> int:
     contract_raw = _flag(args, "--contract") or "1.0"
     answers_raw = _flag(args, "--answers")
     answer_timeout_raw = _flag(args, "--answer-timeout")
+    token_file_raw = _flag(args, "--token-file")
+    max_tokens_raw = _flag(args, "--max-tokens")
+    policy_raws = _flags(args, "--policy")
 
-    problem = _usage_error(
-        workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw
-    ) or _answers_usage_error(answers_raw, answer_timeout_raw, task_file_raw, contract_raw)
+    problem = (
+        _usage_error(workspace_raw, task_text, task_file_raw, model, timeout_raw, contract_raw)
+        or _answers_usage_error(answers_raw, answer_timeout_raw, task_file_raw, contract_raw)
+        or _v11_usage_error(token_file_raw, max_tokens_raw, policy_raws, contract_raw)
+    )
     if problem:
         # An invalid --contract itself has no known version to stamp; every
         # other usage error stamps whatever contract the caller did select.
@@ -206,7 +410,14 @@ def _run(args: list[str]) -> int:
         assert task_text is not None
         task = task_text
 
+    policy_paths = [Path(p).expanduser() for p in policy_raws]
+    for policy_path in policy_paths:
+        problem = _policy.validate_policy(policy_path)
+        if problem:
+            return _refuse(f"invalid --policy: {problem}", contract_version)
+
     timeout = int(timeout_raw) if timeout_raw is not None else _DEFAULT_TIMEOUT
+    max_tokens = int(max_tokens_raw) if max_tokens_raw is not None else None
 
     try:
         meta = harness.agent_meta_for(agent_id, workspace, model, role)
@@ -217,8 +428,19 @@ def _run(args: list[str]) -> int:
     _cfg.workspace_dir(agent_id).mkdir(parents=True, exist_ok=True)
     _store.write_json(_cfg.meta_path(agent_id), meta)
 
+    for policy_path in policy_paths:
+        _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(policy_path, _cfg.POLICIES_DIR / policy_path.name)
+
     run = _runs.create_run("cli", agent_id, variables={"model": model})
     token = str(run["id"])
+    if token_file_raw is not None:
+        try:
+            _write_token_file(Path(token_file_raw).expanduser(), token)
+        except OSError as exc:
+            return _refuse(
+                f"could not write --token-file {token_file_raw!r}: {exc}", contract_version
+            )
     print(
         f"docket harness: run {token} agent={agent_id} model={model} role={role}", file=sys.stderr
     )
@@ -253,61 +475,38 @@ def _run(args: list[str]) -> int:
     driver = _dr.default_driver()
     # --answers stdin waits for the caller's answer line; otherwise nobody can answer.
     env = {DOCKET_APPROVAL_MODE: "wait" if answers_raw == "stdin" else "refuse"}
+    if max_tokens is not None:
+        env[DOCKET_TURN_TOKEN_BUDGET] = str(max_tokens)
+    written = harness.WrittenFiles()
 
     try:
-        with _answers.guard(answers_raw, answer_timeout_raw, token), _trace.subscribe(_emit):
-            _trace.trace_event(
-                agent_id, session_key, role, "session_start", json.dumps({"source": "harness"})
-            )
-
-            def _invoke() -> list[_RunOutcome]:
-                turn = driver.run_turn(
-                    agent_id,
-                    session_key,
-                    task,
-                    timeout,
-                    env,
-                    trace_project=agent_id,
-                )
-                if turn.failure_kind == "run_cancelled":
-                    status = "cancelled"
-                elif not turn.ok:
-                    status = "failed"
-                else:
-                    status = "done"
-                return [_RunOutcome(token, status, turn.error, turn)]
-
-            results = _runs.execute(token, _invoke)
-
-            final_status = results[0].status if results else "failed"
-            _trace.trace_event(
-                agent_id,
-                session_key,
-                role,
-                "session_end",
-                json.dumps({"status": final_status}),
-            )
+        results = _execute_turn(
+            driver,
+            token=token,
+            agent_id=agent_id,
+            role=role,
+            session_key=session_key,
+            task=task,
+            timeout=timeout,
+            env=env,
+            answers_raw=answers_raw,
+            answer_timeout_raw=answer_timeout_raw,
+            emit=_emit,
+            written=written,
+        )
     finally:
         signal.signal(signal.SIGTERM, old_handler)
 
-    run_rec = _runs.get_run(token) or {}
-    if results:
-        turn = results[0].turn
-    else:
-        turn = TurnResult(
-            False, "", 0.0, {}, str(run_rec.get("error", "")) or "harness run did not complete"
-        )
-
-    usage_report = driver.usage(agent_id)
-    result = _final_result(contract_version, turn, usage_report, run_rec)
-    print(result.model_dump_json())
-    print(f"docket harness: run {token} finished status={result.status}", file=sys.stderr)
-
-    if result.status == "ok":
-        return 0
-    if result.status == "refused":
-        return 2
-    return 1
+    return _finish(
+        driver,
+        token=token,
+        agent_id=agent_id,
+        workspace=workspace,
+        contract_version=contract_version,
+        results=results,
+        written=written,
+        max_tokens=max_tokens,
+    )
 
 
 def _refuse(reason: str, version: str = harness.HARNESS_CONTRACT_VERSION) -> int:

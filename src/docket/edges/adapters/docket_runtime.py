@@ -38,6 +38,7 @@ from docket.core.runtime_driver import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
     DOCKET_PREGRANTS,
+    DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
     SessionSlice,
@@ -174,6 +175,16 @@ def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
         return _pod.PodSettings.load_for(project).allow_commands
     except _pod.PodSettingsError:
         return ()
+
+
+def _turn_token_budget(raw: str | None) -> int:
+    """*raw* as a positive measured-token ceiling, else the configured loop default -- a
+    malformed value never raises here (the harness CLI validates its own flag first)."""
+    try:
+        value = int(raw or "")
+    except ValueError:
+        return _cfg.AGENT_LOOP_TOKEN_BUDGET
+    return value if value > 0 else _cfg.AGENT_LOOP_TOKEN_BUDGET
 
 
 def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
@@ -373,6 +384,7 @@ class DocketDriver:
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
+        token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
         # trace events under the identical coordinate `core/agent_loop.py`'s own
@@ -420,6 +432,7 @@ class DocketDriver:
         max_output_tokens = getattr(backend, "max_output_tokens", None)
         loop_config = _loop.LoopConfig(
             wall_clock_timeout_s=float(timeout),
+            token_budget=token_budget,
             context_window_tokens=(
                 context_window if isinstance(context_window, int) and context_window > 0 else None
             ),

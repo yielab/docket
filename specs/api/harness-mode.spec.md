@@ -169,10 +169,9 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
 **Status of this section: partially implemented.** ADR 0017 (D-51) opens a second, opt-in wire
 contract, `1.1.0`, alongside the unchanged `1.0.0` default. P35-2 ships the models, generated
 schema, fixtures, and the `--contract` flag that selects which version is stamped on every line.
-P35-3 (Section 3) has since landed live. Three behaviors remain planned (Sections 4-6 below).
-Passing `--contract 1.1` today yields a v1.1-shaped stream whose `files`/`task`/`limits` fields
-are still always empty/default, because nothing yet populates them -- process lifecycle events
-ride the `event` stream itself, independent of those three fields.
+P35-3 (Section 3), P35-5 (Section 5) and P35-6 (Section 4) have landed live. One behavior remains
+planned (Section 6 below): `task` stays `null` until recipe runs exist. Process lifecycle events
+ride the `event` stream itself, independent of the result fields.
 
 ### 1. Selecting the contract
 
@@ -195,9 +194,9 @@ ride the `event` stream itself, independent of those three fields.
 
 | Field | Type | Rule |
 |---|---|---|
-| `files` | array of `FileChange` | Which files the run touched. `[]` until P35-6 populates it (Section 4). |
-| `task` | `HarnessTask` or null | Recipe/task-run state. `null` until P35-9 populates it (Section 5). |
-| `limits` | `Limits` | Caller-declared ceilings echoed back. `{"maxTokens": null}` until P35-6 enforces one (Section 4). |
+| `files` | array of `FileChange` | Which files the run touched (Section 4). `[]` when nothing was written. |
+| `task` | `HarnessTask` or null | Recipe/task-run state. `null` until P35-9 populates it (Section 6). |
+| `limits` | `Limits` | Caller-declared ceilings echoed back. `{"maxTokens": null}` unless `--max-tokens` was given (Section 4). |
 
 `FileChange` is `{path: string, op: "write"|"edit"|"delete"|"unknown"}`.
 
@@ -234,13 +233,47 @@ signal-carrying shape (`docket runs cancel` reaching a live `bash` subprocess is
 requires a `run` `cancel` call from a second thread rather than SIGTERM-ing the harness process
 itself).
 
-### 4. Written paths, token file, and caller limits -- Planned, owned by P35-6
+### 4. Written paths, token file, and caller limits -- Implemented and live (P35-6)
 
-Status: **Planned -- owned by P35-6.** Populating `HarnessResultV11.files` from what a turn
-actually wrote/edited/deleted; a `--token-file` option; and a caller-declared `--max-tokens`
-surfaced back through `limits.maxTokens` and enforced as a stop condition. This section is a
-placeholder until that card lands; `tests/fixtures/harness-contract/v1.1/ok-files.ndjson` is a
-hand-authored sample of the shape.
+1. **Files.** Every run under `--contract 1.1` reports `HarnessResultV11.files`, with no flag.
+   - The run's own `write` and `edit` calls come from the harness's trace subscription. A call
+     counts once its `tool_result` reports `executed` and `ok`, so a call a policy blocked or
+     that failed is not listed. Op is `write` or `edit`.
+   - In a git workspace, `git status --porcelain -z --untracked-files=all` over the workspace's
+     repository adds every changed path, so a file a `bash` call created appears. Untracked or
+     added paths are `write`, deleted paths `delete`, and any other change `unknown`. A path
+     already named by a `write`/`edit` call keeps that call's op. A non-git workspace reports
+     only the calls.
+   - Paths are POSIX and relative to the workspace, outside paths are dropped, and each path
+     appears once. Diff content is never reported.
+2. **`--token-file PATH`.** Written atomically (staged, then renamed) with mode `0600` after the
+   run is created and before the first model request. Content is one JSON object:
+   `{"v": "1.1.0", "token": "<run token>", "pid": <harness pid>}`. The parent directory must
+   exist, or the run is refused with exit 2.
+3. **The stderr line.** The line
+   `docket harness: run <token> agent=<id> model=<model> role=<role>` is the pinned stable
+   format, written to stderr once the run exists and after the token file. A caller matches it
+   with `^docket harness: run (\S+) agent=(\S+) `. Stdout stays NDJSON only.
+4. **`--max-tokens N`** (a positive integer). The turn's measured-token bound: the harness sets
+   the `DOCKET_TURN_TOKEN_BUDGET` key of `run_turn`'s env, which the driver pops into
+   `LoopConfig.token_budget` in place of `AGENT_LOOP_TOKEN_BUDGET`. Exceeding it stops the turn
+   (`status` `failed`, `error` `exceeded token_budget=N (used M)`). `limits.maxTokens` echoes N;
+   without the flag it stays `null`. The bound is measured usage, not a dollar figure.
+5. **`--policy FILE`** (repeatable). Each file is checked with `core.policy.validate_policy`
+   before any run record is created. If any file is invalid, the harness exits 2 with one
+   `refused` result that names the problem, and nothing is created or copied. Valid files are
+   copied into the policies directory (`$POLICIES_DIR`, which defaults to `$DOCKET_HOME/policies`)
+   and are active for the turn. Two `--policy` files with the same basename are refused.
+6. **Flags need `--contract 1.1`.** `--token-file`, `--max-tokens` and `--policy` under
+   `--contract 1.0`, or with no `--contract`, exit 2 with a refused result stamped `1.0.0`, the
+   same way `--answers` does. `--max-tokens` must be a positive integer.
+
+Verified by `tests/integration/test_harness_cli.py::TestWrittenPathsAndLimits` (a write and an
+edit both listed; an untracked file written by `bash` in a git workspace; the token file's mode
+and content read inside the fake endpoint's first request; `--max-tokens` stopping the turn; a
+`--policy` that blocks `bash`; a malformed policy refused before any run; the flag and value
+refusals), and by the `files`-related tests in `tests/unit/core/test_harness.py`.
+`tests/fixtures/harness-contract/v1.1/ok-files.ndjson` is a hand-authored sample of the shape.
 
 ### 5. Answers on stdin -- Implemented and live (P35-5)
 
@@ -308,10 +341,19 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
 - **Refusal stamps the selected contract.** Once `--contract` itself parses successfully, every
   refusal reached afterward (a later usage error, a `preflight` refusal, an `agent_meta_for`
   usage error) MUST stamp the version that was selected, not the default.
-- **No behavior change beyond the stamp.** `--contract 1.1` alone does not populate `files`,
-  `task`, or enforce `limits` -- those are Sections 3-6 above, each owned by a later card.
+- **Behavior beyond the stamp.** Under `--contract 1.1`, `files` is populated (Section 4) and
+  process lifecycle events ride the stream (Section 3). `task` stays `null` until Section 6, and
+  `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P35-6)
+
+- **Written paths, token file, caller limits (P35-6).** Section 4 is implemented and live:
+  under `--contract 1.1`, `files` lists the run's write/edit calls (executed and ok) and, in a
+  git workspace, the `git status` changes; `--token-file`, `--max-tokens` and `--policy` are
+  accepted under `--contract 1.1` and refused under 1.0. The v1.1 shapes are unchanged. The
+  version bump is left to the integrator.
 
 ### Version 1.3.0 (2026-10-03)
 
