@@ -317,6 +317,16 @@ class TestPodSettings:
         with pytest.raises(pod.PodSettingsError, match="inputExpiryHours"):
             pod.PodSettings.coerce("inputExpiryHours", "0")
 
+    def test_max_consultations_per_task_defaults_to_3_and_round_trips(self) -> None:
+        _write_lead_meta("shop")
+        assert pod.PodSettings.load_for("shop").max_consultations_per_task == 3
+        _write_lead_meta("shop", {"maxConsultationsPerTask": "1"})
+        assert pod.PodSettings.load_for("shop").max_consultations_per_task == 1
+
+    def test_max_consultations_per_task_rejects_negative(self) -> None:
+        with pytest.raises(pod.PodSettingsError, match="maxConsultationsPerTask"):
+            pod.PodSettings.coerce("maxConsultationsPerTask", "-1")
+
     def test_require_verify_defaults_to_false(self) -> None:
         _write_lead_meta("shop")
         settings = pod.PodSettings.load_for("shop")

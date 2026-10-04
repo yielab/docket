@@ -2056,3 +2056,24 @@ class TestPodScopeWiring:
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "unknown tool" not in tool_msg.content
+
+
+class TestConsultBudgetReachesTheTurn:
+    def test_env_value_wins_and_a_non_pod_agent_gets_the_default(self) -> None:
+        resolve = _docket_runtime._max_consultations
+        assert resolve("harness-x", "1") == 1
+        assert resolve("harness-x", "bad") == 3
+        assert resolve("harness-x", None) == 3
+
+    def test_a_pod_member_reads_the_pods_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from docket.core import pod as _pod
+        from docket.core.pod import PodSettings
+
+        monkeypatch.setattr(_pod, "pod_of", lambda agent_id: "shop")
+        monkeypatch.setattr(
+            PodSettings,
+            "load_for",
+            classmethod(lambda cls, project: PodSettings(maxConsultationsPerTask=2)),
+        )
+        assert _docket_runtime._max_consultations("shop-lead", None) == 2
+        assert _docket_runtime._max_consultations("shop-lead", "0") == 0

@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 import docket.config as _cfg
 from docket.core import approval as _approval
+from docket.core import consult as _consult
 from docket.core import harness
 from docket.core.policy import policy_eval_detail
 
@@ -62,7 +63,9 @@ def handle_line(
 
     answer = answer_line.answer
     if answer.questionId is not None:
-        if questions is None:
+        if _consult.is_waiting(answer.questionId):
+            _deliver_consult(answer)
+        elif questions is None:
             _say("answer line ignored: question answers need --recipe")
         else:
             questions.put(answer_line)
@@ -115,6 +118,21 @@ def handle_line(
             ledger.answered(target, answer.action)
 
 
+def _deliver_consult(answer: harness.Answer) -> None:
+    """Route a ``questionId`` answer to the waiting ``consult`` call. Its content is screened
+    like an approval's; a held or invalid answer leaves the call waiting."""
+    assert answer.questionId is not None
+    if answer.content is not None:
+        hit = policy_eval_detail(
+            "lead", "pre_input", json.dumps(answer.content, sort_keys=True), trusted=False
+        )
+        if hit.action in _HOLD_ACTIONS:
+            _say(f"answer line held by policy {hit.policy_id!r}; question still pending")
+            return
+    if _consult.submit(answer.questionId, answer.action, answer.content) is not None:
+        _say("answer line ignored: not a valid answer to this question")
+
+
 @contextlib.contextmanager
 def serve(
     token: str,
@@ -137,11 +155,13 @@ def serve(
                 _say("answer line ignored: internal error")
         if questions is not None:
             questions.put(None)
+        _consult.release_all()
 
     thread = threading.Thread(target=_pump, name="harness-answers", daemon=True)
     thread.start()
     try:
-        yield
+        with _consult.answer_reader():
+            yield
     finally:
         stop.set()
 

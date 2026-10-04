@@ -288,6 +288,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "mcpServers": "mcp_servers",
     "deniedTools": "denied_tools",
     "requireVerify": "require_verify",
+    "maxConsultationsPerTask": "max_consultations_per_task",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -384,6 +385,8 @@ class PodSettings(BaseModel):
     # (true). When true and verifyCmd is unset, the task fails with a
     # clear reason instead of silently advancing.
     require_verify: bool = Field(False, alias="requireVerify")
+    # How many `consult` questions one task's turn may ask (core/consult.py); 0 disables.
+    max_consultations_per_task: int = Field(3, alias="maxConsultationsPerTask", ge=0)
 
     # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
@@ -419,6 +422,7 @@ class PodSettings(BaseModel):
         "mcpServers",
         "deniedTools",
         "requireVerify",
+        "maxConsultationsPerTask",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every

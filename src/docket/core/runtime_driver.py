@@ -72,6 +72,11 @@ DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
 # unset value keeps the configured AGENT_LOOP_TOKEN_BUDGET default.
 DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
 
+# Same route again: this turn's `consult` budget (a non-negative integer, as text). Popped by
+# DocketDriver into ToolContext.max_consultations; unset, the driver reads the pod's
+# `maxConsultationsPerTask` setting (default 3).
+DOCKET_MAX_CONSULTATIONS = "DOCKET_MAX_CONSULTATIONS"
+
 
 @dataclass
 class TurnResult:

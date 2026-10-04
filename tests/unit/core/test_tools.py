@@ -511,6 +511,7 @@ class TestRegistry:
     def test_builtins_present(self) -> None:
         assert builtin_registry().names() == [
             "bash",
+            "consult",
             "edit",
             "fetch",
             "glob",
@@ -528,7 +529,7 @@ class TestRegistry:
     def test_without_narrows_the_set(self) -> None:
         readonly = builtin_registry().without("write", "edit", "bash")
         assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 5
+        assert len(readonly) == 6
 
     def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
         readonly = builtin_registry().without("write")
@@ -538,7 +539,7 @@ class TestRegistry:
     def test_without_kind_narrows_by_capability_not_name(self) -> None:
         """Sibling of `without()`, keyed on `Tool.kind` -- the mechanism `core.archetypes.registry_for_role` uses to exclude a namespaced (e.g. MCP-adapted) tool no name-based denylist could spell out in advance. See that module's docstring for the full reasoning."""
         no_mutation = builtin_registry().without_kind("write", "exec")
-        assert no_mutation.names() == ["fetch", "glob", "grep", "read", "skill"]
+        assert no_mutation.names() == ["consult", "fetch", "glob", "grep", "read", "skill"]
 
     def test_without_kind_removes_a_non_builtin_tool_of_the_same_kind(self) -> None:
         registry = builtin_registry()

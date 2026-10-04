@@ -32,11 +32,13 @@ from docket.core import session as _session
 from docket.core import telemetry as _telemetry
 from docket.core import trace as _trace
 from docket.core.audit import audit_log
+from docket.core.consult import DEFAULT_MAX_CONSULTATIONS
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
+    DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
@@ -175,6 +177,23 @@ def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
         return _pod.PodSettings.load_for(project).allow_commands
     except _pod.PodSettingsError:
         return ()
+
+
+def _max_consultations(agent_id: str, raw: str | None) -> int:
+    """This turn's ``consult`` budget: the caller's env value, else the agent's pod setting
+    ``maxConsultationsPerTask``, else the default; a malformed value never raises."""
+    if raw is not None:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            pass
+    project = _pod.pod_of(agent_id)
+    if project is not None:
+        try:
+            return _pod.PodSettings.load_for(project).max_consultations_per_task
+        except _pod.PodSettingsError:
+            pass
+    return DEFAULT_MAX_CONSULTATIONS
 
 
 def _turn_token_budget(raw: str | None) -> int:
@@ -384,6 +403,9 @@ class DocketDriver:
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
+        max_consultations = _max_consultations(
+            agent_id, tool_env.pop(DOCKET_MAX_CONSULTATIONS, None)
+        )
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
@@ -413,6 +435,7 @@ class DocketDriver:
                 cancellation_signal.observe if cancellation_signal is not None else None
             ),
             approval_mode=approval_mode,
+            max_consultations=max_consultations,
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,

@@ -233,6 +233,163 @@
       "title": "ModelInfo",
       "type": "object"
     },
+    "Option": {
+      "additionalProperties": false,
+      "description": "One choice a v1.1 question offers.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "estimatedTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimatedtokens"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "description"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "QuestionV11": {
+      "additionalProperties": false,
+      "description": "operator-v1.1 question: a ``Question`` plus ``kind``, ``options`` and a\n``recommendation``.",
+      "properties": {
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiresat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "approval",
+            "clarification",
+            "decision"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "pod": {
+          "title": "Pod",
+          "type": "string"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Recommendation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requestedSchema": {
+          "additionalProperties": true,
+          "title": "Requestedschema",
+          "type": "object"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "taskId": {
+          "title": "Taskid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "pod",
+        "step",
+        "message",
+        "requestedSchema",
+        "createdAt",
+        "kind"
+      ],
+      "title": "QuestionV11",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "description": "The option the asker recommends, with its reasons and evidence.",
+      "properties": {
+        "evidenceRefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidencerefs",
+          "type": "array"
+        },
+        "optionId": {
+          "title": "Optionid",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "optionId",
+        "rationale"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    },
     "UsageInfo": {
       "description": "Measured token counts for the whole run -- never a dollar figure.",
       "properties": {
@@ -364,6 +521,17 @@
         },
         "model": {
           "$ref": "#/$defs/ModelInfo"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QuestionV11"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "run_state": {
           "default": "",

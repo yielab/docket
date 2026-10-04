@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from docket.core import approval as _approval
+from docket.core import consult as _consult
 from docket.core import policy as _policy
 from docket.core import skills as _skills
 from docket.core.audit import audit_log
@@ -76,6 +77,9 @@ class ToolContext:
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
     rationale: str = ""
+    # `consult` budget for this context (one turn); `consult_count` is what it has spent.
+    max_consultations: int = _consult.DEFAULT_MAX_CONSULTATIONS
+    consult_count: int = 0
 
 
 @dataclass
@@ -381,6 +385,13 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
 
     try:
         outcome = tool.handler(args, ctx)
+    except _consult.ConsultUnavailable as ex:
+        # Same terminal stop as an approval nobody can give (refuse mode).
+        result.decision = "deny"
+        result.denial_kind = "approval_unavailable"
+        result.reason = str(ex)
+        result.error = result.reason
+        return result
     except Exception as ex:  # a broken tool must not unwind the whole turn
         result.executed = True
         result.error = f"{type(ex).__name__}: {ex}"
@@ -640,6 +651,56 @@ def _skill_tool() -> Tool:
     )
 
 
+def _consult_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+    """Handler for the ``consult`` built-in (``ConsultUnavailable`` propagates to dispatch)."""
+    outcome = _consult.run(args, ctx)
+    return ToolOutcome(outcome.ok, outcome.content, outcome.error)
+
+
+def _consult_tool() -> Tool:
+    """The `consult` built-in: ask the operator a clarification or decision question."""
+    option = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "label": {"type": "string"},
+            "description": {"type": "string"},
+            "risks": {"type": "array", "items": {"type": "string"}},
+            "estimatedTokens": {"type": "integer"},
+        },
+        "required": ["id", "label", "description"],
+    }
+    return Tool(
+        name="consult",
+        description=(
+            "Ask the operator a question when the task cannot be decided from the "
+            "repository alone. Give at least two options and your recommendation. The "
+            "result is the operator's chosen optionId and content, or 'no answer; decide "
+            "yourself'. The number of consultations per task is capped; use it sparingly."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["clarification", "decision"]},
+                "message": {"type": "string", "description": "The question, plainly."},
+                "options": {"type": "array", "items": option, "minItems": 2},
+                "recommendation": {
+                    "type": "object",
+                    "properties": {
+                        "optionId": {"type": "string"},
+                        "rationale": {"type": "string"},
+                        "evidenceRefs": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["optionId", "rationale"],
+                },
+            },
+            "required": ["kind", "message", "options"],
+        },
+        handler=_consult_handler,
+        kind="read",
+    )
+
+
 def _fetch_tool(fetch_url: Any) -> Tool:
     """The `fetch` built-in over *fetch_url*, the edges adapter the registry hands in."""
     return Tool(
@@ -664,8 +725,13 @@ def _fetch_tool(fetch_url: Any) -> Tool:
     )
 
 
+def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
+    for tool in tools:
+        registry.register(tool)
+
+
 def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash, skill, fetch. Handlers are
+    """The default tool set: read, write, edit, glob, grep, bash, skill, consult, fetch. Handlers are
     imported here (not at module scope) so this module stays importable without the
     filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one
     point."""
@@ -817,7 +883,7 @@ def builtin_registry() -> ToolRegistry:
             kind="exec",
         )
     )
-    registry.register(_skill_tool())
+    _register_all(registry, _skill_tool(), _consult_tool())
     registry.register(_fetch_tool(_fetch.fetch_url))
 
     return registry

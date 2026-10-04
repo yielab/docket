@@ -9,6 +9,7 @@ free to import from either the CLI distribution or the runtime closure.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import threading
@@ -17,10 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from docket.core.archetypes import BUILTIN_ARCHETYPES
 from docket.core.models import AgentKind, AgentMeta
+from docket.core.operator_contract import QuestionV11
 
 if TYPE_CHECKING:
     from docket.core.runtime_driver import TurnResult, UsageReport
@@ -262,10 +264,16 @@ class ApprovalLedger:
         self._answers: dict[str, ApprovalOutcome] = {}
         self._granted: set[str] = set()
         self._denied: set[str] = set()
+        self.last_question: QuestionV11 | None = None
 
     def observe(self, record: Mapping[str, Any]) -> None:
         payload = record.get("payload")
         if not isinstance(payload, Mapping):
+            return
+        if record.get("event_type") == "question_asked":
+            # Kept for the v1.1 result's ``question`` when a consultation ends the run blocked.
+            with contextlib.suppress(ValueError):
+                self.last_question = QuestionV11.model_validate(payload.get("question"))
             return
         token = str(payload.get("token", ""))
         if not token:
@@ -324,6 +332,12 @@ class HarnessResultV11(_VersionedEnvelopeV11):
     task: HarnessTask | None = None
     limits: Limits = Field(default_factory=Limits)
     approvals: list[ApprovalEntry] = Field(default_factory=list)
+    # The consultation that ended the run ``blocked`` (a `consult` call under refuse/park).
+    question: QuestionV11 | None = None
+
+    @field_serializer("question")
+    def _question_on_the_wire(self, value: QuestionV11 | None) -> dict[str, Any] | None:
+        return value.model_dump(by_alias=True, mode="json") if value is not None else None
 
 
 @dataclass(frozen=True)
@@ -492,6 +506,7 @@ def result_from_v11(
     task: HarnessTask | None = None,
     limits: Limits | None = None,
     approvals: Sequence[ApprovalEntry] = (),
+    question: QuestionV11 | None = None,
 ) -> HarnessResultV11:
     """The v1.1 sibling of ``result_from``: same status/blocked/usage mapping,
     reused rather than re-derived, plus the caller-supplied v1.1-only fields."""
@@ -511,4 +526,7 @@ def result_from_v11(
         task=task,
         limits=limits if limits is not None else Limits(),
         approvals=list(approvals),
+        question=question
+        if base.status == "blocked" and base.blocked is not None and base.blocked.tool == "consult"
+        else None,
     )

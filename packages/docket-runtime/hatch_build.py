@@ -25,6 +25,7 @@ _RUNTIME_FILES = (
     "core/approval.py",
     "core/archetypes.py",
     "core/audit.py",
+    "core/consult.py",
     "core/context.py",
     "core/exporter.py",
     "core/fleet.py",

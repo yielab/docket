@@ -30,6 +30,7 @@ from docket.core import harness
 from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import trace as _trace
+from docket.core.operator_contract import QuestionV11
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
     DOCKET_TURN_TOKEN_BUDGET,
@@ -216,6 +217,7 @@ def _final_result(
     files: list[harness.FileChange] | None = None,
     max_tokens: int | None = None,
     approvals: list[harness.ApprovalEntry] | None = None,
+    question: QuestionV11 | None = None,
 ) -> harness.HarnessResult | harness.HarnessResultV11:
     if contract_version == harness.HARNESS_CONTRACT_V11:
         return harness.result_from_v11(
@@ -225,6 +227,7 @@ def _final_result(
             files=files or [],
             limits=harness.Limits(maxTokens=max_tokens),
             approvals=approvals or [],
+            question=question,
         )
     return harness.result_from(turn, usage_report, run_rec)
 
@@ -392,6 +395,7 @@ def _finish(
         files=files,
         max_tokens=max_tokens,
         approvals=entries,
+        question=approvals.last_question,
     )
     print(result.model_dump_json())
     print(f"docket harness: run {token} finished status={result.status}", file=sys.stderr)

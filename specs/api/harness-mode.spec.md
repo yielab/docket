@@ -330,6 +330,20 @@ elicitation result shape) to this process's stdin, while the run is live. The re
    An unknown `optionId`, or one that contradicts the action, is ignored with one stderr line and
    the approval stays pending. Under contract 1.1 `approval_requested` carries `rationale` and
    `options`; under 1.0 they are omitted, so the 1.0 stream is unchanged.
+9. **Consult questions (P36-7, contract 1.1).** A `consult` tool call (operator-loop spec,
+   "Consult") under `--answers stdin` emits a `question_asked` event whose payload is
+   `{questionId, kind, mode, question}`, `question` being the `QuestionV11` on the wire. A
+   `questionId` line whose id is that waiting call's is routed to it, not to a recipe run's open
+   question: its `content` is screened by `pre_input` like an approval's (a held line leaves the
+   call waiting), then validated with `validate_answer_v11` (`content.optionId` names the chosen
+   option; an invalid line is ignored with one stderr line and the call keeps waiting). The
+   tool result is `{action, optionId, content}`. A `questionId` that matches no waiting call
+   keeps its earlier route (a recipe run's question, else ignored with "need --recipe"). With no
+   answer by `--answer-timeout` (or at end of stdin) the call returns "no answer; decide
+   yourself". Without `--answers stdin` (mode `refuse`) the call ends the turn `blocked`, as an
+   unanswerable approval does, and the 1.1 result carries the typed `question` field (the
+   `QuestionV11`); `question` is `null` otherwise and absent from 1.0. Pod-dispatch park and
+   re-entry of a consultation arrive with P36-8.
 
 Verified by `tests/integration/test_harness_cli.py::TestAnswersOnStdin` (granted, declined,
 timed out, a malformed or foreign line that is never echoed, a content line held by a
@@ -416,6 +430,12 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased (P36-7)
+
+- **Consult questions.** Section 5 item 9: `question_asked` events, `questionId` routing to a
+  waiting `consult` call, and `HarnessResultV11.question` on a blocked consultation (schema
+  regenerated; additive and optional). No version bump.
 
 ### Unreleased (P36-6)
 
