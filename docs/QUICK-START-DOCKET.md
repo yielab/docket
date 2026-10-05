@@ -143,17 +143,17 @@ What happened, hop by hop:
 
 1. **Lead** read the task and wrote a plan. It has no `write`, `edit` or `bash` tool, so it
    cannot touch the code.
-2. **Implementer** worked in its own git worktree on its own branch, made the change, and the
+2. **Implementer** worked in the task's own git worktree on its own branch, made the change, and the
    verify command ran. A failing command ends the task as `failed` with a `verification_failed`
    event; it never reaches the vetter.
 3. **security-vetter** reviewed the diff read-only and ended its reply with `APPROVE`.
    `REQUEST-CHANGES` would have sent the task back to the Implementer once, then failed it.
 
-The change lives only in the Implementer's worktree until you merge it:
+The change lives only in the task's worktree until you merge its branch:
 
 ```bash
-git worktree list                         # ~/.docket/workspaces/projects/myapp-implementer/worktree
-git -C ~/.docket/workspaces/projects/myapp-implementer/worktree diff
+git worktree list                         # ~/.docket/workspaces/projects/myapp-implementer/tasks/<taskId>
+git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/<taskId> diff
 ```
 
 ---

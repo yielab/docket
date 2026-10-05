@@ -17,7 +17,5 @@
   "blueprint": "software",
   "portRangeStart": 3000,
   "portRangeCount": 100,
-  "scratchDir": "/home/user/.docket/workspaces/pods/webapp/.scratch",
-  "worktreeDir": "/home/user/.docket/workspaces/projects/webapp-implementer/worktree",
-  "worktreeBranch": "docket/webapp/webapp-implementer"
+  "scratchDir": "/home/user/.docket/workspaces/pods/webapp/.scratch"
 }

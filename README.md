@@ -63,7 +63,7 @@ In a repository (`cd ~/code/myapp`), create the team from whatever you have:
 
 | You have | Run | You get |
 | --- | --- | --- |
-| nothing yet | `docket init` | the lean default: a Lead that plans and an Implementer that edits in its own git worktree |
+| nothing yet | `docket init` | the lean default: a Lead that plans and an Implementer that edits in a git worktree per task |
 | a known shape in mind | `docket init --recipe secure-build` | the default team plus the recipe: here a read-only security vetter, its pipeline and a policy |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned |
 
@@ -93,8 +93,8 @@ What follows explains that dispatch, what held it in check, and then how to chan
 </p>
 
 `dispatch` takes the next queued task through the team's pipeline, one real model turn per step.
-The Lead plans without a write tool; the Implementer edits in its own git worktree on its own
-branch. Then whatever gates the team has decide: the verify command's exit code, a reviewer's
+The Lead plans without a write tool; the Implementer edits in a git worktree made for each task, on
+its own branch. Then whatever gates the team has decide: the verify command's exit code, a reviewer's
 `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is counted, not hoped, and the change
 stays in the worktree until you merge it.
 

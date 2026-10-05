@@ -583,13 +583,32 @@ def _write_private_oracle_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     world = tmp_path / "world"
     home = world / ".docket"
     codebase = world / "codebase"
-    worktree = home / "workspaces" / "projects" / "smoke-implementer" / "worktree"
+    worktree = home / "workspaces" / "projects" / "smoke-implementer" / "tasks" / "task-fixture"
     codebase.mkdir(parents=True)
     worktree.mkdir(parents=True)
     meta_path = home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(
-        json.dumps({"codebase": str(codebase), "worktreeDir": str(worktree)}),
+        json.dumps({"codebase": str(codebase)}),
+        encoding="utf-8",
+    )
+    task_list = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    task_list.parent.mkdir(parents=True, exist_ok=True)
+    task_list.write_text(
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "id": "task-fixture",
+                        "worktree": {
+                            "dir": str(worktree),
+                            "branch": "docket/smoke/task-fixture",
+                            "baseCommit": "0" * 40,
+                        },
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     session_path = home / "sessions" / "safe" / "session.json"
@@ -713,12 +732,12 @@ def test_private_oracle_rejects_missing_known_tool_arguments(tmp_path: Path) -> 
         _smoke._verify_private_tool_boundary(home)
 
 
-def test_allowed_roots_reject_broadened_worktree_metadata(tmp_path: Path) -> None:
+def test_allowed_roots_reject_broadened_task_worktree_record(tmp_path: Path) -> None:
     home, _, _ = _write_private_oracle_fixture(tmp_path)
-    meta_path = home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
-    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-    metadata["worktreeDir"] = str(home)
-    meta_path.write_text(json.dumps(metadata), encoding="utf-8")
+    task_path = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    document = json.loads(task_path.read_text(encoding="utf-8"))
+    document["tasks"][0]["worktree"]["dir"] = str(home)
+    task_path.write_text(json.dumps(document), encoding="utf-8")
 
     with pytest.raises(_smoke.SmokeFailure, match="isolated worktree"):
         _smoke._smoke_allowed_project_roots(home)
@@ -1102,17 +1121,12 @@ def test_full_workflow_against_real_local_model(tmp_path: Path) -> None:
     assert "hidden checkout acceptance passed" in result.stdout
     assert "waiting_approval -> granted -> resumed" in result.stdout
     assert "SMOKE PASS" in result.stdout
-    meta = json.loads(
+    task_list = json.loads(
         (
-            world
-            / ".docket"
-            / "workspaces"
-            / "projects"
-            / "smoke-implementer"
-            / ".docket-meta.json"
+            world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
         ).read_text()
     )
-    assert Path(meta["worktreeDir"], "src", "checkout.py").is_file()
+    assert Path(task_list["tasks"][0]["worktree"]["dir"], "src", "checkout.py").is_file()
     assert list(
         (
             world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "memory" / ".distilled"

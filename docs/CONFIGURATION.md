@@ -80,23 +80,26 @@ noted.
     │   ├── WORKFLOW_AUTO.md            startup contract (versioned, regenerated)
     │   ├── memory/YYYY-MM-DD.md        daily logs
     │   ├── TASK_LIST.json              Lead only, after the first `delegate`: the pod's queue
-    │   └── worktree/                   implementers in a git repo: a git worktree
+    │   └── tasks/<taskId>/             implementers in a git repo: one git worktree per task
     └── pods/<pod>/.scratch/            first pod   the pod's isolated scratch directory
 ```
 
-**Inside your repository**, docket writes almost nothing, but not nothing. For each Implementer of
-a pod whose codebase is a git repository:
+**Inside your repository**, docket writes almost nothing, but not nothing. `docket add` and `init`
+create no worktree; each task of a pod whose codebase is a git repository gets one when it is
+claimed:
 
-- a branch `docket/<pod>/<pod>-implementer`, created in your repo;
+- a branch `docket/<pod>/<taskId>`, created in your repo from its HEAD at that moment;
 - an entry under `<repo>/.git/worktrees/`;
-- a checkout of that branch at `~/.docket/workspaces/projects/<pod>-implementer/worktree/`.
+- a checkout of that branch at `~/.docket/workspaces/projects/<pod>-implementer/tasks/<taskId>/`,
+  recorded on the task as `worktree` (`dir`, `branch`, `baseCommit`).
 
 The Implementer edits that worktree, never your checked-out branch. Dispatch never commits: unless
 the agent ran `git commit` itself, its changes stay **uncommitted** in the worktree, so you see them with
-`git -C ~/.docket/workspaces/projects/<pod>-implementer/worktree diff`, then commit on its branch
-and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
-there too. `docket delete` also deletes that branch when it is merged into your
-current branch; an unmerged branch is kept, with the removal command printed. Reviewer and Tester run with the codebase root as
+`git -C ~/.docket/workspaces/projects/<pod>-implementer/tasks/<taskId> diff`, then commit on its
+branch and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
+there too. Finished task worktrees stay until the member is removed; `docket delete` also deletes
+the merged task branches (an unmerged branch is kept, with the removal command printed).
+An Implementer marked `inPlace` works in the codebase itself and gets no task worktree. Reviewer and Tester run with the codebase root as
 their working directory, so a test run can leave caches in your checkout.
 
 To try any of this without touching your real setup, point `HOME` (or `DOCKET_HOME`) at a scratch
@@ -1125,7 +1128,7 @@ the Lead has `TASK_LIST.json`, the pod queue. Change it with `docket pod <p> del
 
 ### Org specialists (`~/.docket/workspaces/{manager,knowledge,security}/`)
 
-These have the same files, minus `TOOLS.md`, `worktree/` and the pod keys. They are shared by
+These have the same files, minus `TOOLS.md`, `tasks/` and the pod keys. They are shared by
 every project. Pod dispatch never uses them. Customize them the same way (§3.2).
 
 ---

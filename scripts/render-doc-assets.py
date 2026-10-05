@@ -230,11 +230,11 @@ _ISOLATION = [
     "⋯",
     "$ git worktree list",
     "~/code/myapp                                              125d81a [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/worktree  125d81a "
-    "[docket/myapp/myapp-implementer]",
+    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64  125d81a "
+    "[docket/myapp/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64]",
     "$ git status --short                       # your checkout: only the exported team",
     "?? .docket/",
-    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/worktree diff",
+    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64 diff",
     "⋯",
     "@@ -1,2 +1,2 @@",
     " def add(a, b):",

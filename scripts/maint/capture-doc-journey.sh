@@ -57,7 +57,8 @@ run 2-dispatch.txt docket runs list
 session="$(basename "$(ls -t "$HOME"/.docket/traces/myapp/*.jsonl | head -1)" .jsonl)"
 run 2-dispatch.txt "docket trace $session"
 
-worktree="$HOME/.docket/workspaces/projects/myapp-implementer/worktree"
+worktree="$(ls -d "$HOME"/.docket/workspaces/projects/myapp-implementer/tasks/*/ | head -1)"
+worktree="${worktree%/}"
 run 3-isolation.txt docket info myapp-implementer
 run 3-isolation.txt git worktree list
 run 3-isolation.txt git status --short

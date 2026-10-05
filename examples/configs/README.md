@@ -28,7 +28,7 @@ list.
 
 An Implementer inside a **pod** (`blueprint: software`), anchored to a codebase, with the
 runtime-resource fields docket allocates once at pod provisioning: a disjoint port range, a
-scratch directory, and (for a git codebase) a dedicated worktree/branch.
+scratch directory. A git codebase gets a worktree per task at claim, recorded on the task, not here.
 
 ### task-agent-meta.json
 
@@ -64,7 +64,7 @@ day:
 | `codebase` | string | absolute path; empty for a task agent with no fixed codebase |
 | `sessionKey` / `projectKey` | string | isolation coordinate — see [docs/AGENT-TEAMS.md](../../docs/AGENT-TEAMS.md) |
 | `portRangeStart` / `portRangeCount` / `scratchDir` | int / int / string | Implementer-only, allocated once at pod provisioning |
-| `worktreeDir` / `worktreeBranch` | string | Implementer-only, present when the codebase is a git repo |
+| `inPlace` | bool | Implementer-only; `true` when it works in the codebase itself (no task worktree) |
 
 ## Where these files live
 

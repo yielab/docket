@@ -1019,11 +1019,19 @@ def _approve_live_tool_calls(
     stop = threading.Event()
     state = _LiveApprovalState()
     seen: set[str] = set()
-    allowed_project_roots = _smoke_allowed_project_roots(home)
+    _smoke_allowed_project_roots(home)
 
     def monitor() -> None:
         approvals_dir = home / "approvals"
         while not stop.wait(0.1):
+            try:
+                allowed_project_roots = _smoke_allowed_project_roots(home)
+            except OSError:
+                continue
+            except SmokeFailure as exc:
+                state.failures.append(str(exc))
+                state.abort.set()
+                return
             for path in sorted(approvals_dir.glob("*.json")):
                 try:
                     record = json.loads(path.read_text(encoding="utf-8"))
@@ -1334,25 +1342,44 @@ def _load_json(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], data)
 
 
+def _recorded_task_worktree(home: Path) -> str | None:
+    """The worktree dir recorded on the smoke task at claim, or None before a claim or for a
+    task that runs in place."""
+    path = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    if not path.is_file():
+        return None
+    tasks = _load_json(path).get("tasks")
+    if not isinstance(tasks, list) or len(tasks) != 1 or not isinstance(tasks[0], dict):
+        return None
+    task = cast(dict[str, Any], tasks[0])
+    record = task.get("worktree")
+    directory = record.get("dir") if isinstance(record, dict) else None
+    if not directory:
+        return None
+    expected = (
+        home / "workspaces" / "projects" / "smoke-implementer" / "tasks" / str(task.get("id", ""))
+    ).resolve(strict=False)
+    _require(
+        isinstance(directory, str) and Path(directory).resolve(strict=False) == expected,
+        "Task record did not retain the isolated worktree",
+    )
+    return str(directory)
+
+
 def _smoke_allowed_project_roots(home: Path) -> tuple[Path, ...]:
     expected_codebase = (home.parent / "codebase").resolve(strict=False)
-    expected_worktree = (
-        home / "workspaces" / "projects" / "smoke-implementer" / "worktree"
-    ).resolve(strict=False)
     implementer_meta = _load_json(
         home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
     )
     codebase = implementer_meta.get("codebase")
-    worktree = implementer_meta.get("worktreeDir")
     _require(
         isinstance(codebase, str) and Path(codebase).resolve(strict=False) == expected_codebase,
         "Implementer metadata did not retain the isolated origin checkout",
     )
-    _require(
-        isinstance(worktree, str) and Path(worktree).resolve(strict=False) == expected_worktree,
-        "Implementer metadata did not retain the isolated worktree",
-    )
-    return expected_codebase, expected_worktree
+    worktree = _recorded_task_worktree(home)
+    if worktree is None:
+        return (expected_codebase,)
+    return expected_codebase, Path(worktree).resolve(strict=False)
 
 
 def _session_role(record: dict[str, Any]) -> str:
@@ -1574,9 +1601,9 @@ def _verify_memory_maintenance(world: Path, home: Path, task: dict[str, Any]) ->
     implementer_meta = _load_json(
         home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
     )
-    effective_checkout = Path(
-        str(implementer_meta.get("worktreeDir") or implementer_meta.get("codebase") or "")
-    )
+    recorded = task.get("worktree")
+    task_worktree = recorded.get("dir") if isinstance(recorded, dict) else None
+    effective_checkout = Path(str(task_worktree or implementer_meta.get("codebase") or ""))
     _require(effective_checkout.is_dir(), "Implementer has no effective checkout")
     acceptance = subprocess.run(
         [sys.executable, str(world / "checkout_acceptance.py")],
