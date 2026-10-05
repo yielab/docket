@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The items carried out of Phases 36-38 (Waves 89-90, no phase).**
+  - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees and
+    merged branches, keeping (and naming) dirty, unmerged and `dispatch --resume`-able ones;
+    `--force` removes the worktree, keeps an unmerged branch and audits it.
+  - A second SIGINT/SIGTERM makes `docket serve` abandon in-flight sweeps: it requests
+    cancellation of each sweep run, exits 130/143, and the task ends `cancelled`.
+  - `approve_task` grants a parked pod call for the rest of its task, bound to the role that
+    asked: `docket approve <token> --option approve_task`, Telegram `/approve <token> task`,
+    `POST /approvals/<token>` `option`, MCP `approvals_grant(option=)`. Each later hop of that role
+    gets one single-use pre-grant; at most 20 per task, dropped at a terminal status.
+  - Channel notifications at the `conversation` level carry a question's options and the
+    recommended id, and Telegram `/answer <task> <option id>` picks one.
+  - A `run:` step can carry `env:` (refused for `PATH`, `LD_*`, `PYTHON*`, `DOCKET_*` and
+    credential names; the task coordinates win; values never reach the trace). The
+    `anti-tautology` and `mutation` recipes declare their overrides there.
+  - `docket doctor` lists every unjailed MCP server, global and per pod, and, when Docker is the
+    backend, warns if the jail image has no `git`; `config explain` shows `isolate` per server and
+    `recipes show --json` `unjailed_mcp_servers`.
+  - A harness consult's `question.taskId` is the run token, not the session key.
+
 - **The execution envelope (Phase 38, D-55, ADR 0020).** An agent's processes run in a jail by
   default, and nothing docket holds leaks into them.
   - Workspace isolation is on by default. bwrap is tried first, then Docker
@@ -478,6 +498,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract it actually is.
 
 ### Fixed
+
+- The jail could rewrite git metadata the host later runs: a submodule's hooks and config, a
+  linked worktree's `.git` file and its `gitdir`/`commondir`, and `info/attributes` are now
+  read-only, and a missing `hooks/` dir or attributes file is created empty first so the jail
+  cannot create it.
+- A jailed `git commit` failed whenever the operator's identity came from the environment or a
+  non-default `HOME`, and always under Docker: the jail now receives the operator's git identity
+  (never a credential).
+- No inbox view, `/inbox` response or channel notification ever carried a parked task's
+  `question` or `brief`: the fields existed and nothing filled them.
+- A parked consult whose question lived only in the dispatching process stuck its task in
+  `waiting_approval` when answered elsewhere; the question is now persisted (0600) and a missing
+  one fails the task `consult_question_missing`.
+- `git_branch_merged` read every branch checked out in a worktree as unmerged (it ignored git's
+  `+` marker).
 
 - `glob` and `grep` no longer return or read files outside their roots through a symlink, a
   symlinked directory, or a `..` in the pattern.
