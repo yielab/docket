@@ -3146,7 +3146,9 @@ def resolve_waiting_approval_detail(
                     )
                     t["pregrants"] = pregrants
                     if context.get("optionId") == "approve_task":
-                        note = _append_task_grant(t, token, context, channel, actor)
+                        note = _append_task_grant(
+                            t, token, context, str(rec.get("role", "")), channel, actor
+                        )
                 else:
                     t["gateOverridePipelineIndex"] = pending_index
             else:
@@ -3173,17 +3175,25 @@ def resolve_waiting_approval_detail(
 
 
 def _append_task_grant(
-    task: dict[str, Any], token: str, context: dict[str, Any], channel: str, actor: str
+    task: dict[str, Any],
+    token: str,
+    context: dict[str, Any],
+    role: str,
+    channel: str,
+    actor: str,
 ) -> str:
-    """Record the ``approve_task`` grant on *task* unless it is already there or the task is
-    at ``TASK_GRANT_CAP``; returns a refusal note, ``""`` otherwise."""
+    """Record the ``approve_task`` grant for *role* on *task* unless it is already there or the
+    task is at ``TASK_GRANT_CAP``; returns a refusal note, ``""`` otherwise."""
     tool = str(context.get("tool", ""))
     digest = str(context.get("argsDigest", ""))
-    if not tool or not digest:
+    if not tool or not digest or not role:
         return ""
     raw = task.get("taskGrants")
     grants = [g for g in raw if isinstance(g, dict)] if isinstance(raw, list) else []
-    if any(g.get("tool") == tool and g.get("argsDigest") == digest for g in grants):
+    if any(
+        g.get("tool") == tool and g.get("argsDigest") == digest and g.get("role") == role
+        for g in grants
+    ):
         return ""
     channel = channel if channel in _ap.APPROVAL_CHANNELS else "unknown"
     if len(grants) >= TASK_GRANT_CAP:
@@ -3199,6 +3209,7 @@ def _append_task_grant(
         {
             "tool": tool,
             "argsDigest": digest,
+            "role": role,
             "token": token,
             "grantedAt": _now(),
             "actor": actor,
@@ -3214,7 +3225,8 @@ def _append_task_grant(
 
 
 def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, str]]:
-    """One fresh single-use pre-grant per task-wide grant, bound to this project and role."""
+    """One fresh single-use pre-grant per task-wide grant made for *role*, bound to this project
+    and role: a grant never reaches a hop of another role."""
     raw = ctx.task.get("taskGrants")
     if not isinstance(raw, list) or not raw:
         return []
@@ -3223,7 +3235,7 @@ def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, s
     )
     minted: list[dict[str, str]] = []
     for grant in raw[:TASK_GRANT_CAP]:
-        if not isinstance(grant, dict):
+        if not isinstance(grant, dict) or grant.get("role") != role:
             continue
         tool = str(grant.get("tool", ""))
         digest = str(grant.get("argsDigest", ""))

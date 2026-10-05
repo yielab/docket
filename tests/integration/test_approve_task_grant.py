@@ -71,7 +71,7 @@ def _task(task_id: str) -> dict[str, Any]:
     return next(t for t in _dispatch.read_tasks(PROJECT) if t["id"] == task_id)
 
 
-def _later_hop_env(task_id: str) -> dict[str, str]:
+def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
     ctx = _dispatch._UnitContext(
         project=PROJECT,
         task=_task(task_id),
@@ -89,10 +89,10 @@ def _later_hop_env(task_id: str) -> dict[str, str]:
         on_hop=None,
         on_retry=None,
     )
-    member = _pod.pod.member_id(PROJECT, "reviewer")
+    member = _pod.pod.member_id(PROJECT, role)
     node = _orch.PlannedUnit(
-        step_id="reviewer",
-        role="reviewer",
+        step_id=role,
+        role=role,
         agent=None,
         archetype=None,
         member_id=member,
@@ -100,7 +100,7 @@ def _later_hop_env(task_id: str) -> dict[str, str]:
         retries=None,
         timeout=None,
     )
-    _, env = _dispatch._compose_hop(ctx, node, "reviewer", member, [], None)
+    _, env = _dispatch._compose_hop(ctx, node, role, member, [], None)
     return env or {}
 
 
@@ -151,6 +151,14 @@ class TestApproveTaskCli:
         run_approve(_park(first["id"]), option="approve_task")
         assert not _task(second["id"]).get("taskGrants")
         assert _spend(_later_hop_env(second["id"])) is None
+
+    def test_a_later_hop_of_another_role_gets_no_task_grant(self) -> None:
+        task = _dispatch.enqueue_task(PROJECT, "ship it")
+        run_approve(_park(task["id"]), option="approve_task")
+        assert _task(task["id"])["taskGrants"][0]["role"] == "implementer"
+        env = _later_hop_env(task["id"], "reviewer")
+        assert _spend(env) is not None  # the parked call's own single-use pre-grant
+        assert _spend(env) is None
 
     def test_a_different_argument_digest_still_parks(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")

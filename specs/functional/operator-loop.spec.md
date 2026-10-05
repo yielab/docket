@@ -110,11 +110,12 @@ operator-loop-level contract that section's behaviour must satisfy.
 5a. Granting a parked approval with the `approve_task` option (`docket approve <token> --option
    approve_task`, Telegram `/approve <token> task`; the option is recorded with
    `approval_set_option` before the grant) MUST also record a task-wide grant
-   `{tool, argsDigest, token, grantedAt, actor, channel}` in the task's `taskGrants`, distinct from
-   the single-use `pregrants`. `_compose_hop` MUST mint one fresh single-use pre-grant per entry
-   (`create_pregrant`, bound to the project and the hop's role, task-scoped, expiring with the
-   pod's approval window) for every later hop, so each use is consumed and audited as any
-   pre-grant. The match is exact on `(tool, argsDigest)`; the grant exists only on the `ask`
+   `{tool, argsDigest, role, token, grantedAt, actor, channel}` in the task's `taskGrants`, where
+   `role` is the parked approval's role, distinct from the single-use `pregrants`. `_compose_hop`
+   MUST mint one fresh single-use pre-grant per entry whose `role` is the hop's role
+   (`create_pregrant`, bound to the project and that role, task-scoped, expiring with the pod's
+   approval window) for every later hop of that role, so each use is consumed and audited as any
+   pre-grant; a hop of another role gets none. The match is exact on `(tool, argsDigest)`; the grant exists only on the `ask`
    path (a `deny` or policy block never creates an approval, so is never widened); a task holds
    at most 20 (the 21st is approved once only, audited as `approval.task_grant_refused` and
    reported to the operator); `taskGrants` is dropped when the task reaches a terminal status
