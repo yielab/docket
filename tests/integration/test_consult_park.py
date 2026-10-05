@@ -18,6 +18,7 @@ from docket.core import corrections as _corrections
 from docket.core import dispatch as _dispatch
 from docket.core import harness_pipeline as hp
 from docket.core import inbox as _inbox
+from docket.core import notify as _notify
 from docket.core.harness import Answer
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.edges.adapters import docket_runtime as _dr
@@ -141,6 +142,18 @@ class TestPark:
         assert [v.id for v in view.needs_you if getattr(v, "pod", "") == run.project] == [
             task["id"]
         ]
+
+    def test_the_parked_question_and_its_options_reach_a_conversation_notification(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
+        view = _inbox.build_inbox(now=_dispatch._now())
+        (item,) = [v for v in view.needs_you if getattr(v, "pod", "") == run.project]
+        data = _notify.render_data(item, "conversation")
+        assert data["question"]
+        assert [o["id"] for o in data["options"]] == ["redis", "sqlite"]
+        assert data["recommendation"] == {"optionId": "sqlite"}
+        assert "options" not in _notify.render_data(item, "minimal")
 
     def test_refuse_still_fails_the_task_blocked(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -254,7 +254,10 @@ in the derived inbox becomes an event on the wire.
     characters) and, when recommended, `recommendation` (`{optionId}` only -- never the rationale
     or evidence); `minimal` and `actions` MUST carry neither. `render_text` MUST then add one
     `<id> - <label>` line per option, `(recommended)` on the recommended one, and a final
-    `reply: /answer <task> <id>` line.
+    `reply: /answer <task> <id>` line. The `TaskView` these read **MUST** carry the task's stored
+    `question` and `brief`: `core.inbox.task_view` (the one builder, used by the inbox and by
+    `POST /tasks/<id>/answer`) validates a stored question with `kind` as `QuestionV11`, so its
+    options reach `render_data`; the JSON view still serializes the operator-v1 `question` shape.
 12. `core.notify.flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe
     snapshot (`config.NOTIFY_STATE_FILE`), compute `diff_events`, and save the new snapshot
     **before** delivering anything, so a crash mid-delivery never re-emits an event on the next
@@ -719,6 +722,7 @@ Each JSONL line is a JSON object with these fields:
 
 ### Unreleased
 
+- `core.inbox.task_view` populates `question` and `brief`; before, no inbox view or notification ever carried them (Notifications 11).
 - Notifications item 11: `conversation`-level events carry a consult question's `options` and
   `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.
 

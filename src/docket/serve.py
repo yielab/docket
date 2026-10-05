@@ -67,30 +67,6 @@ def _last_activity_or_never(agent_id: str) -> str:
     return "never" if val == "—" else val
 
 
-def _task_answer_view(project: str, task: dict[str, Any]) -> _oc.TaskView:
-    """The `TaskView` for `POST /tasks/<id>/answer`'s response -- mirrors
-    `core.inbox._task_view`'s field mapping (module-private, so not imported)."""
-    status = str(task.get("status", "pending"))
-    return _oc.TaskView(
-        id=str(task.get("id", "")),
-        pod=project,
-        status=status,
-        a2a_state=_oc.a2a_state(
-            status,
-            blocked_reason=task.get("blockedReason"),
-            failure_kind=task.get("failureKind"),
-        ),
-        reason=task.get("reason") or None,
-        description=str(task.get("description", "")),
-        priority=str(task.get("priority", "normal")),
-        created_at=str(task.get("created", "")),
-        updated_at=str(
-            task.get("completedAt") or task.get("startedAt") or task.get("created") or ""
-        ),
-        approval_token=task.get("approvalToken"),
-    )
-
-
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     from docket.edges import store
 
@@ -1362,7 +1338,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
             # rather than crash rendering a view for it.
             self._send_json_error(f"task {task_id!r} not found after answering", 500)
             return
-        view = _task_answer_view(project, task).model_dump(by_alias=True, mode="json")
+        from docket.core import inbox as _inbox
+
+        view = _inbox.task_view(project, task).model_dump(by_alias=True, mode="json")
         self._send(json.dumps(view).encode(), "application/json")
 
     def _handle_post_task_pregrant(self, task_id: str) -> None:

@@ -10,13 +10,23 @@ from __future__ import annotations
 import datetime as _dt
 from typing import Any
 
+from pydantic import ValidationError
+
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
-from docket.core.operator_contract import ApprovalView, InboxView, TaskView, a2a_state
+from docket.core.operator_contract import (
+    ApprovalView,
+    InboxView,
+    Question,
+    QuestionV11,
+    TaskBrief,
+    TaskView,
+    a2a_state,
+)
 
-__all__ = ["build_inbox"]
+__all__ = ["build_inbox", "task_view"]
 
 _NEEDS_YOU_STATUSES = frozenset({"blocked"})
 
@@ -51,7 +61,30 @@ def _newer(latest: str | None, candidate: str) -> str | None:
     return latest
 
 
-def _task_view(project: str, task: dict[str, Any], now: str) -> TaskView:
+def _task_question(raw: Any) -> Question | None:
+    """The task's stored question: a v1.1 one (``kind``/``options``) keeps its options in memory
+    for notifications; ``None`` when absent or not a valid question."""
+    if not isinstance(raw, dict):
+        return None
+    model = QuestionV11 if "kind" in raw else Question
+    try:
+        return model.model_validate(raw)
+    except ValidationError:
+        return None
+
+
+def _task_brief(raw: Any) -> TaskBrief | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return TaskBrief.model_validate(raw)
+    except ValidationError:
+        return None
+
+
+def task_view(project: str, task: dict[str, Any], now: str = "") -> TaskView:
+    """One task record as the operator contract's ``TaskView`` -- the inbox and the HTTP answer
+    route both build it here."""
     status = str(task.get("status", "pending"))
     ts = str(task.get("completedAt") or task.get("startedAt") or task.get("created") or now)
     return TaskView(
@@ -69,6 +102,8 @@ def _task_view(project: str, task: dict[str, Any], now: str) -> TaskView:
         created_at=str(task.get("created", "")),
         updated_at=ts,
         approval_token=task.get("approvalToken"),
+        question=_task_question(task.get("question")),
+        brief=_task_brief(task.get("brief")),
     )
 
 
@@ -102,7 +137,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
 
     for project in _all_projects():
         for task in _dispatch.read_tasks(project):
-            view = _task_view(project, task, now)
+            view = task_view(project, task, now)
             latest = _newer(latest, view.updated_at)
             if view.status.startswith("waiting_") or view.status in _NEEDS_YOU_STATUSES:
                 needs_you.append(view)
