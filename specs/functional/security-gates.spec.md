@@ -720,7 +720,8 @@ final-component symlink target **MUST** refuse if that symlink points outside.
    `grep_files` (no match lines from the escaped path in the output). `resolve_within` already
    checks the path argument itself; this closes the gap of a symlink met *during* the walk,
    whether the symlink is the matched file itself or a directory on its path (`linkdir/*` where
-   `linkdir` points outside).
+   `linkdir` points outside). The same check stops a `..` in the pattern itself
+   (`../*/workspaces/...`), which reached files beside the root before.
 2. **Symlinks pointing inside the root continue to work.** A symlink from `./link -> ./target` or
    `./link -> ../codebase/target` both remain valid as long as the resolved path is within some
    allowed root. The containment check **MUST** check only the resolved path, not the symlink
