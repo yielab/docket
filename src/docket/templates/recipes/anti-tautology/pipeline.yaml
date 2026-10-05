@@ -1,0 +1,56 @@
+kind: pipeline
+name: anti-tautology
+description: >-
+  Every test the Implementer adds or changes must fail on the code as it was before the task. A
+  command step checks the new and changed test files out against the task's base commit in a
+  disposable worktree and fails the task if they pass there, because a test that already passed
+  before the change does not test the change. Needs git and pytest (or your own runner).
+steps:
+  - plan: lead
+  - build: implementer
+    verify: true
+  - id: check-tests-fail-on-base
+    run: |
+      python3 -c '
+      import fnmatch, os, shlex, shutil, subprocess, sys, tempfile
+      base = os.environ.get("DOCKET_BASE_COMMIT", "")
+      head = os.environ.get("DOCKET_HEAD_COMMIT") or "HEAD"
+      if not base:
+          print("anti-tautology: no base commit (the build step produced no evidence)")
+          sys.exit(1)
+      globs = os.environ.get("ANTI_TAUTOLOGY_GLOB", "test_*.py,*_test.py").split(",")
+      runner = shlex.split(os.environ.get("ANTI_TAUTOLOGY_RUNNER", "python3 -m pytest -q"))
+      def git(*args, cwd=None):
+          return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+      diff = git("diff", "--name-only", "--diff-filter=AM", base, head)
+      if diff.returncode != 0:
+          print("anti-tautology: git diff failed: " + diff.stderr.strip())
+          sys.exit(1)
+      files = [f for f in diff.stdout.split() if any(fnmatch.fnmatch(os.path.basename(f), g) for g in globs)]
+      if not files:
+          print("anti-tautology: no test file added or changed since the base; nothing to check")
+          sys.exit(0)
+      tmp = tempfile.mkdtemp(prefix="anti-tautology-")
+      tree = os.path.join(tmp, "base")
+      try:
+          added = git("worktree", "add", "--detach", tree, base)
+          if added.returncode != 0:
+              print("anti-tautology: cannot check out the base: " + added.stderr.strip())
+              sys.exit(1)
+          for f in files:
+              body = git("show", head + ":" + f)
+              os.makedirs(os.path.dirname(os.path.join(tree, f)), exist_ok=True)
+              with open(os.path.join(tree, f), "w") as fh:
+                  fh.write(body.stdout)
+          run = subprocess.run(runner + files, cwd=tree, capture_output=True, text=True)
+          tail = (run.stdout + run.stderr)[-1500:]
+          if run.returncode in (0, 5):
+              why = "passed" if run.returncode == 0 else "collected no tests"
+              print("anti-tautology: on the base commit these tests " + why + ", so they do not test the change: " + ", ".join(files))
+              print(tail)
+              sys.exit(1)
+          print("anti-tautology: all " + str(len(files)) + " new or changed test file(s) fail on the base, as they should: " + ", ".join(files))
+      finally:
+          git("worktree", "remove", "--force", tree)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '

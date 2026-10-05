@@ -20,12 +20,14 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 
 | Recipe | Brings | Description |
 | --- | --- | --- |
+| [`anti-tautology`](#anti-tautology) | pipeline `anti-tautology` | Fails a task whose new or changed tests already pass on the code from before the task. |
 | [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
 | [`frugal`](#frugal) | 1 member, 3 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
 | [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
+| [`mutation`](#mutation) | pipeline `mutation` | Fails a task whose changed source files are not well covered by their tests, measured by mutation testing with mutmut (must be installed). |
 | [`no-egress`](#no-egress) | 3 policies | Ask before a bash-run network client, package install, or fetch call leaves the workspace. |
 | [`ops-approval`](#ops-approval) | 1 policy, 1 member, pipeline `ops-approval` | An Operator whose action needs an explicit human sign-off before it runs at all, plus a policy that asks on deploy-shaped commands. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
@@ -36,6 +38,66 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
 | [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
+
+## anti-tautology
+
+Fails a task whose new or changed tests already pass on the code from before the task.
+
+**Brings:** pipeline `anti-tautology`. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline anti-tautology · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe anti-tautology
+docket pod <project> apply anti-tautology
+```
+
+**Practice:** a test is only evidence if it can fail. A test that already passes on the code from
+before the task does not test the task.
+
+**What docket's gates make structural:** after the Implementer's verify gate, `check-tests-fail-on-base`
+is a `run` command step. It reads `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT` (set for command
+steps), lists test files added or modified between them, creates a disposable detached worktree
+at the base commit, copies those files in as committed at the head, and runs them there. If they
+pass (or collect no tests) on the base, the step fails and so does the task. If they fail on the
+base, the step passes. If no test file changed, it passes with a message. The worktree is always
+removed afterwards. Any failure on the base counts, including an import error for code the task
+adds.
+
+### Apply it
+
+```bash
+docket init --recipe anti-tautology          # a new pod
+docket pod <project> apply anti-tautology    # onto an existing pod
+```
+
+### Commands the step runs
+
+The step's command is a single `python3 -c '...'`. docket classifies only that line: `python3` is
+on the curated allowlist and the script avoids `${`, `$(`, backticks, `eval ` and `exec `, so the
+verdict is `allow` and no `allowCommands` entry is needed. The script itself then runs, as
+subprocesses that the classifier never sees: `git diff --name-only --diff-filter=AM`,
+`git worktree add --detach`, `git show <head>:<file>`, `git worktree remove --force`, and the test
+runner (default `python3 -m pytest -q <files>`).
+
+### Customise
+
+The command carries no `${var}` interpolation (pipeline `run` has none), so two environment
+variables of the process that runs `docket` override the defaults:
+
+- `ANTI_TAUTOLOGY_GLOB` -- comma-separated file-name globs, default `test_*.py,*_test.py`
+- `ANTI_TAUTOLOGY_RUNNER` -- the runner command, default `python3 -m pytest -q`
+
+For anything else, edit the script in `pipeline.yaml`.
+
+### Limits
+
+Only files are compared, not individual test functions: a changed file that mixes a new failing
+test with old passing ones passes the check only if the file as a whole fails on the base.
+
+### Undo
+
+```bash
+docket pod <project> config unset pipeline
+```
 
 ## code-intel
 
@@ -364,6 +426,68 @@ validates the roster and `pipeline.yaml` before writing anything, and is safe to
 ```bash
 docket pod <project> config unset pipeline
 docket pod <project> remove <project>-reviewer
+```
+
+## mutation
+
+Fails a task whose changed source files are not well covered by their tests, measured by mutation testing with mutmut (must be installed).
+
+**Brings:** pipeline `mutation`. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline mutation · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe mutation
+docket pod <project> apply mutation
+```
+
+**Practice:** mutation testing -- a test suite is only as good as the share of deliberate bugs it
+catches.
+
+**Tool:** [mutmut](https://pypi.org/project/mutmut/) 3.x, which **must be installed** where
+docket runs (`pip install mutmut`). If it is not on `PATH` the step fails with that message; it
+never silently passes.
+
+**What docket's gates make structural:** after the Implementer's verify gate, `check-mutation-score`
+is a `run` command step. It reads `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT`, lists the Python
+source files added or modified between them (test files and `__init__.py` are excluded), runs
+`mutmut run <module>.*` for those modules, reads `mutants/mutmut-cicd-stats.json` from
+`mutmut export-cicd-stats`, and fails the task when killed / (killed + survived + timeout +
+suspicious + no_tests + segfault) is below the threshold (80 percent by default). No changed source
+file, or no mutants produced, passes with a message. The `mutants/` directory is removed afterwards
+unless it already existed.
+
+### Apply it
+
+```bash
+docket init --recipe mutation          # a new pod
+docket pod <project> apply mutation    # onto an existing pod
+```
+
+### Commands the step runs
+
+The step's command is a single `python3 -c '...'`. docket classifies only that line: `python3` is
+on the curated allowlist, so the verdict is `allow` and no `allowCommands` entry is needed. The
+script then runs, unclassified, as subprocesses: `git diff --name-only --diff-filter=AM`, then
+`mutmut run <modules>` and `mutmut export-cicd-stats`.
+
+### Scope is by file, not by line
+
+mutmut 3 cannot be restricted to changed lines, and has no path flag: it mutates by module name.
+The step passes the changed files as module-name globs (`src/pkg/calc.py` becomes `pkg.calc.*`),
+so every function in a changed file is mutated, not only the lines the task touched. A leading
+`src/` or `lib/` is stripped; mutmut must be able to locate the code (a `src/` or `lib/` directory,
+or a package directory named like the repository, otherwise set `source_paths` in `pyproject.toml`
+or `setup.cfg`). Python only.
+
+### Customise
+
+Environment variables of the process that runs `docket` (pipeline `run` has no `${var}`
+interpolation): `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
+`mutmut`). For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
+
+### Undo
+
+```bash
+docket pod <project> config unset pipeline
 ```
 
 ## no-egress

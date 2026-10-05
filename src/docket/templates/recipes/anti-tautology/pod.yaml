@@ -1,0 +1,4 @@
+kind: pod
+name: anti-tautology
+description: >-
+  Fails a task whose new or changed tests already pass on the code from before the task.

@@ -1,0 +1,5 @@
+kind: pod
+name: mutation
+description: >-
+  Fails a task whose changed source files are not well covered by their tests, measured by
+  mutation testing with mutmut (must be installed).

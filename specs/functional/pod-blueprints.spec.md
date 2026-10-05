@@ -413,6 +413,8 @@ by a declared field:
 | Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: cheap`, custom instructions for test writing) -> `build` (Implementer, its own verify command) |
 | Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+| Methodology | `anti-tautology` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-tests-fail-on-base` (a `run` command step that runs the test files added or changed since `DOCKET_BASE_COMMIT` in a disposable worktree of that commit and fails the task if they pass there; overridable by `ANTI_TAUTOLOGY_GLOB`/`ANTI_TAUTOLOGY_RUNNER`) |
+| Methodology | `mutation` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-mutation-score` (a `run` command step that runs `mutmut`, which must be installed, over the source files changed since `DOCKET_BASE_COMMIT` and fails the task below `MUTATION_THRESHOLD`, default 80; scoped by file, not by line) |
 
 A policy pack's `pod.yaml` carries `kind: pod`, `name`, and `description` only — no `members`,
 `settings`, or `pipeline` key — so applying one to any pod changes no roster and no dispatch
@@ -540,6 +542,7 @@ $ docket init myproj --blueprint wizard-pod
 
 ### Unreleased
 
+- **P37-5: `anti-tautology` and `mutation` recipes join the library (Phase 37, ADR 0019 §3).** Two methodology recipes ship as `templates/recipes/<name>/` directories, data only: `anti-tautology` fails a task whose new or changed test files pass on `DOCKET_BASE_COMMIT`, and `mutation` fails it when `mutmut` kills less than a threshold of the mutants in the files changed since that commit. Each is one `run` command step (`python3 -c`, classified `allow`) after `plan` (Lead) and `build` (Implementer, verify); no core code changed.
 - **P37-6: `spec-writer` and `cross-family-review` recipes join the library (Phase 37, ADR 0019 §6).** Two methodology recipes ship as `templates/recipes/<name>/` directories: `spec-writer` (no new members; `write-tests` Implementer step with `model: cheap` custom instructions, then `build` Implementer step) and `cross-family-review` (members `reviewer`; `build` Implementer step, then `review` Reviewer step with `model: openai/gpt-4.1-mini` from a different provider family). Each carries a `pod.yaml` and `pipeline.yaml` expressed only with the existing pipeline dialect.
 
 ### Version 1.21.0 (2026-10-03)

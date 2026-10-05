@@ -1,0 +1,65 @@
+kind: pipeline
+name: mutation
+description: >-
+  After the build, a command step runs mutmut against the source files changed since the task's
+  base commit and fails the task when the share of mutants the tests kill is below a threshold
+  (80 by default). mutmut must be installed (pip install mutmut) where docket runs; the check
+  fails, never silently passes, when it is not.
+steps:
+  - plan: lead
+  - build: implementer
+    verify: true
+  - id: check-mutation-score
+    timeout: 900
+    run: |
+      python3 -c '
+      import fnmatch, json, os, shlex, shutil, subprocess, sys
+      base = os.environ.get("DOCKET_BASE_COMMIT", "")
+      head = os.environ.get("DOCKET_HEAD_COMMIT") or "HEAD"
+      if not base:
+          print("mutation: no base commit (the build step produced no evidence)")
+          sys.exit(1)
+      threshold = float(os.environ.get("MUTATION_THRESHOLD", "80"))
+      tool = shlex.split(os.environ.get("MUTATION_CMD", "mutmut"))
+      diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", base, head], capture_output=True, text=True)
+      if diff.returncode != 0:
+          print("mutation: git diff failed: " + diff.stderr.strip())
+          sys.exit(1)
+      def is_source(path):
+          parts = path.split("/")
+          name = parts[-1]
+          return (path.endswith(".py") and name != "__init__.py" and "tests" not in parts[:-1] and "test" not in parts[:-1]
+                  and not fnmatch.fnmatch(name, "test_*.py") and not fnmatch.fnmatch(name, "*_test.py"))
+      mods = []
+      for path in filter(is_source, diff.stdout.split()):
+          rel = path[4:] if path.startswith(("src/", "lib/")) else path
+          mods.append(rel[:-3].replace("/", ".") + ".*")
+      if not mods:
+          print("mutation: no source file changed since the base; nothing to mutate")
+          sys.exit(0)
+      if shutil.which(tool[0]) is None:
+          print("mutation: " + tool[0] + " is not installed (pip install mutmut); this check cannot pass without it")
+          sys.exit(1)
+      had_mutants = os.path.isdir("mutants")
+      try:
+          run = subprocess.run(tool + ["run"] + mods, capture_output=True, text=True)
+          stats_run = subprocess.run(tool + ["export-cicd-stats"], capture_output=True, text=True)
+          try:
+              with open("mutants/mutmut-cicd-stats.json") as fh:
+                  stats = json.load(fh)
+          except (OSError, ValueError):
+              print("mutation: mutmut produced no statistics (exit " + str(run.returncode) + ")")
+              print((run.stdout + run.stderr + stats_run.stdout + stats_run.stderr)[-1500:])
+              sys.exit(1)
+      finally:
+          if not had_mutants:
+              shutil.rmtree("mutants", ignore_errors=True)
+      killed = stats.get("killed", 0)
+      judged = killed + sum(stats.get(k, 0) for k in ("survived", "timeout", "suspicious", "no_tests", "segfault"))
+      if judged == 0:
+          print("mutation: mutmut produced no mutants for " + ", ".join(mods) + "; nothing to score")
+          sys.exit(0)
+      score = 100.0 * killed / judged
+      print("mutation: killed " + str(killed) + " of " + str(judged) + " mutants in " + ", ".join(mods) + " = " + format(score, ".1f") + " percent (threshold " + format(threshold, "g") + ")")
+      sys.exit(0 if score >= threshold else 1)
+      '
