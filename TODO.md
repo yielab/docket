@@ -311,7 +311,7 @@ the real home and fails the card. Packets: `.agents/handoffs/wave-85-worker-pack
 | 85 | P38-1 ∥ P38-2 ∥ P38-3 ∥ P38-6 ∥ P38-7 ∥ P38-8 | `core/trace.py::_REDACT_PATTERNS`, `trace-store.spec.md` → P38-1; `core/tools.py::_fetch_tool`, `core/mcp_tools.py::_screen_result` (extracted into one shared screening function) → P38-2; `core/fleet.py::FleetSecurity` and its isolation readers/writers, `core/security.py` isolation wrappers, `edges/adapters/docket_runtime.py::_resolve_sandbox`, `edges/adapters/system.py::sandbox_availability`, `bwrap_argv`, `docker_run_argv`, `cli/_gates.py`, `cli/_doctor.py::_check_security_gates` (and its JSON twin), goldens `gates_status`/`help` → P38-3; `edges/adapters/system.py::run_verify_cmd`, `edges/adapters/toolbox.py::run_bash` (the unjailed env only) plus one new env helper → P38-6; `serve.py::_run_sweeps`, `_sweep_loop`, one `config.py` constant → P38-7; `edges/adapters/toolbox.py::resolve_within`, `glob_files`, `grep_files`, `write_file`, `edit_file` → P38-8 |
 | 86 | P38-4 | `core/fleet.py` (a `network` flag), `cli/_gates.py` (`gates network`), `core/pod.py` settings (`network`), `system.py::bwrap_argv`/`docker_run_argv` (a network parameter), `docket_runtime.py` (the turn's network mode on `ToolContext`), `toolbox.py::run_bash` (passing it) |
 | 87 | P38-5 ∥ P38-10 | `edges/adapters/mcp_client.py::_stdio_params` and its callers, `core/mcp_tools.py::load_mcp_tools` (a launch spec replacing the two `cwd` lambdas), `McpServerConfig.isolate`, `cli` `mcp servers add --no-isolate`, `docket_runtime.py::_load_mcp_tools` |
-| 88 | P38-9 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
+| 88 | P38-11 → P38-9 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
 
 `specs/functional/security-gates.spec.md` is shared by P38-2, P38-3, P38-6 and P38-8 at section
 level: each worker edits only its own section and adds one `Unreleased` changelog line; the
@@ -416,7 +416,7 @@ and its scope.
 
 ### P38-5 — stdio MCP servers start in the jail
 
-**Status:** IN-PROGRESS (Wave 87 worker) · **Size:** M · **Wave:** 87 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
+**Status:** DONE `2874490d` (`StdioLaunch`; `bwrap_command_argv`/`docker_command_argv`; the two `type: ignore`s are gone; the `kind: mcp-server` document cannot say `isolate: false` -- P38-11) · **Size:** M · **Wave:** 87 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
 
 **Trigger:** `mcp_client.py::_stdio_params` spawns the server on the host; `load_mcp_tools` threads
 `cwd` through two `type: ignore` lambdas (carried from Phase 37). ADR 0020 §5.
@@ -510,6 +510,31 @@ published contract).
   writes one `isolation.refused`.
 - After `gates isolate on`, `dispatch --resume` reclaims and runs the task.
 - The harness result for the same refusal is unchanged in shape (pin it with a test).
+
+### P38-11 — a recipe's MCP server can declare `isolate: false`; `code-intel`'s ast-grep does
+
+**Status:** IN-PROGRESS (Wave 88 worker) · **Size:** S · **Wave:** 88 · **Model:** Sonnet · **Spec:** `config-format.spec.md` (the `mcp-server` kind), `mcp-client.spec.md`, `pod-blueprints.spec.md` (code-intel)
+
+**Trigger (measured 2026-10-05):** `code-intel`'s `ast-grep` server is `uvx --from git+... ast-grep-server`.
+Run through `system.bwrap_command_argv` with a warm cache it fails: `Could not acquire lock ...
+Read-only file system (os error 30) at path "~/.cache/uv/.tmp..."`. With isolation on by default
+the shipped recipe's server cannot start. P38-5 added `McpServerConfig.isolate`, but the
+`kind: mcp-server` document (`core/mcp_tools.py::McpServerDocument`, its published schema) has no
+such field, so a recipe cannot declare it and `pod apply` installs every recipe server jailed.
+
+**Goal:** the document accepts `isolate: false` (default true), `pod apply` installs it into the
+pod's `config/mcp-servers.json`, `pod export` writes it back, `docket validate` and
+`recipes show`/`apply --dry-run` show it, and the apply step prints that the server runs
+unjailed. `code-intel`'s `ast-grep` declares `isolate: false` and its README says why (measured);
+`language-intel` stays jailed (its binary was not installed on the measuring host; the README says
+to declare it if it cannot start). Schema regenerated with `gen_config_schemas.py`, recipe docs with
+`gen_recipe_docs.py`.
+
+**Acceptance:**
+- Applying a recipe whose server says `isolate: false` stores it, and a turn's launch for that
+  server is the server's own argv (no jail) while the recipe's other server is jailed.
+- `pod export` round-trips the field (an apply of the export plans `skip`).
+- A document without the field still loads jailed.
 
 ### P38-9 — integrate and close Phase 38
 
