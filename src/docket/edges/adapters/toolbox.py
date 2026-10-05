@@ -337,6 +337,8 @@ def run_bash(
 
     popen_env: dict[str, str] | None
     container_name = ""
+    if backend in ("docker", "bwrap"):
+        env = {**_system.git_identity_env(cwd), **(env or {})}
     if backend == "docker":
         container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
         popen_arg: str | list[str] = _system.docker_run_argv(

@@ -827,9 +827,12 @@ either.
    it is trusted; a refusal is honest.
 6. **Environment is minimized inside a real jail, never inherited wholesale.** When an actual
    backend (`docker` or `bwrap`) is in effect, the jailed process **MUST NOT** receive the full host
-   environment `run_bash`'s unsandboxed path uses — only `PATH` plus whatever `ToolContext.env`
+   environment `run_bash`'s unsandboxed path uses — only `PATH`, the operator's git identity
+   (`system.git_identity_env`: the four `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variables when set, else
+   `user.name`/`user.email` as host git resolves them in the root, so a jailed commit carries the
+   operator's identity on either backend; never a credential), plus whatever `ToolContext.env`
    explicitly injects (e.g. `DOCKET_SCRATCH_DIR`, per the existing pod resource-allocation
-   convention in `core/resources.py`). Forwarding the full host environment into a "sandboxed" call
+   convention in `core/resources.py`; it wins over the identity). Forwarding the full host environment into a "sandboxed" call
    would hand it every credential the unsandboxed path has anyway, undermining the containment this
    section exists to add. `sandbox="off"`, and `sandbox="auto"` when it resolves to `"none"`, are
    unaffected — both keep `run_bash`'s original full-environment behavior, since no jail is actually
@@ -1533,8 +1536,8 @@ $ git clone https://anywhere.example/repo.git
   (`TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`, a `docker ps`
   check) — both skipped, with an explicit reason, on a host lacking the relevant backend, never
   silently passing in its absence.
-- A real exec jail's environment **MUST NOT** include the full host environment — only `PATH` and
-  `ToolContext.env`'s explicit entries. `sandbox="off"`, and `sandbox="auto"` when it resolves to
+- A real exec jail's environment **MUST NOT** include the full host environment — only `PATH`, the
+  operator's git identity and `ToolContext.env`'s explicit entries. `sandbox="off"`, and `sandbox="auto"` when it resolves to
   `"none"`, are unaffected and **MUST** keep receiving the full host environment exactly as before
   this card.
 - `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
@@ -1557,6 +1560,7 @@ $ git clone https://anywhere.example/repo.git
 
 ### Unreleased
 
+- A jailed command receives the operator's git identity (`system.git_identity_env`), so a jailed commit works when identity comes from the environment or a non-default `HOME`, and under docker (Exec sandbox 6); found by the Waves 89-90 live run.
 - Requirement 4 (docker image): the docker jail needs `DOCKET_SANDBOX_IMAGE` to carry `git` to commit; `docket doctor` probes and warns; the docker jail's commit and `network none` are proven against real docker.
 - Workspace isolation 4: the jail also re-binds read-only submodule git dirs' hooks/config/config.worktree/info/attributes and checkout `.git` files, a linked worktree's `.git` file and `gitdir`/`commondir` admin files, and `info/attributes`.
 

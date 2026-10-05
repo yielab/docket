@@ -345,6 +345,41 @@ def bwrap_command_argv(roots: tuple[Path, ...], argv: list[str], network: bool =
     return [*_bwrap_prefix(roots, network), *argv]
 
 
+_GIT_IDENTITY_VARS = (
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+)
+
+
+def git_identity_env(root: Path) -> dict[str, str]:
+    """The operator's git identity for a jailed command in *root*: the four ``GIT_AUTHOR_*``/
+    ``GIT_COMMITTER_*`` variables when set, else ``user.name``/``user.email`` as git resolves
+    them on the host there. Identity only, never a credential; empty when git knows none."""
+    found = {k: os.environ[k] for k in _GIT_IDENTITY_VARS if os.environ.get(k)}
+    if len(found) == len(_GIT_IDENTITY_VARS) or not git_available():
+        return found
+    resolved: dict[str, str] = {}
+    for key in ("name", "email"):
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(root), "config", "--get", f"user.{key}"],
+                capture_output=True,
+                text=True,
+                timeout=_QUERY_TIMEOUT,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if out.returncode == 0 and out.stdout.strip():
+            resolved[key] = out.stdout.strip()
+    for var in _GIT_IDENTITY_VARS:
+        value = resolved.get(var.rsplit("_", 1)[1].lower())
+        if var not in found and value:
+            found[var] = value
+    return found
+
+
 def _bwrap_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
     argv = [
         "bwrap",

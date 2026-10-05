@@ -516,6 +516,46 @@ class TestJailedCommit:
         assert not (outside / "leak").exists()
 
     @needs_bwrap
+    @pytest.mark.parametrize("source", ["environment", "global-config"])
+    def test_a_jailed_commit_uses_the_operators_git_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        for var in ("AUTHOR", "COMMITTER"):
+            monkeypatch.delenv(f"GIT_{var}_NAME", raising=False)
+            monkeypatch.delenv(f"GIT_{var}_EMAIL", raising=False)
+        if source == "environment":
+            for var in ("AUTHOR", "COMMITTER"):
+                monkeypatch.setenv(f"GIT_{var}_NAME", "Op")
+                monkeypatch.setenv(f"GIT_{var}_EMAIL", "op@example.com")
+        else:
+            (home / ".gitconfig").write_text("[user]\n\tname = Op\n\temail = op@example.com\n")
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(
+            main,
+            "-c",
+            "user.name=i",
+            "-c",
+            "user.email=i@i",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "i",
+        )
+        _git(main, "worktree", "add", "-q", str(wt))
+
+        outcome = toolbox.run_bash((wt,), "git commit -q --allow-empty -m jailed", sandbox="auto")
+        assert outcome.ok, outcome.error or outcome.content
+        assert _git(wt, "log", "--format=%an <%ae>", "-1").strip() == "Op <op@example.com>"
+
+    @needs_bwrap
     def test_the_jail_cannot_plant_a_hook_or_a_config_the_host_would_run(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
