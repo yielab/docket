@@ -17,14 +17,28 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from docket.core import archetypes as _archetypes
 from docket.core import channel as _channel
 from docket.core import exporter as _exporter
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 from docket.core import provider as _provider
 
-KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "provider", "exporter", "channel")
+KINDS: tuple[str, ...] = (
+    "role",
+    "pipeline",
+    "policy",
+    "pod",
+    "provider",
+    "exporter",
+    "channel",
+    "mcp-server",
+)
 
-_LOCATION_KIND: dict[str, str] = {"roles": "role", "policies": "policy"}
+_LOCATION_KIND: dict[str, str] = {
+    "roles": "role",
+    "policies": "policy",
+    "mcp-servers": "mcp-server",
+}
 
 
 # ── Short-form models ─────────────────────────────────────────────────────────
@@ -127,6 +141,7 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "pod": PodDocument,
     "exporter": _exporter.ExporterSpec,
     "channel": _channel.ChannelSpec,
+    "mcp-server": _mcp_tools.McpServerDocument,
 }
 
 
@@ -314,6 +329,13 @@ def _validate_channel(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _validate_mcp_server(path: Path) -> None:
+    try:
+        _mcp_tools.load_mcp_server_document(path)
+    except _mcp_tools.McpServerDocError as exc:
+        raise ConfigDocError(path, str(exc)) from exc
+
+
 def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     """Read *path*, resolve its kind, and dispatch to the parser that owns it. *kind* is used
     only when the document has no top-level ``kind:`` key and its location does not resolve
@@ -378,6 +400,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_exporter(p)
         elif effective_kind == "channel":
             _validate_channel(p)
+        elif effective_kind == "mcp-server":
+            _validate_mcp_server(p)
     except ConfigDocError as exc:
         raise _refine_with_model(p, effective_kind, doc, exc) from exc
 
@@ -386,11 +410,11 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
 
 
 def discover_config_paths(directory: str | Path) -> list[Path]:
-    """Every ``roles/*.yaml|yml|json``, ``policies/*.yaml|yml|json``, ``pipeline.yaml``/
+    """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipeline.yaml``/
     ``.yml``, and ``pod.yaml``/``.yml`` directly under *directory*, in that order."""
     base = Path(directory)
     paths: list[Path] = []
-    for sub in ("roles", "policies"):
+    for sub in ("roles", "policies", "mcp-servers"):
         sub_dir = base / sub
         if not sub_dir.is_dir():
             continue

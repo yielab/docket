@@ -4,7 +4,7 @@
 
 A recipe is a directory in the same shape as a repository's `.docket/`: an optional `pod.yaml`
 (`kind: pod`, `name`, `description`, `members`, `settings`), optional `roles/`, `pipeline.yaml`,
-`policies/`, `plugins/` and `skills/`. What a recipe brings is derived from what the directory
+`policies/`, `plugins/`, `skills/` and `mcp-servers/`. What a recipe brings is derived from what the directory
 holds, never declared; `docket recipes list` prints the same derivation. Apply one with:
 
 ```bash
@@ -20,6 +20,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 
 | Recipe | Brings | Description |
 | --- | --- | --- |
+| [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
 | [`frugal`](#frugal) | 1 member, 3 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
@@ -35,6 +36,51 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
 | [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
+
+## code-intel
+
+Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers.
+
+**Brings:** 2 MCP servers. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0 · mcp-servers ast-grep, language-intel`
+
+```bash
+docket init --recipe code-intel
+docket pod <project> apply code-intel
+```
+
+Two pod-scoped MCP servers that let an agent search code by syntax tree and ask a language
+server about symbols. No roles, no pipeline, no members; `docket pod <p> apply code-intel`
+installs the two server declarations for that pod only (the `mcp-server` items), and nothing
+runs until a turn loads them. Applying never installs the binaries below.
+
+| Server | Gives the agent | Declared | Needs on PATH |
+| --- | --- | --- | --- |
+| `ast-grep` | `find_code`, `find_code_by_rule`, `dump_syntax_tree`, `test_match_code_rule` | `access: read`; the server exposes exactly these four search tools and no write or rewrite tool | `uvx` and `ast-grep` |
+| `language-intel` | `definition`, `references`, `diagnostics`, `hover` | `access: read` with `tools:` restricted to those four, because the same server also offers `edit_file` and `rename_symbol`, which are never registered | `mcp-language-server` and `pyright-langserver` |
+
+### Verified on 2026-10-04
+
+- `ast-grep`: the ast-grep project's own server, https://github.com/ast-grep/ast-grep-mcp
+  (README: `uvx --from git+https://github.com/ast-grep/ast-grep-mcp ast-grep-server`; its
+  `main.py` registers exactly four `@mcp.tool()` functions, none writing). The `ast-grep`
+  binary it shells out to is npm `@ast-grep/cli` 0.45.3 (`npm view` checked). The server is not
+  on PyPI under that name, so it runs from the git URL; pin a commit there for reproducibility.
+- `language-intel`: https://github.com/isaacphi/mcp-language-server (Go; install with
+  `go install github.com/isaacphi/mcp-language-server@latest`; tool names read from its
+  `tools.go`: `edit_file`, `definition`, `references`, `diagnostics`, `hover`,
+  `rename_symbol`). The language server it drives is npm `pyright` 1.1.414, which ships the
+  `pyright-langserver` binary (`npm view pyright bin` checked).
+
+Neither server was executed here; the checks are package metadata and source reads.
+
+### Make it yours
+
+`language-intel` is wired for Python. For another language change `--lsp` and its arguments
+(the server's README lists gopls, rust-analyzer, typescript-language-server and clangd).
+`--workspace .` resolves against the server process's working directory; set an absolute path if
+the turn does not start in the codebase. Servers are stored pod-scoped in `config/mcp-servers.json`
+and are selected like any other through the pod's `mcpServers` setting (global servers and this
+pod's own).
 
 ## cross-family-review
 

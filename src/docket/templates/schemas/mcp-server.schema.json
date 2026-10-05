@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/mcp-server.schema.json",
+  "title": "McpServerDocument",
+  "additionalProperties": false,
+  "description": "A ``kind: mcp-server`` document: the global server fields, with the read/write assertion\nunder ``access`` because ``kind`` is the envelope.",
+  "properties": {
+    "kind": {
+      "const": "mcp-server",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "command": {
+      "title": "Command",
+      "type": "string"
+    },
+    "args": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Args",
+      "type": "array"
+    },
+    "env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Env",
+      "type": "object"
+    },
+    "timeout": {
+      "default": 0.0,
+      "title": "Timeout",
+      "type": "number"
+    },
+    "access": {
+      "default": "write",
+      "enum": [
+        "read",
+        "write"
+      ],
+      "title": "Access",
+      "type": "string"
+    },
+    "tools": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "command"
+  ],
+  "type": "object"
+}

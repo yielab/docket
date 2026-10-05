@@ -34,6 +34,7 @@ def _brings(summary: _pod_apply.RecipeSummary) -> str:
             ("pipeline", bool(summary.pipeline)),
             ("plugins", summary.plugins > 0),
             ("skills", summary.skills > 0),
+            ("mcp-servers", bool(summary.mcp_servers)),
             ("settings", summary.settings > 0),
         )
         if present
@@ -57,6 +58,7 @@ def _info_dict(
         "plugins": summary.plugins,
         "skills": summary.skills,
         "settings": summary.settings,
+        "mcp_servers": list(summary.mcp_servers),
     }
 
 

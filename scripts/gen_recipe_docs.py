@@ -31,7 +31,7 @@ HEADER = """# The recipe library
 
 A recipe is a directory in the same shape as a repository's `.docket/`: an optional `pod.yaml`
 (`kind: pod`, `name`, `description`, `members`, `settings`), optional `roles/`, `pipeline.yaml`,
-`policies/`, `plugins/` and `skills/`. What a recipe brings is derived from what the directory
+`policies/`, `plugins/`, `skills/` and `mcp-servers/`. What a recipe brings is derived from what the directory
 holds, never declared; `docket recipes list` prints the same derivation. Apply one with:
 
 ```bash
@@ -56,6 +56,7 @@ def _brings(summary: _pod_apply.RecipeSummary) -> str:
         (summary.skills, "skill", "skills"),
         (summary.plugins, "plugin", "plugins"),
         (summary.settings, "setting", "settings"),
+        (len(summary.mcp_servers), "MCP server", "MCP servers"),
     ):
         if count:
             parts.append(f"{count} {singular if count == 1 else plural}")

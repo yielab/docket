@@ -26,6 +26,7 @@ from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import models_policy as _mp
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
@@ -58,7 +59,9 @@ class ApplyItem:
     """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing
     named, and whether applying it would add, replace, or skip (already matches disk)."""
 
-    kind: Literal["role", "policy", "plugin", "skill", "member", "pipeline", "setting"]
+    kind: Literal[
+        "role", "policy", "plugin", "skill", "mcp-server", "member", "pipeline", "setting"
+    ]
     name: str
     action: ApplyAction
 
@@ -88,6 +91,14 @@ class _SkillWrite:
 
     name: str
     files: tuple[tuple[str, bytes], ...]
+
+
+@dataclass(frozen=True)
+class _McpServerWrite:
+    """The complete pod-scoped server list to write: the pod's existing servers with each
+    recipe-declared one added or replaced by name."""
+
+    servers: tuple[_mcp_tools.McpServerConfig, ...]
 
 
 @dataclass(frozen=True)
@@ -126,6 +137,7 @@ class ApplyPlan:
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
     _skill_writes: tuple[_SkillWrite, ...] = field(default=())
+    _mcp_server_write: _McpServerWrite | None = field(default=None)
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
@@ -225,10 +237,11 @@ class RecipeSummary:
     pipeline: str
     description: str
     exporters: tuple[str, ...] = ()
+    mcp_servers: tuple[str, ...] = ()
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
-        `· exporters <name>, ...` appended only when the recipe names at least one."""
+        `· exporters <name>, ...` and `· mcp-servers <name>, ...` appended only when present."""
         line = (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
             f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
@@ -236,6 +249,8 @@ class RecipeSummary:
         )
         if self.exporters:
             line += f" · exporters {', '.join(self.exporters)}"
+        if self.mcp_servers:
+            line += f" · mcp-servers {', '.join(self.mcp_servers)}"
         return line
 
 
@@ -268,6 +283,23 @@ def _config_glob(directory: Path) -> list[Path]:
     """Every ``*.yaml``/``*.yml``/``*.json`` directly under *directory* -- the same file set
     ``core.config_docs.discover_config_paths`` counts for ``roles/``/``policies/``."""
     return [p for pattern in ("*.yaml", "*.yml", "*.json") for p in directory.glob(pattern)]
+
+
+def _server_files(directory: Path) -> list[Path]:
+    servers_dir = directory / "mcp-servers"
+    return sorted(_config_glob(servers_dir)) if servers_dir.is_dir() else []
+
+
+def _declared_server_names(directory: Path) -> list[str]:
+    """The ``name`` of each readable ``mcp-servers/*`` document; an invalid one is skipped
+    here (``plan_apply`` and ``validate`` are what refuse it)."""
+    names: list[str] = []
+    for path in _server_files(directory):
+        try:
+            names.append(_mcp_tools.load_mcp_server_document(path).name)
+        except _mcp_tools.McpServerDocError:
+            continue
+    return names
 
 
 def summarize_recipe(directory: Path) -> RecipeSummary:
@@ -318,6 +350,7 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     )
 
     return RecipeSummary(
+        mcp_servers=tuple(_declared_server_names(directory)),
         roles=roles,
         policies=policies,
         plugins=plugins,
@@ -509,6 +542,45 @@ def _plan_skills(directory: Path, project: str) -> tuple[list[ApplyItem], list[_
     return items, writes
 
 
+def _plan_mcp_servers(
+    directory: Path, project: str
+) -> tuple[list[ApplyItem], _McpServerWrite | None]:
+    """Plan ``mcp-servers/*`` into *project*'s own pod-scoped server file. A name equal to a
+    global server is refused (never shadowed); a server already stored identically plans
+    ``skip``; servers the recipe does not name are kept."""
+    items: list[ApplyItem] = []
+    declared: dict[str, _mcp_tools.McpServerConfig] = {}
+    for path in _server_files(directory):
+        try:
+            config = _mcp_tools.load_mcp_server_document(path)
+        except _mcp_tools.McpServerDocError as exc:
+            raise PodApplyError(str(exc)) from exc
+        if config.name in declared:
+            raise PodApplyError(f"{path}: MCP server {config.name!r} is declared twice")
+        declared[config.name] = config
+    if not declared:
+        return items, None
+    global_names = {s.name for s in _mcp_tools.load_mcp_servers()}
+    for name in declared:
+        if name in global_names:
+            raise PodApplyError(
+                f"mcp-servers: {name!r} collides with a global MCP server; "
+                "rename it or remove the global one"
+            )
+    current = {s.name: s for s in _mcp_tools.load_pod_mcp_servers(project)}
+    changed = False
+    for name, config in declared.items():
+        if name in current and current[name] == config:
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if name in current else "add"
+            changed = True
+        items.append(ApplyItem(kind="mcp-server", name=name, action=action))
+    if not changed:
+        return items, None
+    return items, _McpServerWrite(servers=tuple({**current, **declared}.values()))
+
+
 def _plan_members(
     project: str,
     member_roles: list[str],
@@ -605,7 +677,7 @@ def _plan_pipeline(
 
 
 def _plan_settings(
-    project: str, raw_settings: dict[str, Any]
+    project: str, raw_settings: dict[str, Any], mcp_extra: tuple[str, ...] = ()
 ) -> tuple[list[ApplyItem], list[_SettingWrite]]:
     items: list[ApplyItem] = []
     writes: list[_SettingWrite] = []
@@ -622,7 +694,7 @@ def _plan_settings(
             raise PodApplyError(f"pod.yaml: unknown pod setting {key!r}")
         str_value = ",".join(str(v) for v in value) if isinstance(value, list) else str(value)
         try:
-            coerced = pod.PodSettings.coerce(key, str_value)
+            coerced = pod.PodSettings.coerce(key, str_value, project=project, mcp_extra=mcp_extra)
         except pod.PodSettingsError as exc:
             raise PodApplyError(str(exc)) from exc
         current_value, source = settings_now.value_and_source(key, project)
@@ -732,9 +804,13 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         directory, pipeline_name, project, roster_after, augmented
     )
 
-    setting_items, setting_writes = _plan_settings(project, raw_settings)
+    mcp_items, mcp_write = _plan_mcp_servers(directory, project)
 
-    items = [*role_items, *policy_items, *plugin_items, *skill_items, *member_items]
+    setting_items, setting_writes = _plan_settings(
+        project, raw_settings, tuple(i.name for i in mcp_items)
+    )
+
+    items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(setting_items)
@@ -748,6 +824,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
         _skill_writes=tuple(skill_writes),
+        _mcp_server_write=mcp_write,
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),
@@ -755,7 +832,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
 
 def apply(plan: ApplyPlan) -> ApplyResult:
-    """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> member -> pipeline
+    """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> skill -> mcp-server -> member -> pipeline
     -> setting order). Audits ``pod.apply`` only on change; records ``configSource``/
     ``configDigest`` every time, all-``skip`` included (see below)."""
     lead_id = pod.member_id(plan.project, "lead")
@@ -807,6 +884,9 @@ def apply(plan: ApplyPlan) -> ApplyResult:
                 file_dest.parent.mkdir(parents=True, exist_ok=True)
                 file_dest.write_bytes(data)
                 file_dest.chmod(0o600)
+
+    if plan._mcp_server_write is not None:
+        _mcp_tools.write_pod_mcp_servers(plan.project, list(plan._mcp_server_write.servers))
 
     for member_write in plan._member_writes:
         ok, msg = _pp.provision_member(
@@ -929,6 +1009,18 @@ def _export_skills(project: str, directory: Path) -> None:
             file_dest.write_bytes(data)
 
 
+def _export_mcp_servers(project: str, directory: Path) -> None:
+    """Write *project*'s own pod-scoped servers as ``mcp-servers/<name>.yaml`` documents --
+    never a global server."""
+    servers = _mcp_tools.load_pod_mcp_servers(project)
+    if not servers:
+        return
+    dest_dir = directory / "mcp-servers"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for server in servers:
+        _dump_yaml_file(dest_dir / f"{server.name}.yaml", _mcp_tools.mcp_server_document(server))
+
+
 def _export_pipeline(project: str, directory: Path) -> None:
     """Copy *project*'s bound pipeline copy (if ``PodSettings.pipeline`` is set) as
     ``pipeline.yaml`` -- the default filename ``apply`` resolves with no explicit
@@ -988,6 +1080,7 @@ def export_pod(project: str, directory: Path) -> None:
     _export_policies(project, directory)
     _export_plugins(project, directory)
     _export_skills(project, directory)
+    _export_mcp_servers(project, directory)
     _export_pipeline(project, directory)
     _export_manifest(project, directory)
     _export_schemas(directory)

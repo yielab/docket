@@ -40,10 +40,11 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
         "provider",
         "exporter",
         "channel",
+        "mcp-server",
     }
     assert str(error) == (
         f"{path}:1 kind: unknown kind 'banana' "
-        "(valid: role, pipeline, policy, pod, provider, exporter, channel)"
+        "(valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server)"
     )
 
 

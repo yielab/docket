@@ -1,0 +1,3 @@
+kind: pod
+name: code-intel
+description: Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers.

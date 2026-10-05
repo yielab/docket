@@ -1,0 +1,6 @@
+kind: mcp-server
+name: ast-grep
+command: uvx
+args: ["--from", "git+https://github.com/ast-grep/ast-grep-mcp", "ast-grep-server"]
+access: read
+tools: [dump_syntax_tree, test_match_code_rule, find_code, find_code_by_rule]

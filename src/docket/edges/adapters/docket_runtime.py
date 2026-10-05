@@ -99,7 +99,7 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     if not raw:
         return None
     try:
-        coerced = _pod.PodSettings.coerce("mcpServers", raw)
+        coerced = _pod.PodSettings.coerce("mcpServers", raw, project=project)
     except _pod.PodSettingsError as exc:
         from docket.core.dispatch import DispatchError
 
@@ -114,7 +114,7 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
 # the pre-selection behavior, including the zero-server fast path.
 def _load_mcp_tools(registry: ToolRegistry, role: str, project: str = "") -> list[Any]:
     """Fold MCP servers' tools into *registry* in the 3-positional shape ``mcp_loader`` needs."""
-    servers = _mcp.load_mcp_servers()
+    servers = _mcp.load_mcp_servers(project)
     selection = _pod_mcp_selection(project)
     if selection is not None:
         servers = [s for s in servers if s.name in selection]

@@ -988,7 +988,7 @@ def _pod_config(project: str, extra: list[str]) -> None:
             ui.error(f"{key} is written by apply, not by config set")
             raise typer.Exit(1)
         try:
-            coerced = pod.PodSettings.coerce(key, value)
+            coerced = pod.PodSettings.coerce(key, value, project=project)
         except pod.PodSettingsError as ex:
             ui.error(str(ex))
             raise typer.Exit(1) from ex

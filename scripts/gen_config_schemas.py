@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """gen_config_schemas.py -- render
-docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel}.schema.json from the
+docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server}.schema.json from the
 Pydantic models in ``core.config_docs``.
 
-Four are short-form models used only for schema generation and error refinement; ``ExporterSpec``
-and ``ChannelSpec`` are different -- each IS the canonical, only-parsed shape of its own document
-kind. All six are also shipped byte-identical inside the installed package.
+Four are short-form models used only for schema generation and error refinement; ``ExporterSpec``,
+``ChannelSpec`` and ``McpServerDocument`` are different -- each IS the canonical, only-parsed shape of
+its own document kind. All seven are also shipped byte-identical inside the installed package.
 
 Usage:
   ./scripts/gen_config_schemas.py            # regenerate every schema file
@@ -25,7 +25,7 @@ PACKAGE_SCHEMA_DIR = SRC / "docket" / "templates" / "schemas"
 
 sys.path.insert(0, str(SRC))
 
-KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "exporter", "channel")
+KINDS: tuple[str, ...] = ("role", "pipeline", "policy", "pod", "exporter", "channel", "mcp-server")
 
 
 def render(kind: str) -> str:

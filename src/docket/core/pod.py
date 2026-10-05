@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic import ValidationError as _PydanticValidationError
 
 import docket.config as _cfg
@@ -503,19 +503,29 @@ class PodSettings(BaseModel):
     # time.
     @field_validator("mcp_servers", mode="before")
     @classmethod
-    def _parse_mcp_servers(cls, value: Any) -> tuple[str, ...] | None:
-        """Comma-separated names from the shared MCP server catalog, or ``None`` (the
-        default) for "every configured server"."""
+    def _parse_mcp_servers(cls, value: Any, info: ValidationInfo) -> tuple[str, ...] | None:
+        """Comma-separated names from the global MCP catalog plus this pod's own pod-scoped
+        servers (``context['project']``, and ``context['mcp_extra']`` for names a recipe is
+        installing), or ``None`` (the default) for "every configured server"."""
         if value in (None, ""):
             return None
         tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
-        catalog = {s.name for s in _mcp_tools.load_mcp_servers()}
+        context = info.context or {}
+        project = str(context.get("project", ""))
+        catalog = {s.name for s in _mcp_tools.load_mcp_servers(project)}
+        catalog.update(context.get("mcp_extra", ()))
         kept: dict[str, None] = {}
         for raw in tokens:
             name = str(raw).strip()
             if not name:
                 continue
             if name not in catalog:
+                owner = _mcp_tools.pod_scoped_owner(name, exclude=project)
+                if owner:
+                    raise ValueError(
+                        f"{name!r} is an MCP server of another pod ({owner}); "
+                        "a pod selects only global servers and its own"
+                    )
                 raise ValueError(
                     f"{name!r} is not a configured MCP server (docket mcp servers list)"
                 )
@@ -560,9 +570,11 @@ class PodSettings(BaseModel):
         return tuple(kept.keys())
 
     @classmethod
-    def _validated(cls, present: dict[str, str]) -> PodSettings:
+    def _validated(
+        cls, present: dict[str, str], *, project: str = "", mcp_extra: tuple[str, ...] = ()
+    ) -> PodSettings:
         try:
-            return cls.model_validate(present)
+            return cls.model_validate(present, context={"project": project, "mcp_extra": mcp_extra})
         except _PydanticValidationError as exc:
             first = exc.errors()[0]
             key = str(first["loc"][0]) if first["loc"] else "?"
@@ -578,18 +590,19 @@ class PodSettings(BaseModel):
         present = {
             k: v for k in (*cls.KEYS, *cls.RECORDED_KEYS) if (v := _fleet.meta_get(lead_id, k, ""))
         }
-        return cls._validated(present)
+        return cls._validated(present, project=project)
 
     @classmethod
-    def coerce(cls, key: str, value: str) -> float | int | str:
-        """Validate *value* for *key* and return the number or comma-joined form a
-        caller should persist via ``core.fleet.meta_set``; never writes itself. For
-        ``pipeline``, *value* is already the copy's sha256 digest, not a file path."""
+    def coerce(
+        cls, key: str, value: str, *, project: str = "", mcp_extra: tuple[str, ...] = ()
+    ) -> float | int | str:
+        """Validate *value* for *key*; return the form to persist via ``core.fleet.meta_set``.
+        Never writes. *project*/*mcp_extra* widen ``mcpServers`` to that pod's own servers."""
         if key not in cls.KEYS:
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
-        settings = cls._validated({key: value})
+        settings = cls._validated({key: value}, project=project, mcp_extra=mcp_extra)
         return cast(
             "float | int | str", cls._stored_form(getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
         )

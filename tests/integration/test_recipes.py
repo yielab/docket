@@ -85,14 +85,15 @@ def test_at_least_three_recipes_are_shipped() -> None:
 def test_every_recipe_has_a_readme_and_some_content() -> None:
     """A recipe's scope is derived from what it holds: a policy pack ships no pipeline or
     roles, so every recipe still needs a README, and at least one of pipeline / roles /
-    policies / members."""
+    policies / members / mcp-servers."""
     for recipe_dir in _recipe_dirs():
         assert (recipe_dir / "README.md").is_file(), recipe_dir
         has_pipeline = (recipe_dir / "pipeline.yaml").is_file()
         has_roles = bool(_role_yaml_files(recipe_dir))
         has_policies = bool(_policy_yaml_files(recipe_dir))
         has_members = bool(_pod_manifest_members(recipe_dir))
-        assert has_pipeline or has_roles or has_policies or has_members, recipe_dir
+        has_servers = bool(list((recipe_dir / "mcp-servers").glob("*.yaml")))
+        assert has_pipeline or has_roles or has_policies or has_members or has_servers, recipe_dir
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)

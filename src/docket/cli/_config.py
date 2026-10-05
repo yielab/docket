@@ -118,13 +118,20 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
     return matched
 
 
-def _mcp_servers_report(pod_settings: _pod.PodSettings | None) -> list[dict[str, str]]:
+def _mcp_servers_report(
+    pod_settings: _pod.PodSettings | None, project: str = ""
+) -> list[dict[str, str]]:
     """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
-    set (``scope: "pod"``), else the full shared catalog (``scope: "global"``)."""
-    catalog = sorted(_mcp_tools.load_mcp_servers(), key=lambda s: s.name)
+    set (``scope: "pod"``), else the full catalog -- global servers (``scope: "global"``)
+    and the pod's own pod-scoped ones (``scope: "pod"``)."""
+    catalog = sorted(_mcp_tools.load_mcp_servers(project), key=lambda s: s.name)
     selected = pod_settings.mcp_servers if pod_settings is not None else None
     if selected is None:
-        return [{"name": s.name, "kind": s.kind, "scope": "global"} for s in catalog]
+        own = {s.name for s in _mcp_tools.load_pod_mcp_servers(project)} if project else set()
+        return [
+            {"name": s.name, "kind": s.kind, "scope": "pod" if s.name in own else "global"}
+            for s in catalog
+        ]
     by_name = {s.name: s for s in catalog}
     return [
         {"name": name, "kind": by_name[name].kind, "scope": "pod"}
@@ -297,7 +304,7 @@ def _explain(agent_id: str) -> dict[str, Any]:
         {"name": name, "scope": "pod" if name in pod_denied else role_scope}
         for name in sorted(set(base_registry.names()) - set(role_registry.names()))
     ]
-    mcp_servers = _mcp_servers_report(pod_settings)
+    mcp_servers = _mcp_servers_report(pod_settings, project)
 
     pod_settings_report = _pod_settings_report(pod_settings, project) if pod_settings else None
     pipeline = {"source": _dispatch.effective_pipeline_source(project)} if project else None

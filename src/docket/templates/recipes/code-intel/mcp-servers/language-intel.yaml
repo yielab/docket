@@ -1,0 +1,6 @@
+kind: mcp-server
+name: language-intel
+command: mcp-language-server
+args: ["--workspace", ".", "--lsp", "pyright-langserver", "--", "--stdio"]
+access: read
+tools: [definition, references, diagnostics, hover]

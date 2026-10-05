@@ -66,11 +66,15 @@ This specification does NOT cover:
 ### The envelope
 
 1. `core.config_docs.KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy",
-   "pod", "provider", "exporter", "channel")`, in that order — the four kinds Phase 27/pre-27
+   "pod", "provider", "exporter", "channel", "mcp-server")`, in that order — the four kinds Phase 27/pre-27
    already have real parsers for, plus `provider` (ADR 0011,
    `core.provider.load_provider_document`), `exporter` (ADR 0014,
    `core.exporter.load_exporter_document`) and `channel` (ADR 0016,
-   `core.channel.load_channel_document`).
+   `core.channel.load_channel_document`), plus `mcp-server` (ADR 0019 §5,
+   `core.mcp_tools.load_mcp_server_document`). An `mcp-server` document is `name`, `command`,
+   `args`, `env`, `timeout`, `access` (`read`|`write`, the server's declared kind; the key is not
+   `kind` because `kind:` is the envelope) and `tools`; it lives under a recipe's `mcp-servers/`,
+   which `discover_config_paths` lists after `policies/`.
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is close enough
    (`difflib.get_close_matches`), a suggestion.
@@ -307,6 +311,11 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Unreleased
+
+- `kind: mcp-server` joins the envelope (ADR 0019 §5): `mcp-servers/*.yaml` is discovered,
+  validated, summarised (`mcp-servers` in the summary line), applied pod-scoped, and exported.
 
 ### Version 1.6.0 (2026-09-29)
 

@@ -288,6 +288,20 @@ This specification does NOT cover:
     `kind`, so an operator (or an audit trail reader) can see which trust level a given load ran
     under without re-reading the config file.
 
+### Pod-scoped servers (recipe-declared)
+
+37. A server declared by a recipe **MUST** be stored under its pod, in
+    `config.pod_config_dir(project)/mcp-servers.json` (the `McpServerRegistry` shape), written
+    through `edges/store.py`. `load_mcp_servers(project)` **MUST** return the global servers
+    followed by that pod's own; `load_mcp_servers()` with no project **MUST** stay global-only.
+    A pod-scoped name equal to a global name **MUST** be refused at apply, never shadowed. The
+    live turn (`_load_mcp_tools`) **MUST** load a pod's own servers for that pod only.
+38. `PodSettings` `mcpServers` **MUST** accept a global name or a name in this pod's own
+    pod-scoped file, and **MUST** refuse any other name; a name that belongs to another pod
+    **MUST** be refused with an error saying so. Nothing installs a pod-scoped server except
+    `docket pod <p> apply` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
+    dispatch write nothing.
+
 ### Untrusted tool results
 
 35. The text of a remote tool's result **MUST** be evaluated, inside the adapted tool's handler,
@@ -572,6 +586,9 @@ dispatch_tool(
 ## Changelog
 
 ### Unreleased
+
+- Requirements 37-38 added: a recipe may declare pod-scoped MCP servers (`mcp-servers/*.yaml`,
+  `kind: mcp-server`), installed only by `docket pod <p> apply`, selectable by that pod only.
 
 - Requirements 35-36 added: a remote tool's result is screened through `pre_input` as untrusted
   input (block/redact/warn), audited as `mcp_client.tool_result_blocked`/`_warn`.
