@@ -104,6 +104,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("TRACES_DIR", "traces"),
     ("APPROVALS_DIR", "approvals"),
     ("CORRECTIONS_DIR", "corrections"),
+    ("CONSULT_PARKED_DIR", "consult-parked"),
     ("POLICIES_DIR", "policies"),
     ("PLUGINS_DIR", "plugins"),
     ("SKILLS_DIR", "skills"),

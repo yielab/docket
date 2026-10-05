@@ -13,16 +13,19 @@ Tool-visible failures are ordinary error results, never exceptions, so the model
 
 from __future__ import annotations
 
-import base64
 import contextlib
 import datetime as _dt
 import json
 import queue
+import re
 import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from pydantic import ValidationError
 
 import docket.config as _cfg
 from docket.core import trace as _trace
@@ -32,6 +35,7 @@ from docket.core.operator_contract import (
     new_question_id,
     validate_answer_v11,
 )
+from docket.edges import store as _store
 
 if TYPE_CHECKING:
     from docket.core.tools import ToolContext
@@ -63,26 +67,43 @@ class ConsultUnavailable(Exception):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
+_QUESTION_ID = re.compile(r"q-[0-9a-f]{1,32}")
+
+
+def _parked_file(question_id: str) -> Path:
+    return _cfg.CONSULT_PARKED_DIR / f"{question_id}.json"
+
+
 def park_token(question: QuestionV11) -> str:
-    """The approval token a parked consult stops with: the question itself, encoded. The only
-    place the encoding is written; ``parked_question`` is the only reader."""
-    body = json.dumps(question.model_dump(by_alias=True, mode="json"), separators=(",", ":"))
-    return PARK_TOKEN_PREFIX + base64.urlsafe_b64encode(body.encode()).decode()
+    """Persist the parked question (``edges/store.py``, 0600) and return ``consult:<id>``. The
+    token never carries question text, so no error string or trace field holds it unredacted."""
+    if not _QUESTION_ID.fullmatch(question.id):
+        raise ConsultUnavailable(f"cannot park question id {question.id!r}")
+    _store.write_json(_parked_file(question.id), question.model_dump(by_alias=True, mode="json"))
+    return PARK_TOKEN_PREFIX + question.id
 
 
 def parked_question(token: str) -> QuestionV11 | None:
-    """The question a ``park_token`` carries, or ``None`` when *token* holds none."""
+    """Take the question ``park_token`` persisted for *token*: read once, then removed. ``None``
+    when *token* is not a consult token or its question is absent or invalid."""
     if not token.startswith(PARK_TOKEN_PREFIX):
         return None
+    question_id = token[len(PARK_TOKEN_PREFIX) :]
+    if not _QUESTION_ID.fullmatch(question_id):
+        return None
+    path = _parked_file(question_id)
+    data = _store.read_json(path)
+    for leftover in (path, path.with_suffix(path.suffix + ".bak")):
+        with contextlib.suppress(OSError):
+            leftover.unlink()
     try:
-        raw = base64.urlsafe_b64decode(token[len(PARK_TOKEN_PREFIX) :].encode())
-        return QuestionV11.model_validate(json.loads(raw))
-    except ValueError:
+        return QuestionV11.model_validate(data) if data else None
+    except ValidationError:
         return None
 
 
 class ConsultParked(ConsultUnavailable):
-    """Pod dispatch parks this consultation's task; the question rides in ``token``."""
+    """Pod dispatch parks this consultation's task; ``token`` names the persisted question."""
 
     def __init__(self, question: QuestionV11) -> None:
         self.question = question

@@ -596,9 +596,11 @@ clarification or decision to its operator.
    given the task id) sets `ToolContext.consult_park` unless its approval mode is `refuse`
    (`wait` included: a pod hop has no stdin reader). A consult from any role then traces `question_asked`, ends the hop
    with the `approval_parked` stop and the hop is persisted `parked`. The stop's token is
-   `consult:<base64url of the QuestionV11 JSON>`: the question travels in the denial itself
-   (`consult.park_token` writes it, `consult.parked_question` reads it; no in-process registry),
-   so a restart or another process still parks correctly. A `consult:` token whose question
+   `consult:<question id>`. `consult.park_token` persists the `QuestionV11` through
+   `edges/store.py` (`config.CONSULT_PARKED_DIR/<id>.json`, 0600) and `consult.parked_question`
+   takes it once (read, then removed); there is no in-process registry, so a restart or another
+   process still parks correctly, and the token never carries question text, so no stop error,
+   hop record or trace field holds it past redaction. A `consult:` token whose question
    cannot be read fails the task with `consult_question_missing`; it never waits as an
    approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id; the harness
    run token), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
@@ -741,7 +743,7 @@ Each JSONL line is a JSON object with these fields:
 ### Unreleased
 
 - `approve_task` on a parked pod approval grants the same call for the rest of the task, through `taskGrants` (requirement 5a).
-- A parked consult carries its question in the `consult:` token (`consult.park_token`/`parked_question`); the in-process `_PARKED` registry and `take_parked` are deleted, and a consult token with no question fails the task `consult_question_missing` instead of waiting as an approval (Consult 5).
+- A parked consult's question is persisted under `CONSULT_PARKED_DIR` and named by the `consult:<id>` token (`consult.park_token`/`parked_question`); the in-process `_PARKED` registry and `take_parked` are deleted, and a consult token with no question fails the task `consult_question_missing` instead of waiting as an approval (Consult 5).
 - `core.inbox.task_view` populates `question` and `brief`; before, no inbox view or notification ever carried them (Notifications 11).
 - Notifications item 11: `conversation`-level events carry a consult question's `options` and
   `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.

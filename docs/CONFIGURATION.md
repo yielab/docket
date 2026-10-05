@@ -68,6 +68,7 @@ noted.
 ├── sessions/<session-key>/session.json dispatch     durable per-session turn history
 ├── traces/<pod>/<session>.jsonl        dispatch     observable events per session
 ├── approvals/<apr-id>.json             gated call   pending/granted/denied approvals
+├── consult-parked/<q-id>.json         consult      a parked question, until dispatch reads it
 └── workspaces/
     ├── manager/  knowledge/  security/ init         shared org specialists
     ├── projects/<pod>-<role>/          init/pod add one private workspace per pod member
@@ -1087,6 +1088,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no. `maintain sessions` reports sizes. |
 | `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket trace`, `metrics`, `/traces`; each record also reaches the enabled exporters as it is written | no. `trace expire` prunes after `TRACE_RETENTION_DAYS`. |
 | `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `approve`/`deny`. |
+| `consult-parked/<q-id>.json` | one operator-v1.1 `QuestionV11` | a pod hop's `consult` | dispatch, once, when it parks the task | no. Dispatch removes it; the task keeps the question. |
 | `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket audit`, `audit verify` | **never.** It breaks the hash chain. |
 
 **Built-in provider documents** ship in the wheel at `templates/providers/NN-<name>.yaml`

@@ -214,8 +214,10 @@ class TestRefuse:
         token = _dispatch._parked_approval_token(error)
         assert token == result.approval_token
         assert token is not None
+        assert "message" not in token and len(token) < 40
         question = _consult.parked_question(token)
-        assert question is not None and question.id == _consult.parked_question(token).id  # type: ignore[union-attr]
+        assert question is not None and token == f"consult:{question.id}"
+        assert _consult.parked_question(token) is None  # taken once, then gone
         assert [o.id for o in question.options] == [o["id"] for o in _args()["options"]]
 
     def test_a_token_without_a_question_yields_none(self) -> None:
