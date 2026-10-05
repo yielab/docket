@@ -395,7 +395,7 @@ default image has no `git`/`python3`.
 
 ### P38-4 — a network lockdown mode
 
-**Status:** IN-PROGRESS (Wave 86 worker) · **Size:** M · **Wave:** 86 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (the D-23/D-24 egress section), `pod-dispatch.spec.md` (pod settings), `cli-interface.spec.md`
+**Status:** DONE `169e131d` (`gates network`, pod `network`, `network.refused`; docker `--network none` proven by argv only) · **Size:** M · **Wave:** 86 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (the D-23/D-24 egress section), `pod-dispatch.spec.md` (pod settings), `cli-interface.spec.md`
 
 **Trigger:** neither backend cuts the network (`--share-net`, docker's bridge); ADR 0004 deferred
 the mechanism. ADR 0020 §4.
@@ -416,7 +416,7 @@ and its scope.
 
 ### P38-5 — stdio MCP servers start in the jail
 
-**Status:** TODO · **Size:** M · **Wave:** 87 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
+**Status:** IN-PROGRESS (Wave 87 worker) · **Size:** M · **Wave:** 87 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
 
 **Trigger:** `mcp_client.py::_stdio_params` spawns the server on the host; `load_mcp_tools` threads
 `cwd` through two `type: ignore` lambdas (carried from Phase 37). ADR 0020 §5.
