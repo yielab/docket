@@ -89,7 +89,7 @@ What follows explains that dispatch, what held it in check, and then how to chan
 ## The run
 
 <p align="center">
-  <img src="docs/assets/isolation.png" alt="Real terminal output: the Implementer's dedicated workspace, codebase and session key, a separate git worktree on its own branch, a clean main checkout, and the one-line fix living only in the worktree" width="820">
+  <img src="docs/assets/isolation.png" alt="Real terminal output: the Implementer's dedicated workspace, codebase and session key, a separate git worktree on its own branch, isolation on, a clean main checkout, and the one-line fix living only in the worktree" width="820">
 </p>
 
 `dispatch` takes the next queued task through the team's pipeline, one real model turn per step. The
@@ -110,7 +110,7 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 ## The gate and the record
 
 <p align="center">
-  <img src="docs/assets/governance.png" alt="Real terminal output: an Implementer's git push origin production is held for approval by the high-risk-deploy policy, nobody answers, and the call is denied on timeout without executing; the audit chain then verifies clean" width="820">
+  <img src="docs/assets/governance.png" alt="Real terminal output: an Implementer's git push origin production is held for approval by the high-risk-deploy policy, the hop parks for approval and nothing executes; the audit chain then verifies clean" width="820">
 </p>
 
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the

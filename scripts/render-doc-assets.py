@@ -132,7 +132,6 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
 # lines or path prefixes, and a trailing "# ..." on a "$" line is a reader's note, never
 # captured output.
 _TEAM = [
-    "$ docket models preset local",
     "$ docket init --recipe secure-build",
     "⋯",
     "→ Provisioning 'software' pod 'myapp' (lead, implementer)...",
@@ -141,17 +140,18 @@ _TEAM = [
     "Apply plan — myapp <- ⋯/templates/recipes/secure-build",
     "  [add] role: security-vetter",
     "  [add] policy: require-approval-secret-writes.yaml",
+    "  [add] skill: security-review",
     "  [add] member: security-vetter",
     "  [add] pipeline: pipeline.yaml",
-    "✓ Applied 4 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
+    "✓ Applied 5 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
     "$ docket pod myapp export                  # the team, written back next to the code",
     "✓ Exported pod 'myapp' to ~/code/myapp/.docket.",
     "$ find .docket -type f | sort",
     ".docket/pipeline.yaml",
     ".docket/pod.yaml",
     ".docket/policies/require-approval-secret-writes.yaml",
-    ".docket/roles/security-vetter.md",
     ".docket/roles/security-vetter.yaml",
+    "⋯",
 ]
 
 _PLAN = [
@@ -173,29 +173,27 @@ _PLAN = [
     "✓ Set verify command for myapp-implementer: "
     "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
     '$ docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"',
-    "✓ Queued for pod 'myapp': [task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6] Fix calc.add so it "
+    "✓ Queued for pod 'myapp': [task-a36c9b20-2eb4-4b06-af17-79080473964e] Fix calc.add so it "
     "returns the sum of a and b",
 ]
 
 _DISPATCH = [
     "$ docket pod myapp dispatch",
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
-    "✓   [task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6] done — 3 hop(s), $0.0000",
-    "$ docket trace agent:myapp:task-efbd46e7-d7ce-4f7a-b787-d6c8abfd3cf6",
-    "  2026-09-27T19:47:54  session_start              (lead)",
+    "✓   [task-a36c9b20-2eb4-4b06-af17-79080473964e] done — 3 hop(s), $0.0000",
+    "$ docket trace agent:myapp:task-a36c9b20-2eb4-4b06-af17-79080473964e",
+    "  2026-10-05T15:08:52  session_start              (lead)",
     "  ⋯",
-    "  2026-09-27T19:48:19  tool_result                (lead)  text=## Plan for Implementer",
+    "  2026-10-05T15:09:32  tool_result                (lead)  text=Found the bug. `calc.add` "
+    "subtracts `b` from `a` instead of adding them. Now I'll dispatch to the Implementer.",
     "  ⋯",
-    "  2026-09-27T19:48:50  tool_result                (implementer)  text=The fix is complete. "
-    "I changed `calc.add` to return `a + b` instead of `a - b`. The verification gate passes",
+    "  2026-10-05T15:10:51  tool_result                (implementer)  text=`<promise>DONE</promise>`",
     "  ⋯",
-    "  2026-09-27T19:49:07  tool_result                (security-vetter)  text=The `calc.py` "
-    "file now correctly implements `add` with `return a + b`.",
-    "⋯",
-    "- **Secrets:** No credentials or secrets in the file.",
+    "  2026-10-05T15:12:01  tool_result                (security-vetter)  text=**Security Review "
+    "Report — calc.add fix**",
     "⋯",
     "APPROVE",
-    "  2026-09-27T19:49:07  session_end                (lead)  status=done",
+    "  2026-10-05T15:12:01  session_end                (lead)  status=done",
 ]
 
 _RECORD = [
@@ -208,15 +206,17 @@ _RECORD = [
     "  Provider:        local  (global, openai-chat)",
     "  Credential:      (none)  (none)",
     "⋯",
-    "  Tools allowed: bash, edit, fetch, glob, grep, read, write",
+    "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write",
     "⋯",
     "│ secure-build-secret-writes │ pre_tool_call │ require_approval │",
     "⋯",
     "  Pipeline:        bound pipeline (hash 45f7aaf31d1f...)",
-    "  Config source:   ⋯/templates/recipes/secure-build  (digest 441848f22bd2..., drift: no)",
+    "  Skills:          security-review (codebase)",
+    "⋯",
+    "  Config source:   ⋯/templates/recipes/secure-build  (digest ec69082e5924..., drift: no)",
     "⋯",
     "$ docket audit verify",
-    "✓ 8 chained line(s) verified clean.",
+    "✓ 7 chained line(s) verified clean.",
 ]
 
 _ISOLATION = [
@@ -228,13 +228,19 @@ _ISOLATION = [
     "  Session Key:       agent:myapp:default",
     "  Project Scope:     default",
     "⋯",
+    "$ docket gates status",
+    "Tool-call gate",
+    "✓ Policy engine + high-risk command classifier: always active",
+    "✓ Workspace isolation: on (default) (consulted by the turn loop; a turn refuses to run rather "
+    "than falling back unsandboxed; docket doctor names the backend)",
+    "Network: open (default) -- a pod's network=none narrows it; docket gates network none",
     "$ git worktree list",
-    "~/code/myapp                                              9b342d3 [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-8d627c86-9a63-4379-beee-ee3b2afff6f7  9b342d3 "
-    "[docket/myapp/task-8d627c86-9a63-4379-beee-ee3b2afff6f7]",
+    "~/code/myapp                                              0150f26 [main]",
+    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-a36c9b20-2eb4-4b06-af17-79080473964e  "
+    "38f4242 [docket/myapp/task-a36c9b20-2eb4-4b06-af17-79080473964e]",
     "$ git status --short                       # your checkout: only the exported team",
     "?? .docket/",
-    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-8d627c86-9a63-4379-beee-ee3b2afff6f7 diff",
+    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-a36c9b20-2eb4-4b06-af17-79080473964e diff main",
     "⋯",
     "@@ -1,2 +1,2 @@",
     " def add(a, b):",
@@ -248,19 +254,23 @@ _GATE = [
     "  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes",
     "  Policy: 'high-risk-deploy' -> require_approval",
     "$ docket pod myapp delegate \\",
-    '    "Publish the fix: run exactly this bash command once and report its output: '
-    'git push origin production"',
+    '    "Publish the fix. Lead: never call the consult tool and do not ask questions, the '
+    "operator already decided; hand this to the implementer as is. Implementer: run exactly this "
+    'bash command once and report its output: git push origin production"',
     "$ docket pod myapp dispatch",
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
-    "✓   [task-d4f97e63-0842-4c79-9e44-5e1df1318f8b] done — 3 hop(s), $0.0000",
+    "⚠   [task-31f81c52-d1fd-481d-a679-6e315a587197] waiting_approval — implementer hop parked "
+    "for approval (token=apr-12f07fc8-d922-4958-9738-8bab58932c2e)",
     "$ docket audit",
     "  ⋯",
-    "  2026-09-27T19:49:30.146Z  demo        tool.ask          tool=bash agent=myapp-implementer "
+    "  2026-10-05T15:12:49.964Z  demo        tool.ask          tool=bash agent=myapp-implementer "
     "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
-    "  2026-09-27T19:51:30.180Z  demo        approval.deny     "
-    "token=apr-e480b929-4092-47c7-a541-4137f438098d project=myapp channel=timeout",
+    "$ docket trace export myapp | grep '\"deny\"'",
+    '{"ts": "2026-10-05T15:12:49Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
+    '"tool": "bash", ⋯ "decision": "deny", "ok": false, "executed": false, "denialKind": '
+    '"approval_parked", "policyId": "high-risk-deploy", ⋯}}',
     "$ docket audit verify",
-    "✓ 8 chained line(s) verified clean.",
+    "✓ 7 chained line(s) verified clean.",
 ]
 
 
