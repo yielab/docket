@@ -198,7 +198,7 @@ validated when written, and is refused loudly when broken. File by file:
   wires external tool servers into the same chokepoint, `--kind read` for read-only roles.
 - **Typed handoffs and context budgets** that follow the resolved model's window, with any
   truncation marked and traced rather than silent; session compaction on the live path.
-- **Opt-in sandboxing** (`docket gates isolate on`, Docker or bwrap) and a deny-by-default `fetch`.
+- **Sandboxing on by default** (bwrap, else Docker), opt-in `gates network none`, deny-by-default `fetch`.
 - **Retention and recovery**: `docket trace expire`, `runs prune`, `conversations prune`; a corrupt
   docket-owned JSON file recovers from its validated backup; `docket doctor --fix` repairs drift.
 - **An embeddable runtime**: the standalone **`docket-runtime`** package (`pydantic` + `filelock`

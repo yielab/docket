@@ -529,7 +529,9 @@ creates `approvals/<id>.json`.
 
 **Network.** `fetch` refuses every host until you allow it:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com`. That makes `fetch` the *inspectable*
-path, not the only one; `bash` can still reach the network through allowlisted interpreters.
+path; by default it is not the only one, since `bash` can still reach the network through
+allowlisted interpreters. `docket gates network none` (or a pod's `network` setting) cuts the
+jail's network, leaving `fetch` as the only path.
 
 **Isolation.** Tools run inside bwrap or Docker unless `docket gates isolate off` recorded an
 explicit opt-out, and a turn is refused when neither is usable. The image is

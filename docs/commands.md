@@ -1098,11 +1098,12 @@ MCP, and Telegram channels.
 Subcommands:
   status (default)  reports that the tool-call gate is always active,
                       plus the workspace-isolation mode
-  isolate on|off    records whether tool execution should run inside a
-                      Docker sandbox. `on` requires docker on PATH --
-                      errors, exit 1, if missing. Enforced on the live
+  isolate on|off    records whether tool execution runs inside a
+                      sandbox (on by default; `off` is the explicit
+                      opt-out). `on` probes bwrap, then docker -- errors,
+                      exit 1, if neither is usable. Enforced on the live
                       turn: with isolation on, DocketDriver runs tools
-                      sandboxed (docker or bwrap), and refuses the whole
+                      sandboxed (bwrap or docker), and refuses the whole
                       turn -- audited as `isolation.refused` -- when no
                       backend is usable, rather than running it
                       unsandboxed.

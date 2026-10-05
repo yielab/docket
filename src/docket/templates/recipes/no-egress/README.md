@@ -15,7 +15,7 @@ exec allowlist leaves open by design.
 `node`, `ruby`, ...) can still reach the network through its own standard library
 (`urllib.request`, `fetch()`, ...) without ever naming a tool this pack recognises -- see
 security-gates.spec.md, "Network egress and the `fetch` tool", and known-true limit 3 in
-`CLAUDE.md`. Closing that gap is `bash` sandboxing or an egress-locked container, not a policy.
+`CLAUDE.md`. Closing that gap is `docket gates network none` (the jail's network is cut; `fetch` stays the allowlisted path), not a policy.
 
 ## Apply it
 

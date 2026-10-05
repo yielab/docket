@@ -44,9 +44,10 @@
 > and truncated, so a claim to weigh and not a verified fact) and the options `approve_once`,
 > `approve_task` (identical calls within one turn only) and `deny`; `--reason` on approve/deny is
 > screened and audited with the answering channel.
-> Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
-> separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
-> every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
+> bwrap/Docker **workspace isolation** is a
+> separate layer on top, **on by default** (`docket gates isolate off` opts out) and consulted by
+> the turn loop: when it's on, every real dispatch hop runs sandboxed if bwrap or docker is
+> available, and if neither is, the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
 > entry — no LLM call, no tool executes). `docket gates status` reports which of the two states
 > applies. See
@@ -163,12 +164,13 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   (fails closed, before the shell even starts) since it runs synchronously with no approver
   reachable mid-hop; a hop's real output is separately scanned for a match on the way through
   the pipeline (flagged, not blocked, by itself).
-- **What this does NOT do:** lock down network egress. `bash` can still reach the network through
-  interpreters and package managers on the curated allowlist (`python3`, `node`, `git clone`, ...)
-  — the `fetch` tool is domain-allowlisted and the *inspectable* path, but not yet the *only* one.
-  Tracked as an open gap, not glossed over. It is also scoped to what docket itself dispatches: a
+- **What this does NOT do by default:** lock down network egress. With the default `network open`,
+  `bash` can still reach the network through interpreters and package managers on the curated
+  allowlist (`python3`, `node`, `git clone`, ...) — the `fetch` tool is domain-allowlisted and the
+  *inspectable* path, but not the only one until you run `docket gates network none`, which cuts
+  the jail's network (verify commands and `run:` steps still run on the host). It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
-- **Only `bash` is jailed.** The command gate above, and the opt-in Docker/bwrap isolation, apply
+- **Only `bash` is jailed.** The command gate above, and the default-on bwrap/Docker isolation, apply
   to `bash` calls. The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
   `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials and policy, not by a sandbox.
 - **A pod can widen its own allowlist** with `docket pod <p> config set allowCommands pytest,uv`
@@ -365,7 +367,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation (bwrap, else Docker) is on by default; `docket gates isolate off` is the audited opt-out, and `docket gates network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
 
 ---
 

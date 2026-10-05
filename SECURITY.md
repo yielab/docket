@@ -73,10 +73,12 @@ line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status`
 while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
 usability, but that no longer means their dangerous invocations are unexamined.
 
-`docket gates isolate on` is a separate, still opt-in layer that additionally confines tool
-execution to a per-agent Docker (or `bwrap`) sandbox. It **fails closed**: with isolation on and no
-usable backend, the turn is refused before any model call or tool execution and the refusal is
-audit-logged, rather than silently running unsandboxed.
+Workspace isolation is a separate layer, **on by default**, that additionally confines `bash`
+to a per-agent `bwrap` (first choice) or Docker sandbox; stdio MCP servers start in the same jail
+unless declared `--no-isolate`. It **fails closed**: with isolation on and no usable backend, the
+turn is refused before any model call or tool execution and the refusal is audit-logged (naming
+`docket gates isolate off` and installing bubblewrap as the two fixes), rather than silently
+running unsandboxed. `docket gates isolate off` is the explicit, audited opt-out.
 
 `docket init --no-gates` and `docket gates enable`/`docket gates disable` only record an
 approval-routing posture flag that `docket doctor` and `docket gates status` report; nothing on the
@@ -115,12 +117,12 @@ status, including what is configured/gated versus what is wired into a live turn
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
 > with exec access on an exposed host is a serious liability. The tool-call gate is always on, but also
-> **enable workspace isolation** (`docket gates isolate on` — it fails closed if no backend is
-> available), use the `keyring` secret
+> **keep workspace isolation on** (the default; it fails closed if no backend is
+> available), consider `docket gates network none`, use the `keyring` secret
 > backend, and never run with broad ambient credentials. Instruction-level constraints alone
-> are *not* sufficient here — and remember network egress is not fully locked down (see below):
-> `bash` can still reach the network through interpreters and package managers on the curated
-> allowlist even with gates on.
+> are *not* sufficient here — and remember network egress is open unless you opt in to
+> `docket gates network none` (see below): otherwise `bash` can still reach the network through
+> interpreters and package managers on the curated allowlist even with gates on.
 
 ## Secret storage
 
@@ -134,12 +136,15 @@ API keys are stored via a pluggable backend (`DOCKET_SECRETS_BACKEND`):
 
 docket is honest about its limits. It does **not**:
 
-- **fully lock down network egress.** `fetch` is domain-allowlisted and refuses everything by
-  default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but `bash` can still reach the
-  network through interpreters and package managers on the curated allowlist (`SAFE_BINS` in
-  `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`). `fetch` is the *inspectable* path,
-  not yet the *only* one. Tracked as an open gap, not glossed over — see `README.md`'s "Known
-  limits".
+- **lock down network egress by default.** `fetch` is domain-allowlisted and refuses everything
+  by default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but with the default
+  `network open`, `bash` can still reach the network through interpreters and package managers on
+  the curated allowlist (`SAFE_BINS` in `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`).
+  `docket gates network none` (or a pod's `network` setting) cuts the *jail's* network, so `bash`
+  and jailed MCP servers lose it and `fetch` becomes the only, inspectable path. It does not
+  cover `verifyCmd` or `run:` steps (they run on the host), anything with isolation off (a turn
+  is refused while `network none` is set), or HTTP MCP servers and `fetch`, which run in docket's
+  own process.
 - sandbox or contain the model endpoint itself, or a remote MCP server's own process — if a
   model or an MCP server is compromised, docket's gates constrain what it can ask docket's
   tools to do, but do not contain the endpoint/server itself;

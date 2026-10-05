@@ -277,7 +277,7 @@ trigger (see §4.5's prioritization rule, D-24, and §7):
 | Multi-tenancy / the tenant axis | **CUT** (D-22, D-24). Trigger to revisit: docket itself serving more than one end customer from one host. |
 | Streaming · browser automation | **CUT** by D-24 — no measured need in *this* system. Use MCP for browser tooling. |
 | OpenTelemetry **SDK** | Still cut (D-24). What Phase 32 (D-48) schedules is a projection of docket's own trace vocabulary to OTLP/HTTP behind a `kind: exporter` document, with zero dependencies; the SDK, OTLP metrics/logs, sampling and context propagation stay out. D-25's two-runtime trigger governs anything beyond that. |
-| Egress lockdown | Deferred (D-23). `fetch` is the inspectable path, not the only one. |
+| Egress lockdown | Shipped as an opt-in mode in Phase 38 (D-55): `docket gates network none`; the default stays open (D-23), and `fetch` remains the inspectable path. |
 | A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
 | Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
 
