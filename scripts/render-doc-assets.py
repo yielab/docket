@@ -229,12 +229,12 @@ _ISOLATION = [
     "  Project Scope:     default",
     "⋯",
     "$ git worktree list",
-    "~/code/myapp                                              125d81a [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64  125d81a "
-    "[docket/myapp/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64]",
+    "~/code/myapp                                              9b342d3 [main]",
+    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-8d627c86-9a63-4379-beee-ee3b2afff6f7  9b342d3 "
+    "[docket/myapp/task-8d627c86-9a63-4379-beee-ee3b2afff6f7]",
     "$ git status --short                       # your checkout: only the exported team",
     "?? .docket/",
-    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-6f1c2a9e-4b7d-4e0a-9c35-8d2f7a1b0c64 diff",
+    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-8d627c86-9a63-4379-beee-ee3b2afff6f7 diff",
     "⋯",
     "@@ -1,2 +1,2 @@",
     " def add(a, b):",

@@ -184,12 +184,32 @@ endpoint called `consult` and showed an approval pack, and a live pod dispatch p
 run"). Reasoning in
 [docs/adr/0018-consultation-packs-and-evidence-v1.md](docs/adr/0018-consultation-packs-and-evidence-v1.md).
 
-**Phase 37 (verification-ready execution, D-54) opened 2026-10-04.** Eight cards over Waves
-82–84: one worktree per task instead of per Implementer, `pre_input` on MCP tool results, the task's
-coordinates as environment for command steps, a `no_progress` stop reason, recipe-declared MCP
-servers, and the `mutation`, `anti-tautology`, `spec-writer`, `cross-family-review` and `code-intel`
-recipes. Re-verifying the outline found two false claims ("recipes, no core change" and "an MCP
-pack as recipes"), corrected in the ADR. Reasoning in
+**Phase 37 (verification-ready execution, D-54) opened 2026-10-04, closed 2026-10-04.** Nine
+cards over Waves 82–84:
+- one git worktree per task, created at claim and recorded on the task, instead of one per
+  Implementer, so a task's evidence counts only its own change;
+- `pre_input` screening of MCP tool results;
+- the task's id and evidence commits as environment for command steps;
+- a `no_progress` stop reason;
+- recipe-declared, pod-scoped MCP servers, which a turn starts in its own root;
+- the `anti-tautology`, `mutation`, `spec-writer`, `cross-family-review` and `code-intel`
+  recipes.
+
+Re-verifying the outline found two false claims ("recipes, no core change" and "an MCP pack as
+recipes"), which the ADR corrects. A live run on the local endpoint dispatched two tasks back to
+back with nothing merged. The second ran in its own worktree, on the new HEAD, and its `diffStat`
+counted only its own change.
+
+Carried to the next phase, by name:
+- the redaction pattern in `core/trace.py` matches `sk=` inside `task=`;
+- finished task worktrees have no retention policy;
+- `fetch` results are not screened;
+- the check recipes read their overrides from the process environment;
+- the four Phase 36 items: the in-process consult registry, the turn scope of `approve_task`,
+  the session key as a single-turn consult's `question.taskId`, and options not rendered in
+  Telegram or channel notifications.
+
+Reasoning in
 [docs/adr/0019-verification-ready-execution.md](docs/adr/0019-verification-ready-execution.md).
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
