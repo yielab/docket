@@ -595,8 +595,13 @@ clarification or decision to its operator.
 5. **Park and re-entry (pod dispatch, P36-8).** A turn run for a dispatch hop (the driver is
    given the task id) sets `ToolContext.consult_park` unless its approval mode is `refuse`
    (`wait` included: a pod hop has no stdin reader). A consult from any role then traces `question_asked`, ends the hop
-   with the `approval_parked` stop (token `consult:<questionId>`) and the hop is persisted
-   `parked`. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
+   with the `approval_parked` stop and the hop is persisted `parked`. The stop's token is
+   `consult:<base64url of the QuestionV11 JSON>`: the question travels in the denial itself
+   (`consult.park_token` writes it, `consult.parked_question` reads it; no in-process registry),
+   so a restart or another process still parks correctly. A `consult:` token whose question
+   cannot be read fails the task with `consult_question_missing`; it never waits as an
+   approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id; the harness
+   run token), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
    (`taskId` = the real task id, `step` = the hop's step id), so the inbox lists it under
    `needsYou` and `docket pod <p> answer`, HTTP, MCP and recipe-harness answers reach it through
    `answer_task` unchanged; `optionId` travels in the answer `content`. `answer_task` validates a
@@ -736,6 +741,7 @@ Each JSONL line is a JSON object with these fields:
 ### Unreleased
 
 - `approve_task` on a parked pod approval grants the same call for the rest of the task, through `taskGrants` (requirement 5a).
+- A parked consult carries its question in the `consult:` token (`consult.park_token`/`parked_question`); the in-process `_PARKED` registry and `take_parked` are deleted, and a consult token with no question fails the task `consult_question_missing` instead of waiting as an approval (Consult 5).
 - `core.inbox.task_view` populates `question` and `brief`; before, no inbox view or notification ever carried them (Notifications 11).
 - Notifications item 11: `conversation`-level events carry a consult question's `options` and
   `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.

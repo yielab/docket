@@ -331,7 +331,7 @@ elicitation result shape) to this process's stdin, while the run is live. The re
    An unknown `optionId`, or one that contradicts the action, is ignored with one stderr line and
    the approval stays pending. Under contract 1.1 `approval_requested` carries `rationale` and
    `options`; under 1.0 they are omitted, so the 1.0 stream is unchanged.
-9. **Consult questions (P36-7, contract 1.1).** A `consult` tool call (operator-loop spec,
+9. **Consult questions (P36-7, contract 1.1).** The question's `taskId` is the run token. A `consult` tool call (operator-loop spec,
    "Consult") under `--answers stdin` emits a `question_asked` event whose payload is
    `{questionId, kind, mode, question}`, `question` being the `QuestionV11` on the wire. A
    `questionId` line whose id is that waiting call's is routed to it, not to a recipe run's open
@@ -438,6 +438,7 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
 ### Unreleased
 
 - Requirement 8 wording: `approve_task` under the harness lasts the single run; the pod-task meaning is operator-loop 5a.
+- A harness consult's `question.taskId` is the run token (`ToolContext.task_id`, set through `DOCKET_TASK_ID`), not the session key (Section 5 item 9).
 
 ### Version 1.5.0 (2026-10-04)
 

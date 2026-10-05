@@ -14,6 +14,7 @@ import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
 from docket.core import answers as _answers
+from docket.core import consult as _consult_mod
 from docket.core import corrections as _corrections
 from docket.core import dispatch as _dispatch
 from docket.core import harness_pipeline as hp
@@ -154,6 +155,16 @@ class TestPark:
         assert [o["id"] for o in data["options"]] == ["redis", "sqlite"]
         assert data["recommendation"] == {"optionId": "sqlite"}
         assert "options" not in _notify.render_data(item, "minimal")
+
+    def test_a_consult_token_with_no_question_fails_the_task_with_a_named_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_consult_mod, "parked_question", lambda token: None)
+        run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
+
+        task = _task(run)
+        assert task["status"] == "failed"
+        assert "consult_question_missing" in json.dumps(task)
 
     def test_refuse_still_fails_the_task_blocked(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

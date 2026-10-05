@@ -40,6 +40,7 @@ from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
+    DOCKET_TASK_ID,
     DOCKET_TURN_TOKEN_BUDGET,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
@@ -434,6 +435,7 @@ class DocketDriver:
         max_consultations = _max_consultations(
             agent_id, tool_env.pop(DOCKET_MAX_CONSULTATIONS, None)
         )
+        env_task_id = tool_env.pop(DOCKET_TASK_ID, None) or ""
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
@@ -467,6 +469,7 @@ class DocketDriver:
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
             consult_park=trace_task_id is not None,
+            task_id=trace_task_id or env_task_id,
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,

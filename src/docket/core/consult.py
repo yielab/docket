@@ -13,6 +13,7 @@ Tool-visible failures are ordinary error results, never exceptions, so the model
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import datetime as _dt
 import json
@@ -62,11 +63,30 @@ class ConsultUnavailable(Exception):
     """Nobody can answer this consultation (``refuse``/``park``); the turn ends blocked."""
 
 
-class ConsultParked(ConsultUnavailable):
-    """Pod dispatch parks this consultation's task; the question is read back by id."""
+def park_token(question: QuestionV11) -> str:
+    """The approval token a parked consult stops with: the question itself, encoded. The only
+    place the encoding is written; ``parked_question`` is the only reader."""
+    body = json.dumps(question.model_dump(by_alias=True, mode="json"), separators=(",", ":"))
+    return PARK_TOKEN_PREFIX + base64.urlsafe_b64encode(body.encode()).decode()
 
-    def __init__(self, question_id: str) -> None:
-        self.question_id = question_id
+
+def parked_question(token: str) -> QuestionV11 | None:
+    """The question a ``park_token`` carries, or ``None`` when *token* holds none."""
+    if not token.startswith(PARK_TOKEN_PREFIX):
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token[len(PARK_TOKEN_PREFIX) :].encode())
+        return QuestionV11.model_validate(json.loads(raw))
+    except ValueError:
+        return None
+
+
+class ConsultParked(ConsultUnavailable):
+    """Pod dispatch parks this consultation's task; the question rides in ``token``."""
+
+    def __init__(self, question: QuestionV11) -> None:
+        self.question = question
+        self.token = park_token(question)
         super().__init__("consultation parked for an operator answer")
 
 
@@ -79,7 +99,6 @@ class _Waiter:
 _LOCK = threading.Lock()
 _WAITING: dict[str, _Waiter] = {}
 _READERS = 0
-_PARKED: dict[str, QuestionV11] = {}
 
 
 @contextlib.contextmanager
@@ -103,12 +122,6 @@ def release_all() -> None:
         waiters = list(_WAITING.values())
     for waiter in waiters:
         waiter.answers.put(None)
-
-
-def take_parked(question_id: str) -> QuestionV11 | None:
-    """The question a parked consult left for dispatch (removed), or ``None`` if unknown."""
-    with _LOCK:
-        return _PARKED.pop(question_id, None)
 
 
 def is_waiting(question_id: str) -> bool:
@@ -163,7 +176,7 @@ def build_question(args: dict[str, Any], ctx: ToolContext) -> QuestionV11:
     return QuestionV11.model_validate(
         {
             "id": new_question_id(),
-            "taskId": ctx.session_key or ctx.agent_id,
+            "taskId": ctx.task_id or ctx.session_key or ctx.agent_id,
             "pod": ctx.project,
             "step": ctx.role or "consult",
             "message": args.get("message"),
@@ -237,9 +250,7 @@ def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     ctx.consult_count += 1
     if ctx.consult_park and ctx.approval_mode != "refuse":
         _trace_question(question, ctx)
-        with _LOCK:
-            _PARKED[question.id] = question
-        raise ConsultParked(question.id)
+        raise ConsultParked(question)
     if ctx.approval_mode != "wait":
         _trace_question(question, ctx)
         raise ConsultUnavailable("a consultation needs an operator answer and none can be given")

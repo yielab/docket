@@ -1714,7 +1714,7 @@ def _parked_consult_question(
     task like an input step's), or ``None`` when *token* is not a consultation's."""
     if token is None or not token.startswith(_consult.PARK_TOKEN_PREFIX):
         return None
-    question = _consult.take_parked(token[len(_consult.PARK_TOKEN_PREFIX) :])
+    question = _consult.parked_question(token)
     if question is None:
         return None
     question.task_id = ctx.task_id
@@ -1784,6 +1784,13 @@ def _persist_hop_and_trace(
                 hops=[hop],
                 reason=f"{role} hop parked a consultation (question={consult_question['id']})",
                 question=consult_question,
+            )
+        if parked_token is not None and parked_token.startswith(_consult.PARK_TOKEN_PREFIX):
+            # No approval record can resolve a consult token, so parking on it would be stuck.
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=f"{role} hop failed: consult_question_missing (the parked consultation carried no question)",
             )
         if parked_token is not None:
             # Reuses the pre-hop gate's own event type (core/trace.py's

@@ -90,6 +90,8 @@ def test_consult_answered_by_question_id_reaches_the_model_and_every_line_valida
     document = json.loads(_QUESTION.read_text(encoding="utf-8"))
     Draft202012Validator(document).validate(payload["question"])
     assert payload["question"]["kind"] == "decision"
+    assert payload["question"]["taskId"] == asked["token"]
+    assert not payload["question"]["taskId"].startswith("agent:")
     assert [o["id"] for o in payload["question"]["options"]] == ["redis", "sqlite"]
 
     # The chosen option, not the recommended one, is what the model's next request carries.

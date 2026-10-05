@@ -77,6 +77,10 @@ DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
 # `maxConsultationsPerTask` setting (default 3).
 DOCKET_MAX_CONSULTATIONS = "DOCKET_MAX_CONSULTATIONS"
 
+# Same route again: the task id (a harness run token) this turn serves when the caller is not
+# a pod dispatch hop. Popped by DocketDriver into ToolContext.task_id; a hop's own task id wins.
+DOCKET_TASK_ID = "DOCKET_TASK_ID"
+
 
 @dataclass
 class TurnResult:

@@ -34,6 +34,7 @@ from docket.core.dispatch import DispatchError
 from docket.core.operator_contract import QuestionV11
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
+    DOCKET_TASK_ID,
     DOCKET_TURN_TOKEN_BUDGET,
     TurnResult,
     UsageReport,
@@ -522,6 +523,7 @@ def _run(args: list[str]) -> int:
     driver = _dr.default_driver()
     # --answers stdin waits for the caller's answer line; otherwise nobody can answer.
     env = {DOCKET_APPROVAL_MODE: "wait" if answers_raw == "stdin" else "refuse"}
+    env[DOCKET_TASK_ID] = token
     if max_tokens is not None:
         env[DOCKET_TURN_TOKEN_BUDGET] = str(max_tokens)
     written = harness.WrittenFiles()

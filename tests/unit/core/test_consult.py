@@ -201,10 +201,34 @@ class TestRefuse:
     def test_pod_dispatch_parks_a_consult_and_leaves_its_question_for_dispatch(self) -> None:
         result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
         assert result.denial_kind == "approval_parked"
-        qid = result.approval_token.removeprefix(_consult.PARK_TOKEN_PREFIX)
-        question = _consult.take_parked(qid)
+        question = _consult.parked_question(result.approval_token)
         assert question is not None and question.kind == "decision"
-        assert _consult.take_parked(qid) is None
+        assert not hasattr(_consult, "take_parked")
+
+    def test_the_question_survives_the_real_error_string_and_dispatch_parser(self) -> None:
+        from docket.core import agent_loop as _loop
+        from docket.core import dispatch as _dispatch
+
+        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        error = _loop.approval_parked_error(result)
+        token = _dispatch._parked_approval_token(error)
+        assert token == result.approval_token
+        assert token is not None
+        question = _consult.parked_question(token)
+        assert question is not None and question.id == _consult.parked_question(token).id  # type: ignore[union-attr]
+        assert [o.id for o in question.options] == [o["id"] for o in _args()["options"]]
+
+    def test_a_token_without_a_question_yields_none(self) -> None:
+        assert _consult.parked_question("consult:q_abc") is None
+        assert _consult.parked_question("approval-1") is None
+
+    def test_question_task_id_prefers_the_context_task_id(self) -> None:
+        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True, task_id="run-7"))
+        question = _consult.parked_question(result.approval_token)
+        assert question is not None and question.task_id == "run-7"
+        bare = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        fallback = _consult.parked_question(bare.approval_token)
+        assert fallback is not None and fallback.task_id == "agent:a1:default"
 
     def test_refuse_wins_over_pod_dispatch_parking(self) -> None:
         result = _call(_args(), _ctx(approval_mode="refuse", consult_park=True))
