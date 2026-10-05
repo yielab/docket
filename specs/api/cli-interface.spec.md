@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.61.0
+**Version**: 1.62.0
 **Status**: Complete
 **Last Updated**: 2026-10-05
 
@@ -1275,7 +1275,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
-### Unreleased
+### Version 1.62.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `docket doctor` (human and `--json`) probes the docker jail image for `git` when docker is the backend in use and warns with `DOCKET_SANDBOX_IMAGE=<an image with git>`.
 - `docket doctor` (human and `--json`) shows unjailed MCP servers (isolate: false) from global and per-pod registries with pod context.

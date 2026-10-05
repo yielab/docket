@@ -1,6 +1,6 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below.
@@ -435,7 +435,9 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
 
 ## Changelog
 
-### Unreleased
+### Version 1.6.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - Requirement 8 wording: `approve_task` under the harness lasts the single run; the pod-task meaning is operator-loop 5a.
 - A harness consult's `question.taskId` is the run token (`ToolContext.task_id`, set through `DOCKET_TASK_ID`), not the session key (Section 5 item 9).

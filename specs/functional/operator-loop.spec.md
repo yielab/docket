@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-04
 
@@ -740,7 +740,9 @@ Each JSONL line is a JSON object with these fields:
 
 ## Changelog
 
-### Unreleased
+### Version 1.2.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `approve_task` on a parked pod approval grants the same call for the rest of the task, through `taskGrants` (requirement 5a).
 - A parked consult's question is persisted under `CONSULT_PARKED_DIR` and named by the `consult:<id>` token (`consult.park_token`/`parked_question`); the in-process `_PARKED` registry and `take_parked` are deleted, and a consult token with no question fails the task `consult_question_missing` instead of waiting as an approval (Consult 5).

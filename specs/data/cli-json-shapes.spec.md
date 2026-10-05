@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.18.0
+**Version**: 1.19.0
 **Status**: Complete
 **Last Updated**: 2026-10-05
 
@@ -489,7 +489,9 @@ reflected in code fails CI.
 
 ## Changelog
 
-### Unreleased
+### Version 1.19.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `doctor --json` `securityGates.dockerImageHasGit`: boolean or null, the docker jail image's `git` probe.
 - `doctor --json` `securityGates.unjailedMcpServers`: array of {name, pod} for servers with isolate: false.

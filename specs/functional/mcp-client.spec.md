@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -613,7 +613,9 @@ dispatch_tool(
 
 ## Changelog
 
-### Unreleased
+### Version 1.9.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - Requirement 40 updated: unjailed MCP servers (isolate: false) are now shown by `docket doctor --json`, `docket config explain --json`, and `docket recipes show --json`.
 

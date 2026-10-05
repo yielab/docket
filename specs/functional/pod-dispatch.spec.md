@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.30.0
+**Version**: 6.31.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -2019,7 +2019,9 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ## Changelog
 
-### Unreleased
+### Version 6.31.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - Task record gains `taskGrants` (an `approve_task` grant on a parked approval, at most 20, minted into one single-use pre-grant per later hop, dropped at a terminal status); see operator-loop requirement 5a.
 - A command step's `env` reaches its process under the task coordinates and never the trace ("Conditional steps and command steps" 4).

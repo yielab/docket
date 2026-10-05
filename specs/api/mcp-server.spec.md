@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented
 **Last Updated**: 2026-10-03
 
@@ -395,7 +395,9 @@ concern, not docket's — see Scope above).
 
 ## Changelog
 
-### Unreleased
+### Version 1.9.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `approvals_grant` takes an optional `option` (`approve_task` grants the call task-wide, operator-loop 5a).
 

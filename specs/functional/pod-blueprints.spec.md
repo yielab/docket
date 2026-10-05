@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.23.0
+**Version**: 1.24.0
 **Status**: Implemented
 **Last Updated**: 2026-10-05
 
@@ -540,7 +540,9 @@ $ docket init myproj --blueprint wizard-pod
 
 ## Changelog
 
-### Unreleased
+### Version 1.24.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `anti-tautology` and `mutation` declare their overridable names (with defaults) as the step's `env:`; their READMEs say a pod edits the step to override them.
 

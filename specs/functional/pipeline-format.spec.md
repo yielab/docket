@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -649,7 +649,9 @@ steps:
 
 ## Changelog
 
-### Unreleased
+### Version 2.12.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - A `run` command step may declare `env: {NAME: "value"}` (names `^[A-Z][A-Z0-9_]*$`; reserved and credential names refused; refused on every other step kind).
 

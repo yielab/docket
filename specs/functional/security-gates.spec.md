@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.32.0
+**Version**: 0.33.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1558,7 +1558,9 @@ $ git clone https://anywhere.example/repo.git
 
 ## Changelog
 
-### Unreleased
+### Version 0.33.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - A jailed command receives the operator's git identity (`system.git_identity_env`), so a jailed commit works when identity comes from the environment or a non-default `HOME`, and under docker (Exec sandbox 6); found by the Waves 89-90 live run.
 - Requirement 4 (docker image): the docker jail needs `DOCKET_SANDBOX_IMAGE` to carry `git` to commit; `docket doctor` probes and warns; the docker jail's commit and `network none` are proven against real docker.

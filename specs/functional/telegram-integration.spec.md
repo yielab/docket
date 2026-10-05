@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
 discovers a Telegram group from a one-time `/wire <code>` message (with manual entry as a
 fallback), records its binding in `fleet.json`, and `docket serve
@@ -338,7 +338,9 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
 
 ## Changelog
 
-### Unreleased
+### Version 2.4.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `/approve <token> task` grants a parked call for the rest of its task (Command grammar 1a).
 - `/answer <task> <option-id>` picks an option of a consult question (`optionId`).

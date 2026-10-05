@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Stable
 **Last Updated**: 2026-10-04
 
@@ -771,7 +771,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Changelog
 
-### Unreleased
+### Version 3.2.0 (2026-10-05)
+
+Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
 - `POST /approvals/<token>` accepts `option: approve_task` on a grant (operator-loop 5a).
 - Run cancellation note: a second serve stop signal requests cancellation of sweep runs.
