@@ -12,6 +12,7 @@ import pytest
 from tests.unit.core.test_mcp_tools import _final, _ScriptedBackend, _write_meta
 
 import docket.core.mcp_tools as _mt
+from docket.core import fleet as _fleet
 from docket.core.tools import ToolContext, ToolOutcome, ToolRegistry
 from docket.edges.adapters import mcp_client as _client
 from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
@@ -93,6 +94,7 @@ def test_load_mcp_tools_hands_the_root_to_listing_and_calls() -> None:
 
 
 def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
+    _fleet.disable_sandbox_isolation()
     code = tmp_path / "code"
     code.mkdir()
     _write_meta("impl-1", role="implementer", codebase=str(code))
@@ -103,9 +105,10 @@ def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
         return []
 
     backend = _ScriptedBackend([_final("done")])
-    DocketDriver(backend_factory=lambda model: backend, mcp_loader=_loader).run_turn(
+    res = DocketDriver(backend_factory=lambda model: backend, mcp_loader=_loader).run_turn(
         "impl-1", "agent:impl-1:default", "go", 30
     )
+    assert res.ok, res.error
     assert got["cwd"] == str(code)
 
 

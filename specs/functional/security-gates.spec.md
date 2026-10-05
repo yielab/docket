@@ -169,6 +169,9 @@ are owned here, not there.
    the choice. The jail mounts the git dir and common dir of every root that is inside a git
    repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
    `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
+   The repository's `hooks/` and `config`, and the worktree's `config.worktree`, are re-bound
+   read-only on top (bwrap `--ro-bind`, docker `:ro`): a writable hook or config (`core.hooksPath`,
+   `core.fsmonitor`) would run attacker-chosen code on the operator's next unjailed git command.
 
 ### Enablement (implemented; corrected for P19-7b)
 
@@ -1521,7 +1524,8 @@ $ git clone https://anywhere.example/repo.git
 - **File-tool containment — symlinks (Phase 38, D-55, ADR 0020 §6).** New "File-tool containment — symlinks" section: `glob_files` and `grep_files` skip symlinks that resolve outside the allowed roots during a walk; `write` and `edit` refuse a final-component symlink target that points outside; symlinks pointing inside the root continue to work. Closes the gap where a symlink met during a walk could reach outside the roots.
 - **P38-3.** Isolation is on by default (explicit off recorded by `gates isolate off`),
   `sandbox_availability` prefers bwrap over docker, the jail mounts git dirs read-write so it can
-  commit, `doctor` reports the backend, and the refusal names both fixes (Workspace isolation 3-4).
+  commit, `doctor` reports the backend, and the refusal names both fixes (Workspace isolation 3-4); the git hooks and config stay read-only inside the jail; the legacy
+  `isolationEnabled` field is gone (the recorded `isolationMode` is the only source).
 
 ### Version 0.31.0 (2026-10-04)
 

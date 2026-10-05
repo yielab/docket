@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
@@ -32,6 +32,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod("demo", ("lead", "implementer", "reviewer"), codebase="/src/demo")
     return home
 

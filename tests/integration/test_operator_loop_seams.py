@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -54,6 +54,7 @@ def _seed_pod(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
     return home
 
@@ -224,6 +225,7 @@ class TestChannelContentLevelEnforcedAtDelivery:
         both subscribed to the same approval event: the canary command line must be absent
         from the wire at `minimal` and present at `actions`."""
         repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        record_isolation_off(tmp_path / ".docket")
         canary = "git push origin CANARY_a1b2c3d4e5f6"
         _secrets.save_secrets({"WEBHOOK_SECRET": "whsec_dGVzdHNlY3JldGtleQ=="})
 

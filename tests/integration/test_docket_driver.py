@@ -1619,7 +1619,7 @@ def _probe_call_response() -> ChatResponse:
 
 
 class TestIsolationWiring:
-    """`docket gates isolate on` writes `security.isolationEnabled` to fleet.json;
+    """`docket gates isolate on` writes `security.isolationMode` to fleet.json;
     `DocketDriver.run_turn` resolves it via `_resolve_sandbox`, so isolation ON is no longer
     silently indistinguishable from OFF on the live turn path."""
 

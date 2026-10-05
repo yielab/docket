@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 from tests.fakes import FakeDriver
 
 import docket.config as _cfg
@@ -59,6 +59,7 @@ def _seed_pod(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
     return home
 
@@ -1152,6 +1153,7 @@ class TestSweepDoesNotStallOnAParkedPod:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         repoint_docket_home(monkeypatch, home)
+        record_isolation_off(home)
         _pod.build_pod("alpha", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/alpha")
         _pod.build_pod("beta", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/beta")
         install_policies()
@@ -1540,6 +1542,7 @@ class TestPodDispatchCliPrologue:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         repoint_docket_home(monkeypatch, home)
+        record_isolation_off(home)
 
         _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
         _dispatch.enqueue_task("rsch", "look into it")

@@ -194,6 +194,20 @@ class TestArgvShape:
         mounts = [docker[i + 1] for i, a in enumerate(docker) if a == "-v"]
         assert f"{gitdir}:{gitdir}" in mounts and f"{common}:{common}" in mounts
 
+    def test_git_hooks_and_config_are_overlaid_read_only(self, tmp_path: Path) -> None:
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+        common = (main / ".git").resolve()
+        argv = system.bwrap_argv((wt,), "true")
+        ro = [argv[i + 1] for i, a in enumerate(argv) if a == "--ro-bind"][1:]
+        assert ro == [str(common / "hooks"), str(common / "config")]
+        assert argv.index("--ro-bind", argv.index("--bind")) > argv.index("--bind")
+        docker = system.docker_run_argv("c", (wt,), "true", None)
+        assert f"{common}/hooks:{common}/hooks:ro" in docker
+
     def test_a_root_outside_any_repo_gains_no_extra_mounts(self, workspace: Path) -> None:
         argv = system.bwrap_argv((workspace,), "true")
         assert argv.count("--bind") == 1
@@ -488,3 +502,39 @@ class TestJailedCommit:
         denied = toolbox.run_bash((wt,), f"echo x > {outside}/leak", sandbox="auto")
         assert not denied.ok
         assert not (outside / "leak").exists()
+
+    @needs_bwrap
+    def test_the_jail_cannot_plant_a_hook_or_a_config_the_host_would_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+        common = main / ".git"
+        ident = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+
+        commit = toolbox.run_bash(
+            (wt,), "echo x > f && git add f && git commit -q -m ok", env=ident, sandbox="auto"
+        )
+        assert commit.ok, commit.error or commit.content
+
+        hook = toolbox.run_bash((wt,), f"echo x > {common}/hooks/post-checkout", sandbox="auto")
+        assert not hook.ok
+        assert not (common / "hooks" / "post-checkout").exists()
+
+        cfg = toolbox.run_bash((wt,), "git config core.hooksPath /tmp/x", sandbox="auto")
+        assert not cfg.ok
+        host = subprocess.run(
+            ["git", "-C", str(main), "config", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+        )
+        assert host.stdout.strip() == ""

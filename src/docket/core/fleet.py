@@ -60,7 +60,6 @@ class FleetSecurity(BaseModel):
 
     model_config = _LENIENT
 
-    isolation_enabled: bool = Field(False, alias="isolationEnabled")
     # 'unset' (no recorded choice: isolated by default) | 'off' | a sandbox mode string.
     isolation_mode: str = Field("unset", alias="isolationMode")
 
@@ -247,16 +246,10 @@ def get_isolation_state(cfg: FleetConfig | None = None) -> str:
     return "off" if mode == "off" else "on"
 
 
-def get_isolation_mode() -> str:
-    """Return the fleet's sandbox isolation mode ('unset' if never configured)."""
-    return load_fleet().security.isolation_mode
-
-
 def set_sandbox_isolation(mode: str = "non-main") -> None:
     """Write the fleet's sandbox isolation mode."""
     cfg = load_fleet()
     cfg.security.isolation_mode = mode
-    cfg.security.isolation_enabled = mode not in ("off", "unset")
     _save_fleet(cfg)
 
 
@@ -264,7 +257,6 @@ def disable_sandbox_isolation() -> None:
     """Set the fleet's sandbox isolation mode to 'off'."""
     cfg = load_fleet()
     cfg.security.isolation_mode = "off"
-    cfg.security.isolation_enabled = False
     _save_fleet(cfg)
 
 

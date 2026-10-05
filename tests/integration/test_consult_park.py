@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 from docket.core import answers as _answers
 from docket.core import corrections as _corrections
@@ -43,6 +43,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
 
 
 class _Backend:

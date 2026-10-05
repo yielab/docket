@@ -531,9 +531,10 @@ creates `approvals/<id>.json`.
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com`. That makes `fetch` the *inspectable*
 path, not the only one; `bash` can still reach the network through allowlisted interpreters.
 
-**Isolation.** `docket gates isolate on` runs tools inside Docker or bwrap, and refuses the turn
-when neither is usable. The image is `DOCKET_SANDBOX_IMAGE`. This sets `isolationEnabled` in
-`fleet.json`, the only `security` flag the live path enforces.
+**Isolation.** Tools run inside bwrap or Docker unless `docket gates isolate off` recorded an
+explicit opt-out, and a turn is refused when neither is usable. The image is
+`DOCKET_SANDBOX_IMAGE`. The choice is `isolationMode` in `fleet.json`, the only `security` flag
+the live path enforces.
 
 ### 3.7 Give agents external tools (MCP)
 
@@ -1064,7 +1065,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
-| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationEnabled,isolationMode}` | init, `wire`, `gates` | isolation (`isolationEnabled`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
+| `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode}` | init, `wire`, `gates` | isolation (`isolationMode`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `models provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `models provider add/remove/export`. Malformed entries are named by `docket doctor`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |

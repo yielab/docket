@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.conftest import record_isolation_off
 
 SUBJECT = "docket.cli._harness"
 
@@ -166,7 +167,11 @@ def llm_server() -> Iterator[Any]:
 # ── subprocess plumbing ───────────────────────────────────────────────────────
 
 
-def _child_env(home: Path, base_url: str | None, **overrides: str) -> dict[str, str]:
+def _child_env(
+    home: Path, base_url: str | None, isolation_off: bool = True, **overrides: str
+) -> dict[str, str]:
+    if isolation_off:
+        record_isolation_off(home)
     env = os.environ.copy()
     env.pop("DOCKET_HOME", None)
     env["DOCKET_HOME"] = str(home)
@@ -326,7 +331,7 @@ class TestContract11Run:
     def test_an_unrecognized_contract_refuses_with_no_partial_output(self, tmp_path: Path) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
             [
@@ -648,7 +653,7 @@ class TestWrittenPathsAndLimits:
         (tmp_path / "p.json").write_text("{}")
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
         args = [a.replace("{tmp}", str(tmp_path)) for a in extra]
 
         proc = _run_harness(
@@ -667,7 +672,7 @@ class TestWrittenPathsAndLimits:
     def test_max_tokens_must_be_a_positive_integer(self, tmp_path: Path, value: str) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(_contract_11_args(workspace, "--max-tokens", value), env)
 
@@ -893,7 +898,7 @@ class TestRefused:
     def test_default_docket_home(self, tmp_path: Path) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(_real_default_home(), "http://127.0.0.1:1/v1")
+        env = _child_env(_real_default_home(), "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
             ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
@@ -1333,7 +1338,7 @@ class TestAnswersOnStdin:
     def test_answer_flags_need_contract_1_1(self, tmp_path: Path, extra: list[str]) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
             ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x", *extra],
@@ -1349,7 +1354,7 @@ class TestAnswersOnStdin:
     def test_answers_stdin_refuses_a_task_file_that_reads_stdin(self, tmp_path: Path) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
             [
@@ -1543,7 +1548,7 @@ class TestRecipeRun:
     def test_recipe_with_role_is_a_usage_error(self, tmp_path: Path) -> None:
         workspace = tmp_path / "ws"
         workspace.mkdir()
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
+        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness([*_recipe_args(workspace, "tdd"), "--role", "reviewer"], env)
 

@@ -199,3 +199,19 @@ def register_local_provider(
                 }
             )
         )
+
+
+def record_isolation_off(home: Path) -> None:
+    """Record an explicit isolation opt-out in *home*'s fleet.json, merging into any existing file.
+
+    Isolation is on by default, so a test that runs real tool calls without a jail says so here
+    in its own fixture rather than depending on which sandbox backend the host happens to have.
+    """
+    import json
+
+    home.mkdir(parents=True, exist_ok=True)
+    path = home / "fleet.json"
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data.setdefault("security", {})["isolationMode"] = "off"
+    path.write_text(json.dumps(data))
+    path.chmod(0o600)

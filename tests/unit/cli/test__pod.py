@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 import typer
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 from tests.fakes import FakeDriver
 
 import docket.config as _cfg
@@ -47,6 +47,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "d
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return home
 
@@ -405,6 +406,7 @@ class TestPodExplain:
 
     def test_no_pod_is_an_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         repoint_docket_home(monkeypatch, tmp_path / ".docket")
+        record_isolation_off(tmp_path / ".docket")
         with pytest.raises(typer.Exit):
             _pod._pod_explain("nope", ["interruptions"])
 

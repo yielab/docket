@@ -84,7 +84,7 @@ def test_memory_smoke_delegation_routes_private_context_only_through_typed_hando
 def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.conftest import repoint_docket_home
+    from tests.conftest import record_isolation_off, repoint_docket_home
     from typer.testing import CliRunner
 
     from docket.cli import _pod, app
@@ -97,6 +97,7 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod(
         "smoke",
         ("lead", "implementer", "reviewer", "tester"),

@@ -228,14 +228,23 @@ def git_dirs(root: Path) -> list[Path]:
     return out
 
 
-def _mount_dirs(roots: tuple[Path, ...]) -> list[str]:
-    """Resolved roots followed by any repository dirs they need, de-duplicated, order kept."""
-    dirs: list[str] = []
+def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
+    """Read-write mounts (roots plus their repository dirs) and the read-only overlays on top.
+    Hooks and config stay read-only: a writable one lets a jailed agent plant code that the
+    operator's next host-side git command would run unjailed."""
+    rw: list[str] = []
+    ro: list[str] = []
     for root in roots:
-        for path in [root.resolve(), *git_dirs(root)]:
-            if str(path) not in dirs:
-                dirs.append(str(path))
-    return dirs
+        dirs = git_dirs(root)
+        for path in [root.resolve(), *dirs]:
+            if str(path) not in rw:
+                rw.append(str(path))
+        if dirs:
+            gitdir, common = dirs[0], dirs[-1]
+            for guarded in (common / "hooks", common / "config", gitdir / "config.worktree"):
+                if guarded.exists() and str(guarded) not in ro:
+                    ro.append(str(guarded))
+    return rw, ro
 
 
 def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
@@ -259,8 +268,11 @@ def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
         "--dev",
         "/dev",
     ]
-    for resolved in _mount_dirs(roots):
+    rw, ro = _mount_dirs(roots)
+    for resolved in rw:
         argv += ["--bind", resolved, resolved]
+    for guarded in ro:
+        argv += ["--ro-bind", guarded, guarded]
     argv += ["--", "/bin/sh", "-c", command]
     return argv
 
@@ -281,8 +293,11 @@ def docker_run_argv(
         "--user",
         f"{os.getuid()}:{os.getgid()}",
     ]
-    for resolved in _mount_dirs(roots):
+    rw, ro = _mount_dirs(roots)
+    for resolved in rw:
         argv += ["-v", f"{resolved}:{resolved}"]
+    for guarded in ro:
+        argv += ["-v", f"{guarded}:{guarded}:ro"]
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]

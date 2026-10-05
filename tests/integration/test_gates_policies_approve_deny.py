@@ -173,7 +173,6 @@ class TestGatesIsolate:
         # Isolation mode lives in fleet.json.
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
-        assert fleet["security"]["isolationEnabled"] is True
         assert "Sandbox isolation on" in out
 
     def test_isolate_off(

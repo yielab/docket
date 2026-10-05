@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import mcp_tools as _mt
@@ -35,6 +35,7 @@ SUBJECT = "docket.core.mcp_tools"
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repoint_docket_home(monkeypatch, tmp_path / "docket")
+    record_isolation_off(tmp_path / "docket")
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 

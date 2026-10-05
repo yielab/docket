@@ -1774,6 +1774,7 @@ def _run(
             print("[check] realistic checkout fixture committed before worktree provisioning")
 
         run_cli("init", "--from", str(pod_spec))
+        run_cli("gates", "isolate", "off")
         fleet = _load_json(home / "fleet.json")
         project_agents = [
             agent
@@ -2297,6 +2298,7 @@ def _run_operator_loop_scenario(
             _configure_live_model(repo, env, live)
         run_cli("init", "--from", str(alpha_spec))
         run_cli("init", "--from", str(beta_spec))
+        run_cli("gates", "isolate", "off")
         run_cli("pod", "alpha", "apply", "prod-approval")
         run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")

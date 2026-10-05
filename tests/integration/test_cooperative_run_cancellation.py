@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -35,6 +35,7 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
     return home
 
@@ -154,6 +155,7 @@ def test_returned_cancelled_task_terminalizes_the_run(
     home = tmp_path / ".docket"
     home.mkdir()
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
     run = _runs.create_run("cli", "demo")
     result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
 
@@ -226,6 +228,7 @@ def test_docket_runs_cancel_reaches_a_real_bash_sleep(
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
+    record_isolation_off(home)
 
     codebase = tmp_path / "codebase"
     codebase.mkdir()
