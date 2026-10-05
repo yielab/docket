@@ -161,7 +161,8 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
     "securityGates": {
       "toolCallGate": "always-on",
       "isolation": "string ('on (default)' | 'on' | 'off')",
-      "sandboxBackend": "string ('bwrap' | 'docker' | 'none')"
+      "sandboxBackend": "string ('bwrap' | 'docker' | 'none')",
+      "network": "string ('open' | 'none'; the global mode)"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
   }
@@ -313,6 +314,7 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
     "credential": { "name": "string (may be empty)", "source": "override | env | store | none" },
     "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "source": "row | none" }
   },
+  "network":   { "mode": "open | none", "scope": "default | global | pod" },
   "prompt": {
     "budgetTokens": "number",
     "budgetSource": "env | window | default",
@@ -484,6 +486,11 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Unreleased
+
+- `doctor --json` `securityGates.network`; `config explain --json` `network {mode, scope}`;
+  `podSettings` gains the `network` key.
 
 ### Version 1.17.0 (2026-10-03)
 

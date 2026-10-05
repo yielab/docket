@@ -264,6 +264,42 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]
     return False, refusal
 
 
+def _resolve_network(
+    agent_id: str, role: str, want_sandbox: bool
+) -> tuple[bool, TurnResult | None]:
+    """``(network_allowed, refusal)`` for this turn. Mode ``none`` needs the jail to enforce it,
+    so with isolation off the turn is refused up front and audited (``network.refused``)."""
+    mode, scope = _pod.effective_network(_pod.pod_of(agent_id))
+    if mode == "open":
+        return True, None
+    if want_sandbox:
+        return False, None
+    audit_log("network.refused", f"agent={agent_id} role={role or '?'} scope={scope}")
+    setting = "'docket gates network none'" if scope == "global" else "the pod's network=none"
+    return False, TurnResult(
+        False,
+        "",
+        0.0,
+        {},
+        (
+            f"network is none ({setting}) but isolation is off, and only the sandbox can cut "
+            "the network -- refusing to run this turn with the network open. Fix one of two "
+            "ways: turn isolation on with 'docket gates isolate on', or lift the lockdown "
+            "with 'docket gates network open' (and the pod's network setting)."
+        ),
+        failure_kind="daemon_error",
+    )
+
+
+def _resolve_posture(agent_id: str, role: str) -> tuple[bool, bool, TurnResult | None]:
+    """``(want_sandbox, network_allowed, refusal)``: the isolation go/no-go, then the network's."""
+    want_sandbox, refusal = _resolve_sandbox(agent_id, role)
+    if refusal is not None:
+        return want_sandbox, True, refusal
+    network_allowed, refusal = _resolve_network(agent_id, role, want_sandbox)
+    return want_sandbox, network_allowed, refusal
+
+
 def _build_on_process(
     project: str, session_key: str, role: str
 ) -> Callable[[str, dict[str, Any]], None]:
@@ -369,10 +405,9 @@ class DocketDriver:
                 failure_kind="invalid_output",
             )
 
-        want_sandbox, refusal = _resolve_sandbox(agent_id, meta.role)
+        want_sandbox, network_allowed, refusal = _resolve_posture(agent_id, meta.role)
         if refusal is not None:
             return refusal
-
         effective_model = model or meta.model or _cfg.DEFAULT_MODEL
         backend = self.backend_factory(effective_model)
         if backend is None:
@@ -431,6 +466,7 @@ class DocketDriver:
             # harness), which keeps that caller's behavior unchanged.
             project=resolved_project,
             sandbox="auto" if want_sandbox else "off",
+            network=network_allowed,
             cancellation_check=(
                 cancellation_signal.observe if cancellation_signal is not None else None
             ),

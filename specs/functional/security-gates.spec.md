@@ -926,9 +926,10 @@ otherwise.
    through the exec command classifier (there is no shell command to classify) — its containment
    is the domain allowlist above, enforced in the handler, the same layering `ToolContext.sandbox`
    uses for the `bash` tool (mechanism underneath the gate, never a substitute for it).
-4. **What this card explicitly does NOT ship, and why — decisions D-23/D-24.** The opt-in
-   `--network none`/`--unshare-net` sandbox lockdown from "Exec sandbox for the `bash` tool"
-   above's requirement 8 is **deferred**, not implemented by this card. It would need to be
+4. **What the `fetch` card did not ship, and where it landed (decisions D-23/D-24, then ADR 0020
+   §4).** The opt-in `--network none`/`--unshare-net` sandbox lockdown from "Exec sandbox for the
+   `bash` tool" above's requirement 8 was **deferred** by that card and is now requirement 7
+   below. It would need to be
    default-off to avoid breaking `npm install`/`pip`/`git clone` (the same three commands most
    `bash`-tool work already depends on), which means it would buy a config option nobody has yet
    asked to turn on, not a guarantee — see D-23/D-24 in `ROADMAP.md`. `fetch` closes none of the
@@ -949,6 +950,18 @@ otherwise.
    passed through `core.trace.redact`, and a `warn` result **MUST** return it unchanged; both
    **MUST** be audited (`fetch.result_warn`). `allow`, or no hit, passes the outcome byte-identical
    with no audit entry.
+7. **A network lockdown mode (ADR 0020 §4).** Open stays the default. The global mode
+   (`docket gates network none|open`, `FleetSecurity.network_mode`, audited `gates.network`) and
+   the pod setting `network` (`none`|`open`, default `open`) resolve through
+   `core.pod.effective_network`: `none` when either says `none`, so a pod's `open` never widens a
+   global `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed
+   to `none`. Under `none`, `system.bwrap_argv(..., network=False)` omits `--share-net` (the
+   `--unshare-all` network namespace stays empty) and `system.docker_run_argv(..., network=False)`
+   adds `--network none`; `ToolContext.network` carries it to `toolbox.run_bash`. Only the sandbox
+   can enforce it, so a turn whose effective mode is `none` with isolation off **MUST** be refused
+   before any model call, audited `network.refused`, naming both settings. `fetch` runs in
+   docket's own process and is untouched: its domain allowlist stays the inspectable path.
+   `docket gates status`, `docket doctor` and `docket config explain` report the mode and scope.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
@@ -1083,6 +1096,8 @@ docket gates isolate [on|off]  # MUST record on/off explicitly (on requires a us
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
                                 #   turn (audited isolation.refused) when no docker/bwrap backend is
                                 #   usable -- see Exec sandbox requirement 9
+docket gates network none|open # MUST record the global network mode (audited gates.network);
+                                #   anything else: usage, exit 2. See Network egress requirement 7
 docket gates classes           # MUST list the documented high-risk action classes, read-only
 docket init                    # the tool-call gate needs no install step (always active); there
                                 #   is no --gates/--no-gates option (Enablement requirement 2)
@@ -1514,6 +1529,9 @@ $ git clone https://anywhere.example/repo.git
 ## Changelog
 
 ### Unreleased
+
+- **Network lockdown (P38-4).** Network egress requirement 7: `gates network none|open`, pod
+  setting `network`, `--share-net` / `--network none` under `none`, refusal when isolation is off.
 
 - Credentials in task processes (new section): `system.task_environment` strips docket's credential names from the environment of verify commands and unjailed bash, the explicit overlay still winning.
 - **Fetch results pass `pre_input` (ADR 0020 §7).** Requirement 6 of the "Network egress and

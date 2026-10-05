@@ -344,6 +344,9 @@ def _explain(agent_id: str) -> dict[str, Any]:
         "policies": _policies_for_role(role, project),
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
+        "network": dict(
+            zip(("mode", "scope"), _pod.effective_network(project or None), strict=True)
+        ),
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
         "exporters": _exporters_report(),
@@ -415,6 +418,8 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
 
     if report["pipeline"] is not None:
         ui.console.print(f"  [bold]{'Pipeline:':<16}[/bold] {report['pipeline']['source']}")
+    net = report["network"]
+    ui.console.print(f"  [bold]{'Network:':<16}[/bold] {net['mode']}  [dim]({net['scope']})[/dim]")
     project_instructions = report["projectInstructions"]
     pi_files, pi_source = project_instructions["files"], project_instructions["source"]
     pi_display = f"{', '.join(pi_files)} ({pi_source})" if pi_source else "none"

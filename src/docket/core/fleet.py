@@ -62,6 +62,8 @@ class FleetSecurity(BaseModel):
 
     # 'unset' (no recorded choice: isolated by default) | 'off' | a sandbox mode string.
     isolation_mode: str = Field("unset", alias="isolationMode")
+    # 'open' (the default) | 'none': whether a jailed tool call may reach the network.
+    network_mode: str = Field("open", alias="networkMode")
 
 
 class FleetConfig(BaseModel):
@@ -244,6 +246,22 @@ def get_isolation_state(cfg: FleetConfig | None = None) -> str:
     if mode == "unset":
         return "on (default)"
     return "off" if mode == "off" else "on"
+
+
+def get_network_mode(cfg: FleetConfig | None = None) -> str:
+    """'none' only when the operator recorded it; anything else (including a stray value) is
+    read as 'open' -- the narrowing direction is the only one a stored value can express."""
+    mode = (cfg or load_fleet()).security.network_mode
+    return "none" if mode == "none" else "open"
+
+
+def set_network_mode(mode: str) -> None:
+    """Record the fleet's network mode: 'none' or 'open'."""
+    if mode not in ("none", "open"):
+        raise ValueError(f"network mode must be 'none' or 'open', not {mode!r}")
+    cfg = load_fleet()
+    cfg.security.network_mode = mode
+    _save_fleet(cfg)
 
 
 def set_sandbox_isolation(mode: str = "non-main") -> None:

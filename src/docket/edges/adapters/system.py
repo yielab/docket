@@ -247,18 +247,18 @@ def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
     return rw, ro
 
 
-def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
+def bwrap_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
     """Build the bwrap argv that jails *command* to *roots*: host filesystem
     read-only except *roots* (read-write on top), the same "contain to known
     roots" shape `toolbox.resolve_within` uses for file tools. `--unshare-all`
     isolates pid/ipc/uts/mount, so killing this call's process group cannot
     leave a namespace orphan (Linux tears the pid namespace down with it).
-    Network stays shared -- see ``specs/functional/security-gates.spec.md``
-    for the isolation tradeoff this defers."""
+    Network stays shared unless *network* is False, which leaves the fresh network namespace
+    ``--unshare-all`` made empty -- see ``specs/functional/security-gates.spec.md``."""
     argv = [
         "bwrap",
         "--unshare-all",
-        "--share-net",
+        *(["--share-net"] if network else []),
         "--die-with-parent",
         "--ro-bind",
         "/",
@@ -278,7 +278,11 @@ def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
 
 
 def docker_run_argv(
-    container_name: str, roots: tuple[Path, ...], command: str, env: dict[str, str] | None
+    container_name: str,
+    roots: tuple[Path, ...],
+    command: str,
+    env: dict[str, str] | None,
+    network: bool = True,
 ) -> list[str]:
     """Build the ``docker run`` argv that jails *command* to *roots*: each root bind-mounted read-write,
     nothing else of the host visible. Runs as the caller's uid/gid so mounted files are not left root-owned.
@@ -293,6 +297,8 @@ def docker_run_argv(
         "--user",
         f"{os.getuid()}:{os.getgid()}",
     ]
+    if not network:
+        argv += ["--network", "none"]
     rw, ro = _mount_dirs(roots)
     for resolved in rw:
         argv += ["-v", f"{resolved}:{resolved}"]

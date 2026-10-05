@@ -2032,6 +2032,13 @@ def cmd_gates(ctx: typer.Context) -> None:
                           turn -- audited as `isolation.refused` -- when no
                           backend is usable, rather than running it
                           unsandboxed.
+      network none|open records whether jailed tool calls may reach the
+                          network (default open). `none` drops bwrap's
+                          --share-net / adds docker's --network none, and
+                          refuses any turn that would run with isolation
+                          off -- audited as `network.refused`. A pod's
+                          `network` setting can only narrow it. `fetch`
+                          is untouched (its domain allowlist stays).
       classes           lists the built-in high-risk action classes
                           (`HIGH_RISK_PATTERNS` in `core/security.py`) --
                           money-movement, prod-deploy, and secret-access --

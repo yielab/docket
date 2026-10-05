@@ -711,6 +711,11 @@ was seeded once at binding time.)*
    because `BUILTIN_TOOL_KINDS` is a fixed, compile-time set (nothing here can drift the
    way an externally-mutable MCP catalog can) and `registry_for_role` runs on every turn's
    live agent-loop path, which must never crash over a hand-edited meta file.
+9. `PodSettings` also carries `network` (`none`|`open`, default `open`; any other value is
+   refused at `set`). `none` cuts the network of this pod's jailed tool calls; it only narrows
+   the global `docket gates network` mode (a pod `open` under a global `none` stays `none`), via
+   `core.pod.effective_network`, which `DocketDriver` reads each turn. See `security-gates.spec.md`
+   "Network egress" requirement 7.
 
 ### Schedule configuration and doctor visibility (ROADMAP P26-12)
 
@@ -1985,6 +1990,8 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 ## Changelog
 
 ### Unreleased
+
+- Pod setting `network` (`none`|`open`) narrows the sandbox network ("Pod dispatch settings" 9).
 
 - Serve sweep workers: one pool worker per pod, at most `DISPATCH_SWEEP_WORKERS` at once, a pod
   still in flight is skipped, stop waits for in-flight sweeps ("Sweep workers").

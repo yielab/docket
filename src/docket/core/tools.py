@@ -69,6 +69,8 @@ class ToolContext:
     role: str = ""
     project: str = ""
     sandbox: SandboxMode = "off"
+    # False cuts the jail's network; only meaningful with a sandbox (the turn refuses otherwise).
+    network: bool = True
     cancellation_check: Callable[[], bool] | None = None
     approval_mode: Literal["wait", "park", "refuse"] = "wait"
     allow_commands: tuple[str, ...] = ()
@@ -787,6 +789,21 @@ def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
         registry.register(tool)
 
 
+def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+    from docket.edges.adapters import toolbox
+
+    return toolbox.run_bash(
+        ctx.roots,
+        _str_arg(args, "command"),
+        _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
+        ctx.env,
+        ctx.sandbox,
+        ctx.cancellation_check,
+        _tag_bash_process_events(ctx.on_process),
+        ctx.network,
+    )
+
+
 def builtin_registry() -> ToolRegistry:
     """The default tool set: read, write, edit, glob, grep, bash, skill, consult, fetch. Handlers are
     imported here (not at module scope) so this module stays importable without the
@@ -928,15 +945,7 @@ def builtin_registry() -> ToolRegistry:
                 },
                 "required": ["command"],
             },
-            handler=lambda args, ctx: toolbox.run_bash(
-                ctx.roots,
-                _str_arg(args, "command"),
-                _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
-                ctx.env,
-                ctx.sandbox,
-                ctx.cancellation_check,
-                _tag_bash_process_events(ctx.on_process),
-            ),
+            handler=_bash_handler,
             kind="exec",
         )
     )

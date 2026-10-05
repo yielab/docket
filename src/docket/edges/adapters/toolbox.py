@@ -295,6 +295,7 @@ def run_bash(
     sandbox: SandboxMode = "off",
     cancelled: Callable[[], bool] | None = None,
     on_process: Callable[[str, dict[str, Any]], None] | None = None,
+    network: bool = True,
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -308,6 +309,8 @@ def run_bash(
     got, including ``"none"``, as a trailing marker. **Never decides whether to jail, only
     reports what happened once asked**, and a jail that fails to start is reported as a failure,
     never silently retried unsandboxed. See specs/functional/security-gates.spec.md.
+
+    ``network=False`` cuts the jail's network (both backends); it has no effect unsandboxed.
 
     ``cancelled`` lets a separate process interrupt this command mid-run -- the one handler
     amended for it, since every other handler runs to completion once started (a Python thread
@@ -336,11 +339,13 @@ def run_bash(
     container_name = ""
     if backend == "docker":
         container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
-        popen_arg: str | list[str] = _system.docker_run_argv(container_name, roots, command, env)
+        popen_arg: str | list[str] = _system.docker_run_argv(
+            container_name, roots, command, env, network
+        )
         shell = False
         popen_env = None  # the CLI inherits; the container gets only `env`, via -e flags in argv
     elif backend == "bwrap":
-        popen_arg = _system.bwrap_argv(roots, command)
+        popen_arg = _system.bwrap_argv(roots, command, network)
         shell = False
         popen_env = _jailed_env(env)
     else:

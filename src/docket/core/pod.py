@@ -289,6 +289,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "deniedTools": "denied_tools",
     "requireVerify": "require_verify",
     "maxConsultationsPerTask": "max_consultations_per_task",
+    "network": "network",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -388,6 +389,10 @@ class PodSettings(BaseModel):
     # How many `consult` questions one task's turn may ask (core/consult.py); 0 disables.
     max_consultations_per_task: int = Field(3, alias="maxConsultationsPerTask", ge=0)
 
+    # 'open' (the default: follow the global mode) or 'none': cut this pod's jailed tool calls
+    # off the network. It only ever narrows -- see ``effective_network``.
+    network: str = Field("open", alias="network")
+
     # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
     # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
@@ -423,6 +428,7 @@ class PodSettings(BaseModel):
         "deniedTools",
         "requireVerify",
         "maxConsultationsPerTask",
+        "network",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -553,6 +559,15 @@ class PodSettings(BaseModel):
             kept.setdefault(name, None)
         return tuple(kept.keys())
 
+    @field_validator("network", mode="before")
+    @classmethod
+    def _parse_network(cls, value: Any) -> str:
+        """``none`` or ``open``."""
+        name = str(value).strip().lower()
+        if name not in ("none", "open"):
+            raise ValueError("must be 'none' or 'open'")
+        return name
+
     @field_validator("exporters", mode="before")
     @classmethod
     def _parse_exporters(cls, value: Any) -> tuple[str, ...]:
@@ -619,6 +634,21 @@ class PodSettings(BaseModel):
         lead_id = member_id(project, "lead")
         source = "set" if _fleet.meta_get(lead_id, key, "") else "default"
         return self._stored_form(getattr(self, _SETTING_FIELD_BY_ALIAS[key])), source
+
+
+def effective_network(project: str | None) -> tuple[str, str]:
+    """``(mode, scope)`` for a turn: ``none`` if the global mode or the pod's ``network`` says so,
+    else ``open``. Scope is ``global``, ``pod`` or ``default``. A pod's ``open`` never widens a
+    global ``none``; unreadable pod settings fail closed to ``none``."""
+    if _fleet.get_network_mode() == "none":
+        return "none", "global"
+    if project is not None:
+        try:
+            if PodSettings.load_for(project).network == "none":
+                return "none", "pod"
+        except PodSettingsError:
+            return "none", "pod"
+    return "open", "default"
 
 
 # The docket-owned copy of a pod's bound pipeline file lives at this fixed name in the

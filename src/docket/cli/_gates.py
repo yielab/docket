@@ -27,6 +27,10 @@ def _usage() -> None:
         "Confine tool execution to a per-agent Docker sandbox (needs Docker)"
     )
     ui.console.print(
+        "  [green]network[/green] none|open "
+        "Cut the sandbox's network (none) or leave it open; needs isolation on"
+    )
+    ui.console.print(
         "  [green]classes[/green]           "
         "List the documented high-risk action classes (see 'docket gates classes')"
     )
@@ -52,6 +56,36 @@ def _status() -> int:
             f"Workspace isolation: {state} (consulted by the turn loop; a turn refuses to run "
             "rather than falling back unsandboxed; docket doctor names the backend)"
         )
+    ui.console.print()
+    if _fleet.get_network_mode() == "none":
+        ui.success("Network: none (global) -- jailed tool calls have no network")
+    else:
+        ui.dim(
+            "Network: open (default) -- a pod's network=none narrows it; docket gates network none"
+        )
+    return 0
+
+
+def _network(want: str) -> int:
+    ui.header("Sandbox network")
+    ui.console.print()
+    if want not in ("none", "open"):
+        ui.console.print("[red]✗[/red] docket gates network: expected 'none' or 'open'")
+        _usage()
+        return 2
+    _fleet.set_network_mode(want)
+    audit_log("gates.network", want)
+    if want == "open":
+        ui.success("Sandbox network open (global); a pod's network=none still narrows it")
+        return 0
+    ui.success("Sandbox network none (global) -- jailed tool calls have no network")
+    ui.dim(
+        "  Enforced by the sandbox, so a turn with isolation off is refused while this is set "
+        "('network.refused'). 'fetch' runs in docket's own process and keeps its domain allowlist."
+    )
+    if _fleet.get_isolation_state() == "off":
+        ui.warn("  Isolation is off: turns will be refused until 'docket gates isolate on'")
+    ui.console.print("  Lift: [green]docket gates network open[/green]")
     return 0
 
 
@@ -118,14 +152,16 @@ def _isolate(want: str) -> int:
 def run_gates(sub: str | None = None, *, want: str = "on") -> int:
     """Dispatch the gates subcommand. Returns the process exit code.
 
-    sub:   status (default) | isolate | classes | <anything else → usage, exit 2>
-    want:  on (default) | off — argument to 'isolate'.
+    sub:   status (default) | isolate | network | classes | <anything else → usage, exit 2>
+    want:  on (default) | off — argument to 'isolate'; none | open for 'network'.
     """
     subcmd = sub or "status"
     if subcmd == "status":
         return _status()
     if subcmd == "isolate":
         return _isolate(want)
+    if subcmd == "network":
+        return _network(want)
     if subcmd == "classes":
         return _classes()
     ui.console.print(f"[red]✗[/red] docket gates: unknown subcommand '{subcmd}'")

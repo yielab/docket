@@ -431,6 +431,20 @@ def _check_security_gates() -> int:
         else:
             ui.success(f"  Workspace isolation: {state}, backend {backend}")
 
+    net_mode = _fleet.get_network_mode()
+    if net_mode == "none":
+        if state == "off":
+            ui.warn(
+                "  Network: none (global), but isolation is off -- turns will be refused. "
+                "docket gates isolate on, or docket gates network open"
+            )
+        else:
+            ui.success("  Network: none (global) -- jailed tool calls have no network")
+    else:
+        ui.dim(
+            "  Network: open (default) -- docket gates network none to cut the sandbox's network"
+        )
+
     return 0
 
 
@@ -788,6 +802,7 @@ def _doctor_json_security() -> dict[str, Any]:
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),
         "sandboxBackend": _sys.sandbox_availability().backend,
+        "network": _fleet.get_network_mode(),
     }
 
 

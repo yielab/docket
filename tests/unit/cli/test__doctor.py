@@ -402,6 +402,7 @@ class TestChecks:
             "toolCallGate": "always-on",
             "isolation": "on (default)",
             "sandboxBackend": "bwrap",
+            "network": "open",
         }
 
     def test_security_gates_reports_the_refusal_when_no_backend(

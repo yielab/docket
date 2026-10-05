@@ -77,7 +77,7 @@ _docket() {
     conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates)           compadd status isolate classes ;;
+    gates)           compadd status isolate network classes ;;
     keys)            compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;

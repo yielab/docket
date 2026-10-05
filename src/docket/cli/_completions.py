@@ -96,7 +96,7 @@ _docket_complete() {
     conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
-    gates)           words="status isolate classes" ;;
+    gates)           words="status isolate network classes" ;;
     keys)            words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
     trace)           words="tail export ingest expire" ;;
@@ -150,7 +150,7 @@ __ZSH_COMMANDS__
     conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates)           compadd status isolate classes ;;
+    gates)           compadd status isolate network classes ;;
     keys)            compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;

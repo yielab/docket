@@ -695,7 +695,7 @@ With `--dispatch`, also logs each dispatch hop
 (the policy engine + argument-aware command classifier) is unconditionally active on every tool
 call docket dispatches — there is nothing to enable or disable — so what this command manages is
 isolation-mode posture.
-**Syntax**: `docket gates [status | isolate <on|off> | classes]`
+**Syntax**: `docket gates [status | isolate <on|off> | network <none|open> | classes]`
 **Actions**:
 - `status` (default): Report the gate as always-active, plus the isolation state
   (`on (default)` with no recorded choice, `on`, or `off`)
@@ -703,6 +703,9 @@ isolation-mode posture.
   `DocketDriver` reads it on every turn (`edges/adapters/docket_runtime.py`,
   `get_isolation_enabled`): unless off, `bash` runs in the bwrap/docker jail and a turn fails
   closed when no backend is available (see security-gates.spec.md)
+- `network <none|open>`: Record the global sandbox network mode (default open), audited as
+  `gates.network`; any other value prints usage, exit 2. `none` cuts the jail's network and
+  refuses turns that would run with isolation off (`network.refused`); `status` reports the mode
 - `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
   secret-access); read-only, makes no config changes. All three are now fully enforced by
   `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
@@ -1264,6 +1267,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 ## Changelog
 
 ### Unreleased
+
+- **P38-4.** `docket gates network none|open`; `status`, `doctor` and `config explain` report the
+  network mode and its scope.
 
 - **P38-3.** `docket gates` isolation is on by default; `isolate on` probes `sandbox_availability`
   (bwrap or docker) instead of `docker` on PATH; `docket doctor` reports the backend.
