@@ -98,8 +98,12 @@ The Implementer edits that worktree, never your checked-out branch. Dispatch nev
 the agent ran `git commit` itself, its changes stay **uncommitted** in the worktree, so you see them with
 `git -C ~/.docket/workspaces/projects/<pod>-implementer/tasks/<taskId> diff`, then commit on its
 branch and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
-there too. Finished task worktrees stay until the member is removed; `docket delete` also deletes
-the merged task branches (an unmerged branch is kept, with the removal command printed).
+there too. Finished task worktrees stay until you prune them: `docket pod <pod> worktrees prune`
+(`--dry-run` first) removes each finished task's worktree whose branch is merged and whose tracked
+files are clean, deletes the merged branch, discards untracked by-products and names every task it
+keeps; `--force` also removes unmerged or edited ones (keeping the unmerged branch). A failed task
+`dispatch --resume` would re-claim is always kept. `docket delete` removes them all with the member
+and deletes the merged task branches (an unmerged branch is kept, with the removal command printed).
 An Implementer marked `inPlace` works in the codebase itself and gets no task worktree. Reviewer and Tester run with the codebase root as
 their working directory, so a test run can leave caches in your checkout.
 

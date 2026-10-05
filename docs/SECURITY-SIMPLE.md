@@ -42,7 +42,8 @@
 >
 > A gated call's approval now carries a `rationale` (the model's own preceding sentence, screened
 > and truncated, so a claim to weigh and not a verified fact) and the options `approve_once`,
-> `approve_task` (identical calls within one turn only) and `deny`; `--reason` on approve/deny is
+> `approve_task` (the identical call for the rest of the task, only for the role that asked) and
+> `deny`; `--reason` on approve/deny is
 > screened and audited with the answering channel.
 > bwrap/Docker **workspace isolation** is a
 > separate layer on top, **on by default** (`docket gates isolate off` opts out) and consulted by

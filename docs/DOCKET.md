@@ -373,7 +373,9 @@ Three guarantees hold on every hop:
 
 Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`docket pod …
 dispatch`) or **opt-in** (`docket serve --dispatch`) — never silent. Plain `docket serve` is a
-read-only monitor and does not dispatch.
+read-only monitor and does not dispatch. Stopping `serve` takes two signals when work is in flight:
+the first (Ctrl-C or SIGTERM) stops new work and waits for the pod sweeps already running; a second
+requests cancellation of each sweep run, so its task ends `cancelled`, and exits 130 or 143.
 
 This is the outline; the actual state machine also retries a hop that fails on a transient hiccup
 (a timeout or the model endpoint erroring — `TurnResult.failure_kind`'s `timeout`/`daemon_error`,
@@ -993,14 +995,17 @@ telegram-integration.spec.md).
 An agent that needs a human decision has two ways to ask. A gated tool call becomes an approval
 whose pack carries the model's own preceding sentence as a `rationale` (screened, truncated to 500
 characters, and a claim by the model rather than a fact) and three options: `approve_once`,
-`approve_task` (identical calls within the same turn only; it is not carried across a parked and
-resumed hop) and `deny`. `docket approve|deny <token> --reason TEXT`, the HTTP approval POST's
+`approve_task` (the identical call for the rest of the task: within the turn, and in a pod for every
+later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket approve
+<token> --option approve_task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
+MCP `approvals_grant` `option`. `docket approve|deny <token> --reason TEXT`, the HTTP approval POST's
 `reason` and the harness answer's `content.reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
 recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
 role with the answer in its message, bounded per task by `maxConsultationsPerTask`. The parked
-question reaches the answering process through an in-process registry, so out of process the answer
-fails closed. Options are not rendered in Telegram or channel notifications.
+question is persisted (0600, `consult-parked/`) until dispatch stores it on the task, so any process
+can answer it. A channel at the `conversation` level lists the options and the recommended id, and
+Telegram `/answer <task> <option id>` picks one.
 
 `docket pod <p> evidence <task-id> [--json]` (also `GET /tasks/<p>/<id>/evidence`) prints the
 evidence-v1 document for a task: per-hop measured token usage (null when the endpoint reports zero)
