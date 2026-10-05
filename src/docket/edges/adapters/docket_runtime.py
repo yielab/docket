@@ -107,22 +107,29 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
     return tuple(str(coerced).split(","))
 
 
+def _stdio_launch(ctx: ToolContext) -> _mcp.StdioLaunch:
+    """How this turn starts stdio servers: its root, and its jail when the turn is isolated."""
+    return _mcp.StdioLaunch(
+        cwd=str(ctx.roots[0]), sandbox=ctx.sandbox, network=ctx.network, roots=ctx.roots
+    )
+
+
 # Filters the shared catalog by *project*'s pod `mcpServers` selection (see
 # `_pod_mcp_selection`, which is what actually raises `DispatchError` for a stale
 # selection) before handing the rest to `load_mcp_tools`. ``None`` (no selection
 # stored, or *project* names no pod) loads every configured server -- byte-for-byte
 # the pre-selection behavior, including the zero-server fast path.
 def _load_mcp_tools(
-    registry: ToolRegistry, role: str, project: str = "", cwd: str | None = None
+    registry: ToolRegistry, role: str, project: str = "", launch: _mcp.StdioLaunch | None = None
 ) -> list[Any]:
-    """Fold MCP servers' tools into *registry*; *cwd* is the turn root stdio servers start in."""
+    """Fold MCP servers' tools into *registry*; *launch* is how this turn starts stdio servers."""
     servers = _mcp.load_mcp_servers(project)
     selection = _pod_mcp_selection(project)
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
-    if cwd is None:
+    if launch is None:
         return _mcp.load_mcp_tools(registry, servers=servers, role=role)
-    return _mcp.load_mcp_tools(registry, servers=servers, role=role, cwd=cwd)
+    return _mcp.load_mcp_tools(registry, servers=servers, role=role, launch=launch)
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:
@@ -474,7 +481,7 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role, ctx.project, cwd=str(ctx.roots[0]))
+        self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         context_window = getattr(backend, "context_window_tokens", None)
         max_output_tokens = getattr(backend, "max_output_tokens", None)
         loop_config = _loop.LoopConfig(

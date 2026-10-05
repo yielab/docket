@@ -13,11 +13,12 @@ specs/functional/mcp-client.spec.md for the namespacing rule, failure isolation
 
 from __future__ import annotations
 
+import functools
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -38,6 +39,7 @@ __all__ = [
     "McpServerLoadResult",
     "McpServerRegistry",
     "McpToolSkip",
+    "StdioLaunch",
     "add_mcp_server",
     "load_mcp_server_document",
     "load_mcp_servers",
@@ -92,6 +94,10 @@ class McpServerConfig(BaseModel):
     # in McpServerLoadResult.skipped), never silently dropped. Empty (the
     # default) means "register everything advertised" -- today's behavior.
     tools: list[str] = Field(default_factory=list)
+    # Operator assertion: False starts this stdio server on the host even when the turn is
+    # isolated (specs/functional/mcp-client.spec.md Requirement 40). True, the default, jails it
+    # like `bash`.
+    isolate: bool = True
 
     def resolved_timeout(self) -> float:
         """The actual per-call bound this server's calls will honor.
@@ -296,8 +302,32 @@ class McpListResult:
 # The two operations `edges/adapters/mcp_client.py` implements. Injectable so
 # this module's own tests never touch the real SDK/a subprocess -- the
 # "stub at the SDK boundary" this card's tests are required to use.
-ListToolsFn = Callable[[McpServerConfig, float], McpListResult]
-CallToolFn = Callable[[McpServerConfig, str, dict[str, Any], float], ToolOutcome]
+@dataclass(frozen=True)
+class StdioLaunch:
+    """How a turn starts its stdio servers: the directory, and the jail (when ``sandbox`` is
+    ``"auto"``) with its roots and network mode. A runtime value, never stored in a config."""
+
+    cwd: str | None = None
+    sandbox: Literal["auto", "off"] = "off"
+    network: bool = True
+    roots: tuple[Path, ...] = ()
+
+
+class ListToolsFn(Protocol):
+    def __call__(
+        self, config: McpServerConfig, timeout: float, launch: StdioLaunch | None = None
+    ) -> McpListResult: ...
+
+
+class CallToolFn(Protocol):
+    def __call__(
+        self,
+        config: McpServerConfig,
+        name: str,
+        arguments: dict[str, Any],
+        timeout: float,
+        launch: StdioLaunch | None = None,
+    ) -> ToolOutcome: ...
 
 
 def _default_list_tools() -> ListToolsFn:
@@ -420,7 +450,7 @@ def load_mcp_tools(
     list_tools: ListToolsFn | None = None,
     call_tool: CallToolFn | None = None,
     role: str = "",
-    cwd: str | None = None,
+    launch: StdioLaunch | None = None,
 ) -> list[McpServerLoadResult]:
     """Connect to every configured MCP server, enumerate its tools, and register each as a
     namespaced :class:`~docket.core.tools.Tool` into *registry* via its public
@@ -433,18 +463,17 @@ def load_mcp_tools(
     overwritten: this function only ever adds. Never raises. *servers* defaults to
     :func:`load_mcp_servers`; *list_tools*/*call_tool* default to the real
     ``edges/adapters/mcp_client.py`` implementations, resolved lazily so importing this module
-    never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *cwd*, when given, is the directory every stdio server is
-    started in for this load and for the calls it adapts; it is never stored."""
+    never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *launch*, when given, is how every stdio server is
+    started for this load and for the calls it adapts; it is never stored."""
     if servers is None:
         servers = load_mcp_servers()
     if list_tools is None:
         list_tools = _default_list_tools()
     if call_tool is None:
         call_tool = _default_call_tool()
-    if cwd is not None:
-        inner_list, inner_call = list_tools, call_tool
-        list_tools = lambda c, t: inner_list(c, t, cwd=cwd)  # type: ignore[call-arg]  # noqa: E731
-        call_tool = lambda c, n, a, t: inner_call(c, n, a, t, cwd=cwd)  # type: ignore[call-arg]  # noqa: E731
+    if launch is not None:
+        list_tools = functools.partial(list_tools, launch=launch)
+        call_tool = functools.partial(call_tool, launch=launch)
 
     reports: list[McpServerLoadResult] = []
     for config in servers:

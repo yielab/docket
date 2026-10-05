@@ -33,10 +33,13 @@ a turn.
 
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
-from docket.core.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig
+from docket.core.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig, StdioLaunch
+from docket.edges.adapters import system as _system
 from docket.edges.adapters.toolbox import ToolOutcome
 
 MISSING_SDK_HINT = (
@@ -66,21 +69,46 @@ def _truncate(text: str) -> str:
     return f"{text[:limit]}\n\n[truncated: {dropped} more characters]"
 
 
-def _stdio_params(config: McpServerConfig, cwd: str | None = None) -> Any:
-    """Build the SDK's spawn parameters for *config*, starting the server in *cwd* when given.
+def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) -> Any:
+    """Build the SDK's spawn parameters for *config*. With *launch* the server starts in its
+    ``cwd``, and inside the turn's jail when the turn is isolated and *config* does not opt out.
     Imported lazily -- only called once ``_sdk_available()`` has confirmed the SDK."""
     from mcp.client.stdio import StdioServerParameters
 
+    command, args = config.command, list(config.args)
+    if launch is not None and launch.sandbox == "auto" and config.isolate:
+        command, args = _jailed_command(config, launch)
     return StdioServerParameters(
-        command=config.command,
-        args=list(config.args),
+        command=command,
+        args=args,
         env=dict(config.env) or None,
-        cwd=cwd,
+        cwd=launch.cwd if launch is not None else None,
     )
 
 
+def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, list[str]]:
+    """The jail's argv for *config*'s server. Fails closed: isolation is on, so no backend means
+    no spawn rather than an unjailed one."""
+    roots = launch.roots or ((Path(launch.cwd),) if launch.cwd else ())
+    if not roots:
+        raise RuntimeError("isolation is on but the turn has no root to jail the server to")
+    backend = _system.sandbox_availability().backend
+    server = [config.command, *config.args]
+    if backend == "bwrap":
+        argv = _system.bwrap_command_argv(roots, server, launch.network)
+    elif backend == "docker":
+        name = f"docket-mcp-{uuid.uuid4().hex[:12]}"
+        argv = _system.docker_command_argv(name, roots, server, dict(config.env), launch.network)
+    else:
+        raise RuntimeError(
+            "isolation is on but no sandbox backend is usable; install bubblewrap or start "
+            "docker, or declare this server isolate: false"
+        )
+    return argv[0], argv[1:]
+
+
 async def _list_tools_async(
-    config: McpServerConfig, timeout: float, cwd: str | None = None
+    config: McpServerConfig, timeout: float, launch: StdioLaunch | None = None
 ) -> McpListResult:
     import anyio
     from mcp.client import Client
@@ -88,7 +116,7 @@ async def _list_tools_async(
 
     try:
         with anyio.fail_after(timeout):
-            async with Client(stdio_client(_stdio_params(config, cwd))) as client:
+            async with Client(stdio_client(_stdio_params(config, launch))) as client:
                 result = await client.list_tools()
     except TimeoutError:
         return McpListResult(
@@ -111,7 +139,7 @@ async def _list_tools_async(
 
 
 def list_remote_tools(
-    config: McpServerConfig, timeout: float, cwd: str | None = None
+    config: McpServerConfig, timeout: float, launch: StdioLaunch | None = None
 ) -> McpListResult:
     """Connect to *config*, list its tools, disconnect. Never raises.
 
@@ -124,7 +152,7 @@ def list_remote_tools(
     import anyio
 
     try:
-        return anyio.run(_list_tools_async, config, timeout, cwd)
+        return anyio.run(_list_tools_async, config, timeout, launch)
     except Exception as ex:  # last-resort safety net; this function must never raise
         return McpListResult(ok=False, error=f"{type(ex).__name__}: {ex}")
 
@@ -151,7 +179,7 @@ async def _call_tool_async(
     name: str,
     arguments: dict[str, Any],
     timeout: float,
-    cwd: str | None = None,
+    launch: StdioLaunch | None = None,
 ) -> ToolOutcome:
     import anyio
     from mcp.client import Client
@@ -159,7 +187,7 @@ async def _call_tool_async(
 
     try:
         with anyio.fail_after(timeout):
-            async with Client(stdio_client(_stdio_params(config, cwd))) as client:
+            async with Client(stdio_client(_stdio_params(config, launch))) as client:
                 result = await client.call_tool(name, arguments)
     except TimeoutError:
         return ToolOutcome(
@@ -181,7 +209,7 @@ def call_remote_tool(
     name: str,
     arguments: dict[str, Any],
     timeout: float,
-    cwd: str | None = None,
+    launch: StdioLaunch | None = None,
 ) -> ToolOutcome:
     """Connect to *config*, call one tool, disconnect. Never raises.
 
@@ -196,6 +224,6 @@ def call_remote_tool(
     import anyio
 
     try:
-        return anyio.run(_call_tool_async, config, name, arguments, timeout, cwd)
+        return anyio.run(_call_tool_async, config, name, arguments, timeout, launch)
     except Exception as ex:
         return ToolOutcome(False, error=f"{type(ex).__name__}: {ex}")

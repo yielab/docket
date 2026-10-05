@@ -29,7 +29,7 @@ today's "register everything" behavior. An existing `docket-mcp-servers.json` wr
 version has neither key and loads unchanged (`kind` defaults to `"write"`, `tools` to `[]`), so a
 pre-1.5.0 install's behavior does not change until an operator opts in. See Requirements 6 and
 32-33.
-**What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
+**What remains unwired, stated plainly:** the `kind: mcp-server` document form has no `isolate` field, so a pod apply installs the default (jailed); no per-turn caching of a server's tool listing (every
 turn that reaches a configured server re-spawns it — see the Version 1.2.0 changelog entry's measured per-turn cost and its
 named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
 scope); **per-tool** trust/capability metadata still does not exist — `kind`/`tools` are declared
@@ -307,13 +307,24 @@ This specification does NOT cover:
 
 39. A stdio server spawned for a live turn **MUST** start in that turn's resolved root: the same
     `ctx.roots[0]` the built-in file tools are confined to (the task worktree, else the codebase,
-    else the workspace). `DocketDriver.run_turn` **MUST** pass it to `mcp_loader` as the `cwd`
-    keyword; `load_mcp_tools(..., cwd=)` **MUST** carry it to every listing and adapted call
-    (`list_remote_tools`/`call_remote_tool(..., cwd=)`, then `_stdio_params(config, cwd)`). It is
+    else the workspace). `DocketDriver.run_turn` **MUST** pass it to `mcp_loader` inside the one `launch` keyword
+    (a frozen `StdioLaunch`: `cwd`, `sandbox`, `network`, `roots`); `load_mcp_tools(..., launch=)`
+    **MUST** carry it to every listing and adapted call
+    (`list_remote_tools`/`call_remote_tool(..., launch)`, then `_stdio_params(config, launch)`). It is
     a runtime argument and **MUST NOT** be stored in `McpServerConfig` or any document. A caller
     outside a turn (`docket mcp servers test`, `config explain`, listing) passes none and the
-    server inherits the process's directory, as before. With `cwd` absent `_load_mcp_tools`
+    server inherits the process's directory, as before. With `launch` absent `_load_mcp_tools`
     **MUST** call `load_mcp_tools` exactly as before.
+40. When the turn is isolated (`launch.sandbox == "auto"`) a stdio server **MUST** start inside the
+    turn's jail: `_stdio_params` wraps `command`+`args` with the resolved backend
+    (`bwrap_command_argv`/`docker_command_argv`, the roots, repository-dir mounts and network mode
+    `bash` gets), keeping the stdio pipes (bwrap passes them through; docker runs with `-i`).
+    With no usable backend it **MUST** raise, never start unjailed. A server declared
+    `isolate: false` (`McpServerConfig.isolate`, default `true`; `docket mcp servers add
+    --no-isolate`, audited with `isolate=no`, shown by `list` and `doctor`) **MUST** start on the
+    host. With isolation off, or no `launch`, the argv **MUST** be the server's own, unchanged.
+    Under docker the server binary must exist in the image; `isolate: false` or bwrap is the
+    path for host-installed servers. HTTP servers are not affected.
 
 ### Untrusted tool results
 
@@ -376,10 +387,10 @@ def load_mcp_tools(
 ```python
 MISSING_SDK_HINT: str
 
-def list_remote_tools(config: McpServerConfig, timeout: float, cwd: str | None = None) -> McpListResult: ...
+def list_remote_tools(config: McpServerConfig, timeout: float, launch: StdioLaunch | None = None) -> McpListResult: ...
 def call_remote_tool(
     config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float,
-    cwd: str | None = None,
+    launch: StdioLaunch | None = None,
 ) -> ToolOutcome: ...
 ```
 
@@ -390,12 +401,12 @@ def call_remote_tool(
 class DocketDriver:
     backend_factory: Callable[[str], ChatBackend | None] = client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
-    mcp_loader: Callable[..., list[Any]] = _load_mcp_tools  # (registry, role, project, *, cwd=None)
+    mcp_loader: Callable[..., list[Any]] = _load_mcp_tools  # (registry, role, project, *, launch=None)
 
     def run_turn(self, agent_id: str, session_key: str, message: str, ...) -> TurnResult:
         ...
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role, ctx.project, cwd=str(ctx.roots[0]))   # folds MCP tools in, before role narrowing
+        self.mcp_loader(registry, meta.role, ctx.project, launch=launch)   # folds MCP tools in, before role narrowing
         ...
         result = _loop.run_agent_turn(backend, registry, ctx, session_key, message, config=loop_config)
 ```
@@ -421,7 +432,8 @@ unrelated call's connection state.
       "env": {},
       "timeout": 0.0,
       "kind": "write",
-      "tools": []
+      "tools": [],
+      "isolate": true
     }
   ]
 }
@@ -429,14 +441,14 @@ unrelated call's connection state.
 
 `timeout: 0.0` means "use `docket.config.MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped
 to `MCP_CLIENT_MAX_TIMEOUT_S`. `kind`/`tools` are optional on read (Requirement 32): a file written
-before P27-3 has neither key and loads as `kind="write", tools=[]`.
+before P27-3 has neither key and loads as `kind="write", tools=[]`; a file without `isolate` loads as `true`.
 
 ### CLI syntax (`cli/_mcp.py`)
 
 ```
 docket mcp servers list
 docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
-    [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
+    [--kind read|write] [--tools NAME,NAME,...] [--no-isolate] -- <command> [args...]
 docket mcp servers remove <name>
 ```
 
@@ -602,6 +614,9 @@ dispatch_tool(
 
 ### Unreleased
 
+- Requirement 40 added (ADR 0020 §5): stdio servers start in the turn's jail unless declared
+  `isolate: false` (`--no-isolate`); `mcp_loader`/`load_mcp_tools`/`list_remote_tools`/
+  `call_remote_tool` take one `launch` (`StdioLaunch`) in place of `cwd`.
 - Requirement 30 updated: fetch results also pass `pre_input` (ADR 0020 §7); shared
   implementation with MCP result screening.
 

@@ -345,7 +345,7 @@ Usage: docket mcp servers <list|add|remove> [args...]
 
   list                                        Show configured MCP tool servers
   add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
-      [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
+      [--kind read|write] [--tools NAME,NAME,...] [--no-isolate] -- <command> [args...]
                                                Configure a new server (stdio transport)
   remove <name>                               Remove a configured server
 
@@ -355,6 +355,8 @@ declares the server's trust level (default: write) -- a role that denies
 write never gets tools from a server left at the default, but does get tools
 from a server declared --kind read. --tools restricts registration to a
 comma-separated allow-list of the server's own tool names (default: all).
+A server runs in the same jail as bash when the turn is isolated; --no-isolate
+declares it must start on the host instead (an audited operator assertion).
 
 Example — browser automation as configuration, not code (see
 specs/functional/mcp-client.spec.md's "Recipe" section):
@@ -385,20 +387,23 @@ def _servers_list() -> int:
         print(f"      kind: {cfg.kind}")
         tools_note = ", ".join(cfg.tools) if cfg.tools else "all"
         print(f"      tools: {tools_note}")
+        if not cfg.isolate:
+            print("      isolate: no (starts on the host, outside the jail)")
     print(f"\n  Config file: {_cfg.MCP_SERVERS_FILE}")
     return 0
 
 
-_ParsedAddFlags = tuple[dict[str, str], float, str, list[str]]
+_ParsedAddFlags = tuple[dict[str, str], float, str, list[str], bool]
 
 
 def _parse_server_add_flags(flags: list[str]) -> _ParsedAddFlags | None:
     """Parse the env/timeout/kind/tools flags preceding ``--`` in ``docket mcp servers add``.
-    Returns ``(env, timeout, kind, tools)``, or ``None`` (after printing an error) on a bad flag."""
+    Returns ``(env, timeout, kind, tools, isolate)``, or ``None`` (after printing an error) on a bad flag."""
     env: dict[str, str] = {}
     timeout = 0.0
     kind = "write"
     tools: list[str] = []
+    isolate = True
     i = 0
     while i < len(flags):
         tok = flags[i]
@@ -431,6 +436,10 @@ def _parse_server_add_flags(flags: list[str]) -> _ParsedAddFlags | None:
             kind = tok[len("--kind=") :]
             i += 1
             continue
+        elif tok == "--no-isolate":
+            isolate = False
+            i += 1
+            continue
         elif tok == "--tools" and i + 1 < len(flags):
             tools = [t.strip() for t in flags[i + 1].split(",") if t.strip()]
             i += 2
@@ -455,7 +464,7 @@ def _parse_server_add_flags(flags: list[str]) -> _ParsedAddFlags | None:
     if kind not in ("read", "write"):
         _perror(f"--kind must be 'read' or 'write', got '{kind}'")
         return None
-    return env, timeout, kind, tools
+    return env, timeout, kind, tools, isolate
 
 
 def _servers_add(rest: list[str]) -> int:
@@ -483,7 +492,7 @@ def _servers_add(rest: list[str]) -> int:
     parsed = _parse_server_add_flags(flags)
     if parsed is None:
         return 1
-    env, timeout, kind, tools = parsed
+    env, timeout, kind, tools, isolate = parsed
     command, command_args = command_parts[0], command_parts[1:]
 
     try:
@@ -496,13 +505,17 @@ def _servers_add(rest: list[str]) -> int:
                 timeout=timeout,
                 kind=kind,  # type: ignore[arg-type]  # validated above
                 tools=tools,
+                isolate=isolate,
             )
         )
     except ValueError as exc:
         _perror(str(exc))
         return 1
 
-    audit_log("mcp_servers.add", f"name={name!r} command={command!r}")
+    audit_log(
+        "mcp_servers.add",
+        f"name={name!r} command={command!r} kind={kind} isolate={'yes' if isolate else 'no'}",
+    )
     cmdline = " ".join([command, *command_args])
     _pok(f"MCP server '{name}' added ({cmdline}).")
     print(f"  Its tools register as mcp__{name}__<tool> — gated exactly like a built-in tool.")

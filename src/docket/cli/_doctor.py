@@ -20,6 +20,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _pol
@@ -444,6 +445,10 @@ def _check_security_gates() -> int:
         ui.dim(
             "  Network: open (default) -- docket gates network none to cut the sandbox's network"
         )
+
+    unjailed = [s.name for s in _mcp_tools.load_mcp_servers() if not s.isolate]
+    if unjailed and state != "off":
+        ui.warn(f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed)}")
 
     return 0
 

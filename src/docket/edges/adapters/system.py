@@ -255,6 +255,15 @@ def bwrap_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> l
     leave a namespace orphan (Linux tears the pid namespace down with it).
     Network stays shared unless *network* is False, which leaves the fresh network namespace
     ``--unshare-all`` made empty -- see ``specs/functional/security-gates.spec.md``."""
+    return [*_bwrap_prefix(roots, network), "/bin/sh", "-c", command]
+
+
+def bwrap_command_argv(roots: tuple[Path, ...], argv: list[str], network: bool = True) -> list[str]:
+    """The same jail as :func:`bwrap_argv`, running *argv* directly (no shell), stdio passed through."""
+    return [*_bwrap_prefix(roots, network), *argv]
+
+
+def _bwrap_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
     argv = [
         "bwrap",
         "--unshare-all",
@@ -273,7 +282,7 @@ def bwrap_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> l
         argv += ["--bind", resolved, resolved]
     for guarded in ro:
         argv += ["--ro-bind", guarded, guarded]
-    argv += ["--", "/bin/sh", "-c", command]
+    argv.append("--")
     return argv
 
 
@@ -288,10 +297,32 @@ def docker_run_argv(
     nothing else of the host visible. Runs as the caller's uid/gid so mounted files are not left root-owned.
     *env* injects only `ToolContext.env` (e.g. `DOCKET_SCRATCH_DIR`), never the full host environment --
     see ``specs/functional/security-gates.spec.md`` for why (env minimization) and the network-bridge rationale."""
+    return [*_docker_prefix(container_name, roots, env, network), "sh", "-c", command]
+
+
+def docker_command_argv(
+    container_name: str,
+    roots: tuple[Path, ...],
+    argv: list[str],
+    env: dict[str, str] | None,
+    network: bool = True,
+) -> list[str]:
+    """The same jail as :func:`docker_run_argv`, running *argv* directly with stdin kept open (``-i``)."""
+    return [*_docker_prefix(container_name, roots, env, network, interactive=True), *argv]
+
+
+def _docker_prefix(
+    container_name: str,
+    roots: tuple[Path, ...],
+    env: dict[str, str] | None,
+    network: bool,
+    interactive: bool = False,
+) -> list[str]:
     argv = [
         "docker",
         "run",
         "--rm",
+        *(["-i"] if interactive else []),
         "--name",
         container_name,
         "--user",
@@ -307,7 +338,7 @@ def docker_run_argv(
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]
-    argv += [_cfg.SANDBOX_DOCKER_IMAGE, "sh", "-c", command]
+    argv.append(_cfg.SANDBOX_DOCKER_IMAGE)
     return argv
 
 

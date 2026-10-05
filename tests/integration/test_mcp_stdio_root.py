@@ -42,7 +42,7 @@ _SERVER = textwrap.dedent(
 @_needs_sdk
 def test_stdio_params_carry_the_given_directory(tmp_path: Path) -> None:
     config = _mt.McpServerConfig(name="s", command="stub")
-    assert _client._stdio_params(config, cwd=str(tmp_path)).cwd == str(tmp_path)
+    assert _client._stdio_params(config, _mt.StdioLaunch(cwd=str(tmp_path))).cwd == str(tmp_path)
     assert _client._stdio_params(config).cwd is None
 
 
@@ -59,7 +59,7 @@ def test_a_real_stdio_server_starts_in_the_root_and_elsewhere_outside_a_turn(
     monkeypatch.chdir(here)
     config = _mt.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
 
-    in_turn = _client.call_remote_tool(config, "where", {}, 30.0, cwd=str(root))
+    in_turn = _client.call_remote_tool(config, "where", {}, 30.0, _mt.StdioLaunch(cwd=str(root)))
     outside = _client.call_remote_tool(config, "where", {}, 30.0)
 
     assert in_turn.ok, in_turn.error
@@ -71,26 +71,31 @@ def test_a_real_stdio_server_starts_in_the_root_and_elsewhere_outside_a_turn(
 def test_load_mcp_tools_hands_the_root_to_listing_and_calls() -> None:
     seen: dict[str, Any] = {}
 
-    def _list(config: Any, timeout: float, cwd: str | None = None) -> _mt.McpListResult:
-        seen["list"] = cwd
+    def _list(
+        config: Any, timeout: float, launch: _mt.StdioLaunch | None = None
+    ) -> _mt.McpListResult:
+        seen["list"] = launch
         return _mt.McpListResult(ok=True, tools=(_mt.McpRemoteTool("t", "d"),))
 
-    def _call(config: Any, name: str, args: Any, timeout: float, cwd: str | None = None) -> Any:
-        seen["call"] = cwd
+    def _call(
+        config: Any, name: str, args: Any, timeout: float, launch: _mt.StdioLaunch | None = None
+    ) -> Any:
+        seen["call"] = launch
         return ToolOutcome(True, content="ok")
 
     registry = ToolRegistry()
+    launch = _mt.StdioLaunch(cwd="/some/root")
     _mt.load_mcp_tools(
         registry,
         servers=[_mt.McpServerConfig(name="s", command="stub")],
         list_tools=_list,
         call_tool=_call,
-        cwd="/some/root",
+        launch=launch,
     )
     tool = registry.get("mcp__s__t")
     assert tool is not None
     tool.handler({}, ToolContext(agent_id="a", session_key="k", roots=(Path("/x"),)))
-    assert seen == {"list": "/some/root", "call": "/some/root"}
+    assert seen == {"list": launch, "call": launch}
 
 
 def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
@@ -100,8 +105,10 @@ def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
     _write_meta("impl-1", role="implementer", codebase=str(code))
     got: dict[str, Any] = {}
 
-    def _loader(registry: Any, role: str, project: str, cwd: str | None = None) -> list[Any]:
-        got["cwd"] = cwd
+    def _loader(
+        registry: Any, role: str, project: str, launch: _mt.StdioLaunch | None = None
+    ) -> list[Any]:
+        got["launch"] = launch
         return []
 
     backend = _ScriptedBackend([_final("done")])
@@ -109,10 +116,12 @@ def test_the_driver_passes_its_resolved_root_down(tmp_path: Path) -> None:
         "impl-1", "agent:impl-1:default", "go", 30
     )
     assert res.ok, res.error
-    assert got["cwd"] == str(code)
+    assert got["launch"].cwd == str(code)
+    assert got["launch"].sandbox == "off"
+    assert got["launch"].roots[0] == code
 
 
-def test_the_default_loader_forwards_cwd_and_omits_it_when_absent(
+def test_the_default_loader_forwards_the_launch_and_omits_it_when_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[dict[str, Any]] = []
@@ -122,7 +131,7 @@ def test_the_default_loader_forwards_cwd_and_omits_it_when_absent(
         return []
 
     monkeypatch.setattr(_mt, "load_mcp_tools", _spy)
-    _load_mcp_tools(ToolRegistry(), "implementer", "", cwd="/r")
+    _load_mcp_tools(ToolRegistry(), "implementer", "", launch=_mt.StdioLaunch(cwd="/r"))
     _load_mcp_tools(ToolRegistry(), "implementer", "")
-    assert calls[0]["cwd"] == "/r"
-    assert "cwd" not in calls[1]
+    assert calls[0]["launch"].cwd == "/r"
+    assert "launch" not in calls[1]

@@ -557,9 +557,9 @@ run id is unknown or already terminal
   it isn't installed, rather than a bare traceback
 - `servers list|add|remove`: Configure external stdio MCP tool servers whose tools reach a live
   turn through the same `dispatch_tool` chokepoint — `add <name> [--env K=V ...] [--timeout S]
-  [--kind read|write] [--tools NAME,...] -- <command> [args]`; `--kind` declares the server's
+  [--kind read|write] [--tools NAME,...] [--no-isolate] -- <command> [args]`; `--kind` declares the server's
   trust level (default `write`) and `list` shows it alongside each server's `tools` allow-list
-  (empty = all); a bad `--kind` value exits 1 naming the field; full contract in
+  (empty = all); `--no-isolate` starts the server on the host instead of in the turn's jail (audited, shown by `list`); a bad `--kind` value exits 1 naming the field; full contract in
   `mcp-client.spec.md`
 **Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
 startup naming the registered tools
@@ -1268,6 +1268,7 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Unreleased
 
+- `docket mcp servers add` gains `--no-isolate` (ADR 0020 §5; `mcp-client.spec.md` Requirement 40).
 - **P38-4.** `docket gates network none|open`; `status`, `doctor` and `config explain` report the
   network mode and its scope.
 
