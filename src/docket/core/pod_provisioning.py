@@ -597,13 +597,7 @@ def _prune_one(
     exists = Path(wt_dir).is_dir()
     dirty = exists and bool(_sys.git_worktree_changes(wt_dir))
     current = _sys.git_current_branch(codebase)
-    # `git branch --merged` marks a branch checked out in a worktree with "+", which
-    # git_branch_merged does not parse; while the worktree exists compare tips instead.
-    if exists:
-        tip = _sys.git_head_sha(wt_dir)
-        merged = tip is not None and _sys.git_merge_base(codebase, branch) == tip
-    else:
-        merged = bool(current) and _sys.git_branch_merged(codebase, branch, current)
+    merged = bool(current) and _sys.git_branch_merged(codebase, branch, current)
     problems = (["uncommitted changes"] if dirty else []) + (
         [] if merged else [f"branch {branch!r} not merged into {current or 'the current branch'!r}"]
     )
@@ -633,7 +627,10 @@ def prune_task_worktrees(
 
     Only done/failed/cancelled tasks with a recorded dir are considered. Without *force* a
     dirty worktree or unmerged branch is kept and reported; *force* removes the worktree but
-    never deletes an unmerged branch."""
+    never deletes an unmerged branch. A failed task ``dispatch --resume`` would re-claim keeps its
+    worktree."""
+    from docket.core.dispatch import RESUMABLE_FAILURE_KINDS as resumable
+
     raw = _store.read_json(_task_list_file(project))
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     entries: list[WorktreePruneEntry] = []
@@ -645,6 +642,13 @@ def prune_task_worktrees(
             or wt.get("prunedAt")
             or task.get("status") not in PRUNABLE_TASK_STATUSES
         ):
+            continue
+        if task.get("status") == "failed" and task.get("failureKind") in resumable:
+            entries.append(
+                WorktreePruneEntry(
+                    str(task.get("id", "")), str(wt["dir"]), "kept", "resumable (dispatch --resume)"
+                )
+            )
             continue
         entries.append(_prune_one(project, task, force=force, dry_run=dry_run))
     pruned = {e.task_id for e in entries if e.action == "removed"}

@@ -1618,7 +1618,8 @@ any CLI rendering of this evidence.*
 7. `core.pod_provisioning.prune_task_worktrees(project, force=False, dry_run=False)` **MUST**
    consider only tasks whose status is `done`, `failed` or `cancelled`, with a recorded
    `worktree.dir` and no `worktree.prunedAt`; a pending, running, blocked or waiting task is never
-   touched. `worktree.dir` **MUST** resolve directly inside a pod member's `tasks/` directory
+   touched, and neither is a `failed` task whose `failureKind` is resumable (`dispatch --resume`
+   re-claims it in its recorded worktree), even with `force`. `worktree.dir` **MUST** resolve directly inside a pod member's `tasks/` directory
    before anything is removed, else the task is kept and reported. Without `force` it removes the
    worktree and deletes the branch only when the branch is merged into the codebase's current
    branch and the worktree has no uncommitted change; every other task is kept with its reason.

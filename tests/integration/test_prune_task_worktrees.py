@@ -53,7 +53,9 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return {"repo": repo, "tasks": lead / "TASK_LIST.json"}
 
 
-def _add_task(env: dict[str, Any], task_id: str, status: str, *, commit: bool = False) -> dict:
+def _add_task(
+    env: dict[str, Any], task_id: str, status: str, *, commit: bool = False, **extra: str
+) -> dict:
     rec, reason = pp.provision_task_worktree(IMPL, PROJECT, task_id, str(env["repo"]))
     assert reason == ""
     if commit:
@@ -62,7 +64,7 @@ def _add_task(env: dict[str, Any], task_id: str, status: str, *, commit: bool = 
         _git(Path(rec["dir"]), "commit", "-m", f"work {task_id}")
     path: Path = env["tasks"]
     doc = json.loads(path.read_text()) if path.exists() else {"tasks": []}
-    doc["tasks"].append({"id": task_id, "status": status, "worktree": rec})
+    doc["tasks"].append({"id": task_id, "status": status, "worktree": rec, **extra})
     path.write_text(json.dumps(doc))
     return rec
 
@@ -86,6 +88,15 @@ def test_removes_merged_keeps_unmerged_and_untouches_running(env: dict[str, Any]
     assert Path(running["dir"]).is_dir()
     assert _task(env, "t-merged")["worktree"]["prunedAt"]
     assert "prunedAt" not in _task(env, "t-unmerged")["worktree"]
+
+
+def test_a_failed_task_dispatch_resume_would_reclaim_keeps_its_worktree(
+    env: dict[str, Any],
+) -> None:
+    rec = _add_task(env, "t-stale", "failed", failureKind="stale_claim")
+    (entry,) = pp.prune_task_worktrees(PROJECT, force=True)
+    assert entry.action == "kept" and "resumable" in entry.reason
+    assert Path(rec["dir"]).is_dir()
 
 
 def test_dirty_worktree_kept_without_force(env: dict[str, Any]) -> None:

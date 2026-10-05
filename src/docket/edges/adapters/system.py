@@ -757,7 +757,8 @@ def git_branch_merged(repo_dir: str, branch: str, into: str) -> bool:
         return False
     if result.returncode != 0:
         return False
-    names = {line.strip().lstrip("* ").strip() for line in result.stdout.splitlines()}
+    # "*" marks the current branch, "+" a branch checked out in another worktree.
+    names = {line.strip().lstrip("*+ ").strip() for line in result.stdout.splitlines()}
     return branch in names
 
 
