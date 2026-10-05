@@ -323,7 +323,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P38-1 — the redaction pattern matches only at a word start
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `trace-store.spec.md` (redaction)
+**Status:** DONE `f426a32a` (integrator: the boundary lives in trace-store requirement 7, no renumbering) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `trace-store.spec.md` (redaction)
 
 **Trigger (measured live, 2026-10-04 and re-run 2026-10-05):** `trace.redact("task=task-<uuid>")`
 returns `ta[REDACTED]`; the first `_REDACT_PATTERNS` entry's `sk|pk|api|key|tok|...` alternation
@@ -344,7 +344,7 @@ matches only where it starts a word. `_` stays a boundary, so `api_key=<20+ char
 
 ### P38-2 — `fetch` results pass `pre_input`
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (fetch section), `mcp-client.spec.md` (result screening, a pointer only)
+**Status:** DONE `c8c61a7b` (integrator: one public `core.tools.screen_tool_result`; the policy is evaluated once) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (fetch section), `mcp-client.spec.md` (result screening, a pointer only)
 
 **Trigger:** `core/tools.py::_fetch_tool` returns the page text as is, while
 `core/mcp_tools.py::_screen_result` screens MCP results (ADR 0019 cut `fetch`; ADR 0020 §7).
@@ -364,7 +364,7 @@ call, with the source named in the audit entry. `fetch` audits under `fetch.resu
 
 ### P38-3 — isolation on by default, bwrap first, a jail that can commit
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** L · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` ("Workspace isolation" and its live-wiring and CLI sections), `cli-interface.spec.md` (gates/doctor lines)
+**Status:** DONE `bf7d8cd1` + `c982046f` (integrator review: 95 tests depended on the host having bwrap, now `tests/conftest.py::record_isolation_off` per fixture; `.git/hooks`, `config`, `config.worktree` overlaid read-only; `isolationEnabled` and `get_isolation_mode` deleted) · **Size:** L · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` ("Workspace isolation" and its live-wiring and CLI sections), `cli-interface.spec.md` (gates/doctor lines)
 
 **Trigger:** `FleetSecurity.isolation_enabled` defaults to `False`. Measured 2026-10-05: under
 bwrap, `git commit` in a task worktree fails (`index.lock: Read-only file system`), and the docker
@@ -395,7 +395,7 @@ default image has no `git`/`python3`.
 
 ### P38-4 — a network lockdown mode
 
-**Status:** TODO · **Size:** M · **Wave:** 86 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (the D-23/D-24 egress section), `pod-dispatch.spec.md` (pod settings), `cli-interface.spec.md`
+**Status:** IN-PROGRESS (Wave 86 worker) · **Size:** M · **Wave:** 86 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (the D-23/D-24 egress section), `pod-dispatch.spec.md` (pod settings), `cli-interface.spec.md`
 
 **Trigger:** neither backend cuts the network (`--share-net`, docker's bridge); ADR 0004 deferred
 the mechanism. ADR 0020 §4.
@@ -434,7 +434,7 @@ network mode) when isolation is on. A server declared `isolate: false` (`mcp ser
 
 ### P38-6 — a task's processes never see docket's credentials
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** S · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (a "Credentials in task processes" section)
+**Status:** DONE `c10fb679` (`system.task_environment`; ~21 ms per call) · **Size:** S · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (a "Credentials in task processes" section)
 
 **Trigger:** `run_verify_cmd` passes `{**os.environ, **env}`; `run_bash` with `sandbox="off"`
 inherits `os.environ`; both carry provider keys when the operator exported them. ADR 0020 §8.
@@ -452,7 +452,7 @@ call sites use it; the explicit `env` overlay still wins.
 
 ### P38-7 — one sweep worker per pod
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** M · **Wave:** 85 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (the serve sweep), `serve-read-api.spec.md` only if a route's output changes
+**Status:** DONE `6b63cf4c` + `24debddd` (a shared scripted-turn test pinned to one worker) · **Size:** M · **Wave:** 85 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (the serve sweep), `serve-read-api.spec.md` only if a route's output changes
 
 **Trigger:** `serve.py::_run_sweeps` loops over `dispatchable_pods()` and runs each synchronously;
 its own comment records that one blocking hop stalls the other pods. ADR 0020 §9.
@@ -470,7 +470,7 @@ they are per pod. `stop` ends the loop and waits for in-flight sweeps.
 
 ### P38-8 — file tools never follow a symlink out of their roots
 
-**Status:** IN-PROGRESS (Wave 85 worker) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (file-tool containment)
+**Status:** DONE `b1f3d7bc` + `5c6a31ec` (integrator: every walked path passes `resolve_within`, so a symlinked directory and a `..` selector are closed too) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (file-tool containment)
 
 **Trigger:** `resolve_within` checks the requested path; `glob_files` and `grep_files` walk a root
 and may meet a symlink to a host path. Not yet measured either way: the card's first step is the
