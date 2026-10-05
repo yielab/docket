@@ -1784,6 +1784,19 @@ card), scores nothing, and carries no dollar figure.*
    swept twice concurrently by the sweep loop.
 3. `_sweep_loop` **MUST**, once its stop event is set, wait for the in-flight sweeps to end
    before returning, and `docket serve` joins it on shutdown.
+4. `docket serve` **MUST** stop in two stages on SIGINT/SIGTERM (handlers installed in the main
+   thread before the startup sweep). The first signal stops the server and the sweep loop,
+   prints one line (`stopping: waiting for N pod sweep(s); signal again to abandon`) and waits
+   for in-flight sweeps (requirement 3). The second signal **MUST** request cancellation
+   (`core.runs.cancel_run`) of every in-flight sweep run (`_sweep_one_pod` records its run id per
+   pod), cancel queued sweeps, wait at most `serve.SWEEP_ABANDON_WAIT_S` (5 s) for the runs to
+   settle, and exit 130 (SIGINT) or 143 (SIGTERM) without running interpreter teardown, so a
+   wedged worker thread cannot hold the process.
+5. An abandoned sweep follows the ordinary cancellation path ("Cancellation"): a hop in flight
+   has its process group killed, the hop returns `run_cancelled`, and the task ends terminal
+   `cancelled` with its persisted hops kept (never requeued to `pending`); the run record ends
+   `cancelled`. A run whose body never observes the request (a wedged thread) stays nonterminal
+   with `cancellation.requestedAt` set. Dispatch itself is unchanged.
 
 ## Interface Contracts
 
@@ -1989,6 +2002,11 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Unreleased
+
+- Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
+  130/143 ("Sweep workers" 4-5).
 
 ### Version 6.30.0 (2026-10-05)
 

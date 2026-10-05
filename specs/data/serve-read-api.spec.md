@@ -244,6 +244,10 @@ failure. The queued-to-running claim and returned-outcome terminal write are ato
 does not invoke dispatch for a run already cancelled while queued, and a concurrent cancellation
 that wins before the terminal write remains `cancelled` rather than being overwritten.
 
+A second SIGINT/SIGTERM to `docket serve` requests cancellation of every in-flight sweep run
+through this same lifecycle (see pod-dispatch "Sweep workers" 4-5): `requestedAt` is persisted
+at once, and the run reaches `cancelled` only when its body observes the request.
+
 ### GET /runs/&lt;id&gt;
 
 **Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns one run
@@ -761,6 +765,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Unreleased
+
+- Run cancellation note: a second serve stop signal requests cancellation of sweep runs.
 
 ### Version 3.1.0 (2026-10-04)
 
