@@ -203,10 +203,20 @@ class TestArgvShape:
         common = (main / ".git").resolve()
         argv = system.bwrap_argv((wt,), "true")
         ro = [argv[i + 1] for i, a in enumerate(argv) if a == "--ro-bind"][1:]
-        assert ro == [str(common / "hooks"), str(common / "config")]
-        assert argv.index("--ro-bind", argv.index("--bind")) > argv.index("--bind")
+        admin = common / "worktrees" / "wt"
+        assert ro == [
+            str(common / "hooks"),
+            str(common / "config"),
+            str(wt.resolve() / ".git"),
+            str(admin / "gitdir"),
+            str(admin / "commondir"),
+        ]
+        last_rw = max(i for i, a in enumerate(argv) if a == "--bind")
+        first_ro = [i for i, a in enumerate(argv) if a == "--ro-bind"][1]
+        assert first_ro > last_rw
         docker = system.docker_run_argv("c", (wt,), "true", None)
         assert f"{common}/hooks:{common}/hooks:ro" in docker
+        assert f"{wt.resolve()}/.git:{wt.resolve()}/.git:ro" in docker
 
     def test_a_root_outside_any_repo_gains_no_extra_mounts(self, workspace: Path) -> None:
         argv = system.bwrap_argv((workspace,), "true")
@@ -538,3 +548,116 @@ class TestJailedCommit:
             text=True,
         )
         assert host.stdout.strip() == ""
+
+
+def _super_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
+    """A super-repo with one submodule checked out; returns (super, submodule git dir)."""
+    sub_src = tmp_path / "sub_src"
+    _git(tmp_path, "init", "-q", str(sub_src))
+    _git(sub_src, "commit", "-q", "--allow-empty", "-m", "sub")
+    sup = tmp_path / "super"
+    _git(tmp_path, "init", "-q", str(sup))
+    _git(sup, "commit", "-q", "--allow-empty", "-m", "init")
+    _git(sup, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub_src), "sub")
+    return sup, sup / ".git" / "modules" / "sub"
+
+
+class TestGitMetadataTheHostLaterRuns:
+    def test_mount_dirs_guard_submodules_the_git_file_and_the_worktree_admin_files(
+        self, tmp_path: Path
+    ) -> None:
+        sup, subgit = _super_with_submodule(tmp_path)
+        (sup / ".git" / "info").mkdir(exist_ok=True)
+        (sup / ".git" / "info" / "attributes").write_text("* -diff\n")
+        wt = tmp_path / "wt"
+        _git(sup, "worktree", "add", "-q", str(wt))
+
+        _, ro = system._mount_dirs((sup,))
+        for expected in (
+            subgit / "hooks",
+            subgit / "config",
+            sup / ".git" / "info" / "attributes",
+            sup / "sub" / ".git",
+        ):
+            assert str(expected) in ro, expected
+
+        rw, ro_wt = system._mount_dirs((wt,))
+        admin = sup / ".git" / "worktrees" / "wt"
+        for expected in (wt / ".git", admin / "gitdir", admin / "commondir"):
+            assert str(expected) in ro_wt, expected
+        assert str(admin) in rw and str(wt) in rw
+
+    def test_a_submodule_git_dir_nested_two_deep_is_guarded(self, tmp_path: Path) -> None:
+        sup, subgit = _super_with_submodule(tmp_path)
+        deep = subgit / "modules" / "a" / "modules" / "b"
+        (deep / "hooks").mkdir(parents=True)
+        (deep / "HEAD").write_text("ref: refs/heads/main\n")
+        (deep / "config").write_text("")
+        _, ro = system._mount_dirs((sup,))
+        assert str(deep / "hooks") in ro and str(deep / "config") in ro
+
+    @needs_bwrap
+    def test_the_jail_cannot_plant_a_submodule_hook_or_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        sup, subgit = _super_with_submodule(tmp_path)
+
+        hook = toolbox.run_bash((sup,), f"echo x > {subgit}/hooks/post-commit", sandbox="auto")
+        assert not hook.ok
+        assert not (subgit / "hooks" / "post-commit").exists()
+
+        cfg = toolbox.run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")
+        assert not cfg.ok
+        host = subprocess.run(
+            ["git", "-C", str(sup / "sub"), "config", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+        )
+        assert host.stdout.strip() == ""
+
+        before = (sup / "sub" / ".git").read_text()
+        redirect = toolbox.run_bash((sup,), "echo 'gitdir: /tmp/evil' > sub/.git", sandbox="auto")
+        assert not redirect.ok
+        assert (sup / "sub" / ".git").read_text() == before
+
+    @needs_bwrap
+    def test_the_jail_cannot_repoint_a_linked_worktrees_git_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+        (main / ".git" / "info").mkdir(exist_ok=True)
+        (main / ".git" / "info" / "attributes").write_text("* -diff\n")
+        before = _git(wt, "rev-parse", "--absolute-git-dir")
+        admin = main / ".git" / "worktrees" / "wt"
+        admin_before = (admin / "gitdir").read_text()
+
+        rewrite = toolbox.run_bash((wt,), f"echo 'gitdir: {wt}/evil' > .git", sandbox="auto")
+        assert not rewrite.ok
+        assert _git(wt, "rev-parse", "--absolute-git-dir") == before
+
+        admin_write = toolbox.run_bash((wt,), f"echo /x > {admin}/gitdir", sandbox="auto")
+        assert not admin_write.ok
+        assert (admin / "gitdir").read_text() == admin_before
+
+        attrs = toolbox.run_bash(
+            (wt,), f"echo '* filter=evil' > {main}/.git/info/attributes", sandbox="auto"
+        )
+        assert not attrs.ok
+        assert (main / ".git" / "info" / "attributes").read_text() == "* -diff\n"
+
+        ident = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+        commit = toolbox.run_bash(
+            (wt,), "echo x > f && git add f && git commit -q -m still", env=ident, sandbox="auto"
+        )
+        assert commit.ok, commit.error or commit.content

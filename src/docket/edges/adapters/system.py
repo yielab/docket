@@ -228,21 +228,88 @@ def git_dirs(root: Path) -> list[Path]:
     return out
 
 
+_SUBMODULE_DEPTH = 8
+
+
+def _submodule_git_dirs(base: Path) -> list[Path]:
+    """Git dirs of submodules under ``base/modules`` (any depth): a directory holding ``HEAD``.
+    Walks the filesystem only -- never runs git in a submodule -- and never follows symlinks."""
+    found: list[Path] = []
+
+    def walk(directory: Path, depth: int) -> None:
+        if depth > _SUBMODULE_DEPTH:
+            return
+        try:
+            children = sorted(c for c in directory.iterdir() if c.is_dir() and not c.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if (child / "HEAD").is_file():
+                found.append(child)
+                walk(child / "modules", depth + 1)
+            else:
+                walk(child, depth + 1)
+
+    walk(base / "modules", 0)
+    return found
+
+
+def _submodule_worktree_git_file(subgit: Path) -> Path | None:
+    """The ``.git`` file of a submodule's checkout, located through the ``worktree =`` line of its
+    git dir's config (read as text); None when absent or not a file."""
+    try:
+        text = (subgit / "config").read_text(errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"^\s*worktree\s*=\s*(.+?)\s*$", text, re.MULTILINE)
+    if not match:
+        return None
+    checkout = Path(match.group(1))
+    if not checkout.is_absolute():
+        checkout = subgit / checkout
+    dotgit = Path(os.path.normpath(checkout)) / ".git"
+    return dotgit if dotgit.is_file() else None
+
+
+def _guarded_paths(root: Path, dirs: list[Path]) -> list[Path]:
+    """Every path under the git dirs (and root's ``.git`` file) that the operator's next host-side
+    git command would execute or trust, so the jail must not be able to write it."""
+    gitdir, common = dirs[0], dirs[-1]
+    guarded = [
+        common / "hooks",
+        common / "config",
+        gitdir / "config.worktree",
+        common / "info" / "attributes",
+    ]
+    if (root / ".git").is_file():
+        guarded.append(root / ".git")
+    if gitdir != common:
+        guarded += [gitdir / "gitdir", gitdir / "commondir", gitdir / "info" / "attributes"]
+    for base in dict.fromkeys(dirs):
+        for sub in _submodule_git_dirs(base):
+            guarded += [sub / "hooks", sub / "config", sub / "config.worktree"]
+            guarded += [sub / "info" / "attributes"]
+            checkout_git = _submodule_worktree_git_file(sub)
+            if checkout_git is not None:
+                guarded.append(checkout_git)
+    return [g for g in guarded if g.is_dir() or g.is_file()]
+
+
 def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
     """Read-write mounts (roots plus their repository dirs) and the read-only overlays on top.
-    Hooks and config stay read-only: a writable one lets a jailed agent plant code that the
-    operator's next host-side git command would run unjailed."""
+    Hooks, config, attributes, submodule equivalents and ``.git`` pointer files stay read-only: a
+    writable one lets the jail plant code the operator's next host git command runs. Bind them last."""
     rw: list[str] = []
     ro: list[str] = []
     for root in roots:
         dirs = git_dirs(root)
-        for path in [root.resolve(), *dirs]:
+        resolved_root = root.resolve()
+        for path in [resolved_root, *dirs]:
             if str(path) not in rw:
                 rw.append(str(path))
         if dirs:
-            gitdir, common = dirs[0], dirs[-1]
-            for guarded in (common / "hooks", common / "config", gitdir / "config.worktree"):
-                if guarded.exists() and str(guarded) not in ro:
+            for guarded in _guarded_paths(resolved_root, dirs):
+                if str(guarded) not in ro:
                     ro.append(str(guarded))
     return rw, ro
 

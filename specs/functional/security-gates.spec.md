@@ -169,9 +169,18 @@ are owned here, not there.
    the choice. The jail mounts the git dir and common dir of every root that is inside a git
    repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
    `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
-   The repository's `hooks/` and `config`, and the worktree's `config.worktree`, are re-bound
-   read-only on top (bwrap `--ro-bind`, docker `:ro`): a writable hook or config (`core.hooksPath`,
-   `core.fsmonitor`) would run attacker-chosen code on the operator's next unjailed git command.
+   The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
+   are re-bound read-only on top (bwrap `--ro-bind`, docker `:ro`), after the read-write mounts they
+   shadow: a writable hook or config (`core.hooksPath`, `core.fsmonitor`) would run attacker-chosen
+   code on the operator's next unjailed git command. The same applies, only when present, to every
+   submodule git dir under `modules/` of the git dir and common dir (any depth, found by walking
+   for a directory holding `HEAD`, never by running git): its `hooks`, `config`, `config.worktree`
+   and `info/attributes`, plus the submodule checkout's `.git` file (located through the `worktree`
+   line of that config). In a linked worktree the root's `.git` file and the admin files
+   `<common>/worktrees/<name>/gitdir` and `commondir` are read-only too, so the jail cannot repoint
+   the host's next git command at a directory it controls. Objects, refs, index, logs and `HEAD`
+   stay writable. A submodule or guarded path created inside the jail after it starts is not
+   covered; the jail is built once per call.
 
 ### Enablement (implemented; corrected for P19-7b)
 
@@ -1357,6 +1366,15 @@ unsandboxed run:
 ToolOutcome(ok=False, content='', error='sandbox (bwrap) failed to start: [Errno 2] ...')
 ```
 
+In a linked task worktree, git metadata the host would later trust is read-only while a commit
+still works (`TestGitMetadataTheHostLaterRuns`, `TestJailedCommit`):
+
+```text
+>>> toolbox.run_bash((wt,), "echo 'gitdir: /x/evil' > .git", sandbox="auto")   # ok=False; .git unchanged
+>>> toolbox.run_bash((sup,), "git -C sub config core.hooksPath /x", sandbox="auto")   # ok=False
+>>> toolbox.run_bash((wt,), "echo x > f && git add f && git commit -q -m m", sandbox="auto")   # ok=True
+```
+
 A timed-out command that forked children leaves nothing behind under either real backend — the
 docker case specifically needs `system.docker_kill`, not just a process-group signal, because
 `docker run`'s CLI process does not cover the container the daemon actually runs:
@@ -1529,6 +1547,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Unreleased
+
+- Workspace isolation 4: the jail also re-binds read-only submodule git dirs' hooks/config/config.worktree/info/attributes and checkout `.git` files, a linked worktree's `.git` file and `gitdir`/`commondir` admin files, and `info/attributes`.
 
 ### Version 0.32.0 (2026-10-05)
 
