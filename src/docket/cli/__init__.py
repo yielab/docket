@@ -2235,10 +2235,10 @@ def cmd_mcp(ctx: typer.Context) -> None:
                   chokepoint as any built-in -- a remote server can never
                   shadow bash/read/write/edit/glob/grep. `add <name>
                   [--env K=V ...] [--timeout S] [--kind read|write]
-                  [--tools NAME,NAME,...] -- <command> [args...]`:
-                  everything after `--` is passed to the server verbatim as
-                  its launch command and arguments; --env/--timeout/--kind/
-                  --tools must come before `--`. Tools register as
+                  [--tools NAME,NAME,...] [--no-isolate] -- <command>
+                  [args...]`: everything after `--` is passed to the server
+                  verbatim as its launch command and arguments; the options
+                  must come before `--`. Tools register as
                   `mcp__<name>__<tool>`. `--kind` declares the server's
                   trust level (default: write) -- a role that denies write
                   gets no tools from a server left at the default, but does
@@ -2246,6 +2246,10 @@ def cmd_mcp(ctx: typer.Context) -> None:
                   role narrowing excludes by tool kind, not by name.
                   `--tools` restricts registration to a comma-separated
                   allow-list of that server's own tool names (default: all).
+                  A stdio server starts inside the turn's sandbox (its
+                  roots and network mode) while isolation is on;
+                  `--no-isolate` is the audited assertion that it must run
+                  on the host.
 
     Its tools are reachable from a live turn: the client namespaces them
     `mcp__<server>__<tool>`, and the turn loop folds them into the registry
