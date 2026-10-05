@@ -231,5 +231,11 @@ Local endpoint, throwaway `HOME`, bwrap backend, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2
 - A harness `--contract 1.1` consult: `question.taskId` equalled the run token; the answer resumed
   the turn to `ok`.
 
+- The documentation capture found one more: told to run `git push origin production`, a Lead now
+  consults the operator first, and `high-risk-deploy`'s `matches` (any tool's rendered call) fired
+  on the question's text, so the task parked on an approval *to ask*, then again on the question.
+  An `ask` on `consult` now resolves to `allow` (the consultation is the human's decision); `deny`
+  still denies.
+
 Still deferred, by trigger: `kind: autonomy` (a verifier that emits one) and per-task credential
 minting (an issuer a pod needs). Not pushed.

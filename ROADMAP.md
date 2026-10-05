@@ -247,7 +247,8 @@ stop, `docket pod <p> worktrees prune`, options in `conversation`-level notifica
 persisted, and `approve_task` across a task's later hops of the asking role on all four approval
 channels. Review found the sixth unwired-machinery instance (the inbox never carried a task's
 question) and five card defects; the live run found two more (a jailed commit with no git
-identity, and a verify command's `__pycache__/` blocking every prune). Reasoning and the run in ADR 0020 "Closed by Waves 89–90". `kind: autonomy` and
+identity, and a verify command's `__pycache__/` blocking every prune), and the documentation
+capture a third (a policy `ask` on `consult` asked approval to ask the operator). Reasoning and the run in ADR 0020 "Closed by Waves 89–90". `kind: autonomy` and
 credential minting stay deferred. No phase is planned.
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
