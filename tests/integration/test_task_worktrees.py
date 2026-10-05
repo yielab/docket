@@ -40,6 +40,27 @@ steps:
 """
 
 
+_COORDINATES_PIPELINE_YAML = """\
+name: coordinates
+steps:
+  - id: lead
+    role: lead
+  - id: implementer
+    role: implementer
+  - id: coordinates
+    run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
+"""
+
+_NO_IMPLEMENTER_PIPELINE_YAML = """\
+name: no-implementer
+steps:
+  - id: lead
+    role: lead
+  - id: coordinates
+    run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
+"""
+
+
 def _git(repo: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
@@ -69,6 +90,14 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, codebase: Path) -
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     repoint_docket_home(monkeypatch, home)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+
+
+def _bind_pipeline(text: str) -> None:
+    path = _pod.pod.bound_pipeline_path("demo")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
 
 
 class _Runner:
@@ -257,3 +286,41 @@ def test_an_in_place_pod_never_gets_task_worktrees(
 
     assert "worktree" not in _dispatch.read_tasks("demo")[0]
     assert _worktree_paths(repo) == [str(repo.resolve())]
+
+
+def test_a_command_step_gets_the_task_id_and_the_evidence_commits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+
+    queued = _dispatch.enqueue_task("demo", "work")
+    (res,) = _dispatch.dispatch_pod("demo", runner=_Runner("work.txt"), max_tasks=1)
+
+    assert res.status == "done", res.reason
+    task = _dispatch.read_tasks("demo")[0]
+    evidence = next(h for h in task["hops"] if h["role"] == "implementer")["evidence"]
+    command = next(h for h in task["hops"] if h["role"] == "coordinates")
+    assert evidence["baseCommit"] and evidence["commit"]
+    assert evidence["baseCommit"] == task["worktree"]["baseCommit"]
+    assert command["output"].strip() == (
+        f"id={queued['id']} base={evidence['baseCommit']} head={evidence['commit']}"
+    )
+
+
+def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _bind_pipeline(_NO_IMPLEMENTER_PIPELINE_YAML)
+
+    queued = _dispatch.enqueue_task("demo", "work")
+    (res,) = _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
+
+    assert res.status == "done", res.reason
+    command = next(h for h in _dispatch.read_tasks("demo")[0]["hops"] if h["role"] == "coordinates")
+    assert command["output"].strip() == f"id={queued['id']} base= head="

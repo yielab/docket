@@ -269,7 +269,9 @@ def docker_kill(container_name: str) -> None:
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 
-def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
+def run_verify_cmd(
+    cmd: str, cwd: str, timeout: int = 120, env: dict[str, str] | None = None
+) -> tuple[bool, str]:
     """Run a user-supplied verification command in *cwd*. Returns
     ``(passed, combined_output)`` capped at _VERIFY_MAX_OUTPUT; the caller
     must redact secrets before tracing it. Never raises: non-zero exit,
@@ -281,7 +283,8 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
     starts. That is the only honest posture here: this call is synchronous
     inside a dispatch hop, with no interactive approver reachable (see
     ``specs/functional/security-gates.spec.md``). ``cwd``/``timeout`` are
-    never classified: they are plumbing, not operator-composed shell text.
+    never classified: they are plumbing, not operator-composed shell text. *env*, when
+    given, is merged over the inherited environment.
 
     Runs in its own session (``start_new_session=True``) so a timeout can kill the
     command's whole process group, not just the immediate ``sh`` child -- otherwise a
@@ -305,6 +308,7 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
+            env={**os.environ, **env} if env else None,
         )
     except (FileNotFoundError, OSError) as exc:
         return False, f"[verify error: {exc}]"

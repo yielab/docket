@@ -153,6 +153,26 @@ class TestRunVerifyCmd:
         assert passed is False
         assert output  # some error message
 
+    def test_env_is_merged_over_the_inherited_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
+        passed, output = _sys.run_verify_cmd(
+            'echo "$DOCKET_TASK_ID/$DOCKET_INHERITED_PROBE"',
+            str(tmp_path),
+            env={"DOCKET_TASK_ID": "t-123"},
+        )
+        assert passed is True
+        assert output.strip() == "t-123/kept"
+
+    def test_without_env_the_command_inherits_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_INHERITED_PROBE", "kept")
+        passed, output = _sys.run_verify_cmd('echo "$DOCKET_INHERITED_PROBE"', str(tmp_path))
+        assert passed is True
+        assert output.strip() == "kept"
+
 
 # ── dispatch integration tests ────────────────────────────────────────────────
 

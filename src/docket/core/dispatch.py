@@ -2238,6 +2238,21 @@ def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopRes
     return True
 
 
+def _task_command_env(ctx: _UnitContext, prior: list[HopResult]) -> dict[str, str]:
+    """The task's coordinates for a command step: its id, and the base and head commits of the
+    latest successful Implementer hop's evidence (empty strings when there is none)."""
+    evidence: dict[str, Any] = {}
+    for hop in reversed(prior):
+        if hop.role == "implementer" and hop.ok and hop.evidence is not None:
+            evidence = hop.evidence
+            break
+    return {
+        "DOCKET_TASK_ID": ctx.task_id,
+        "DOCKET_BASE_COMMIT": str(evidence.get("baseCommit") or ""),
+        "DOCKET_HEAD_COMMIT": str(evidence.get("commit") or ""),
+    }
+
+
 def _run_command_step(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -2289,7 +2304,7 @@ def _run_command_step(
 
     cwd = _when_cwd(ctx, prior)
     timeout = node.timeout or ctx.resolved_verify_timeout
-    passed, raw_output = _sys.run_verify_cmd(cmd, cwd, timeout)
+    passed, raw_output = _sys.run_verify_cmd(cmd, cwd, timeout, env=_task_command_env(ctx, prior))
     redacted = _trace.redact(raw_output)
     _trace_locked(
         ctx.project,

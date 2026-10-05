@@ -1317,7 +1317,15 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    (`exit` is `0`/`1`); a step refused under `approvalMode: "refuse"` without ever running
    **MUST** also emit `command_step` with `exit: null`, so an operator can tell "never ran" apart
    from "ran and failed".
-4. **Known limitation:** this section covers only a **top-level** step. A `parallel` group's
+4. A command step's process **MUST** receive the task's coordinates as environment variables,
+   merged over the inherited environment (`_task_command_env`, passed as
+   `run_verify_cmd(..., env=)`): `DOCKET_TASK_ID`, and `DOCKET_BASE_COMMIT` /
+   `DOCKET_HEAD_COMMIT` taken from the `evidence` (`baseCommit` / `commit`) of the latest `ok`
+   Implementer hop of the run. With no such hop, or a missing value, each **MUST** be the empty
+   string, never absent. They **MUST NOT** be computed from git or from a worktree path: the
+   recorded evidence is the one source, so a check recipe and the evidence it is judged against
+   agree.
+5. **Known limitation:** this section covers only a **top-level** step. A `parallel` group's
    children run through `_execute_unit` directly (see "Parallel step groups"), which does not
    evaluate `when` or execute a `run` command — a child declaring either is not yet a supported
    combination.
@@ -1965,6 +1973,9 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ### Unreleased
 
+- Command steps receive `DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT` from the
+  latest successful Implementer hop's evidence ("Conditional steps and command steps"
+  Requirement 4; the known limitation is now Requirement 5).
 - One git worktree per task: created at claim under `<Implementer workspace>/tasks/<taskId>`,
   recorded as `task["worktree"]`, used by every hop, the verify gate and evidence `baseCommit`,
   removed with the member; the per-member worktree (`worktreeDir`/`worktreeBranch`) is deleted
