@@ -116,3 +116,25 @@ or not yet decidable when re-verified (see Evidence and "Corrections to the outl
 - The integrator owns the seams: §1 × §3 (a default-on dispatch in a task worktree commits), §4 ×
   §5 (a jailed MCP server under `network none` cannot connect out), and §7 × ADR 0019 §2 (one
   screening function, both callers).
+
+## Live run (2026-10-05)
+
+Run against the local llama.cpp endpoint (`127.0.0.1:8081`, 16k context,
+`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), with a throwaway `HOME`, model `local/local-model`, and a
+default `docket init` pod (Lead, Implementer) on a git repo. No isolation command was run first.
+
+- `gates status` showed `Workspace isolation: on (default)` and `Network: open (default)`;
+  `doctor` named the backend a turn would use: `bwrap`.
+- **Isolation by default:** a task asked the Implementer to add `square(x)` and commit it from the
+  `bash` tool. It finished `done` in 2 hops (2m54s). The commit landed on the task's own branch in
+  its task worktree, from inside the jail (30 `bash` results carried `sandbox: bwrap`). The host
+  repository's `.git/hooks` held only the samples afterwards.
+- **Network none:** after `docket gates network none`, a task ran a `python3 -c` that opens
+  `http://example.com`. Inside the jail it failed with `Temporary failure in name resolution`,
+  and the output was written to the task worktree. The hop then parked on an unrelated approval:
+  the model improvised `export GIT_DIR=...`, and `export` is not on the curated allowlist.
+- **Network none with isolation off:** the Lead hop was refused before any model call, with a
+  message naming both fixes.
+- Found and scheduled as P38-10: that one refusal wrote three `network.refused` audit entries 2 s
+  and 4 s apart. Both posture refusals returned the retryable `daemon_error` kind, so dispatch
+  retried a deterministic refusal.
