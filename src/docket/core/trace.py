@@ -115,7 +115,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
 # runs to thousands of characters, so the cap only ever rejects noise, not a real value.
 _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
+        r"(?<![A-Za-z0-9])(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
         re.IGNORECASE,
     ),
     re.compile(

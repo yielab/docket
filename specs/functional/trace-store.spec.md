@@ -86,7 +86,10 @@ This specification does NOT cover:
 7. `redact` **MUST** run before a record's payload is stored, applying every pattern in
    `_REDACT_PATTERNS` (key-shaped assignments, vendor-prefixed env-var names, a generic
    `NAME_API_KEY`/`_SECRET`/`_TOKEN` shape, and email addresses) and replacing each match with
-   the literal `[REDACTED]`.
+   the literal `[REDACTED]`. The key-shaped pattern's labels (`sk`, `pk`, `api`, `key`, `tok`,
+   `secret`, `bearer`, `auth`, `Basic`) **MUST** match only where no letter or digit precedes
+   them, so `task=<id>` and `risk=<value>` pass unchanged while `api_key=<value>` (the `_` is a
+   boundary) is still redacted.
 8. `redact` **MUST** additionally replace the exact value of any secret currently held in
    `core/secrets.py`'s store (values longer than 8 characters), after the regex pass, so a
    stored credential that does not match any generic shape is still scrubbed by its own value.
@@ -323,6 +326,11 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Unreleased
+
+- Redaction requirement 7: the key-shaped pattern's labels match only where no letter or
+  digit precedes them (`task=<id>` was redacted to `ta[REDACTED]`, ADR 0020 s10).
 
 ### Version 1.4.0 (2026-09-29)
 

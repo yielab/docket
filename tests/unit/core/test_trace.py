@@ -50,6 +50,48 @@ def test_short_value_and_plain_text_are_left_alone() -> None:
     assert trace.redact('{"action": "edit"}') == '{"action": "edit"}'
 
 
+class TestRedactionWordBoundary:
+    """Redaction patterns must match only at word boundaries."""
+
+    def test_task_field_is_not_redacted_as_a_secret(self) -> None:
+        """task=... should not match task's 'sk' inside, or 'key' as part of 'task'."""
+        text = "task=task-8d627c86-9a63-4379-beee-ee3b2afff6f7"
+        assert trace.redact(text) == text
+
+    def test_risk_field_is_not_redacted_as_a_secret(self) -> None:
+        """risk=... should not match the 'sk' in 'risk'."""
+        text = "risk=" + "a" * 24
+        assert trace.redact(text) == text
+
+    def test_api_key_with_underscore_is_redacted(self) -> None:
+        """api_key=<value> should be redacted even with underscore."""
+        text = "api_key=" + "A" * 24
+        out = trace.redact(text)
+        assert "[REDACTED]" in out
+        assert "A" * 24 not in out
+
+    def test_key_after_colon_is_redacted(self) -> None:
+        """key: <value> should be redacted (colon separator)."""
+        text = "key: " + "A" * 24
+        out = trace.redact(text)
+        assert "[REDACTED]" in out
+        assert "A" * 24 not in out
+
+    def test_bearer_token_is_redacted(self) -> None:
+        """Bearer <value> should be redacted (space separator)."""
+        text = "Bearer " + "A" * 24
+        out = trace.redact(text)
+        assert "[REDACTED]" in out
+        assert "A" * 24 not in out
+
+    def test_tok_equals_is_redacted(self) -> None:
+        """tok=<value> should be redacted."""
+        text = "tok=" + "A" * 24
+        out = trace.redact(text)
+        assert "[REDACTED]" in out
+        assert "A" * 24 not in out
+
+
 class TestSubscribe:
     def test_sink_receives_the_exact_record_read_trace_later_returns(self) -> None:
         received: list[dict[str, object]] = []
