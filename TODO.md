@@ -308,7 +308,7 @@ integrates and closes.
 
 ### W89-1 — `doctor`, `config explain` and `recipes show --json` show unjailed MCP servers
 
-**Status:** TODO · **Size:** S · **Wave:** 89 · **Model:** Haiku · **Spec:** `mcp-client.spec.md` (Requirement 40, and the stale line saying the document has no `isolate`), `cli-json-shapes.spec.md` (`doctor --json`, `config explain` `tools.mcpServers`, `recipes show --json`), `cli-interface.spec.md` (`docket doctor` checks)
+**Status:** DONE `2c3a7601` + integrator `35f022df` (one doctor helper; unit test instead of a layout-baseline entry) · **Size:** S · **Wave:** 89 · **Model:** Haiku · **Spec:** `mcp-client.spec.md` (Requirement 40, and the stale line saying the document has no `isolate`), `cli-json-shapes.spec.md` (`doctor --json`, `config explain` `tools.mcpServers`, `recipes show --json`), `cli-interface.spec.md` (`docket doctor` checks)
 
 **Today:** `cli/_doctor.py` builds its unjailed list from `load_mcp_servers()` (the global registry)
 and only in the human path; a pod's `isolate: false` server (from a recipe) is not listed and
@@ -326,7 +326,7 @@ X)`), whenever isolation is not off; `config explain` (both renders) carries `is
 
 ### W89-2 — the jail cannot rewrite git metadata the host later runs
 
-**Status:** TODO · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Workspace isolation, Requirement 4, and its example)
+**Status:** DONE `38988783` + integrator `908a13ac` (an absent `hooks/` or `info/attributes` is created empty, then bound read-only) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Workspace isolation, Requirement 4, and its example)
 
 **Today:** `edges/adapters/system.py::_mount_dirs` re-binds read-only only the git dir's and common
 dir's `hooks`, `config` and `config.worktree`. Still writable from the jail:
@@ -354,7 +354,7 @@ A submodule added inside the jail after it starts is out of scope; the spec says
 
 ### W89-3 — a second stop signal makes `docket serve` abandon in-flight sweeps
 
-**Status:** TODO · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Sweep workers, and the "stop waits for in-flight sweeps" line), `serve-read-api.spec.md` (cancellation lifecycle note)
+**Status:** DONE `936b8a43` · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Sweep workers, and the "stop waits for in-flight sweeps" line), `serve-read-api.spec.md` (cancellation lifecycle note)
 
 **Today:** `serve.py::run_serve` catches `KeyboardInterrupt` around `serve_forever`, then the
 `finally` joins the sweeper, whose `_drain_sweeps` waits with no timeout. A second Ctrl-C raises
@@ -376,7 +376,7 @@ the spec; do not change it.
 
 ### W89-4 — `docket pod <p> worktrees prune` removes finished, merged task worktrees
 
-**Status:** TODO · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Task worktrees, new requirement), `cli-interface.spec.md` (the verb)
+**Status:** DONE `57b3d509` + integrator `d818f581` (a resumable failed task keeps its worktree; `git_branch_merged` reads the `+` marker) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Task worktrees, new requirement), `cli-interface.spec.md` (the verb)
 
 **Today:** a task's worktree (`<member>/tasks/<taskId>`, branch `docket/<project>/<taskId>`) is
 removed only when its member is removed (`core/pod_provisioning.py::teardown_member`).
@@ -399,7 +399,7 @@ branch and records `prunedAt`, keeps and names the unmerged one; a running task 
 
 ### W89-5 — options reach channel notifications, and Telegram `/answer` can pick one
 
-**Status:** TODO · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Notifications), `telegram-integration.spec.md` (`/answer`)
+**Status:** DONE `398b96fd` + integrator `d7dac7f6` (the inbox `TaskView` never carried `question`/`brief`: a sixth unwired-machinery instance, now wired) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Notifications), `telegram-integration.spec.md` (`/answer`)
 
 **Today:** `core/operator_contract.py::TaskView.question` is the base `Question`, so v1.1
 `options`/`recommendation` are dropped before `core/notify.py::render_data`/`render_text` run;
