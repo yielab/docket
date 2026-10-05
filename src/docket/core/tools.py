@@ -231,6 +231,9 @@ _POLICY_ACTION_TO_DECISION: dict[str, Decision] = {
 }
 
 
+_CONSULT_TOOL = "consult"
+
+
 @dataclass(frozen=True)
 class ToolVerdict:
     """The gate's answer for one call. ``policy_action``/``policy_id`` carry the *raw*
@@ -279,6 +282,10 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
         decision, reason = command_decision, command_reason
     else:
         decision, reason = policy_decision, policy_reason
+    if tool.name == _CONSULT_TOOL and decision == "ask":
+        # The consultation is the human's decision: asking approval to ask would put the same
+        # question to the operator twice. The raw hit stays on the verdict; deny still denies.
+        decision = "allow"
 
     return ToolVerdict(decision, reason, policy_id=hit.policy_id, policy_action=hit.action)
 
@@ -686,7 +693,7 @@ def _consult_tool() -> Tool:
         "required": ["id", "label", "description"],
     }
     return Tool(
-        name="consult",
+        name=_CONSULT_TOOL,
         description=(
             "Ask the operator a question when the task cannot be decided from the "
             "repository alone. Give at least two options and your recommendation. The "

@@ -606,6 +606,11 @@ tool call to take.**
    `core/policy.py`'s own `_RANK` uses for competing policies. Either side alone can decide the
    outcome; a `block-destructive` policy's `require_approval` on an otherwise-allowlisted `write`
    call is exactly as binding as a classifier `ask` on an otherwise-unmatched `bash` command.
+   One exception: an `ask` on the `consult` built-in **MUST** resolve to `allow` (the verdict
+   keeps the raw `policy_id`/`policy_action`), because the consultation is itself the human's
+   decision; asking approval to ask would put one decision to the operator twice (found by the
+   2026-10-05 doc capture: `high-risk-deploy`'s `matches` fired on a Lead's question that quoted
+   `git push origin production`). A `deny` on `consult` still denies.
 4. `ToolContext` **MUST** carry `role`/`project` (both default `""`), feeding
    `policy_eval_detail`'s `applies_to` matching and `approval_create`'s record. Every shipped
    template uses `applies_to: ["*"]`, which **MUST** match an empty role — a bare `ToolContext()`
@@ -1562,6 +1567,7 @@ $ git clone https://anywhere.example/repo.git
 
 Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
+- A policy `ask` on `consult` resolves to `allow`: the consultation is the human's decision (Gate decision 3).
 - A jailed command receives the operator's git identity (`system.git_identity_env`), so a jailed commit works when identity comes from the environment or a non-default `HOME`, and under docker (Exec sandbox 6); found by the Waves 89-90 live run.
 - Requirement 4 (docker image): the docker jail needs `DOCKET_SANDBOX_IMAGE` to carry `git` to commit; `docket doctor` probes and warns; the docker jail's commit and `network none` are proven against real docker.
 - Workspace isolation 4: the jail also re-binds read-only submodule git dirs' hooks/config/config.worktree/info/attributes and checkout `.git` files, a linked worktree's `.git` file and `gitdir`/`commondir` admin files, and `info/attributes`.

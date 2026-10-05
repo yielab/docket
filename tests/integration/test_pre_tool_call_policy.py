@@ -497,3 +497,40 @@ class TestAuditTrail:
         res = dispatch_tool(_call("bash", json.dumps({"command": "ls"})), ctx, builtin_registry())
         assert res.decision == "allow" and res.executed
         assert _audit_actions() == []
+
+
+class TestConsultIsTheAsk:
+    """A policy ``ask`` over a ``consult`` call is answered by the consultation itself: asking a
+    human to approve asking a human would make the operator decide the same thing twice."""
+
+    _ARGS = json.dumps(
+        {
+            "kind": "decision",
+            "question": "Run git push origin production now?",
+            "options": [
+                {"id": "push", "label": "push now", "description": "run it"},
+                {"id": "hold", "label": "hold", "description": "do not push"},
+            ],
+        }
+    )
+
+    def test_a_policy_ask_on_consult_lets_the_consultation_run(self, ctx: ToolContext) -> None:
+        _write_policy("deploy-ask", r"git\s+push\s+.*production", "require_approval")
+        tool = builtin_registry().get("consult")
+        assert tool is not None
+        verdict = evaluate_tool_call(tool, json.loads(self._ARGS), ctx)
+        assert verdict.decision == "allow"
+        assert verdict.policy_id == "deploy-ask" and verdict.policy_action == "require_approval"
+
+    def test_a_policy_deny_on_consult_still_denies(self, ctx: ToolContext) -> None:
+        _write_policy("deploy-deny", r"git\s+push\s+.*production", "block")
+        tool = builtin_registry().get("consult")
+        assert tool is not None
+        assert evaluate_tool_call(tool, json.loads(self._ARGS), ctx).decision == "deny"
+
+    def test_the_same_ask_on_bash_still_asks(self, ctx: ToolContext) -> None:
+        _write_policy("deploy-ask", r"git\s+push\s+.*production", "require_approval")
+        tool = builtin_registry().get("bash")
+        assert tool is not None
+        verdict = evaluate_tool_call(tool, {"command": "git push origin production"}, ctx)
+        assert verdict.decision == "ask"
