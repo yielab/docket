@@ -336,7 +336,7 @@ def run_bash(
     else:
         popen_arg = command
         shell = True
-        popen_env = {**os.environ, **env} if env else None
+        popen_env = _system.task_environment(env)
 
     try:
         proc = subprocess.Popen(

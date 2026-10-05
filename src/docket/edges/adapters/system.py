@@ -269,6 +269,24 @@ def docker_kill(container_name: str) -> None:
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 
+def task_environment(overlay: dict[str, str] | None = None) -> dict[str, str]:
+    """The host environment minus docket's credentials, with *overlay* applied last.
+
+    Strips ``DOCKET_LLM_API_KEY``, ``TELEGRAM_BOT_TOKEN``, every credential name the provider
+    catalog declares and every name in the secret store. Reads files only; never creates the home."""
+    from docket.core import provider as _provider
+    from docket.core import secrets as _secrets
+
+    names = {"DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN"}
+    names.update(_secrets.secrets_keys())
+    for spec in _provider.load_catalog().entries.values():
+        names.update(spec.auth.credentials)
+    merged = {k: v for k, v in os.environ.items() if k not in names}
+    if overlay:
+        merged.update(overlay)
+    return merged
+
+
 def run_verify_cmd(
     cmd: str, cwd: str, timeout: int = 120, env: dict[str, str] | None = None
 ) -> tuple[bool, str]:
@@ -284,7 +302,7 @@ def run_verify_cmd(
     inside a dispatch hop, with no interactive approver reachable (see
     ``specs/functional/security-gates.spec.md``). ``cwd``/``timeout`` are
     never classified: they are plumbing, not operator-composed shell text. *env*, when
-    given, is merged over the inherited environment.
+    given, is merged over the inherited environment minus docket's credentials.
 
     Runs in its own session (``start_new_session=True``) so a timeout can kill the
     command's whole process group, not just the immediate ``sh`` child -- otherwise a
@@ -308,7 +326,7 @@ def run_verify_cmd(
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
-            env={**os.environ, **env} if env else None,
+            env=task_environment(env),
         )
     except (FileNotFoundError, OSError) as exc:
         return False, f"[verify error: {exc}]"

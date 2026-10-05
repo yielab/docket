@@ -1014,6 +1014,16 @@ pre-grants", this section governs for `--answers stdin` only.
    - Harness contract 1.0 omits `rationale`, `options` and `rationaleBlocked` from the
      `approval_requested` event it relays; its stream is byte-identical to before.
 
+### Credentials in task processes (implemented, ADR 0020 §8)
+
+1. `edges/adapters/system.py::task_environment(overlay)` returns the host environment minus
+   `DOCKET_LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, every credential name any provider in the catalog
+   (built-in or global) declares in `auth.credentials`, and every name in the secret store, then
+   applies `overlay` last, so an explicit value (`DOCKET_TASK_ID`) always arrives.
+2. `run_verify_cmd` and `run_bash` with `sandbox="off"` both launch their child with this
+   environment. The bwrap and docker paths are unchanged: they already forward no host environment.
+3. Reading the secret store and the catalog never creates `DOCKET_HOME`.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)
@@ -1459,6 +1469,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Unreleased
+
+- Credentials in task processes (new section): `system.task_environment` strips docket's credential names from the environment of verify commands and unjailed bash, the explicit overlay still winning.
 
 ### Version 0.31.0 (2026-10-04)
 
