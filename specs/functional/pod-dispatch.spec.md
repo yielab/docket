@@ -1625,7 +1625,9 @@ any CLI rendering of this evidence.*
    re-claims it in its recorded worktree), even with `force`. `worktree.dir` **MUST** resolve directly inside a pod member's `tasks/` directory
    before anything is removed, else the task is kept and reported. Without `force` it removes the
    worktree and deletes the branch only when the branch is merged into the codebase's current
-   branch and the worktree has no uncommitted change; every other task is kept with its reason.
+   branch and the worktree has no uncommitted change to a tracked file; every other task is kept
+   with its reason. Untracked files (build and verify artifacts such as `__pycache__/`) do not
+   keep a worktree: they are discarded with it and counted in the entry's reason.
    `force` removes the worktree regardless, deletes the branch only when merged (an unmerged
    branch is kept and reported), and writes a `pod.worktrees.prune` audit entry. `dry_run` changes
    nothing. A removal records `worktree.prunedAt` through the task-list writer (`edges/store.py`).
@@ -2023,6 +2025,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
 
+- `worktrees prune` counts only tracked changes as unsaved work; untracked artifacts are discarded and counted (found live: a verify command's `__pycache__/` kept every Python task worktree).
 - Task record gains `taskGrants` (an `approve_task` grant on a parked approval, at most 20, minted into one single-use pre-grant per later hop, dropped at a terminal status); see operator-loop requirement 5a.
 - A command step's `env` reaches its process under the task coordinates and never the trace ("Conditional steps and command steps" 4).
 - Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits

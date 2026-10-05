@@ -595,7 +595,12 @@ def _prune_one(
     if recorded and recorded != branch:
         return kept(f"recorded branch {recorded!r} is not {branch!r}")
     exists = Path(wt_dir).is_dir()
-    dirty = exists and bool(_sys.git_worktree_changes(wt_dir))
+    changes = _sys.git_worktree_changes(wt_dir) if exists else []
+    # Only tracked changes are unsaved work; untracked files in a finished task's worktree are
+    # build and verify artifacts (``__pycache__/``, outputs), discarded but named.
+    dirty = any(status.strip() != "??" for status, _ in changes)
+    untracked = sum(1 for status, _ in changes if status.strip() == "??")
+    discarded = f"{untracked} untracked file(s) discarded" if untracked else ""
     current = _sys.git_current_branch(codebase)
     merged = bool(current) and _sys.git_branch_merged(codebase, branch, current)
     problems = (["uncommitted changes"] if dirty else []) + (
@@ -604,20 +609,22 @@ def _prune_one(
     if problems and not force:
         return kept("; ".join(problems))
     if dry_run:
-        return WorktreePruneEntry(task_id, wt_dir, "would-remove", "; ".join(problems))
+        return WorktreePruneEntry(
+            task_id, wt_dir, "would-remove", "; ".join([*problems, *filter(None, [discarded])])
+        )
     if exists:
         ok, err = _sys.git_worktree_remove(codebase, wt_dir)
         if not ok:
             return kept(f"git worktree remove failed ({err})")
     _sys.git_worktree_prune(codebase)
-    note = ""
+    notes = [discarded] if discarded else []
     if merged:
         _sys.git_branch_delete(codebase, branch)
     else:
-        note = f"branch {branch!r} kept (unmerged)"
+        notes.append(f"branch {branch!r} kept (unmerged)")
     if problems:
         audit_log("pod.worktrees.prune", f"project={project} task={task_id} forced: {problems}")
-    return WorktreePruneEntry(task_id, wt_dir, "removed", note)
+    return WorktreePruneEntry(task_id, wt_dir, "removed", "; ".join(notes))
 
 
 def prune_task_worktrees(

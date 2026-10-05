@@ -99,9 +99,21 @@ def test_a_failed_task_dispatch_resume_would_reclaim_keeps_its_worktree(
     assert Path(rec["dir"]).is_dir()
 
 
+def test_untracked_artifacts_do_not_keep_a_merged_worktree(env: dict[str, Any]) -> None:
+    rec = _add_task(env, "t-cache", "done")
+    (Path(rec["dir"]) / "__pycache__").mkdir()
+    (Path(rec["dir"]) / "__pycache__" / "calc.pyc").write_text("x")
+    (Path(rec["dir"]) / "out.txt").write_text("artifact\n")
+    (entry,) = pp.prune_task_worktrees(PROJECT, dry_run=True)
+    assert entry.action == "would-remove" and "2 untracked" in entry.reason
+    (entry,) = pp.prune_task_worktrees(PROJECT)
+    assert entry.action == "removed" and "2 untracked" in entry.reason
+    assert not Path(rec["dir"]).exists()
+
+
 def test_dirty_worktree_kept_without_force(env: dict[str, Any]) -> None:
     rec = _add_task(env, "t-dirty", "done")
-    (Path(rec["dir"]) / "scratch.txt").write_text("x\n")
+    (Path(rec["dir"]) / "a.txt").write_text("edited, never committed\n")
     (entry,) = pp.prune_task_worktrees(PROJECT)
     assert entry.action == "kept" and "uncommitted" in entry.reason
     assert Path(rec["dir"]).is_dir()
