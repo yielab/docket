@@ -459,11 +459,10 @@ _IMAGE_PROBE_TIMEOUT = 30
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 
-def task_environment(overlay: dict[str, str] | None = None) -> dict[str, str]:
-    """The host environment minus docket's credentials, with *overlay* applied last.
-
-    Strips ``DOCKET_LLM_API_KEY``, ``TELEGRAM_BOT_TOKEN``, every credential name the provider
-    catalog declares and every name in the secret store. Reads files only; never creates the home."""
+def credential_names() -> set[str]:
+    """Every environment name docket treats as a credential: ``DOCKET_LLM_API_KEY``,
+    ``TELEGRAM_BOT_TOKEN``, each name the provider catalog declares and each in the secret store.
+    Reads files only; never creates the home."""
     from docket.core import provider as _provider
     from docket.core import secrets as _secrets
 
@@ -471,6 +470,13 @@ def task_environment(overlay: dict[str, str] | None = None) -> dict[str, str]:
     names.update(_secrets.secrets_keys())
     for spec in _provider.load_catalog().entries.values():
         names.update(spec.auth.credentials)
+    return names
+
+
+def task_environment(overlay: dict[str, str] | None = None) -> dict[str, str]:
+    """The host environment minus docket's credentials (``credential_names``), with *overlay*
+    applied last."""
+    names = credential_names()
     merged = {k: v for k, v in os.environ.items() if k not in names}
     if overlay:
         merged.update(overlay)

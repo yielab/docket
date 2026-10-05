@@ -10,6 +10,9 @@ steps:
   - build: implementer
     verify: true
   - id: check-tests-fail-on-base
+    env:
+      ANTI_TAUTOLOGY_GLOB: "test_*.py,*_test.py"
+      ANTI_TAUTOLOGY_RUNNER: "python3 -m pytest -q"
     run: |
       python3 -c '
       import fnmatch, os, shlex, shutil, subprocess, sys, tempfile

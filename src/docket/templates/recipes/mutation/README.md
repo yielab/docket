@@ -41,9 +41,10 @@ or `setup.cfg`). Python only.
 
 ## Customise
 
-Environment variables of the process that runs `docket` (pipeline `run` has no `${var}`
-interpolation): `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
-`mutmut`). For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
+The step declares `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
+`mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod <project>
+export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod <project> apply
+<dir>`. For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
 
 ## Undo
 

@@ -798,3 +798,17 @@ def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
     assert exit_code == 1
     assert "operator:" in err
     assert "shipped:" in err
+
+
+def test_a_recipe_step_env_survives_apply_and_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = "envpod"
+    _seed_fixture_pod(tmp_path / "source", monkeypatch, project)
+    _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
+    export_dir = tmp_path / "exported"
+    _pod.dispatch(project, "export", [str(export_dir)])
+    result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+    assert result.spec is not None, result.errors
+    step = next(s for s in result.spec.steps if s.id == "check-mutation-score")
+    assert step.env == {"MUTATION_THRESHOLD": "80", "MUTATION_CMD": "mutmut"}

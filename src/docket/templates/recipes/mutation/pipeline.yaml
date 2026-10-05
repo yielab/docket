@@ -11,6 +11,9 @@ steps:
     verify: true
   - id: check-mutation-score
     timeout: 900
+    env:
+      MUTATION_THRESHOLD: "80"
+      MUTATION_CMD: "mutmut"
     run: |
       python3 -c '
       import fnmatch, json, os, shlex, shutil, subprocess, sys

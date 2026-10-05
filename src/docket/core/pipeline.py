@@ -158,6 +158,30 @@ class InputSpec(BaseModel):
     expires_hours: int | None = Field(None, alias="expiresHours", gt=0)
 
 
+_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_ENV_RESERVED = frozenset({"PATH", "BASH_ENV", "ENV"})
+_ENV_RESERVED_PREFIXES = ("LD_", "PYTHON", "DOCKET_")
+
+
+def _check_env(step_id: str, env: dict[str, str]) -> None:
+    """Refuse an ``env`` entry that is malformed, loader/interpreter-controlling, a docket
+    coordinate, or a name ``system.credential_names`` treats as a credential."""
+    from docket.edges.adapters import system as _sys
+
+    credentials = _sys.credential_names()
+    for name, value in env.items():
+        if not _ENV_NAME.match(name):
+            raise ValueError(f"step {step_id!r}: env name {name!r} must match ^[A-Z][A-Z0-9_]*$")
+        if name in _ENV_RESERVED or name.startswith(_ENV_RESERVED_PREFIXES):
+            raise ValueError(f"step {step_id!r}: env name {name!r} is reserved and cannot be set")
+        if name in credentials:
+            raise ValueError(
+                f"step {step_id!r}: env name {name!r} is a credential and cannot be set"
+            )
+        if not isinstance(value, str):
+            raise ValueError(f"step {step_id!r}: env {name!r} must be a string")
+
+
 class Step(BaseModel):
     """One node in the pipeline: a unit step (``role`` xor ``agent`` xor ``run`` xor ``input``,
     plus optional gate/retries/timeout) or a parallel group (``parallel``: unit-step children
@@ -192,6 +216,8 @@ class Step(BaseModel):
     # A command step's shell command, run directly with no agent turn, exclusive of
     # `role`/`agent` -- see the class docstring and "Conditional steps and command steps".
     run: str | None = None
+    # Extra environment for a `run` step only (see `_check_env`); coordinates win over it.
+    env: dict[str, str] | None = None
     # An operator-input step: pauses and asks for input, exclusive of role/agent/run.
     input: InputSpec | None = None
     parallel: list[Step] | None = None
@@ -235,6 +261,8 @@ class Step(BaseModel):
                 raise ValueError(
                     f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
                 )
+            if self.env is not None:
+                raise ValueError(f"step {self.id!r}: a 'parallel' group carries no env of its own")
             if not self.parallel:
                 raise ValueError(f"step {self.id!r}: 'parallel' must list at least one step")
             for child in self.parallel:
@@ -248,6 +276,8 @@ class Step(BaseModel):
         if self.run is not None:
             if not self.run.strip():
                 raise ValueError(f"step {self.id!r}: 'run' must not be empty")
+            if self.env is not None:
+                _check_env(self.id, self.env)
             if self.role is not None or self.agent is not None:
                 raise ValueError(
                     f"step {self.id!r}: 'run' is exclusive of 'role'/'agent' "
@@ -267,6 +297,8 @@ class Step(BaseModel):
             return self
 
         if self.input is not None:
+            if self.env is not None:
+                raise ValueError(f"step {self.id!r}: an 'input' step carries no 'env'")
             for field_name, value in (
                 ("role", self.role),
                 ("agent", self.agent),
@@ -282,6 +314,8 @@ class Step(BaseModel):
                     raise ValueError(f"step {self.id!r}: an 'input' step carries no {field_name!r}")
             return self
 
+        if self.env is not None:
+            raise ValueError(f"step {self.id!r}: only a 'run' (command) step carries 'env'")
         if self.role is None and self.agent is None:
             raise ValueError(f"step {self.id!r}: must target exactly one of 'role' or 'agent'")
         if self.role is not None and self.agent is not None:
@@ -750,7 +784,7 @@ def _normalize_command_short_step(step_id: str, target: dict[Any, Any]) -> dict[
     # mapping carrying `run`. Its own `timeout`/`when` sugar lives inside *target*,
     # not alongside `step_id` at the entry level (unlike a role/agent short step).
     step: dict[str, Any] = {"id": step_id, "run": target["run"]}
-    for key in ("timeout", "when"):
+    for key in ("timeout", "when", "env"):
         if key in target:
             step[key] = target[key]
     return step

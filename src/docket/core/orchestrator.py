@@ -63,6 +63,8 @@ class PlannedUnit:
     # specs/functional/pipeline-format.spec.md ("Conditional steps and command steps").
     when: dict[str, Any] | None = None
     run: str | None = None
+    # A command step's own extra environment (a copy of ``Step.env``), or ``None``.
+    env: dict[str, str] | None = None
     # An operator-input step spec, or `None` for a regular role/agent/run step.
     input: _pipeline.InputSpec | None = None
     # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
@@ -174,6 +176,7 @@ def _resolve_unit(
         skipped=skipped,
         when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
         run=step.run,
+        env=dict(step.env) if step.env else None,
         input=step.input,
         on=step.on,
     )

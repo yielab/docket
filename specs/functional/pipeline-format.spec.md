@@ -209,7 +209,10 @@ This specification does NOT cover:
    NOT** also declare `gate`, `instructions`, `retries`, `archetype`, or `model` — each is a
    validation error naming the field. It **MAY** still declare `timeout` and `when` (see
    "Conditional steps and command steps" below). Its exit code is its own outcome; this format
-   does not model a separate `gate` for it (see `pod-dispatch.spec.md` for execution).
+   does not model a separate `gate` for it (see `pod-dispatch.spec.md` for execution). A `run`
+   step **MAY** declare `env` (`dict[str, str]`, see "Conditional steps and command steps"
+   Requirement 4); `env` on any other step kind, including a `parallel` group, **MUST** be a
+   validation error.
 10. A unit step **MAY** declare `model` (`str`) — one of the literal rank words `cheap`/`strong`,
     or a `<provider>/<id>` model literal shaped like any other model id this codebase accepts
     (a non-empty segment either side of the first `/`). It overrides whatever model this hop's
@@ -431,6 +434,13 @@ This specification does NOT cover:
    a verify command; its exit code and (when the command step also carries an `on:` outcome map —
    a later format version, not this one) its last stdout line are its outcome, entirely an
    execution concern this format does not itself model as a `gate`.
+4. A command step's `env` maps names to string values, passed to the command's process (merged
+   under the task coordinates, see `pod-dispatch.spec.md`). Each name **MUST** match
+   `^[A-Z][A-Z0-9_]*$`; `PATH`, `BASH_ENV`, `ENV`, any `LD_*`, `PYTHON*` or `DOCKET_*` name, and any
+   name the credential strip treats as a credential (`system.credential_names`) **MUST** be a
+   validation error naming the entry; a non-string value **MUST** be a validation error. It is
+   accepted in canonical and short form (`- lint: {run: ..., env: {...}}`), carried on the planned
+   unit, and survives `pod export` because the bound pipeline is exported verbatim.
 3. `docket pipeline validate`/`plan` **MUST** treat a `when`/`run` shape violation exactly like
    any other schema violation (one error string naming the offending field's dotted location);
    `plan`'s rendering of a `run` step and a `when`-bearing step is specified in `pod-dispatch.spec.md`
@@ -638,6 +648,10 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Unreleased
+
+- A `run` command step may declare `env: {NAME: "value"}` (names `^[A-Z][A-Z0-9_]*$`; reserved and credential names refused; refused on every other step kind).
 
 ### Version 2.11.0 (2026-09-29)
 

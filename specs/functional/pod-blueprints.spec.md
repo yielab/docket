@@ -413,8 +413,8 @@ by a declared field:
 | Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: cheap`, custom instructions for test writing) -> `build` (Implementer, its own verify command) |
 | Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
-| Methodology | `anti-tautology` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-tests-fail-on-base` (a `run` command step that runs the test files added or changed since `DOCKET_BASE_COMMIT` in a disposable worktree of that commit and fails the task if they pass there; overridable by `ANTI_TAUTOLOGY_GLOB`/`ANTI_TAUTOLOGY_RUNNER`) |
-| Methodology | `mutation` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-mutation-score` (a `run` command step that runs `mutmut`, which must be installed, over the source files changed since `DOCKET_BASE_COMMIT` and fails the task below `MUTATION_THRESHOLD`, default 80; scoped by file, not by line) |
+| Methodology | `anti-tautology` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-tests-fail-on-base` (a `run` command step that runs the test files added or changed since `DOCKET_BASE_COMMIT` in a disposable worktree of that commit and fails the task if they pass there; overridable through the step's `env:` entries `ANTI_TAUTOLOGY_GLOB`/`ANTI_TAUTOLOGY_RUNNER`) |
+| Methodology | `mutation` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-mutation-score` (a `run` command step that runs `mutmut`, which must be installed, over the source files changed since `DOCKET_BASE_COMMIT` and fails the task below `MUTATION_THRESHOLD`, default 80, with `MUTATION_THRESHOLD`/`MUTATION_CMD` declared in the step's `env:`; scoped by file, not by line) |
 
 A policy pack's `pod.yaml` carries `kind: pod`, `name`, and `description` only — no `members`,
 `settings`, or `pipeline` key — so applying one to any pod changes no roster and no dispatch
@@ -539,6 +539,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Unreleased
+
+- `anti-tautology` and `mutation` declare their overridable names (with defaults) as the step's `env:`; their READMEs say a pod edits the step to override them.
 
 ### Version 1.23.0 (2026-10-05)
 

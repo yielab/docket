@@ -1332,6 +1332,9 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    string, never absent. They **MUST NOT** be computed from git or from a worktree path: the
    recorded evidence is the one source, so a check recipe and the evidence it is judged against
    agree.
+   A step's own `env` ("pipeline-format.spec.md") **MUST** be merged under these coordinates, so
+   a coordinate always wins. Its values **MUST NOT** appear in the `command_step` trace event,
+   which records the command text only.
 5. **Known limitation:** this section covers only a **top-level** step. A `parallel` group's
    children run through `_execute_unit` directly (see "Parallel step groups"), which does not
    evaluate `when` or execute a `run` command — a child declaring either is not yet a supported
@@ -2019,6 +2022,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 ### Unreleased
 
 - Task record gains `taskGrants` (an `approve_task` grant on a parked approval, at most 20, minted into one single-use pre-grant per later hop, dropped at a terminal status); see operator-loop requirement 5a.
+- A command step's `env` reaches its process under the task coordinates and never the trace ("Conditional steps and command steps" 4).
 - Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
   130/143 ("Sweep workers" 4-5).
 - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).
