@@ -274,6 +274,70 @@ class TestBuiltinHandlers:
         out = toolbox.edit_file((workspace,), "notes.md", "nope", "y")
         assert not out.ok and "not found" in out.error
 
+    def test_glob_skips_symlink_targets_outside_the_root(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
+        """glob_files should skip symlinks that resolve outside the allowed roots."""
+        outside = tmp_path.parent / "outside-root"
+        outside.mkdir(exist_ok=True)
+        (outside / "secret.txt").write_text("secret-marker")
+        (workspace / "link_to_file").symlink_to(outside / "secret.txt")
+        (workspace / "normal.txt").write_text("normal content")
+        # Glob should list files in workspace but not symlinks to outside
+        out = toolbox.glob_files((workspace,), "**/*")
+        assert out.ok
+        # The glob should not include the symlink to outside
+        assert "link_to_file" not in out.content
+        # Normal file should be there
+        assert "normal.txt" in out.content
+
+    def test_grep_skips_symlink_targets_outside_the_root(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
+        """grep_files should skip symlinks that resolve outside the allowed roots."""
+        outside = tmp_path.parent / "outside-root"
+        outside.mkdir(exist_ok=True)
+        (outside / "secret.txt").write_text("secret-marker-word")
+        (workspace / "link_to_file").symlink_to(outside / "secret.txt")
+        (workspace / "normal.txt").write_text("normal content here")
+        # Grep should search workspace files but not symlinks pointing outside
+        out = toolbox.grep_files((workspace,), "")  # Any pattern that would match the file
+        assert out.ok
+        # The search should include normal file but not the symlink
+        assert "normal.txt" in out.content
+        assert "link_to_file" not in out.content
+
+    def test_write_refuses_symlink_target_outside_root(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
+        """write_file should refuse when the target is a symlink pointing outside the root."""
+        outside = tmp_path.parent / "outside-root"
+        outside.mkdir(exist_ok=True)
+        (workspace / "link").symlink_to(outside)
+        # Writing through the symlink should fail
+        out = toolbox.write_file((workspace,), "link/newfile.txt", "content")
+        assert not out.ok and "outside the allowed roots" in out.error
+
+    def test_glob_and_grep_skip_files_under_a_symlinked_directory_outside_the_root(
+        self, workspace: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        outside = tmp_path_factory.mktemp("outside-dir")
+        (outside / "secret.txt").write_text("dir-escape-marker\n")
+        (workspace / "linkdir").symlink_to(outside, target_is_directory=True)
+        globbed = toolbox.glob_files((workspace,), "linkdir/*")
+        grepped = toolbox.grep_files((workspace,), "dir-escape-marker", glob="linkdir/*")
+        assert globbed.ok and "secret.txt" not in globbed.content
+        assert grepped.ok and "dir-escape-marker" not in grepped.content
+
+    def test_internal_symlinks_still_work(self, workspace: Path) -> None:
+        """Symlinks that point inside the root should continue to work."""
+        # Create a file and a symlink to it within the workspace
+        (workspace / "target.txt").write_text("target content")
+        (workspace / "link").symlink_to(workspace / "target.txt")
+        # Reading through the internal symlink should work
+        out = toolbox.read_file((workspace,), "link")
+        assert out.ok and "target content" in out.content
+
     def test_glob_lists_matches(self, workspace: Path) -> None:
         out = toolbox.glob_files((workspace,), "**/*.py")
         assert out.ok and "main.py" in out.content

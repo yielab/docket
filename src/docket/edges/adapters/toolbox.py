@@ -176,6 +176,15 @@ def edit_file(
     return ToolOutcome(True, content=f"replaced {replaced} occurrence(s) in {target}")
 
 
+def _resolves_within(roots: tuple[Path, ...], candidate: Path) -> bool:
+    """Whether *candidate*, every symlink on its path followed, lands inside a root."""
+    try:
+        resolve_within(roots, str(candidate))
+    except PathEscapeError:
+        return False
+    return True
+
+
 def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOutcome:
     """List files matching a glob *pattern*, newest first."""
     try:
@@ -188,11 +197,12 @@ def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOut
         matches = [p for p in base.glob(pattern) if p.is_file()]
     except (OSError, ValueError) as ex:
         return ToolOutcome(False, error=f"bad glob {pattern!r}: {ex}")
-    matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    shown = matches[:MAX_GLOB_RESULTS]
+    filtered = [p for p in matches if _resolves_within(roots, p)]
+    filtered.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    shown = filtered[:MAX_GLOB_RESULTS]
     body = "\n".join(str(p) for p in shown) or "(no matches)"
-    if len(matches) > len(shown):
-        body += f"\n\n[truncated: {len(matches) - len(shown)} more matches]"
+    if len(filtered) > len(shown):
+        body += f"\n\n[truncated: {len(filtered) - len(shown)} more matches]"
     return ToolOutcome(True, content=body)
 
 
@@ -216,7 +226,7 @@ def grep_files(
     hits: list[str] = []
     truncated = False
     for candidate in sorted(base.glob(glob)):
-        if not candidate.is_file():
+        if not candidate.is_file() or not _resolves_within(roots, candidate):
             continue
         try:
             text = candidate.read_text(encoding="utf-8", errors="ignore")

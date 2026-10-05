@@ -706,6 +706,29 @@ tool call to take.**
     grant anything wider. An agent belonging to a different pod **MUST NOT** observe another pod's
     `allowCommands` — the setting is read from that turn's own agent's pod only.
 
+### File-tool containment — symlinks (implemented, ROADMAP Phase 38 D-55)
+
+The file tools `read`, `write`, `edit`, `glob`, and `grep` are in-process path checks that
+**MUST** not be circumvented by symlinks. Symlinks met during a walk (`glob` and `grep`) that
+resolve outside the allowed roots **MUST** be skipped, not followed; and `write` / `edit` with a
+final-component symlink target **MUST** refuse if that symlink points outside.
+
+1. **`glob_files` and `grep_files` skip symlink escapes.** When walking a root with a glob pattern,
+   a matched path whose resolved form (after following symlinks) points outside the allowed roots
+   **MUST** be skipped — that path is not included in the results. The walk proceeds, but the path
+   never reaches the caller. This applies equally to `glob_files` (no path in the output) and
+   `grep_files` (no match lines from the escaped path in the output). `resolve_within` already
+   checks the path argument itself; this closes the gap of a symlink met *during* the walk,
+   whether the symlink is the matched file itself or a directory on its path (`linkdir/*` where
+   `linkdir` points outside).
+2. **Symlinks pointing inside the root continue to work.** A symlink from `./link -> ./target` or
+   `./link -> ../codebase/target` both remain valid as long as the resolved path is within some
+   allowed root. The containment check **MUST** check only the resolved path, not the symlink
+   itself.
+3. **`write` and `edit` refuse to write through a final-component symlink to outside.** When the
+   final path component is a symlink, `write` and `edit` **MUST** resolve it first (as they always
+   do via `resolve_within`); if it points outside the roots, they fail with a `PathEscapeError`.
+
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
 The section above is a gate: it decides whether a `bash` call may run at all. It was never a
@@ -1488,6 +1511,7 @@ $ git clone https://anywhere.example/repo.git
   responses through `core.policy.policy_eval_detail(ctx.role, "pre_input", ...)` like MCP
   results, auditing with `fetch.result_blocked` / `fetch.result_warn`, shared implementation
   with the MCP results through one screening function, `core.tools.screen_tool_result` (P38-2).
+- **File-tool containment — symlinks (Phase 38, D-55, ADR 0020 §6).** New "File-tool containment — symlinks" section: `glob_files` and `grep_files` skip symlinks that resolve outside the allowed roots during a walk; `write` and `edit` refuse a final-component symlink target that points outside; symlinks pointing inside the root continue to work. Closes the gap where a symlink met during a walk could reach outside the roots.
 
 ### Version 0.31.0 (2026-10-04)
 
