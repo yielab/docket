@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.31.0
+**Version**: 0.32.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -1530,7 +1530,9 @@ $ git clone https://anywhere.example/repo.git
 
 ## Changelog
 
-### Unreleased
+### Version 0.32.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - **Posture refusals are not retried (P38-10).** The isolation and network refusals raise
   `DispatchError` from `DocketDriver.run_turn` instead of returning `daemon_error`.

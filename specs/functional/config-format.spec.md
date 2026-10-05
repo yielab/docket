@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -313,7 +313,9 @@ ok roles/legacy.yaml (role legacy)
 
 ## Changelog
 
-### Unreleased
+### Version 1.8.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - `kind: mcp-server` accepts `isolate` (default `true`); `apply`, `export` and `recipes show` carry it.
 

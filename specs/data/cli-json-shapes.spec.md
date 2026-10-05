@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.17.0
+**Version**: 1.18.0
 **Status**: Complete
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -487,7 +487,9 @@ reflected in code fails CI.
 
 ## Changelog
 
-### Unreleased
+### Version 1.18.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - `doctor --json` `securityGates.network`; `config explain --json` `network {mode, scope}`;
   `podSettings` gains the `network` key.

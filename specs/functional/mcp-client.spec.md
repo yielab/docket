@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -39,7 +39,7 @@ role that denies `write` gets zero tools from a mixed server exactly as before, 
 cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
 endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-09-26
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -612,7 +612,9 @@ dispatch_tool(
 
 ## Changelog
 
-### Unreleased
+### Version 1.8.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - Requirement 40: a recipe's `kind: mcp-server` document may declare `isolate: false`
   (`config-format.spec.md`); `code-intel`'s `ast-grep` does.

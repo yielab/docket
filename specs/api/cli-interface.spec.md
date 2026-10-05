@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.60.0
+**Version**: 1.61.0
 **Status**: Complete
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -1266,7 +1266,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
-### Unreleased
+### Version 1.61.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - `docket mcp servers add` gains `--no-isolate` (ADR 0020 §5; `mcp-client.spec.md` Requirement 40).
 - **P38-4.** `docket gates network none|open`; `status`, `doctor` and `config explain` report the

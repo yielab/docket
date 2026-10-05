@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -8,7 +8,7 @@ every trace-emitting module writes through: `core/agent_loop.py` (tool and model
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -327,7 +327,9 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
 ## Changelog
 
-### Unreleased
+### Version 1.5.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - Redaction requirement 7: the key-shaped pattern's labels match only where no letter or
   digit precedes them (`task=<id>` was redacted to `ta[REDACTED]`, ADR 0020 s10).

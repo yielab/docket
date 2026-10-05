@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.29.0
+**Version**: 6.30.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -1990,7 +1990,9 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ## Changelog
 
-### Unreleased
+### Version 6.30.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - A refused isolation or network posture is a `dispatch_refused` cause: one attempt, resumable
   once the operator fixes the setting ("Deterministic refusal inside a claimed task" 1).

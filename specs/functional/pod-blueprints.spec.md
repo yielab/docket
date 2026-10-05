@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.22.0
+**Version**: 1.23.0
 **Status**: Implemented
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-05
 
 ## Purpose
 
@@ -540,7 +540,9 @@ $ docket init myproj --blueprint wizard-pod
 
 ## Changelog
 
-### Unreleased
+### Version 1.23.0 (2026-10-05)
+
+Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
 - `code-intel`'s `ast-grep` server declares `isolate: false` (uvx cannot write its cache in the jail); `language-intel` stays jailed.
 
