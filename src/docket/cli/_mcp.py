@@ -160,21 +160,26 @@ def tool_approvals_list() -> dict[str, Any]:
     return {"pending": _approval.list_pending()}
 
 
-def tool_approvals_grant(token: str) -> dict[str, Any]:
+def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
     """Grant a pending approval token. Identical to `docket approve`/`docket serve`'s
     `POST /approvals/<token>` — same `core.approval.approval_grant` call (``channel="mcp"``)
-    and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated."""
+    and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated.
+    *option* ``approve_task`` also grants the same call for the rest of its task."""
     _audit("approvals_grant", f"token={token}")
+    if option not in ("", "approve_once", "approve_task"):
+        raise McpToolError(f"unknown option {option!r}: use approve_once or approve_task")
     try:
+        if option == "approve_task":
+            _approval.approval_set_option(token, option)
         _approval.approval_grant(token, channel="mcp")
     except _approval.ApprovalNoop as exc:
         _dispatch.resolve_waiting_approval(token, "granted")
         raise McpToolError(str(exc)) from exc
     except _approval.ApprovalError as exc:
         raise McpToolError(str(exc)) from exc
-    _dispatch.resolve_waiting_approval(token, "granted")
+    _, note = _dispatch.resolve_waiting_approval_detail(token, "granted", channel="mcp")
     rec = _approval.approval_get(token)
-    return {"ok": True, "token": token, "state": rec["state"]}
+    return {"ok": True, "token": token, "state": rec["state"], **({"note": note} if note else {})}
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:

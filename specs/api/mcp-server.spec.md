@@ -222,7 +222,10 @@ or a dispatch-pipeline exception does NOT raise from this call — it surfaces a
 
 **Purpose**: Grant a pending approval token — identical to `docket approve <token>` / `docket
 serve`'s `POST /approvals/<token>` with `{"action": "grant"}`.
-**Arguments**: `token` (string, required).
+**Arguments**: `token` (string, required); `option` (string, optional: `approve_once` or
+`approve_task`; anything else raises before any change). `approve_task` is recorded with
+`approval_set_option` before the grant, so a parked pod task gains the task-wide grant of
+operator-loop 5a (channel `mcp`); a refused 21st grant adds a `note` to the output.
 **Gating**: calls `core.approval.approval_grant(token, channel="mcp")` — the exact function every
 other channel calls, tagged so the audit trail records which surface performed the grant. No
 MCP-side bypass, auto-approve, or alternate transition path of any kind. If *token* gates a
@@ -391,6 +394,10 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Unreleased
+
+- `approvals_grant` takes an optional `option` (`approve_task` grants the call task-wide, operator-loop 5a).
 
 ### Version 1.8.0 (2026-10-03)
 

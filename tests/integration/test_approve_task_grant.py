@@ -243,3 +243,56 @@ class TestApproveTaskTelegram:
         out = self._say("/approve apr-x forever")
         assert out.action == "unparseable"
         assert "Unrecognized" in out.reply
+
+
+class TestApproveTaskHttpAndMcp:
+    def test_mcp_grant_with_the_option_records_a_task_grant(self) -> None:
+        from docket.cli import _mcp
+
+        task = _dispatch.enqueue_task(PROJECT, "ship it")
+        result = _mcp.tool_approvals_grant(_park(task["id"]), option="approve_task")
+        assert result["state"] == "granted"
+        (grant,) = _task(task["id"])["taskGrants"]
+        assert grant["channel"] == "mcp"
+
+    def test_http_grant_with_the_option_records_a_task_grant(self) -> None:
+        import json
+        import threading
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+
+        from docket.serve import _DocketHandler
+
+        class _Handler(_DocketHandler):
+            serve_token = "tok-approve-task"
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            task = _dispatch.enqueue_task(PROJECT, "ship it")
+            token = _park(task["id"])
+            body = json.dumps({"action": "grant", "option": "approve_task"}).encode()
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{srv.server_address[1]}/approvals/{token}",
+                data=body,
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer tok-approve-task",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                assert json.loads(resp.read())["state"] == "granted"
+        finally:
+            srv.shutdown()
+        (grant,) = _task(task["id"])["taskGrants"]
+        assert grant["channel"] == "http"
+
+    def test_an_unknown_option_is_refused_by_mcp_and_leaves_the_approval_pending(self) -> None:
+        from docket.cli import _mcp
+
+        task = _dispatch.enqueue_task(PROJECT, "ship it")
+        token = _park(task["id"])
+        with pytest.raises(_mcp.McpToolError):
+            _mcp.tool_approvals_grant(token, option="approve_forever")
+        assert _approval.approval_get(token)["state"] == "pending"

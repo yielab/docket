@@ -1156,6 +1156,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error(f"Unrecognised channel: {channel!r}", 400)
             return
 
+        option = req_body.get("option", "")
+        if (action != "grant" and option) or option not in ("", "approve_once", "approve_task"):
+            self._send_json_error(
+                'option must be "approve_once" or "approve_task" (grant only)', 400
+            )
+            return
         decision = "granted" if action == "grant" else "denied"
         reason = req_body.get("reason", "")
         if not isinstance(reason, str):
@@ -1164,17 +1170,26 @@ class _DocketHandler(BaseHTTPRequestHandler):
         actor = channel if reason else ""
         try:
             if action == "grant":
+                if option == "approve_task":
+                    approval.approval_set_option(approval_token, option)
                 approval.approval_grant(approval_token, channel=channel, actor=actor, reason=reason)
             else:
                 approval.approval_deny(approval_token, channel=channel, actor=actor, reason=reason)
             # If this token gated a dispatch task, genuinely resume
             # (grant) or kill (deny) it — see core/dispatch.py's
             # resolve_waiting_approval. A no-op for any other approval.
-            _dispatch.resolve_waiting_approval(approval_token, decision)
+            _, note = _dispatch.resolve_waiting_approval_detail(
+                approval_token, decision, channel=channel, actor=actor
+            )
             rec = approval.approval_get(approval_token)
-            resp_body = json.dumps(
-                {"ok": True, "token": approval_token, "state": rec["state"]}
-            ).encode()
+            payload: dict[str, object] = {
+                "ok": True,
+                "token": approval_token,
+                "state": rec["state"],
+            }
+            if note:
+                payload["note"] = note
+            resp_body = json.dumps(payload).encode()
             self._send(resp_body, "application/json")
         except approval.ApprovalNoop as exc:
             _dispatch.resolve_waiting_approval(approval_token, decision)

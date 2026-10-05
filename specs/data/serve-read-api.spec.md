@@ -704,6 +704,11 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   `timeout` belong to other surfaces or to the fail-closed expiry path and MUST be rejected the
   same as any other unrecognized value, with `400` and no change to the approval's state or the
   audit log. Omitted, it MUST default to `"http"`.
+- `POST /approvals/<token>`'s optional `option` field MUST be `approve_once` or `approve_task`, and
+  only with `"action": "grant"`; any other value, or an option on a deny, MUST be rejected with
+  `400` and no change. `approve_task` is recorded with `approval_set_option` before the grant, so a
+  parked pod task gains the task-wide grant of operator-loop 5a (channel `http`); a refused 21st
+  grant adds a `note` to the `200` body.
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
   any project state; MUST reject a malformed/non-object body, a missing/empty `project`, a `pod`
   value other than `"full"`, or a non-numeric `budget` with `400` before `provision_pod` is ever
@@ -768,6 +773,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ### Unreleased
 
+- `POST /approvals/<token>` accepts `option: approve_task` on a grant (operator-loop 5a).
 - Run cancellation note: a second serve stop signal requests cancellation of sweep runs.
 
 ### Version 3.1.0 (2026-10-04)
