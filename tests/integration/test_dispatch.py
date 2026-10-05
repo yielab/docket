@@ -1144,6 +1144,9 @@ class TestSweepDoesNotStallOnAParkedPod:
         # `wait`-mode ask would block on nobody for up to this long, and beta's
         # task would not even start within this test's own timeout.
         monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 60, raising=True)
+        # The scripted turns below are one shared queue consumed in pod order, so the
+        # sweep runs serially here; concurrency is TestSweepWorkers' subject.
+        monkeypatch.setattr(_cfg, "DISPATCH_SWEEP_WORKERS", 1, raising=True)
 
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
