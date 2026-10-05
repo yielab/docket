@@ -13,6 +13,7 @@ finishes, so "done"/"failed"/"never ran" stay distinguishable; no call site swal
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import datetime as _dt
 import json
@@ -542,6 +543,70 @@ def _flush_notify_channels() -> None:
     )
 
 
+_SWEEP_LOCK = threading.Lock()
+_sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
+_sweep_pool: tuple[int, concurrent.futures.ThreadPoolExecutor] | None = None
+
+
+def _sweep_one_pod(project: str) -> None:
+    """One pod's sweep, on a pool worker: its own run record (source ``"sweep"``), then dispatch.
+
+    An unset pod `approvalMode` resolves to "park" here (ADR 0016 SS2): a hop that would
+    otherwise block on nobody for TOOL_APPROVAL_TIMEOUT parks instead of holding its worker."""
+    from docket.core import dispatch as _dispatch
+    from docket.core import runs as _runs
+
+    try:
+        record = _runs.create_run("sweep", project)
+        _runs.execute(
+            record["id"],
+            lambda: _dispatch.dispatch_pod(
+                project,
+                turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
+                verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                approval_default="park",
+            ),
+        )
+    except Exception as exc:
+        print(f"[serve] sweep: pod {project} failed: {exc}")
+    finally:
+        with _SWEEP_LOCK:
+            _sweep_inflight.pop(project, None)
+
+
+def _submit_pod_sweep(project: str) -> bool:
+    """Start a sweep of *project* on the bounded pool unless one is still in flight.
+
+    The pool holds ``DISPATCH_SWEEP_WORKERS`` threads; a pod past that limit is claimed but
+    waits for a free worker. Returns whether a sweep was started."""
+    global _sweep_pool
+    workers = max(1, cfg.DISPATCH_SWEEP_WORKERS)
+    stale = None
+    with _SWEEP_LOCK:
+        if project in _sweep_inflight:
+            return False
+        if _sweep_pool is None or _sweep_pool[0] != workers:
+            stale = _sweep_pool
+            _sweep_pool = (
+                workers,
+                concurrent.futures.ThreadPoolExecutor(
+                    max_workers=workers, thread_name_prefix="docket-sweep"
+                ),
+            )
+        _sweep_inflight[project] = _sweep_pool[1].submit(_sweep_one_pod, project)
+    if stale is not None:
+        stale[1].shutdown(wait=False)
+    return True
+
+
+def _drain_sweeps(timeout: float | None = None) -> bool:
+    """Wait for every in-flight pod sweep; True when none remain within *timeout*."""
+    with _SWEEP_LOCK:
+        pending = list(_sweep_inflight.values())
+    _done, not_done = concurrent.futures.wait(pending, timeout=timeout)
+    return not not_done
+
+
 def _run_sweeps(dispatch: bool = False) -> None:
     """Run the periodic sweeps once, each best-effort and independently guarded so one failure
     never aborts the others or the server.
@@ -560,7 +625,9 @@ def _run_sweeps(dispatch: bool = False) -> None:
 
     When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
     monitor), also drains every dispatchable pod's queue (one run record per pod, source
-    ``"sweep"``) and checks due schedules."""
+    ``"sweep"``) and checks due schedules. Each pod is swept on a pool worker (at most
+    ``DISPATCH_SWEEP_WORKERS`` at once) and a pod whose previous sweep is still running is
+    skipped, so this returns without waiting for the turns; ``_drain_sweeps`` waits."""
     import time
 
     from docket.core import answers, approval, conversations, trace
@@ -589,22 +656,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
             print(f"[serve] sweep: could not list dispatchable pods: {exc}")
             pods_to_dispatch = []
         for project in pods_to_dispatch:
-            record = _runs.create_run("sweep", project)
-
-            def _dispatch_one(proj: str = project) -> list[_dispatch.TaskResult]:
-                # Timeout knobs inside this pod's per-pod run record. An unset pod
-                # `approvalMode` resolves to "park" here (ADR 0016 SS2): a sweep
-                # walks every dispatchable pod in this one call, so a hop that
-                # would otherwise block on nobody for TOOL_APPROVAL_TIMEOUT must
-                # park instead, or every other pod in the sweep waits behind it.
-                return _dispatch.dispatch_pod(
-                    proj,
-                    turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
-                    verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
-                    approval_default="park",
-                )
-
-            _runs.execute(record["id"], _dispatch_one)
+            _submit_pod_sweep(project)
         try:
             _check_schedules(time.time())
         except Exception as exc:
@@ -615,9 +667,10 @@ def _run_sweeps(dispatch: bool = False) -> None:
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
-    """Run _run_sweeps every *interval* seconds until *stop* is set."""
+    """Run _run_sweeps every *interval* seconds until *stop* is set, then wait for in-flight sweeps."""
     while not stop.wait(interval):
         _run_sweeps(dispatch)
+    _drain_sweeps()
 
 
 # The Telegram long-poll loop. `core.telegram.poll_once` never raises for an
@@ -1540,4 +1593,5 @@ def run_serve(
         pass
     finally:
         stop.set()
+        sweeper.join()
         server.server_close()

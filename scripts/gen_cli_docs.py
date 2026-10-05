@@ -543,6 +543,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "unset (no serve-wide override)",
     ),
     (
+        ("DISPATCH_SWEEP_WORKERS",),
+        "`docket serve --dispatch`: how many pods one sweep tick runs at once (`1` is serial)",
+        "`4`",
+    ),
+    (
         ("DISPATCH_VERIFY_TIMEOUT_S",),
         "Same as `DISPATCH_TURN_TIMEOUT_S`, for the verify step",
         "unset (no serve-wide override)",

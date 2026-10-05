@@ -185,6 +185,9 @@ def _optional_int_env(name: str) -> int | None:
 DISPATCH_TURN_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_TURN_TIMEOUT_S")
 DISPATCH_VERIFY_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_VERIFY_TIMEOUT_S")
 
+# DISPATCH_SWEEP_WORKERS: how many pods `serve --dispatch` sweeps at once. 1 is serial.
+DISPATCH_SWEEP_WORKERS = int(os.environ.get("DISPATCH_SWEEP_WORKERS", "4"))
+
 # TEMPLATE_VERSION: workspace-prompt schema version. Bump when the generated
 # SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
 TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))

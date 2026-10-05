@@ -775,9 +775,10 @@ was seeded once at binding time.)*
 
 ### Parked approvals (`approvalMode: "park"`, ADR 0016 SS2)
 
-1. **Trigger.** `serve --dispatch`'s sweep walks every dispatchable pod serially in one thread
-   (`serve.py::_run_sweeps`); an in-turn `ask` blocking under `"wait"` in one pod's hop stalls
-   every other pod's turn in the same sweep call for up to `TOOL_APPROVAL_TIMEOUT`. `"park"`
+1. **Trigger.** `serve --dispatch`'s sweep ran every dispatchable pod serially in one thread
+   (`serve.py::_run_sweeps`; now one worker per pod, see "Sweep workers" below); an in-turn `ask`
+   blocking under `"wait"` in one pod's hop stalled every other pod's turn in the same sweep call
+   for up to `TOOL_APPROVAL_TIMEOUT`. `"park"`
    answers this without the pod ever choosing `"refuse"` (which loses the call rather than
    deferring it to a human).
 2. **Caller-scoped default.** An *unset* pod `approvalMode` (no key at all in the Lead's stored
@@ -1766,6 +1767,18 @@ card), scores nothing, and carries no dollar figure.*
 6. A record written before these fields existed **MUST** still build: `usage`, `trace`, `verify`,
    `commit`, `baseCommit` and `diffStat` are `null`.
 
+### Sweep workers
+
+1. `serve.py::_run_sweeps(dispatch=True)` **MUST** sweep each dispatchable pod on a pool worker
+   (`_sweep_one_pod`: one run record, source `"sweep"`, then `dispatch_pod`, exactly as before)
+   and return without waiting for the turns, so a pod blocked in a hop never delays another pod's
+   task. At most `DISPATCH_SWEEP_WORKERS` (env-overridable, default 4; 1 is serial) sweeps run at
+   once.
+2. A pod whose previous sweep has not ended **MUST** be skipped by the next tick; a pod is never
+   swept twice concurrently by the sweep loop.
+3. `_sweep_loop` **MUST**, once its stop event is set, wait for the in-flight sweeps to end
+   before returning, and `docket serve` joins it on shutdown.
+
 ## Interface Contracts
 
 This spec defines behavior only; the CLI surface that triggers it (`docket pod <project>
@@ -1970,6 +1983,11 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Unreleased
+
+- Serve sweep workers: one pool worker per pod, at most `DISPATCH_SWEEP_WORKERS` at once, a pod
+  still in flight is skipped, stop waits for in-flight sweeps ("Sweep workers").
 
 ### Version 6.29.0 (2026-10-04)
 

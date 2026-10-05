@@ -1178,6 +1178,7 @@ class TestSweepDoesNotStallOnAParkedPod:
 
         started = time.monotonic()
         _serve._run_sweeps(True)
+        assert _serve._drain_sweeps(timeout=30)
         elapsed = time.monotonic() - started
 
         assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
