@@ -1,11 +1,12 @@
 kind: pipeline
 name: cross-family-review
 description: >-
-  Review by a model from a different provider family: the Implementer builds under its own
-  verify command, and a Reviewer's APPROVE/REQUEST-CHANGES verdict is the last gate, with both
-  models drawn from different provider families.
+  Review by a model from another provider family: the Implementer builds on an Anthropic model
+  under its own verify command, and a Reviewer on an OpenAI model gives the last
+  APPROVE/REQUEST-CHANGES verdict, with one bounded rework cycle.
 steps:
   - build: implementer
+    model: anthropic/claude-sonnet-4-6
     verify: true
   - review: reviewer
     model: openai/gpt-4.1-mini

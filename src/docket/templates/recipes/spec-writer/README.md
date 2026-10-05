@@ -1,16 +1,18 @@
 # spec-writer
 
-**Practice:** test-driven implementation with inexpensive test authoring.
+**Practice:** test-driven implementation where a different model writes the tests.
 
-**Source idea:** write the tests first, from the brief alone, using an inexpensive model; then
-implement against them using the normal model. Tests that fail on the base and pass on the
-implementation are proof the implementation addresses the brief.
+**Source idea:** write the tests first, from the brief alone, with one model; then implement
+against them with another. A model that writes both the tests and the code can make them agree
+with each other instead of with the brief.
 
 **What docket's gates make structural:** the write-tests step runs before the Implementer and
 is briefed separately to write failing tests from the brief alone. The implementation step is
 gated on `verify: true` (the Implementer's own verify command), so tests must pass to proceed.
-`model: cheap` on the write-tests step reserves spend on the cheaper model for test scaffolding,
-not implementation logic.
+The two steps pin different models (`openai/gpt-4.1-mini` writes the tests,
+`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket models set`
+pin. Set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (environment or `secrets.json`) first. To check
+that the new tests really fail on the base, add the `anti-tautology` recipe's step.
 
 ## Apply it
 
@@ -28,7 +30,7 @@ run plans every item `skip`). `--dry-run` prints the plan without writing.
 ## Files
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: spec-writer`, `description`.
-- `pipeline.yaml` — `write-tests` (Implementer, `model: cheap`, custom instructions for test writing) -> `build` (Implementer, gated on its own verify command).
+- `pipeline.yaml` — `write-tests` (Implementer role, `model: openai/gpt-4.1-mini`, test-writing instructions) -> `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, gated on its own verify command).
 
 ## Undo
 

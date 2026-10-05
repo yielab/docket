@@ -1,5 +1,6 @@
 kind: pod
 name: spec-writer
 description: >-
-  Tests from the brief as a two-step pipeline: an inexpensive model writes failing tests, then
-  the implementer makes them pass. Both steps run on models from the same provider family.
+  Tests from the brief as a two-step pipeline on two different models: one writes failing
+  tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and
+  OPENAI_API_KEY).

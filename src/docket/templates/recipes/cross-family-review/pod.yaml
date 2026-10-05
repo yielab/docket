@@ -1,7 +1,6 @@
 kind: pod
 name: cross-family-review
 description: >-
-  Cross-provider review as a pipeline: the Implementer builds with its default model, and the
-  Reviewer evaluates on a model from a different provider family. Requires both Anthropic and
-  OpenAI credentials configured.
+  Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer
+  judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY).
 members: [reviewer]

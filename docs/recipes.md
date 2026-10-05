@@ -20,7 +20,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 
 | Recipe | Brings | Description |
 | --- | --- | --- |
-| [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds with its default model, and the Reviewer evaluates on a model from a different provider family. Requires both Anthropic and OpenAI credentials configured. |
+| [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
 | [`frugal`](#frugal) | 1 member, 3 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
@@ -33,12 +33,12 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`secrets-guard`](#secrets-guard) | 3 policies | Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output. |
 | [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
 | [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
-| [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline: an inexpensive model writes failing tests, then the implementer makes them pass. Both steps run on models from the same provider family. |
+| [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
 
 ## cross-family-review
 
-Cross-provider review as a pipeline: the Implementer builds with its default model, and the Reviewer evaluates on a model from a different provider family. Requires both Anthropic and OpenAI credentials configured.
+Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY).
 
 **Brings:** 1 member, pipeline `cross-family-review`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline cross-family-review · plugins 0 · skills 0 · settings 0`
 
@@ -47,15 +47,14 @@ docket init --recipe cross-family-review
 docket pod <project> apply cross-family-review
 ```
 
-**Practice:** cross-provider veto on diffs — different models from different vendors.
+**Practice:** a reviewer from another provider family.
 
-**Source idea:** get a second opinion on the code from a model trained on a different dataset
-and architecture. The Implementer uses the default model (typically Anthropic), while the
-Reviewer sees it with an independent model (here, OpenAI), so each is blind to the other's
-training biases.
+**Source idea:** a reviewer from the same model family tends to share the implementer's blind
+spots. Here the Implementer runs on Anthropic and the Reviewer on OpenAI.
 
-**What docket's gates make structural:** `model: openai/gpt-4.1-mini` on the `review` step
-ensures the Reviewer runs on OpenAI regardless of the default or any `docket models set` pin.
+**What docket's gates make structural:** `model: anthropic/claude-sonnet-4-6` on `build` and
+`model: openai/gpt-4.1-mini` on `review` pin the two families, whatever the pod's default or any
+`docket models set` pin.
 The Reviewer's APPROVE/REQUEST-CHANGES verdict is a bounded rework edge: a REQUEST-CHANGES
 sends the task back to the Implementer (limited to one cycle) before the task is done.
 
@@ -68,12 +67,8 @@ docket init --recipe cross-family-review          # a new pod for the current re
 docket pod <project> apply cross-family-review    # onto an existing pod
 ```
 
-Before applying, ensure you have both Anthropic and OpenAI credentials configured:
-
-```bash
-docket auth set anthropic $ANTHROPIC_API_KEY
-docket auth set openai $OPENAI_API_KEY
-```
+Set both providers' credentials first: `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, as
+environment variables or in `secrets.json`.
 
 `pod.yaml` names the one member this recipe adds (`reviewer`); `apply` validates the roster
 and pipeline before writing anything, and is safe to run again (a second run plans every item
@@ -82,7 +77,7 @@ and pipeline before writing anything, and is safe to run again (a second run pla
 ### Files
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: cross-family-review`, `members: [reviewer]`, `description`.
-- `pipeline.yaml` — `build` (Implementer, gated on its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 1).
+- `pipeline.yaml` — `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, gated on its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 1).
 
 ### Undo
 
@@ -774,7 +769,7 @@ docket pod <project> remove <project>-reviewer
 
 ## spec-writer
 
-Tests from the brief as a two-step pipeline: an inexpensive model writes failing tests, then the implementer makes them pass. Both steps run on models from the same provider family.
+Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY).
 
 **Brings:** pipeline `spec-writer`. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline spec-writer · plugins 0 · skills 0 · settings 0`
 
@@ -783,17 +778,19 @@ docket init --recipe spec-writer
 docket pod <project> apply spec-writer
 ```
 
-**Practice:** test-driven implementation with inexpensive test authoring.
+**Practice:** test-driven implementation where a different model writes the tests.
 
-**Source idea:** write the tests first, from the brief alone, using an inexpensive model; then
-implement against them using the normal model. Tests that fail on the base and pass on the
-implementation are proof the implementation addresses the brief.
+**Source idea:** write the tests first, from the brief alone, with one model; then implement
+against them with another. A model that writes both the tests and the code can make them agree
+with each other instead of with the brief.
 
 **What docket's gates make structural:** the write-tests step runs before the Implementer and
 is briefed separately to write failing tests from the brief alone. The implementation step is
 gated on `verify: true` (the Implementer's own verify command), so tests must pass to proceed.
-`model: cheap` on the write-tests step reserves spend on the cheaper model for test scaffolding,
-not implementation logic.
+The two steps pin different models (`openai/gpt-4.1-mini` writes the tests,
+`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket models set`
+pin. Set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (environment or `secrets.json`) first. To check
+that the new tests really fail on the base, add the `anti-tautology` recipe's step.
 
 ### Apply it
 
@@ -811,7 +808,7 @@ run plans every item `skip`). `--dry-run` prints the plan without writing.
 ### Files
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: spec-writer`, `description`.
-- `pipeline.yaml` — `write-tests` (Implementer, `model: cheap`, custom instructions for test writing) -> `build` (Implementer, gated on its own verify command).
+- `pipeline.yaml` — `write-tests` (Implementer role, `model: openai/gpt-4.1-mini`, test-writing instructions) -> `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, gated on its own verify command).
 
 ### Undo
 

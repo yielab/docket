@@ -1,14 +1,15 @@
 kind: pipeline
 name: spec-writer
 description: >-
-  Tests are written from the brief alone before implementation: an Implementer step writes failing
-  tests under a test-writing model, a gated implementation step brings them to pass, and both
-  steps may run on different models from the same provider family.
+  Tests are written from the brief alone before implementation: a test-writing step on an OpenAI
+  model writes failing tests, then the Implementer on an Anthropic model makes them pass, gated on
+  its own verify command. Two different models, so the tests are not the implementer's own.
 steps:
   - write-tests: implementer
-    model: cheap
+    model: openai/gpt-4.1-mini
     instructions: >-
       Write failing tests from the task brief alone. Do not write implementation code. Each test
       must fail on the current state before the implementer runs.
   - build: implementer
+    model: anthropic/claude-sonnet-4-6
     verify: true
