@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -300,7 +300,9 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ## Changelog
 
-### Unreleased
+### Version 1.17.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - The Implementer's per-member `worktree/` is gone; `tasks/<taskId>/` holds one worktree per task
   and is exempt from permission healing in its place.

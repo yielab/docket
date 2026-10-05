@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.21.0
+**Version**: 1.22.0
 **Status**: Implemented
 **Last Updated**: 2026-10-03
 
@@ -540,7 +540,9 @@ $ docket init myproj --blueprint wizard-pod
 
 ## Changelog
 
-### Unreleased
+### Version 1.22.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - **P37-5: `anti-tautology` and `mutation` recipes join the library (Phase 37, ADR 0019 §3).** Two methodology recipes ship as `templates/recipes/<name>/` directories, data only: `anti-tautology` fails a task whose new or changed test files pass on `DOCKET_BASE_COMMIT`, and `mutation` fails it when `mutmut` kills less than a threshold of the mutants in the files changed since that commit. Each is one `run` command step (`python3 -c`, classified `allow`) after `plan` (Lead) and `build` (Implementer, verify); no core code changed.
 - **P37-6: `spec-writer` and `cross-family-review` recipes join the library (Phase 37, ADR 0019 §6).** Two methodology recipes ship as `templates/recipes/<name>/` directories: `spec-writer` (no new members; `write-tests` Implementer step with `model: cheap` custom instructions, then `build` Implementer step) and `cross-family-review` (members `reviewer`; `build` Implementer step, then `review` Reviewer step with `model: openai/gpt-4.1-mini` from a different provider family). Each carries a `pod.yaml` and `pipeline.yaml` expressed only with the existing pipeline dialect.

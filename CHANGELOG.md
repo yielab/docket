@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Verification-ready execution (Phase 37, D-54, ADR 0019).** What a task brings back is its own,
+  screened and checkable by something other than docket.
+  - One git worktree per task: at claim, a repo Implementer's task runs in
+    `<implementer workspace>/tasks/<taskId>` on branch `docket/<pod>/<taskId>`, created from the
+    codebase HEAD and recorded on the task as `worktree {dir, branch, baseCommit}`. Evidence
+    `baseCommit` is that recorded commit, so a task's `diffStat` no longer counts earlier, unmerged
+    tasks. `docket add`/`init` creates no worktree, and the per-member worktree and its
+    `worktreeDir`/`worktreeBranch` meta are gone. Finished worktrees stay until the member is
+    removed; the operator merges the branch.
+  - MCP tool results pass the `pre_input` hook as untrusted input before they reach the model:
+    `block` refuses the result naming the policy and server, `redact` scrubs it, `warn` passes it;
+    each hit is audited (`mcp_client.tool_result_blocked` / `_warn`).
+  - Command steps (`run:`) receive `DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT` and
+    `DOCKET_HEAD_COMMIT`, taken from the latest successful Implementer hop's evidence.
+  - A `no_progress` stop: a turn ends when `AGENT_LOOP_NO_PROGRESS_ROUNDS` (default 3, `0`
+    disables) consecutive tool rounds only repeat calls and results already seen in the turn.
+  - Recipes may ship `kind: mcp-server` documents under `mcp-servers/` (read/write declared as
+    `access:`). `docket pod <p> apply` installs them for that pod only, and nothing else does. A
+    turn's stdio MCP servers start in the turn's root.
+  - Five recipes: `anti-tautology` (new or changed tests must fail on the base commit),
+    `mutation` (mutmut on the changed source files, 80% threshold), `spec-writer` and
+    `cross-family-review` (two pinned models from different providers), and `code-intel`
+    (ast-grep and a language server as read-only MCP servers). docket runs these checks and records
+    their output; it never scores them.
+  - Known limits: `mutation` scopes by file, not line, and is Python-only; `anti-tautology`
+    compares whole test files; the check recipes' overrides are read from the docket process
+    environment; finished task worktrees have no retention policy; `fetch` results are not
+    screened.
+
 - **Consultation packs and evidence-v1 (Phase 36, D-53, ADR 0018).** An agent can now ask the
   operator a structured question and an operator can see what a task did, from one builder on
   every surface.

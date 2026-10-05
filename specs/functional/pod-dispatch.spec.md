@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.28.0
+**Version**: 6.29.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1971,7 +1971,9 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ## Changelog
 
-### Unreleased
+### Version 6.29.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - Command steps receive `DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT` from the
   latest successful Implementer hop's evidence ("Conditional steps and command steps"

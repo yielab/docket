@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented
 **Last Updated**: 2026-09-29
 
@@ -312,7 +312,9 @@ ok roles/legacy.yaml (role legacy)
 
 ## Changelog
 
-### Unreleased
+### Version 1.7.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - `kind: mcp-server` joins the envelope (ADR 0019 §5): `mcp-servers/*.yaml` is discovered,
   validated, summarised (`mcp-servers` in the summary line), applied pod-scoped, and exported.

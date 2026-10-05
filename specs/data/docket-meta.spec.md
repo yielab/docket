@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -247,7 +247,9 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 
 ## Changelog
 
-### Unreleased
+### Version 3.3.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - `worktreeDir`/`worktreeBranch` removed (per-task worktrees are recorded on the task); `inPlace` added.
 

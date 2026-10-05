@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -600,7 +600,9 @@ dispatch_tool(
 
 ## Changelog
 
-### Unreleased
+### Version 1.7.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - Requirement 39 added: a stdio server spawned for a turn starts in that turn's resolved root; `mcp_loader` gains a `cwd` keyword.
 

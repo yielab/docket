@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.30.0
+**Version**: 1.31.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -811,7 +811,9 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 ## Changelog
 
-### Unreleased
+### Version 1.31.0 (2026-10-04)
+
+Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
 
 - **Requirements 77-79: the `no_progress` stop.** A turn stops when `no_progress_rounds` (default 3)
   consecutive tool rounds each repeat an already-seen round fingerprint.

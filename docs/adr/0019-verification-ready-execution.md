@@ -112,3 +112,39 @@ The integrator owns two tests that cross the seams:
   task 1's files.
 - **evidence → command step**: a pipeline whose `run:` step prints `DOCKET_BASE_COMMIT`. It
   equals the Implementer hop's evidence `baseCommit`, read back through `task_evidence`.
+
+Both exist: `tests/integration/test_task_worktrees.py::test_two_tasks_back_to_back_each_get_their_own_branch_and_directory`
+and `::test_a_command_step_gets_the_task_id_and_the_evidence_commits`.
+
+**The check recipes run more than the classifier sees.** `anti-tautology` and `mutation` are each
+one `python3 -c '...'` command step, which classifies `allow`. The git and test-runner processes it
+starts are not classified. That is the classifier's existing rule for an interpreter on the curated
+list, not a new hole: the pipeline comes from the operator's own `pod apply`. Each recipe's README
+names the commands it runs.
+
+### Live run (2026-10-04)
+
+Run against the local llama.cpp endpoint (`127.0.0.1:8081`, 16k context,
+`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), with a throwaway `HOME` and model `local/local-model`. The pod
+was a default `docket init` (Lead, Implementer) on a git repo. Its pipeline was Lead →
+Implementer → a `run:` step that printed the task's coordinates and `git diff --stat
+"$DOCKET_BASE_COMMIT" HEAD`.
+
+- `docket init` created no worktree: `git worktree list` showed the main checkout only.
+- **Task 1** (`square(x)`) finished `done` in 3 hops (1m51s):
+  - it ran in `tasks/<taskId>` on `docket/myapp/<taskId>`;
+  - the evidence `baseCommit` equalled the recorded one, and the `diffStat` was 1 file, +4;
+  - the command step printed the same base and head, and a diff of `calc.py` only.
+- The codebase then moved on by one commit, and **task 1 was not merged**.
+- **Task 2** (`cube(x)`) finished `done` in 3 hops (1m26s):
+  - its worktree was based on the new HEAD;
+  - its `diffStat` was 1 file, +4, with `square` absent.
+
+  Before this phase, the base would have been the old merge-base and the stat would have counted
+  both tasks.
+- An earlier attempt failed on an operator error (the local preset was not selected, so the Lead
+  resolved to an unconfigured hosted provider). Its task worktree had already been created at claim
+  and stayed.
+- Found, not fixed here: `core/trace.py::_REDACT_PATTERNS` turned the printed `task=task-<uuid>`
+  into `ta[REDACTED]`. The pattern's `sk|pk|api|key|tok|...` alternation has no left boundary, so
+  the `sk=` inside `task=` matches. Narrowing a secret pattern needs its own card.
