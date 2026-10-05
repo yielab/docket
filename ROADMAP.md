@@ -238,6 +238,18 @@ none` has no real-docker oracle; stopping `serve` waits for in-flight sweeps; wo
 the check recipes' environment overrides and the four Phase 36 items; `kind: autonomy` and
 credential minting stay deferred to their triggers. No phase is planned after this one.
 
+**Waves 89–90 (no phase, 2026-10-05): the carried items, closed.** The operator asked to close
+every item carried out of Phases 36–38; for the two deferred to a trigger (task-worktree retention,
+options in channels) that request was the trigger. Ten cards: unjailed MCP servers visible per pod,
+the jail unable to write a submodule's or a linked worktree's git metadata, a two-stage `serve`
+stop, `docket pod <p> worktrees prune`, options in `conversation`-level notifications and Telegram
+`/answer <task> <id>`, a real-docker oracle, `env:` on `run:` steps, the parked consult question
+persisted, and `approve_task` across a task's later hops of the asking role on all four approval
+channels. Review found the sixth unwired-machinery instance (the inbox never carried a task's
+question) and five card defects; the live run found two more (a jailed commit with no git
+identity, and a verify command's `__pycache__/` blocking every prune). Reasoning and the run in ADR 0020 "Closed by Waves 89–90". `kind: autonomy` and
+credential minting stay deferred. No phase is planned.
+
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
 > decision changelog were moved verbatim to [docs/cycles-ended/](docs/cycles-ended/README.md)** (`roadmap-phases.md`,
