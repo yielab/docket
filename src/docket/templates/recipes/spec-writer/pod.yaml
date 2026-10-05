@@ -1,0 +1,5 @@
+kind: pod
+name: spec-writer
+description: >-
+  Tests from the brief as a two-step pipeline: an inexpensive model writes failing tests, then
+  the implementer makes them pass. Both steps run on models from the same provider family.

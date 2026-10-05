@@ -1,0 +1,14 @@
+kind: pipeline
+name: spec-writer
+description: >-
+  Tests are written from the brief alone before implementation: an Implementer step writes failing
+  tests under a test-writing model, a gated implementation step brings them to pass, and both
+  steps may run on different models from the same provider family.
+steps:
+  - write-tests: implementer
+    model: cheap
+    instructions: >-
+      Write failing tests from the task brief alone. Do not write implementation code. Each test
+      must fail on the current state before the implementer runs.
+  - build: implementer
+    verify: true

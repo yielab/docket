@@ -1,0 +1,13 @@
+kind: pipeline
+name: cross-family-review
+description: >-
+  Review by a model from a different provider family: the Implementer builds under its own
+  verify command, and a Reviewer's APPROVE/REQUEST-CHANGES verdict is the last gate, with both
+  models drawn from different provider families.
+steps:
+  - build: implementer
+    verify: true
+  - review: reviewer
+    model: openai/gpt-4.1-mini
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}

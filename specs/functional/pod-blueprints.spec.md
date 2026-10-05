@@ -411,6 +411,8 @@ by a declared field:
 | Methodology | `reflexion` | members (`critic`, `tester`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Critic, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) -> `test` (Tester, PASS/FAIL) |
 | Methodology | `dual-review` | members (`reviewer`, `critic`); a pipeline: `build` (Implementer, its own verify command) -> a `parallel` group of a Reviewer and a Critic, each falling back to its own role's default verdict gate |
 | Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+| Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: cheap`, custom instructions for test writing) -> `build` (Implementer, its own verify command) |
+| Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 
 A policy pack's `pod.yaml` carries `kind: pod`, `name`, and `description` only — no `members`,
 `settings`, or `pipeline` key — so applying one to any pod changes no roster and no dispatch
@@ -535,6 +537,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Unreleased
+
+- **P37-6: `spec-writer` and `cross-family-review` recipes join the library (Phase 37, ADR 0019 §6).** Two methodology recipes ship as `templates/recipes/<name>/` directories: `spec-writer` (no new members; `write-tests` Implementer step with `model: cheap` custom instructions, then `build` Implementer step) and `cross-family-review` (members `reviewer`; `build` Implementer step, then `review` Reviewer step with `model: openai/gpt-4.1-mini` from a different provider family). Each carries a `pod.yaml` and `pipeline.yaml` expressed only with the existing pipeline dialect.
 
 ### Version 1.21.0 (2026-10-03)
 
