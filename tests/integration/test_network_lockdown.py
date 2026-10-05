@@ -8,7 +8,9 @@ model call. See specs/functional/security-gates.spec.md (Network egress, require
 
 from __future__ import annotations
 
+import socket
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -170,3 +172,74 @@ class TestRefusal:
         assert "docket gates network" in str(excinfo.value)
         assert "docket gates isolate" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "network.refused"]
+
+
+def _docker_bridge_gateway() -> str | None:
+    try:
+        out = subprocess.run(
+            [
+                "docker",
+                "network",
+                "inspect",
+                "bridge",
+                "-f",
+                "{{range .IPAM.Config}}{{.Gateway}}{{end}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    return out.stdout.strip() or None
+
+
+@pytest.fixture
+def host_listener() -> Iterator[tuple[str, int]]:
+    """A listener on the docker bridge gateway, so a container can reach it only with a network."""
+    if not system.docker_daemon_reachable():
+        pytest.skip("docker not installed or its daemon is not reachable on this host")
+    ip = _docker_bridge_gateway()
+    if not ip:
+        pytest.skip("docker bridge gateway address not found")
+    if (
+        subprocess.run(
+            ["docker", "image", "inspect", _cfg.SANDBOX_DOCKER_IMAGE], capture_output=True
+        ).returncode
+        != 0
+    ):
+        pytest.skip(f"{_cfg.SANDBOX_DOCKER_IMAGE} is not present locally (tests never pull)")
+    srv = socket.socket()
+    try:
+        srv.bind((ip, 0))
+    except OSError as e:
+        srv.close()
+        pytest.skip(f"cannot bind the docker bridge gateway {ip}: {e}")
+    srv.listen(5)
+    yield ip, srv.getsockname()[1]
+    srv.close()
+
+
+class TestRealDockerNetwork:
+    def test_network_none_cannot_reach_a_host_listener(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        host_listener: tuple[str, int],
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        ip, port = host_listener
+        out = toolbox.run_bash((tmp_path,), f"nc -z -w2 {ip} {port}", sandbox="auto", network=False)
+        assert not out.ok
+
+    def test_network_open_reaches_the_same_listener(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        host_listener: tuple[str, int],
+    ) -> None:
+        """The positive control: without it the refusal above could be a dead listener."""
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        ip, port = host_listener
+        out = toolbox.run_bash((tmp_path,), f"nc -z -w2 {ip} {port}", sandbox="auto", network=True)
+        assert out.ok, out.error or out.content

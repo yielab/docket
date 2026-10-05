@@ -424,6 +424,24 @@ def _docker_prefix(
     return argv
 
 
+def docker_image_has_git(image: str | None = None) -> bool | None:
+    """True when *image* (default the configured jail image) has ``git`` on its PATH, False when it
+    does not or is not present locally, None when the probe itself could not run or timed out."""
+    try:
+        result = subprocess.run(
+            [
+                *["docker", "run", "--rm", "--pull", "never"],
+                image or _cfg.SANDBOX_DOCKER_IMAGE,
+                *["sh", "-c", "command -v git"],
+            ],
+            capture_output=True,
+            timeout=_IMAGE_PROBE_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    return result.returncode == 0
+
+
 def docker_kill(container_name: str) -> None:
     """Force-stop (and, via the original run's ``--rm``, remove) a docker-jailed
     run by name. Needed because ``docker run``'s own CLI process group does
@@ -437,6 +455,7 @@ def docker_kill(container_name: str) -> None:
         subprocess.run(["docker", "kill", container_name], capture_output=True, timeout=10)
 
 
+_IMAGE_PROBE_TIMEOUT = 30
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
 
 

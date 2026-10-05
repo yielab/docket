@@ -424,6 +424,16 @@ def _unjailed_mcp_servers() -> list[dict[str, str]]:
     return found
 
 
+def _docker_image_has_git() -> bool | None:
+    """The jail image's git probe, only when docker is the backend in use and isolation is not off;
+    None when it does not apply."""
+    if _fleet.get_isolation_state() == "off":
+        return None
+    if _sys.sandbox_availability().backend != "docker":
+        return None
+    return _sys.docker_image_has_git()
+
+
 def _check_security_gates() -> int:
     """Isolation posture + the always-on tool-call gate.
 
@@ -447,6 +457,11 @@ def _check_security_gates() -> int:
             )
         else:
             ui.success(f"  Workspace isolation: {state}, backend {backend}")
+            if _docker_image_has_git() is False:
+                ui.warn(
+                    f"  Docker jail image {_cfg.SANDBOX_DOCKER_IMAGE} has no git -- a jailed "
+                    "commit will fail. Set DOCKET_SANDBOX_IMAGE=<an image with git>"
+                )
 
     net_mode = _fleet.get_network_mode()
     if net_mode == "none":
@@ -825,6 +840,7 @@ def _doctor_json_security() -> dict[str, Any]:
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),
         "sandboxBackend": _sys.sandbox_availability().backend,
+        "dockerImageHasGit": _docker_image_has_git(),
         "network": _fleet.get_network_mode(),
         "unjailedMcpServers": _unjailed_mcp_servers(),
     }

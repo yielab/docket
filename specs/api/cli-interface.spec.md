@@ -641,7 +641,9 @@ visibility, not shared workspace or session state.
 - Malformed `docket-models.json` entries (unknown rank anchor or role, bad model id) that the
   registry loader would silently ignore
 - Workspace permissions and template drift
-- Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture
+- Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture (when docker is
+  the jail backend in use, the `DOCKET_SANDBOX_IMAGE` image is probed once for `git` and a missing
+  one warns with the fix)
 - Global guardrail policy files, plus every provisioned pod's own `config/` overlay
   (role archetypes and policy files) — a malformed pod-scoped entry is named with the
   pod, not silently skipped
@@ -1275,6 +1277,7 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Unreleased
 
+- `docket doctor` (human and `--json`) probes the docker jail image for `git` when docker is the backend in use and warns with `DOCKET_SANDBOX_IMAGE=<an image with git>`.
 - `docket doctor` (human and `--json`) shows unjailed MCP servers (isolate: false) from global and per-pod registries with pod context.
 - `docket config explain` adds `isolate` field to each MCP server, with human marker for unjailed servers.
 - `docket recipes show --json` and `recipes list --json` include `unjailed_mcp_servers` field.

@@ -162,6 +162,7 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
       "toolCallGate": "always-on",
       "isolation": "string ('on (default)' | 'on' | 'off')",
       "sandboxBackend": "string ('bwrap' | 'docker' | 'none')",
+      "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is not off; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
       "network": "string ('open' | 'none'; the global mode)",
       "unjailedMcpServers": "array of { name, pod } (empty array if none)"
     },
@@ -490,6 +491,7 @@ reflected in code fails CI.
 
 ### Unreleased
 
+- `doctor --json` `securityGates.dockerImageHasGit`: boolean or null, the docker jail image's `git` probe.
 - `doctor --json` `securityGates.unjailedMcpServers`: array of {name, pod} for servers with isolate: false.
 - `config explain --json` `tools.mcpServers[].isolate`: boolean field added to each server.
 - `recipes show --json` and `recipes list --json` gain `unjailed_mcp_servers` field.

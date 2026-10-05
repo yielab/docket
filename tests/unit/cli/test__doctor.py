@@ -402,6 +402,7 @@ class TestChecks:
             "toolCallGate": "always-on",
             "isolation": "on (default)",
             "sandboxBackend": "bwrap",
+            "dockerImageHasGit": None,
             "network": "open",
             "unjailedMcpServers": [],
         }
@@ -415,6 +416,40 @@ class TestChecks:
         out = capsys.readouterr().out
         assert "turns will be refused" in out
         assert "bubblewrap" in out and "isolate off" in out
+
+    def test_docker_backend_without_git_in_the_image_warns_with_the_fix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: False)
+        _doctor._check_security_gates()
+        out = capsys.readouterr().out
+        assert "has no git" in out and "DOCKET_SANDBOX_IMAGE=<an image with git>" in out
+        assert _doctor._doctor_json_security()["dockerImageHasGit"] is False
+
+    def test_docker_backend_with_git_in_the_image_is_quiet(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: True)
+        _doctor._check_security_gates()
+        assert "has no git" not in capsys.readouterr().out
+        assert _doctor._doctor_json_security()["dockerImageHasGit"] is True
+
+    def test_the_image_is_not_probed_when_docker_is_not_the_backend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+
+        def boom() -> bool:
+            raise AssertionError("probed")
+
+        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", boom)
+        _doctor._check_security_gates()
+        assert _doctor._doctor_json_security()["dockerImageHasGit"] is None
 
     def test_template_version_current(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

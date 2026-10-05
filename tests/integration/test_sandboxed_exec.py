@@ -683,3 +683,46 @@ class TestGitMetadataTheHostLaterRuns:
             (wt,), "echo x > f && git add f && git commit -q -m still", env=ident, sandbox="auto"
         )
         assert commit.ok, commit.error or commit.content
+
+
+@pytest.fixture(scope="session")
+def docker_git_image() -> str:
+    """A tiny image with git (alpine plus one package), built once per session; skips when the
+    daemon is down or the build fails (it is the one place a test uses the network)."""
+    if not DOCKER_UP:
+        pytest.skip("docker not installed or its daemon is not reachable on this host")
+    tag = "docket-test-sbx"
+    build = subprocess.run(
+        ["docker", "build", "-q", "-t", tag, "-"],
+        input="FROM alpine:3.20\nRUN apk add --no-cache git\n",
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if build.returncode != 0:
+        pytest.skip(f"could not build the git test image: {build.stderr.strip()[-200:]}")
+    return tag
+
+
+@needs_docker
+class TestDockerJailedCommit:
+    def test_a_jailed_command_commits_in_a_linked_worktree_and_the_host_sees_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+        monkeypatch.setattr(_cfg, "SANDBOX_DOCKER_IMAGE", docker_git_image)
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+
+        outcome = toolbox.run_bash(
+            (wt,),
+            "echo x > f && git add f && "
+            "git -c user.name=t -c user.email=t@t commit -q -m jailed-in-docker",
+            sandbox="auto",
+        )
+        assert outcome.ok, outcome.error or outcome.content
+        assert "jailed-in-docker" in _git(wt, "log", "--format=%s", "-1")
+        assert (wt / "f").read_text().strip() == "x"

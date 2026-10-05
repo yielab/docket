@@ -169,6 +169,12 @@ are owned here, not there.
    the choice. The jail mounts the git dir and common dir of every root that is inside a git
    repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
    `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
+   The docker jail is only as capable as `DOCKET_SANDBOX_IMAGE` (default `alpine:3.20`, which docket
+   does not ship an image for): a jailed `git commit` needs an image with `git`, and python-based
+   recipes need `python3`. `docket doctor` probes the image once (`command -v git`) when docker is
+   the backend in use and isolation is not off, and warns with the fix. Real-docker tests build a
+   `FROM alpine:3.20` + `apk add --no-cache git` image to prove a jailed commit in a linked worktree
+   and `network none` against a host-side listener.
    The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
    are re-bound read-only on top (bwrap `--ro-bind`, docker `:ro`), after the read-write mounts they
    shadow: a writable hook or config (`core.hooksPath`, `core.fsmonitor`) would run attacker-chosen
@@ -1551,6 +1557,7 @@ $ git clone https://anywhere.example/repo.git
 
 ### Unreleased
 
+- Requirement 4 (docker image): the docker jail needs `DOCKET_SANDBOX_IMAGE` to carry `git` to commit; `docket doctor` probes and warns; the docker jail's commit and `network none` are proven against real docker.
 - Workspace isolation 4: the jail also re-binds read-only submodule git dirs' hooks/config/config.worktree/info/attributes and checkout `.git` files, a linked worktree's `.git` file and `gitdir`/`commondir` admin files, and `info/attributes`.
 
 ### Version 0.32.0 (2026-10-05)
