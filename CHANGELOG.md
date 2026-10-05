@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The execution envelope (Phase 38, D-55, ADR 0020).** An agent's processes run in a jail by
+  default, and nothing docket holds leaks into them.
+  - Workspace isolation is on by default. bwrap is tried first, then Docker
+    (`DOCKET_SANDBOX_BACKEND` still forces one). With no usable backend a turn is refused before
+    any model call, naming both fixes (install bubblewrap, or `docket gates isolate off`, which is
+    now the explicit, audited opt-out). `docket doctor` and `gates isolate on` probe the real
+    backend. Inside the jail a task worktree's git dir and the repository's common dir are
+    writable, so an agent can commit; `.git/hooks`, `.git/config` and `config.worktree` stay
+    read-only, so the jail cannot plant code the host's next `git` would run.
+  - `docket gates network none|open` and a pod `network` setting (`none` only narrows) cut the
+    jail's network: bwrap drops `--share-net`, Docker runs `--network none`. The default stays
+    open. `network none` with isolation off is refused at turn start.
+  - stdio MCP servers start in the same jail as `bash` (the turn's roots and network mode) unless
+    declared `isolate: false` (`docket mcp servers add --no-isolate`, audited, shown by `doctor`;
+    a recipe's `kind: mcp-server` document may declare it too). `code-intel`'s `ast-grep` server
+    does, because `uvx` cannot write its cache in the jail.
+  - `fetch` results pass the `pre_input` hook like MCP results (`fetch.result_blocked` /
+    `fetch.result_warn`), through one shared screening function.
+  - `verifyCmd`, `run:` steps and an unjailed `bash` no longer inherit docket's credentials
+    (`DOCKET_LLM_API_KEY`, every provider-catalog credential name, `TELEGRAM_BOT_TOKEN`, every
+    stored secret name).
+  - `docket serve --dispatch` sweeps each pod in its own worker (`DISPATCH_SWEEP_WORKERS`,
+    default 4), so one pod's blocking hop no longer stalls the others. Stopping `serve` waits for
+    in-flight sweeps.
+  - A refused isolation or network posture settles the task `dispatch_refused` after one attempt
+    (it was retried as a transient error).
+
 - **Verification-ready execution (Phase 37, D-54, ADR 0019).** What a task brings back is its own,
   screened and checkable by something other than docket.
   - One git worktree per task: at claim, a repo Implementer's task runs in
@@ -452,6 +479,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `glob` and `grep` no longer return or read files outside their roots through a symlink, a
+  symlinked directory, or a `..` in the pattern.
+- The key-shaped redaction pattern no longer matches inside a word: `task=<id>` was redacted to
+  `ta[REDACTED]`.
 - **A task paused on a question is a warning, not an error.** `docket pod <p> dispatch` rendered
   `waiting_input` with the error marker; it now renders like `waiting_approval` (found in the
   Phase 36 live run).
@@ -553,6 +584,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `fleet.json`'s `security.isolationEnabled` field and `core.fleet.get_isolation_mode()`;
+  `security.isolationMode` is the only isolation state.
 - **Every compatibility path is gone.** docket has no installed base to migrate, so code that only
   kept an old name, flag, route or file shape working was deleted.
   - **Command aliases:** `show`, `rm`, `remove`, `telegram`, `key`, `secret`, `log`, `usage`,
