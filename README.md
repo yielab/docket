@@ -92,11 +92,11 @@ What follows explains that dispatch, what held it in check, and then how to chan
   <img src="docs/assets/isolation.png" alt="Real terminal output: the Implementer's dedicated workspace, codebase and session key, a separate git worktree on its own branch, a clean main checkout, and the one-line fix living only in the worktree" width="820">
 </p>
 
-`dispatch` takes the next queued task through the team's pipeline, one real model turn per step.
-The Lead plans without a write tool; the Implementer edits in a git worktree made for each task, on
-its own branch. Then whatever gates the team has decide: the verify command's exit code, a reviewer's
-`APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is counted, not hoped, and the change
-stays in the worktree until you merge it.
+`dispatch` takes the next queued task through the team's pipeline, one real model turn per step. The
+Lead plans without a write tool; the Implementer edits in a git worktree made for each task, on its
+own branch, its shell jailed by bwrap or Docker. Then whatever gates the team has decide: the verify
+command's exit code, a reviewer's `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is
+counted, not hoped, and the change stays in the worktree until you merge it.
 
 Nothing runs on its own. The same pipeline runs from a schedule (`@every 30m`, cron), an
 authenticated `POST /dispatch/<project>`, the MCP `dispatch` tool, or `docket serve --dispatch`.
@@ -123,8 +123,8 @@ Langfuse, structure-only unless widened. `docket cost` reports measured tokens a
 estimate; `/status.json` and `/metrics` feed your own board — docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
-rotation). `fetch` is inspectable, but `bash` still reaches the network through allowlisted
-interpreters; run untrusted work inside a stronger boundary.
+rotation). `fetch` is deny-by-default, but a jailed `bash` still reaches the network until
+`docket gates network none` cuts it; verify commands run unjailed.
 
 ## Make it yours
 
@@ -195,10 +195,10 @@ validated when written, and is refused loudly when broken. File by file:
 ## Also shipped
 
 - **MCP in both directions**: `docket mcp serve` exposes the control surface; `docket mcp servers`
-  wires external tool servers into the same chokepoint, `--kind read` for read-only roles.
+  wires external servers into the same chokepoint and jail, `--kind read` for read-only roles.
 - **Typed handoffs and context budgets** that follow the resolved model's window, with any
   truncation marked and traced rather than silent; session compaction on the live path.
-- **Sandboxing on by default** (bwrap, else Docker), opt-in `gates network none`, deny-by-default `fetch`.
+- **Sandboxing on by default** (bwrap, else Docker, else refused), git hooks read-only inside it.
 - **Retention and recovery**: `docket trace expire`, `runs prune`, `conversations prune`; a corrupt
   docket-owned JSON file recovers from its validated backup; `docket doctor --fix` repairs drift.
 - **An embeddable runtime**: the standalone **`docket-runtime`** package (`pydantic` + `filelock`
@@ -213,9 +213,8 @@ validated when written, and is refused loudly when broken. File by file:
 
 ## Known limits
 
-Read these before trusting docket with anything consequential; they are the honest boundary of what
-"governed" currently means. The reproducible results behind the rest are in [Adoption
-evidence](docs/ADOPTION-EVIDENCE.md).
+Read these before trusting docket with anything consequential. The reproducible results behind
+the rest are in [Adoption evidence](docs/ADOPTION-EVIDENCE.md).
 
 - **Beta, single-operator software:** no tenant axis, hosted scheduler, quota system, or
   large-deployment claim.
@@ -225,7 +224,7 @@ evidence](docs/ADOPTION-EVIDENCE.md).
   and Google documents its Gemini layer as beta; the built-in documents say so in their preset notes.
 - **MCP tools are writes unless the operator says otherwise:** nothing can prove a remote tool is
   read-only, so a server left at the default reaches no read-only role. `--kind read` is an
-  operator assertion, not a verified fact. Each configured stdio server is re-spawned per turn.
+  operator assertion. Stdio servers re-spawn per turn, jailed unless declared `isolate: false`.
 - **Telegram is not a chat:** five verbs, no free-text conversation, and a notification never
   carries a control that decides.
 - **Metrics counters are not monotonic:** they count what current storage holds, so audit
