@@ -4,3 +4,5 @@ command: uvx
 args: ["--from", "git+https://github.com/ast-grep/ast-grep-mcp", "ast-grep-server"]
 access: read
 tools: [dump_syntax_tree, test_match_code_rule, find_code, find_code_by_rule]
+# uvx must write its cache, which the jail mounts read-only (measured 2026-10-05)
+isolate: false

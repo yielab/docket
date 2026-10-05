@@ -176,6 +176,7 @@ class McpServerDocument(BaseModel):
     timeout: float = 0.0
     access: Literal["read", "write"] = "write"
     tools: list[str] = Field(default_factory=list)
+    isolate: bool = True
 
     def to_config(self) -> McpServerConfig:
         return McpServerConfig(
@@ -186,6 +187,7 @@ class McpServerDocument(BaseModel):
             timeout=self.timeout,
             kind=self.access,
             tools=self.tools,
+            isolate=self.isolate,
         )
 
 
@@ -201,6 +203,8 @@ def mcp_server_document(config: McpServerConfig) -> dict[str, Any]:
     doc["access"] = config.kind
     if config.tools:
         doc["tools"] = list(config.tools)
+    if not config.isolate:
+        doc["isolate"] = False
     return doc
 
 

@@ -179,3 +179,76 @@ def test_code_intel_validates_and_plans() -> None:
     assert _config_docs.validate_directory(directory) == []
     plan = _pod_apply.plan_apply("shop", directory)
     assert any(i.kind == "mcp-server" for i in plan.items)
+
+
+_FREE_DOC = _SERVER_DOC.replace("name: fakesrv", "name: freesrv") + "isolate: false\n"
+
+
+def _two_server_recipe(tmp_path: Path) -> Path:
+    directory = _recipe(tmp_path)
+    (directory / "mcp-servers" / "freesrv.yaml").write_text(_FREE_DOC, encoding="utf-8")
+    return directory
+
+
+def test_isolate_false_is_stored_and_only_that_servers_launch_is_unjailed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docket.edges.adapters import mcp_client as _client
+
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+    _apply("shop", _two_server_recipe(tmp_path))
+    by_name = {s.name: s for s in _mt.load_mcp_servers("shop")}
+    assert (by_name["freesrv"].isolate, by_name["fakesrv"].isolate) == (False, True)
+
+    root = tmp_path / "root"
+    root.mkdir()
+    launch = _mt.StdioLaunch(cwd=str(root), sandbox="auto", network=True, roots=(root,))
+    free = _client._stdio_params(by_name["freesrv"], launch)
+    caged = _client._stdio_params(by_name["fakesrv"], launch)
+    assert (free.command, free.args) == ("fake-mcp", ["--stdio"])
+    assert caged.command == "bwrap"
+
+
+def test_a_document_without_the_field_loads_jailed(tmp_path: Path) -> None:
+    path = tmp_path / "s.yaml"
+    path.write_text(_SERVER_DOC, encoding="utf-8")
+    assert _mt.load_mcp_server_document(path).isolate is True
+
+
+def test_export_round_trips_isolate_false_and_reapply_skips(tmp_path: Path) -> None:
+    _apply("shop", _two_server_recipe(tmp_path))
+    exported = tmp_path / "export"
+    _pod_apply.export_pod("shop", exported)
+
+    assert "isolate: false" in (exported / "mcp-servers" / "freesrv.yaml").read_text()
+    assert "isolate" not in (exported / "mcp-servers" / "fakesrv.yaml").read_text()
+    plan = _pod_apply.plan_apply("shop", exported)
+    assert {i.action for i in plan.items} == {"skip"}
+    _apply("other", exported)
+    assert _mt.load_mcp_servers("other") == _mt.load_mcp_servers("shop")
+
+
+def test_plan_summary_and_validate_say_the_server_runs_unjailed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    directory = _two_server_recipe(tmp_path)
+    plan = _pod_apply.plan_apply("shop", directory)
+    _cli_pod.render_apply_plan(plan)
+    out = capsys.readouterr().out
+    assert out.count("runs unjailed (isolate: false)") == 1
+    assert "freesrv: runs unjailed (isolate: false)" in out
+    rendered = _pod_apply.summarize_recipe(directory).render()
+    assert rendered.endswith("mcp-servers fakesrv, freesrv · unjailed freesrv")
+    assert _config_docs.validate_directory(directory) == []
+
+
+def test_code_intel_declares_ast_grep_unjailed_and_language_intel_jailed() -> None:
+    directory = _cfg.recipes_dir() / "code-intel"
+    by_name = {
+        c.name: c
+        for c in (
+            _mt.load_mcp_server_document(p) for p in (directory / "mcp-servers").glob("*.yaml")
+        )
+    }
+    assert by_name["ast-grep"].isolate is False
+    assert by_name["language-intel"].isolate is True

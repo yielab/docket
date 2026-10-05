@@ -52,6 +52,11 @@
       },
       "title": "Tools",
       "type": "array"
+    },
+    "isolate": {
+      "default": true,
+      "title": "Isolate",
+      "type": "boolean"
     }
   },
   "required": [

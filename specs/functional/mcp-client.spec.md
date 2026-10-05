@@ -614,6 +614,8 @@ dispatch_tool(
 
 ### Unreleased
 
+- Requirement 40: a recipe's `kind: mcp-server` document may declare `isolate: false`
+  (`config-format.spec.md`); `code-intel`'s `ast-grep` does.
 - Requirement 40 added (ADR 0020 §5): stdio servers start in the turn's jail unless declared
   `isolate: false` (`--no-isolate`); `mcp_loader`/`load_mcp_tools`/`list_remote_tools`/
   `call_remote_tool` take one `launch` (`StdioLaunch`) in place of `cwd`.

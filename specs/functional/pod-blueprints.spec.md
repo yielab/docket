@@ -540,6 +540,10 @@ $ docket init myproj --blueprint wizard-pod
 
 ## Changelog
 
+### Unreleased
+
+- `code-intel`'s `ast-grep` server declares `isolate: false` (uvx cannot write its cache in the jail); `language-intel` stays jailed.
+
 ### Version 1.22.0 (2026-10-04)
 
 Phase 37 close (P37-8): the entries below were Unreleased and are now this version.

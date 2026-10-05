@@ -54,6 +54,9 @@ class PodApplyError(ValueError):
     ``plan_apply``, before anything is written."""
 
 
+UNJAILED_NOTE = "runs unjailed (isolate: false)"
+
+
 @dataclass(frozen=True)
 class ApplyItem:
     """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing
@@ -64,6 +67,7 @@ class ApplyItem:
     ]
     name: str
     action: ApplyAction
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -238,6 +242,7 @@ class RecipeSummary:
     description: str
     exporters: tuple[str, ...] = ()
     mcp_servers: tuple[str, ...] = ()
+    unjailed_mcp_servers: tuple[str, ...] = ()
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
@@ -251,6 +256,8 @@ class RecipeSummary:
             line += f" · exporters {', '.join(self.exporters)}"
         if self.mcp_servers:
             line += f" · mcp-servers {', '.join(self.mcp_servers)}"
+        if self.unjailed_mcp_servers:
+            line += f" · unjailed {', '.join(self.unjailed_mcp_servers)}"
         return line
 
 
@@ -290,16 +297,16 @@ def _server_files(directory: Path) -> list[Path]:
     return sorted(_config_glob(servers_dir)) if servers_dir.is_dir() else []
 
 
-def _declared_server_names(directory: Path) -> list[str]:
-    """The ``name`` of each readable ``mcp-servers/*`` document; an invalid one is skipped
-    here (``plan_apply`` and ``validate`` are what refuse it)."""
-    names: list[str] = []
+def _declared_servers(directory: Path) -> list[_mcp_tools.McpServerConfig]:
+    """Each readable ``mcp-servers/*`` document; an invalid one is skipped here (``plan_apply``
+    and ``validate`` are what refuse it)."""
+    servers: list[_mcp_tools.McpServerConfig] = []
     for path in _server_files(directory):
         try:
-            names.append(_mcp_tools.load_mcp_server_document(path).name)
+            servers.append(_mcp_tools.load_mcp_server_document(path))
         except _mcp_tools.McpServerDocError:
             continue
-    return names
+    return servers
 
 
 def summarize_recipe(directory: Path) -> RecipeSummary:
@@ -349,8 +356,10 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
         else ()
     )
 
+    servers = _declared_servers(directory)
     return RecipeSummary(
-        mcp_servers=tuple(_declared_server_names(directory)),
+        mcp_servers=tuple(s.name for s in servers),
+        unjailed_mcp_servers=tuple(s.name for s in servers if not s.isolate),
         roles=roles,
         policies=policies,
         plugins=plugins,
@@ -575,7 +584,8 @@ def _plan_mcp_servers(
         else:
             action = "replace" if name in current else "add"
             changed = True
-        items.append(ApplyItem(kind="mcp-server", name=name, action=action))
+        note = UNJAILED_NOTE if not config.isolate else ""
+        items.append(ApplyItem(kind="mcp-server", name=name, action=action, note=note))
     if not changed:
         return items, None
     return items, _McpServerWrite(servers=tuple({**current, **declared}.values()))

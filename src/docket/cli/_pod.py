@@ -1084,6 +1084,8 @@ def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
     the action is escaped because Rich would otherwise read ``[add]`` as a style tag."""
     for item in plan.items:
         ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")
+        if item.note:
+            ui.console.print(f"      {escape(item.name)}: {escape(item.note)}")
     render_exporter_states(plan.exporters)
 
 
