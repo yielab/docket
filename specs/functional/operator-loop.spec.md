@@ -249,6 +249,12 @@ in the derived inbox becomes an event on the wire.
     MUST add `question` and, when present, `brief` (tasks only). `core.notify.render_text(event)`
     MUST derive `(title, body)` only from *event*'s own already-leveled `data`, never from the
     source item, so a `minimal` event's text carries nothing a `minimal` event's data omitted.
+    When a task's question is a `QuestionV11` with options, `conversation` MUST also add
+    `options` (`[{id, label}]`, labels stripped of control characters and capped at 80
+    characters) and, when recommended, `recommendation` (`{optionId}` only -- never the rationale
+    or evidence); `minimal` and `actions` MUST carry neither. `render_text` MUST then add one
+    `<id> - <label>` line per option, `(recommended)` on the recommended one, and a final
+    `reply: /answer <task> <id>` line.
 12. `core.notify.flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe
     snapshot (`config.NOTIFY_STATE_FILE`), compute `diff_events`, and save the new snapshot
     **before** delivering anything, so a crash mid-delivery never re-emits an event on the next
@@ -710,6 +716,11 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Unreleased
+
+- Notifications item 11: `conversation`-level events carry a consult question's `options` and
+  `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.
 
 ### Version 1.1.0 (2026-10-04)
 

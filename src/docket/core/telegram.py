@@ -73,6 +73,7 @@ import datetime as _dt
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import docket.config as _cfg
 from docket.core import answers as _answers
@@ -332,8 +333,13 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
         return TelegramActionResult(
             False, f"Task {task_id!r} has no pending question.", True, "answer"
         )
+    option_ids = {
+        o.get("id") for o in question.get("options") or [] if isinstance(o, dict) and o.get("id")
+    }
     properties = question.get("requestedSchema", {}).get("properties", {})
-    if len(properties) != 1:
+    if text in option_ids:
+        content: dict[str, Any] = {"optionId": text}
+    elif len(properties) != 1:
         return TelegramActionResult(
             False,
             "This question has more than one field -- answer it with "
@@ -341,8 +347,9 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
             True,
             "answer",
         )
-    (prop_name,) = properties
-    content = {prop_name: text}
+    else:
+        (prop_name,) = properties
+        content = {prop_name: text}
 
     try:
         _answers.answer_task(

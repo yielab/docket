@@ -32,7 +32,7 @@ from docket.core import policy as _policy
 from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
 from docket.core.channel import ChannelSpec
-from docket.core.operator_contract import make_event
+from docket.core.operator_contract import QuestionV11, make_event
 from docket.edges import store as _store
 from docket.edges.adapters.channels import telegram as _tg_channel
 from docket.edges.adapters.telegram import TelegramUpdate
@@ -510,6 +510,57 @@ class TestAnswer:
         assert after.get("answers", []) == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.answer_blocked"]
         assert len(blocked) == 1
+
+
+def _park_consult(project: str = "demo") -> dict[str, Any]:
+    """A real pod whose one task is parked on a v1.1 consult question with two options."""
+    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    _dispatch.enqueue_task(project, "pick a design")
+    tasks = _dispatch.read_tasks(project)
+    question = QuestionV11.model_validate(
+        {
+            "id": "q-consult00001",
+            "taskId": tasks[0]["id"],
+            "pod": project,
+            "step": "implementer",
+            "message": "Which design?",
+            "requestedSchema": {"type": "object", "properties": {"note": {"type": "string"}}},
+            "createdAt": "2026-10-05T00:00:00Z",
+            "kind": "decision",
+            "options": [
+                {"id": "iterative", "label": "Iterative", "description": "step by step"},
+                {"id": "bigbang", "label": "Big bang", "description": "all at once"},
+            ],
+            "recommendation": {"optionId": "iterative", "rationale": "safer"},
+        }
+    )
+    tasks[0]["status"] = "waiting_input"
+    tasks[0]["question"] = question.model_dump(by_alias=True, mode="json")
+    _store.write_json(_dispatch.pod_task_list_path(project), {"tasks": tasks})
+    return tasks[0]
+
+
+class TestAnswerPicksAnOption:
+    def test_an_exact_option_id_records_the_option(self) -> None:
+        task = _park_consult()
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} iterative"))
+
+        assert outcome.ok, outcome.reply
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["status"] == "pending"
+        assert after["answers"][0]["optionId"] == "iterative"
+        assert after["answers"][0]["channel"] == "telegram"
+
+    def test_text_that_is_not_an_option_id_keeps_the_free_text_path(self) -> None:
+        task = _park_consult()
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} do the first one"))
+
+        assert not outcome.ok
+        assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
 
 # ── unrecognized input never guesses ────────────────────────────────────────

@@ -18,6 +18,7 @@ from docket.core.operator_contract import (
     ApprovalView,
     InboxView,
     Question,
+    QuestionV11,
     TaskBrief,
     TaskView,
 )
@@ -179,6 +180,87 @@ class TestRenderDataContentLevels:
         task = _task(question=_question())
         data = _notify.render_data(task, "actions")
         assert "question" not in data
+
+
+def _consult_question(label: str = "Iterative") -> QuestionV11:
+    return QuestionV11.model_validate(
+        {
+            "id": "q-consult00001",
+            "taskId": "t1",
+            "pod": "alpha",
+            "step": "implementer",
+            "message": "Which design?",
+            "requestedSchema": {"type": "object", "properties": {"note": {"type": "string"}}},
+            "createdAt": "2026-10-05T00:00:00Z",
+            "kind": "decision",
+            "options": [
+                {"id": "iterative", "label": label, "description": "SECRETDESC"},
+                {"id": "bigbang", "label": "Big bang", "description": "all"},
+            ],
+            "recommendation": {"optionId": "iterative", "rationale": "SECRETWHY"},
+        }
+    )
+
+
+class TestRenderOptions:
+    def test_conversation_carries_options_and_recommendation_id_only(self) -> None:
+        data = _notify.render_data(_task(question=_consult_question()), "conversation")
+        assert data["options"] == [
+            {"id": "iterative", "label": "Iterative"},
+            {"id": "bigbang", "label": "Big bang"},
+        ]
+        assert data["recommendation"] == {"optionId": "iterative"}
+        assert "SECRETWHY" not in repr(data)
+        assert "SECRETDESC" not in repr(data)
+
+    @pytest.mark.parametrize("level", ["minimal", "actions"])
+    def test_lower_levels_carry_neither(self, level: str) -> None:
+        data = _notify.render_data(_task(question=_consult_question()), level)
+        assert "options" not in data
+        assert "recommendation" not in data
+        assert "Iterative" not in repr(data)
+
+    def test_a_plain_question_adds_no_options(self) -> None:
+        data = _notify.render_data(_task(question=_question()), "conversation")
+        assert "options" not in data
+        assert "recommendation" not in data
+
+    def test_labels_lose_control_characters_and_are_truncated(self) -> None:
+        label = "A\x1b[31mB\nC" + "x" * 500
+        data = _notify.render_data(_task(question=_consult_question(label)), "conversation")
+        shown = data["options"][0]["label"]
+        assert "\x1b" not in shown
+        assert "\n" not in shown
+        assert len(shown) <= 80
+
+    def test_text_lists_each_option_marks_the_recommended_and_names_the_reply(self) -> None:
+        data = _notify.render_data(_task(question=_consult_question()), "conversation")
+        event = _notify.make_event(
+            "task.input_required",
+            "alpha",
+            "task:alpha:t1",
+            data,
+            time="2026-10-05T00:00:00Z",
+            version="v",
+        )
+        _title, body = _notify.render_text(event)
+        assert "iterative - Iterative (recommended)" in body
+        assert "bigbang - Big bang" in body
+        assert "reply: /answer t1 <id>" in body
+
+    def test_minimal_text_has_no_option_lines(self) -> None:
+        data = _notify.render_data(_task(question=_consult_question()), "minimal")
+        event = _notify.make_event(
+            "task.input_required",
+            "alpha",
+            "task:alpha:t1",
+            data,
+            time="2026-10-05T00:00:00Z",
+            version="v",
+        )
+        _title, body = _notify.render_text(event)
+        assert "iterative" not in body
+        assert "/answer" not in body
 
 
 class TestRenderTextAndTestEvent:

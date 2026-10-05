@@ -19,7 +19,14 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import docket.config as _cfg
-from docket.core.operator_contract import ApprovalView, CloudEvent, InboxView, TaskView, make_event
+from docket.core.operator_contract import (
+    ApprovalView,
+    CloudEvent,
+    InboxView,
+    QuestionV11,
+    TaskView,
+    make_event,
+)
 from docket.edges import store as _store
 
 __all__ = [
@@ -48,6 +55,7 @@ _NEEDS_YOU_KINDS: frozenset[str] = frozenset(
 # How much of an approval's life must have elapsed before `approval.expiring` fires, once,
 # per token (ADR 0016 SS7).
 _EXPIRING_FRACTION = 0.8
+_LABEL_MAX = 80
 
 _DELIVERY_TIMEOUT_S = 5.0
 _DELIVERY_ATTEMPTS = 3  # one try plus two retries, within this one flush call only
@@ -255,7 +263,19 @@ def render_data(item: TaskView | ApprovalView, level: str) -> dict[str, Any]:
             data["question"] = item.question.message
         if item.brief is not None:
             data["brief"] = item.brief.model_dump(by_alias=True, mode="json")
+        if isinstance(item.question, QuestionV11) and item.question.options:
+            data["options"] = [
+                {"id": o.id, "label": _clean_label(o.label)} for o in item.question.options
+            ]
+            if item.question.recommendation is not None:
+                data["recommendation"] = {"optionId": item.question.recommendation.option_id}
     return data
+
+
+def _clean_label(label: str) -> str:
+    """Model text bound for a chat or a terminal: control characters dropped, length capped."""
+    text = "".join(ch for ch in label if ch.isprintable())
+    return text[:_LABEL_MAX]
 
 
 def render_text(event: CloudEvent) -> tuple[str, str]:
@@ -282,6 +302,16 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
     if question:
         parts.append(str(question))
     body = " -- ".join(parts) if parts else kind
+    options = event.data.get("options")
+    if isinstance(options, list) and options:
+        recommended = (event.data.get("recommendation") or {}).get("optionId")
+        lines = [
+            f"{_clean_label(str(o['id']))} - {o['label']}"
+            + (" (recommended)" if o["id"] == recommended else "")
+            for o in options
+        ]
+        lines.append(f"reply: /answer {task_id} <id>")
+        body = "\n".join([body, *lines])
     return title, body
 
 

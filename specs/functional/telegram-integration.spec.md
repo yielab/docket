@@ -191,6 +191,9 @@ amends the command grammar above with the fifth verb and documents the dialect's
    `Answer blocked by policy '<policy id>'` and audits as `telegram.answer_blocked` (chat
    id/policy id only, never the answer text, matching the `telegram.delegate_blocked`
    precedent).
+   When the pending question carries options and the answer text exactly equals one option id,
+   `/answer` **MUST** send `{"optionId": <id>}` through the same `answer_task` call; any other
+   text keeps the single-property path above. This adds no outbound call site.
 6. **MUST** implement the dialect's `notify` capability as `edges/adapters/channels/
    telegram.py::deliver(spec, event, *, secret, timeout) -> DeliveryResult` (the same shape every
    other dialect under `edges/adapters/channels/` implements, wired into `sink_for`). It **MUST**
@@ -329,6 +332,10 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Unreleased
+
+- `/answer <task> <option-id>` picks an option of a consult question (`optionId`).
 
 ### Version 2.3.0 (2026-09-29)
 
