@@ -29,7 +29,7 @@ today's "register everything" behavior. An existing `docket-mcp-servers.json` wr
 version has neither key and loads unchanged (`kind` defaults to `"write"`, `tools` to `[]`), so a
 pre-1.5.0 install's behavior does not change until an operator opts in. See Requirements 6 and
 32-33.
-**What remains unwired, stated plainly:** the `kind: mcp-server` document form has no `isolate` field, so a pod apply installs the default (jailed); no per-turn caching of a server's tool listing (every
+**What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
 turn that reaches a configured server re-spawns it — see the Version 1.2.0 changelog entry's measured per-turn cost and its
 named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
 scope); **per-tool** trust/capability metadata still does not exist — `kind`/`tools` are declared
@@ -321,7 +321,8 @@ This specification does NOT cover:
     `bash` gets), keeping the stdio pipes (bwrap passes them through; docker runs with `-i`).
     With no usable backend it **MUST** raise, never start unjailed. A server declared
     `isolate: false` (`McpServerConfig.isolate`, default `true`; `docket mcp servers add
-    --no-isolate`, audited with `isolate=no`, shown by `list` and `doctor`) **MUST** start on the
+    --no-isolate`, audited with `isolate=no`, shown by `list`, `doctor`, `config explain`,
+    and `recipes show --json`) **MUST** start on the
     host. With isolation off, or no `launch`, the argv **MUST** be the server's own, unchanged.
     Under docker the server binary must exist in the image; `isolate: false` or bwrap is the
     path for host-installed servers. HTTP servers are not affected.
@@ -611,6 +612,10 @@ dispatch_tool(
   never as an ordinary turn outcome.
 
 ## Changelog
+
+### Unreleased
+
+- Requirement 40 updated: unjailed MCP servers (isolate: false) are now shown by `docket doctor --json`, `docket config explain --json`, and `docket recipes show --json`.
 
 ### Version 1.8.0 (2026-10-05)
 

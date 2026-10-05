@@ -238,7 +238,9 @@ class TestConfigExplainScopeLabels:
         assert scopes_by_id["pod-only"] == "pod"
         assert any(scope == "global" for pid, scope in scopes_by_id.items() if pid != "pod-only")
 
-        assert report["tools"]["mcpServers"] == [{"name": "search", "kind": "read", "scope": "pod"}]
+        assert report["tools"]["mcpServers"] == [
+            {"name": "search", "kind": "read", "scope": "pod", "isolate": True}
+        ]
 
         denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
         assert denied["fetch"] == "pod"

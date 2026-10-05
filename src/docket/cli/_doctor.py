@@ -446,9 +446,23 @@ def _check_security_gates() -> int:
             "  Network: open (default) -- docket gates network none to cut the sandbox's network"
         )
 
-    unjailed = [s.name for s in _mcp_tools.load_mcp_servers() if not s.isolate]
-    if unjailed and state != "off":
-        ui.warn(f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed)}")
+    # Gather unjailed servers from global and per-pod registries
+    from docket.core import dispatch as _dispatch
+
+    unjailed_items = []
+    # Global unjailed servers
+    for s in _mcp_tools.load_mcp_servers():
+        if not s.isolate:
+            unjailed_items.append(s.name)
+    # Per-pod unjailed servers
+    for pod_id in _dispatch.dispatchable_pods():
+        for s in _mcp_tools.load_mcp_servers(pod_id):
+            if not s.isolate:
+                unjailed_items.append(f"{s.name} (pod {pod_id})")
+    if unjailed_items and state != "off":
+        ui.warn(
+            f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed_items)}"
+        )
 
     return 0
 
@@ -803,11 +817,26 @@ def _doctor_json_key_hygiene(
 
 def _doctor_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
+    from docket.core import dispatch as _dispatch
+
+    # Gather unjailed servers from global and per-pod registries
+    unjailed_items = []
+    # Global unjailed servers
+    for s in _mcp_tools.load_mcp_servers():
+        if not s.isolate:
+            unjailed_items.append({"name": s.name, "pod": ""})
+    # Per-pod unjailed servers
+    for pod_id in _dispatch.dispatchable_pods():
+        for s in _mcp_tools.load_mcp_servers(pod_id):
+            if not s.isolate:
+                unjailed_items.append({"name": s.name, "pod": pod_id})
+
     return {
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),
         "sandboxBackend": _sys.sandbox_availability().backend,
         "network": _fleet.get_network_mode(),
+        "unjailedMcpServers": unjailed_items,
     }
 
 

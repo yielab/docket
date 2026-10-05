@@ -162,7 +162,8 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
       "toolCallGate": "always-on",
       "isolation": "string ('on (default)' | 'on' | 'off')",
       "sandboxBackend": "string ('bwrap' | 'docker' | 'none')",
-      "network": "string ('open' | 'none'; the global mode)"
+      "network": "string ('open' | 'none'; the global mode)",
+      "unjailedMcpServers": "array of { name, pod } (empty array if none)"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
   }
@@ -326,7 +327,7 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
     "allowed": "array of built-in tool names, after role and pod denial",
     "denied":  [ { "name": "string", "scope": "built-in | global | pod" } ],
     "mcpServers": [
-      { "name": "string", "kind": "read | write", "scope": "global | pod" }
+      { "name": "string", "kind": "read | write", "scope": "global | pod", "isolate": "boolean (true = jailed, false = unjailed)" }
     ]
   },
   "policies": [
@@ -486,6 +487,12 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Unreleased
+
+- `doctor --json` `securityGates.unjailedMcpServers`: array of {name, pod} for servers with isolate: false.
+- `config explain --json` `tools.mcpServers[].isolate`: boolean field added to each server.
+- `recipes show --json` and `recipes list --json` gain `unjailed_mcp_servers` field.
 
 ### Version 1.18.0 (2026-10-05)
 

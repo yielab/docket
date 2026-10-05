@@ -59,6 +59,7 @@ def _info_dict(
         "skills": summary.skills,
         "settings": summary.settings,
         "mcp_servers": list(summary.mcp_servers),
+        "unjailed_mcp_servers": list(summary.unjailed_mcp_servers),
     }
 
 

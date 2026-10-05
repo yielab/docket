@@ -644,6 +644,8 @@ visibility, not shared workspace or session state.
   with the file and the failing field, e.g. an unknown `auth.type`
 - Enabled exporters' recorded health (`exporters-health.json`) — a non-zero `failed` count
   since the exporter's last success is named with `docket exporters test <name>` as the fix
+- MCP server isolation state: unjailed servers (isolate: false) from both global and per-pod
+  registries when isolation is not off (human output warns; `--json` lists with pod context)
 
 When issues are found the footer points at `docket maintain [id] check`.
 **Return**: 0 if healthy, 1 when any issue is flagged
@@ -1265,6 +1267,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Unreleased
+
+- `docket doctor` (human and `--json`) shows unjailed MCP servers (isolate: false) from global and per-pod registries with pod context.
+- `docket config explain` adds `isolate` field to each MCP server, with human marker for unjailed servers.
+- `docket recipes show --json` and `recipes list --json` include `unjailed_mcp_servers` field.
 
 ### Version 1.61.0 (2026-10-05)
 

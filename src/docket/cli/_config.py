@@ -120,7 +120,7 @@ def _policies_for_role(role: str, project: str) -> list[dict[str, str]]:
 
 def _mcp_servers_report(
     pod_settings: _pod.PodSettings | None, project: str = ""
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Every MCP server a turn would load: the pod's own ``mcpServers`` selection when
     set (``scope: "pod"``), else the full catalog -- global servers (``scope: "global"``)
     and the pod's own pod-scoped ones (``scope: "pod"``)."""
@@ -129,12 +129,17 @@ def _mcp_servers_report(
     if selected is None:
         own = {s.name for s in _mcp_tools.load_pod_mcp_servers(project)} if project else set()
         return [
-            {"name": s.name, "kind": s.kind, "scope": "pod" if s.name in own else "global"}
+            {
+                "name": s.name,
+                "kind": s.kind,
+                "scope": "pod" if s.name in own else "global",
+                "isolate": s.isolate,
+            }
             for s in catalog
         ]
     by_name = {s.name: s for s in catalog}
     return [
-        {"name": name, "kind": by_name[name].kind, "scope": "pod"}
+        {"name": name, "kind": by_name[name].kind, "scope": "pod", "isolate": by_name[name].isolate}
         for name in sorted(selected)
         if name in by_name
     ]
@@ -398,7 +403,13 @@ def _render_human(agent_id: str, report: dict[str, Any]) -> None:
 
     tools = report["tools"]
     denied_names = [d["name"] for d in tools["denied"]]
-    mcp_names = [m["name"] for m in tools["mcpServers"]]
+    mcp_servers = tools["mcpServers"]
+    mcp_names = []
+    for m in mcp_servers:
+        name = m["name"]
+        if not m.get("isolate", True):
+            name = f"{name} (unjailed)"
+        mcp_names.append(name)
     ui.console.print(f"  [bold]Tools allowed:[/bold] {', '.join(tools['allowed']) or '(none)'}")
     ui.console.print(f"  [bold]Tools denied:[/bold]  {', '.join(denied_names) or '(none)'}")
     ui.console.print(f"  [bold]MCP servers:[/bold]   {', '.join(mcp_names) or '(none configured)'}")
