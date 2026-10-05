@@ -440,7 +440,7 @@ positive control it succeeds against a host-side listener with the network open.
 
 ### W89-7 — a `run:` step can carry `env:`; the check recipes use it
 
-**Status:** TODO · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `pipeline-format.spec.md` (Steps, command steps), `pod-dispatch.spec.md` (command-step environment), `pod-blueprints.spec.md` (anti-tautology, mutation)
+**Status:** DONE `4496818f` · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `pipeline-format.spec.md` (Steps, command steps), `pod-dispatch.spec.md` (command-step environment), `pod-blueprints.spec.md` (anti-tautology, mutation)
 
 **Today:** command steps get only `DOCKET_TASK_ID`/`DOCKET_BASE_COMMIT`/`DOCKET_HEAD_COMMIT` over the
 serve process environment (`core/dispatch.py::_task_command_env`, `_run_command_step`), so the
