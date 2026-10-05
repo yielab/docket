@@ -24,8 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core.audit import audit_log
-from docket.core.tools import Tool, ToolContext, ToolRegistry
-from docket.core.trace import redact as _redact
+from docket.core.tools import Tool, ToolContext, ToolRegistry, screen_tool_result
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
 
@@ -344,29 +343,14 @@ def _screen_result(
     """Screen one remote tool result as untrusted input through the `pre_input` hook: block
     refuses, redact strips secrets, warn passes; each non-allow hit is audited. See the spec's
     "Untrusted tool results" section."""
-    text = outcome.content if outcome.ok else outcome.error
-    if not text:
-        return outcome
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
-    detail = (
-        f"server={server_name!r} tool={tool_name!r} policy={hit.policy_id!r} action={hit.action}"
+    return screen_tool_result(
+        role,
+        outcome,
+        source=f"MCP server {server_name!r}",
+        detail=f"server={server_name!r} tool={tool_name!r}",
+        blocked_action="mcp_client.tool_result_blocked",
+        warn_action="mcp_client.tool_result_warn",
     )
-    if hit.action in ("block", "require_approval"):
-        audit_log("mcp_client.tool_result_blocked", detail)
-        return ToolOutcome(
-            False,
-            error=(
-                f"result from MCP server {server_name!r} blocked by policy "
-                f"{hit.policy_id!r} (action={hit.action})"
-            ),
-        )
-    if hit.action in ("warn", "redact"):
-        audit_log("mcp_client.tool_result_warn", detail)
-    if hit.action == "redact":
-        if outcome.ok:
-            return ToolOutcome(True, content=_redact(text))
-        return ToolOutcome(False, error=_redact(text))
-    return outcome
 
 
 def _build_tool(

@@ -600,6 +600,11 @@ dispatch_tool(
 
 ## Changelog
 
+### Unreleased
+
+- Requirement 30 updated: fetch results also pass `pre_input` (ADR 0020 §7); shared
+  implementation with MCP result screening.
+
 ### Version 1.7.0 (2026-10-04)
 
 Phase 37 close (P37-8): the entries below were Unreleased and are now this version.

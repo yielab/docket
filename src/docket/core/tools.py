@@ -13,6 +13,7 @@ callers. ``dispatch_tool``'s full order of operations is the pinned contract in
 from __future__ import annotations
 
 import json
+import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -711,8 +712,54 @@ def _consult_tool() -> Tool:
     )
 
 
+def screen_tool_result(
+    role: str,
+    outcome: ToolOutcome,
+    *,
+    source: str,
+    detail: str,
+    blocked_action: str,
+    warn_action: str,
+) -> ToolOutcome:
+    """Screen a remote tool result as untrusted `pre_input`: block refuses, redact strips,
+    warn passes; each non-allow hit is audited under the caller's action names.
+    *source* names the origin in the refusal, *detail* prefixes the audit detail."""
+    text = outcome.content if outcome.ok else outcome.error
+    if not text:
+        return outcome
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    audit_detail = f"{detail} policy={hit.policy_id!r} action={hit.action}"
+    if hit.action in ("block", "require_approval"):
+        audit_log(blocked_action, audit_detail)
+        return ToolOutcome(
+            False,
+            error=f"result from {source} blocked by policy {hit.policy_id!r} (action={hit.action})",
+        )
+    if hit.action in ("warn", "redact"):
+        audit_log(warn_action, audit_detail)
+    if hit.action == "redact":
+        if outcome.ok:
+            return ToolOutcome(True, content=_redact(text))
+        return ToolOutcome(False, error=_redact(text))
+    return outcome
+
+
 def _fetch_tool(fetch_url: Any) -> Tool:
     """The `fetch` built-in over *fetch_url*, the edges adapter the registry hands in."""
+
+    def _fetch_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+        url = _str_arg(args, "url")
+        outcome: ToolOutcome = fetch_url(url, _int_arg(args, "timeout"))
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+        return screen_tool_result(
+            ctx.role,
+            outcome,
+            source=f"host {host!r}",
+            detail=f"host={host!r} url={url!r}",
+            blocked_action="fetch.result_blocked",
+            warn_action="fetch.result_warn",
+        )
+
     return Tool(
         name="fetch",
         description=(
@@ -730,7 +777,7 @@ def _fetch_tool(fetch_url: Any) -> Tool:
             },
             "required": ["url"],
         },
-        handler=lambda args, ctx: fetch_url(_str_arg(args, "url"), _int_arg(args, "timeout")),
+        handler=_fetch_handler,
         kind="read",
     )
 

@@ -906,6 +906,16 @@ otherwise.
    only. `FETCH_ALLOWED_DOMAINS` is empty in a default install — no domain is reachable through
    `fetch` until an operator configures one — and nothing in this section changes what `bash`,
    `python3`, `node`, or `git` may already do; those stay exactly as described in requirement 1.
+6. **Fetch results pass `pre_input` exactly like MCP results (ADR 0020 §7).** The text of a
+   successful `fetch` response and the error text of a failed one **MUST** be evaluated through
+   `core.policy.policy_eval_detail(ctx.role, "pre_input", text, trusted=False)` inside the
+   `_fetch_tool` handler; a result with no text (an empty response or a fetch error before any
+   text is produced) passes unchanged and unaudited. A `block` or `require_approval` result
+   **MUST** replace the outcome with `ok=False` naming the policy id, and **MUST** be audited
+   (`fetch.result_blocked`, naming url and host). A `redact` result **MUST** return the text
+   passed through `core.trace.redact`, and a `warn` result **MUST** return it unchanged; both
+   **MUST** be audited (`fetch.result_warn`). `allow`, or no hit, passes the outcome byte-identical
+   with no audit entry.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
@@ -1473,6 +1483,11 @@ $ git clone https://anywhere.example/repo.git
 ### Unreleased
 
 - Credentials in task processes (new section): `system.task_environment` strips docket's credential names from the environment of verify commands and unjailed bash, the explicit overlay still winning.
+- **Fetch results pass `pre_input` (ADR 0020 §7).** Requirement 6 of the "Network egress and
+  the `fetch` tool" section: the `_fetch_tool` handler now screens successful and failed
+  responses through `core.policy.policy_eval_detail(ctx.role, "pre_input", ...)` like MCP
+  results, auditing with `fetch.result_blocked` / `fetch.result_warn`, shared implementation
+  with the MCP results through one screening function, `core.tools.screen_tool_result` (P38-2).
 
 ### Version 0.31.0 (2026-10-04)
 
