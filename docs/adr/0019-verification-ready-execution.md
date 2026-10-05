@@ -67,8 +67,10 @@ false when re-verified (see Evidence), and this ADR corrects them.
    loop all match. A check that newly passes is a new result, so it never matches. It is a stop
    condition, like every other bound, and never a retry.
 5. **Recipes may declare MCP servers.** A recipe may ship `kind: mcp-server` documents. `docket
-   pod <p> apply` installs them pod-scoped, each with its declared `kind`, and the dry-run summary
-   lists them. Only the operator's apply command makes them live, as ADR 0012 requires for
+   pod <p> apply` installs them pod-scoped, each with its declared read/write capability (the
+   document's `access:` field, because `kind:` is the envelope), and the dry-run summary lists
+   them. A stdio server spawned for a turn starts in that turn's root, so a server that takes
+   `--workspace .` sees the task's worktree. Only the operator's apply command makes them live, as ADR 0012 requires for
    everything that comes from a repository. A pod-scoped server is selectable by that pod's
    `mcpServers` only.
 6. **Four check recipes and one code-intelligence pack, as data:**

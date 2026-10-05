@@ -14,7 +14,7 @@
 > ## ▶ ACTIVE BOARD — Wave 82–84 (Phase 37, verification-ready execution)
 >
 > **Phase 37 opened 2026-10-04** (ROADMAP D-54,
-> [ADR 0019](docs/adr/0019-verification-ready-execution.md)): eight cards over Waves 82–84, below
+> [ADR 0019](docs/adr/0019-verification-ready-execution.md)): nine cards over Waves 82–84, below
 > the usage guide. One worktree per task, screened MCP results, task coordinates for command
 > steps, a `no_progress` stop, recipe-declared MCP servers, four check recipes and a
 > code-intelligence pack.
@@ -298,7 +298,7 @@ a test that creates it leaks into the real home and fails the card.
 | --- | --- | --- |
 | 82 | P37-1 ∥ P37-2 ∥ P37-3 ∥ P37-4 | `core/mcp_tools.py::_build_tool` (the handler), `mcp-client.spec.md` → P37-1; `core/pod_provisioning.py` (worktree provisioning and teardown), `core/pod.py::resolve_member_cwd`, `core/dispatch.py` claim, finalize, `_implementer_diff_probe`, `_prior_implementer_worktree`, `_when_cwd`, `workspace-structure.spec.md`, `pod-dispatch.spec.md` "Hop evidence" → P37-2; `core/dispatch.py::_run_command_step` plus one new helper, `edges/adapters/system.py::run_verify_cmd` (an `env` parameter), `pod-dispatch.spec.md` command-step section → P37-3; `core/agent_loop.py` (`StopReason`, `_TurnState`), `config.py` (one constant), `agent-loop.spec.md` → P37-4 |
 | 83 | P37-5 ∥ P37-6 ∥ P37-7 | `templates/recipes/mutation/`, `templates/recipes/anti-tautology/` → P37-5; `templates/recipes/spec-writer/`, `templates/recipes/cross-family-review/` → P37-6; `core/pod_apply.py` (the `mcp-server` kind), `core/mcp_tools.py::load_mcp_servers` (pod scope), `core/pod.py::_parse_mcp_servers`, `templates/recipes/code-intel/`, `config-format.spec.md`, `mcp-client.spec.md` → P37-7 |
-| 84 | P37-8 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
+| 84 | P37-9 → P37-8 (integrator) | `edges/adapters/mcp_client.py::_stdio_params` and its turn-time callers → P37-9; then seam tests, live run, docs, spec bumps, rollup, archive |
 
 `core/dispatch.py` is shared in Wave 82 at function level only: P37-2 must not touch
 `_run_command_step`, and P37-3 reads the base commit from the prior hops' recorded evidence, never
@@ -441,7 +441,7 @@ core code, stop and report the contention. Do not add core code.**
 
 ### P37-6 — `spec-writer` and `cross-family-review` recipes
 
-**Status:** IN-PROGRESS (Haiku worker) · **Size:** S · **Wave:** 83 · **Model:** Haiku · **Spec:** `config-format.spec.md`
+**Status:** DONE `6d293948` + `7567c717` (the integrator pinned both steps' models; the worker had left the Implementer on the pod default and pointed at the removed `docket auth set`) · **Size:** S · **Wave:** 83 · **Model:** Haiku · **Spec:** `config-format.spec.md`
 (recipes)
 
 **Goal:** two pipeline recipes under `templates/recipes/`, data only:
@@ -460,7 +460,7 @@ from built-in provider presets (`templates/providers/`), never invented.
 
 ### P37-7 — recipe-declared MCP servers and the `code-intel` pack
 
-**Status:** IN-PROGRESS (Sonnet worker) · **Size:** M · **Wave:** 83 (after P37-1) · **Model:** Sonnet · **Spec:**
+**Status:** DONE `032280d0` (documents under `mcp-servers/`, read/write declared as `access:` because `kind:` is the envelope; stored in the pod's `config/mcp-servers.json`; `code-intel` = ast-grep-mcp + mcp-language-server restricted to read tools) · **Size:** M · **Wave:** 83 (after P37-1) · **Model:** Sonnet · **Spec:**
 `config-format.spec.md`, `mcp-client.spec.md`
 
 **Goal (ADR 0019 §5–6):**
@@ -482,6 +482,27 @@ from built-in provider presets (`templates/providers/`), never invented.
 - A second pod cannot select it.
 - `apply --dry-run` lists it without installing it.
 - `pod export` round-trips it.
+
+### P37-9 — stdio MCP servers start in the turn's root
+
+**Status:** TODO · **Size:** S · **Wave:** 84 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
+
+**Trigger:** found integrating P37-7. `edges/adapters/mcp_client.py::_stdio_params` passes no
+`cwd`, so a stdio server inherits the directory docket was started from. `code-intel`'s
+`language-intel` server takes `--workspace .`, so under `docket serve --dispatch` it would index
+the serve process's directory, not the task's worktree.
+
+**Goal:** a stdio server spawned for a turn starts in that turn's resolved root. The root is the
+same one the built-in file tools are confined to: the task worktree, else the codebase, else the
+workspace. A server that declares an absolute path in its args is unaffected. Listing outside a
+turn (`docket mcp servers test`, `config explain`) keeps the current directory.
+
+**Non-goals:** jailing MCP servers (Phase 38); any change to http servers.
+
+**Acceptance:**
+- A fake stdio server that prints its working directory into a tool result, loaded for a pod
+  turn, reports the task worktree.
+- The same server listed outside a turn reports the process's working directory.
 
 ### P37-8 — integrate and close Phase 37
 

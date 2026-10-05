@@ -251,7 +251,8 @@ This specification does NOT cover:
 ### Pod-scoped server selection (P27-4)
 
 34. `edges/adapters/docket_runtime.py::_load_mcp_tools(registry, role, project)` **MUST** filter
-    `load_mcp_servers()`'s catalog by *project*'s pod `mcpServers` setting
+    `load_mcp_servers(project)`'s catalog (global servers plus *project*'s pod-scoped ones,
+    Requirements 37-38) by *project*'s pod `mcpServers` setting
     (`core.pod.PodSettings.mcp_servers`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 7)
     before calling `load_mcp_tools`. `None` — the default, and every project before this setting
     existed — **MUST** load every configured server, byte-for-byte identical to Requirement 27's
