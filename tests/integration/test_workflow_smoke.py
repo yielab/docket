@@ -564,8 +564,10 @@ def test_private_classifier_rejects_universal_selector_escape(tmp_path: Path) ->
         relative_project_root=codebase,
     )
 
-    assert globbed.ok and "2026-08-25.md" in globbed.content
-    assert grepped.ok and "PRIVATE_GLOB_SENTINEL" in grepped.content
+    # The tools themselves no longer leave the root through a `..` selector (ADR 0020 s6);
+    # the smoke classifier below still names the private root it was aimed at.
+    assert globbed.ok and "2026-08-25.md" not in globbed.content
+    assert grepped.ok and "PRIVATE_GLOB_SENTINEL" not in grepped.content
     assert glob_violation == ".docket"
     assert grep_violation == ".docket"
     assert (
