@@ -98,7 +98,7 @@ def _fake_mcp_loader(
     answered instantly -- no subprocess, no `mcp` SDK involved."""
 
     def _loader(
-        registry: ToolRegistry, role: str, project: str = ""
+        registry: ToolRegistry, role: str, project: str = "", cwd: str | None = None
     ) -> list[_mt.McpServerLoadResult]:
         config = _mt.McpServerConfig(name=server_name, command="stub")
         return _mt.load_mcp_tools(
@@ -114,7 +114,7 @@ def _fake_mcp_loader(
 
 def _unreachable_mcp_loader() -> Any:
     def _loader(
-        registry: ToolRegistry, role: str, project: str = ""
+        registry: ToolRegistry, role: str, project: str = "", cwd: str | None = None
     ) -> list[_mt.McpServerLoadResult]:
         config = _mt.McpServerConfig(name="down", command="stub")
         return _mt.load_mcp_tools(
@@ -134,7 +134,7 @@ def _malformed_mcp_loader() -> Any:
     boundary does when the injected `list_tools` itself misbehaves."""
 
     def _loader(
-        registry: ToolRegistry, role: str, project: str = ""
+        registry: ToolRegistry, role: str, project: str = "", cwd: str | None = None
     ) -> list[_mt.McpServerLoadResult]:
         def _boom(_c: _mt.McpServerConfig, _t: float) -> _mt.McpListResult:
             raise ValueError("malformed tool listing: not valid JSON-RPC")

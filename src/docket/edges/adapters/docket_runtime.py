@@ -112,13 +112,17 @@ def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
 # selection) before handing the rest to `load_mcp_tools`. ``None`` (no selection
 # stored, or *project* names no pod) loads every configured server -- byte-for-byte
 # the pre-selection behavior, including the zero-server fast path.
-def _load_mcp_tools(registry: ToolRegistry, role: str, project: str = "") -> list[Any]:
-    """Fold MCP servers' tools into *registry* in the 3-positional shape ``mcp_loader`` needs."""
+def _load_mcp_tools(
+    registry: ToolRegistry, role: str, project: str = "", cwd: str | None = None
+) -> list[Any]:
+    """Fold MCP servers' tools into *registry*; *cwd* is the turn root stdio servers start in."""
     servers = _mcp.load_mcp_servers(project)
     selection = _pod_mcp_selection(project)
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
-    return _mcp.load_mcp_tools(registry, servers=servers, role=role)
+    if cwd is None:
+        return _mcp.load_mcp_tools(registry, servers=servers, role=role)
+    return _mcp.load_mcp_tools(registry, servers=servers, role=role, cwd=cwd)
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:
@@ -289,7 +293,7 @@ class DocketDriver:
 
     backend_factory: Callable[[str], ChatBackend | None] = _llm.client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
-    mcp_loader: Callable[[ToolRegistry, str, str], list[Any]] = _load_mcp_tools
+    mcp_loader: Callable[..., list[Any]] = _load_mcp_tools
 
     def run_turn(
         self,
@@ -449,7 +453,7 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role, ctx.project)
+        self.mcp_loader(registry, meta.role, ctx.project, cwd=str(ctx.roots[0]))
         context_window = getattr(backend, "context_window_tokens", None)
         max_output_tokens = getattr(backend, "max_output_tokens", None)
         loop_config = _loop.LoopConfig(

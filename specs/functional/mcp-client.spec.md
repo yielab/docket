@@ -303,6 +303,18 @@ This specification does NOT cover:
     `docket pod <p> apply` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
     dispatch write nothing.
 
+### Turn root for stdio servers
+
+39. A stdio server spawned for a live turn **MUST** start in that turn's resolved root: the same
+    `ctx.roots[0]` the built-in file tools are confined to (the task worktree, else the codebase,
+    else the workspace). `DocketDriver.run_turn` **MUST** pass it to `mcp_loader` as the `cwd`
+    keyword; `load_mcp_tools(..., cwd=)` **MUST** carry it to every listing and adapted call
+    (`list_remote_tools`/`call_remote_tool(..., cwd=)`, then `_stdio_params(config, cwd)`). It is
+    a runtime argument and **MUST NOT** be stored in `McpServerConfig` or any document. A caller
+    outside a turn (`docket mcp servers test`, `config explain`, listing) passes none and the
+    server inherits the process's directory, as before. With `cwd` absent `_load_mcp_tools`
+    **MUST** call `load_mcp_tools` exactly as before.
+
 ### Untrusted tool results
 
 35. The text of a remote tool's result **MUST** be evaluated, inside the adapted tool's handler,
@@ -355,6 +367,7 @@ def load_mcp_tools(
     list_tools: ListToolsFn | None = None,               # default: edges/adapters/mcp_client.py
     call_tool: CallToolFn | None = None,                 # default: edges/adapters/mcp_client.py
     role: str = "",                                       # feeds the pre_input policy check
+    cwd: str | None = None,                               # stdio servers start here (Requirement 39)
 ) -> list[McpServerLoadResult]: ...
 ```
 
@@ -363,9 +376,10 @@ def load_mcp_tools(
 ```python
 MISSING_SDK_HINT: str
 
-def list_remote_tools(config: McpServerConfig, timeout: float) -> McpListResult: ...
+def list_remote_tools(config: McpServerConfig, timeout: float, cwd: str | None = None) -> McpListResult: ...
 def call_remote_tool(
-    config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float
+    config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float,
+    cwd: str | None = None,
 ) -> ToolOutcome: ...
 ```
 
@@ -376,12 +390,12 @@ def call_remote_tool(
 class DocketDriver:
     backend_factory: Callable[[str], ChatBackend | None] = client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
-    mcp_loader: Callable[[ToolRegistry, str, str], list[Any]] = _load_mcp_tools  # wraps load_mcp_tools
+    mcp_loader: Callable[..., list[Any]] = _load_mcp_tools  # (registry, role, project, *, cwd=None)
 
     def run_turn(self, agent_id: str, session_key: str, message: str, ...) -> TurnResult:
         ...
         registry = self.registry_factory()
-        self.mcp_loader(registry, meta.role, ctx.project)   # folds MCP tools in, before role narrowing
+        self.mcp_loader(registry, meta.role, ctx.project, cwd=str(ctx.roots[0]))   # folds MCP tools in, before role narrowing
         ...
         result = _loop.run_agent_turn(backend, registry, ctx, session_key, message, config=loop_config)
 ```
@@ -587,6 +601,8 @@ dispatch_tool(
 ## Changelog
 
 ### Unreleased
+
+- Requirement 39 added: a stdio server spawned for a turn starts in that turn's resolved root; `mcp_loader` gains a `cwd` keyword.
 
 - Requirements 37-38 added: a recipe may declare pod-scoped MCP servers (`mcp-servers/*.yaml`,
   `kind: mcp-server`), installed only by `docket pod <p> apply`, selectable by that pod only.

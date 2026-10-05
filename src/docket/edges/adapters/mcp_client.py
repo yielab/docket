@@ -66,27 +66,29 @@ def _truncate(text: str) -> str:
     return f"{text[:limit]}\n\n[truncated: {dropped} more characters]"
 
 
-def _stdio_params(config: McpServerConfig) -> Any:
-    """Build the SDK's spawn parameters for *config*. Imported lazily -- this
-    is only ever called after ``_sdk_available()`` has already confirmed the
-    SDK is importable."""
+def _stdio_params(config: McpServerConfig, cwd: str | None = None) -> Any:
+    """Build the SDK's spawn parameters for *config*, starting the server in *cwd* when given.
+    Imported lazily -- only called once ``_sdk_available()`` has confirmed the SDK."""
     from mcp.client.stdio import StdioServerParameters
 
     return StdioServerParameters(
         command=config.command,
         args=list(config.args),
         env=dict(config.env) or None,
+        cwd=cwd,
     )
 
 
-async def _list_tools_async(config: McpServerConfig, timeout: float) -> McpListResult:
+async def _list_tools_async(
+    config: McpServerConfig, timeout: float, cwd: str | None = None
+) -> McpListResult:
     import anyio
     from mcp.client import Client
     from mcp.client.stdio import stdio_client
 
     try:
         with anyio.fail_after(timeout):
-            async with Client(stdio_client(_stdio_params(config))) as client:
+            async with Client(stdio_client(_stdio_params(config, cwd))) as client:
                 result = await client.list_tools()
     except TimeoutError:
         return McpListResult(
@@ -108,7 +110,9 @@ async def _list_tools_async(config: McpServerConfig, timeout: float) -> McpListR
     return McpListResult(ok=True, tools=tools)
 
 
-def list_remote_tools(config: McpServerConfig, timeout: float) -> McpListResult:
+def list_remote_tools(
+    config: McpServerConfig, timeout: float, cwd: str | None = None
+) -> McpListResult:
     """Connect to *config*, list its tools, disconnect. Never raises.
 
     *timeout* bounds the whole exchange (spawn + handshake + list +
@@ -120,7 +124,7 @@ def list_remote_tools(config: McpServerConfig, timeout: float) -> McpListResult:
     import anyio
 
     try:
-        return anyio.run(_list_tools_async, config, timeout)
+        return anyio.run(_list_tools_async, config, timeout, cwd)
     except Exception as ex:  # last-resort safety net; this function must never raise
         return McpListResult(ok=False, error=f"{type(ex).__name__}: {ex}")
 
@@ -143,7 +147,11 @@ def _render_content(result: Any) -> str:
 
 
 async def _call_tool_async(
-    config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float
+    config: McpServerConfig,
+    name: str,
+    arguments: dict[str, Any],
+    timeout: float,
+    cwd: str | None = None,
 ) -> ToolOutcome:
     import anyio
     from mcp.client import Client
@@ -151,7 +159,7 @@ async def _call_tool_async(
 
     try:
         with anyio.fail_after(timeout):
-            async with Client(stdio_client(_stdio_params(config))) as client:
+            async with Client(stdio_client(_stdio_params(config, cwd))) as client:
                 result = await client.call_tool(name, arguments)
     except TimeoutError:
         return ToolOutcome(
@@ -169,7 +177,11 @@ async def _call_tool_async(
 
 
 def call_remote_tool(
-    config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float
+    config: McpServerConfig,
+    name: str,
+    arguments: dict[str, Any],
+    timeout: float,
+    cwd: str | None = None,
 ) -> ToolOutcome:
     """Connect to *config*, call one tool, disconnect. Never raises.
 
@@ -184,6 +196,6 @@ def call_remote_tool(
     import anyio
 
     try:
-        return anyio.run(_call_tool_async, config, name, arguments, timeout)
+        return anyio.run(_call_tool_async, config, name, arguments, timeout, cwd)
     except Exception as ex:
         return ToolOutcome(False, error=f"{type(ex).__name__}: {ex}")

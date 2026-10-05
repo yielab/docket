@@ -436,6 +436,7 @@ def load_mcp_tools(
     list_tools: ListToolsFn | None = None,
     call_tool: CallToolFn | None = None,
     role: str = "",
+    cwd: str | None = None,
 ) -> list[McpServerLoadResult]:
     """Connect to every configured MCP server, enumerate its tools, and register each as a
     namespaced :class:`~docket.core.tools.Tool` into *registry* via its public
@@ -448,13 +449,18 @@ def load_mcp_tools(
     overwritten: this function only ever adds. Never raises. *servers* defaults to
     :func:`load_mcp_servers`; *list_tools*/*call_tool* default to the real
     ``edges/adapters/mcp_client.py`` implementations, resolved lazily so importing this module
-    never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead."""
+    never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead. *cwd*, when given, is the directory every stdio server is
+    started in for this load and for the calls it adapts; it is never stored."""
     if servers is None:
         servers = load_mcp_servers()
     if list_tools is None:
         list_tools = _default_list_tools()
     if call_tool is None:
         call_tool = _default_call_tool()
+    if cwd is not None:
+        inner_list, inner_call = list_tools, call_tool
+        list_tools = lambda c, t: inner_list(c, t, cwd=cwd)  # type: ignore[call-arg]  # noqa: E731
+        call_tool = lambda c, n, a, t: inner_call(c, n, a, t, cwd=cwd)  # type: ignore[call-arg]  # noqa: E731
 
     reports: list[McpServerLoadResult] = []
     for config in servers:

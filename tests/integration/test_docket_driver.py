@@ -577,7 +577,7 @@ class TestRunTurn:
         driver = DocketDriver(
             backend_factory=lambda model: backend,
             registry_factory=lambda: registry,
-            mcp_loader=lambda registry, role, project: [],
+            mcp_loader=lambda registry, role, project, cwd=None: [],
         )
 
         result = driver.run_turn(
@@ -708,7 +708,7 @@ class TestRunTurn:
         driver = DocketDriver(
             backend_factory=lambda model: backend,
             registry_factory=lambda: registry,
-            mcp_loader=lambda registry, role, project: [],
+            mcp_loader=lambda registry, role, project, cwd=None: [],
         )
 
         result = driver.run_turn("fit-agent", session_key, "inspect the diagnostic", 60)
@@ -888,7 +888,7 @@ class TestRunTurn:
         driver = DocketDriver(
             backend_factory=lambda model: backend,
             registry_factory=lambda: registry,
-            mcp_loader=lambda registry, role, project: [],
+            mcp_loader=lambda registry, role, project, cwd=None: [],
         )
 
         result = driver.run_turn("fit-refresh-agent", session_key, task_message, 60)
@@ -1054,7 +1054,7 @@ class TestRunTurn:
         driver = DocketDriver(
             backend_factory=lambda model: backend,
             registry_factory=lambda: registry,
-            mcp_loader=lambda registry, role, project: [],
+            mcp_loader=lambda registry, role, project, cwd=None: [],
         )
 
         result = driver.run_turn("two-segment-agent", session_key, "inspect both segments", 60)
