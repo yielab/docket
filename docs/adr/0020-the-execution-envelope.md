@@ -138,3 +138,41 @@ default `docket init` pod (Lead, Implementer) on a git repo. No isolation comman
 - Found and scheduled as P38-10: that one refusal wrote three `network.refused` audit entries 2 s
   and 4 s apart. Both posture refusals returned the retryable `daemon_error` kind, so dispatch
   retried a deterministic refusal.
+
+### Live run, part 2: a stdio MCP server in the jail (2026-10-05)
+
+`docket harness run` against the same endpoint, in a throwaway `DOCKET_HOME`, with a stdio test
+server (`probe`, run by the repository's Python) exposing `write(path)` and `dial()` (a TCP
+connect to `1.1.1.1:53`). The model was told to write one file outside the workspace, one inside,
+and to dial.
+
+- Isolation on by default, network open: the inside file was written and the outside one was not;
+  `dial` returned `connected`.
+- `docket gates network none`: `dial` returned `network-error 101` (`ENETUNREACH`) from inside the
+  jail; the outside write still did not happen.
+- The same server re-added with `--no-isolate`: both files were written. The operator's assertion
+  is what turns the jail off, and nothing else does.
+- Measured before P38-11: `code-intel`'s `ast-grep` server (`uvx --from git+...`) cannot start in
+  the jail even with a warm cache (`Read-only file system` on `~/.cache/uv`). The recipe now
+  declares it `isolate: false`; `language-intel` stays jailed, unmeasured, because its binary is
+  not installed on this host.
+
+## Closed with, and carried
+
+Integrator corrections made while merging (each is in the card's status line on the board):
+95 tests depended on the host having bwrap (now an explicit `record_isolation_off` per fixture);
+a writable common `.git` let the jail plant hooks or `core.fsmonitor` (now `hooks`, `config` and
+`config.worktree` are read-only overlays); the first symlink fix still followed a symlinked
+directory, and its general form also closed a `..` glob selector that a smoke test had pinned as
+reachable; the redaction fix renumbered a spec that two other specs cite by number.
+
+Carried to the next phase, by name:
+- `docket doctor` lists unjailed MCP servers from the global registry only, not a pod's;
+  `config explain` and `recipes show --json` do not show `isolate`;
+- a submodule's hooks (`.git/modules/*/hooks`) and `.git/info` are not overlaid read-only;
+- docker's default image has no `git` or `python3`, so only the bwrap jail is proven to commit;
+- `docker --network none` is proven by argv only, with no real-docker oracle;
+- stopping `docket serve` waits for in-flight pod sweeps, with no second-signal abandon;
+- the Phase 37 and 36 carried items not addressed here (worktree retention, check recipes reading
+  the process environment, the four Phase 36 items) and the deferred `kind: autonomy` and
+  credential minting.
