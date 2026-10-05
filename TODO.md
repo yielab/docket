@@ -309,7 +309,7 @@ Every card follows the §"How to use this board" definition of done.
 
 ### P37-1 — MCP tool results pass `pre_input`
 
-**Status:** TODO · **Size:** S · **Wave:** 82 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
+**Status:** DONE `33377867` (audit `mcp_client.tool_result_blocked`/`_warn`; a failed call's error text is screened too) · **Size:** S · **Wave:** 82 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
 
 **Trigger:** `core/mcp_tools.py::_build_tool._handler` returns `call_tool(...)` unchanged, while
 the same server's descriptions are screened (`_screen_description`).
@@ -334,7 +334,7 @@ A result with no text passes as is.
 
 ### P37-2 — one worktree per task
 
-**Status:** TODO · **Size:** L · **Wave:** 82 · **Model:** Sonnet · **Spec:**
+**Status:** DONE `f97380b0` (Lead stays on the codebase; in-place Implementers carry `inPlace`; the live smoke and doc-journey scripts still name the member `worktree/` -- P37-8) · **Size:** L · **Wave:** 82 · **Model:** Sonnet · **Spec:**
 `workspace-structure.spec.md`, `pod-dispatch.spec.md` "Hop evidence"
 
 **Trigger:** `_implementer_diff_probe` computes `baseCommit` as a merge-base with the codebase's
@@ -369,7 +369,7 @@ tasks, task 2's `diffStat` includes task 1's commits.
 
 ### P37-3 — command steps get the task's coordinates
 
-**Status:** TODO · **Size:** S · **Wave:** 82 · **Model:** Haiku · **Spec:** `pod-dispatch.spec.md`
+**Status:** IN-PROGRESS (Haiku worker) · **Size:** S · **Wave:** 82 · **Model:** Haiku · **Spec:** `pod-dispatch.spec.md`
 (the command-step section)
 
 **Trigger:** `_run_command_step` calls `run_verify_cmd(cmd, cwd, timeout)` with the inherited
@@ -391,7 +391,7 @@ environment only, so a recipe cannot name the base commit (ADR 0019 §3).
 
 ### P37-4 — a `no_progress` stop reason
 
-**Status:** TODO · **Size:** M · **Wave:** 82 · **Model:** Sonnet · **Spec:** `agent-loop.spec.md`
+**Status:** DONE `b0ed9ef3` (`failure_kind=invalid_output`; the harness passes `failure_kind`, so no schema change) · **Size:** M · **Wave:** 82 · **Model:** Sonnet · **Spec:** `agent-loop.spec.md`
 
 **Trigger:** one of four dispatches on 2026-09-18 ended `exceeded max_iterations=20` on the
 16k endpoint. No bound notices repeated, unproductive rounds.
@@ -441,7 +441,7 @@ core code, stop and report the contention. Do not add core code.**
 
 ### P37-6 — `spec-writer` and `cross-family-review` recipes
 
-**Status:** TODO · **Size:** S · **Wave:** 83 · **Model:** Haiku · **Spec:** `config-format.spec.md`
+**Status:** IN-PROGRESS (Haiku worker) · **Size:** S · **Wave:** 83 · **Model:** Haiku · **Spec:** `config-format.spec.md`
 (recipes)
 
 **Goal:** two pipeline recipes under `templates/recipes/`, data only:
@@ -460,7 +460,7 @@ from built-in provider presets (`templates/providers/`), never invented.
 
 ### P37-7 — recipe-declared MCP servers and the `code-intel` pack
 
-**Status:** TODO · **Size:** M · **Wave:** 83 (after P37-1) · **Model:** Sonnet · **Spec:**
+**Status:** IN-PROGRESS (Sonnet worker) · **Size:** M · **Wave:** 83 (after P37-1) · **Model:** Sonnet · **Spec:**
 `config-format.spec.md`, `mcp-client.spec.md`
 
 **Goal (ADR 0019 §5–6):**
