@@ -369,7 +369,7 @@ tasks, task 2's `diffStat` includes task 1's commits.
 
 ### P37-3 — command steps get the task's coordinates
 
-**Status:** IN-PROGRESS (Haiku worker) · **Size:** S · **Wave:** 82 · **Model:** Haiku · **Spec:** `pod-dispatch.spec.md`
+**Status:** DONE `72d529d8` (finished by the integrator: the Haiku worker's test leaked into the real home and its fix patched `sys.path` in `tests/conftest.py`, so only its implementation shape was kept) · **Size:** S · **Wave:** 82 · **Model:** Haiku · **Spec:** `pod-dispatch.spec.md`
 (the command-step section)
 
 **Trigger:** `_run_command_step` calls `run_verify_cmd(cmd, cwd, timeout)` with the inherited
@@ -418,7 +418,7 @@ environment only, so a recipe cannot name the base commit (ADR 0019 §3).
 
 ### P37-5 — `mutation` and `anti-tautology` recipes
 
-**Status:** TODO · **Size:** M · **Wave:** 83 (after P37-3) · **Model:** Sonnet · **Spec:**
+**Status:** IN-PROGRESS (Sonnet worker) · **Size:** M · **Wave:** 83 (after P37-3) · **Model:** Sonnet · **Spec:**
 `config-format.spec.md` (recipes)
 
 **Goal:** two pipeline recipes under `templates/recipes/`, data only, built on P37-3's variables.
@@ -485,7 +485,7 @@ from built-in provider presets (`templates/providers/`), never invented.
 
 ### P37-9 — stdio MCP servers start in the turn's root
 
-**Status:** TODO · **Size:** S · **Wave:** 84 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
+**Status:** DONE `d99d7dba` (`cwd` is a runtime argument from the driver's `ctx.roots[0]`, never stored) · **Size:** S · **Wave:** 84 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
 
 **Trigger:** found integrating P37-7. `edges/adapters/mcp_client.py::_stdio_params` passes no
 `cwd`, so a stdio server inherits the directory docket was started from. `code-intel`'s
