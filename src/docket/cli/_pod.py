@@ -266,11 +266,13 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_corrections(project, extra)
     elif action == "evidence":
         _pod_evidence(project, extra)
+    elif action == "worktrees":
+        _pod_worktrees(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
             "delegate | answer | explain | pregrant | queue | dispatch | config | sync | "
-            "apply | export | corrections | evidence."
+            "apply | export | corrections | evidence | worktrees."
         )
         raise typer.Exit(1)
 
@@ -439,6 +441,23 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     )
     ws = _cfg.PROJECTS_DIR / member_id
     (ws / "TOOLS.md").write_text(content, encoding="utf-8")
+
+
+def _pod_worktrees(project: str, extra: list[str]) -> None:
+    """``worktrees prune [--dry-run] [--force]``: remove finished tasks' worktrees."""
+    flags = set(extra[1:])
+    if not extra or extra[0] != "prune" or not flags <= {"--dry-run", "--force"}:
+        ui.error("Usage: docket pod <project> worktrees prune [--dry-run] [--force]")
+        raise typer.Exit(1)
+    entries = _pp.prune_task_worktrees(
+        project, force="--force" in flags, dry_run="--dry-run" in flags
+    )
+    if not entries:
+        ui.info("No finished task worktrees to prune.")
+        return
+    for e in entries:
+        line = f"{e.task_id}: {e.action}" + (f" ({e.reason})" if e.reason else "")
+        (ui.warn if e.action == "kept" else ui.info)(line)
 
 
 def _pod_set_verify(project: str, extra: list[str]) -> None:

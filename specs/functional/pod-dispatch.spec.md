@@ -1613,8 +1613,18 @@ any CLI rendering of this evidence.*
 5. Removing the Implementer (`teardown_member`) **MUST** remove every task worktree under its
    `tasks/` directory and delete each task branch merged into the codebase's current branch; a
    branch that is not merged is kept and reported with the manual `git branch -D` command.
-6. Finished task worktrees are not retained or merged by docket; they live until the member is
-   removed.
+6. Docket never merges a task's work. A finished task's worktree lives until the member is
+   removed or `docket pod <p> worktrees prune` removes it (requirement 7).
+7. `core.pod_provisioning.prune_task_worktrees(project, force=False, dry_run=False)` **MUST**
+   consider only tasks whose status is `done`, `failed` or `cancelled`, with a recorded
+   `worktree.dir` and no `worktree.prunedAt`; a pending, running, blocked or waiting task is never
+   touched. `worktree.dir` **MUST** resolve directly inside a pod member's `tasks/` directory
+   before anything is removed, else the task is kept and reported. Without `force` it removes the
+   worktree and deletes the branch only when the branch is merged into the codebase's current
+   branch and the worktree has no uncommitted change; every other task is kept with its reason.
+   `force` removes the worktree regardless, deletes the branch only when merged (an unmerged
+   branch is kept and reported), and writes a `pod.worktrees.prune` audit entry. `dry_run` changes
+   nothing. A removal records `worktree.prunedAt` through the task-list writer (`edges/store.py`).
 
 ### Downstream worktree continuity
 
@@ -2007,6 +2017,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 - Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
   130/143 ("Sweep workers" 4-5).
+- `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).
 
 ### Version 6.30.0 (2026-10-05)
 

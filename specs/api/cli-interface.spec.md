@@ -419,6 +419,11 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `core.evidence.task_evidence`): a table of hop, role, ok, verdict, verify exit code, short
   commit and measured tokens in/out. `--json` prints that document byte-for-byte as `GET
   /tasks/<project>/<id>/evidence` returns it. An unknown task prints an error and exits `1`
+- `worktrees prune [--dry-run] [--force]`: Remove the worktrees of this pod's finished
+  (`done`/`failed`/`cancelled`) tasks, deleting each branch merged into the codebase's current
+  branch and recording `worktree.prunedAt`. Dirty or unmerged ones are kept and reported with
+  the reason; `--force` removes them anyway (the unmerged branch itself stays) and audits it
+  (`pod.worktrees.prune`); `--dry-run` changes nothing. Other usage exits `1`
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
   `pipeline.yaml`, a small `pod.yaml` naming
   `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
@@ -1273,6 +1278,7 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - `docket doctor` (human and `--json`) shows unjailed MCP servers (isolate: false) from global and per-pod registries with pod context.
 - `docket config explain` adds `isolate` field to each MCP server, with human marker for unjailed servers.
 - `docket recipes show --json` and `recipes list --json` include `unjailed_mcp_servers` field.
+- `docket pod <project> worktrees prune [--dry-run] [--force]`: new action (`core.pod_provisioning.prune_task_worktrees`).
 
 ### Version 1.61.0 (2026-10-05)
 

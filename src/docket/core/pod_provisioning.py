@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote as _url_unquote
 
 import docket.config as _cfg
@@ -539,6 +540,125 @@ def _teardown_worktree_branch(codebase: str, branch: str) -> str:
         f"kept branch {branch!r} (not merged{where}) -- delete manually: "
         f"git branch -D {branch}  (run inside {codebase})"
     )
+
+
+PRUNABLE_TASK_STATUSES = frozenset({"done", "failed", "cancelled"})
+
+
+@dataclass(frozen=True)
+class WorktreePruneEntry:
+    """One finished task's worktree and what ``prune_task_worktrees`` did (or would do)."""
+
+    task_id: str
+    dir: str
+    action: str  # "removed" | "would-remove" | "kept"
+    reason: str = ""
+
+
+def _task_list_file(project: str) -> Path:
+    return _cfg.workspace_dir(pod.member_id(project, "lead")) / "TASK_LIST.json"
+
+
+def _worktree_owner(project: str, wt_dir: str) -> tuple[str, str] | None:
+    """``(member id, codebase)`` of the pod member whose task-worktrees dir directly holds
+    *wt_dir* once resolved; ``None`` for any path outside every member's ``tasks/`` dir."""
+    resolved = Path(wt_dir).resolve()
+    if not _cfg.PROJECTS_DIR.is_dir():
+        return None
+    names = [p.name for p in _cfg.PROJECTS_DIR.iterdir() if p.is_dir()]
+    for member_id, _role, _idx in pod.members_of(names, project):
+        if resolved.parent != task_worktrees_dir(member_id).resolve():
+            continue
+        try:
+            raw = _store.read_json(_cfg.PROJECTS_DIR / member_id / _cfg.META_FILE)
+        except Exception:
+            return None
+        return member_id, str(raw.get("codebase", ""))
+    return None
+
+
+def _prune_one(
+    project: str, task: dict[str, Any], *, force: bool, dry_run: bool
+) -> WorktreePruneEntry:
+    task_id = str(task.get("id", ""))
+    wt_dir = str(task["worktree"]["dir"])
+
+    def kept(reason: str) -> WorktreePruneEntry:
+        return WorktreePruneEntry(task_id, wt_dir, "kept", reason)
+
+    owner = _worktree_owner(project, wt_dir)
+    if owner is None or not owner[1]:
+        return kept("worktree dir is not inside a pod member's task-worktrees dir")
+    codebase = owner[1]
+    branch = worktree_branch(project, task_id)
+    recorded = str(task["worktree"].get("branch", ""))
+    if recorded and recorded != branch:
+        return kept(f"recorded branch {recorded!r} is not {branch!r}")
+    exists = Path(wt_dir).is_dir()
+    dirty = exists and bool(_sys.git_worktree_changes(wt_dir))
+    current = _sys.git_current_branch(codebase)
+    # `git branch --merged` marks a branch checked out in a worktree with "+", which
+    # git_branch_merged does not parse; while the worktree exists compare tips instead.
+    if exists:
+        tip = _sys.git_head_sha(wt_dir)
+        merged = tip is not None and _sys.git_merge_base(codebase, branch) == tip
+    else:
+        merged = bool(current) and _sys.git_branch_merged(codebase, branch, current)
+    problems = (["uncommitted changes"] if dirty else []) + (
+        [] if merged else [f"branch {branch!r} not merged into {current or 'the current branch'!r}"]
+    )
+    if problems and not force:
+        return kept("; ".join(problems))
+    if dry_run:
+        return WorktreePruneEntry(task_id, wt_dir, "would-remove", "; ".join(problems))
+    if exists:
+        ok, err = _sys.git_worktree_remove(codebase, wt_dir)
+        if not ok:
+            return kept(f"git worktree remove failed ({err})")
+    _sys.git_worktree_prune(codebase)
+    note = ""
+    if merged:
+        _sys.git_branch_delete(codebase, branch)
+    else:
+        note = f"branch {branch!r} kept (unmerged)"
+    if problems:
+        audit_log("pod.worktrees.prune", f"project={project} task={task_id} forced: {problems}")
+    return WorktreePruneEntry(task_id, wt_dir, "removed", note)
+
+
+def prune_task_worktrees(
+    project: str, *, force: bool = False, dry_run: bool = False
+) -> list[WorktreePruneEntry]:
+    """Remove finished tasks' worktrees (and merged branches), recording ``worktree.prunedAt``.
+
+    Only done/failed/cancelled tasks with a recorded dir are considered. Without *force* a
+    dirty worktree or unmerged branch is kept and reported; *force* removes the worktree but
+    never deletes an unmerged branch."""
+    raw = _store.read_json(_task_list_file(project))
+    tasks = raw.get("tasks") if isinstance(raw, dict) else None
+    entries: list[WorktreePruneEntry] = []
+    for task in tasks if isinstance(tasks, list) else []:
+        wt = task.get("worktree") if isinstance(task, dict) else None
+        if (
+            not isinstance(wt, dict)
+            or not wt.get("dir")
+            or wt.get("prunedAt")
+            or task.get("status") not in PRUNABLE_TASK_STATUSES
+        ):
+            continue
+        entries.append(_prune_one(project, task, force=force, dry_run=dry_run))
+    pruned = {e.task_id for e in entries if e.action == "removed"}
+    if pruned:
+        stamp = datetime.now(UTC).isoformat()
+
+        def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+            for t in doc.get("tasks") or []:
+                if t.get("id") in pruned and isinstance(t.get("worktree"), dict):
+                    t["worktree"]["prunedAt"] = stamp
+            return doc
+
+        _store.read_modify_write(_task_list_file(project), _fn)
+    return entries
 
 
 def teardown_member(member_id: str) -> tuple[bool, str]:
