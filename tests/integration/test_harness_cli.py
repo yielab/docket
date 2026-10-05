@@ -950,6 +950,28 @@ class TestRefused:
 # ── (e) status ────────────────────────────────────────────────────────────────
 
 
+class TestPostureRefusal:
+    def test_isolation_refusal_is_a_failed_result_with_the_remedy(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        server = llm_server([_final_response("never reached")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url, isolation_off=False, DOCKET_SANDBOX_BACKEND="none")
+
+        proc = _run_harness(
+            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+        )
+
+        assert proc.returncode == 1, proc.stderr
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        assert result["status"] == "failed"
+        assert result["run_state"] == "failed"
+        assert "docket gates isolate off" in result["error"]
+        assert result["usage"]["turns"] == 0
+
+
 class TestStatus:
     def test_finished_reports_the_result(self, tmp_path: Path, llm_server: Any) -> None:
         server = llm_server([_final_response("done")])

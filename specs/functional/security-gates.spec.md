@@ -862,8 +862,9 @@ either.
      `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
      `ToolContext` (a second call, independent of the one `toolbox.run_bash` makes per `bash` call
      when `sandbox="auto"`): if isolation is on and the probe comes back `"none"`, the turn is
-     refused outright (`TurnResult(ok=False, failure_kind="daemon_error")`) and the refusal is
-     audited (`audit_log("isolation.refused", ...)`) — no LLM call is made and no tool executes.
+     refused outright (`DocketDriver.run_turn` raises `DispatchError`, so pod dispatch settles the
+     task `failed`/`dispatch_refused` after one attempt instead of retrying) and the refusal is
+     audited once (`audit_log("isolation.refused", ...)`) — no LLM call is made and no tool executes.
      This is deliberately *not* the same behaviour as handing `sandbox="auto"` straight to
      `toolbox.run_bash` and letting each `bash` call degrade individually to an honest
      `[sandbox: none (...)]`-tagged unsandboxed run (requirement 4's per-call reporting): a
@@ -959,7 +960,8 @@ otherwise.
    `--unshare-all` network namespace stays empty) and `system.docker_run_argv(..., network=False)`
    adds `--network none`; `ToolContext.network` carries it to `toolbox.run_bash`. Only the sandbox
    can enforce it, so a turn whose effective mode is `none` with isolation off **MUST** be refused
-   before any model call, audited `network.refused`, naming both settings. `fetch` runs in
+   before any model call (`DispatchError`, as for the isolation refusal: one attempt, one
+   `network.refused` audit entry, task `dispatch_refused`), naming both settings. `fetch` runs in
    docket's own process and is untouched: its domain allowlist stays the inspectable path.
    `docket gates status`, `docket doctor` and `docket config explain` report the mode and scope.
 
@@ -1529,6 +1531,9 @@ $ git clone https://anywhere.example/repo.git
 ## Changelog
 
 ### Unreleased
+
+- **Posture refusals are not retried (P38-10).** The isolation and network refusals raise
+  `DispatchError` from `DocketDriver.run_turn` instead of returning `daemon_error`.
 
 - **Network lockdown (P38-4).** Network egress requirement 7: `gates network none|open`, pod
   setting `network`, `--share-net` / `--network none` under `none`, refusal when isolation is off.

@@ -19,6 +19,7 @@ from docket.cli import _gates
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core.audit import read_audit
+from docket.core.dispatch import DispatchError
 from docket.edges import store as _store
 from docket.edges.adapters import system, toolbox
 from docket.edges.adapters.docket_runtime import DocketDriver
@@ -161,11 +162,11 @@ class TestRefusal:
         def _never(model: str) -> object:
             raise AssertionError("the model backend must not be reached")
 
-        result = DocketDriver(backend_factory=_never).run_turn(  # type: ignore[arg-type]
-            "solo-agent", "agent:solo-agent:default", "go", 30
-        )
+        with pytest.raises(DispatchError) as excinfo:
+            DocketDriver(backend_factory=_never).run_turn(  # type: ignore[arg-type]
+                "solo-agent", "agent:solo-agent:default", "go", 30
+            )
 
-        assert result.ok is False
-        assert "docket gates network" in result.error
-        assert "docket gates isolate" in result.error
+        assert "docket gates network" in str(excinfo.value)
+        assert "docket gates isolate" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "network.refused"]

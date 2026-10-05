@@ -31,6 +31,7 @@ from docket.core import memory as _memory
 from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.audit import read_audit
+from docket.core.dispatch import DispatchError
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.core.runtime_driver import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
 from docket.core.session import load_session
@@ -1667,11 +1668,11 @@ class TestIsolationWiring:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         driver = DocketDriver(backend_factory=_never_called)
 
-        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+        with pytest.raises(DispatchError) as excinfo:
+            driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
-        assert result.ok is False
-        assert "bubblewrap" in result.error
-        assert "docket gates isolate off" in result.error
+        assert "bubblewrap" in str(excinfo.value)
+        assert "docket gates isolate off" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "isolation.refused"]
 
     def test_isolation_on_with_backend_available_sets_sandbox_auto(
@@ -1712,12 +1713,11 @@ class TestIsolationWiring:
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
 
-        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+        with pytest.raises(DispatchError) as excinfo:
+            driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
-        assert result.ok is False
-        assert result.failure_kind == "daemon_error"
-        assert "docker" in result.error.lower()
-        assert "bwrap" in result.error.lower()
+        assert "docker" in str(excinfo.value).lower()
+        assert "bwrap" in str(excinfo.value).lower()
 
         refusals = [e for e in read_audit() if e["action"] == "isolation.refused"]
         assert len(refusals) == 1
@@ -1740,10 +1740,8 @@ class TestIsolationWiring:
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
 
-        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
-
-        assert result.ok is False
-        assert result.failure_kind == "daemon_error"
+        with pytest.raises(DispatchError):
+            driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
     def test_the_flag_docket_gates_isolate_on_writes_is_the_one_the_turn_reads(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

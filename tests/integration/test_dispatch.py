@@ -27,6 +27,7 @@ from tests.fakes import FakeDriver
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import answers as _answers
+from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import operator_contract as _oc
@@ -1337,6 +1338,54 @@ class TestDeterministicRefusalSettlesTheClaim:
         assert final["status"] == "done"
         assert [h["role"] for h in final["hops"]] == ["lead", "implementer"]
         assert "failureKind" not in final
+
+    @pytest.mark.parametrize("posture", ["network", "isolation"])
+    def test_a_refused_posture_is_one_attempt_one_audit_and_resumable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, posture: str
+    ) -> None:
+        home = _seed_pod(tmp_path, monkeypatch)
+        if posture == "network":
+            _fleet.set_network_mode("none")
+            action = "network.refused"
+        else:
+            _fleet.set_sandbox_isolation(mode="non-main")
+            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+            action = "isolation.refused"
+        slept: list[float] = []
+        monkeypatch.setattr(_dispatch._time, "sleep", slept.append)
+        calls: list[str] = []
+
+        def _never(model: str) -> Any:
+            calls.append(model)
+            raise AssertionError("the model backend must not be reached")
+
+        monkeypatch.setattr(_dr, "default_driver", lambda: DocketDriver(backend_factory=_never))
+        _dispatch.enqueue_task("demo", "refused posture")
+
+        results = _dispatch.dispatch_pod("demo")
+
+        assert [r.status for r in results] == ["failed"]
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "dispatch_refused"
+        assert not calls
+        assert slept == []
+        assert len([e for e in _audit.read_audit() if e["action"] == action]) == 1
+
+        if posture == "network":
+            _fleet.set_network_mode("open")
+        else:
+            record_isolation_off(home)
+        backend = _ScriptedBackend(
+            [_final_response("lead plan"), _final_response("implementer done")]
+        )
+        monkeypatch.setattr(
+            _dr, "default_driver", lambda: DocketDriver(backend_factory=lambda model: backend)
+        )
+
+        resumed = _dispatch.dispatch_pod("demo", resume=True)
+
+        assert [r.status for r in resumed] == ["done"]
 
     def test_a_crash_mid_hop_still_leaves_the_task_running_for_the_stale_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

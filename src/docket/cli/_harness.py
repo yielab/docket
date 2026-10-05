@@ -30,6 +30,7 @@ from docket.core import harness
 from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import trace as _trace
+from docket.core.dispatch import DispatchError
 from docket.core.operator_contract import QuestionV11
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
@@ -332,14 +333,17 @@ def _execute_turn(
         )
 
         def _invoke() -> list[_RunOutcome]:
-            turn = driver.run_turn(
-                agent_id,
-                session_key,
-                task,
-                timeout,
-                env,
-                trace_project=agent_id,
-            )
+            try:
+                turn = driver.run_turn(
+                    agent_id,
+                    session_key,
+                    task,
+                    timeout,
+                    env,
+                    trace_project=agent_id,
+                )
+            except DispatchError as exc:
+                turn = TurnResult(False, "", 0.0, {}, str(exc), failure_kind="daemon_error")
             if turn.failure_kind == "run_cancelled":
                 status = "cancelled"
             elif not turn.ok:

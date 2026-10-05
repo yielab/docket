@@ -299,8 +299,9 @@ requirement 6, close that gap.)*
 
 1. `dispatch_task` **MUST** catch a `DispatchError` raised anywhere on the path it drives for one
    already-claimed task — the cross-pod membership check (`_execute_unit`, "Pipeline order and
-   participation" requirement 3) and its own up-front `pod_pipeline` revalidation are the two
-   sites reachable there today — and fold it into a normal return: a `TaskResult` with
+   participation" requirement 3), its own up-front `pod_pipeline` revalidation, and the driver's
+   refused isolation or network posture (`security-gates.spec.md`; never retried) are the sites
+   reachable there today — and fold it into a normal return: a `TaskResult` with
    `status="failed"`, `reason` set to the `DispatchError`'s message verbatim, and
    `failure_kind="dispatch_refused"`. It **MUST NOT** let the exception propagate to
    `dispatch_pod`.
@@ -1990,6 +1991,9 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 ## Changelog
 
 ### Unreleased
+
+- A refused isolation or network posture is a `dispatch_refused` cause: one attempt, resumable
+  once the operator fixes the setting ("Deterministic refusal inside a claimed task" 1).
 
 - Pod setting `network` (`none`|`open`) narrows the sandbox network ("Pod dispatch settings" 9).
 

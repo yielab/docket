@@ -231,11 +231,11 @@ def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
     return tuple(out)
 
 
-def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]:
+def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     """Fail-closed go/no-go for this turn's isolation posture. Returns ``(want_sandbox,
-    refusal)``; a non-``None`` refusal means isolation is on but no backend (docker/bwrap) is
-    usable, so the whole turn is refused up front and audited (``isolation.refused``) rather than
-    letting ``toolbox.run_bash`` silently degrade per call. See
+    refusal)``; a non-``None`` refusal message means isolation is on but no backend
+    (docker/bwrap) is usable, so the turn is refused up front and audited (``isolation.refused``)
+    rather than letting ``toolbox.run_bash`` silently degrade per call. See
     specs/functional/security-gates.spec.md ("Fail closed, not fail open, when isolation is on
     and no backend is usable")."""
     if not _fleet.get_isolation_enabled():
@@ -248,25 +248,15 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]
         f"docker={availability.docker} bwrap={availability.bwrap}"
     )
     audit_log("isolation.refused", detail)
-    refusal = TurnResult(
-        False,
-        "",
-        0.0,
-        {},
-        (
-            "isolation is on (the default) but no sandbox backend (bubblewrap or docker) is "
-            "usable on this host -- refusing to run this turn unsandboxed rather than silently "
-            "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
-            "or record an explicit opt-out with 'docket gates isolate off'."
-        ),
-        failure_kind="daemon_error",
+    return False, (
+        "isolation is on (the default) but no sandbox backend (bubblewrap or docker) is "
+        "usable on this host -- refusing to run this turn unsandboxed rather than silently "
+        "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
+        "or record an explicit opt-out with 'docket gates isolate off'."
     )
-    return False, refusal
 
 
-def _resolve_network(
-    agent_id: str, role: str, want_sandbox: bool
-) -> tuple[bool, TurnResult | None]:
+def _resolve_network(agent_id: str, role: str, want_sandbox: bool) -> tuple[bool, str | None]:
     """``(network_allowed, refusal)`` for this turn. Mode ``none`` needs the jail to enforce it,
     so with isolation off the turn is refused up front and audited (``network.refused``)."""
     mode, scope = _pod.effective_network(_pod.pod_of(agent_id))
@@ -276,28 +266,26 @@ def _resolve_network(
         return False, None
     audit_log("network.refused", f"agent={agent_id} role={role or '?'} scope={scope}")
     setting = "'docket gates network none'" if scope == "global" else "the pod's network=none"
-    return False, TurnResult(
-        False,
-        "",
-        0.0,
-        {},
-        (
-            f"network is none ({setting}) but isolation is off, and only the sandbox can cut "
-            "the network -- refusing to run this turn with the network open. Fix one of two "
-            "ways: turn isolation on with 'docket gates isolate on', or lift the lockdown "
-            "with 'docket gates network open' (and the pod's network setting)."
-        ),
-        failure_kind="daemon_error",
+    return False, (
+        f"network is none ({setting}) but isolation is off, and only the sandbox can cut "
+        "the network -- refusing to run this turn with the network open. Fix one of two "
+        "ways: turn isolation on with 'docket gates isolate on', or lift the lockdown "
+        "with 'docket gates network open' (and the pod's network setting)."
     )
 
 
-def _resolve_posture(agent_id: str, role: str) -> tuple[bool, bool, TurnResult | None]:
-    """``(want_sandbox, network_allowed, refusal)``: the isolation go/no-go, then the network's."""
+def _resolve_posture(agent_id: str, role: str) -> tuple[bool, bool]:
+    """``(want_sandbox, network_allowed)``: the isolation go/no-go, then the network's. A refused
+    posture raises ``DispatchError`` (deterministic: a retry cannot succeed)."""
+    from docket.core.dispatch import DispatchError
+
     want_sandbox, refusal = _resolve_sandbox(agent_id, role)
     if refusal is not None:
-        return want_sandbox, True, refusal
+        raise DispatchError(refusal)
     network_allowed, refusal = _resolve_network(agent_id, role, want_sandbox)
-    return want_sandbox, network_allowed, refusal
+    if refusal is not None:
+        raise DispatchError(refusal)
+    return want_sandbox, network_allowed
 
 
 def _build_on_process(
@@ -345,10 +333,10 @@ class DocketDriver:
         model: str | None = None,
     ) -> TurnResult:
         """Run one turn through ``core/agent_loop.py``. Never raises, with one deliberate
-        exception: ``self.mcp_loader`` raises ``DispatchError`` when this turn's pod
-        selects an ``mcpServers`` name absent from the live catalog (see
-        ``_load_mcp_tools``'s own docstring) -- a caller misconfiguration, not an
-        ordinary turn failure, and every production call site (``core/dispatch.py``'s
+        exception: ``DispatchError`` for a deterministic refusal -- a refused isolation or
+        network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
+        name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
+        misconfiguration, not an ordinary turn failure, and every production call site (``core/dispatch.py``'s
         pipeline runner, ``cli/_harness.py``) already lets a raised ``DispatchError``
         propagate to its own settle/fail path rather than treating this driver as
         exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to
@@ -405,9 +393,7 @@ class DocketDriver:
                 failure_kind="invalid_output",
             )
 
-        want_sandbox, network_allowed, refusal = _resolve_posture(agent_id, meta.role)
-        if refusal is not None:
-            return refusal
+        want_sandbox, network_allowed = _resolve_posture(agent_id, meta.role)
         effective_model = model or meta.model or _cfg.DEFAULT_MODEL
         backend = self.backend_factory(effective_model)
         if backend is None:
