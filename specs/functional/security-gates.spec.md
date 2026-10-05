@@ -179,8 +179,9 @@ are owned here, not there.
    line of that config). In a linked worktree the root's `.git` file and the admin files
    `<common>/worktrees/<name>/gitdir` and `commondir` are read-only too, so the jail cannot repoint
    the host's next git command at a directory it controls. Objects, refs, index, logs and `HEAD`
-   stay writable. A submodule or guarded path created inside the jail after it starts is not
-   covered; the jail is built once per call.
+   stay writable. A `hooks/` directory or `info/attributes` file missing when the jail starts is
+   created empty on the host first and then bound read-only, so the jail cannot create it. A
+   submodule added inside the jail after it starts is not covered; the jail is built once per call.
 
 ### Enablement (implemented; corrected for P19-7b)
 

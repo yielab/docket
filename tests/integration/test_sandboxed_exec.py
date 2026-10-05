@@ -14,6 +14,7 @@ specs/functional/security-gates.spec.md Requirements 1-6.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import time
 import uuid
@@ -207,6 +208,7 @@ class TestArgvShape:
         assert ro == [
             str(common / "hooks"),
             str(common / "config"),
+            str(common / "info" / "attributes"),
             str(wt.resolve() / ".git"),
             str(admin / "gitdir"),
             str(admin / "commondir"),
@@ -595,6 +597,26 @@ class TestGitMetadataTheHostLaterRuns:
         (deep / "config").write_text("")
         _, ro = system._mount_dirs((sup,))
         assert str(deep / "hooks") in ro and str(deep / "config") in ro
+
+    @needs_bwrap
+    def test_an_absent_hooks_dir_cannot_be_created_from_the_jail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        shutil.rmtree(repo / ".git" / "hooks")
+
+        plant = toolbox.run_bash(
+            (repo,),
+            "mkdir -p .git/hooks && printf '#!/bin/sh\\ntouch pwned' > .git/hooks/post-commit"
+            " && echo 'x' > .git/info/attributes",
+            sandbox="auto",
+        )
+        assert not plant.ok
+        assert not (repo / ".git" / "hooks" / "post-commit").exists()
+        assert (repo / ".git" / "info" / "attributes").read_text() == ""
 
     @needs_bwrap
     def test_the_jail_cannot_plant_a_submodule_hook_or_config(

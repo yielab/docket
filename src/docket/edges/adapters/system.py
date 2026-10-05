@@ -284,7 +284,7 @@ def _guarded_paths(root: Path, dirs: list[Path]) -> list[Path]:
     if (root / ".git").is_file():
         guarded.append(root / ".git")
     if gitdir != common:
-        guarded += [gitdir / "gitdir", gitdir / "commondir", gitdir / "info" / "attributes"]
+        guarded += [gitdir / "gitdir", gitdir / "commondir"]
     for base in dict.fromkeys(dirs):
         for sub in _submodule_git_dirs(base):
             guarded += [sub / "hooks", sub / "config", sub / "config.worktree"]
@@ -292,7 +292,22 @@ def _guarded_paths(root: Path, dirs: list[Path]) -> list[Path]:
             checkout_git = _submodule_worktree_git_file(sub)
             if checkout_git is not None:
                 guarded.append(checkout_git)
+    for g in guarded:
+        _materialize_guard(g)
     return [g for g in guarded if g.is_dir() or g.is_file()]
+
+
+def _materialize_guard(path: Path) -> None:
+    """Create an absent ``hooks`` dir or ``info/attributes`` file, empty, so it can be bound
+    read-only: a path missing at jail start would otherwise be creatable from inside it."""
+    if path.exists():
+        return
+    with contextlib.suppress(OSError):
+        if path.name == "hooks" and path.parent.is_dir():
+            path.mkdir()
+        elif path.name == "attributes" and path.parent.parent.is_dir():
+            path.parent.mkdir(exist_ok=True)
+            path.touch()
 
 
 def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
