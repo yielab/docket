@@ -630,5 +630,13 @@
     "heading": "☑ WAVE 88 COMPLETE — Phase 38 CLOSED 2026-10-05 — the execution envelope (D-55), Waves 85–88 (opened 2026-10-05)",
     "bytes": 18813,
     "sha256": "ce4ca478d5317e05e35abf7e0b9d4419b9f1df09c7473cc69eb9b582016bc46d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05)",
+    "bytes": 16884,
+    "sha256": "59b918f424b53fcb923f39c653b5eaa88f45dcbd6ca3a1d3bdddf5c1d2bc9a74"
   }
 ]

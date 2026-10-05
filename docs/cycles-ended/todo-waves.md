@@ -11513,3 +11513,222 @@ function, two callers. A live run on the local endpoint with isolation on by def
 second under `network none`. Docs that say isolation is opt-in are rewritten (README,
 `docs/SECURITY-SIMPLE.md`, `docs/QUICK-START-DOCKET.md`, the security-gates spec status line).
 Spec bumps, CHANGELOG, metrics, board rollup and archive.
+## ☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05)
+
+**Trigger:** the operator asked on 2026-10-05 to close every item carried out of Phases 36–38. For
+the two items deferred to a trigger (task-worktree retention, options in channels) that request is
+the trigger: an operator asking. `kind: autonomy` and per-task credential minting stay deferred,
+because nothing in the system produces an autonomy verdict or issues credentials. Scoping read
+the live code paths (three read-only passes, 2026-10-05) and found one more jail escape: a linked
+worktree's `.git` file and its admin files are writable from the jail.
+
+Packets: [.agents/handoffs/wave-89-worker-packets.md](.agents/handoffs/wave-89-worker-packets.md).
+Wave 89 (W89-1..5) runs in parallel; Wave 90 (W89-6..9) starts after Wave 89 is merged; W89-10
+integrates and closes.
+
+### W89-1 — `doctor`, `config explain` and `recipes show --json` show unjailed MCP servers
+
+**Status:** DONE `2c3a7601` + integrator `35f022df` (one doctor helper; unit test instead of a layout-baseline entry) · **Size:** S · **Wave:** 89 · **Model:** Haiku · **Spec:** `mcp-client.spec.md` (Requirement 40, and the stale line saying the document has no `isolate`), `cli-json-shapes.spec.md` (`doctor --json`, `config explain` `tools.mcpServers`, `recipes show --json`), `cli-interface.spec.md` (`docket doctor` checks)
+
+**Today:** `cli/_doctor.py` builds its unjailed list from `load_mcp_servers()` (the global registry)
+and only in the human path; a pod's `isolate: false` server (from a recipe) is not listed and
+`doctor --json` has no field. `cli/_config.py::_mcp_servers_report` emits name/kind/scope only;
+`cli/_recipes.py::_info_dict` emits server names without `RecipeSummary.unjailed_mcp_servers`.
+
+**Goal:** `doctor` (human and `--json`) lists every unjailed server, global and per pod (`name (pod
+X)`), whenever isolation is not off; `config explain` (both renders) carries `isolate` per server;
+`recipes show --json` and `recipes list --json` carry `unjailed_mcp_servers`.
+
+**Acceptance:**
+- A pod with a recipe-applied `isolate: false` server: `doctor --json` names it with its pod.
+- `config explain <member> --json` shows `isolate: false` for that server and `true` for a jailed one.
+- `recipes show code-intel --json` has `unjailed_mcp_servers == ["ast-grep"]`.
+
+### W89-2 — the jail cannot rewrite git metadata the host later runs
+
+**Status:** DONE `38988783` + integrator `908a13ac` (an absent `hooks/` or `info/attributes` is created empty, then bound read-only) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Workspace isolation, Requirement 4, and its example)
+
+**Today:** `edges/adapters/system.py::_mount_dirs` re-binds read-only only the git dir's and common
+dir's `hooks`, `config` and `config.worktree`. Still writable from the jail:
+- a submodule's git dir (`modules/<name>/{hooks,config}`, nested `modules/a/modules/b`), so a hook
+  or `core.hooksPath` there runs on the host's next git command in the submodule;
+- in a linked worktree (every task worktree since Phase 37), the root's `.git` *file*: rewritten to
+  `gitdir: <root>/evil`, it points the host's next git command at attacker hooks and config;
+- the worktree admin files `<common>/worktrees/<wt>/{gitdir,commondir}`;
+- `info/attributes` (selects filter/diff drivers; only live if a host config defines one).
+
+**Goal:** `_mount_dirs` adds, read-only and only when present: every submodule git dir's `hooks`,
+`config`, `config.worktree` (found by walking `modules/` for directories holding `HEAD`, without
+running git in them); the root's `.git` when it is a file; the linked worktree's `gitdir` and
+`commondir` admin files; `info/attributes`. A jailed `git add`/`git commit` in a linked task
+worktree still works (objects, refs, index, logs stay writable). Both backends share `_mount_dirs`.
+A submodule added inside the jail after it starts is out of scope; the spec says so.
+
+**Acceptance (real bwrap, skip with a reason when absent):**
+- A super-repo with a submodule (`-c protocol.file.allow=always`): from the jail, writing
+  `modules/sub/hooks/post-commit` and `git -C sub config core.hooksPath /x` both fail; the host
+  files are unchanged.
+- In a linked worktree, rewriting `<root>/.git` from the jail fails and the host's `git -C <root>
+  rev-parse --git-dir` still names the real git dir.
+- The existing jailed-commit test still commits.
+
+### W89-3 — a second stop signal makes `docket serve` abandon in-flight sweeps
+
+**Status:** DONE `936b8a43` · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Sweep workers, and the "stop waits for in-flight sweeps" line), `serve-read-api.spec.md` (cancellation lifecycle note)
+
+**Today:** `serve.py::run_serve` catches `KeyboardInterrupt` around `serve_forever`, then the
+`finally` joins the sweeper, whose `_drain_sweeps` waits with no timeout. A second Ctrl-C raises
+inside the join (a traceback) and the pool's threads still block exit; SIGTERM is not handled.
+
+**Goal:** SIGINT and SIGTERM (main thread) drive a two-stage stop: the first stops accepting
+work, prints one line (`stopping: waiting for N pod sweep(s); signal again to abandon`) and waits;
+the second requests cancellation of every in-flight sweep run (`core/runs.py` cancel, recorded
+per pod in `_sweep_one_pod`), cancels queued futures, waits a bounded few seconds for the runs to
+settle, and exits 130 (SIGINT) or 143 (SIGTERM). Extract the logic into a small testable
+controller. Read how dispatch handles a cancelled task (requeued or `cancelled`) and state it in
+the spec; do not change it.
+
+**Acceptance:**
+- Unit: the controller's first signal sets stop only; the second sets abandon and requests
+  cancellation of each recorded run id.
+- Subprocess: a serve whose sweep blocks survives one SIGINT for a second, exits non-zero within a
+  few seconds of the second, and the run record shows the cancellation request.
+
+### W89-4 — `docket pod <p> worktrees prune` removes finished, merged task worktrees
+
+**Status:** DONE `57b3d509` + integrator `d818f581` (a resumable failed task keeps its worktree; `git_branch_merged` reads the `+` marker) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (Task worktrees, new requirement), `cli-interface.spec.md` (the verb)
+
+**Today:** a task's worktree (`<member>/tasks/<taskId>`, branch `docket/<project>/<taskId>`) is
+removed only when its member is removed (`core/pod_provisioning.py::teardown_member`).
+
+**Goal:** `core/pod_provisioning.py::prune_task_worktrees(project, *, force=False, dry_run=False)`
+and `docket pod <p> worktrees prune [--dry-run] [--force]` (check how `docket pod <p> <verb>`
+sub-commands are registered and follow that). It considers tasks in a terminal status with a
+recorded `worktree.dir`; never a pending, running or waiting task. Default: remove the worktree
+and delete the branch only when the branch is merged into the codebase's current branch and the
+worktree has no uncommitted change; report every kept one with its reason. `--force` removes
+unmerged/dirty ones and writes an audit entry. The `worktree.dir` must resolve inside the
+member's task-worktrees dir before anything is removed. The task record gains
+`worktree.prunedAt` via `edges/store.py`. Reuse the existing `system.py` git helpers; do **not**
+edit `edges/adapters/system.py` (W89-2 owns it this wave); if a helper is missing, compose from
+existing ones in `core/`.
+
+**Acceptance (real git):** two finished tasks, one merged: prune removes the merged one's dir and
+branch and records `prunedAt`, keeps and names the unmerged one; a running task is untouched;
+`--dry-run` changes nothing; `--force` removes the unmerged one and audits it.
+
+### W89-5 — options reach channel notifications, and Telegram `/answer` can pick one
+
+**Status:** DONE `398b96fd` + integrator `d7dac7f6` (the inbox `TaskView` never carried `question`/`brief`: a sixth unwired-machinery instance, now wired) · **Size:** M · **Wave:** 89 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Notifications), `telegram-integration.spec.md` (`/answer`)
+
+**Today:** `core/operator_contract.py::TaskView.question` is the base `Question`, so v1.1
+`options`/`recommendation` are dropped before `core/notify.py::render_data`/`render_text` run;
+Telegram `/answer <task> <text>` (`core/telegram.py::_handle_answer`) fills the question's single
+schema property from free text, never `optionId`.
+
+**Goal:** the view keeps the v1.1 question; at the `conversation` level (never `minimal`, since
+labels are question content) `render_data` adds `options` (`id`, `label`) and `recommendation`
+(`optionId` only) and `render_text` adds one line per option (`<id> - <label>`, `(recommended)`
+on one) and `reply: /answer <task> <id>`. Labels are model text: strip control characters and
+truncate. In Telegram, when the pending question has options and the answer text exactly equals an
+option id, `/answer` sends `{"optionId": <id>}` through the existing `answer_task` path (same chat
+authorisation, same `pre_input` screen); any other text keeps today's behaviour. Telegram stays
+inbound-only: no new outbound call site in `core/telegram.py`.
+
+**Acceptance:**
+- `render_data`/`render_text` at `conversation` carry both options and the recommendation; at
+  `minimal` neither appears.
+- Telegram `/answer t1 iterative` on a consult question records `optionId=iterative`; a non-id text
+  behaves as today.
+
+### W89-6 — the docker jail is proven for real: commit and `network none`
+
+**Status:** DONE `16f11fad` (real docker: commit with a git image, `network none` against a bridge listener; doctor probes the image) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Requirement 4 note on the docker image), `cli-interface.spec.md` (`doctor` check)
+
+**Today:** `config.SANDBOX_DOCKER_IMAGE` defaults to `alpine:3.20` (busybox: no `git`, no `python3`),
+so only bwrap is proven to commit, and docker `--network none` is proven by argv only
+(`TestRealDockerJail` covers uid, env and timeout).
+
+**Goal:** keep the default image (docket ships no image); document that the docker jail is only as
+capable as `DOCKET_SANDBOX_IMAGE`, which needs `git` to commit. `docket doctor`, when the backend
+in use is docker, probes the image once (`command -v git`) and warns with the fix. Real-docker
+tests (skip with a reason when the daemon or the image build is unavailable): build a tiny test
+image `FROM alpine:3.20` + `apk add --no-cache git` once per session; monkeypatch the image
+constant (read at import); prove (i) a jailed `bash` commits in a linked task worktree and the
+host sees the commit, (ii) with `network=False` a busybox `nc` connect fails, and (iii) as a
+positive control it succeeds against a host-side listener with the network open.
+
+### W89-7 — a `run:` step can carry `env:`; the check recipes use it
+
+**Status:** DONE `4496818f` · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `pipeline-format.spec.md` (Steps, command steps), `pod-dispatch.spec.md` (command-step environment), `pod-blueprints.spec.md` (anti-tautology, mutation)
+
+**Today:** command steps get only `DOCKET_TASK_ID`/`DOCKET_BASE_COMMIT`/`DOCKET_HEAD_COMMIT` over the
+serve process environment (`core/dispatch.py::_task_command_env`, `_run_command_step`), so the
+`anti-tautology` (`ANTI_TAUTOLOGY_GLOB`, `ANTI_TAUTOLOGY_RUNNER`) and `mutation`
+(`MUTATION_THRESHOLD`, `MUTATION_CMD`) overrides can only be set in the process that runs serve.
+
+**Goal:** `Step.env: dict[str, str]` (`core/pipeline.py`), allowed only on `run` steps, keys
+`^[A-Z][A-Z0-9_]*$`, refused for `PATH`, `LD_*`, `PYTHON*`, `BASH_ENV`, `ENV`, `DOCKET_*` and any
+name `system.task_environment` strips as a credential. Carried through short form, planning and
+export. Merged under the task coordinates (coordinates win). Values never reach the trace. The two
+recipes declare their overrides as `env:` defaults and their READMEs say a pod overrides them by
+editing the step. Regenerate config schemas and recipe docs.
+
+**Acceptance:** a `run` step with `env: {FOO: bar}` sees `bar`; one declaring `DOCKET_BASE_COMMIT`
+is refused at validation; `env` on a role step is refused; an export round-trips `env`.
+
+### W89-8 — a parked consult's question travels with the denial; a harness consult names its run
+
+**Status:** DONE `421d457b` + integrator `dfa77259` (the question is persisted 0600 under `consult-parked/`, not base64 in the token, which reached hop errors and the trace past redaction) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Consult), `harness-mode.spec.md` (consult `question.taskId`)
+
+**Today:** `core/consult.py` keeps parked questions in the in-process `_PARKED` registry;
+`core/dispatch.py::_parked_consult_question` takes it while persisting the hop. When it is not
+there (another process, a restart) the task goes `waiting_approval` on a `consult:` token that no
+approval record can resolve: stuck. In a single-turn harness consult `question.taskId` is the
+session key (`build_question`: `ctx.session_key or ctx.agent_id`).
+
+**Goal:** `ConsultParked` carries the question; the denial result carries it to dispatch, which
+reads it from the hop result; `_PARKED` and `take_parked` are deleted (no shim). A `consult:` token
+with no question fails the task with a named reason instead of parking it as an approval.
+`ToolContext.task_id` is set by the driver from the env route used for `DOCKET_APPROVAL_MODE`;
+pod dispatch passes the task id, the harness passes its run token (or the caller's task id if the
+harness accepts one); `build_question` uses `task_id`, falling back to the session key only when
+neither exists. Operator schemas unchanged; regenerate if a description changes.
+
+**Acceptance:** a dispatch whose turn parks a consult in a separate interpreter state (registry not
+shared) ends `waiting_input` with the question; a harness consult's `question.taskId` equals the
+run token, not `agent:...`; pod dispatch still sees the task id.
+
+### W89-9 — `approve_task` grants the same call for the rest of the task
+
+**Status:** DONE `83202b77` + integrator `e29b9de1` (a task grant reaches only hops of the role that asked) and `06474729` (HTTP and MCP channels) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (approval pack options, pre-grants), `pod-dispatch.spec.md` (task record), `harness-mode.spec.md` (scope wording), `telegram-integration.spec.md` (`/approve`)
+
+**Today:** choosing `approve_task` takes effect only inside one turn's `ToolContext`; in pod
+dispatch `resolve_waiting_approval` ignores `context.optionId`, so the next identical call in a
+later hop of the same task parks again.
+
+**Goal:** granting a parked approval with `approve_task` (CLI `docket approve ... --option
+approve_task` or however the CLI names it today, and Telegram `/approve <token> task`) appends a
+task-scoped grant `{tool, argsDigest, token, grantedAt, actor, channel}` to the task record;
+`_compose_hop` mints one single-use pre-grant per entry for each later hop (existing
+`create_pregrant`, bound to project and role), so every use is audited as today. Exact match on
+`(tool, argsDigest)`, only on the `ask` path (never widens `deny`), at most 20 per task, dropped
+when the task reaches a terminal status, never inherited by another task.
+
+**Acceptance:** a task parks on a call, the grant uses `approve_task`, a later hop of the same task
+runs the identical call without a new approval and the audit shows the use; another task with the
+same call still parks; a different argument digest still parks.
+
+### W89-10 — integrate, run it for real, refresh the screenshots and the README
+
+**Status:** DONE (live runs and fixes `56ca8ffe` git identity in the jail, `73e44188` prune and untracked artifacts, `fb7bfa6a` a policy ask on consult; screenshots `4eeec5bc`; README `b16426c2`; guides `c7200c7a`; specs `02852079`; CHANGELOG `087e3538`; ADR 0020 and ROADMAP) · **Size:** M · **Wave:** 90 · **Model:** integrator
+
+Cherry-pick each card, full gates per batch (also with `DOCKET_SANDBOX_BACKEND=none`), spec bumps,
+CHANGELOG. Live runs on the local endpoint: a default-isolated dispatch with a submodule and the
+`.git` rewrite attempt; a consult answered from Telegram-less `pod answer` with an option id and an
+`approve_task` grant reused by a later hop; `worktrees prune`; a two-stage serve stop. Re-capture
+the doc journey (`scripts/maint/capture-doc-journey.sh`), transcribe it into
+`scripts/render-doc-assets.py` and regenerate the three assets; correct the README and the
+guides where the run shows they are wrong, keeping the README at most 270 lines. Record the close
+in ADR 0020, the deferral tables of ADRs 0018/0019 and ROADMAP.
+
