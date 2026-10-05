@@ -489,7 +489,7 @@ skipped. `write`/`edit` refuse a target whose final component is a symlink that 
 
 ### P38-10 — a refused isolation or network posture is not retried
 
-**Status:** IN-PROGRESS (Wave 87 worker) · **Size:** S · **Wave:** 87 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (retry and `dispatch_refused`), `security-gates.spec.md` (the two refusals)
+**Status:** DONE `d83360e3` (refusals raise `DispatchError`; harness `_invoke` now catches it, which the `run_turn` docstring had already claimed and the code had not done) · **Size:** S · **Wave:** 87 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (retry and `dispatch_refused`), `security-gates.spec.md` (the two refusals)
 
 **Trigger (measured in the 2026-10-05 live run):** with `gates network none` and `isolate off`, one
 dispatch of one task wrote three `network.refused` audit entries 2 s and 4 s apart. Both posture
