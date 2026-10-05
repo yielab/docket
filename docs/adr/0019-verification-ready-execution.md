@@ -99,7 +99,7 @@ false when re-verified (see Evidence), and this ADR corrects them.
 | Item | Status | Why |
 | --- | --- | --- |
 | docket merging a task branch | Cut | The plan of record or the operator merges. docket reports the branch. |
-| Retention for finished task worktrees | Deferred | Trigger: a disk that fills, or an operator asking twice. Removing the member already cleans them up. |
+| Retention for finished task worktrees | Done (Waves 89–90) | The operator asked: `docket pod <p> worktrees prune`. ADR 0020 "Closed by Waves 89–90". |
 | Screening `fetch` results | Deferred | `fetch` is domain-allowlisted by the operator. Trigger: an injection seen through an allowlisted domain. |
 | Parallel tasks in one pod | Phase 38 | Per-pod sweep workers; a worktree per task is the precondition this phase supplies. |
 | A mutation or tautology score in evidence-v1 | Cut | ADR 0017 §5. The command's output is the evidence. |

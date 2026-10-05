@@ -99,10 +99,10 @@ or not yet decidable when re-verified (see Evidence and "Corrections to the outl
 | --- | --- | --- |
 | A `kind: autonomy` document (domain → recipe, models, checks, authority) | Deferred | Nothing produces one. docket enforcing a document that no verifier emits is unwired machinery by construction. Trigger: a verifier that emits it. |
 | Minting per-task credentials | Deferred | No issuer. Trigger: a pod that needs a scoped credential from an issuer docket can call (e.g. a GitHub App). |
-| A retention policy for finished task worktrees | Deferred | Trigger: a measured disk or `git worktree list` cost. |
+| A retention policy for finished task worktrees | Done (W89-4) | The operator asked (2026-10-05): `docket pod <p> worktrees prune`. |
 | `run:` steps and `verifyCmd` in the jail | Cut | They are the operator's own commands, from `pod apply`, and the verify gate needs the host toolchain. |
-| Check recipes reading overrides from the process environment | Carried | Needs `${var}` in `run:`, a pipeline-format change. |
-| Phase 36's carried items (consult registry, `approve_task` scope, `question.taskId`, options in channels) | Carried | ADR 0018. |
+| Check recipes reading overrides from the process environment | Done (W89-7) | A `run:` step's `env:` map, not `${var}` interpolation (no shell-injection surface). |
+| Phase 36's carried items (consult registry, `approve_task` scope, `question.taskId`, options in channels) | Done (W89-5, W89-8, W89-9) | See "Closed by Waves 89–90". |
 
 ## Test discipline
 
@@ -176,3 +176,60 @@ Carried to the next phase, by name:
 - the Phase 37 and 36 carried items not addressed here (worktree retention, check recipes reading
   the process environment, the four Phase 36 items) and the deferred `kind: autonomy` and
   credential minting.
+
+## Closed by Waves 89–90 (2026-10-05)
+
+The operator asked to close every carried item. Ten cards (W89-1..10, no phase), Sonnet workers and
+one Haiku worker in isolated worktrees, one integrator. Every item above is closed except the two
+deferred to triggers nothing has fired (`kind: autonomy`, credential minting):
+- `doctor` lists unjailed MCP servers per pod; `config explain` and `recipes show --json` carry
+  `isolate` (W89-1).
+- The jail cannot write git metadata the host later runs: submodule git dirs, a linked worktree's
+  `.git` file and `gitdir`/`commondir`, `info/attributes`; a missing `hooks/` dir or attributes
+  file is created empty first, because the jail could otherwise create it (W89-2).
+- A second stop signal makes `serve` abandon in-flight sweeps (W89-3); `worktrees prune` (W89-4);
+  options in channel notifications and Telegram `/answer <task> <id>` (W89-5); a real-docker oracle
+  for commit and `network none`, and a `doctor` probe of the jail image (W89-6); `env:` on `run:`
+  steps (W89-7); the parked consult question persisted instead of held in process, and a harness
+  consult's `taskId` is the run token (W89-8); `approve_task` across a task's later hops and all
+  four approval channels (W89-9).
+
+Integrator corrections, each found reviewing a green card: the inbox `TaskView` never carried
+`question`/`brief`, so no notification ever had a question to show (the sixth unwired-machinery
+instance, found by the W89-5 worker); W89-8 first carried the question base64-encoded in the token,
+which reaches hop errors and the trace past redaction; W89-9 first minted a task grant for every
+role's hop; W89-4 would have pruned a task `dispatch --resume` re-claims, and `git_branch_merged`
+ignored git's `+` marker; W89-1 grew the shrink-only layout baseline instead of adding a test.
+
+### Live run (2026-10-05)
+
+Local endpoint, throwaway `HOME`, bwrap backend, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`:
+- A harness turn in a linked worktree of a repository with a submodule ran four `python3`/`git`
+  calls the gate **allowed**: rewriting `.git`, writing `hooks/post-commit` and the submodule's
+  `hooks/post-merge` all failed in the jail, and the host files were unchanged. The jailed
+  `git commit` failed too: `Author identity unknown`. The jail passed only `PATH`, so an identity
+  from `GIT_AUTHOR_*` or a non-default `HOME` (and any identity under Docker) never reached git.
+  Fixed: the jail receives the operator's git identity, never a credential; re-run, the commit
+  landed as `demo <demo@example.com>`. The test that should have caught it passed the identity by
+  hand through `env=`.
+- A pod with a consult-first Lead, two Implementer steps running `git push origin production` and
+  a `run:` step with `env: {GREETING: hello}`, `approvalMode park`: the Lead's consult parked the
+  task, the persisted question was taken (none left on disk), `docket inbox` showed it, and the
+  operator chose the option the model had **not** recommended. Each push parked; `approve_task`
+  recorded a task grant and the next hops got minted pre-grants. The model never re-issued the
+  identical command (it rephrased with `cd ...`), so live reuse was not observed: exact matching
+  refused the variant, as specified; reuse is proven by the integration tests. The `run:` step saw
+  `hello`; the task finished `done` after 7 hops.
+- `worktrees prune` kept that task's worktree: the verify command's `__pycache__/` made every
+  Python task "dirty". Fixed: only tracked changes keep a worktree, untracked artifacts are counted
+  and discarded; re-run, it removed the worktree and the merged branch.
+- `doctor` named `probe (pod myapp)` as unjailed and, with Docker forced, warned that
+  `alpine:3.20` has no `git`.
+- `docket serve --dispatch` with a hop in flight survived the first SIGINT
+  (`stopping: waiting for 1 pod sweep(s); signal again to abandon`) and exited 130 on the second;
+  the run recorded `requestedAt`, `observedAt` and `stoppedAt`, and the task ended `cancelled`.
+- A harness `--contract 1.1` consult: `question.taskId` equalled the run token; the answer resumed
+  the turn to `ok`.
+
+Still deferred, by trigger: `kind: autonomy` (a verifier that emits one) and per-task credential
+minting (an issuer a pod needs). Not pushed.

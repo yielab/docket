@@ -90,7 +90,7 @@ evidence is a published document?
 | docket proposing directives from corrections | Cut | ADR 0017 §5: the verifier proposes; docket records. |
 | Scoring evidence (risk, readiness) | Cut | Same. |
 | Free-form `consult` without options | Cut | A question without choices is the thing this phase removes. |
-| Notifying channels rendering options as buttons | Deferred | Trigger: an operator who decides from a channel other than the CLI. The data is on the record either way. |
+| Notifying channels rendering options as buttons | Done as text (Waves 89–90) | The operator asked: a `conversation`-level event lists the options and Telegram `/answer <task> <id>` picks one; buttons stay out (Telegram is inbound-only). ADR 0020 "Closed by Waves 89–90". |
 
 ## Test discipline
 
