@@ -16,7 +16,6 @@ docket.cli._metrics
 docket.cli._pipeline
 docket.cli._pod
 docket.cli._policies
-docket.cli._recipes
 docket.cli._roles
 docket.cli._runs
 docket.cli._status

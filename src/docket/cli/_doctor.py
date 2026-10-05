@@ -408,6 +408,22 @@ def _check_exporters() -> int:
     return issues
 
 
+def _unjailed_mcp_servers() -> list[dict[str, str]]:
+    """Every server declared ``isolate: false``: the global registry's (``pod`` empty), then each
+    pod's own pod-scoped ones."""
+    from docket.core import dispatch as _dispatch
+
+    found = [{"name": s.name, "pod": ""} for s in _mcp_tools.load_mcp_servers() if not s.isolate]
+    taken = {s.name for s in _mcp_tools.load_mcp_servers()}
+    for pod in _dispatch.dispatchable_pods():
+        found += [
+            {"name": s.name, "pod": pod}
+            for s in _mcp_tools.load_pod_mcp_servers(pod)
+            if s.name not in taken and not s.isolate
+        ]
+    return found
+
+
 def _check_security_gates() -> int:
     """Isolation posture + the always-on tool-call gate.
 
@@ -446,23 +462,11 @@ def _check_security_gates() -> int:
             "  Network: open (default) -- docket gates network none to cut the sandbox's network"
         )
 
-    # Gather unjailed servers from global and per-pod registries
-    from docket.core import dispatch as _dispatch
-
-    unjailed_items = []
-    # Global unjailed servers
-    for s in _mcp_tools.load_mcp_servers():
-        if not s.isolate:
-            unjailed_items.append(s.name)
-    # Per-pod unjailed servers
-    for pod_id in _dispatch.dispatchable_pods():
-        for s in _mcp_tools.load_mcp_servers(pod_id):
-            if not s.isolate:
-                unjailed_items.append(f"{s.name} (pod {pod_id})")
-    if unjailed_items and state != "off":
-        ui.warn(
-            f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed_items)}"
-        )
+    unjailed = [
+        f"{s['name']} (pod {s['pod']})" if s["pod"] else s["name"] for s in _unjailed_mcp_servers()
+    ]
+    if unjailed and state != "off":
+        ui.warn(f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed)}")
 
     return 0
 
@@ -817,26 +821,12 @@ def _doctor_json_key_hygiene(
 
 def _doctor_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
-    from docket.core import dispatch as _dispatch
-
-    # Gather unjailed servers from global and per-pod registries
-    unjailed_items = []
-    # Global unjailed servers
-    for s in _mcp_tools.load_mcp_servers():
-        if not s.isolate:
-            unjailed_items.append({"name": s.name, "pod": ""})
-    # Per-pod unjailed servers
-    for pod_id in _dispatch.dispatchable_pods():
-        for s in _mcp_tools.load_mcp_servers(pod_id):
-            if not s.isolate:
-                unjailed_items.append({"name": s.name, "pod": pod_id})
-
     return {
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),
         "sandboxBackend": _sys.sandbox_availability().backend,
         "network": _fleet.get_network_mode(),
-        "unjailedMcpServers": unjailed_items,
+        "unjailedMcpServers": _unjailed_mcp_servers(),
     }
 
 
