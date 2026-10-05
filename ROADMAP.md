@@ -212,7 +212,7 @@ Carried to the next phase, by name:
 Reasoning in
 [docs/adr/0019-verification-ready-execution.md](docs/adr/0019-verification-ready-execution.md).
 
-**Phase 38 (the execution envelope, D-55) opened 2026-10-05.** Isolation on by default (bwrap
+**Phase 38 (the execution envelope, D-55) opened 2026-10-05, closed 2026-10-05.** Isolation on by default (bwrap
 first, with a preflight that names the fix, and a jail in which a task worktree can commit); an
 opt-in network lockdown mode; stdio MCP servers in the same jail; file tools that never follow a
 symlink out of their roots; `pre_input` on `fetch` results; no docket credential in a task's
@@ -221,6 +221,22 @@ outline corrected three claims (file tools are not moved into a subprocess, the 
 change ADR 0004's default, and docket has no issuer to mint per-task credentials from), and
 deferred `kind: autonomy` until a verifier produces one. Reasoning in
 [docs/adr/0020-the-execution-envelope.md](docs/adr/0020-the-execution-envelope.md).
+
+Eleven cards over Waves 85–88. Two came from running the product: the live run found a posture
+refusal retried three times (P38-10), and a measurement found `code-intel`'s `ast-grep` server
+unable to start in the jail (P38-11). Integration found three more defects the workers' own suites
+could not: 95 tests that depended on the host having bwrap, a jail escape through a writable
+`.git/hooks`, and a symlink fix that still followed a symlinked directory. Two live runs on the
+local endpoint (ADR 0020 "Live run"): a default-isolated task committed from inside bwrap,
+`network none` failed name resolution and an MCP `dial` with `ENETUNREACH`, a lockdown with
+isolation off was refused before any model call, and only `--no-isolate` let an MCP server write
+outside the roots.
+
+Carried to the next phase, by name: `doctor` does not list a pod's unjailed MCP servers; a
+submodule's hooks are not overlaid read-only; docker's default image cannot commit and `--network
+none` has no real-docker oracle; stopping `serve` waits for in-flight sweeps; worktree retention,
+the check recipes' environment overrides and the four Phase 36 items; `kind: autonomy` and
+credential minting stay deferred to their triggers. No phase is planned after this one.
 
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's

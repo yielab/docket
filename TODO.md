@@ -11,11 +11,17 @@
 >
 > ---
 >
-> ## ◆ ACTIVE — Phase 38 opened 2026-10-05 (the execution envelope, D-55)
+> ## ◇ NO ACTIVE WAVE — Phase 38 closed 2026-10-05
 >
-> **Phase 38 opened 2026-10-05** (ROADMAP D-55,
-> [ADR 0020](docs/adr/0020-the-execution-envelope.md)): nine cards over Waves 85–88, at the end
-> of this file. Wave 85 (six cards) is claimable.
+> **Phase 38 closed 2026-10-05** (ROADMAP D-55,
+> [ADR 0020](docs/adr/0020-the-execution-envelope.md)): eleven cards over Waves 85–88 (nine
+> planned, two found while integrating: P38-10 from the live run, P38-11 from a measurement); the
+> section is archived verbatim in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
+> It shipped isolation on by default (bwrap first, a jail that can commit, hooks and config
+> read-only), an opt-in `network none`, stdio MCP servers in the jail, file tools confined against
+> symlinks and `..` selectors, `pre_input` on `fetch` results, docket's credentials stripped from
+> task processes, one sweep worker per pod, posture refusals that are not retried, and a bounded
+> redaction pattern. Not pushed. No phase is planned: the next step is triage.
 >
 > **Phase 37 closed 2026-10-04** (ROADMAP D-54,
 > [ADR 0019](docs/adr/0019-verification-ready-execution.md)): nine cards over Waves 82–84; the
@@ -282,267 +288,21 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 
 ---
 
-## ◆ ACTIVE — Phase 38: the execution envelope (D-55), Waves 85–88 (opened 2026-10-05)
 
-**Opened 2026-10-05** (ROADMAP D-55, [ADR 0020](docs/adr/0020-the-execution-envelope.md)).
-Every outline locator was re-verified at `25fe5252`. Three outline claims were corrected and one
-item deferred in ADR 0020:
-- file tools are not moved into a subprocess jail; a symlink walk is closed instead (P38-8);
-- the lockdown does not change ADR 0004's open default (P38-4);
-- docket has no credential issuer, so its own credentials are stripped instead (P38-6);
-- `kind: autonomy` is deferred until a verifier produces one.
+## ◇ NO ACTIVE WAVE — Phase 38 closed 2026-10-05 (archived above in docs/cycles-ended/)
 
-Two facts measured on 2026-10-05 shape P38-3: under bwrap a task worktree cannot `git commit`
-(`.git/worktrees/<t>/index.lock: Read-only file system`), and docker's default image `alpine:3.20`
-has neither `git` nor `python3`.
+No phase is planned. The next step is bounded triage or measurement, not a card mined from history.
+Carried out of Phase 38 (ADR 0020 "Closed with, and carried"):
+- `docket doctor` lists unjailed MCP servers from the global registry only, not a pod's;
+  `config explain` and `recipes show --json` do not show `isolate`;
+- a submodule's hooks (`.git/modules/*/hooks`) and `.git/info` are not overlaid read-only;
+- docker's default image has no `git`/`python3`, so only the bwrap jail is proven to commit, and
+  `docker --network none` is proven by argv only;
+- stopping `docket serve` waits for in-flight pod sweeps, with no second-signal abandon.
 
-Carried, not scheduled here: finished task worktrees have no retention policy; the check recipes
-read their overrides from the process environment; the four Phase 36 items (ADR 0018 "Cut and
-deferred").
-
-**Workers.** Each card runs in an isolated worktree that is reset to `develop` before editing. The
-worker diffs from `git merge-base`, commits on its branch, and never merges, pushes, stashes, or
-edits `TODO.md`/`ROADMAP.md`/`CONTRIBUTING.md`/`README.md` counts. The integrator rebases, gates,
-merges, and bumps spec versions. **`~/.docket` must not exist**: a test that creates it leaks into
-the real home and fails the card. Packets: `.agents/handoffs/wave-85-worker-packets.md`.
-
-| Wave | Cards (parallel inside the wave) | Hot file and function ownership |
-| --- | --- | --- |
-| 85 | P38-1 ∥ P38-2 ∥ P38-3 ∥ P38-6 ∥ P38-7 ∥ P38-8 | `core/trace.py::_REDACT_PATTERNS`, `trace-store.spec.md` → P38-1; `core/tools.py::_fetch_tool`, `core/mcp_tools.py::_screen_result` (extracted into one shared screening function) → P38-2; `core/fleet.py::FleetSecurity` and its isolation readers/writers, `core/security.py` isolation wrappers, `edges/adapters/docket_runtime.py::_resolve_sandbox`, `edges/adapters/system.py::sandbox_availability`, `bwrap_argv`, `docker_run_argv`, `cli/_gates.py`, `cli/_doctor.py::_check_security_gates` (and its JSON twin), goldens `gates_status`/`help` → P38-3; `edges/adapters/system.py::run_verify_cmd`, `edges/adapters/toolbox.py::run_bash` (the unjailed env only) plus one new env helper → P38-6; `serve.py::_run_sweeps`, `_sweep_loop`, one `config.py` constant → P38-7; `edges/adapters/toolbox.py::resolve_within`, `glob_files`, `grep_files`, `write_file`, `edit_file` → P38-8 |
-| 86 | P38-4 | `core/fleet.py` (a `network` flag), `cli/_gates.py` (`gates network`), `core/pod.py` settings (`network`), `system.py::bwrap_argv`/`docker_run_argv` (a network parameter), `docket_runtime.py` (the turn's network mode on `ToolContext`), `toolbox.py::run_bash` (passing it) |
-| 87 | P38-5 ∥ P38-10 | `edges/adapters/mcp_client.py::_stdio_params` and its callers, `core/mcp_tools.py::load_mcp_tools` (a launch spec replacing the two `cwd` lambdas), `McpServerConfig.isolate`, `cli` `mcp servers add --no-isolate`, `docket_runtime.py::_load_mcp_tools` |
-| 88 | P38-11 → P38-9 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
-
-`specs/functional/security-gates.spec.md` is shared by P38-2, P38-3, P38-6 and P38-8 at section
-level: each worker edits only its own section and adds one `Unreleased` changelog line; the
-integrator merges the changelog lines and bumps the version once. `toolbox.py` is shared in Wave
-85 at function level only: P38-6 owns `run_bash`'s environment, P38-8 the file tools. P38-3 owns
-the argv builders in Wave 85 and hands them to P38-4 in Wave 86.
-
-Every card follows the §"How to use this board" definition of done.
-
-### P38-1 — the redaction pattern matches only at a word start
-
-**Status:** DONE `f426a32a` (integrator: the boundary lives in trace-store requirement 7, no renumbering) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `trace-store.spec.md` (redaction)
-
-**Trigger (measured live, 2026-10-04 and re-run 2026-10-05):** `trace.redact("task=task-<uuid>")`
-returns `ta[REDACTED]`; the first `_REDACT_PATTERNS` entry's `sk|pk|api|key|tok|...` alternation
-has no left boundary.
-
-**Goal:** give that alternation a left boundary (not preceded by a letter or digit), so a label
-matches only where it starts a word. `_` stays a boundary, so `api_key=<20+ chars>` and
-`MY_TOKEN=<...>` are still redacted.
-
-**Non-goals:** the other three patterns; the stored-secret pass; any new pattern.
-
-**Acceptance:**
-- `redact("task=task-8d627c86-9a63-4379-beee-ee3b2afff6f7")` is unchanged.
-- `redact("risk=" + "a" * 24)` is unchanged.
-- `redact("api_key=" + "A" * 24)`, `redact("key: " + "A" * 24)`, `redact("Bearer " + "A" * 24)` and
-  `redact("token=" + "A" * 24)` each contain `[REDACTED]` and not the value.
-- The existing redaction tests stay green unchanged.
-
-### P38-2 — `fetch` results pass `pre_input`
-
-**Status:** DONE `c8c61a7b` (integrator: one public `core.tools.screen_tool_result`; the policy is evaluated once) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (fetch section), `mcp-client.spec.md` (result screening, a pointer only)
-
-**Trigger:** `core/tools.py::_fetch_tool` returns the page text as is, while
-`core/mcp_tools.py::_screen_result` screens MCP results (ADR 0019 cut `fetch`; ADR 0020 §7).
-
-**Goal:** extract `_screen_result` into one function that both the MCP handler and `_fetch_tool`
-call, with the source named in the audit entry. `fetch` audits under `fetch.result_blocked` /
-`fetch.result_warn`; the MCP audit actions are unchanged.
-
-**Non-goals:** built-in tools other than `fetch`; the fetch allowlist; description screening.
-
-**Acceptance:**
-- With a real baseline `pre_input` policy and a fake HTTP response carrying an injection phrase, a
-  live `dispatch_tool("fetch", ...)` returns `ok=False` naming the policy, plus one audit entry
-  naming the URL's host.
-- A clean page passes byte-identical; a redact policy returns the redacted text.
-- The P37-1 MCP result tests stay green unchanged (one function, two callers).
-
-### P38-3 — isolation on by default, bwrap first, a jail that can commit
-
-**Status:** DONE `bf7d8cd1` + `c982046f` (integrator review: 95 tests depended on the host having bwrap, now `tests/conftest.py::record_isolation_off` per fixture; `.git/hooks`, `config`, `config.worktree` overlaid read-only; `isolationEnabled` and `get_isolation_mode` deleted) · **Size:** L · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` ("Workspace isolation" and its live-wiring and CLI sections), `cli-interface.spec.md` (gates/doctor lines)
-
-**Trigger:** `FleetSecurity.isolation_enabled` defaults to `False`. Measured 2026-10-05: under
-bwrap, `git commit` in a task worktree fails (`index.lock: Read-only file system`), and the docker
-default image has no `git`/`python3`.
-
-**Goal (ADR 0020 §1–3):**
-- A `DOCKET_HOME` with no recorded choice is isolated. `gates isolate off` records an explicit,
-  audited off; `isolate on` records on. The display shows `on (default)`, `on` or `off`.
-- `sandbox_availability` tries bwrap first, then docker; `DOCKET_SANDBOX_BACKEND` still forces.
-- `gates isolate on` and `doctor` probe `sandbox_availability` (no `shutil.which("docker")`).
-  `doctor` reports the backend that a turn would use, or the refusal and its two fixes.
-- The turn refusal (`isolation.refused`) names both fixes.
-- `bwrap_argv` (and the docker `-v` mounts) add the git dir and common dir of every root that is a
-  git worktree or repository, read-write.
-
-**Non-goals:** the network (P38-4); MCP servers (P38-5); `run:`/`verifyCmd` (cut, ADR 0020).
-
-**Acceptance:**
-- With no `fleet.json`, a `DocketDriver` turn's `ctx.sandbox` is not `"off"` (the inverse of
-  `test_isolation_off_leaves_ctx_sandbox_off`, which now writes an explicit off).
-- With `DOCKET_SANDBOX_BACKEND=none` and no recorded choice, a turn is refused before any model call
-  and the error names `bubblewrap` and `docket gates isolate off`.
-- **Real bwrap** (skip with a reason when absent): `run_bash` jailed in a real git worktree runs
-  `git add` + `git commit` successfully, and a write to a host path outside the roots fails.
-- `sandbox_availability()` with both backends faked available returns `bwrap`.
-- Every test that wants no jail says so in its own fixture; no autouse switch.
-- Goldens `gates_status`/`help` regenerated only where the CLI text changed, each line explained.
-
-### P38-4 — a network lockdown mode
-
-**Status:** DONE `169e131d` (`gates network`, pod `network`, `network.refused`; docker `--network none` proven by argv only) · **Size:** M · **Wave:** 86 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (the D-23/D-24 egress section), `pod-dispatch.spec.md` (pod settings), `cli-interface.spec.md`
-
-**Trigger:** neither backend cuts the network (`--share-net`, docker's bridge); ADR 0004 deferred
-the mechanism. ADR 0020 §4.
-
-**Goal:** `docket gates network none|open` (global, audited) and the pod setting `network`
-(`none` only narrows a global `open`). Under `none`, `bwrap_argv` omits `--share-net` and
-`docker_run_argv` adds `--network none`. `network none` with isolation off refuses the turn before
-any model call. `fetch` is untouched. `gates status`, `doctor` and `config explain` show the mode
-and its scope.
-
-**Acceptance:**
-- **Real bwrap:** under `none`, a jailed `python3 -c` socket connect to `1.1.1.1:53` fails, and the
-  same call under `open` gets past socket creation. (No connection to a real host is required: a
-  failed `socket.socket()` or `ENETUNREACH` is the oracle.)
-- A pod with `network: none` under a global `open` gets `none`; a pod `open` under a global `none`
-  stays `none`.
-- `network none` + `isolate off` → the turn is refused, naming both settings.
-
-### P38-5 — stdio MCP servers start in the jail
-
-**Status:** DONE `2874490d` (`StdioLaunch`; `bwrap_command_argv`/`docker_command_argv`; the two `type: ignore`s are gone; the `kind: mcp-server` document cannot say `isolate: false` -- P38-11) · **Size:** M · **Wave:** 87 · **Model:** Sonnet · **Spec:** `mcp-client.spec.md`
-
-**Trigger:** `mcp_client.py::_stdio_params` spawns the server on the host; `load_mcp_tools` threads
-`cwd` through two `type: ignore` lambdas (carried from Phase 37). ADR 0020 §5.
-
-**Goal:** a stdio server's `command`/`args` are wrapped by the turn's backend (roots, git dirs,
-network mode) when isolation is on. A server declared `isolate: false` (`mcp servers add
---no-isolate`, audited, shown by `doctor`) starts unjailed. `load_mcp_tools` takes one launch value
-(`cwd`, backend, network, roots) instead of the `cwd` lambdas, and the `type: ignore`s go.
-
-**Acceptance:**
-- **Real bwrap:** a stdio test server that writes outside the roots fails to; the same server
-  declared `isolate: false` succeeds.
-- Under `network none`, a jailed test server cannot open a socket.
-- Isolation off: the argv is the server's own, byte-identical to before.
-
-### P38-6 — a task's processes never see docket's credentials
-
-**Status:** DONE `c10fb679` (`system.task_environment`; ~21 ms per call) · **Size:** S · **Wave:** 85 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (a "Credentials in task processes" section)
-
-**Trigger:** `run_verify_cmd` passes `{**os.environ, **env}`; `run_bash` with `sandbox="off"`
-inherits `os.environ`; both carry provider keys when the operator exported them. ADR 0020 §8.
-
-**Goal:** one helper returns the host environment minus `DOCKET_LLM_API_KEY`, every credential
-name the provider catalog declares, `TELEGRAM_BOT_TOKEN` and every name in the secret store. Both
-call sites use it; the explicit `env` overlay still wins.
-
-**Acceptance:**
-- With `OPENAI_API_KEY`, `DOCKET_LLM_API_KEY` and a stored secret's name exported, a real
-  `run_verify_cmd("env", ...)` output contains none of them, and still contains `PATH` and a
-  harmless exported variable.
-- An unjailed `run_bash("env")` gives the same result.
-- `DOCKET_TASK_ID` passed through `env=` still arrives.
-
-### P38-7 — one sweep worker per pod
-
-**Status:** DONE `6b63cf4c` + `24debddd` (a shared scripted-turn test pinned to one worker) · **Size:** M · **Wave:** 85 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (the serve sweep), `serve-read-api.spec.md` only if a route's output changes
-
-**Trigger:** `serve.py::_run_sweeps` loops over `dispatchable_pods()` and runs each synchronously;
-its own comment records that one blocking hop stalls the other pods. ADR 0020 §9.
-
-**Goal:** each pod is swept in a worker; a pod with a sweep in flight is skipped until it ends;
-at most `DISPATCH_SWEEP_WORKERS` (default 4) run at once. Run records, audit and trace stay what
-they are per pod. `stop` ends the loop and waits for in-flight sweeps.
-
-**Acceptance:**
-- Two pods, one whose fake dispatch blocks on an event: the other pod's task reaches `done`
-  while the first is still blocked.
-- A second tick while pod A's sweep is in flight does not start a second sweep of A.
-- With `DISPATCH_SWEEP_WORKERS=1`, sweeps are serial again.
-- `stop` returns only after the in-flight sweeps end.
-
-### P38-8 — file tools never follow a symlink out of their roots
-
-**Status:** DONE `b1f3d7bc` + `5c6a31ec` (integrator: every walked path passes `resolve_within`, so a symlinked directory and a `..` selector are closed too) · **Size:** S · **Wave:** 85 · **Model:** Haiku · **Spec:** `security-gates.spec.md` (file-tool containment)
-
-**Trigger:** `resolve_within` checks the requested path; `glob_files` and `grep_files` walk a root
-and may meet a symlink to a host path. Not yet measured either way: the card's first step is the
-RED test. ADR 0020 §6.
-
-**Goal:** a path yielded by `glob`, or searched by `grep`, resolves inside the roots, or it is
-skipped. `write`/`edit` refuse a target whose final component is a symlink that resolves outside.
-
-**Acceptance:**
-- A root containing `link -> /etc` (or a tmp dir outside the root): `glob("**/*")` lists no file
-  under the target, and `grep("root")` returns no match from it.
-- `write("link/x", ...)` is refused with `PathEscapeError`.
-- A symlink that stays inside the root still works.
-- If the RED tests pass before any change, the card closes as verified with the tests kept, and
-  says so.
-
-### P38-10 — a refused isolation or network posture is not retried
-
-**Status:** DONE `d83360e3` (refusals raise `DispatchError`; harness `_invoke` now catches it, which the `run_turn` docstring had already claimed and the code had not done) · **Size:** S · **Wave:** 87 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (retry and `dispatch_refused`), `security-gates.spec.md` (the two refusals)
-
-**Trigger (measured in the 2026-10-05 live run):** with `gates network none` and `isolate off`, one
-dispatch of one task wrote three `network.refused` audit entries 2 s and 4 s apart. Both posture
-refusals (`_resolve_sandbox`, `_resolve_network` in `edges/adapters/docket_runtime.py`) return
-`failure_kind="daemon_error"`, which `core/dispatch.py::_RETRYABLE_FAILURE_KINDS` retries. The
-refusal is deterministic: a retry cannot succeed and only multiplies the audit trail.
-
-**Goal:** both refusals take the existing deterministic-refusal path: `DocketDriver.run_turn`
-raises `DispatchError` (as a stale `mcpServers` selection already does), dispatch settles the
-task `failed` with `failureKind: dispatch_refused` (one attempt, resumable with `--resume` once
-the operator fixes the setting), and the audit entry is written once. Harness mode keeps a coherent
-result for the same refusal (read `cli/_harness.py`'s `DispatchError` handling; do not change the
-published contract).
-
-**Acceptance:**
-- A pod dispatch under `network none` + `isolate off` makes exactly one turn attempt, writes one
-  `network.refused`, and leaves the task `failed` / `dispatch_refused`; the same with no backend
-  writes one `isolation.refused`.
-- After `gates isolate on`, `dispatch --resume` reclaims and runs the task.
-- The harness result for the same refusal is unchanged in shape (pin it with a test).
-
-### P38-11 — a recipe's MCP server can declare `isolate: false`; `code-intel`'s ast-grep does
-
-**Status:** IN-PROGRESS (Wave 88 worker) · **Size:** S · **Wave:** 88 · **Model:** Sonnet · **Spec:** `config-format.spec.md` (the `mcp-server` kind), `mcp-client.spec.md`, `pod-blueprints.spec.md` (code-intel)
-
-**Trigger (measured 2026-10-05):** `code-intel`'s `ast-grep` server is `uvx --from git+... ast-grep-server`.
-Run through `system.bwrap_command_argv` with a warm cache it fails: `Could not acquire lock ...
-Read-only file system (os error 30) at path "~/.cache/uv/.tmp..."`. With isolation on by default
-the shipped recipe's server cannot start. P38-5 added `McpServerConfig.isolate`, but the
-`kind: mcp-server` document (`core/mcp_tools.py::McpServerDocument`, its published schema) has no
-such field, so a recipe cannot declare it and `pod apply` installs every recipe server jailed.
-
-**Goal:** the document accepts `isolate: false` (default true), `pod apply` installs it into the
-pod's `config/mcp-servers.json`, `pod export` writes it back, `docket validate` and
-`recipes show`/`apply --dry-run` show it, and the apply step prints that the server runs
-unjailed. `code-intel`'s `ast-grep` declares `isolate: false` and its README says why (measured);
-`language-intel` stays jailed (its binary was not installed on the measuring host; the README says
-to declare it if it cannot start). Schema regenerated with `gen_config_schemas.py`, recipe docs with
-`gen_recipe_docs.py`.
-
-**Acceptance:**
-- Applying a recipe whose server says `isolate: false` stores it, and a turn's launch for that
-  server is the server's own argv (no jail) while the recipe's other server is jailed.
-- `pod export` round-trips the field (an apply of the export plans `skip`).
-- A document without the field still loads jailed.
-
-### P38-9 — integrate and close Phase 38
-
-**Status:** TODO · **Size:** M · **Wave:** 88 · **Model:** integrator
-
-Seam tests owned by the integrator (ADR 0020 "Test discipline"): a default-on dispatch commits in
-its task worktree; a jailed MCP server under `network none` cannot connect out; one screening
-function, two callers. A live run on the local endpoint with isolation on by default (bwrap) and a
-second under `network none`. Docs that say isolation is opt-in are rewritten (README,
-`docs/SECURITY-SIMPLE.md`, `docs/QUICK-START-DOCKET.md`, the security-gates spec status line).
-Spec bumps, CHANGELOG, metrics, board rollup and archive.
+Still carried from Phases 36–37: finished task worktrees have no retention policy; the check
+recipes read their overrides from the process environment; the in-process consult registry,
+`approve_task` scoped to one turn, the session key as `question.taskId` in a single-turn consult,
+and options not rendered in Telegram or channel notifications. Deferred to named triggers:
+`kind: autonomy` (a verifier that emits one) and per-task credential minting (an issuer a pod
+needs).
