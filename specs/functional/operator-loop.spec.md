@@ -107,6 +107,18 @@ operator-loop-level contract that section's behaviour must satisfy.
    does not describe an already-attempted, parked hop. The re-entry MUST instead re-run that
    exact hop, carrying a single-use pre-grant matched by `canonical_args_digest`, so the model's
    identical next call passes once without asking again.
+5a. Granting a parked approval with the `approve_task` option (`docket approve <token> --option
+   approve_task`, Telegram `/approve <token> task`; the option is recorded with
+   `approval_set_option` before the grant) MUST also record a task-wide grant
+   `{tool, argsDigest, token, grantedAt, actor, channel}` in the task's `taskGrants`, distinct from
+   the single-use `pregrants`. `_compose_hop` MUST mint one fresh single-use pre-grant per entry
+   (`create_pregrant`, bound to the project and the hop's role, task-scoped, expiring with the
+   pod's approval window) for every later hop, so each use is consumed and audited as any
+   pre-grant. The match is exact on `(tool, argsDigest)`; the grant exists only on the `ask`
+   path (a `deny` or policy block never creates an approval, so is never widened); a task holds
+   at most 20 (the 21st is approved once only, audited as `approval.task_grant_refused` and
+   reported to the operator); `taskGrants` is dropped when the task reaches a terminal status
+   (done, failed, cancelled, or approval denied) and is never read by another task.
 6. Non-goal (deliberately out of scope, ADR 0016): resuming the live model-turn session with the
    granted call's result injected in place of a hop re-run — deferred with a named trigger in
    the ADR (a measured rate of the re-run hop not re-issuing the granted call).
@@ -722,6 +734,7 @@ Each JSONL line is a JSON object with these fields:
 
 ### Unreleased
 
+- `approve_task` on a parked pod approval grants the same call for the rest of the task, through `taskGrants` (requirement 5a).
 - `core.inbox.task_view` populates `question` and `brief`; before, no inbox view or notification ever carried them (Notifications 11).
 - Notifications item 11: `conversation`-level events carry a consult question's `options` and
   `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.

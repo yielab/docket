@@ -1739,7 +1739,9 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    dispatch run, `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact
    pipeline position back as a single-use override (`gateOverridePipelineIndex`); a parked call's
    grant instead appends a single-use pre-grant to the task's `pregrants` and resumes the
-   already-attempted hop at its own index (see "Parked approvals"). A denied (or
+   already-attempted hop at its own index (see "Parked approvals"); a grant that chose
+   `approve_task` also appends to the task's `taskGrants`, from which `_compose_hop` mints one
+   single-use pre-grant per entry for each later hop (operator-loop requirement 5a). A denied (or
    fail-closed-expired) approval instead moves the task straight to `failed` (see above) — it
    does not pass through `pending` at all.
 7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
@@ -2016,6 +2018,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 
 ### Unreleased
 
+- Task record gains `taskGrants` (an `approve_task` grant on a parked approval, at most 20, minted into one single-use pre-grant per later hop, dropped at a terminal status); see operator-loop requirement 5a.
 - Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
   130/143 ("Sweep workers" 4-5).
 - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).

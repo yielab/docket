@@ -25,6 +25,9 @@ def _help() -> int:
     ui.header("docket approve")
     ui.console.print()
     ui.console.print("  docket approve <token> [--reason TEXT]    Grant a pending HITL approval")
+    ui.console.print(
+        "  docket approve <token> --option approve_task   ...and the same call for the task"
+    )
     ui.console.print("  docket approve                            List pending approvals")
     ui.console.print()
     ui.console.print(f"  Approvals are stored at: {_cfg.APPROVALS_DIR}")
@@ -60,12 +63,17 @@ def _list() -> int:
     return 0
 
 
-def run_approve(token: str | None = None, reason: str = "") -> int:
-    """Grant *token* (pending → granted), or list pending when token is omitted."""
+def run_approve(token: str | None = None, reason: str = "", option: str = "") -> int:
+    """Grant *token* (pending → granted), or list pending when token is omitted. *option*
+    ``approve_task`` also grants the same call for the rest of its task."""
     if not token:
         return _list()
     if token in ("-h", "--help"):
         return _help()
+
+    if option not in ("", "approve_once", "approve_task"):
+        ui.error(f"Unknown option {option!r}: use approve_once or approve_task")
+        return 1
 
     # Only include actor when there's a reason to record
     actor = ""
@@ -76,6 +84,8 @@ def run_approve(token: str | None = None, reason: str = "") -> int:
             actor = ""
 
     try:
+        if option == "approve_task":
+            _ap.approval_set_option(token, option)
         _ap.approval_grant(token, channel="cli", actor=actor, reason=reason)
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
@@ -85,7 +95,11 @@ def run_approve(token: str | None = None, reason: str = "") -> int:
         ui.error(str(err))
         return 1
 
-    _dispatch.resolve_waiting_approval(token, "granted")
+    _, note = _dispatch.resolve_waiting_approval_detail(
+        token, "granted", channel="cli", actor=actor
+    )
     ui.success(f"Approval granted: {token}")
+    if note:
+        ui.warn(note)
     ui.dim("  The waiting action may now proceed.")
     return 0

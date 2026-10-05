@@ -111,7 +111,7 @@ __all__ = [
 # command" bucket, which would blur "you typed nonsense" together with "you
 # typed a real command wrong". `re.DOTALL` on delegate/answer so a multi-line
 # task description/answer survives.
-_APPROVE_RE = re.compile(r"^/approve(?:@\w+)?(?:\s+(\S+))?\s*$")
+_APPROVE_RE = re.compile(r"^/approve(?:@\w+)?(?:\s+(\S+)(?:\s+(task))?)?\s*$")
 _DENY_RE = re.compile(r"^/deny(?:@\w+)?(?:\s+(\S+))?\s*$")
 _STATUS_RE = re.compile(r"^/status(?:@\w+)?\s*$")
 _DELEGATE_RE = re.compile(r"^/delegate(?:@\w+)?\s*(.*)$", re.DOTALL)
@@ -126,7 +126,7 @@ _ANSWER_USAGE = "Usage: /answer <task-id> <answer text>"
 
 _UNRECOGNIZED_REPLY = (
     "Unrecognized command. Use:\n"
-    "  /approve <token>\n"
+    "  /approve <token> [task]\n"
     "  /deny <token>\n"
     "  /status\n"
     "  /delegate <task description>\n"
@@ -203,7 +203,9 @@ def _approval_scope(agent_id: str) -> str:
     return _lead_project(agent_id) or agent_id
 
 
-def _handle_decision(agent_id: str, token: str, *, grant: bool) -> TelegramActionResult:
+def _handle_decision(
+    agent_id: str, token: str, *, grant: bool, task_wide: bool = False
+) -> TelegramActionResult:
     """Grant or deny *token*, mirroring ``cli/_approve.py``/``cli/_deny.py``,
     including the ``resolve_waiting_approval`` follow-up so a dispatch task
     blocked on this token actually resumes or fails, not just its record."""
@@ -214,6 +216,8 @@ def _handle_decision(agent_id: str, token: str, *, grant: bool) -> TelegramActio
     channel = "telegram"
     try:
         if grant:
+            if task_wide:
+                _approval.approval_set_option(token, "approve_task")
             _approval.approval_grant(token, channel=channel)
         else:
             _approval.approval_deny(token, channel=channel)
@@ -223,9 +227,12 @@ def _handle_decision(agent_id: str, token: str, *, grant: bool) -> TelegramActio
     except _approval.ApprovalError as exc:
         return TelegramActionResult(False, str(exc), True, action)
 
-    _dispatch.resolve_waiting_approval(token, "granted" if grant else "denied")
+    _, note = _dispatch.resolve_waiting_approval_detail(
+        token, "granted" if grant else "denied", channel=channel
+    )
     verb = "granted" if grant else "denied"
-    return TelegramActionResult(True, f"Approval {verb}: {token}", True, action)
+    reply = f"Approval {verb}: {token}" + (f"\n{note}" if note else "")
+    return TelegramActionResult(True, reply, True, action)
 
 
 def _handle_status(agent_id: str) -> TelegramActionResult:
@@ -384,7 +391,9 @@ def handle_message(msg: InboundMessage) -> TelegramActionResult:
 
     m = _APPROVE_RE.match(text)
     if m:
-        return _handle_decision(agent_id, m.group(1) or "", grant=True)
+        return _handle_decision(
+            agent_id, m.group(1) or "", grant=True, task_wide=m.group(2) == "task"
+        )
     m = _DENY_RE.match(text)
     if m:
         return _handle_decision(agent_id, m.group(1) or "", grant=False)

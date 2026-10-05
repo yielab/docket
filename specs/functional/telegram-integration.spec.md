@@ -117,6 +117,11 @@ blocked policy verdict never default to granting or denying anything.
    creates or changes a binding inside the bot; after the CLI has bound the group, the normal
    poller acknowledges the retained setup message with a plain confirmation. No inline keyboards,
    no Markdown/HTML rich replies — a plain text reply is the entire UI surface.
+1a. `/approve <token> task` **MUST** behave as `/approve <token>` and also choose the
+   `approve_task` option (`approval_set_option` before the grant), so a parked pod approval
+   covers the same exact call for the rest of its task (operator-loop requirement 5a). Any other
+   trailing word is unparseable. The chat authorisation is unchanged and the module stays
+   inbound-only.
 2. **MUST** route `/approve`/`/deny` through the *existing* `core.approval.approval_grant`/
    `approval_deny` (`channel="telegram"`) followed by `core.dispatch.resolve_waiting_approval` —
    the identical sequence `cli/_approve.py`/`cli/_deny.py` already use. This module never
@@ -335,6 +340,7 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
 
 ### Unreleased
 
+- `/approve <token> task` grants a parked call for the rest of its task (Command grammar 1a).
 - `/answer <task> <option-id>` picks an option of a consult question (`optionId`).
 
 ### Version 2.3.0 (2026-09-29)

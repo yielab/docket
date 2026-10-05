@@ -326,7 +326,8 @@ elicitation result shape) to this process's stdin, while the run is live. The re
 8. **Option ids (P36-6, contract 1.1 answers).** An approval answer's `content.optionId` may be
    `approve_once` or `approve_task` (with `accept`) or `deny` (with `decline`; `content.reason`
    is the reason). `approve_task` grants and also pre-grants one identical call for the rest of the
-   run (security-gates In-turn requirement 8). `accept` with no `optionId` means `approve_once`.
+   run (security-gates In-turn requirement 8); the run is one agent turn, so "task" here means
+   that turn. In pod dispatch the same option lasts for the pod task (operator-loop 5a). `accept` with no `optionId` means `approve_once`.
    An unknown `optionId`, or one that contradicts the action, is ignored with one stderr line and
    the approval stays pending. Under contract 1.1 `approval_requested` carries `rationale` and
    `options`; under 1.0 they are omitted, so the 1.0 stream is unchanged.
@@ -433,6 +434,10 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Unreleased
+
+- Requirement 8 wording: `approve_task` under the harness lasts the single run; the pod-task meaning is operator-loop 5a.
 
 ### Version 1.5.0 (2026-10-04)
 

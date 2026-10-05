@@ -2748,6 +2748,12 @@ def cmd_policies(ctx: typer.Context) -> None:
 def cmd_approve(
     approval_id: str | None = typer.Argument(None),
     reason: str = typer.Option("", "--reason", help="Reason for the approval"),
+    option: str = typer.Option(
+        "",
+        "--option",
+        help="approve_once (default) or approve_task: also grant this exact call "
+        "for the rest of its pod task",
+    ),
 ) -> None:
     """Approve a pending tool-action.
 
@@ -2767,7 +2773,7 @@ def cmd_approve(
     audit-logged with the channel that answered. See also `docket deny`."""
     from docket.cli._approve import run_approve
 
-    raise typer.Exit(run_approve(approval_id, reason=reason))
+    raise typer.Exit(run_approve(approval_id, reason=reason, option=option))
 
 
 @app.command("deny")

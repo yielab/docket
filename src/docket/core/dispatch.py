@@ -31,6 +31,7 @@ from pydantic import ValidationError as _ValidationError
 import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
+from docket.core import audit as _audit
 from docket.core import blueprints as _blueprints
 from docket.core import consult as _consult
 from docket.core import conversations as _conv
@@ -1430,7 +1431,11 @@ def _compose_hop(
             env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
     env = _consult_budget_env(ctx, env)
     pregrants_raw = ctx.task.get("pregrants")
-    if isinstance(pregrants_raw, list) and pregrants_raw:
+    pregrants_raw = [
+        *(pregrants_raw if isinstance(pregrants_raw, list) else []),
+        *_mint_task_grant_pregrants(ctx, role),
+    ]
+    if pregrants_raw:
         # Every pre-grant this task's human has already resolved (ADR 0016
         # SS2) -- a human already consumed one carries no live effect
         # (`consume_pregrant` is single-use and atomic), so passing the whole
@@ -2769,6 +2774,7 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
             task["consultations"] = int(task.get("consultations") or 0) + 1
     else:
         task["completedAt"] = _now()
+        task.pop("taskGrants", None)
         if res.failure_kind:
             task["failureKind"] = res.failure_kind
         else:
@@ -3058,7 +3064,19 @@ def unblock_pod(project: str) -> int:
     return count
 
 
-def resolve_waiting_approval(token: str, decision: str) -> bool:
+TASK_GRANT_CAP = 20
+
+
+def resolve_waiting_approval(
+    token: str, decision: str, *, channel: str = "", actor: str = ""
+) -> bool:
+    """:func:`resolve_waiting_approval_detail`'s boolean."""
+    return resolve_waiting_approval_detail(token, decision, channel=channel, actor=actor)[0]
+
+
+def resolve_waiting_approval_detail(
+    token: str, decision: str, *, channel: str = "", actor: str = ""
+) -> tuple[bool, str]:
     """React to a just-applied approval decision by mutating the dispatch task it gated, if
     any -- never mutates the approval record itself, only reacts to a transition
     ``core/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
@@ -3076,25 +3094,30 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
     directly, so there is no task-level state to update here) and is unaffected: not parked
     and no ``taskId`` still no-ops, exactly as before.
 
-    Returns ``False`` as a harmless no-op for an unrelated/already-resolved token or a
-    mismatched task; ``True`` when updated."""
+    A parked grant whose record chose ``approve_task`` also appends the exact
+    ``(tool, argsDigest)`` to the task's ``taskGrants`` (at most ``TASK_GRANT_CAP``);
+    ``_compose_hop`` mints a single-use pre-grant from each for every later hop.
+
+    Returns ``(updated, note)``: ``False`` as a harmless no-op for an unrelated/already-resolved
+    token or a mismatched task; *note* is non-empty only when a task-wide grant was refused."""
     try:
         rec = _ap.approval_get(token)
     except _ap.ApprovalError:
-        return False
+        return False, ""
     context = rec.get("context")
     context = context if isinstance(context, dict) else {}
     parked = bool(context.get("parked"))
     task_id = str(context.get("taskId", ""))
     project = str(rec.get("project", ""))
     if not project or (not task_id and not parked):
-        return False
+        return False, ""
 
     updated = False
+    note = ""
     resolved_task_id = task_id
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal updated, resolved_task_id
+        nonlocal updated, resolved_task_id, note
         tasks_raw = doc.get("tasks")
         tasks = tasks_raw if isinstance(tasks_raw, list) else []
         for t in tasks:
@@ -3122,6 +3145,8 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
                         }
                     )
                     t["pregrants"] = pregrants
+                    if context.get("optionId") == "approve_task":
+                        note = _append_task_grant(t, token, context, channel, actor)
                 else:
                     t["gateOverridePipelineIndex"] = pending_index
             else:
@@ -3130,6 +3155,7 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
                 t["failureKind"] = "approval_denied"
                 t["completedAt"] = _now()
                 t["claimId"] = None
+                t.pop("taskGrants", None)
             updated = True
             return {"tasks": tasks}
         return None
@@ -3143,7 +3169,80 @@ def resolve_waiting_approval(token: str, decision: str) -> bool:
             "approval_resumed" if decision == "granted" else "approval_task_denied",
             _json.dumps({"task": resolved_task_id, "token": token}),
         )
-    return updated
+    return updated, note
+
+
+def _append_task_grant(
+    task: dict[str, Any], token: str, context: dict[str, Any], channel: str, actor: str
+) -> str:
+    """Record the ``approve_task`` grant on *task* unless it is already there or the task is
+    at ``TASK_GRANT_CAP``; returns a refusal note, ``""`` otherwise."""
+    tool = str(context.get("tool", ""))
+    digest = str(context.get("argsDigest", ""))
+    if not tool or not digest:
+        return ""
+    raw = task.get("taskGrants")
+    grants = [g for g in raw if isinstance(g, dict)] if isinstance(raw, list) else []
+    if any(g.get("tool") == tool and g.get("argsDigest") == digest for g in grants):
+        return ""
+    channel = channel if channel in _ap.APPROVAL_CHANNELS else "unknown"
+    if len(grants) >= TASK_GRANT_CAP:
+        _audit.audit_log(
+            "approval.task_grant_refused",
+            f"token={token} tool={tool} cap={TASK_GRANT_CAP} channel={channel}",
+        )
+        return (
+            f"This task already has {TASK_GRANT_CAP} task-wide grants; this call was approved "
+            "once only."
+        )
+    grants.append(
+        {
+            "tool": tool,
+            "argsDigest": digest,
+            "token": token,
+            "grantedAt": _now(),
+            "actor": actor,
+            "channel": channel,
+        }
+    )
+    task["taskGrants"] = grants
+    _audit.audit_log(
+        "approval.task_grant",
+        f"token={token} tool={tool} channel={channel} actor={actor or '?'}",
+    )
+    return ""
+
+
+def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, str]]:
+    """One fresh single-use pre-grant per task-wide grant, bound to this project and role."""
+    raw = ctx.task.get("taskGrants")
+    if not isinstance(raw, list) or not raw:
+        return []
+    deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(
+        hours=_pod_settings(ctx.project).approval_expiry_hours
+    )
+    minted: list[dict[str, str]] = []
+    for grant in raw[:TASK_GRANT_CAP]:
+        if not isinstance(grant, dict):
+            continue
+        tool = str(grant.get("tool", ""))
+        digest = str(grant.get("argsDigest", ""))
+        channel = str(grant.get("channel", ""))
+        try:
+            pre = _ap.create_pregrant(
+                ctx.project,
+                role,
+                tool,
+                digest,
+                task_id=ctx.task_id,
+                expires_at=deadline.isoformat(),
+                channel=channel if channel in _ap.APPROVAL_CHANNELS else "cli",
+                actor=str(grant.get("actor") or "approve_task"),
+            )
+        except _ap.ApprovalError:
+            continue
+        minted.append({"token": pre, "tool": tool, "argsDigest": digest})
+    return minted
 
 
 def dispatch_pod(
