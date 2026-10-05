@@ -423,7 +423,7 @@ inbound-only: no new outbound call site in `core/telegram.py`.
 
 ### W89-6 — the docker jail is proven for real: commit and `network none`
 
-**Status:** TODO · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Requirement 4 note on the docker image), `cli-interface.spec.md` (`doctor` check)
+**Status:** DONE `16f11fad` (real docker: commit with a git image, `network none` against a bridge listener; doctor probes the image) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `security-gates.spec.md` (Requirement 4 note on the docker image), `cli-interface.spec.md` (`doctor` check)
 
 **Today:** `config.SANDBOX_DOCKER_IMAGE` defaults to `alpine:3.20` (busybox: no `git`, no `python3`),
 so only bwrap is proven to commit, and docker `--network none` is proven by argv only
@@ -459,7 +459,7 @@ is refused at validation; `env` on a role step is refused; an export round-trips
 
 ### W89-8 — a parked consult's question travels with the denial; a harness consult names its run
 
-**Status:** TODO · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Consult), `harness-mode.spec.md` (consult `question.taskId`)
+**Status:** DONE `421d457b` + integrator `dfa77259` (the question is persisted 0600 under `consult-parked/`, not base64 in the token, which reached hop errors and the trace past redaction) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (Consult), `harness-mode.spec.md` (consult `question.taskId`)
 
 **Today:** `core/consult.py` keeps parked questions in the in-process `_PARKED` registry;
 `core/dispatch.py::_parked_consult_question` takes it while persisting the hop. When it is not
@@ -481,7 +481,7 @@ run token, not `agent:...`; pod dispatch still sees the task id.
 
 ### W89-9 — `approve_task` grants the same call for the rest of the task
 
-**Status:** TODO · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (approval pack options, pre-grants), `pod-dispatch.spec.md` (task record), `harness-mode.spec.md` (scope wording), `telegram-integration.spec.md` (`/approve`)
+**Status:** DONE `83202b77` + integrator `e29b9de1` (a task grant reaches only hops of the role that asked) and `06474729` (HTTP and MCP channels) · **Size:** M · **Wave:** 90 · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (approval pack options, pre-grants), `pod-dispatch.spec.md` (task record), `harness-mode.spec.md` (scope wording), `telegram-integration.spec.md` (`/approve`)
 
 **Today:** choosing `approve_task` takes effect only inside one turn's `ToolContext`; in pod
 dispatch `resolve_waiting_approval` ignores `context.optionId`, so the next identical call in a
