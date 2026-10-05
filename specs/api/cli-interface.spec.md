@@ -697,11 +697,12 @@ call docket dispatches — there is nothing to enable or disable — so what thi
 isolation-mode posture.
 **Syntax**: `docket gates [status | isolate <on|off> | classes]`
 **Actions**:
-- `status` (default): Report the gate as always-active, plus the current isolation mode
-- `isolate <on|off>`: Turn exec isolation on or off. `DocketDriver` reads this flag on every
-  turn (`edges/adapters/docket_runtime.py`, `get_isolation_enabled`): with it on, `bash` runs in
-  the docker/bwrap jail and a turn fails closed when no backend is available (see
-  security-gates.spec.md)
+- `status` (default): Report the gate as always-active, plus the isolation state
+  (`on (default)` with no recorded choice, `on`, or `off`)
+- `isolate <on|off>`: Record exec isolation on or off explicitly. Isolation is on by default.
+  `DocketDriver` reads it on every turn (`edges/adapters/docket_runtime.py`,
+  `get_isolation_enabled`): unless off, `bash` runs in the bwrap/docker jail and a turn fails
+  closed when no backend is available (see security-gates.spec.md)
 - `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
   secret-access); read-only, makes no config changes. All three are now fully enforced by
   `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
@@ -712,7 +713,7 @@ Any other subcommand (including `enable`/`disable`, which do not exist) prints
 `docket gates: unknown subcommand '<sub>'` plus the usage and exits 2; any flag after the
 subcommand is an unrecognized flag (exit 2). There is no approval-routing flag to report or set.
 **Output**: Gates status or update confirmation
-**Return**: 0 on success; 1 when `isolate on` finds no `docker` on PATH; 2 on an unknown
+**Return**: 0 on success; 1 when `isolate on` finds no usable sandbox backend; 2 on an unknown
 subcommand or flag
 
 #### docket audit
@@ -1261,6 +1262,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Unreleased
+
+- **P38-3.** `docket gates` isolation is on by default; `isolate on` probes `sandbox_availability`
+  (bwrap or docker) instead of `docker` on PATH; `docket doctor` reports the backend.
 
 ### Version 1.60.0 (2026-10-04)
 

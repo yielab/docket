@@ -4,8 +4,8 @@
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
-MCP, and Telegram producers, all answering identically; isolation is opt-in and fails closed when
-enabled without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
+MCP, and Telegram producers, all answering identically; isolation is on unless an operator records an
+explicit off, and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
 in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
 P26-5, a pod's own `approvalMode` setting). There is no approval-routing posture flag: it and
@@ -156,13 +156,19 @@ are owned here, not there.
    targeting private workspace state before deciding. The record **MUST NOT** store an unredacted
    secret and its existing 1,000-character action ceiling remains in force.
 
-### Workspace isolation (implemented, opt-in)
+### Workspace isolation (implemented, on by default)
 
 1. An agent **MUST NOT** read or write outside its own workspace and codebase path.
 2. Path traversal out of the workspace **MUST** be rejected (see input-validation.spec.md,
    `prevent_path_traversal`).
-3. Docker workspace isolation (`docket gates isolate on`) remains **opt-in** — it requires
-   Docker and is not part of the gates-default-on flip (which covers exec-approval only).
+3. Workspace isolation is **on by default**: a `DOCKET_HOME` with no recorded choice
+   (`FleetSecurity.isolation_mode == "unset"`) is isolated. `docket gates isolate off` records an
+   explicit, audited off and `isolate on` records on; `docket gates status` shows `on (default)`,
+   `on` or `off`. `isolate on` succeeds only when `sandbox_availability()` finds a backend.
+4. `sandbox_availability()` tries bwrap first, then docker; `DOCKET_SANDBOX_BACKEND` still forces
+   the choice. The jail mounts the git dir and common dir of every root that is inside a git
+   repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
+   `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
 
 ### Enablement (implemented; corrected for P19-7b)
 
@@ -846,10 +852,9 @@ either.
    - `ToolContext.sandbox` still defaults to `"off"` everywhere `ToolContext` is constructed
      directly (tests, and any future driver) — the change is narrower than "on by default
      everywhere": `DocketDriver.run_turn` is the one call site that can now pass `"auto"`, and only
-     does so when `core.fleet.get_isolation_enabled()` is true (`docket gates isolate on`). No
-     install ships with isolation on by default, so a fresh install's turns are unaffected byte for
-     byte — this requirement's guarantee is about what changes once an operator opts in, not a
-     change to the default.
+     does so unless `core.fleet.get_isolation_enabled()` is false, which only an explicit recorded
+     off (`docket gates isolate off`) makes it. A `DOCKET_HOME` with no recorded choice is
+     isolated.
    - **Fail closed, not fail open, when isolation is on and no backend is usable.**
      `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
      `ToolContext` (a second call, independent of the one `toolbox.run_bash` makes per `bash` call
@@ -861,11 +866,12 @@ either.
      `[sandbox: none (...)]`-tagged unsandboxed run (requirement 4's per-call reporting): a
      per-call marker only an operator reading raw tool output would ever see is not an acceptable
      substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
-     before any call gets the chance to degrade.
-   - `docket doctor`/`docket gates classes` do not surface the raw `sandbox_availability()` probe
-     (backend/docker/bwrap booleans) — `docket gates status`/`docket doctor` report the
-     operator-facing fact (isolation on/off, and that it is consulted), not the mechanism-level
-     probe result; the latter remains a `docket doctor` enhancement, not yet built.
+     before any call gets the chance to degrade. The refusal text names both fixes: install
+     bubblewrap (or start docker), or run `docket gates isolate off`.
+   - `docket doctor` probes `sandbox_availability()` and reports the backend a turn would use, or
+     that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
+     (`on (default)` | `on` | `off`) and `sandboxBackend`. `docket gates status` reports the
+     isolation state only (no host-dependent probe).
    - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
      what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
      above — a second, independent layer on top of calls that already cleared that gate, exactly
@@ -1069,15 +1075,15 @@ pre-grants", this section governs for `--answers stdin` only.
 docket gates status            # MUST report the gate as always-active, plus isolation posture
 docket gates <other>           # any other subcommand (enable/disable included): MUST print an
                                 #   unknown-subcommand error plus usage and exit 2
-docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker on
-                                #   PATH to turn on). Consumed on the live path: DocketDriver.run_turn
+docket gates isolate [on|off]  # MUST record on/off explicitly (on requires a usable backend per
+                                #   sandbox_availability(), bwrap or docker). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
                                 #   turn (audited isolation.refused) when no docker/bwrap backend is
                                 #   usable -- see Exec sandbox requirement 9
 docket gates classes           # MUST list the documented high-risk action classes, read-only
 docket init                    # the tool-call gate needs no install step (always active); there
                                 #   is no --gates/--no-gates option (Enablement requirement 2)
-docket doctor                  # MUST report gate status and isolation posture
+docket doctor                  # MUST report gate status, isolation posture and the backend
 ```
 
 ### Approval channels
@@ -1513,6 +1519,9 @@ $ git clone https://anywhere.example/repo.git
   results, auditing with `fetch.result_blocked` / `fetch.result_warn`, shared implementation
   with the MCP results through one screening function, `core.tools.screen_tool_result` (P38-2).
 - **File-tool containment — symlinks (Phase 38, D-55, ADR 0020 §6).** New "File-tool containment — symlinks" section: `glob_files` and `grep_files` skip symlinks that resolve outside the allowed roots during a walk; `write` and `edit` refuse a final-component symlink target that points outside; symlinks pointing inside the root continue to work. Closes the gap where a symlink met during a walk could reach outside the roots.
+- **P38-3.** Isolation is on by default (explicit off recorded by `gates isolate off`),
+  `sandbox_availability` prefers bwrap over docker, the jail mounts git dirs read-write so it can
+  commit, `doctor` reports the backend, and the refusal names both fixes (Workspace isolation 3-4).
 
 ### Version 0.31.0 (2026-10-04)
 

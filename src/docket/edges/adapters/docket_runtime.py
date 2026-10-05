@@ -254,11 +254,10 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]
         0.0,
         {},
         (
-            "isolation is enabled (docket gates isolate on) but no sandbox backend "
-            "(docker or bwrap) is available on this host -- refusing to run this turn "
-            "unsandboxed rather than silently downgrading it. Install/start docker or "
-            "bwrap, or turn isolation off ('docket gates isolate off') to run without a "
-            "jail."
+            "isolation is on (the default) but no sandbox backend (bubblewrap or docker) is "
+            "usable on this host -- refusing to run this turn unsandboxed rather than silently "
+            "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
+            "or record an explicit opt-out with 'docket gates isolate off'."
         ),
         failure_kind="daemon_error",
     )

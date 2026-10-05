@@ -391,6 +391,29 @@ class TestChecks:
         assert issues == 0
         assert "Tool-call gate: always active" in out
 
+    def test_security_gates_names_the_backend_a_turn_would_use(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _doctor._check_security_gates()
+        assert "on (default), backend bwrap" in capsys.readouterr().out
+        assert _doctor._doctor_json_security() == {
+            "toolCallGate": "always-on",
+            "isolation": "on (default)",
+            "sandboxBackend": "bwrap",
+        }
+
+    def test_security_gates_reports_the_refusal_when_no_backend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        _doctor._check_security_gates()
+        out = capsys.readouterr().out
+        assert "turns will be refused" in out
+        assert "bubblewrap" in out and "isolate off" in out
+
     def test_template_version_current(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

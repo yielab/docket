@@ -181,8 +181,8 @@ class SandboxAvailability:
 
 
 def sandbox_availability() -> SandboxAvailability:
-    """Probe both backends once; report the strongest usable one: docker
-    (daemon reachable) beats bwrap (smoke test passes) beats none.
+    """Probe both backends once; report the first usable one: bwrap (smoke test passes)
+    beats docker (daemon reachable) beats none.
     `DOCKET_SANDBOX_BACKEND` overrides this for tests or an operator."""
     docker_ok = docker_daemon_reachable()
     bwrap_ok = bwrap_available()
@@ -190,13 +190,52 @@ def sandbox_availability() -> SandboxAvailability:
     backend: SandboxBackend
     if override in ("docker", "bwrap", "none"):
         backend = override  # type: ignore[assignment]
-    elif docker_ok:
-        backend = "docker"
     elif bwrap_ok:
         backend = "bwrap"
+    elif docker_ok:
+        backend = "docker"
     else:
         backend = "none"
     return SandboxAvailability(backend=backend, docker=docker_ok, bwrap=bwrap_ok)
+
+
+def git_dirs(root: Path) -> list[Path]:
+    """The repository dirs of *root* when it is inside a repo or linked worktree, else [].
+    A commit writes both the per-worktree dir (index) and the common dir (objects, refs), so a
+    jail that can commit must mount them read-write."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--absolute-git-dir", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=_SANDBOX_PROBE_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    out: list[Path] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        path = Path(line)
+        if not path.is_absolute():
+            path = Path(root) / path
+        path = path.resolve()
+        if path not in out:
+            out.append(path)
+    return out
+
+
+def _mount_dirs(roots: tuple[Path, ...]) -> list[str]:
+    """Resolved roots followed by any repository dirs they need, de-duplicated, order kept."""
+    dirs: list[str] = []
+    for root in roots:
+        for path in [root.resolve(), *git_dirs(root)]:
+            if str(path) not in dirs:
+                dirs.append(str(path))
+    return dirs
 
 
 def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
@@ -220,8 +259,7 @@ def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
         "--dev",
         "/dev",
     ]
-    for root in roots:
-        resolved = str(root.resolve())
+    for resolved in _mount_dirs(roots):
         argv += ["--bind", resolved, resolved]
     argv += ["--", "/bin/sh", "-c", command]
     return argv
@@ -243,8 +281,7 @@ def docker_run_argv(
         "--user",
         f"{os.getuid()}:{os.getgid()}",
     ]
-    for root in roots:
-        resolved = str(root.resolve())
+    for resolved in _mount_dirs(roots):
         argv += ["-v", f"{resolved}:{resolved}"]
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():

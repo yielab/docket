@@ -368,9 +368,14 @@ class TestFleet:
     def test_isolation(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 
+        assert _fleet.get_isolation_enabled()
+        assert _fleet.get_isolation_state() == "on (default)"
+        _fleet.disable_sandbox_isolation()
         assert not _fleet.get_isolation_enabled()
+        assert _fleet.get_isolation_state() == "off"
         _fleet.set_sandbox_isolation(mode="non-main")
         assert _fleet.get_isolation_enabled()
+        assert _fleet.get_isolation_state() == "on"
 
     def test_meta_get_set(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet

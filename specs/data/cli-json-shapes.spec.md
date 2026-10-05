@@ -160,7 +160,8 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
     },
     "securityGates": {
       "toolCallGate": "always-on",
-      "isolation": "string (isolation mode, 'unset' when absent)"
+      "isolation": "string ('on (default)' | 'on' | 'off')",
+      "sandboxBackend": "string ('bwrap' | 'docker' | 'none')"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
   }

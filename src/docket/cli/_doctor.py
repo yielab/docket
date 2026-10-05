@@ -26,6 +26,7 @@ from docket.core import policy as _pol
 from docket.core import secrets as _secrets
 from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
+from docket.edges.adapters import system as _sys
 
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
@@ -417,11 +418,18 @@ def _check_security_gates() -> int:
 
     ui.success("  Tool-call gate: always active (policy engine + high-risk command classifier)")
 
-    iso = _fleet.get_isolation_mode()
-    if iso in ("non-main", "all"):
-        ui.success(f"  Workspace isolation: {iso} (consulted by the turn loop)")
+    state = _fleet.get_isolation_state()
+    if state == "off":
+        ui.dim("  Workspace isolation: off (explicit) -- docket gates isolate on")
     else:
-        ui.dim("  Workspace isolation: off — docket gates isolate on (needs Docker)")
+        backend = _sys.sandbox_availability().backend
+        if backend == "none":
+            ui.warn(
+                f"  Workspace isolation: {state}, but no backend is usable -- turns will be "
+                "refused. Install bubblewrap or start docker, or docket gates isolate off"
+            )
+        else:
+            ui.success(f"  Workspace isolation: {state}, backend {backend}")
 
     return 0
 
@@ -778,7 +786,8 @@ def _doctor_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
     return {
         "toolCallGate": "always-on",
-        "isolation": _fleet.get_isolation_mode(),
+        "isolation": _fleet.get_isolation_state(),
+        "sandboxBackend": _sys.sandbox_availability().backend,
     }
 
 

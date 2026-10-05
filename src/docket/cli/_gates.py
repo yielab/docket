@@ -10,12 +10,11 @@ coordinator wraps it in a Typer command.
 
 from __future__ import annotations
 
-import shutil
-
 from docket import ui
 from docket.core import fleet as _fleet
 from docket.core import security as _sec
 from docket.core.audit import audit_log
+from docket.edges.adapters import system as _sys
 
 
 def _usage() -> None:
@@ -45,17 +44,14 @@ def _status() -> int:
     ui.success("Policy engine + high-risk command classifier: always active")
     ui.console.print()
 
-    iso = _fleet.get_isolation_mode()
-    if iso in ("non-main", "all"):
-        ui.success(
-            f"Workspace isolation: {iso} (consulted by the turn loop — sandboxed via docker/bwrap "
-            "when a backend is available; a turn refuses to run rather than falling back "
-            "unsandboxed)"
-        )
-    elif iso == "off":
-        ui.dim("Workspace isolation: off")
+    state = _fleet.get_isolation_state()
+    if state == "off":
+        ui.dim("Workspace isolation: off (explicit) -- tools run on the host")
     else:
-        ui.dim("Workspace isolation: not configured — docket gates isolate on")
+        ui.success(
+            f"Workspace isolation: {state} (consulted by the turn loop; a turn refuses to run "
+            "rather than falling back unsandboxed; docket doctor names the backend)"
+        )
     return 0
 
 
@@ -87,7 +83,7 @@ def _classes() -> int:
 
 
 def _isolate(want: str) -> int:
-    ui.header("Workspace isolation (Docker sandbox)")
+    ui.header("Workspace isolation (bwrap or docker sandbox)")
     ui.console.print()
 
     if want == "off":
@@ -96,14 +92,19 @@ def _isolate(want: str) -> int:
         ui.success("Sandbox isolation disabled (mode=off) — tools run on the host")
         return 0
 
-    if not shutil.which("docker"):
-        ui.console.print("[red]✗[/red] Docker not found — isolation requires Docker")
-        ui.console.print("  Install Docker, then re-run: [green]docket gates isolate on[/green]")
+    avail = _sys.sandbox_availability()
+    if avail.backend == "none":
+        ui.console.print(
+            "[red]✗[/red] No sandbox backend usable — isolation needs bubblewrap or docker"
+        )
+        ui.console.print(
+            "  Install bubblewrap (bwrap) or start docker, then re-run: [green]docket gates isolate on[/green]"
+        )
         return 1
 
     _sec.apply_workspace_isolation()
     audit_log("gates.isolate", "on")
-    ui.success("Sandbox isolation on (mode=non-main)")
+    ui.success(f"Sandbox isolation on (mode=non-main, backend={avail.backend})")
     ui.dim(
         "  Consulted by the turn loop: DocketDriver probes docker/bwrap fresh on every turn and "
         "runs tools sandboxed (ToolContext.sandbox='auto') when one is usable. If neither is "

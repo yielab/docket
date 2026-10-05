@@ -56,6 +56,20 @@ def workspace(tmp_path: Path) -> Path:
     return root
 
 
+def _git(cwd: Path, *args: str) -> str:
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+    out = subprocess.run(
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
+    )
+    return out.stdout.strip()
+
+
 def _pgrep_count(marker: str) -> int:
     """Count host processes whose command line contains *marker* -- the orphan check for bwrap
     timeout tests. Not used for docker: its processes aren't visible to a host-level `pgrep`,
@@ -78,12 +92,18 @@ class TestSandboxAvailabilityDetection:
         assert availability.docker is True
         assert availability.bwrap is True
 
-    def test_docker_preferred_over_bwrap_when_both_usable(
+    def test_bwrap_preferred_over_docker_when_both_usable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
+        assert system.sandbox_availability().backend == "bwrap"
+
+    def test_docker_used_when_bwrap_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(system, "bwrap_available", lambda: False)
         assert system.sandbox_availability().backend == "docker"
 
     def test_bwrap_used_when_docker_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,6 +177,26 @@ class TestArgvShape:
         second.mkdir()
         argv = system.bwrap_argv((workspace, second), "echo hi")
         assert argv.count("--bind") == 2
+
+    def test_a_git_worktree_root_also_mounts_its_git_and_common_dirs(self, tmp_path: Path) -> None:
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+        gitdir = Path(_git(wt, "rev-parse", "--absolute-git-dir")).resolve()
+        common = (main / ".git").resolve()
+        assert gitdir != common
+        bwrap = system.bwrap_argv((wt,), "true")
+        binds = [bwrap[i + 1] for i, a in enumerate(bwrap) if a == "--bind"]
+        assert binds == [str(wt.resolve()), str(gitdir), str(common)]
+        docker = system.docker_run_argv("c", (wt,), "true", None)
+        mounts = [docker[i + 1] for i, a in enumerate(docker) if a == "-v"]
+        assert f"{gitdir}:{gitdir}" in mounts and f"{common}:{common}" in mounts
+
+    def test_a_root_outside_any_repo_gains_no_extra_mounts(self, workspace: Path) -> None:
+        argv = system.bwrap_argv((workspace,), "true")
+        assert argv.count("--bind") == 1
 
     def test_docker_run_mounts_each_root_and_runs_as_the_caller(self, workspace: Path) -> None:
         argv = system.docker_run_argv("my-container", (workspace,), "echo hi", None)
@@ -414,3 +454,37 @@ class TestRealDockerJail:
             timeout=10,
         )
         assert result.stdout.strip() == ""
+
+
+class TestJailedCommit:
+    @needs_bwrap
+    def test_a_jailed_command_commits_in_a_linked_worktree_but_cannot_write_elsewhere(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        main = tmp_path / "main"
+        wt = tmp_path / "wt"
+        _git(tmp_path, "init", "-q", str(main))
+        _git(main, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(main, "worktree", "add", "-q", str(wt))
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        ident = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+
+        outcome = toolbox.run_bash(
+            (wt,),
+            "echo x > f && git add f && git commit -q -m jailed",
+            env=ident,
+            sandbox="auto",
+        )
+        assert outcome.ok, outcome.error or outcome.content
+        assert "jailed" in _git(wt, "log", "--format=%s", "-1")
+
+        denied = toolbox.run_bash((wt,), f"echo x > {outside}/leak", sandbox="auto")
+        assert not denied.ok
+        assert not (outside / "leak").exists()

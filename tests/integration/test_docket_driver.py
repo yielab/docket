@@ -1623,12 +1623,11 @@ class TestIsolationWiring:
     `DocketDriver.run_turn` resolves it via `_resolve_sandbox`, so isolation ON is no longer
     silently indistinguishable from OFF on the live turn path."""
 
-    def test_isolation_off_leaves_ctx_sandbox_off(self) -> None:
-        # No fleet.json write at all -- the default, overwhelmingly common
-        # path (`get_isolation_enabled()` on a missing fleet.json resolves to
-        # False). This is the "off stays byte-identical" proof: the
-        # `ToolContext` a real turn builds today carries `sandbox="off"`.
+    def test_explicit_isolation_off_leaves_ctx_sandbox_off(self) -> None:
+        # The recorded opt-out (`docket gates isolate off`) is the only way a turn runs with
+        # `sandbox="off"`; the `ToolContext` a real turn builds then carries it unchanged.
         _write_meta("solo-agent")
+        _fleet.disable_sandbox_isolation()
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=_probe_registry
@@ -1639,6 +1638,41 @@ class TestIsolationWiring:
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert tool_msg.content == "sandbox=off"
+
+    def test_no_recorded_choice_is_isolated_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No fleet.json at all: the default is a jail, not a host run.
+        _write_meta("solo-agent")
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
+        )
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_probe_registry
+        )
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "sandbox=auto"
+
+    def test_default_with_no_backend_refuses_naming_both_fixes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_meta("solo-agent")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        driver = DocketDriver(backend_factory=_never_called)
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is False
+        assert "bubblewrap" in result.error
+        assert "docket gates isolate off" in result.error
+        assert [e for e in read_audit() if e["action"] == "isolation.refused"]
 
     def test_isolation_on_with_backend_available_sets_sandbox_auto(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1719,7 +1753,6 @@ class TestIsolationWiring:
         # hand-built `ToolContext`), then confirm a real turn observes
         # exactly the flag it wrote.
         _write_meta("solo-agent")
-        monkeypatch.setattr(_gates.shutil, "which", lambda name, *a, **k: "/usr/bin/docker")
         monkeypatch.setattr(
             _system,
             "sandbox_availability",

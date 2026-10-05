@@ -61,7 +61,7 @@ class FleetSecurity(BaseModel):
     model_config = _LENIENT
 
     isolation_enabled: bool = Field(False, alias="isolationEnabled")
-    # 'unset' | 'off' | a sandbox mode string (e.g. 'non-main').
+    # 'unset' (no recorded choice: isolated by default) | 'off' | a sandbox mode string.
     isolation_mode: str = Field("unset", alias="isolationMode")
 
 
@@ -234,7 +234,17 @@ def channel_names(cfg: FleetConfig | None = None) -> list[str]:
 
 
 def get_isolation_enabled(cfg: FleetConfig | None = None) -> bool:
-    return (cfg or load_fleet()).security.isolation_enabled
+    """True unless the operator recorded an explicit off; no recorded choice is isolated."""
+    mode = (cfg or load_fleet()).security.isolation_mode
+    return mode != "off"
+
+
+def get_isolation_state(cfg: FleetConfig | None = None) -> str:
+    """'on (default)' with no recorded choice, 'on' once recorded, 'off' once recorded off."""
+    mode = (cfg or load_fleet()).security.isolation_mode
+    if mode == "unset":
+        return "on (default)"
+    return "off" if mode == "off" else "on"
 
 
 def get_isolation_mode() -> str:

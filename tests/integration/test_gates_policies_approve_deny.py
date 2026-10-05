@@ -52,17 +52,8 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repoint_docket_home(monkeypatch, d)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
     # Never touch systemctl.
-    # Stub `docker` off PATH so isolation reports "needs Docker". Real
-    # binaries (git, python3, ...) pass.
-    real_which = shutil.which
-
-    def fake_which(name: str, *a: Any, **k: Any) -> str | None:
-        if name == "docker":
-            return None
-        return real_which(name, *a, **k)
-
-    monkeypatch.setattr(_gates.shutil, "which", fake_which)
-    monkeypatch.setattr(shutil, "which", fake_which)
+    # No real backend probing from these tests: default to "no backend usable".
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
     return d
 
 
@@ -125,7 +116,7 @@ class TestGatesStatus:
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Workspace isolation: not configured" in out
+        assert "Workspace isolation: on (default)" in out
 
     def test_status_always_reports_the_gate_active(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -163,18 +154,19 @@ class TestGatesClasses:
 
 
 class TestGatesIsolate:
-    def test_isolate_on_needs_docker(
+    def test_isolate_on_needs_a_backend(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         rc = _gates.run_gates("isolate", want="on")
         out = capsys.readouterr().out
         assert rc == 1
-        assert "Docker not found" in out
+        assert "No sandbox backend usable" in out
+        assert "bubblewrap" in out
 
-    def test_isolate_on_applies_when_docker_present(
+    def test_isolate_on_applies_when_a_backend_is_usable(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_gates.shutil, "which", lambda name, *a, **k: "/usr/bin/docker")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         rc = _gates.run_gates("isolate", want="on")
         out = capsys.readouterr().out
         assert rc == 0
@@ -187,7 +179,7 @@ class TestGatesIsolate:
     def test_isolate_off(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(_gates.shutil, "which", lambda name, *a, **k: "/usr/bin/docker")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         _gates.run_gates("isolate", want="on")
         capsys.readouterr()
         rc = _gates.run_gates("isolate", want="off")
@@ -196,6 +188,8 @@ class TestGatesIsolate:
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "off"
         assert "disabled (mode=off)" in out
+        _gates.run_gates("status")
+        assert "Workspace isolation: off (explicit)" in capsys.readouterr().out
 
     def test_unknown_subcommand_shows_usage(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
