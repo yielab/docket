@@ -310,7 +310,7 @@ the real home and fails the card. Packets: `.agents/handoffs/wave-85-worker-pack
 | --- | --- | --- |
 | 85 | P38-1 ∥ P38-2 ∥ P38-3 ∥ P38-6 ∥ P38-7 ∥ P38-8 | `core/trace.py::_REDACT_PATTERNS`, `trace-store.spec.md` → P38-1; `core/tools.py::_fetch_tool`, `core/mcp_tools.py::_screen_result` (extracted into one shared screening function) → P38-2; `core/fleet.py::FleetSecurity` and its isolation readers/writers, `core/security.py` isolation wrappers, `edges/adapters/docket_runtime.py::_resolve_sandbox`, `edges/adapters/system.py::sandbox_availability`, `bwrap_argv`, `docker_run_argv`, `cli/_gates.py`, `cli/_doctor.py::_check_security_gates` (and its JSON twin), goldens `gates_status`/`help` → P38-3; `edges/adapters/system.py::run_verify_cmd`, `edges/adapters/toolbox.py::run_bash` (the unjailed env only) plus one new env helper → P38-6; `serve.py::_run_sweeps`, `_sweep_loop`, one `config.py` constant → P38-7; `edges/adapters/toolbox.py::resolve_within`, `glob_files`, `grep_files`, `write_file`, `edit_file` → P38-8 |
 | 86 | P38-4 | `core/fleet.py` (a `network` flag), `cli/_gates.py` (`gates network`), `core/pod.py` settings (`network`), `system.py::bwrap_argv`/`docker_run_argv` (a network parameter), `docket_runtime.py` (the turn's network mode on `ToolContext`), `toolbox.py::run_bash` (passing it) |
-| 87 | P38-5 | `edges/adapters/mcp_client.py::_stdio_params` and its callers, `core/mcp_tools.py::load_mcp_tools` (a launch spec replacing the two `cwd` lambdas), `McpServerConfig.isolate`, `cli` `mcp servers add --no-isolate`, `docket_runtime.py::_load_mcp_tools` |
+| 87 | P38-5 ∥ P38-10 | `edges/adapters/mcp_client.py::_stdio_params` and its callers, `core/mcp_tools.py::load_mcp_tools` (a launch spec replacing the two `cwd` lambdas), `McpServerConfig.isolate`, `cli` `mcp servers add --no-isolate`, `docket_runtime.py::_load_mcp_tools` |
 | 88 | P38-9 (integrator) | seam tests, live run, docs, spec bumps, rollup, archive |
 
 `specs/functional/security-gates.spec.md` is shared by P38-2, P38-3, P38-6 and P38-8 at section
@@ -486,6 +486,30 @@ skipped. `write`/`edit` refuse a target whose final component is a symlink that 
 - A symlink that stays inside the root still works.
 - If the RED tests pass before any change, the card closes as verified with the tests kept, and
   says so.
+
+### P38-10 — a refused isolation or network posture is not retried
+
+**Status:** IN-PROGRESS (Wave 87 worker) · **Size:** S · **Wave:** 87 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (retry and `dispatch_refused`), `security-gates.spec.md` (the two refusals)
+
+**Trigger (measured in the 2026-10-05 live run):** with `gates network none` and `isolate off`, one
+dispatch of one task wrote three `network.refused` audit entries 2 s and 4 s apart. Both posture
+refusals (`_resolve_sandbox`, `_resolve_network` in `edges/adapters/docket_runtime.py`) return
+`failure_kind="daemon_error"`, which `core/dispatch.py::_RETRYABLE_FAILURE_KINDS` retries. The
+refusal is deterministic: a retry cannot succeed and only multiplies the audit trail.
+
+**Goal:** both refusals take the existing deterministic-refusal path: `DocketDriver.run_turn`
+raises `DispatchError` (as a stale `mcpServers` selection already does), dispatch settles the
+task `failed` with `failureKind: dispatch_refused` (one attempt, resumable with `--resume` once
+the operator fixes the setting), and the audit entry is written once. Harness mode keeps a coherent
+result for the same refusal (read `cli/_harness.py`'s `DispatchError` handling; do not change the
+published contract).
+
+**Acceptance:**
+- A pod dispatch under `network none` + `isolate off` makes exactly one turn attempt, writes one
+  `network.refused`, and leaves the task `failed` / `dispatch_refused`; the same with no backend
+  writes one `isolation.refused`.
+- After `gates isolate on`, `dispatch --resume` reclaims and runs the task.
+- The harness result for the same refusal is unchanged in shape (pin it with a test).
 
 ### P38-9 — integrate and close Phase 38
 
