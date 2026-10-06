@@ -430,10 +430,11 @@ class TestHungDestination:
         # The real bound: a hung destination costs at most one bounded flush wait on top of the
         # turn's own (near-zero, fake-backend) time -- never the multi-second span a real socket
         # timeout would otherwise impose. `no_exporter_duration` is dominated by filesystem I/O
-        # (session/meta/trace writes) common to both runs, not by anything export-related.
-        assert (
-            with_exporter_duration
-            < _cfg.EXPORT_FLUSH_TIMEOUT_S + max(no_exporter_duration, 0.05) * 2
+        # (session/meta/trace writes) common to both runs, not by anything export-related. The
+        # slack floor is 0.5s: a slow CI runner measured 0.32s against an older 0.1s slack, and
+        # 0.7s in all is still far below the sender's 5s transport timeout this guards against.
+        assert with_exporter_duration < _cfg.EXPORT_FLUSH_TIMEOUT_S + max(
+            no_exporter_duration * 2, 0.5
         )
 
         # The bounded flush above gave up long before the background sender's own transport
