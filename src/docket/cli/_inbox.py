@@ -67,8 +67,7 @@ def _render_task(view: TaskView) -> None:
 
 
 def _render_held_approval(token: str) -> None:
-    """The action a task's folded approval asks about, and how to answer it -- the standalone
-    approval line used to carry this before the inbox folded it into its task."""
+    """The action a task's folded approval asks about, and how to answer it."""
     try:
         record = _approval.approval_get(token)
     except _approval.ApprovalError:
