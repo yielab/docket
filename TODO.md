@@ -242,7 +242,7 @@
 > subcommand completions omit `set-verify`/`sync`; `cli-interface.spec.md` prose for
 > `runs prune`/`conversations prune`.
 >
-> `v0.2.0-beta.3` (2026-09-18) is the latest release; the next beta stays a maintainer action.
+> `v0.2.0-beta.4` (2026-10-06) is the latest release; the next beta stays a maintainer action.
 > A card becomes claimable only when the integrator opens a planned section below and confirms its
 > batching from function-level contention.
 >
