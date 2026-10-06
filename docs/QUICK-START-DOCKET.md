@@ -88,11 +88,14 @@ docket init --recipe secure-build
 ✓   myapp-lead  [lead]  local/local-model
 ✓   myapp-implementer  [implementer]  local/local-model
 Apply plan — myapp <- .../templates/recipes/secure-build
+A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle.
+  roles 1 · policies 1 · members 1 · pipeline secure-build · plugins 0 · skills 1 · settings 0
   [add] role: security-vetter
   [add] policy: require-approval-secret-writes.yaml
+  [add] skill: security-review
   [add] member: security-vetter
   [add] pipeline: pipeline.yaml
-✓ Applied 4 change(s) to pod 'myapp' from .../templates/recipes/secure-build.
+✓ Applied 5 change(s) to pod 'myapp' from .../templates/recipes/secure-build.
 
 ✓ Pod 'myapp' created with 3 members!
   - myapp-lead
@@ -108,7 +111,7 @@ pod for one repository. Two other ways to start:
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
-| a shipped or local recipe | `docket init --recipe secure-build` (`docket recipes list` shows all twelve, or a directory) | the recipe applied onto the default pod |
+| a shipped or local recipe | `docket init --recipe secure-build` (`docket recipes list` shows all eighteen, or a directory) | the recipe applied onto the default pod |
 
 Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
@@ -230,6 +233,11 @@ find .docket -type f | sort
 .docket/policies/require-approval-secret-writes.yaml
 .docket/roles/security-vetter.md
 .docket/roles/security-vetter.yaml
+.docket/.schemas/pipeline.schema.json
+.docket/.schemas/pod.schema.json
+.docket/.schemas/policy.schema.json
+.docket/.schemas/role.schema.json
+.docket/skills/security-review/SKILL.md
 ```
 
 Three edits most teams make first. Each is one file:
@@ -288,15 +296,16 @@ what was applied. A policy in the repo can only add restrictions: it accumulates
 global policies under most-restrictive-wins.
 
 **Add one thing later.** A recipe does not have to be a whole team. `docket recipes list` shows
-twelve shipped ones of three kinds: teams, policy packs that change no roster, and methodology
-pipelines. `docket pod myapp apply git-safety` adds two guardrail policies and nothing else;
+eighteen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
+that fail a task whose tests prove nothing, and a tool pack. `docket pod myapp apply git-safety` adds two guardrail policies and nothing else;
 `docket pod myapp apply tdd` swaps the route for a test-first one. Apply what you need, then
 `docket pod myapp export --force` writes the merged team back to `.docket/` for the commit.
 
 Pod-level knobs are one command each: `docket pod myapp config set budgetUsd 5`,
 `allowCommands pytest,uv`, `approvalMode refuse`, `maxReworkCycles 2`. Your own words for one
-agent go in its operator-owned `INSTRUCTIONS.md` (`docket edit myapp-implementer`), which docket
-never regenerates. The file-by-file reference, with what reads each file on the live path, is
+agent go in its operator-owned `INSTRUCTIONS.md`
+(`~/.docket/workspaces/projects/myapp-implementer/INSTRUCTIONS.md`), which docket never
+regenerates. The file-by-file reference, with what reads each file on the live path, is
 [Configuration](CONFIGURATION.md); the shipped recipes and every role are listed by
 `docket roles list` and in [Agent teams](AGENT-TEAMS.md).
 
@@ -345,7 +354,8 @@ and the policy that asked.
 
 `docket serve` also exposes a read API and `POST /dispatch/<project>` for CI. `--telegram`
 adds an inbound-only approval channel with five verbs (`/status`, `/delegate`, `/approve`,
-`/deny`, `/answer`); it is not a chat, and docket never messages first. Schedules, webhooks and the
+`/deny`, `/answer`); it is not a chat, and its poll loop only replies; a push to your phone comes from the `telegram`
+channel you enabled above. Schedules, webhooks and the
 run registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
 
 ---

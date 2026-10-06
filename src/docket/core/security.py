@@ -3,10 +3,10 @@
 ``dispatch_tool`` (``core/tools.py``) keeps ``pre_tool_call`` and
 ``classify_command`` below unconditionally live -- no "enable the gate"
 step, no daemon-side exec-approval mechanism (there is no daemon). Only
-docket's own approval-routing and workspace-isolation state is configurable
-(``core/fleet.py``'s ``FleetSecurity``, ``docket gates enable/disable``,
-``docket gates isolate``) -- not whether calls are gated, only where a
-prompt routes and whether execution is sandboxed. Also owns
+docket's own workspace-isolation and network state is configurable
+(``core/fleet.py``'s ``FleetSecurity``, ``docket gates isolate``,
+``docket gates network``) -- not whether calls are gated, only whether
+execution is sandboxed and what network the sandbox has. Also owns
 ``match_high_risk``, the argument-aware allow/ask/deny classifier used by
 the live gate and ``edges/adapters/system.py``'s ``run_verify_cmd``.
 """

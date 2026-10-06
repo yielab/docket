@@ -519,8 +519,8 @@ Two rules that override any of the above when they conflict:
   provider support for free), security surface (sandbox + isolation + gates are the most expensive
   things to get right), and time-to-value. "No direct OpenClaw CLI or JSON editing" is itself the
   sellable proposition.
-- **The boundary makes it reversible:** the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py))
-  is the single place OpenClaw's shape lives, so build-vs-wrap stays a *reversible* bet, not a
+- **The boundary makes it reversible:** the ACL (`edges/adapters/openclaw.py`, deleted by P19-7b when
+  D-19 took the runtime) was the single place OpenClaw's shape lives, so build-vs-wrap stays a *reversible* bet, not a
   load-bearing assumption smeared across the codebase. **Do not build a plugin/`AbstractBackend`
   framework** — there is exactly one runtime; one concrete ACL behind a thin boundary is enough.
 - **When standalone *would* become right (triggers, not dates):** OpenClaw stalls / repeatedly breaks

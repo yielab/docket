@@ -67,9 +67,11 @@ In a repository (`cd ~/code/myapp`), create the team from whatever you have:
 | a known shape in mind | `docket init --recipe secure-build` | the default team plus the recipe: here a read-only security vetter, its pipeline and a policy |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned |
 
-Twelve recipes ship: teams (`secure-build`, `research-review`, `ops-approval`), policy packs
-(`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`) and methodology pipelines (`tdd`,
-`spec-first`, `reflexion`, `dual-review`, `frugal`). `docket recipes list` shows what each brings;
+Eighteen recipes ship: teams (`secure-build`, `research-review`, `ops-approval`, `intake`), policy
+packs (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology pipelines (`tdd`,
+`spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
+that fail a task whose tests prove nothing (`anti-tautology`, `mutation`) and a tool pack
+(`code-intel`). `docket recipes list` shows what each brings;
 `docket pod myapp apply tdd` adds one to a team that already exists.
 
 Then give the team work and read what it did:
@@ -115,18 +117,19 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
 whole command line (`git status` passes, `git push origin production` asks), then approval over
-CLI, HTTP, MCP or Telegram, then budget. An unattended pod **parks** instead of blocking:
+CLI, HTTP, MCP or Telegram; the budget is checked before every hop. An unattended pod **parks** instead of blocking:
 `docket inbox` shows what needs you, and a `kind: channel` you enable (`desktop`, `ntfy`,
 `telegram`, a webhook) tells you; console alone tells nobody, and `docket doctor` says so.
 Neither ever decides.
 `docket audit verify` checks the hash chain over every verdict, approval, execution. `docket
 trace tail <p>` shows a run step-by-step; a `kind: exporter` sends it to OpenTelemetry or
-Langfuse, structure-only unless widened. `docket cost` reports measured tokens and a labelled
-estimate; `/status.json` and `/metrics` feed your own board — docket does not ship one.
+Langfuse, structure-only unless widened. `docket cost` reports measured tokens and never a
+dollar figure it did not record; the budget gate works on a labelled estimate. `/status.json` and `/metrics` feed your own board — docket does not ship one.
 
 *Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
-rotation). `fetch` is deny-by-default, but a jailed `bash` still reaches the network until
-`docket gates network none` cuts it; verify commands run unjailed.
+rotation). `fetch` is deny-by-default, but `bash` reaches the network: on the host by default, and inside
+the jail too once isolation is on, until `docket gates network none` cuts it; verify commands run
+unjailed.
 
 ## Make it yours
 
@@ -158,8 +161,8 @@ instructions: security-vetter.md           verify: true
 ```
 
 `cannot` removes the tool from the role's registry before the model sees it. `verify: true` runs
-the member's verify command and a nonzero exit fails the task. `verdict` gates on the first
-marker; `on` is a bounded route, never an expression.
+the member's verify command and a nonzero exit fails the task. `verdict` gates on one
+unambiguous marker at the start of a line; `on` is a bounded route, never an expression.
 
 Edit, then `docket validate` checks the directory against published schemas, `docket pipeline plan`
 shows the run before it happens, and `docket pod <p> apply` puts the change on the pod. Commit the
@@ -178,7 +181,7 @@ configuration, never a fork:
 
 | You want to change… | Layer | How |
 | --- | --- | --- |
-| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/recipes/<name>/`, used by name like the shipped twelve |
+| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/recipes/<name>/`, used by name like the shipped eighteen |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pipeline validate/plan`; run once with `--file` or bind it with `docket pod <p> config set pipeline <file>` |
 | What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket roles add`, globally or `--pod <p>`; a step may name its own `model` |
@@ -197,7 +200,7 @@ validated when written, and is refused loudly when broken. File by file:
 ## Also shipped
 
 - **MCP in both directions**: `docket mcp serve` exposes the control surface; `docket mcp servers`
-  wires external servers into the same chokepoint and jail, `--kind read` for read-only roles.
+  wires external servers into the same chokepoint (and, with isolation on, the same jail), `--kind read` for read-only roles.
 - **Typed handoffs and context budgets** that follow the resolved model's window, with any
   truncation marked and traced rather than silent; session compaction on the live path.
 - **Opt-in sandboxing** (`docket gates isolate on`: bwrap on Linux, else Docker; once on, a turn
@@ -227,7 +230,7 @@ the rest are in [Adoption evidence](docs/ADOPTION-EVIDENCE.md).
   and Google documents its Gemini layer as beta; the built-in documents say so in their preset notes.
 - **MCP tools are writes unless the operator says otherwise:** nothing can prove a remote tool is
   read-only, so a server left at the default reaches no read-only role. `--kind read` is an
-  operator assertion. Stdio servers re-spawn per turn, jailed unless declared `isolate: false`.
+  operator assertion. Stdio servers re-spawn per turn, jailed while isolation is on unless declared `isolate: false`.
 - **Telegram is not a chat:** five verbs, no free-text conversation, and a notification never
   carries a control that decides.
 - **Metrics counters are not monotonic:** they count what current storage holds, so audit
@@ -246,7 +249,7 @@ before relying on a model endpoint or MCP server.
 | Install and first governed turn | [Quick start](docs/QUICK-START-DOCKET.md) |
 | Roles, pod shapes, handoffs, gates | [Agent teams](docs/AGENT-TEAMS.md) |
 | Every installed file and setting, skills, the team in the repo | [Configuration](docs/CONFIGURATION.md) |
-| The twelve shipped recipes and what each brings | [Recipe library](docs/recipes.md) |
+| The eighteen shipped recipes and what each brings | [Recipe library](docs/recipes.md) |
 | Every command and flag | [Command reference](docs/commands.md) |
 | Provider endpoints and coding harnesses | [Models and gateways](docs/MODEL-GATEWAYS.md) |
 | Security posture and deployment limits | [Security model](SECURITY.md) |

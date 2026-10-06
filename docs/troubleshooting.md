@@ -15,7 +15,7 @@ answer with a task id or a confirmation, never the pipeline's output. Use `docke
 queue`/`docket trace tail <p>` to see results. A *push* notification into the chat is a separate,
 opt-in mechanism — the `telegram` channel (`docket channels enable telegram --set
 actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
-never replaces the four verbs above.
+never replaces the five verbs above.
 
 #### 1. **Invalid Model Name**
 
@@ -117,7 +117,7 @@ docket maintain <agent-id> clean
 # Level 2: Clear memory + MEMORY.md + HEARTBEAT.md (also distills first)
 docket maintain <agent-id> reset
 
-# Level 3: Deep reset - regenerate all from metadata
+# Level 3: regenerate SOUL/AGENTS/TOOLS from metadata (not for pod members: docket pod <p> sync)
 docket maintain <agent-id> rebuild
 ```
 
@@ -364,8 +364,9 @@ To retry a single blocked task without touching the pod-wide pause, use `docket 
 `docket pod <p> dispatch` (an unattended caller resolves an unset `approvalMode` to `park`), an
 in-turn `ask` no longer blocks the hop — it records the exact call and parks the task
 immediately, so it never shows up as a long-running turn. Nothing pushes this at you unless a
-notification channel is enabled; `console` is on by default, but that only helps if you're
-looking at the terminal that ran the dispatch.
+delivering notification channel is enabled. `console` is on by default but sends nothing, so with
+nothing else enabled a parked task waits unseen until `docket inbox`; `docket doctor` warns about
+exactly this.
 
 **Fix:**
 
@@ -374,7 +375,7 @@ docket inbox                              # everything across every pod that nee
 docket approve <token>                    # grant it -- the exact same hop re-runs, once
 docket deny <token>                       # deny it -- the task fails with approval_denied
 docket pod <p> explain interruptions      # see what could park BEFORE you delegate the next task
-docket channels enable console            # (already on) -- or webhook/ntfy/telegram/desktop/email
+docket channels enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 
 Left unanswered, a parked approval expires after the pod's `approvalExpiryHours` (24h by
@@ -456,7 +457,7 @@ docket init --portfolio
 Inspect the pod and run diagnostics to find and fix the gap:
 ```bash
 docket pod <p>     # list the pod's members
-docket doctor      # system-wide diagnostics + auto-fix
+docket doctor      # system-wide diagnostics (add --fix to repair drift)
 ```
 
 ### Implementer touching the wrong project?
@@ -473,8 +474,8 @@ There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context
 and `project` (any other action exits 2). There is no separate semantic memory
 index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
 its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
-memory contract is: `WORKFLOW_AUTO.md` (the runtime-forced startup file, re-read after every
-context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
+memory contract is: `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand; a docket
+turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
 `memory/YYYY-MM-DD.md` logs.
 
 ### Agents still using large context?
@@ -493,11 +494,10 @@ context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the d
    docket doctor
    ```
 
-### Agent stuck re-reading/re-creating its startup file, or ignoring HEARTBEAT.md on resume?
+### Startup contract stale, or HEARTBEAT.md wrong on resume?
 
-`docket doctor` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the runtime's post-compaction
-contract file — a weak model loops offering to (re)create this instead of working when it's
-missing or carries an old contract-version marker):
+`docket doctor` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the contract-version marker is
+checked; a docket turn does not replay the file, but a human or tool reading the workspace does):
 
 ```bash
 docket doctor
@@ -505,12 +505,15 @@ docket doctor
 # ✓ myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /home/user/code/myproject)
 ```
 
-If HEARTBEAT.md itself looks wrong (not just the startup file), regenerate everything from
-metadata instead:
+If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; memory is distilled
+into MEMORY.md first:
 
 ```bash
-docket maintain <agent-id> rebuild
+docket maintain <agent-id> reset
 ```
+
+For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod <p> sync`;
+`maintain rebuild` regenerates them only for an agent outside a pod and refuses pod members.
 
 ## Harness Mode (`docket harness run`)
 
@@ -590,6 +593,7 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 
 5. **Emergency reset:**
    ```bash
-   # If all else fails
+   # If all else fails: re-render a pod's member files, or rebuild an agent outside a pod
+   docket pod <project> sync
    docket maintain <agent-id> rebuild
    ```

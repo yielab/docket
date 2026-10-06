@@ -73,18 +73,18 @@ line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status`
 while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
 usability, but that no longer means their dangerous invocations are unexamined.
 
-Workspace isolation is a separate layer, **on by default**, that additionally confines `bash`
-to a per-agent `bwrap` (first choice) or Docker sandbox; stdio MCP servers start in the same jail
-unless declared `--no-isolate`. It **fails closed**: with isolation on and no usable backend, the
-turn is refused before any model call or tool execution and the refusal is audit-logged (naming
-`docket gates isolate off` and installing bubblewrap as the two fixes), rather than silently
-running unsandboxed. `docket gates isolate off` is the explicit, audited opt-out.
+Workspace isolation is a separate layer, **opt-in** (off by default): `docket gates isolate on`
+additionally confines `bash` to a per-agent `bwrap` (first choice) or Docker sandbox; stdio MCP
+servers start in the same jail unless declared `--no-isolate`. Turning it on needs bubblewrap on
+Linux or a running Docker, and the command exits 1 if neither is usable. Once on, it **fails
+closed**: with no usable backend when a turn starts, the turn is refused before any model call or
+tool execution and the refusal is audit-logged (`isolation.refused`, naming the fixes: install
+bubblewrap or start docker, or `docket gates isolate off`), rather than silently running
+unsandboxed. Both `isolate on` and `isolate off` are audited.
 
-`docket init --no-gates` and `docket gates enable`/`docket gates disable` only record an
-approval-routing posture flag that `docket doctor` and `docket gates status` report; nothing on the
-live turn path reads it, so none of them turns the gate off. See
-[`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
-(Status: Implemented, on by default for new installs).
+There is no command or flag that turns the tool-call gate off, and no approval-routing posture
+flag. See [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
+(Status: Implemented; the gate is always on, workspace isolation is opt-in).
 
 ## `docket mcp serve`: the control plane over MCP
 
@@ -117,8 +117,8 @@ status, including what is configured/gated versus what is wired into a live turn
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
 > with exec access on an exposed host is a serious liability. The tool-call gate is always on, but also
-> **keep workspace isolation on** (the default; it fails closed if no backend is
-> available), consider `docket gates network none`, use the `keyring` secret
+> **turn workspace isolation on** (`docket gates isolate on`; it is off by default, needs
+> bwrap or a running Docker, and fails closed once on), consider `docket gates network none`, use the `keyring` secret
 > backend, and never run with broad ambient credentials. Instruction-level constraints alone
 > are *not* sufficient here — and remember network egress is open unless you opt in to
 > `docket gates network none` (see below): otherwise `bash` can still reach the network through
@@ -148,8 +148,8 @@ docket is honest about its limits. It does **not**:
 - sandbox or contain the model endpoint itself, or a remote MCP server's own process — if a
   model or an MCP server is compromised, docket's gates constrain what it can ask docket's
   tools to do, but do not contain the endpoint/server itself;
-- stop a dangerous call a human approves — a granted `ask` verdict runs; and `--no-gates` or
-  `docket gates disable` never turn the gate off, they only record a posture flag;
+- stop a dangerous call a human approves — a granted `ask` verdict runs; nothing turns the gate
+  off;
 - audit or vet the code your agents write or the third-party MCP servers they invoke — a
   gated MCP tool call still runs whatever that server implements;
 - encrypt data at rest beyond the `0600`/keyring options above, or protect against an attacker

@@ -1,8 +1,9 @@
-# DOCKET Architecture
+# docket architecture
 
-**DOCKET = Roles, Autonomy, Context isolation, Knowledge**
+**docket — agent teams as configuration. Your rules, in YAML.**
 
-Complete technical guide to docket's DOCKET architecture implementation.
+The complete technical guide to how docket runs a repository's team of agents: roles, dispatch,
+memory, security and cost.
 
 > [!WARNING]
 > **Beta / early-stage software.** The architecture below is implemented and automated-test-backed,
@@ -31,13 +32,13 @@ Complete technical guide to docket's DOCKET architecture implementation.
 
 ## Overview
 
-DOCKET is an architectural pattern for autonomous agent teams that achieves:
+docket's design for a team of autonomous agents aims at:
 - **Lower token usage** through per-pod context isolation
 - **Clean role separation** — Lead orchestrates, Implementer codes, Reviewer/Tester gate
 - **Layered, convention-based security** through a read-only reviewer veto + checklist
 - **Objective validation** through behavior-only testing
 
-### The Problem (Before DOCKET)
+### The Problem (Before docket)
 
 ```
 Engineer: "Fix the login bug"
@@ -51,7 +52,7 @@ No isolation → projects contaminate each other's context
 Total: ~220K tokens in one bloated window
 ```
 
-### The Solution (After DOCKET)
+### The Solution (After docket)
 
 ```
 Engineer: "Fix the login bug"   (to the <project> pod's Lead)
@@ -408,10 +409,11 @@ Tester ONLY reads:
 
 ### Token Usage
 
-The lever DOCKET actually controls is **per-pod context isolation** (see the
+The lever docket actually controls is **per-pod context isolation** (see the
 [Before/After](#the-problem-before-docket) diagram above) — token reduction is what isolation
-controls and what you can measure, not a fixed percentage. Read your measured token counts (and
-the labelled dollar estimate alongside them) with `docket cost`; see
+controls and what you can measure, not a fixed percentage. Read your measured token counts with
+`docket cost` (it records no dollar spend; the budget gate uses a labelled token-based estimate,
+and `docket models` shows comparative pricing); see
 [Cost Optimization](#cost-optimization) below for the model-selection half of the story.
 
 ### Response Time
@@ -452,8 +454,8 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Holds the per-pod budget cap that gates every dispatch hop
   (`docket profile <project>-lead --budget N`)
 
-**Tools:** `read`, `glob`, `grep`, `fetch` — `write`/`edit`/`bash` are structurally absent from
-its tool registry (`core/archetypes.py`'s `lead` archetype declares `denied_tools=("write",
+**Tools:** `read`, `glob`, `grep`, `fetch`, `skill`, `consult` — `write`/`edit`/`bash` are
+structurally absent from its tool registry (`core/archetypes.py`'s `lead` archetype declares `denied_tools=("write",
 "edit", "bash")`, applied via `ToolRegistry.without()` every turn). This is a genuine tool-registry
 removal, not an instruction the Lead is merely told to follow: a call to `write`/`edit`/`bash`
 comes back as a tool-not-found denial before it ever reaches the gate. Dispatch to pod workers
@@ -479,7 +481,8 @@ call the Lead makes.
 - Its hop's reply is captured directly by dispatch as a typed `HandoffArtifact` — no completion
   file to write or poll for (see [Dispatch Internals](#dispatch-internals))
 
-**Tools:** the full built-in set — `read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`. The
+**Tools:** the full built-in set — `read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`,
+`skill`, `consult`. The
 `implementer` archetype declares no `denied_tools`: "full-repo" means no built-in tool is off
 limits. `bash` still passes through the same argument-aware high-risk classifier and approval
 gate as every other tool call (see [Security Model](#security-model)) — an unrestricted tool
@@ -510,8 +513,8 @@ registry is not the same thing as an unrestricted gate.
 5. ✓ No dangerous operations
 6. ✓ Test coverage
 
-**Tools:** `read`, `glob`, `grep`, `fetch` — `write`/`edit`/`bash` are structurally absent
-(`denied_tools=("write", "edit", "bash")`), so "read-only" is a genuine registry restriction, not
+**Tools:** `read`, `glob`, `grep`, `fetch`, `skill`, `consult` — `write`/`edit`/`bash` are
+structurally absent (`denied_tools=("write", "edit", "bash")`), so "read-only" is a genuine registry restriction, not
 a SOUL.md-only instruction: a Reviewer that tries to call `edit` gets a tool-not-found denial.
 
 **Cannot (structurally):**
@@ -531,7 +534,8 @@ a SOUL.md-only instruction: a Reviewer that tries to call `edit` gets a tool-not
 - Binary verdict: PASS or FAIL
 - Does NOT read code (stays objective)
 
-**Tools:** `read`, `glob`, `grep`, `bash`, `fetch` — `write`/`edit` are structurally absent
+**Tools:** `read`, `glob`, `grep`, `bash`, `fetch`, `skill`, `consult` — `write`/`edit` are
+structurally absent
 (`denied_tools=("write", "edit")`); `bash` stays so the Tester can actually run the suite it
 reports PASS/FAIL on. Staying objective by not reading the implementation is a **convention**
 the Tester is instructed to follow (its prompt points it at reproduction steps, not the diff) —
@@ -547,9 +551,10 @@ acceptance-criteria files.
 
 **MCP tools.** Tools from configured external MCP servers (`docket mcp servers`) reach a live turn
 through the same chokepoint, namespaced `mcp__<server>__<tool>`. Denials apply by capability, not
-by name, and every MCP tool is registered as write-capable because nothing can prove a remote tool
-is read-only. So a role that denies `write` (Lead, Reviewer, Tester) gets **zero** MCP tools, not
-a narrowed subset; the Implementer gets all of them.
+by name. Every MCP server is write-capable unless the operator declares it `--kind read` (an
+operator assertion, not something docket verifies). A role that denies `write` (Lead, Reviewer,
+Tester) gets no tools from a server left at the default and all the tools of a `--kind read`
+server; the Implementer gets both.
 
 ## Org Specialists
 
@@ -593,7 +598,8 @@ structural tool removal the way a pod role's is.
 - Maintains patterns/ library
 - Cross-project memory search
 
-**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`) — like
+**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`,
+`skill`, `consult`) — like
 every org specialist, it has no role archetype narrowing its registry; scope is prompt-level
 (SOUL.md), not tool-enforced. There is no separate semantic memory-search tool — docket's own
 turn loop has none of its own — so cross-project pattern extraction works by reading and
@@ -618,7 +624,8 @@ turn loop has none of its own — so cross-project pattern extraction works by r
 - Compliance audits (GDPR, HIPAA)
 - Proactive monitoring
 
-**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`) — no
+**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`,
+`skill`, `consult`) — no
 role archetype narrows it; the constraints below are prompt-level (SOUL.md), backstopped by the
 same tool-call gate and high-risk classifier every agent's calls pass through.
 
@@ -665,7 +672,7 @@ reporting in words — never project source.
 
 ### Problem: Large Shared Context
 
-**Before DOCKET:**
+**Before docket:**
 ```
 A shared agent reads:
 - Full cross-project conversation history: 100K tokens
@@ -676,10 +683,10 @@ Total: 150K+ tokens per turn, growing across projects
 
 ### Solution: Isolated pods + the workspace contract
 
-**After DOCKET:**
+**After docket:**
 ```
 The pod's Lead reads:
-- this workspace's WORKFLOW_AUTO.md, MEMORY.md, and HEARTBEAT.md
+- its composed prompt: SOUL.md, its startup contract, and bounded MEMORY.md and HEARTBEAT.md
 The Implementer reads:
 - only the workspace files it touches
 ────────────────────────────────────
@@ -814,8 +821,9 @@ roles at once with a provider preset (`docket models preset openai`). Pins set v
 `docket profile <id> <model>` are never touched by policy changes.
 
 **Result:** routine orchestration and review runs on the cheap model class with
-project-scoped context — fewer tokens at a lower per-token price. (Exact dollar spend depends
-on your models and current pricing — read it with `docket cost`.)
+project-scoped context — fewer tokens at a lower per-token price. (docket records measured
+tokens, not dollar spend; dollar figures are estimates — `docket models` for comparative pricing,
+the budget gate for the per-pod estimate.)
 
 ### Context Isolation Rules
 
@@ -887,7 +895,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
   (`docket pod <p> apply|export`, `docket init` applies it), with drift reported by
   `config explain`
-- [x] Recipes, project instructions and skills: twelve shipped recipes (`docket recipes`), the
+- [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
 - [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
   (`docket exporters`), five destinations built in, all off
@@ -899,7 +907,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
   step for a question rather than a permission (`waiting_input`), one derived inbox
   (`docket inbox`) every surface renders from, `kind: channel` notifications delivered as
   CloudEvents (`docket channels`, `docket notify`, seven dialects, only `console` on by
-  default), and answer surfaces (`docket chat`, `docket pod <p> answer`, HTTP, MCP) that all
+  default, and it sends nothing, so `docket doctor` warns until a delivering one is on), and answer surfaces (`docket chat`, `docket pod <p> answer`, HTTP, MCP) that all
   resolve through one `answer_task` function
 
 ### Documentation ✅
@@ -911,7 +919,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Recipe library (generated from the shipped recipes)
 - [x] Models, gateways and harnesses
 - [x] Security Model (Simple)
-- [x] DOCKET Architecture (this doc)
+- [x] docket architecture (this doc)
 - [x] Commands Reference
 - [x] Troubleshooting guide
 
@@ -978,7 +986,8 @@ enumerated and each task sorted into `needsYou` (any `waiting_*` status, plus `b
 `failed`, `doneSince` or `running`, with a pending approval added to `needsYou` unless its task
 already carries it. A separate `kind: channel` document (`docket channels`) is what turns a
 transition in that inbox into an actual push: seven dialects ship (`console`, `desktop`,
-`webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default, each
+`webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default (and it sends nothing: `docket doctor` warns until a
+delivering channel is on), each
 declaring what it may do (`notify`/`converse`/`decide`, capped per dialect — only `console` and
 `telegram` may ever `decide`) and how much of an event it carries (`minimal` by default, widened
 the same confirmed, audited way `docket exporters privacy` widens a trace). `docket notify flush`
@@ -1034,8 +1043,9 @@ step doesn't declare one — its role archetype's `gateContract`:
   `verifyCmd` today (`docket pod <project> add --verify "<cmd>"` / `set-verify`), resolved
   against the member's real working tree (worktree → shared codebase → the member's own
   workspace dir).
-- **`verdict`** — match the first non-blank line of a hop's output against a configured regex
-  set; a match in the gate's `passValues` advances the pipeline. This generalizes the Reviewer's
+- **`verdict`** — match the configured regex at the start of every non-blank line of a hop's
+  output; exactly one distinct marker value is the verdict (zero or conflicting markers are
+  unparseable); a match in the gate's `passValues` advances the pipeline. This generalizes the Reviewer's
   APPROVE/REQUEST-CHANGES and the Tester's PASS/FAIL to an arbitrary marker vocabulary for any
   archetype (the `critic` starter's APPROVE/REJECT, for instance). A verdict gate can carry a
   bounded `rework` edge — a REQUEST-CHANGES re-runs a target step (by default, back to the
@@ -1052,8 +1062,8 @@ thread pool and joins before the pipeline advances past that position.
 
 ### Retries and timeouts
 
-A hop whose agent turn fails with a *retryable* failure kind (`timeout` or `daemon_error` — a
-daemon hiccup, not a real answer; `nonzero_exit`/`invalid_output` are not retried) is retried in
+A hop whose agent turn fails with a *retryable* failure kind (`timeout` or `daemon_error` — the
+model endpoint erroring transiently, a legacy name since there is no daemon; `nonzero_exit`/`invalid_output` are not retried) is retried in
 place, up to a per-role retry budget, with linear backoff; the attempt count is persisted per
 hop. Every retry refreshes the task's claim timestamp, so a legitimately long retry loop can't be
 mistaken for a stale claim by a different concurrent dispatcher. The agent-turn timeout and the
@@ -1080,7 +1090,7 @@ If an artifact doesn't fit, fields are shed one at a time in a declared order �
 `diff_ref`, then `files_changed`, then `verdict` — before `summary` itself is ever touched; only
 once every droppable field is gone and it still doesn't fit is `summary` truncated, always with a
 visible `[... summary truncated: N bytes omitted ...]` marker, never silently. Token counts are an
-honest `chars ÷ 4` approximation — there is no tokenizer dependency, and this number is never used
+honest UTF-8-bytes ÷ `CONTEXT_BYTES_PER_TOKEN` (default 4) approximation — there is no tokenizer dependency, and this number is never used
 to bill against, only to bound a prompt deterministically.
 
 ### The run registry and cancellation
@@ -1120,13 +1130,11 @@ shell command allowlist.
 
 ## FAQ
 
-### Q: What does DOCKET stand for?
+### Q: Is docket an acronym?
 
-**A:** Roles, Autonomy, Context isolation, Knowledge
-- **R**oles: Clean split — Lead orchestrates, Implementer codes, Reviewer/Tester gate
-- **A**utonomy: Agents work independently with clear responsibilities
-- **C**ontext: Per-pod isolation keeps each project's context scoped to its own pod
-- **K**nowledge: Memory management enables fast access
+**A:** No, it is a name. The design rests on four ideas: **roles** (the Lead orchestrates, the
+Implementer codes, a Reviewer or Tester gates), **autonomy** within clear responsibilities,
+**context isolation** per pod, and durable **knowledge** in each workspace's memory files.
 
 ### Q: Is this the same as the original DOCKET.md proposal?
 
@@ -1158,8 +1166,8 @@ refreshed by
 
 **A:** See [Cost Optimization](#cost-optimization) above and
 [Cost reporting and its limits](../README.md#the-gate-and-the-record) — the short version
-is: token reduction from isolation is real and measured, but docket reports **measured tokens
-plus a clearly labelled dollar estimate**, never a savings promise.
+is: token reduction from isolation is real and measured, but docket reports **measured tokens;
+dollar figures are labelled estimates, never recorded spend**, and never a savings promise.
 
 ---
 
@@ -1197,7 +1205,7 @@ Inspect the boundary or copy the lazy constructors from
 2. **Add another project pod:** `docket init <project> [path]`
 3. **Inspect context:** `docket context <project>-lead show` (quick per-agent view)
 4. **Test workflow:** Assign bug fix, observe token usage
-5. **Monitor spend:** `docket cost` (measured tokens + a labelled estimate)
+5. **Monitor spend:** `docket cost` (measured tokens; no recorded dollar spend)
 
 ---
 

@@ -43,10 +43,10 @@ def _load_click_group():
 # of its own heading, matching the previous hand-written structure.
 GROUPS: list[tuple[str, list[str]]] = [
     ("Lifecycle Commands", ["list", "init", "add", "status", "info", "delete", "maintain"]),
-    ("Session & Context Management", ["scope", "context", "persona"]),
+    ("Session and Context Management", ["scope", "context", "persona"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     ("Telegram Integration", ["wire", "unwire", "conversations"]),
-    ("Keys & Authentication", ["keys"]),
+    ("Keys and Authentication", ["keys"]),
     (
         "Utility Commands",
         [
@@ -65,7 +65,7 @@ GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
     (
-        "Security & Audit",
+        "Security and Audit",
         ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox", "chat"],
     ),
     (
@@ -378,7 +378,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SCHEDULE_FILE",),
-        "The persisted `docket schedule` registry",
+        "The persisted pod schedules (`docket pod <p> config set schedule`)",
         "`$DOCKET_HOME/docket-schedules.json`",
     ),
     (
@@ -831,7 +831,7 @@ def render(check_only: bool = False) -> str:
         "Global Options",
         "Exit Codes",
         "Environment Variables",
-        "Tips & Tricks",
+        "Tips and Tricks",
         "Next Steps",
     ):
         lines.append(f"- [{heading}](#{_slug(heading)})")
@@ -857,7 +857,7 @@ def render(check_only: bool = False) -> str:
     lines.append(_render_env_vars_table())
     lines.append("\n---\n")
 
-    lines.append("## Tips & Tricks\n")
+    lines.append("## Tips and Tricks\n")
     lines.append(_TIPS)
     lines.append("\n---\n")
 

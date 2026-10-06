@@ -247,15 +247,15 @@ exact session before anything is sent
 ### Step 9 — Check the cost
 
 ```bash
-docket pod myapp queue     # per-task status + estimated cost, vs the cap
-docket cost                # measured token usage across the whole fleet
-docket cost myapp-implementer   # one agent's measured tokens + a labelled estimate
+docket pod myapp queue     # per-task status (COST is recorded spend, so it reads — today)
+docket cost                # measured token usage across every agent
+docket cost myapp-implementer   # one agent's measured tokens (no recorded dollar spend)
 ```
 
 Token counts are real and measured. Dollar figures are **not** — docket's own turn loop reports
-no billed spend, so `docket cost` shows a clearly labelled estimate rather than a number claimed
-as recorded. (The bundled pricing table only powers that estimate and `docket models`' comparative
-display — docket never projects dollar *savings*.) See
+no billed spend, so `docket cost` reports "none recorded" for dollars rather than inventing a number.
+(The bundled pricing table only powers the budget gate's labelled estimate and `docket models`'
+comparative display — docket never projects dollar *savings*.) See
 [Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 ### Step 10 — Review and commit
@@ -633,10 +633,11 @@ reviewed and validated before it landed."
 
 ### Pod dispatch settings — `docket pod <project> config`
 
-A pod's dispatch behavior is eleven typed keys on the Lead's meta, read/written through one
+A pod's dispatch behavior is sixteen typed keys on the Lead's meta, read/written through one
 generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
-`verifyTimeoutS`, `approvalMode`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`,
-`mcpServers`, `deniedTools`. A repository's `.docket/pod.yaml` can carry the same keys under
+`verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
+`pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
+`maxConsultationsPerTask`, `network`. A repository's `.docket/pod.yaml` can carry the same keys under
 `settings:`, applied by `docket init` or `docket pod <project> apply`.
 
 ```bash
@@ -669,8 +670,10 @@ Each member is an ordinary registered agent with its **own** permission-locked w
 ~/.docket/workspaces/projects/myapp-implementer/
 ├── SOUL.md              # identity + scope + session key
 ├── AGENTS.md            # session protocol, role boundaries
-├── TOOLS.md             # project-specific commands
+├── TOOLS.md             # project-specific commands (Implementer, when ports or verify are set)
 ├── HEARTBEAT.md         # active tasks/decisions
+├── MEMORY.md            # curated long-term memory
+├── WORKFLOW_AUTO.md     # startup contract for reading the workspace by hand
 ├── .docket-meta.json    # docket metadata (role, codebase, model, sessionKey, projectKey)
 └── memory/
     └── 2026-06-24.md    # daily log
@@ -720,7 +723,7 @@ Agents record intent in `modelSource`: `policy` (follow the role) or `pinned` (e
 
 ```bash
 docket list                     # every pod member + org specialist
-docket doctor                   # health + auto-fix
+docket doctor                   # health check (add --fix to repair drift)
 ```
 
 
@@ -772,9 +775,10 @@ docket doctor                   # any alerts?
 
 ## Token & cost notes
 
-These are **token** estimates — the thing docket's routing actually controls. For dollars, read
-the **labelled estimate** with `docket cost`; it depends on your models and current pricing, so we
-don't project it here. See
+These are **token** estimates — the thing docket's routing actually controls. Dollars are only
+ever estimated: the budget gate uses a labelled token-based estimate and `docket models` shows
+comparative pricing; `docket cost` reports measured tokens and no recorded spend, so we don't
+project dollars here. See
 [Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 A dispatched task is the sum of its hops, each a real costed turn:
@@ -801,8 +805,9 @@ Refactor (full pod, high blast radius):
 ```
 
 To bound the dollar cost of any of these, set a per-pod cap on the Lead
-(`docket profile <project>-lead --budget <usd>`) and watch the labelled estimate with
-`docket cost`. The cap is enforced between hops on every dispatch.
+(`docket profile <project>-lead --budget <usd>`) and watch measured tokens with
+`docket cost`; a hop that would cross the cap leaves the task blocked with the estimate in its
+reason (`docket pod <p> queue`). The cap is enforced between hops on every dispatch.
 
 ---
 

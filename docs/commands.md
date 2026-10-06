@@ -7,17 +7,17 @@ Complete reference for all docket commands, rendered from each command's own `--
 ## Table of Contents
 
 - [Lifecycle Commands](#lifecycle-commands)
-- [Session & Context Management](#session-context-management)
+- [Session and Context Management](#session-and-context-management)
 - [Pod Coordination](#pod-coordination)
 - [Telegram Integration](#telegram-integration)
-- [Keys & Authentication](#keys-authentication)
+- [Keys and Authentication](#keys-and-authentication)
 - [Utility Commands](#utility-commands)
-- [Security & Audit](#security-audit)
+- [Security and Audit](#security-and-audit)
 - [Observability Commands](#observability-commands)
 - [Global Options](#global-options)
 - [Exit Codes](#exit-codes)
 - [Environment Variables](#environment-variables)
-- [Tips & Tricks](#tips-tricks)
+- [Tips and Tricks](#tips-and-tricks)
 - [Next Steps](#next-steps)
 
 ## Lifecycle Commands
@@ -122,8 +122,8 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          rather than only the exit code in a script.
   --recipe <name|dir>   apply a shipped or local recipe directory after
                          provisioning -- a directory path as given, else a
-                         shipped recipe by name (secure-build,
-                         research-review, ops-approval). An unresolvable
+                         shipped recipe by name (`docket recipes list`
+                         shows all of them). An unresolvable
                          name errors naming the shipped recipe names and
                          exits 1 before any provisioning. Mutually
                          exclusive with a present `<location>/.docket/` --
@@ -270,7 +270,7 @@ non-interactive call is cancelled, not silently applied.
 
 ---
 
-## Session & Context Management
+## Session and Context Management
 
 ### scope
 
@@ -436,7 +436,7 @@ Subcommands:
                     `roles add`/`add <role>`/`config set pipeline`/
                     `config set <key> <value>` already use. A directory
                     path if one exists there, else a shipped recipe name
-                    (secure-build, research-review, ops-approval) as
+                    (`docket recipes list`) as
                     `init --recipe` resolves it; default `<codebase>/.docket`. Validates
                     everything -- roles, the roster the pipeline would
                     resolve against once `members` join, and every
@@ -677,7 +677,7 @@ registry tracks state only.
 
 ---
 
-## Keys & Authentication
+## Keys and Authentication
 
 ### keys
 
@@ -932,7 +932,7 @@ Binds to 127.0.0.1 (loopback-only) -- not reachable off this host. With
 Lead->Implementer->Reviewer->Tester pipeline. Each hop is a real agent
 turn and is budget-gated; leave it off for a read-only monitor. With
 --telegram, also polls docket's own Telegram bot so a chat bound via
-`docket wire` can /approve, /deny, /status, or /delegate -- idle until a
+`docket wire` can /approve, /deny, /status, /delegate or /answer -- idle until a
 bot token is stored.
 
 `-p`/`--port <N>` (default 7331) binds a port -- 127.0.0.1 only, never
@@ -1084,7 +1084,7 @@ See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md.
 
 ---
 
-## Security & Audit
+## Security and Audit
 
 ### gates
 
@@ -1542,7 +1542,7 @@ No command emits any other exit code today.
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket pod <p> corrections`) | `$DOCKET_HOME/corrections` |
-| `SCHEDULE_FILE` | The persisted `docket schedule` registry | `$DOCKET_HOME/docket-schedules.json` |
+| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
@@ -1613,7 +1613,7 @@ There is **no** environment kill switch for the audit log — a prior `DOCKET_NO
 
 ---
 
-## Tips & Tricks
+## Tips and Tricks
 
 ### Interactive Pickers
 

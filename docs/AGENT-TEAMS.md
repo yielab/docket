@@ -1,8 +1,8 @@
 # Agent Teams (Pods) — the heart of docket
 
-> **This is the most important concept in docket.** Everything else — isolation, cost
-> guardrails, health checks — exists to keep *teams of agents* running reliably across many
-> projects. If you read one guide, read this one.
+> **This is the most important concept in docket.** docket gives a repository a team of coding
+> agents and governs what they may do; the team is YAML in `.docket/`. This guide explains the
+> roles, pods and gates that YAML describes. If you read one guide, read this one.
 
 A single autonomous agent is easy. Getting several agents to ship real software together is
 harder: it needs the same separation of duties a human team has — someone who plans and talks to
@@ -19,12 +19,12 @@ makes naive multi-agent setups fall apart.
 
 | Axis | Values | Meaning |
 |------|--------|---------|
-| **scope** | `org` \| `project` | Shared across the whole fleet, or owned by exactly one project |
+| **scope** | `org` \| `project` | Shared by every pod on this machine, or owned by exactly one project |
 | **role** | lead, implementer, reviewer, tester, manager, knowledge, security, portfolio-manager, … | What the agent is *for* |
 
 From those two axes fall the two kinds of team member:
 
-- **Org specialists** — `scope: org`, genuinely cross-cutting, **one instance for the whole fleet**.
+- **Org specialists** — `scope: org`, genuinely cross-cutting, **one instance per machine**, shared by every pod.
 - **Project pods** — `scope: project`, a self-contained team **per project**, never shared.
 
 The role list above is the everyday roster, not a closed enum — see "Role archetypes" below for
@@ -155,10 +155,12 @@ blueprint's own fixed roster instead of trying to combine the two.
 There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
 `docket pod <project> add <role>`. For a pre-built shape instead of composing by hand, use a
-**recipe**. Twelve ship with docket, of three kinds: teams (`secure-build`, `research-review`,
-`ops-approval`), policy packs that change no roster (`git-safety`, `no-egress`, `secrets-guard`,
-`prod-approval`), and methodology pipelines that are the practice (`tdd`, `spec-first`,
-`reflexion`, `dual-review`, `frugal`). `docket recipes list` shows what each brings, derived from
+**recipe**. Eighteen ship with docket: teams (`secure-build`, `research-review`,
+`ops-approval`, `intake`), policy packs that change no roster (`git-safety`, `no-egress`,
+`secrets-guard`, `prod-approval`), methodology pipelines that are the practice (`tdd`,
+`spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
+that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a tool pack
+(`code-intel`). `docket recipes list` shows what each brings, derived from
 its files; `docket init --recipe tdd` starts a new pod from one, `docket pod <project> apply
 git-safety` applies one onto a pod that already exists, and a directory under
 `~/.docket/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
@@ -169,10 +171,10 @@ is committed next to the code — see [the recipe library](recipes.md),
 
 ---
 
-## Org specialists — shared across the fleet
+## Org specialists — shared by every pod
 
 The first `docket init` on a machine creates the cross-cutting specialists once, as part of the
-shared workstation foundation it builds before the project pod. They are genuinely fleet-wide, so a
+shared workstation foundation it builds before the project pod. They are genuinely machine-wide, so a
 per-project copy would be waste:
 
 - **manager** — cross-cutting coordination (transitional; it has no task queue of its own —
@@ -188,7 +190,7 @@ any starter or custom role) are pod-scoped — see "Project pods" above — neve
 `docket init --portfolio` adds **one** `portfolio-manager` (`scope: org`). The flag is read only
 by the **first** `docket init`, the one that builds the shared foundation; on a machine that
 already has one it is ignored. The Portfolio Manager is a cross-pod
-**planning and visibility** surface. It sees fleet *metadata* — which pods exist, their queues,
+**planning and visibility** surface. It sees cross-pod *metadata* — which pods exist, their queues,
 budgets, and health — **not project code.** It is advisory: it recommends where to focus,
 rebalance, or pause, in words for a human. It never edits code and does not dispatch into pods
 (each pod's own Lead owns execution). It is opt-in, and it is never a pod member.
@@ -221,7 +223,9 @@ docket can drive a pod's queued work through its pipeline, **one real agent turn
 Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
 ```
 
-Only the roles a pod actually has take part (a lean pod runs two hops). docket stays the
+That is the built-in order when no pipeline is bound; a `kind: pipeline` in `.docket/` (or a
+recipe) sets the order, the gates and the rework instead. Only the roles a pod actually has take
+part (a lean pod runs two hops). docket stays the
 orchestrator — it invokes each hop through its own turn loop (`core/agent_loop.py`), captures the
 result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
 
@@ -240,11 +244,11 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
   advancing to Reviewer/Tester. An unset `verifyCmd` is never silently skipped — it's a visible
   "verification skipped" line, so you can always tell "not configured" from "configured and
   passing."
-- **Reviewer → verdict gate, with bounded rework.** The first non-blank line of the Reviewer's
-  reply is parsed for `APPROVE`/`REQUEST-CHANGES`. A `REQUEST-CHANGES` sends the task back to the
+- **Reviewer → verdict gate, with bounded rework.** The Reviewer's reply must carry exactly one
+  of `APPROVE`/`REQUEST-CHANGES` at the start of a line (two different markers are unparseable). A `REQUEST-CHANGES` sends the task back to the
   Implementer with the Reviewer's feedback attached, bounded by a rework budget (`maxReworkCycles`,
   default 1); exhausting it — or a second rejection — fails the task.
-- **Tester → verdict gate, hard fail.** The first non-blank line is parsed for `PASS`/`FAIL`.
+- **Tester → verdict gate, hard fail.** The reply must carry exactly one of `PASS`/`FAIL` at the start of a line.
   Unlike the Reviewer, there is no rework loop here — a `FAIL` or unparseable output fails the
   task outright.
 
@@ -266,14 +270,14 @@ Three guarantees hold on every dispatch:
 > or opt-in (`docket serve --dispatch`) — never silent. The read-only `docket serve` monitor does
 > not dispatch.
 
-**A hop that needs a human doesn't stall the rest of the fleet.** A pipeline `approval` step, a
+**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
 `requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all
 move the task to `waiting_approval` rather than failing it. Under `serve --dispatch`'s sweep or a
 non-interactive `dispatch`, that `ask` **parks** — it records the exact call and moves on to the
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
-needs you, across every pod, shows up in one place (`docket inbox`), and an optional notification
-channel (`docket channels`, off by default except your own console) can push it to you instead of
-waiting for you to look. Answer it the same way you'd answer any approval (`docket approve`/
+needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
+enable (`docket channels enable desktop`, `ntfy` or `telegram`; the default `console` sends
+nothing, and `docket doctor` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket approve`/
 `docket deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
 single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
 can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
@@ -333,7 +337,7 @@ docket persona myapp-lead show             # see the current persona
 docket persona myapp-lead clear            # back to role-only
 ```
 
-The persona lives in a marked block inside `SOUL.md` (it survives `docket maintain rebuild`) and
+The persona lives in a marked block inside `SOUL.md` (it survives `docket pod <project> sync`) and
 never replaces the role itself — a persona-carrying agent is still, structurally, "the
 Implementer." Display names (`docket list`/`info`) resolve persona → name → role, never from a
 self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
@@ -341,9 +345,9 @@ self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
 templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod <project> sync` when
 they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
-`SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and an **opt-in**
-`projectInstructions` section — codebase files (an `AGENTS.md`, say) a pod can be pointed at with
-`docket pod <project> config set projectInstructions <path,...>`, screened through the same
+`SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and a
+`projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
+named with `docket pod <project> config set projectInstructions <path,...>`, screened through the same
 `pre_input` policy hook as any other input and restricted to relative paths that can't escape the
 codebase root. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 
@@ -411,7 +415,7 @@ docket init <project> [path] --pod full   # + Reviewer + Tester
 docket init <project> [path] --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
-docket recipes list                      # the twelve shipped recipes and your own, what each brings
+docket recipes list                      # the eighteen shipped recipes and your own, what each brings
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied
                                          #   by plain `docket init`

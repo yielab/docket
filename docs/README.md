@@ -2,7 +2,7 @@
 
 **docket — agent teams as configuration. Your rules, in YAML.** A repository's `.docket/`
 directory names the roles, the order they work in, the gates between them and the rules they
-cannot cross; `docket init` turns it into an isolated team of agents, `docket pod <p> dispatch`
+cannot cross; `docket init` turns it into a team of agents, each in its own workspace, `docket pod <p> dispatch`
 runs it one real model turn per hop, and every gate decision lands in a hash-chained audit log.
 docket is a Python CLI that owns the agent turn loop itself. It has no daemon and talks to any
 OpenAI-compatible chat-completions endpoint, hosted or local.
@@ -36,7 +36,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: org specialists vs project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
 | [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
-| [Recipe library](recipes.md) | The twelve shipped recipes (teams, policy packs, methodology pipelines), what each brings and its README, generated from the recipes themselves |
+| [Recipe library](recipes.md) | The eighteen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
@@ -57,7 +57,7 @@ explains how a feature is specified before it is built.
 ```bash
 # The team
 docket init                                   # this directory -> a Lead + Implementer pod
-docket recipes list                           # twelve shipped recipes: teams, policy packs, methodologies
+docket recipes list                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
 docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
 docket validate                               # check every document under ./.docket/
 docket pod myapp apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
@@ -82,7 +82,7 @@ docket runs list                              # one row per dispatch
 docket trace tail myapp                       # the latest session, step by step
 docket audit && docket audit verify           # gate decisions, and the chain verifies
 docket config explain myapp-implementer       # effective configuration with provenance
-docket cost myapp-lead                        # measured tokens and the labelled estimate
+docket cost myapp-lead                        # measured tokens; no dollar figure it did not record
 docket exporters list                         # trace destinations (OpenTelemetry, Langfuse): on/off, SHARES
 docket exporters preview langfuse             # what one would receive, before anything is sent
 
@@ -139,7 +139,7 @@ in your repository:
         ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
         ├── INSTRUCTIONS.md           # yours; docket never writes it
         ├── .docket-meta.json         # role, codebase, model, verify command, pod settings (Lead)
-        ├── worktree/                 # the Implementer's git worktree on its own branch
+        ├── tasks/<task-id>/          # one git worktree per task, on branch docket/<p>/<task-id>
         └── memory/                   # daily logs
 ```
 

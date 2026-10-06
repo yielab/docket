@@ -411,8 +411,8 @@ def cmd_init(ctx: typer.Context) -> None:
                              rather than only the exit code in a script.
       --recipe <name|dir>   apply a shipped or local recipe directory after
                              provisioning -- a directory path as given, else a
-                             shipped recipe by name (secure-build,
-                             research-review, ops-approval). An unresolvable
+                             shipped recipe by name (`docket recipes list`
+                             shows all of them). An unresolvable
                              name errors naming the shipped recipe names and
                              exits 1 before any provisioning. Mutually
                              exclusive with a present `<location>/.docket/` --
@@ -740,11 +740,11 @@ def cmd_wire(
         # docket owns its own bot (`docket serve --telegram`, once
         # `docket keys add TELEGRAM_BOT_TOKEN` is set) — this binding is the
         # ENTIRE authorization boundary for it: anyone who can post to this
-        # chat can /approve, /deny, /status, or /delegate as '{aid}' the
+        # chat can /approve, /deny, /status, /delegate or /answer as '{aid}' the
         # moment the bot is running. There is no second allowlist step.
         ui.dim(
             "  This binding is the whole authorization story: whoever can post in this chat"
-            f" can now /approve, /deny, /status, or /delegate for '{aid}' once docket's own"
+            f" can now /approve, /deny, /status, /delegate or /answer for '{aid}' once docket's own"
             " bot is running (docket serve --telegram, with TELEGRAM_BOT_TOKEN configured)."
             " Keep the chat restricted to people who should hold that power."
         )
@@ -1621,7 +1621,7 @@ def cmd_pod(
                         `roles add`/`add <role>`/`config set pipeline`/
                         `config set <key> <value>` already use. A directory
                         path if one exists there, else a shipped recipe name
-                        (secure-build, research-review, ops-approval) as
+                        (`docket recipes list`) as
                         `init --recipe` resolves it; default `<codebase>/.docket`. Validates
                         everything -- roles, the roster the pipeline would
                         resolve against once `members` join, and every
@@ -2442,7 +2442,7 @@ def cmd_serve(
     Lead->Implementer->Reviewer->Tester pipeline. Each hop is a real agent
     turn and is budget-gated; leave it off for a read-only monitor. With
     --telegram, also polls docket's own Telegram bot so a chat bound via
-    `docket wire` can /approve, /deny, /status, or /delegate -- idle until a
+    `docket wire` can /approve, /deny, /status, /delegate or /answer -- idle until a
     bot token is stored.
 
     `-p`/`--port <N>` (default 7331) binds a port -- 127.0.0.1 only, never

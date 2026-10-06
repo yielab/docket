@@ -37,8 +37,8 @@
 > answerable identically by the CLI, HTTP, MCP, and Telegram channels. The Telegram bot itself
 > is inbound-only and never messages a chat first (telegram-integration.spec.md's Command-grammar
 > requirements 7-8). Notifications exist since Phase 34, but only through an opt-in `kind: channel`
-> you enable yourself; every channel ships off except your own console (see "The operator loop"
-> below).
+> you enable yourself; every channel ships off except your own console, which sends nothing (see
+> "The operator loop" below).
 >
 > A gated call's approval now carries a `rationale` (the model's own preceding sentence, screened
 > and truncated, so a claim to weigh and not a verified fact) and the options `approve_once`,
@@ -416,7 +416,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation (bwrap, else Docker) is opt-in with `docket gates isolate on`, which needs one of those backends on the host, and `docket gates network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation (bwrap, else Docker) is opt-in with `docket gates isolate on`, which needs one of those backends on the host, and `docket gates network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again ("The operator loop" above): every notification channel ships off except your own console, which sends nothing, so `docket doctor` warns until you enable one that delivers, and widening what one shares is a confirmed, audited command too.
 
 ---
 
