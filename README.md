@@ -19,7 +19,7 @@ its own, no dollar figure it cannot measure. docket is not a framework you progr
 with and not an interactive pair-programming harness: it runs the team your files describe.
 
 > [!WARNING]
-> docket is beta software (`v0.2.0-beta.3`). Core contracts are spec-first and test-backed, but the
+> docket is beta software (`v0.2.0-beta.4`). Core contracts are spec-first and test-backed, but the
 > project has not been hardened against large deployments or adversarial public-host workloads.
 > Expect breaking changes between beta releases and verify consequential outcomes yourself.
 
@@ -33,8 +33,8 @@ brew install docket-cli
 Or a version-pinned installer that needs no `sudo`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.3/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.3 bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.4/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.4 bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 

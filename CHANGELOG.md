@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] - 2026-10-06
+
+The team lives in the repository. A `.docket/` directory next to the code (roles, pipeline,
+policies, settings, skills) is the team's configuration of record, applied by `docket init` or
+`docket pod <p> apply`; eighteen shipped recipes cover teams, policy packs, methodology pipelines,
+checks and tools. Since `v0.2.0-beta.3` docket also gained a provider catalog of fourteen built-in
+`kind: provider` documents, OpenTelemetry and Langfuse export with privacy levels, an operator
+loop in which a gated task parks and waits in one inbox with notification channels, agent
+consultations and evidence-v1, one git worktree per task, a network lockdown mode and an
+execution envelope whose workspace isolation is opt-in (`docket gates isolate on`).
+
+**Breaking changes.** docket has no installed base yet, so every compatibility path was removed
+outright: `docket auth` is gone (use `docket keys add` and `docket models provider add`), tier
+names (`economy`/`standard`/`premium`) are not accepted anywhere, removed commands are ordinary
+unknown commands (exit 2), and the `serve` API is version 3. See Removed below.
+
 ### Added
 
 - **Console alone tells nobody, and docket now says so.** `console` is a silent channel dialect
@@ -55,12 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `recipes show --json` `unjailed_mcp_servers`.
   - A harness consult's `question.taskId` is the run token, not the session key.
 
-- **The execution envelope (Phase 38, D-55, ADR 0020).** An agent's processes run in a jail by
-  default, and nothing docket holds leaks into them.
-  - Workspace isolation is on by default. bwrap is tried first, then Docker
-    (`DOCKET_SANDBOX_BACKEND` still forces one). With no usable backend a turn is refused before
-    any model call, naming both fixes (install bubblewrap, or `docket gates isolate off`, which is
-    now the explicit, audited opt-out). `docket doctor` and `gates isolate on` probe the real
+- **The execution envelope (Phase 38, D-55, ADR 0020).** With isolation on, an agent's
+  processes run in a jail, and nothing docket holds leaks into them.
+  - Workspace isolation is opt-in (`docket gates isolate on`; ADR 0021, see Changed). bwrap is
+    tried first, then Docker (`DOCKET_SANDBOX_BACKEND` still forces one). With isolation on and
+    no usable backend a turn is refused before any model call, naming both fixes (install
+    bubblewrap, or `docket gates isolate off`). `docket doctor` and `gates isolate on` probe the real
     backend. Inside the jail a task worktree's git dir and the repository's common dir are
     writable, so an agent can commit; `.git/hooks`, `.git/config` and `config.worktree` stay
     read-only, so the jail cannot plant code the host's next `git` would run.
@@ -1213,7 +1229,8 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.3...HEAD
+[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.4...HEAD
+[0.2.0-beta.4]: https://github.com/yielab/docket/compare/v0.2.0-beta.3...v0.2.0-beta.4
 [0.2.0-beta.3]: https://github.com/yielab/docket/compare/v0.2.0-beta.2...v0.2.0-beta.3
 [0.2.0-beta.2]: https://github.com/yielab/docket/compare/v0.2.0-beta.1...v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0-beta.1

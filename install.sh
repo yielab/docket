@@ -15,7 +15,7 @@
 set -euo pipefail
 
 PREFIX="${DOCKET_PREFIX:-${HOME}/.local}"
-DOCKET_VERSION="${DOCKET_VERSION:-0.2.0-beta.3}"
+DOCKET_VERSION="${DOCKET_VERSION:-0.2.0-beta.4}"
 [[ "${1:-}" == "--prefix" ]] && { PREFIX="${2:?--prefix requires a path}"; shift 2; }
 
 BIN_DIR="${PREFIX}/bin"

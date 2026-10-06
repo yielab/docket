@@ -31,12 +31,12 @@ brew install docket-cli
 ```
 
 Or the version-pinned installer, which needs no `sudo`. It downloads and verifies
-`https://github.com/yielab/docket/releases/download/v0.2.0-beta.3/docket-v0.2.0-beta.3.tar.gz`
+`https://github.com/yielab/docket/releases/download/v0.2.0-beta.4/docket-v0.2.0-beta.4.tar.gz`
 before extracting; it never installs from a moving branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.3/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.3 bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.4/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.4 bash
 export PATH="$HOME/.local/bin:$PATH"
 docket --version
 ```

@@ -258,6 +258,11 @@ and once on it still fails closed. Everything else Phase 38 shipped stands. The 
 host requirements are documented in `docs/SECURITY-SIMPLE.md` "Workspace isolation (opt-in)".
 Reasoning in [docs/adr/0021-isolation-is-opt-in.md](docs/adr/0021-isolation-is-opt-in.md).
 
+**`v0.2.0-beta.4` cut 2026-10-06** as a maintainer action, from `develop` with CI green on every
+job: the team in the repository, eighteen recipes, the provider catalog, trace export with
+privacy levels, the operator loop, consultations and evidence, and opt-in isolation since
+`v0.2.0-beta.3`. The Homebrew formula digest follows the published asset in its own commit.
+
 > **How to read the rest of this file.** Nothing below is a task list; executable cards are in
 > `TODO.md`. **The completed phase records (0–25, the Bash→Python migration) and this file's
 > decision changelog were moved verbatim to [docs/cycles-ended/](docs/cycles-ended/README.md)** (`roadmap-phases.md`,
