@@ -18,6 +18,8 @@ import argparse
 import ast
 import re
 import sys
+from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,6 +61,19 @@ def _renders_user_help(node: ast.AST) -> bool:
     return False
 
 
+def _walk_statements(tree: ast.AST) -> Iterator[ast.AST]:
+    """`ast.walk` order over statement nodes only: a docstring's owner is never inside an expression."""
+    todo: deque[ast.AST] = deque([tree])
+    while todo:
+        node = todo.popleft()
+        for _, value in ast.iter_fields(node):
+            if isinstance(value, list):
+                todo.extend(
+                    v for v in value if isinstance(v, (ast.stmt, ast.excepthandler, ast.match_case))
+                )
+        yield node
+
+
 def scan_file(path: Path, module_max: int, def_max: int, strict: bool = False) -> list[Finding]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -69,7 +84,7 @@ def scan_file(path: Path, module_max: int, def_max: int, strict: bool = False) -
         return out
 
     docstring_ranges: list[tuple[int, int]] = []
-    for node in ast.walk(tree):
+    for node in _walk_statements(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if not node.body:
                 continue
@@ -100,13 +115,11 @@ def scan_file(path: Path, module_max: int, def_max: int, strict: bool = False) -
                         )
                     )
 
-    def in_docstring(n: int) -> bool:
-        return any(s <= n <= e for s, e in docstring_ranges)
-
+    docstring_lines = {n for s, e in docstring_ranges for n in range(s, e + 1)}
     for i, line in enumerate(lines, start=1):
         stripped = line.strip()
         is_comment = stripped.startswith("#")
-        if not (is_comment or in_docstring(i)):
+        if not (is_comment or i in docstring_lines):
             continue
         if ARCHAEOLOGY.search(stripped) or (strict and STRICT_EXTRA.search(stripped)):
             kind = "archaeology-rationale" if RATIONALE.search(stripped) else "archaeology"
