@@ -350,30 +350,6 @@ def _run_cli(
     return _command([str(executable), *args], cwd=cwd, env=env, label=label, timeout=60)
 
 
-def _isolation_for_this_host(
-    python: Path, executable: Path, *, cwd: Path, env: dict[str, str]
-) -> None:
-    """Isolation is on by default and refuses a turn with no backend. On a host with neither
-    bwrap nor docker (a stock macOS runner) take the documented route: record the explicit,
-    audited opt-out, and say so."""
-    probe = _command(
-        [
-            str(python),
-            "-c",
-            "from docket.edges.adapters import system; print(system.sandbox_availability().backend)",
-        ],
-        cwd=cwd,
-        env=env,
-        label="sandbox backend probe",
-    )
-    backend = probe.stdout.strip()
-    if backend != "none":
-        print(f"[check] sandbox backend: {backend}")
-        return
-    _run_cli(executable, ["gates", "isolate", "off"], cwd=cwd, env=env, label="isolation opt-out")
-    print("[note] no sandbox backend on this host: recorded 'docket gates isolate off'")
-
-
 def _configure_provider(
     executable: Path,
     endpoint: str,
@@ -518,7 +494,6 @@ def _run(world: Path, repo: Path, requested_endpoint: str | None) -> None:
             cwd=world / "outside-checkout",
             env=env,
         )
-        _isolation_for_this_host(python, executable, cwd=world / "outside-checkout", env=env)
         _run_cli(
             executable,
             ["init", "--from", str(pod)],

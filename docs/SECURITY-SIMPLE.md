@@ -46,14 +46,13 @@
 > `deny`; `--reason` on approve/deny is
 > screened and audited with the answering channel.
 > bwrap/Docker **workspace isolation** is a
-> separate layer on top, **on by default** (`docket gates isolate off` opts out) and consulted by
-> the turn loop: when it's on, every real dispatch hop runs sandboxed if bwrap or docker is
-> available, and if neither is, the
+> separate layer on top, **opt-in** (`docket gates isolate on`; it needs bubblewrap on Linux or a
+> running Docker) and consulted by the turn loop: when it's on, every real dispatch hop runs
+> sandboxed, and if neither backend is usable the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
-> entry — no LLM call, no tool executes). `docket gates status` reports which of the two states
-> applies. See
-> [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md)
-> (Status: Implemented, on by default).
+> entry — no LLM call, no tool executes). `docket gates status` reports which state applies.
+> Requirements and coverage: "Workspace isolation (opt-in)" below, and
+> [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md).
 
 ---
 
@@ -171,9 +170,11 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   *inspectable* path, but not the only one until you run `docket gates network none`, which cuts
   the jail's network (verify commands and `run:` steps still run on the host). It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
-- **Only `bash` is jailed.** The command gate above, and the default-on bwrap/Docker isolation, apply
-  to `bash` calls. The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
-  `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials and policy, not by a sandbox.
+- **Only `bash` is jailed, and only with isolation on.** The command gate above applies to every
+  `bash` call; the opt-in bwrap/Docker isolation (next section) jails `bash` and stdio MCP servers.
+  The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
+  `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials, policy and path confinement,
+  not by a sandbox.
 - **A pod can widen its own allowlist** with `docket pod <p> config set allowCommands pytest,uv`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
@@ -184,6 +185,51 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   parks the task instead of blocking (see "The operator loop" below); `refuse` fails the call
   fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
   later.
+
+### Workspace isolation (opt-in): the sandbox for the agents' shell
+
+**Off by default.** Without it, an agent's `bash` runs on your machine as you, bounded by the
+tool-call gate and the policies above but not by a sandbox. Turn it on when you want the shell
+contained as well as gated:
+
+```bash
+docket gates isolate on      # needs a backend (below); exits 1 naming the fix if there is none
+docket doctor                # names the backend a turn will use
+docket gates isolate off     # back to the host; both commands are audited (gates.isolate)
+```
+
+**What a host needs to turn it on.** One sandbox backend. docket probes bwrap first, then docker:
+
+| Host | Backend | How to get it |
+| --- | --- | --- |
+| Linux | bubblewrap (`bwrap`), preferred: no daemon, and the jail sees the host's toolchain read-only | `apt install bubblewrap`, `dnf install bubblewrap`, `pacman -S bubblewrap` |
+| Linux or macOS | Docker, with the daemon running | Docker Desktop, Colima or OrbStack on macOS (bwrap does not exist there) |
+
+Under Docker the jail is only as capable as its image, `DOCKET_SANDBOX_IMAGE` (default
+`alpine:3.20`): a jailed `git commit` needs `git` in the image, and Python work needs `python3`.
+`docket doctor` checks the image for `git` and warns with the fix. `DOCKET_SANDBOX_BACKEND=bwrap|docker`
+forces one backend. Nothing here is needed while isolation is off.
+
+**What it covers, once on.**
+- Every `bash` call runs in the jail. Only the agent's workspace and the task's worktree are
+  writable; the rest of the host is read-only or absent. The task worktree's git directories are
+  writable, so the agent can commit, while the repository's hooks, config and attributes stay
+  read-only, so nothing the jail writes runs later in your own unjailed git.
+- Stdio MCP servers start in the same jail, unless you declared one `--no-isolate` (audited and
+  listed by `docket doctor`).
+- A jailed process sees only `PATH`, the pod's injected variables and your git identity, never
+  docket's credentials.
+- **It fails closed.** If isolation is on and neither backend is usable when a turn starts, the
+  turn is refused before any model call and audited as `isolation.refused`; it never falls back to
+  running unsandboxed.
+- `docket gates network none` (or a pod's `network: none`) cuts the jail's network. It needs
+  isolation on: with isolation off, such a turn is refused, because only the jail can enforce it.
+
+**What it does not cover.** `read`, `write`, `edit`, `glob` and `grep` run inside docket and are
+confined to the workspace and codebase by path, not by the jail (symlinks out of those roots are
+refused either way). `fetch` runs inside docket under its domain allowlist. A pod's `verifyCmd`
+and pipeline `run:` steps are your own commands and run on the host, with docket's credentials
+stripped from their environment.
 
 ### Layer 6: Telemetry export (what leaves the host)
 
@@ -370,7 +416,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation (bwrap, else Docker) is on by default; `docket gates isolate off` is the audited opt-out, and `docket gates network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation (bwrap, else Docker) is opt-in with `docket gates isolate on`, which needs one of those backends on the host, and `docket gates network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again (Layer 7): every notification channel ships off except your own console, and widening what one shares is a confirmed, audited command too.
 
 ---
 

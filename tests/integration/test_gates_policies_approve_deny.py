@@ -116,7 +116,7 @@ class TestGatesStatus:
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Workspace isolation: on (default)" in out
+        assert "Workspace isolation: off (default)" in out
 
     def test_status_always_reports_the_gate_active(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]

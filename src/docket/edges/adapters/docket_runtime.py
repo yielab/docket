@@ -257,7 +257,7 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     )
     audit_log("isolation.refused", detail)
     return False, (
-        "isolation is on (the default) but no sandbox backend (bubblewrap or docker) is "
+        "isolation is on ('docket gates isolate on') but no sandbox backend (bubblewrap or docker) is "
         "usable on this host -- refusing to run this turn unsandboxed rather than silently "
         "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
         "or record an explicit opt-out with 'docket gates isolate off'."

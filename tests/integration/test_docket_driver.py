@@ -1649,17 +1649,18 @@ class TestIsolationWiring:
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert tool_msg.content == "sandbox=off"
 
-    def test_no_recorded_choice_is_isolated_by_default(
+    def test_no_recorded_choice_runs_on_the_host_without_probing_a_backend(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # No fleet.json at all: the default is a jail, not a host run.
+        # No fleet.json at all: isolation is opt-in, so the turn runs unjailed and a host
+        # with neither bwrap nor docker is never asked for one.
         _no_recorded_isolation_choice()
         _write_meta("solo-agent")
-        monkeypatch.setattr(
-            _system,
-            "sandbox_availability",
-            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
-        )
+
+        def no_probe() -> SandboxAvailability:
+            raise AssertionError("probed a sandbox backend with isolation off")
+
+        monkeypatch.setattr(_system, "sandbox_availability", no_probe)
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=_probe_registry
@@ -1669,13 +1670,14 @@ class TestIsolationWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "sandbox=auto"
+        assert tool_msg.content == "sandbox=off"
+        assert not [e for e in read_audit() if e["action"] == "isolation.refused"]
 
-    def test_default_with_no_backend_refuses_naming_both_fixes(
+    def test_isolation_on_with_no_backend_refuses_naming_both_fixes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _no_recorded_isolation_choice()
         _write_meta("solo-agent")
+        _fleet.set_sandbox_isolation(mode="non-main")
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         driver = DocketDriver(backend_factory=_never_called)
 
@@ -1989,8 +1991,8 @@ class TestAllowCommandsWiring:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # A malformed pod settings file also fails the network closed to `none`, which only a
-        # jail can enforce: keep the default isolation with a (stubbed) backend.
-        _no_recorded_isolation_choice()
+        # jail can enforce: turn isolation on with a (stubbed) backend.
+        _fleet.set_sandbox_isolation(mode="non-main")
         monkeypatch.setattr(
             _system,
             "sandbox_availability",

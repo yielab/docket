@@ -445,7 +445,7 @@ def _unjailed_mcp_servers() -> list[dict[str, str]]:
 def _docker_image_has_git() -> bool | None:
     """The jail image's git probe, only when docker is the backend in use and isolation is not off;
     None when it does not apply."""
-    if _fleet.get_isolation_state() == "off":
+    if not _fleet.get_isolation_enabled():
         return None
     if _sys.sandbox_availability().backend != "docker":
         return None
@@ -464,8 +464,12 @@ def _check_security_gates() -> int:
     ui.success("  Tool-call gate: always active (policy engine + high-risk command classifier)")
 
     state = _fleet.get_isolation_state()
-    if state == "off":
-        ui.dim("  Workspace isolation: off (explicit) -- docket gates isolate on")
+    enabled = _fleet.get_isolation_enabled()
+    if not enabled:
+        ui.dim(
+            f"  Workspace isolation: {'off (explicit)' if state == 'off' else state} -- "
+            "docket gates isolate on (needs bubblewrap or docker)"
+        )
     else:
         backend = _sys.sandbox_availability().backend
         if backend == "none":
@@ -483,7 +487,7 @@ def _check_security_gates() -> int:
 
     net_mode = _fleet.get_network_mode()
     if net_mode == "none":
-        if state == "off":
+        if not enabled:
             ui.warn(
                 "  Network: none (global), but isolation is off -- turns will be refused. "
                 "docket gates isolate on, or docket gates network open"
@@ -498,7 +502,7 @@ def _check_security_gates() -> int:
     unjailed = [
         f"{s['name']} (pod {s['pod']})" if s["pod"] else s["name"] for s in _unjailed_mcp_servers()
     ]
-    if unjailed and state != "off":
+    if unjailed and enabled:
         ui.warn(f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed)}")
 
     return 0

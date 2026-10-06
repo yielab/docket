@@ -2025,9 +2025,10 @@ def cmd_gates(ctx: typer.Context) -> None:
       status (default)  reports that the tool-call gate is always active,
                           plus the workspace-isolation mode
       isolate on|off    records whether tool execution runs inside a
-                          sandbox (on by default; `off` is the explicit
-                          opt-out). `on` probes bwrap, then docker -- errors,
-                          exit 1, if neither is usable. Enforced on the live
+                          sandbox (opt-in, off by default). `on` needs
+                          bubblewrap (Linux) or a running docker; it probes
+                          bwrap, then docker -- errors, exit 1, if neither is
+                          usable. Enforced on the live
                           turn: with isolation on, DocketDriver runs tools
                           sandboxed (bwrap or docker), and refuses the whole
                           turn -- audited as `isolation.refused` -- when no

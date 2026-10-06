@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.64.0
+**Version**: 1.65.0
 **Status**: Complete
 **Last Updated**: 2026-10-06
 
@@ -662,7 +662,7 @@ visibility, not shared workspace or session state.
   fix with `docket channels enable desktop` or `ntfy --set topic=<topic>`); none with no
   agents is informational. `--json` carries `checks.notifications {ok, delivering}`
 - MCP server isolation state: unjailed servers (isolate: false) from both global and per-pod
-  registries when isolation is not off (human output warns; `--json` lists with pod context)
+  registries while isolation is on (human output warns; `--json` lists with pod context)
 
 When issues are found the footer points at `docket maintain [id] check`.
 **Return**: 0 if healthy, 1 when any issue is flagged
@@ -717,11 +717,13 @@ isolation-mode posture.
 **Syntax**: `docket gates [status | isolate <on|off> | network <none|open> | classes]`
 **Actions**:
 - `status` (default): Report the gate as always-active, plus the isolation state
-  (`on (default)` with no recorded choice, `on`, or `off`)
-- `isolate <on|off>`: Record exec isolation on or off explicitly. Isolation is on by default.
-  `DocketDriver` reads it on every turn (`edges/adapters/docket_runtime.py`,
-  `get_isolation_enabled`): unless off, `bash` runs in the bwrap/docker jail and a turn fails
-  closed when no backend is available (see security-gates.spec.md)
+  (`off (default)` with no recorded choice, `on`, or `off`)
+- `isolate <on|off>`: Record exec isolation on or off explicitly, audited as `gates.isolate`.
+  Isolation is opt-in (off by default). `on` needs a backend (bwrap on Linux, or a reachable
+  docker daemon) and exits 1 naming both when there is none. `DocketDriver` reads it on every
+  turn (`edges/adapters/docket_runtime.py`, `get_isolation_enabled`): when on, `bash` and stdio
+  MCP servers run in the bwrap/docker jail and a turn fails closed when no backend is available
+  (see security-gates.spec.md)
 - `network <none|open>`: Record the global sandbox network mode (default open), audited as
   `gates.network`; any other value prints usage, exit 2. `none` cuts the jail's network and
   refuses turns that would run with isolation off (`network.refused`); `status` reports the mode
@@ -1284,6 +1286,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.65.0 (2026-10-06)
+
+- `docket gates`: isolation is opt-in (ADR 0021); `status` reports `off (default)` with no
+  recorded choice.
 
 ### Version 1.64.0 (2026-10-06)
 

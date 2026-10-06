@@ -772,8 +772,8 @@ SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-o
 final human `git diff` review. The enforced tool-call gate (policy engine plus argument-aware
 high-risk command classifier) is always active and cannot be turned off, and an `ask` verdict can
 be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). bwrap/Docker workspace
-isolation is **on by default** (`docket gates isolate off` opts out; `docket gates network none`
-opts in to cutting the jail's network). Since Phase 34 (D-50), an unattended pod's
+isolation is **opt-in** (`docket gates isolate on`, which needs bubblewrap or Docker on the host;
+`docket gates network none` then cuts the jail's network). Since Phase 34 (D-50), an unattended pod's
 in-turn `ask` **parks** the task (`waiting_approval`) rather than blocking the turn, and a
 separate, opt-in notification layer (`docket channels`, off by default except `console`) is what
 tells a human one is waiting — the approval mechanism and its four channels are unchanged. Full

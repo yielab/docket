@@ -45,6 +45,13 @@ _FLEET_CONFIG: dict[str, Any] = {
 }
 
 
+def _isolation_on() -> None:
+    """Record `docket gates isolate on` in the seeded home."""
+    from docket.core import fleet as _fleet
+
+    _fleet.set_sandbox_isolation()
+
+
 def _point_config_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Repoint the already-imported config module at a temp DOCKET_HOME."""
     repoint_docket_home(monkeypatch, home)
@@ -447,16 +454,30 @@ class TestChecks:
         assert issues == 0
         assert "Tool-call gate: always active" in out
 
+    def test_isolation_is_off_by_default_and_needs_no_backend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        issues = _doctor._check_security_gates()
+        out = capsys.readouterr().out
+        assert issues == 0
+        assert "Workspace isolation: off (default)" in out
+        assert "docket gates isolate on" in out
+        assert "turns will be refused" not in out
+        assert _doctor._doctor_json_security()["isolation"] == "off (default)"
+
     def test_security_gates_names_the_backend_a_turn_would_use(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
+        _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         _doctor._check_security_gates()
-        assert "on (default), backend bwrap" in capsys.readouterr().out
+        assert "Workspace isolation: on, backend bwrap" in capsys.readouterr().out
         assert _doctor._doctor_json_security() == {
             "toolCallGate": "always-on",
-            "isolation": "on (default)",
+            "isolation": "on",
             "sandboxBackend": "bwrap",
             "dockerImageHasGit": None,
             "network": "open",
@@ -467,6 +488,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
+        _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         _doctor._check_security_gates()
         out = capsys.readouterr().out
@@ -477,6 +499,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
+        _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
         monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: False)
         _doctor._check_security_gates()
@@ -488,6 +511,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
+        _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
         monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: True)
         _doctor._check_security_gates()
@@ -498,6 +522,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
+        _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
 
         def boom() -> bool:

@@ -7,7 +7,7 @@ real run; there are no terminal screenshots and no invented output.
 | File | Purpose | Captured scene | Used in |
 | --- | --- | --- | --- |
 | `hero.gif` | Four frames: provision the team from a shipped recipe and write it back to `.docket/`; validate, plan and queue; dispatch to `done` through Lead, Implementer and the read-only vetter's `APPROVE`; the record (`config explain` with the team's source and `audit verify`) | `1-team`, `2-dispatch`, `5-record` | Root README and docs index |
-| `isolation.png` | The Implementer's own workspace and git worktree, with `docket gates status` showing workspace isolation on by default; the operator's checkout holds only the exported team | `3-isolation` | Root README |
+| `isolation.png` | The Implementer's own workspace and git worktree, with `docket gates status` showing workspace isolation on (the capture runs `docket gates isolate on`); the operator's checkout holds only the exported team | `3-isolation` | Root README |
 | `governance.png` | The policy dry-run asks for a high-risk push; the Implementer's `bash` call parks the task as `waiting_approval` under `high-risk-deploy`, the audit logs `tool.ask`, the trace records the denial with `executed: false`, and the audit chain verifies | `4-gate` | Root README |
 
 The renderer uses the vendored `DejaVuSansMono.ttf` so glyphs and layout do not depend on host font

@@ -231,7 +231,7 @@ _ISOLATION = [
     "$ docket gates status",
     "Tool-call gate",
     "✓ Policy engine + high-risk command classifier: always active",
-    "✓ Workspace isolation: on (default) (consulted by the turn loop; a turn refuses to run rather "
+    "✓ Workspace isolation: on (consulted by the turn loop; a turn refuses to run rather "
     "than falling back unsandboxed; docket doctor names the backend)",
     "Network: open (default) -- a pod's network=none narrows it; docket gates network none",
     "$ git worktree list",

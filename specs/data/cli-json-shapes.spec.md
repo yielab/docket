@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.21.0
+**Version**: 1.22.0
 **Status**: Complete
 **Last Updated**: 2026-10-06
 
@@ -164,9 +164,9 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
     },
     "securityGates": {
       "toolCallGate": "always-on",
-      "isolation": "string ('on (default)' | 'on' | 'off')",
+      "isolation": "string ('off (default)' | 'on' | 'off')",
       "sandboxBackend": "string ('bwrap' | 'docker' | 'none')",
-      "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is not off; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
+      "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is on; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
       "network": "string ('open' | 'none'; the global mode)",
       "unjailedMcpServers": "array of { name, pod } (empty array if none)"
     },
@@ -492,6 +492,11 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.22.0 (2026-10-06)
+
+- `doctor --json` `securityGates.isolation` reads `off (default)` with no recorded choice
+  (isolation is opt-in, ADR 0021); `dockerImageHasGit` is probed only while isolation is on.
 
 ### Version 1.21.0 (2026-10-06)
 

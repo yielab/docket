@@ -450,6 +450,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Workspace isolation is opt-in (ADR 0021).** A fresh install runs tools on the host and needs
+  no sandbox; `docket gates isolate on` jails `bash` and stdio MCP servers in bwrap (Linux) or
+  Docker, and once on a turn with no backend is still refused. `gates status` and `doctor` read
+  `off (default)`. Requirements are documented in `docs/SECURITY-SIMPLE.md`.
 - **Unknown `docket gates` and `docket context` subcommands exit 2.** `gates` used to print its
   usage and exit 0, and `context` silently fell through to `show`; both now name the unknown
   subcommand and exit 2.

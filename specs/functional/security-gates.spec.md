@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 0.33.0
+**Version**: 0.34.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
-MCP, and Telegram producers, all answering identically; isolation is on unless an operator records an
-explicit off, and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
+MCP, and Telegram producers, all answering identically; workspace isolation is opt-in (`docket gates
+isolate on`), and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
 in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
 P26-5, a pod's own `approvalMode` setting). There is no approval-routing posture flag: it and
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-06
 
 ## Purpose
 
@@ -156,15 +156,19 @@ are owned here, not there.
    targeting private workspace state before deciding. The record **MUST NOT** store an unredacted
    secret and its existing 1,000-character action ceiling remains in force.
 
-### Workspace isolation (implemented, on by default)
+### Workspace isolation (implemented, opt-in)
 
 1. An agent **MUST NOT** read or write outside its own workspace and codebase path.
 2. Path traversal out of the workspace **MUST** be rejected (see input-validation.spec.md,
    `prevent_path_traversal`).
-3. Workspace isolation is **on by default**: a `DOCKET_HOME` with no recorded choice
-   (`FleetSecurity.isolation_mode == "unset"`) is isolated. `docket gates isolate off` records an
-   explicit, audited off and `isolate on` records on; `docket gates status` shows `on (default)`,
-   `on` or `off`. `isolate on` succeeds only when `sandbox_availability()` finds a backend.
+3. Workspace isolation is **opt-in** (ADR 0021, reversing ADR 0020 §1): a `DOCKET_HOME` with no
+   recorded choice (`FleetSecurity.isolation_mode == "unset"`) runs tools on the host, exactly as
+   an explicit off does. `docket gates isolate on` records on and succeeds only when
+   `sandbox_availability()` finds a backend; `isolate off` records an explicit off; both are
+   audited (`gates.isolate`). `docket gates status` and `docket doctor` show `off (default)`, `on`
+   or `off`. The requirement a host must meet to turn it on is one backend: bubblewrap (`bwrap`,
+   Linux only) or a reachable docker daemon (the only backend on macOS). No backend is ever needed
+   while isolation is off.
 4. `sandbox_availability()` tries bwrap first, then docker; `DOCKET_SANDBOX_BACKEND` still forces
    the choice. The jail mounts the git dir and common dir of every root that is inside a git
    repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
@@ -876,12 +880,11 @@ either.
    `edges/adapters/toolbox.py`'s `run_bash` and the `bash` tool registration in `core/tools.py`;
    `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` is the one production caller that
    decides what `ToolContext.sandbox` a real turn gets. As of this version:
-   - `ToolContext.sandbox` still defaults to `"off"` everywhere `ToolContext` is constructed
-     directly (tests, and any future driver) — the change is narrower than "on by default
-     everywhere": `DocketDriver.run_turn` is the one call site that can now pass `"auto"`, and only
-     does so unless `core.fleet.get_isolation_enabled()` is false, which only an explicit recorded
-     off (`docket gates isolate off`) makes it. A `DOCKET_HOME` with no recorded choice is
-     isolated.
+   - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed directly
+     (tests, and any future driver). `DocketDriver.run_turn` is the one call site that can pass
+     `"auto"`, and only does so when `core.fleet.get_isolation_enabled()` is true, which only a
+     recorded `docket gates isolate on` makes it. A `DOCKET_HOME` with no recorded choice is not
+     isolated, and its turns never probe for a backend.
    - **Fail closed, not fail open, when isolation is on and no backend is usable.**
      `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
      `ToolContext` (a second call, independent of the one `toolbox.run_bash` makes per `bash` call
@@ -898,7 +901,7 @@ either.
      bubblewrap (or start docker), or run `docket gates isolate off`.
    - `docket doctor` probes `sandbox_availability()` and reports the backend a turn would use, or
      that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
-     (`on (default)` | `on` | `off`) and `sandboxBackend`. `docket gates status` reports the
+     (`off (default)` | `on` | `off`) and `sandboxBackend`. `docket gates status` reports the
      isolation state only (no host-dependent probe).
    - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
      what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
@@ -1562,6 +1565,15 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.34.0 (2026-10-06)
+
+- **Workspace isolation is opt-in again (ADR 0021, reversing ADR 0020 §1).** Workspace
+  isolation 3 and Exec sandbox 9: no recorded choice means off; `docket gates isolate on` is the
+  only way a turn is jailed, and the only state that needs bwrap or docker. Status reads
+  `off (default)`. Everything else ADR 0020 shipped stands: bwrap before docker, the jail's git
+  dirs, `network none` (still refused with isolation off), stdio MCP servers jailed while
+  isolation is on, docket's credentials stripped from task processes.
 
 ### Version 0.33.0 (2026-10-05)
 

@@ -42,6 +42,11 @@ def _usage() -> None:
     ui.dim("  Verify anytime with 'docket doctor'.")
 
 
+def _off_label(state: str) -> str:
+    """'off (explicit)' for a recorded off, so it reads apart from 'off (default)'."""
+    return "off (explicit)" if state == "off" else state
+
+
 def _status() -> int:
     ui.header("Tool-call gate")
     ui.console.print()
@@ -49,8 +54,11 @@ def _status() -> int:
     ui.console.print()
 
     state = _fleet.get_isolation_state()
-    if state == "off":
-        ui.dim("Workspace isolation: off (explicit) -- tools run on the host")
+    if not _fleet.get_isolation_enabled():
+        ui.dim(
+            f"Workspace isolation: {_off_label(state)} -- tools run on the host; docket gates isolate on "
+            "jails them (needs bubblewrap or docker)"
+        )
     else:
         ui.success(
             f"Workspace isolation: {state} (consulted by the turn loop; a turn refuses to run "
@@ -83,7 +91,7 @@ def _network(want: str) -> int:
         "  Enforced by the sandbox, so a turn with isolation off is refused while this is set "
         "('network.refused'). 'fetch' runs in docket's own process and keeps its domain allowlist."
     )
-    if _fleet.get_isolation_state() == "off":
+    if not _fleet.get_isolation_enabled():
         ui.warn("  Isolation is off: turns will be refused until 'docket gates isolate on'")
     ui.console.print("  Lift: [green]docket gates network open[/green]")
     return 0

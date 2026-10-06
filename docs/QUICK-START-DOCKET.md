@@ -11,10 +11,12 @@ output shown is what docket printed.
 > and breaking changes between versions. Verify results against your own install, and treat
 > every cost figure as an estimate, not a provider bill.
 
-**You need:** Python 3.11+, Git, Bash, a sandbox for the agents' shell (bubblewrap, `bwrap`, on
-Linux, or a running Docker, the usual choice on macOS), and one OpenAI-compatible chat-completions
-endpoint with function-tool support. Isolation is on by default: with neither sandbox, docket
-refuses to run a turn until you record the opt-out with `docket gates isolate off`. The route below uses a local model on `127.0.0.1:8081` (llama.cpp, vLLM,
+**You need:** Python 3.11+, Git, Bash, and one OpenAI-compatible chat-completions endpoint with
+function-tool support. **Optional:** a sandbox for the agents' shell. Isolation is opt-in: turn it
+on with `docket gates isolate on`, which needs bubblewrap (`bwrap`) on Linux or a running Docker
+(the only choice on macOS); see
+[Workspace isolation](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
+The route below uses a local model on `127.0.0.1:8081` (llama.cpp, vLLM,
 LM Studio, Ollama all work); a hosted provider is a two-line variant in step 2.
 
 ---

@@ -6,6 +6,9 @@ stdio MCP server starts unjailed, fetched pages reach the model unscreened, and 
 every other pod's sweep. What does docket change so that an agent's process runs in an envelope by
 default, and what does it leave to the operator?
 
+**Amended by [ADR 0021](0021-isolation-is-opt-in.md) (2026-10-06):** §1 is reversed; isolation is
+opt-in again. The rest of this record stands.
+
 **Where decided:** 2026-10-05, as Phase 38. It is the outline ADR 0017 left in `TODO.md`
 ("Planned — Phase 38"), opened when Phase 37 closed at `25fe5252`. Three outline claims were false
 or not yet decidable when re-verified (see Evidence and "Corrections to the outline").

@@ -94,7 +94,7 @@ What follows explains that dispatch, what held it in check, and then how to chan
 
 `dispatch` takes the next queued task through the team's pipeline, one real model turn per step. The
 Lead plans without a write tool; the Implementer edits in a git worktree made for each task, on its
-own branch, its shell jailed by bwrap or Docker. Then whatever gates the team has decide: the verify
+own branch, its shell jailed by bwrap or Docker once you run `docket gates isolate on`. Then whatever gates the team has decide: the verify
 command's exit code, a reviewer's `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is
 counted, not hoped, and the change stays in the worktree until you merge it.
 
@@ -200,7 +200,8 @@ validated when written, and is refused loudly when broken. File by file:
   wires external servers into the same chokepoint and jail, `--kind read` for read-only roles.
 - **Typed handoffs and context budgets** that follow the resolved model's window, with any
   truncation marked and traced rather than silent; session compaction on the live path.
-- **Sandboxing on by default** (bwrap, else Docker, else refused), git hooks read-only inside it.
+- **Opt-in sandboxing** (`docket gates isolate on`: bwrap on Linux, else Docker; once on, a turn
+  with no backend is refused), git hooks read-only inside it.
 - **Retention and recovery**: `docket trace expire`, `runs prune`, `conversations prune`; a corrupt
   docket-owned JSON file recovers from its validated backup; `docket doctor --fix` repairs drift.
 - **An embeddable runtime**: the standalone **`docket-runtime`** package (`pydantic` + `filelock`

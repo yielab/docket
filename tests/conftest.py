@@ -203,16 +203,21 @@ def register_local_provider(
 
 
 def record_isolation_off(home: Path) -> None:
-    """Record an explicit isolation opt-out in *home*'s fleet.json, merging into any existing file.
+    """Record an explicit isolation off in *home*'s fleet.json, merging into any existing file."""
+    _record_isolation_mode(home, "off")
 
-    Isolation is on by default, so a test that runs real tool calls without a jail says so here
-    in its own fixture rather than depending on which sandbox backend the host happens to have.
-    """
+
+def record_isolation_on(home: Path) -> None:
+    """Record `docket gates isolate on` in *home*'s fleet.json, merging into any existing file."""
+    _record_isolation_mode(home, "non-main")
+
+
+def _record_isolation_mode(home: Path, mode: str) -> None:
     import json
 
     home.mkdir(parents=True, exist_ok=True)
     path = home / "fleet.json"
     data = json.loads(path.read_text()) if path.exists() else {}
-    data.setdefault("security", {})["isolationMode"] = "off"
+    data.setdefault("security", {})["isolationMode"] = mode
     path.write_text(json.dumps(data))
     path.chmod(0o600)

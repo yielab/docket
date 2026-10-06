@@ -538,10 +538,12 @@ path; by default it is not the only one, since `bash` can still reach the networ
 allowlisted interpreters. `docket gates network none` (or a pod's `network` setting) cuts the
 jail's network, leaving `fetch` as the only path.
 
-**Isolation.** Tools run inside bwrap or Docker unless `docket gates isolate off` recorded an
-explicit opt-out, and a turn is refused when neither is usable. The image is
-`DOCKET_SANDBOX_IMAGE`. The choice is `isolationMode` in `fleet.json`, the only `security` flag
-the live path enforces.
+**Isolation (opt-in).** Off by default: tools run on the host. `docket gates isolate on` jails
+`bash` and stdio MCP servers in bwrap (Linux) or Docker (Linux or macOS), and refuses to record
+on when neither is usable; once on, a turn is refused rather than run unjailed if the backend
+disappears. The Docker image is `DOCKET_SANDBOX_IMAGE`. The choice is `isolationMode` in
+`fleet.json`, the only `security` flag the live path enforces. Requirements and coverage:
+[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
 
 ### 3.7 Give agents external tools (MCP)
 

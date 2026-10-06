@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
-from tests.conftest import record_isolation_off
+from tests.conftest import record_isolation_off, record_isolation_on
 
 SUBJECT = "docket.cli._harness"
 
@@ -958,6 +958,7 @@ class TestPostureRefusal:
         home = tmp_path / "home"
         workspace = tmp_path / "ws"
         workspace.mkdir()
+        record_isolation_on(home)
         env = _child_env(home, server.base_url, isolation_off=False, DOCKET_SANDBOX_BACKEND="none")
 
         proc = _run_harness(
