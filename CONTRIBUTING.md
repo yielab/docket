@@ -220,7 +220,11 @@ Six rules, each written down because breaking it cost real work here.
    times, once displacing the whole environment with fixture agents. Any new `DOCKET_HOME`-derived
    constant in `config.py` must reach `_DOCKET_HOME_PATHS` in `tests/conftest.py`, and any test
    choosing its own home calls `repoint_docket_home` rather than hand-rolling a partial copy. Both
-   are guarded.
+   are guarded. Isolation is on by default, so a test must not depend on the host's sandbox either:
+   one that needs no jail calls `tests/conftest.py::record_isolation_off`, and
+   `scripts/maint/pytest-without-sandbox.sh` runs the suite as a host with no bwrap or docker (a
+   stock macOS runner). Forcing `DOCKET_SANDBOX_BACKEND=none` is not that check; it hid 40 macOS
+   failures behind a fixture that deleted the variable.
 5. **A gap list is a claim about the tree and decays like one.** Re-verify before scheduling work
    against it. Work has been scheduled here, and kept over better candidates, against a gap that had
    already been closed the day it was written down.

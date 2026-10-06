@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.conftest import repoint_docket_home
+from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _gates, _keys
@@ -55,6 +55,14 @@ def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # make TestIsolationWiring's "no backend available" cases flaky -- start
     # every test from the same clean slate and let individual tests opt in.
     monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+    # These turns are about the driver, not the jail: record the explicit opt-out so they do
+    # not depend on the host having bwrap or docker (a stock macOS runner has neither).
+    # TestIsolationWiring records its own choice, or clears it to test the default.
+    record_isolation_off(tmp_path / "docket")
+
+
+def _no_recorded_isolation_choice() -> None:
+    _cfg.FLEET_FILE.unlink(missing_ok=True)
 
 
 def _write_meta(agent_id: str, **overrides: object) -> Path:
@@ -155,6 +163,7 @@ class TestRunTurn:
         from docket.cli import app
 
         repoint_docket_home(monkeypatch, tmp_path)
+        record_isolation_off(tmp_path)
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         # Registration probes /models through edges/adapters/llm.py; answer "reachable, 200".
@@ -1644,6 +1653,7 @@ class TestIsolationWiring:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # No fleet.json at all: the default is a jail, not a host run.
+        _no_recorded_isolation_choice()
         _write_meta("solo-agent")
         monkeypatch.setattr(
             _system,
@@ -1664,6 +1674,7 @@ class TestIsolationWiring:
     def test_default_with_no_backend_refuses_naming_both_fixes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _no_recorded_isolation_choice()
         _write_meta("solo-agent")
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         driver = DocketDriver(backend_factory=_never_called)
@@ -1974,7 +1985,17 @@ class TestAllowCommandsWiring:
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert tool_msg.content == "allow_commands="
 
-    def test_a_malformed_pod_setting_fails_closed_to_no_extra_bins(self) -> None:
+    def test_a_malformed_pod_setting_fails_closed_to_no_extra_bins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A malformed pod settings file also fails the network closed to `none`, which only a
+        # jail can enforce: keep the default isolation with a (stubbed) backend.
+        _no_recorded_isolation_choice()
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
+        )
         _write_meta("shop-implementer")
         _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="pytest")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])

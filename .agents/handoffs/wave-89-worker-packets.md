@@ -43,7 +43,8 @@ Common contract for every Wave 89–90 worker. The card itself is extracted with
   `Unreleased` in the changelog.
 - **Isolation is on by default.** A test that needs no jail calls
   `tests/conftest.py::record_isolation_off(home)` in its own fixture; never an autouse fixture.
-  Run the full suite twice: normally **and** with `DOCKET_SANDBOX_BACKEND=none`. Both must pass.
+  Run the full suite twice: normally **and** with `scripts/maint/pytest-without-sandbox.sh -q`
+  (a host with no bwrap or docker; `DOCKET_SANDBOX_BACKEND=none` alone does not simulate one).
 - **Real backends:** this host has `bwrap` and a reachable docker daemon. A test that needs one
   skips with a named reason when it is absent and never fakes the jail it claims to prove.
 - **No network in tests**, except W89-6's one-time `apk add git` image build, which skips when it
@@ -57,7 +58,7 @@ Common contract for every Wave 89–90 worker. The card itself is extracted with
 uv run ruff check . && uv run ruff format --check .
 uv run --extra mcp mypy src
 uv run --extra mcp pytest -q                                   # the FULL default suite
-DOCKET_SANDBOX_BACKEND=none uv run --extra mcp pytest -q      # and host-independent
+bash scripts/maint/pytest-without-sandbox.sh -q                # as a host with no sandbox
 env -u VIRTUAL_ENV bash tests/golden/run.sh verify-all
 bash scripts/validate-specs.sh
 uv run --extra mcp python scripts/gen_cli_docs.py --check
