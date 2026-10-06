@@ -150,10 +150,13 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
             elif view.status == "running":
                 running.append(view)
 
+    # A task that holds a token already shows that approval, whether or not the record
+    # itself learned its task (a parked in-turn call may not have).
+    held = {t.approval_token for t in needs_you if isinstance(t, TaskView) and t.approval_token}
     for record in _approval.list_pending():
         context = record.get("context")
         context = context if isinstance(context, dict) else {}
-        if context.get("taskId"):
+        if context.get("taskId") or record.get("token") in held:
             continue  # already surfaced through its task's `approvalToken`
         approval_view = _approval_view(record)
         needs_you.append(approval_view)

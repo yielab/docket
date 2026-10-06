@@ -162,9 +162,11 @@ of its own.
      (below) is strictly later than `since`; every `done` task when `since` is omitted.
    - `running`: `status == "running"`.
 3. `build_inbox` MUST read every pending approval through `core.approval.list_pending` and add
-   one `ApprovalView` to `needsYou` for each **unless** its `context.taskId` is present — an
-   approval already surfaced through its task's `approvalToken` MUST NOT also appear standalone,
-   so nothing needing a decision is ever shown twice.
+   one `ApprovalView` to `needsYou` for each **unless** its `context.taskId` is present or a
+   task in `needsYou` holds its token as `approvalToken` — an approval already surfaced through
+   its task MUST NOT also appear standalone, so nothing needing a decision is ever shown (or
+   notified) twice. `core/tools.py::_park_call` MUST record `context.taskId` from
+   `ToolContext.task_id` when the turn serves a task, so a parked call's record names it too.
 4. Each item's `TaskView`/`ApprovalView` MUST carry its `a2aState` via
    `operator_contract.a2a_state`, passing `blocked_reason`/`failure_kind` from the task's own
    `blockedReason`/`failureKind` fields.
@@ -767,6 +769,10 @@ Each JSONL line is a JSON object with these fields:
   post-dispatch flush print when that list is empty. Measured need: a fresh home runs
   `serve --dispatch`, a task parks, and nothing anywhere said that only `console` was on.
 - Notifications item 16: the CLI dispatch flush may print that one line too.
+- Inbox item 3: a parked call's approval record carries `context.taskId`, and `build_inbox`
+  also folds an approval whose token a `needsYou` task holds. Found by the first real
+  park -> flush run: the same approval reached `desktop` and `ntfy` twice, once as the task
+  and once standalone.
 
 ### Version 1.2.0 (2026-10-05)
 

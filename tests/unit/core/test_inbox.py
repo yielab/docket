@@ -105,6 +105,27 @@ class TestBuildInboxSections:
         assert approval_items[0].pod == "beta"
         assert approval_items[0].task_id is None
 
+    def test_approval_a_task_holds_by_token_is_folded_even_without_task_id(self) -> None:
+        """A parked approval whose record never learned its task is still the task's: the
+        task carries the token as `approvalToken`, so one item, not two."""
+        _pod.build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
+        token = _approval.approval_create(
+            "gamma", "implementer", "bash: git push", context={"tool": "bash", "parked": True}
+        )
+        _seed_task(
+            "gamma",
+            "task-parked",
+            status="waiting_approval",
+            approvalToken=token,
+            created="2026-09-28T01:00:00+00:00",
+        )
+
+        view = _inbox.build_inbox(now=_NOW)
+
+        tokens = [item.token for item in view.needs_you if isinstance(item, ApprovalView)]
+        assert token not in tokens
+        assert [t.id for t in view.needs_you if isinstance(t, TaskView)] == ["task-parked"]
+
     def test_every_item_carries_its_a2a_state(self) -> None:
         self._seed()
         view = _inbox.build_inbox(now=_NOW)

@@ -999,7 +999,7 @@ state change; this command forces one in between, or previews it. With no `--dry
 inbox against the last flush's saved snapshot, delivers each new event
 (`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
 delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash mid-flush
-never re-emits; a failed delivery is recorded in `~/.docket/docket-channels-health.json` and not
+never re-emits; a failed delivery is recorded in `~/.docket/channels-health.json` and not
 retried on the next flush (at-most-once, never at-least-once). `--dry-run` prints what would be
 sent without delivering or advancing the snapshot
 **Output**: Delivered/failed/skipped counts, or (with `--dry-run`) the same counts as a preview

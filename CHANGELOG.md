@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session, `init` offers `Enable desktop notifications now? [Y/n]` and, on yes, enables it and
   sends one test notification; nothing is ever enabled without that yes. The quick start's
   "Run unattended" now opens with picking a channel.
+  - Found by the first real park -> flush run: the same parked approval reached `desktop` and
+    `ntfy` twice, once through its task and once standalone, because `_park_call` never
+    recorded the task on the approval. It now does (`context.taskId`), and the inbox also folds
+    an approval whose token a waiting task holds, so one decision is one notification.
 
 - **The items carried out of Phases 36-38 (Waves 89-90, no phase).**
   - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees and

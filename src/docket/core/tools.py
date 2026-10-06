@@ -509,6 +509,8 @@ def _park_call(
         park_context["project"] = ctx.project
     if ctx.role:
         park_context["role"] = ctx.role
+    if ctx.task_id:
+        park_context["taskId"] = ctx.task_id  # lets the inbox fold this approval into its task
     rationale, blocked = _approval.screen_rationale(ctx.rationale)
     token = _approval.approval_create(
         ctx.project or "operator",

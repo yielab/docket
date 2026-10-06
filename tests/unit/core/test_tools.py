@@ -487,6 +487,21 @@ class TestParkMode:
         assert record["context"]["parked"] is True
         assert record["context"]["argsDigest"] == canonical_args_digest("bash", {"command": "rm x"})
 
+    def test_park_names_the_task_it_serves(self, ctx: ToolContext) -> None:
+        """The inbox folds a parked approval into its task only through `context.taskId`;
+        without it the same approval is listed, and notified, twice."""
+        ctx.approval_mode = "park"
+        ctx.task_id = "task-42"
+        dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        (record,) = core_approval.list_pending()
+        assert record["context"]["taskId"] == "task-42"
+
+    def test_park_without_a_task_records_no_task_id(self, ctx: ToolContext) -> None:
+        ctx.approval_mode = "park"
+        dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        (record,) = core_approval.list_pending()
+        assert "taskId" not in record["context"]
+
     def test_park_records_the_calling_project_and_role(self, workspace: Path) -> None:
         ctx = ToolContext(
             agent_id="demo-implementer",
