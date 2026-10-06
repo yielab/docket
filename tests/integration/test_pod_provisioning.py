@@ -680,6 +680,75 @@ class TestInitReadsRepoConfig:
         assert "created with 3 members" in out
         assert "  - demo-security-vetter" in out
 
+    def test_created_summary_warns_when_only_console_is_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        codebase = tmp_path / "codebase"
+
+        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "docket channels enable desktop" in out
+
+    def test_tty_with_a_desktop_session_offers_desktop_and_enables_on_yes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import builtins
+
+        from docket.cli import _channels
+        from docket.core import channel as _channel
+        from docket.edges.adapters import system as _sys
+
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})())
+        monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
+        monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
+        sent: list[list[str]] = []
+        monkeypatch.setattr(_channels, "_run_test", lambda args: sent.append(args) or 0)
+
+        rc = _agents.run_init(["--codebase", str(tmp_path / "codebase"), "--name", "demo"])
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert _channel.load_catalog().delivering() == ["desktop"]
+        assert sent == [["desktop"]]
+        assert "Channel enabled: desktop" in out
+
+    def test_tty_offer_declined_enables_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import builtins
+
+        from docket.core import channel as _channel
+        from docket.edges.adapters import system as _sys
+
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr("sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})())
+        monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
+        monkeypatch.setattr(builtins, "input", lambda _prompt="": "n")
+
+        rc = _agents.run_init(["--codebase", str(tmp_path / "codebase"), "--name", "demo"])
+
+        assert rc == 0
+        assert _channel.load_catalog().delivering() == []
+
+    def test_created_summary_is_quiet_once_a_channel_delivers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import channel as _channel
+
+        _seed(tmp_path, monkeypatch)
+        _channel.enable_channel("desktop")
+        codebase = tmp_path / "codebase"
+
+        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "docket channels enable" not in out
+
     def test_recipe_with_an_existing_docket_dir_is_rejected_before_provisioning(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

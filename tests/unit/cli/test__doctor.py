@@ -16,6 +16,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _doctor
+from docket.core import channel as _channel
 from docket.edges import store as _store
 
 SUBJECT = "docket.cli._doctor"
@@ -83,8 +84,10 @@ def _seed(
     register: bool = True,
     meta_model: str = "anthropic/claude-sonnet-4-6",
     secrets: dict[str, str] | None = None,
+    notify: bool = True,
 ) -> Path:
-    """Create a temp DOCKET_HOME with one myshop agent and repoint config."""
+    """Create a temp DOCKET_HOME with one myshop agent and repoint config; a healthy home
+    has a channel that delivers beyond the console, so `desktop` is enabled unless asked not to."""
     home = tmp_path / ".docket"
     ws = home / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
@@ -111,6 +114,8 @@ def _seed(
         sfile.chmod(0o600)
 
     _point_config_at(home, monkeypatch)
+    if notify:
+        _channel.enable_channel("desktop")
     return home
 
 
@@ -154,6 +159,7 @@ class TestJsonProbe:
             "budget",
             "runaway",
             "keyHygiene",
+            "notifications",
             "securityGates",
             "templateDrift",
         ):
@@ -172,6 +178,56 @@ class TestJsonProbe:
         data = json.loads(capsys.readouterr().out)
         assert data["checks"]["fleet"]["ok"] is True
         assert data["checks"]["fleet"]["agents"] == 1
+
+
+class TestNotifications:
+    def test_agents_and_only_console_is_a_counted_issue(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, notify=False)
+        issues = _doctor._check_notifications(["myshop"])
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "docket channels enable desktop" in out
+        assert "docket inbox" in out
+
+    def test_no_agents_is_informational(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, notify=False, register=False)
+        issues = _doctor._check_notifications([])
+        out = capsys.readouterr().out
+        assert issues == 0
+        assert "docket channels enable desktop" in out
+
+    def test_a_delivering_channel_is_named_and_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        issues = _doctor._check_notifications(["myshop"])
+        out = capsys.readouterr().out
+        assert issues == 0
+        assert "desktop" in out
+        assert "docket channels enable" not in out
+
+    def test_json_names_the_delivering_channels(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        _doctor.run_doctor(json_out=True)
+        data = json.loads(capsys.readouterr().out)
+        assert data["checks"]["notifications"] == {"ok": True, "delivering": ["desktop"]}
+        assert data["healthy"] is True
+
+    def test_json_only_console_with_an_agent_is_unhealthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}, notify=False)
+        rc = _doctor.run_doctor(json_out=True)
+        data = json.loads(capsys.readouterr().out)
+        assert data["checks"]["notifications"] == {"ok": False, "delivering": []}
+        assert data["healthy"] is False
+        assert rc == 1
 
 
 # ── individual checks ──────────────────────────────────────────────────────────

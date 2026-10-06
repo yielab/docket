@@ -52,6 +52,30 @@ class TestBuiltinCatalog:
             assert spec.description.strip(), name
 
 
+class TestDelivering:
+    def test_a_fresh_catalog_delivers_nowhere(self) -> None:
+        """console is on and console sends nothing, so nothing reaches an absent operator."""
+        delivering = _channel.load_catalog().delivering()
+        assert delivering == []
+        text = _channel.unreached_warning(delivering)
+        assert text is not None
+        assert "docket channels enable desktop" in text
+        assert "docket channels enable ntfy --set topic=" in text
+        assert "docket inbox" in text
+
+    def test_an_enabled_notify_channel_delivers_and_silences_the_warning(self) -> None:
+        _channel.enable_channel("desktop")
+        delivering = _channel.load_catalog().delivering()
+        assert delivering == ["desktop"]
+        assert _channel.unreached_warning(delivering) is None
+
+    def test_a_disabled_channel_and_console_never_count(self) -> None:
+        _channel.enable_channel("ntfy", {"config": {"topic": "t"}})
+        _channel.disable_channel("ntfy")
+        assert _channel.load_catalog().delivering() == []
+        assert "console" in _channel.SILENT_DIALECTS
+
+
 class TestLoadChannelDocument:
     def test_loads_a_minimal_document(self, tmp_path: Path) -> None:
         doc = tmp_path / "desktop.yaml"

@@ -493,3 +493,35 @@ class TestPodPregrant:
 
         stored = _dispatch.read_tasks("demo")[0]
         assert stored["pregrants"][0]["tool"] == "write"
+
+
+class TestFlushNotifyAfterDispatch:
+    @staticmethod
+    def _flush_returns(monkeypatch: pytest.MonkeyPatch, events: int) -> None:
+        from docket.core import notify as _notify
+
+        monkeypatch.setattr(_notify, "flush", lambda *_a, **_k: _notify.FlushReport(events=events))
+
+    def test_events_with_only_console_warn(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._flush_returns(monkeypatch, 1)
+        _pod._flush_notify_after_dispatch()
+        assert "docket channels enable desktop" in capsys.readouterr().out
+
+    def test_no_events_stay_silent(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._flush_returns(monkeypatch, 0)
+        _pod._flush_notify_after_dispatch()
+        assert capsys.readouterr().out == ""
+
+    def test_a_delivering_channel_is_quiet(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import channel as _channel
+
+        _channel.enable_channel("desktop")
+        self._flush_returns(monkeypatch, 1)
+        _pod._flush_notify_after_dispatch()
+        assert capsys.readouterr().out == ""

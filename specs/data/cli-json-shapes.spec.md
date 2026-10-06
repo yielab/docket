@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.19.0
+**Version**: 1.21.0
 **Status**: Complete
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-06
 
 ## Purpose
 
@@ -157,6 +157,10 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
     "providerCatalog": {
       "ok": "boolean",
       "problems": "array of { name, reason } (malformed global provider documents)"
+    },
+    "notifications": {
+      "ok": "boolean (false when at least one project agent exists and `delivering` is empty)",
+      "delivering": "array of channel names: enabled, `notify`-capable, dialect not `console`"
     },
     "securityGates": {
       "toolCallGate": "always-on",
@@ -488,6 +492,12 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.21.0 (2026-10-06)
+
+- `doctor --json` gains `checks.notifications {ok, delivering}`: the enabled channels that
+  deliver somewhere other than the console, `ok: false` when a project agent exists and none
+  does (operator-loop.spec.md Notifications 17).
 
 ### Version 1.19.0 (2026-10-05)
 

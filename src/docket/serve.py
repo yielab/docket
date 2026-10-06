@@ -1654,6 +1654,12 @@ def run_serve(
     loopback = bind in ("127.0.0.1", "localhost", "::1")
     bind_note = "loopback-only" if loopback else "WARNING: not loopback — reachable off this host"
     print(f"Bind: {bind}  ({bind_note})")
+    if dispatch:
+        from docket.core import channel as _channel
+
+        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+        if unreached:
+            print(f"WARNING: {unreached}")
     if token_file:
         token_path = Path(token_file)
         _write_token_file(token_path, _token)

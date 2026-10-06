@@ -222,9 +222,11 @@ _BIN_DOCKET = ROOT / "bin" / "docket"
 
 # Real, but not something an operator tunes for docket's own behavior: PATH is the
 # ordinary OS search path, read only to build a minimal subprocess environment
-# (edges/adapters/toolbox.py, edges/adapters/system.py). Excluded by name, not silently
-# dropped, so the exclusion itself is visible to anyone reading this file.
-_ENV_SCAN_EXCLUDE = {"PATH"}
+# (edges/adapters/toolbox.py, edges/adapters/system.py); DISPLAY and WAYLAND_DISPLAY are the
+# desktop session's own markers, probed once to decide whether `docket init` may offer the
+# `desktop` channel (edges/adapters/system.py::desktop_notifications_available). Excluded by
+# name, not silently dropped, so the exclusion itself is visible to anyone reading this file.
+_ENV_SCAN_EXCLUDE = {"PATH", "DISPLAY", "WAYLAND_DISPLAY"}
 
 
 def _os_environ_call_name(node: ast.Call) -> str | None:

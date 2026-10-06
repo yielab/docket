@@ -73,7 +73,8 @@ docket serve --dispatch                       # drain every pod's queue in the b
 # What needs you
 docket inbox                                  # every pod's waiting/blocked tasks and pending approvals
 docket chat <task-id>                         # see and answer one task's parked question
-docket channels enable ntfy --set topic=t     # push a notification the moment something does
+docket channels enable desktop                # be told the moment something does (console alone tells nobody)
+docket channels enable ntfy --set topic=t     # the same, on your phone
 docket notify                                 # force one delivery sweep now
 
 # The record

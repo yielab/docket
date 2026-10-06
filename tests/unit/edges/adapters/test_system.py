@@ -163,3 +163,22 @@ class TestGitDiffStat:
 
         monkeypatch.setattr(_sys.subprocess, "run", boom)
         assert _sys.git_diff_stat("/tmp/repo", "HEAD") is None
+
+
+class TestDesktopNotificationsAvailable:
+    def test_linux_needs_a_session_and_notify_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys.sys, "platform", "linux")
+        monkeypatch.setattr(_sys, "_which", lambda binary: binary == "notify-send")
+        monkeypatch.delenv("DISPLAY", raising=False)
+        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+        assert _sys.desktop_notifications_available() is False
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+        assert _sys.desktop_notifications_available() is True
+        monkeypatch.setattr(_sys, "_which", lambda binary: False)
+        assert _sys.desktop_notifications_available() is False
+
+    def test_macos_needs_only_osascript(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        monkeypatch.delenv("DISPLAY", raising=False)
+        monkeypatch.setattr(_sys, "_which", lambda binary: binary == "osascript")
+        assert _sys.desktop_notifications_available() is True

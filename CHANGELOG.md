@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Console alone tells nobody, and docket now says so.** `console` is a silent channel dialect
+  (`core.channel.SILENT_DIALECTS`); `Catalog.delivering()` names the enabled channels that reach
+  an operator away from the terminal. `docket doctor` gains a `Notifications:` check, counted as
+  an issue once a pod exists (`checks.notifications {ok, delivering}` in `--json`);
+  `docket serve --dispatch` warns once at startup, `docket init` after the created summary and
+  `docket pod <p> dispatch` after a flush that found events, all with one text naming
+  `docket channels enable desktop` and `ntfy --set topic=<topic>`. On a TTY with a desktop
+  session, `init` offers `Enable desktop notifications now? [Y/n]` and, on yes, enables it and
+  sends one test notification; nothing is ever enabled without that yes. The quick start's
+  "Run unattended" now opens with picking a channel.
+
 - **The items carried out of Phases 36-38 (Waves 89-90, no phase).**
   - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees and
     merged branches, keeping (and naming) dirty, unmerged and `dispatch --resume`-able ones;

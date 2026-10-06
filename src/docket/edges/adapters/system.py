@@ -16,6 +16,7 @@ import contextlib
 import os
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,15 @@ def _which(binary: str) -> bool:
 def secret_tool_available() -> bool:
     """Return True if the `secret-tool` (libsecret) binary is on PATH."""
     return _which("secret-tool")
+
+
+def desktop_notifications_available() -> bool:
+    """True when the `desktop` channel dialect could deliver here: `osascript` on macOS, or a
+    graphical session (`DISPLAY`/`WAYLAND_DISPLAY`) plus `notify-send` elsewhere."""
+    if sys.platform == "darwin":
+        return _which("osascript")
+    has_session = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return has_session and _which("notify-send")
 
 
 def secret_tool_lookup(service: str, key: str) -> str | None:

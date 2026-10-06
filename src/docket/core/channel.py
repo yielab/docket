@@ -14,6 +14,7 @@ a channel document only declares what it is allowed to send and to whom.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -53,6 +54,24 @@ DIALECT_MAX: dict[str, frozenset[str]] = {
 }
 
 _CONTENT_RANK: dict[str, int] = {"minimal": 0, "actions": 1, "conversation": 2}
+
+# Dialects whose `deliver` sends nothing: the console is already the inbox, so a catalog where
+# it is the only enabled channel reaches nobody who is not looking at that terminal.
+SILENT_DIALECTS: frozenset[str] = frozenset({"console"})
+
+_UNREACHED_WARNING = (
+    "Only console is on, and console sends nothing.\n"
+    "  A parked task waits unseen until you run docket inbox.\n"
+    "  Before running unattended, enable a channel:\n"
+    "    docket channels enable desktop                   # this machine\n"
+    "    docket channels enable ntfy --set topic=<topic>  # your phone"
+)
+
+
+def unreached_warning(delivering: Sequence[str]) -> str | None:
+    """The one text every surface prints when nothing delivers beyond the console (doctor,
+    `serve --dispatch`, `init`, the post-dispatch flush); ``None`` once something does."""
+    return None if delivering else _UNREACHED_WARNING
 
 
 def _format_loc(loc: tuple[Any, ...]) -> str:
@@ -245,6 +264,16 @@ class Catalog:
     def source_of(self, name: str) -> str:
         """``"built-in"`` or ``"global"``, or ``""`` when *name* is not in the catalog."""
         return self.scopes.get(name, "")
+
+    def delivering(self) -> list[str]:
+        """Names of the enabled `notify` channels whose dialect sends somewhere, sorted."""
+        return sorted(
+            name
+            for name, spec in self.entries.items()
+            if spec.enabled
+            and "notify" in spec.capabilities
+            and spec.dialect not in SILENT_DIALECTS
+        )
 
 
 def _load_builtin_channels() -> dict[str, ChannelSpec]:

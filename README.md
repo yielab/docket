@@ -116,7 +116,9 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
 whole command line (`git status` passes, `git push origin production` asks), then approval over
 CLI, HTTP, MCP or Telegram, then budget. An unattended pod **parks** instead of blocking:
-`docket inbox` shows what needs you, `docket channels` notifies, neither ever deciding.
+`docket inbox` shows what needs you, and a `kind: channel` you enable (`desktop`, `ntfy`,
+`telegram`, a webhook) tells you; console alone tells nobody, and `docket doctor` says so.
+Neither ever decides.
 `docket audit verify` checks the hash chain over every verdict, approval, execution. `docket
 trace tail <p>` shows a run step-by-step; a `kind: exporter` sends it to OpenTelemetry or
 Langfuse, structure-only unless widened. `docket cost` reports measured tokens and a labelled

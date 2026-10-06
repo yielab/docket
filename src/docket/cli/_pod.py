@@ -794,7 +794,8 @@ def _parse_dispatch_args(extra: list[str]) -> DispatchArgs:
 def _flush_notify_after_dispatch() -> None:
     """One `core.notify.flush` call over every catalog channel, after a CLI dispatch's own
     summary has already printed (ADR 0016 SS7) -- the foreground half of delivery; the
-    background half is `serve.py`'s sweep. Prints nothing unless a delivery failed."""
+    background half is `serve.py`'s sweep. Prints nothing unless a delivery failed, or the
+    flush found events and nothing delivers beyond the console."""
     import datetime as _dt
 
     from docket.core import channel as _channel
@@ -807,6 +808,10 @@ def _flush_notify_after_dispatch() -> None:
     )
     if report.failed:
         ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
+    if report.events:
+        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+        if unreached:
+            ui.warn(f"  {unreached}")
 
 
 def _pod_dispatch(

@@ -302,6 +302,29 @@ never regenerates. The file-by-file reference, with what reads each file on the 
 
 ## 7. Run unattended
 
+**First, give docket a way to reach you.** The only channel on by default is `console`, and
+console sends nothing: it is the terminal you are already looking at. Unattended, a gated call
+**parks** its task and waits, silently, until you run `docket inbox` or the approval expires and
+the task fails. `docket doctor` counts a home with pods and no delivering channel as an issue,
+`docket init` and `docket serve --dispatch` print the same warning. The one shortcut: `init`
+run from a terminal with a desktop session asks `Enable desktop notifications now? [Y/n]` and,
+on yes, turns `desktop` on and sends a test notification so you see it work. Pick the rung you
+need:
+
+```bash
+docket channels enable desktop                        # this machine: a native notification, nothing to configure
+docket channels enable ntfy --set topic=<private>     # your phone: the ntfy app, one topic, no account
+docket channels enable telegram --set actors=<chat>   # your phone, and you can also answer from it
+docket channels test desktop                          # one synthetic event, so you see it before you need it
+```
+
+`desktop` needs only a desktop session on the host running docket. `ntfy` reaches you anywhere;
+pick a topic nobody can guess, since the public server shows it to anyone who does (a
+notification carries `content: minimal` by default: pod, task and state, nothing more).
+`telegram` is the one channel that can also *decide* (`/approve`, `/answer`); store the bot
+token first with `docket keys add TELEGRAM_BOT_TOKEN`. `webhook` and `command` wire anything
+else (Slack, n8n, a pager); `email` notifies and never decides.
+
 ```bash
 docket serve --dispatch                   # drain every pod's queue each sweep (loopback by default)
 docket pod myapp config set schedule "@every 30m"   # or a daily HH:MM in UTC, or 5-field cron
@@ -312,10 +335,9 @@ A gated call hit by an unattended sweep no longer waits on a thread: it **parks*
 recorded as an ordinary `waiting_approval` task with nothing blocking behind it. `docket inbox`
 lists every task and approval that needs you (`--peek` reads without advancing its cursor); grant
 or deny it exactly like any other approval: `docket approve <token>` (also HTTP, MCP or Telegram).
-To be told rather than have to ask, turn on a delivery channel — `docket channels enable ntfy
---set topic=<your-topic>` (or `desktop`, `webhook`, `command`, `email`) — and `docket notify`
-pushes what changed since the last flush; `docket serve --dispatch` and a real dispatch already
-call it after every state change. Prefer a hard failure over a parked one in CI?
+`docket notify` pushes what changed since the last flush to every enabled channel; `docket serve
+--dispatch` and a real dispatch already call it after every state change. Prefer a hard failure
+over a parked one in CI?
 `docket pod myapp config set approvalMode refuse` fails the task at once instead, naming the tool
 and the policy that asked.
 

@@ -236,8 +236,10 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - **Off by default, same as export.** A push notification is a separate, opt-in `kind: channel`
   document (`docket channels`): seven dialects ship (`console`, `desktop`, `webhook`, `command`,
   `ntfy`, `email`, `telegram`), and only `console` — your own terminal, already the inbox — ships
-  enabled. Nothing leaves this host to notify you of anything until you run `docket channels
-  enable <name>`. Each dialect has a closed maximum of what it may do: every dialect can
+  enabled. Enabled is not the same as reaching you: console sends nothing, so `docket doctor`
+  flags a home with pods and nothing else on, and `init`/`serve --dispatch` warn too; the fix
+  is one command, never automatic. Nothing leaves this host to notify you of anything until
+  you run `docket channels enable <name>`. Each dialect has a closed maximum of what it may do: every dialect can
   `notify`; only `console` and `telegram` may ever `decide` (act on an approval from inside the
   channel itself); a document that tries to exceed its dialect's maximum is refused at parse
   time, not silently ignored.

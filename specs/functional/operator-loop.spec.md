@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-06
 
 ## Purpose
 
@@ -309,7 +309,26 @@ in the derived inbox becomes an event on the wire.
     send anything to a real destination. `serve.py`'s periodic sweep and `docket pod <p>
     dispatch`'s foreground summary MUST each call `core.notify.flush` once, after their own
     work, with the CLI dispatch path printing nothing beyond one warning line naming the
-    failure count when a delivery failed.
+    failure count when a delivery failed and, when the flush found events and nothing
+    delivers (item 17), the one line `unreached_warning` renders.
+17. **Console alone tells nobody, and docket says so.** `core.channel.SILENT_DIALECTS` MUST
+    name every dialect whose `deliver` sends nothing (`console`, item 15).
+    `Catalog.delivering()` MUST return the sorted names of the enabled channels with `notify`
+    in `capabilities` whose dialect is not silent, and `core.channel.unreached_warning(
+    delivering)` MUST return `None` when that list is non-empty and otherwise the one warning
+    text every surface prints: that only `console` is on, that console sends nothing, that a
+    parked task waits unseen until `docket inbox`, and the two first-rung fixes `docket channels
+    enable desktop` and `docket channels enable ntfy --set topic=<topic>`. Four surfaces MUST
+    consume it, none MAY enable a channel on its own: `docket doctor`'s `Notifications:` block
+    (counted as an issue when at least one project agent exists, informational otherwise;
+    `--json` carries `checks.notifications {ok, delivering}`), `docket serve --dispatch` once
+    at startup, `docket init` after the created summary, and `docket pod <p> dispatch`'s
+    post-dispatch flush when that flush found events. One offer is allowed: `docket init` on a
+    TTY where `edges.adapters.system.desktop_notifications_available()` holds MAY ask
+    `Enable desktop notifications now? [Y/n]` and, only on a yes (the default), enable `desktop`
+    and deliver one `channel.test` event through it so the operator sees it work; off a TTY
+    nothing is asked. A catalog where something delivers MUST print none of this beyond
+    `doctor`'s one success line naming the delivering channels.
 
 ### 6.1 Dialects
 
@@ -739,6 +758,15 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.3.0 (2026-10-06)
+
+- Notifications item 17: `console` is a silent dialect (`SILENT_DIALECTS`), `Catalog.delivering()`
+  names the enabled channels that reach an operator away from the terminal, and
+  `unreached_warning` owns the one text `doctor`, `serve --dispatch`, `init` and the
+  post-dispatch flush print when that list is empty. Measured need: a fresh home runs
+  `serve --dispatch`, a task parks, and nothing anywhere said that only `console` was on.
+- Notifications item 16: the CLI dispatch flush may print that one line too.
 
 ### Version 1.2.0 (2026-10-05)
 

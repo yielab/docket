@@ -1025,7 +1025,11 @@ explicit `--since` don't.
 **Pushing.** A destination is a `kind: channel` YAML document, the same shape as `kind: exporter`
 (§3.14). Seven dialects ship, all disabled except `console` (your own terminal, already the
 inbox): `desktop`, `webhook`, `command`, `ntfy`, `email` and `telegram` notify only; `console` and
-`telegram` may also `decide` (act on an approval from inside the channel). A channel declares
+`telegram` may also `decide` (act on an approval from inside the channel). Console sends
+nothing, so with nothing else enabled a parked task waits unseen until `docket inbox`: `docket
+doctor` counts that as an issue once a pod exists (`checks.notifications` in `--json`), and
+`docket init`, `docket serve --dispatch` and a foreground dispatch that found events print the
+same warning; `docket channels enable desktop` is the zero-configuration fix. A channel declares
 `content: minimal|actions|conversation` (default `minimal`) the same way an exporter declares
 `privacy`, and widening it is the same confirmed, audited command shape:
 

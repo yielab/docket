@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import channel as _channel
 from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp_tools
@@ -406,6 +407,23 @@ def _check_exporters() -> int:
                 if host not in _LOOPBACK_HOSTS:
                     ui.info(f"  {name}: privacy '{spec.privacy_label}' shares content with {host}")
     return issues
+
+
+def _check_notifications(ids: list[str]) -> int:
+    """Warn when no enabled channel delivers beyond the console -- a parked task would wait
+    unseen. Counted as an issue only once a project agent exists to park anything."""
+    ui.console.print()
+    ui.console.print("[bold]Notifications:[/bold]")
+    delivering = _channel.load_catalog().delivering()
+    text = _channel.unreached_warning(delivering)
+    if text is None:
+        ui.success(f"  Delivering: {', '.join(delivering)}")
+        return 0
+    if ids:
+        ui.warn(f"  {text}")
+        return 1
+    ui.dim(f"  {text}")
+    return 0
 
 
 def _unjailed_mcp_servers() -> list[dict[str, str]]:
@@ -846,6 +864,13 @@ def _doctor_json_security() -> dict[str, Any]:
     }
 
 
+def _doctor_json_notifications(ids: list[str]) -> tuple[int, dict[str, Any]]:
+    """Notification reach, JSON shape of `_check_notifications`."""
+    delivering = _channel.load_catalog().delivering()
+    ok = bool(delivering) or not ids
+    return (0 if ok else 1), {"ok": ok, "delivering": delivering}
+
+
 def _doctor_json_provider_catalog() -> tuple[int, list[dict[str, str]]]:
     """Malformed global provider documents, JSON shape of `_check_provider_catalog`."""
     problems = _provider_catalog_problems()
@@ -903,6 +928,9 @@ def _doctor_json() -> dict[str, Any]:
     provider_catalog_issues, provider_catalog_problems = _doctor_json_provider_catalog()
     issues += provider_catalog_issues
 
+    notify_issues, notifications = _doctor_json_notifications(ids)
+    issues += notify_issues
+
     security = _doctor_json_security()
     tmpl_results = _doctor_json_template_drift(ids)
 
@@ -921,6 +949,7 @@ def _doctor_json() -> dict[str, Any]:
                 "ok": not provider_catalog_problems,
                 "problems": provider_catalog_problems,
             },
+            "notifications": notifications,
             "securityGates": security,
             "templateDrift": tmpl_results,
         },
@@ -955,6 +984,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_provider_coverage(ids)
     issues += _check_provider_catalog()
     issues += _check_exporters()
+    issues += _check_notifications(ids)
     issues += _check_security_gates()
     issues += _check_policies()
     issues += _check_pod_config_overlays()

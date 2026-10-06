@@ -302,7 +302,31 @@ def run_init(all_args: list[str]) -> int:
     ui.console.print(f"  docket pod {aid}              # inspect the pod")
     ui.console.print(f"  docket pod {aid} add reviewer # add a role")
     ui.console.print(f"  docket wire {lead_id}   # optional Telegram binding")
+    _offer_desktop_channel()
     return 0
+
+
+def _offer_desktop_channel() -> None:
+    """After the created summary: say so when nothing delivers beyond the console and, on a TTY
+    with a desktop session, offer to turn `desktop` on now and send one test notification so
+    the operator sees it work before a parked task needs it. Off a TTY only the warning prints."""
+    from docket.cli._channels import _run_test
+    from docket.core import channel as _channel
+    from docket.edges.adapters import system as _sys
+
+    unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
+    if unreached is None:
+        return
+    ui.console.print()
+    ui.warn(unreached)
+    if not sys.stdin.isatty() or not _sys.desktop_notifications_available():
+        return
+    ans = input("Enable desktop notifications now? [Y/n]: ").strip().lower()
+    if ans in ("n", "no"):
+        return
+    _channel.enable_channel("desktop")
+    ui.success("Channel enabled: desktop -- sending one test notification, you should see it now.")
+    _run_test(["desktop"])
 
 
 def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[str]]:

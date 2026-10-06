@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.62.0
+**Version**: 1.64.0
 **Status**: Complete
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-06
 
 ## Purpose
 
@@ -157,7 +157,11 @@ it after provisioning through the same `plan_apply`/`apply` path `docket pod <p>
 validation error exits 1 naming the file and field, with nothing provisioned.
 **Output**: Creation progress and confirmation with member IDs. The closing `created with N
 members` line and the id list that follows it count every member of the pod as it stands after
-the apply step, so a member a present `.docket/` or `--recipe` added is counted and listed
+the apply step, so a member a present `.docket/` or `--recipe` added is counted and listed.
+When no enabled channel delivers beyond the console, the summary ends with
+`core.channel.unreached_warning`'s text; on a TTY with a desktop session it then asks
+`Enable desktop notifications now? [Y/n]` and, on yes, enables `desktop` and sends one test
+notification (operator-loop.spec.md Notifications 17). Off a TTY it only warns
 **Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
 or provisioning registered no member — docket's flat convention, see Return Code Convention below)
 
@@ -651,6 +655,12 @@ visibility, not shared workspace or session state.
   with the file and the failing field, e.g. an unknown `auth.type`
 - Enabled exporters' recorded health (`exporters-health.json`) — a non-zero `failed` count
   since the exporter's last success is named with `docket exporters test <name>` as the fix
+- Notification reach (`Notifications:`): the enabled channels that deliver somewhere other
+  than the console (`core.channel.Catalog.delivering()`). None, with at least one project
+  agent registered, is a counted issue printed as `core.channel.unreached_warning`'s text
+  (only `console` is on and it sends nothing; a parked task waits unseen until `docket inbox`;
+  fix with `docket channels enable desktop` or `ntfy --set topic=<topic>`); none with no
+  agents is informational. `--json` carries `checks.notifications {ok, delivering}`
 - MCP server isolation state: unjailed servers (isolate: false) from both global and per-pod
   registries when isolation is not off (human output warns; `--json` lists with pod context)
 
@@ -1274,6 +1284,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.64.0 (2026-10-06)
+
+- `docket doctor` (human and `--json`) reports notification reach: a home with project agents
+  and no channel that delivers beyond the console is a counted issue naming the fix.
+  `docket serve --dispatch` prints the same warning once at startup, `docket init` after the
+  created summary, and `docket pod <p> dispatch` after a flush that found events
+  (operator-loop.spec.md Notifications 17). Nothing is enabled automatically.
 
 ### Version 1.62.0 (2026-10-05)
 
