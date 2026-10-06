@@ -19,6 +19,9 @@ from docket.edges.adapters import system
 
 SUBJECT = "docket.edges.adapters.mcp_client"
 
+# The launch argv is built as the SDK's StdioServerParameters: the optional [mcp] extra.
+pytest.importorskip("mcp")
+
 _needs_sdk = pytest.mark.skipif(
     not _client._sdk_available(), reason="the optional mcp SDK is absent"
 )

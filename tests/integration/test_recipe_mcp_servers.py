@@ -193,6 +193,7 @@ def _two_server_recipe(tmp_path: Path) -> Path:
 def test_isolate_false_is_stored_and_only_that_servers_launch_is_unjailed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    pytest.importorskip("mcp")
     from docket.edges.adapters import mcp_client as _client
 
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")

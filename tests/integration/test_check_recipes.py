@@ -7,6 +7,7 @@ and commits files in the root it is handed, so the checks run against genuine gi
 
 from __future__ import annotations
 
+import json
 import shlex
 import shutil
 import sys
@@ -28,6 +29,16 @@ _RECIPES = _cfg.recipes_dir()
 
 def _pipeline_text(recipe: str) -> str:
     return (_RECIPES / recipe / "pipeline.yaml").read_text(encoding="utf-8")
+
+
+def _anti_tautology_with_this_interpreter() -> str:
+    """The recipe's pipeline with its runner override pointed at this interpreter, edited the way
+    an operator overrides it (the step's ``env``), so the check never depends on PATH's python3."""
+    default = 'ANTI_TAUTOLOGY_RUNNER: "python3 -m pytest -q"'
+    text = _pipeline_text("anti-tautology")
+    assert default in text
+    runner = f"{shlex.quote(sys.executable)} -m pytest -q"
+    return text.replace(default, f"ANTI_TAUTOLOGY_RUNNER: {json.dumps(runner)}")
 
 
 def _run_command(recipe: str) -> str:
@@ -64,7 +75,6 @@ class _FilesRunner:
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-    monkeypatch.setenv("ANTI_TAUTOLOGY_RUNNER", f"{shlex.quote(sys.executable)} -m pytest -q")
 
 
 def _repo_with_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -88,7 +98,7 @@ def test_a_test_that_already_passes_on_the_base_fails_the_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_pipeline_text("anti-tautology"))
+    _bind_pipeline(_anti_tautology_with_this_interpreter())
     _dispatch.enqueue_task("demo", "work")
     runner = _FilesRunner(
         {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"}
@@ -106,7 +116,7 @@ def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_pipeline_text("anti-tautology"))
+    _bind_pipeline(_anti_tautology_with_this_interpreter())
     _dispatch.enqueue_task("demo", "work")
     runner = _FilesRunner(
         {
@@ -127,7 +137,7 @@ def test_no_changed_test_file_passes_the_step_trivially(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _repo_with_module(tmp_path, monkeypatch)
-    _bind_pipeline(_pipeline_text("anti-tautology"))
+    _bind_pipeline(_anti_tautology_with_this_interpreter())
     _dispatch.enqueue_task("demo", "work")
 
     (res,) = _dispatch.dispatch_pod("demo", runner=_FilesRunner({"notes.txt": "x\n"}), max_tasks=1)
