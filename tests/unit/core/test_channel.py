@@ -51,6 +51,15 @@ class TestBuiltinCatalog:
         for name, spec in catalog.entries.items():
             assert spec.description.strip(), name
 
+    def test_builtin_subscriptions_match_the_contract(self) -> None:
+        """Every built-in hears what needs you; the two that reach an absent operator also hear
+        a failed task; none hears a completed one by default."""
+        catalog = _channel.load_catalog()
+        for name, spec in catalog.entries.items():
+            assert "needs_you" in spec.on, name
+            assert "task.completed" not in spec.on, name
+            assert ("task.failed" in spec.on) is (name in {"desktop", "ntfy"}), name
+
 
 class TestDelivering:
     def test_a_fresh_catalog_delivers_nowhere(self) -> None:

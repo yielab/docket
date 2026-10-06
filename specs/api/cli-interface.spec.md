@@ -465,9 +465,11 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   validates the file as a `TaskBrief` (operator-v1); an invalid one exits non-zero and enqueues
   nothing. A *valid* one is passed through to `core.dispatch.enqueue_task`'s own `brief=`
   parameter and actually enqueues
-- `answer <task-id> [text] [--field name=value]... [--decline]`: Answer a parked question
-  (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills the single
-  property of a one-property question schema; `--field` sets named properties explicitly
+- `answer <task-id> [text] [--option <id>] [--field name=value]... [--decline]`: Answer a parked
+  question (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills
+  the single property of a one-property question schema; `--option <id>` picks one of a
+  consult's options and is required when the question has any (omitting it exits 1 naming the
+  ids); `--field` sets named properties explicitly
   (required for a multi-property schema); `--decline` ignores any `text`/`--field`. Calls
   `core.answers.answer_task(channel="cli", actor=<OS user>)`
 - `explain interruptions [--json]` (Phase 34, P34-15, ADR 0016 §10): Forecast, from this pod's
@@ -941,8 +943,9 @@ endpoint, a refused widening, or (`preview`) an unknown session
 operator-loop.spec.md "Answer surfaces")
 **Syntax**: `docket chat <task-id> [--pod <project>]`
 **Behavior**: Searches every pod for *task-id* (or just *pod* when given), then shows its brief,
-its pending question (if any) and its earlier answers. On a TTY, a pending question is followed
-by one prompt per `requestedSchema` property (a blank optional property is omitted; a blank
+its pending question (if any), its options (recommended one marked) and its earlier answers. On
+a TTY, a pending question is followed by an option prompt when it has options (Enter takes the
+recommended one) and one prompt per `requestedSchema` property (a blank optional property is omitted; a blank
 required one is passed through so the schema check itself reports it) and then answered through
 `core.answers.answer_task(action="accept", channel="cli", actor=<OS user>)`. Off a TTY, or with no
 pending question, this command only ever displays — use `docket pod <p> answer` to answer
@@ -1294,6 +1297,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Version 1.64.0 (2026-10-06)
 
+- `docket pod <p> answer --option <id>`; `docket chat` renders a consult's options and prompts
+  for one (Enter takes the recommended); `docket inbox` prints a `waiting_input` task's
+  question, options and the `docket chat` hint.
 - `docket doctor` (human and `--json`) reports notification reach: a home with project agents
   and no channel that delivers beyond the console is a counted issue naming the fix.
   `docket serve --dispatch` prints the same warning once at startup, `docket init` after the

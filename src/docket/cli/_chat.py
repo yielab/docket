@@ -89,6 +89,37 @@ def _render_answers(answers: list[dict[str, Any]]) -> None:
         ui.console.print(f"    A ({a.get('action', '')}): {a.get('content')}")
 
 
+def _render_options(question_raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Print a v1.1 question's options, marking the recommended one; return them."""
+    raw = question_raw.get("options")
+    options = [o for o in raw if isinstance(o, dict)] if isinstance(raw, list) else []
+    if not options:
+        return []
+    recommendation = question_raw.get("recommendation")
+    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else None
+    ui.console.print("  Options:")
+    for option in options:
+        mark = "  (recommended)" if option.get("id") == recommended else ""
+        ui.console.print(f"    {option.get('id', '')} - {option.get('label', '')}{mark}")
+        if option.get("description"):
+            ui.dim(f"      {option['description']}")
+    return options
+
+
+def _prompt_for_option(
+    question_raw: dict[str, Any], options: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """One ``input()`` for the option id when the question has options; a blank answer
+    takes the recommended one, so Enter accepts what the agent proposed."""
+    if not options:
+        return {}
+    recommendation = question_raw.get("recommendation")
+    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else ""
+    default = f" [{recommended}]" if recommended else ""
+    chosen = input(f"  Option{default}: ").strip() or (recommended or "")
+    return {"optionId": chosen}
+
+
 def _prompt_for_content(schema: dict[str, Any]) -> dict[str, Any]:
     """One ``input()`` prompt per schema property; a blank optional property is
     omitted, a blank required one is passed through unchanged so the caller's own
@@ -149,15 +180,18 @@ def run_chat(args: list[str]) -> int:
     ui.console.print()
     ui.console.print(f"  Question: {question_raw.get('message', '')}")
     schema = question_raw.get("requestedSchema", {})
+    options = _render_options(question_raw)
 
     if not sys.stdin.isatty():
+        hint = " --option <id>" if options else ""
         ui.dim(
             "  Not a TTY -- showing the question only. Answer with: "
-            f"docket pod {project} answer {task_id} ..."
+            f"docket pod {project} answer {task_id}{hint} ..."
         )
         return 0
 
-    content = _prompt_for_content(schema)
+    content = _prompt_for_option(question_raw, options)
+    content.update(_prompt_for_content(schema))
     try:
         _answers.answer_task(project, task_id, "accept", content, channel="cli", actor=_actor())
     except _answers.AnswerRejected as exc:

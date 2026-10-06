@@ -246,7 +246,53 @@ def _seed_parked_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
     return _dispatch.read_tasks("demo")[0]
 
 
+def _give_options(project: str, task_id: str) -> None:
+    """Turn the parked task's question into a v1.1 one with options, as a Lead consult writes."""
+    from docket.edges import store as _store
+
+    path = _dispatch.pod_task_list_path(project)
+    doc = _store.read_json(path)
+    for task in doc["tasks"]:
+        if task["id"] == task_id:
+            task["question"].update(
+                {
+                    "kind": "clarification",
+                    "options": [
+                        {"id": "opt1", "label": "Root", "description": "At the root."},
+                        {"id": "opt2", "label": "Search", "description": "Search for it."},
+                    ],
+                    "recommendation": {"optionId": "opt2", "rationale": "safer"},
+                }
+            )
+    _store.write_json(path, doc)
+
+
 class TestPodAnswer:
+    def test_option_flag_picks_an_option_and_text_still_fills_the_field(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+        _give_options("demo", task["id"])
+
+        _pod._pod_answer("demo", [task["id"], "--option", "opt1", "at", "the", "root"])
+
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["answers"][0]["optionId"] == "opt1"
+        assert after["answers"][0]["content"] == {"answer": "at the root"}
+
+    def test_options_question_without_option_flag_names_the_ids(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+        _give_options("demo", task["id"])
+
+        with pytest.raises(typer.Exit):
+            _pod._pod_answer("demo", [task["id"], "at the root"])
+
+        err = capsys.readouterr().err
+        assert "--option" in err
+        assert "opt1" in err and "opt2" in err
+
     def test_bare_text_fills_the_single_property_schema(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

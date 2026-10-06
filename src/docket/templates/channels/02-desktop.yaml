@@ -2,10 +2,11 @@ kind: channel
 name: desktop
 dialect: desktop
 description: >-
-  A local desktop notification on this machine (`notify-send` or the platform equivalent, via
-  `edges/adapters/system.py`). Notify only -- there is no way to answer a decision from a
-  toast. Disabled by default; turn it on with `docket channels enable desktop`.
+  A local desktop notification on this machine (`notify-send` on Linux, `osascript` on macOS;
+  `edges/adapters/channels/desktop.py`). Notify only -- there is no way to answer a decision
+  from a toast. Fires for what needs you and for a failed task, like `ntfy`. Disabled by
+  default; turn it on with `docket channels enable desktop`.
 capabilities: [notify]
-on: [needs_you]
+on: [needs_you, task.failed]
 content: minimal
 enabled: false

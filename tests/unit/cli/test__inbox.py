@@ -49,6 +49,88 @@ def _seed_done_task(project: str, task_id: str, completed_at: str) -> None:
     )
 
 
+class TestHumanViewShowsTheQuestion:
+    def test_a_waiting_input_task_prints_its_question_options_and_the_answer_hint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _store.write_json(
+            _dispatch.pod_task_list_path("demo"),
+            {
+                "tasks": [
+                    {
+                        "id": "task-q",
+                        "description": "append hello",
+                        "status": "waiting_input",
+                        "created": "2026-09-28T00:00:00+00:00",
+                        "question": {
+                            "id": "q-1",
+                            "taskId": "task-q",
+                            "pod": "demo",
+                            "step": "lead",
+                            "message": "Where is README.md?",
+                            "requestedSchema": {
+                                "type": "object",
+                                "properties": {"note": {"type": "string"}},
+                            },
+                            "createdAt": "2026-09-28T00:00:00Z",
+                            "kind": "clarification",
+                            "options": [
+                                {"id": "opt1", "label": "Root", "description": "At the root."},
+                                {"id": "opt2", "label": "Search", "description": "Search."},
+                            ],
+                            "recommendation": {"optionId": "opt2", "rationale": "safer"},
+                        },
+                    }
+                ]
+            },
+        )
+        capsys.readouterr()
+
+        assert _cli_inbox.run_inbox(["--peek"]) == 0
+
+        out = capsys.readouterr().out
+        assert "Q: Where is README.md?" in out
+        assert "opt2 (Search) (recommended)" in out
+        assert "docket chat task-q" in out
+
+    def test_a_waiting_approval_task_prints_the_held_action_and_the_approve_hint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The approval is folded into its task, so the task line must carry what it asks."""
+        from docket.core import approval as _approval
+
+        _seed(tmp_path, monkeypatch)
+        token = _approval.approval_create(
+            "demo",
+            "implementer",
+            "tool call 'bash': 'echo' is not on the curated allowlist",
+            context={"tool": "bash", "parked": True, "taskId": "task-a"},
+        )
+        _store.write_json(
+            _dispatch.pod_task_list_path("demo"),
+            {
+                "tasks": [
+                    {
+                        "id": "task-a",
+                        "description": "append hello",
+                        "status": "waiting_approval",
+                        "approvalToken": token,
+                        "created": "2026-09-28T00:00:00+00:00",
+                    }
+                ]
+            },
+        )
+        capsys.readouterr()
+
+        assert _cli_inbox.run_inbox(["--peek"]) == 0
+
+        out = capsys.readouterr().out
+        assert "asks: tool call 'bash': 'echo' is not on the curated allowlist" in out
+        assert f"docket approve {token}" in out
+        assert f"approval {token}" not in out
+
+
 class TestJsonOutputMatchesBuildInbox:
     def test_json_flag_prints_the_inbox_view_shape(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

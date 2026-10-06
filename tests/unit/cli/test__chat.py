@@ -105,7 +105,56 @@ class TestReadOnlyOffTTY:
         assert after["status"] == "waiting_input"
 
 
+def _give_options(project: str, task_id: str) -> None:
+    """Turn the parked task's question into a v1.1 one with two options and a recommendation."""
+    from docket.edges import store as _store
+
+    path = _dispatch.pod_task_list_path(project)
+    doc = _store.read_json(path)
+    for task in doc["tasks"]:
+        if task["id"] == task_id:
+            task["question"].update(
+                {
+                    "kind": "clarification",
+                    "options": [
+                        {"id": "opt1", "label": "Root", "description": "At the root."},
+                        {"id": "opt2", "label": "Search", "description": "Search for it."},
+                    ],
+                    "recommendation": {"optionId": "opt2", "rationale": "safer"},
+                }
+            )
+    _store.write_json(path, doc)
+
+
 class TestTTYPrompt:
+    def test_enter_takes_the_recommended_option_then_the_fields(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+        _give_options("demo", task["id"])
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        replies = iter(["", "at the root"])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(replies))
+
+        assert _chat.run_chat([task["id"]]) == 0
+
+        out = capsys.readouterr().out
+        assert "opt2 - Search  (recommended)" in out
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["answers"][0]["optionId"] == "opt2"
+        assert after["answers"][0]["content"] == {"answer": "at the root"}
+
+    def test_off_tty_hint_names_the_option_flag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        task = _seed_parked_task(tmp_path, monkeypatch)
+        _give_options("demo", task["id"])
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        assert _chat.run_chat([task["id"]]) == 0
+
+        assert "--option <id>" in capsys.readouterr().out
+
     def test_answers_the_single_property_question(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

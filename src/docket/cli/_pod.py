@@ -546,11 +546,17 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
 
 def _pod_answer(project: str, extra: list[str]) -> None:
     """Answer a parked question: ``docket pod <project> answer <task-id> [text]
-    [--field k=v]... [--decline]``. Bare ``text`` fills a one-property schema;
-    ``--field`` names each property explicitly; ``--decline`` ignores both."""
+    [--option <id>] [--field k=v]... [--decline]``. Bare ``text`` fills a one-property
+    schema; ``--option`` picks one of a consult's options (required when it has any);
+    ``--field`` names each property explicitly; ``--decline`` ignores all three."""
+    usage = (
+        "Usage: docket pod <project> answer <task-id> [text] [--option <id>] "
+        "[--field k=v]... [--decline]"
+    )
     task_id: str | None = None
     text_parts: list[str] = []
     fields: dict[str, str] = {}
+    option_id: str | None = None
     decline = False
     i = 0
     while i < len(extra):
@@ -561,6 +567,12 @@ def _pod_answer(project: str, extra: list[str]) -> None:
                 raise typer.Exit(1)
             key, value = extra[i + 1].split("=", 1)
             fields[key] = value
+            i += 2
+        elif tok == "--option":
+            if i + 1 >= len(extra):
+                ui.error("Usage: --option <id>")
+                raise typer.Exit(1)
+            option_id = extra[i + 1]
             i += 2
         elif tok == "--decline":
             decline = True
@@ -573,7 +585,7 @@ def _pod_answer(project: str, extra: list[str]) -> None:
             i += 1
 
     if task_id is None:
-        ui.error("Usage: docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]")
+        ui.error(usage)
         raise typer.Exit(1)
 
     if decline:
@@ -583,15 +595,15 @@ def _pod_answer(project: str, extra: list[str]) -> None:
         action = "accept"
         content = dict(fields)
         text = " ".join(text_parts).strip()
+        task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
+        if task is None:
+            ui.error(f"Task '{task_id}' not found in pod '{project}'.")
+            raise typer.Exit(1)
+        question = task.get("question")
+        if not isinstance(question, dict):
+            ui.error(f"Task '{task_id}' has no pending question.")
+            raise typer.Exit(1)
         if text:
-            task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
-            if task is None:
-                ui.error(f"Task '{task_id}' not found in pod '{project}'.")
-                raise typer.Exit(1)
-            question = task.get("question")
-            if not isinstance(question, dict):
-                ui.error(f"Task '{task_id}' has no pending question.")
-                raise typer.Exit(1)
             properties = question.get("requestedSchema", {}).get("properties", {})
             if len(properties) == 1:
                 (prop_name,) = properties
@@ -602,10 +614,23 @@ def _pod_answer(project: str, extra: list[str]) -> None:
                     "--field name=value for each property instead."
                 )
                 raise typer.Exit(1)
-        if not content:
+        raw_options = question.get("options")
+        option_ids = (
+            [str(o.get("id", "")) for o in raw_options if isinstance(o, dict)]
+            if isinstance(raw_options, list)
+            else []
+        )
+        if option_id:
+            content["optionId"] = option_id
+        elif option_ids:
             ui.error(
-                "Usage: docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]"
+                "This question has options; pick one with --option <id>: "
+                + ", ".join(option_ids)
+                + " (or --decline)."
             )
+            raise typer.Exit(1)
+        if not content:
+            ui.error(usage)
             raise typer.Exit(1)
 
     try:

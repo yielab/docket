@@ -225,7 +225,9 @@ in the derived inbox becomes an event on the wire.
    name: built-in documents under `config.CHANNEL_TEMPLATES_DIR` (seven shipped:
    `console`, `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`) and the operator's
    own global entries in `config.CHANNELS_FILE`, through `edges/store.py`. Only `console` MUST
-   ship enabled.
+   ship enabled. Every built-in subscribes to `needs_you`; `desktop` and `ntfy`, the two
+   dialects that reach an operator who walked away, MUST also subscribe to `task.failed`.
+   None subscribes to `task.completed` by default (the inbox's `doneSince` carries it).
 5. `enable_channel(name, overrides)` MUST refuse, without writing, a channel whose resulting
    document fails a dialect-specific precondition: `ntfy` requires a non-empty
    `config["topic"]`; `telegram` requires a non-empty `actors`. Every other built-in has no
@@ -487,12 +489,23 @@ functions, every surface is transport"; this area is that transport.
    across every `core.dispatch.dispatchable_pods()` pod when `--pod` is omitted, else within
    just that one pod; an unresolved task-id MUST exit 1. It MUST render the task's brief (when
    present), its `answers[]` (when present) and its pending `question`'s message (when
-   `waiting_input`). On a TTY with a pending question, it MUST prompt once per
-   `requestedSchema` property (a blank optional property is omitted from `content`; a blank
-   required one is passed through unchanged, so the schema check itself reports it -- never a
-   client-side retry loop) and then call `answer_task(action="accept", channel="cli",
-   actor=<OS user>)`. Off a TTY, or with no pending question, it MUST only display -- never
-   call `answer_task`.
+   `waiting_input`), plus, for a v1.1 question, each option as `<id> - <label>` with the
+   recommended one marked and its description beneath. On a TTY with a pending question, it
+   MUST first prompt for the option id when the question has options (Enter takes the
+   recommended one), then once per `requestedSchema` property (a blank optional property is
+   omitted from `content`; a blank required one is passed through unchanged, so the schema
+   check itself reports it -- never a client-side retry loop) and then call
+   `answer_task(action="accept", channel="cli", actor=<OS user>)` with `optionId` in
+   `content`. Off a TTY, or with no pending question, it MUST only display -- never call
+   `answer_task`; the off-TTY hint names `--option <id>` when the question has options.
+   `docket pod <p> answer` MUST accept `--option <id>` for the same purpose and, when the
+   question has options and neither `--option` nor `--decline` was given, MUST exit 1 naming
+   the option ids instead of sending an answer the contract would refuse. `docket inbox`'s
+   human view MUST print a `waiting_input` task's question, its option ids and labels (the
+   recommended one marked `(recommended)`) and the `docket chat <task-id>` hint beneath the
+   task line, and a `waiting_approval` task's held action (`asks: <approval.action>`) with the
+   `docket approve <token>` / `docket deny <token>` hint -- what the standalone approval line
+   carried before inbox item 3 folded it into its task.
 3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
    file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
    and enqueue nothing. A well-formed brief MUST be passed through to
@@ -769,6 +782,12 @@ Each JSONL line is a JSON object with these fields:
   post-dispatch flush print when that list is empty. Measured need: a fresh home runs
   `serve --dispatch`, a task parks, and nothing anywhere said that only `console` was on.
 - Notifications item 16: the CLI dispatch flush may print that one line too.
+- Answer surfaces item 2: the CLI can pick a consult option (`pod answer --option <id>`,
+  `chat`'s option prompt with the recommended default) and `docket inbox` shows the question.
+  Found live: a Lead consult with two options could be answered from Telegram and HTTP but
+  not from the CLI, and the inbox showed only the task's description.
+- Notifications item 4: the built-in `desktop` document subscribes to `task.failed` like
+  `ntfy`; the default `on:` of every built-in is now stated.
 - Inbox item 3: a parked call's approval record carries `context.taskId`, and `build_inbox`
   also folds an approval whose token a `needsYou` task holds. Found by the first real
   park -> flush run: the same approval reached `desktop` and `ntfy` twice, once as the task

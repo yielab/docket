@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `ntfy` twice, once through its task and once standalone, because `_park_call` never
     recorded the task on the approval. It now does (`context.taskId`), and the inbox also folds
     an approval whose token a waiting task holds, so one decision is one notification.
+  - A consult's options can be answered from the CLI: `docket pod <p> answer --option <id>`,
+    and `docket chat` lists the options and prompts for one (Enter takes the recommended).
+    `docket inbox` prints a waiting task's question, its options and the `docket chat` hint,
+    and a parked task's held action with the `docket approve`/`deny` hint (what the standalone
+    approval line showed before it was folded into its task).
+    Found live: the Lead asked a two-option question that Telegram and HTTP could answer and
+    the CLI could not, and the inbox showed only the task's description.
+  - The built-in `desktop` channel now fires for a failed task too (`on: [needs_you,
+    task.failed]`), the subscription `ntfy` already shipped; a task that fails while you are
+    away is something that needs you. A completed task still notifies nobody by default:
+    `docket inbox` lists it under "Done".
 
 - **The items carried out of Phases 36-38 (Waves 89-90, no phase).**
   - `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees and

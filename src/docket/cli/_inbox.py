@@ -13,6 +13,7 @@ import json
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import approval as _approval
 from docket.core import inbox as _inbox
 from docket.core.operator_contract import ApprovalView, TaskView
 from docket.edges import store as _store
@@ -47,6 +48,35 @@ def _render_task(view: TaskView) -> None:
     label = view.description or view.reason or ""
     if label:
         ui.dim(f"    {label[:120]}")
+    if view.approval_token and view.status == "waiting_approval":
+        _render_held_approval(view.approval_token)
+        return
+    question = view.question
+    if question is None or view.status != "waiting_input":
+        return
+    ui.console.print(f"    Q: {question.message[:160]}")
+    options = getattr(question, "options", None) or []
+    if options:
+        recommended = getattr(getattr(question, "recommendation", None), "option_id", None)
+        rendered = ", ".join(
+            f"{o.id} ({o.label})" + (" (recommended)" if o.id == recommended else "")
+            for o in options
+        )
+        ui.dim(f"    options: {rendered}")
+    ui.dim(f"    answer: docket chat {view.id}")
+
+
+def _render_held_approval(token: str) -> None:
+    """The action a task's folded approval asks about, and how to answer it -- the standalone
+    approval line used to carry this before the inbox folded it into its task."""
+    try:
+        record = _approval.approval_get(token)
+    except _approval.ApprovalError:
+        return
+    action = str(record.get("action") or "")
+    if action:
+        ui.console.print(f"    asks: {action[:160]}")
+    ui.dim(f"    approve: docket approve {token}   deny: docket deny {token}")
 
 
 def _render_approval(view: ApprovalView) -> None:
