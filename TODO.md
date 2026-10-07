@@ -364,9 +364,11 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 | 94 | P39-17, P39-18 first; then P39-19, P39-20, P39-21, P39-22; then P39-23 | 17, 18, 19–22, 23 | P39-18's script runs before any Haiku doc card. P39-19 (README) is Sonnet. |
 | 95 | P39-24 | — | Integrator, live endpoint. |
 
+**Wave 91 closed 2026-10-07** (six merges `5cbcac79`..`54bb3977` plus the integrator rollup). Follow-ups the workers returned are recorded in the packets file under "Wave 91 returns"; Wave 92 (P39-7) is next and bases on the rollup commit.
+
 ### P39-1 — one pod resolver: `--pod`, `DOCKET_POD`, then the directory you stand in
 
-**Status:** TODO · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (new section "Pod targeting" under "Global Command Structure")
+**Status:** DONE (merged to `develop` 2026-10-07, `847c637c`) · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (new section "Pod targeting" under "Global Command Structure")
 
 **Trigger (ADR 0022 evidence):** the pod is named seven ways; only `status` and `add` infer it
 from the cwd through `cli/_agents.py::_pod_for_directory`; `docket pod dispatch` inside the repo
@@ -394,7 +396,7 @@ above, fails on the base with `ModuleNotFoundError`.
 
 ### P39-2 — one interaction contract and one console voice; bare `gates isolate` and bare `notify` stop writing
 
-**Status:** TODO · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` ("Interactive Features", "Output Formats" rewritten as "The console voice", "Return Code Convention"), `security-gates.spec.md` (bare `gates isolate`), `operator-loop.spec.md` (bare `notify`)
+**Status:** DONE (merged to `develop` 2026-10-07, `54bb3977`) · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` ("Interactive Features", "Output Formats" rewritten as "The console voice", "Return Code Convention"), `security-gates.spec.md` (bare `gates isolate`), `operator-loop.spec.md` (bare `notify`)
 
 **Trigger (ADR 0022 evidence):** three different off-TTY policies for destructive commands
 (`delete <pod>` proceeds silently, `maintain` refuses, `exporters privacy` needs `--yes`); bare
@@ -445,7 +447,7 @@ event.
 
 ### P39-3 — one task id everywhere
 
-**Status:** TODO · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (new requirement "Task references")
+**Status:** DONE (merged to `develop` 2026-10-07, `5cae754f`) · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (new requirement "Task references")
 
 **Trigger (ADR 0022 evidence, live run C6):** `pod queue` prints `task-04ff2ff5-7be8`; `chat`
 rejects it; `trace` wants `agent:<p>:<task>`, which no command lists; `trace list` errors.
@@ -470,7 +472,7 @@ record `read_tasks` returns.
 
 ### P39-4 — one role vocabulary: the model policy speaks archetype names
 
-**Status:** TODO · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `model-profiles.spec.md` (roles and classes), `role-archetypes.spec.md` (`policy_role` removed), `cli-json-shapes.spec.md` (`models` output)
+**Status:** DONE (merged to `develop` 2026-10-07, `5cbcac79`) · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `model-profiles.spec.md` (roles and classes), `role-archetypes.spec.md` (`policy_role` removed), `cli-json-shapes.spec.md` (`models` output)
 
 **Trigger (ADR 0022 evidence, live run C10):** `docket models` lists `manager`/`programmer`/
 `reviewer`/`tester`/`knowledge`/`security`/`repo`; pods use `lead`/`implementer`/...;
@@ -502,7 +504,7 @@ fails on the base because the row is `programmer`.
 
 ### P39-5 — the record decides: run state, exit codes, doctor, counts
 
-**Status:** TODO · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (run states, retry of a failed task, stale lease reclaim), `cli-interface.spec.md` (`runs show` exit code, `doctor` summary)
+**Status:** DONE (merged to `develop` 2026-10-07, `315dc23c`) · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (run states, retry of a failed task, stale lease reclaim), `cli-interface.spec.md` (`runs show` exit code, `doctor` summary)
 
 **Trigger (ADR 0022 evidence, live run C9, C11, C12):** a dispatch that parked `waiting_input`
 is listed `succeeded`; `runs show <failed>` prints ✗ and exits 0; `metrics` counts 0/0/0 after
@@ -536,7 +538,7 @@ base for the measured reason.
 
 ### P39-6 — remove the org specialists and the portfolio manager (seventh unwired instance)
 
-**Status:** TODO · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md`, `workspace-structure.spec.md`, `docket-meta.spec.md` (`scope: org`), `serve-read-api.spec.md` (`/status.json` agents), `cli-interface.spec.md` (`init --portfolio`)
+**Status:** DONE (merged to `develop` 2026-10-07, `798bd56c`) · **Size:** M · **Wave:** 91 · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md`, `workspace-structure.spec.md`, `docket-meta.spec.md` (`scope: org`), `serve-read-api.spec.md` (`/status.json` agents), `cli-interface.spec.md` (`init --portfolio`)
 
 **Trigger (ADR 0022 evidence):** `manager`, `knowledge` and `security` are provisioned by the
 first `docket init` (`cli/_install.py`), listed by `list`/`snapshot`, reported by `doctor` and

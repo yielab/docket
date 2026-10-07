@@ -225,13 +225,16 @@ def _configure(docket: Path, endpoint: str, *, cwd: Path, env: dict[str, str]) -
     model = f"{PROVIDER}/{MODEL}"
     for role in (
         "default",
-        "manager",
-        "programmer",
+        "lead",
+        "implementer",
         "reviewer",
         "tester",
-        "knowledge",
-        "security",
-        "repo",
+        "researcher",
+        "analyst",
+        "writer",
+        "critic",
+        "operator",
+        "monitor",
     ):
         _command(
             [str(docket), "models", "set", role, model],

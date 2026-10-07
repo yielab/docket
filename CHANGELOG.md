@@ -7,8 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One pod resolver.** `docket status` and `docket add` pick the pod from `--pod`, then
+  `DOCKET_POD`, then the registered codebase containing the working directory (deepest wins);
+  a miss is one error naming the directory and the fix (`cli/_target.py::resolve_pod`).
+- **One interaction contract.** `cli/_contract.py` owns confirmation (TTY `y/N` or a typed
+  name; off a TTY, refuse naming `--yes` or `--confirm <name>`), JSON emission, required values
+  and the closing `Next:` line (silenced by `DOCKET_NO_HINTS=1`).
+- **One task reference.** `core/task_ref.py::resolve_task` turns a full id, the short id the
+  queue prints, any unambiguous prefix or a run id into one task across a pod or all pods;
+  an ambiguous prefix lists every candidate with its pod. Not yet wired into a command.
+- **A failed task is retryable** (`core/dispatch.py::retry_task`, audited `task.retry`), and
+  `dispatch --resume` reclaims a `running` task whose claimant process is gone or whose lease
+  exceeds `turnTimeoutS + verifyTimeoutS` (audited `task.reclaimed`; claims record `claimPid`).
+
+### Changed
+
+- **One console voice.** `ui.py` is the only module that knows symbols, colour roles, headers,
+  sections and tables; output is plain ASCII (`ok`/`x`/`!`/`->`) with no colour when stdout
+  is piped or `NO_COLOR` is set. A shrink-only guard counts Rich markup literals outside `ui.py`.
+- **The model policy speaks archetype names.** `docket models` lists `lead`, `implementer`,
+  `reviewer`, `tester`, `researcher`, `analyst`, `writer`, `critic`, `operator` and `monitor`;
+  the `manager`/`programmer`/`knowledge`/`security`/`repo` rows and the role document's
+  `policyRole` key are gone (an unknown key is refused). An old `docket-models.json` is not
+  rewritten: unknown role keys are ignored and reported by `doctor`; re-run `docket models preset`.
+- **Bare `docket gates isolate` no longer enables isolation** (it prints the posture and usage,
+  exit 2, writes and audits nothing) and **bare `docket notify` no longer delivers** (usage,
+  exit 2). An unknown action is a usage error (exit 2).
+
+### Removed
+
+- **The org specialists (`manager`, `knowledge`, `security`) and the opt-in portfolio manager.**
+  No reader on the live path ever ran one. `docket init` provisions the pod only,
+  `init --portfolio` is a usage error, `list`/`snapshot`/`doctor` and `/status.json` show pod
+  members only (`SERVE_API_VERSION` 4), and `kind: specialist` / `scope: org` no longer exist.
+
 ### Fixed
 
+- **The record decides.** A dispatch that parked is recorded `waiting_input`/`waiting_approval`,
+  never `succeeded`; `runs show` exits 1 for a failed or unknown run; `doctor` counts only
+  lines marked with a cross as critical and its footer names `docket doctor --fix`; `metrics`
+  counts success/failure/aborted from the terminal task status each `session_end` records
+  instead of a payload no dispatch ever wrote (it always read 0/0/0).
+- **`models preset` (and `set`/`reset`) re-resolved a pod-scoped archetype to the compiled-in
+  Anthropic default.** `reapply_role_policy` read the role table directly; it now resolves each
+  policy-following agent through the same resolver a fresh provisioning uses, so a member whose
+  archetype has no row follows the registry default. Found on the live home the day the role
+  vocabulary changed.
 - **The Homebrew formula installed docket without its dependencies.** Homebrew's pip runs with
   `--no-deps`, so `brew install docket-cli` produced a `docket` that died on `import typer`.
   The sixteen packages of the runtime closure are now `resource` blocks (built from sdists;

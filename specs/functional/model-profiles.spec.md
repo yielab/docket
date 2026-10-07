@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.0.0
+**Version**: 3.0.1
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above both policy and pin, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -506,6 +506,14 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.0.1 (2026-10-07)
+
+- `reapply_role_policy` (what `models preset`, `set` and `reset` run over policy-following
+  agents) resolves each agent through `resolve_role_model(..., project=)`, so a pod-scoped
+  archetype with no row follows the registry default, never `cfg.DEFAULT_MODEL`. Found on the
+  live home: `models preset local` rewrote a `security-vetter` member to the compiled-in
+  Anthropic id.
 
 ### Version 3.0.0 (2026-10-07)
 

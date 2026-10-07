@@ -367,6 +367,7 @@ def reapply_role_policy() -> int:
     """Re-resolve every policy-following agent against the live role policy.
     Pinned agents are never touched. Returns count of agents updated."""
     from docket.core import fleet as _fleet
+    from docket.core import pod as _pod
 
     role_models, _, _ = load_registry()
     changed = 0
@@ -375,7 +376,7 @@ def reapply_role_policy() -> int:
         if src != "policy":
             continue
         role = agent_role(aid)
-        target = role_models.get(role, cfg.DEFAULT_MODEL)
+        target = resolve_role_model(role, role_models, project=_pod.pod_of(aid) or "")
         current = _fleet.meta_get(aid, "model", "")
         if target == current:
             continue

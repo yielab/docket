@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.3.0
+**Version**: 3.3.1
 **Status**: Stable
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -196,7 +196,7 @@ to one pod.
       "id":         "run-3f2a1c9e-...",
       "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "myapp",
-      "state":      "queued | running | succeeded | failed | cancelled",
+      "state":      "queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled",
       "taskIds":    ["task-91a2..."],
       "error":      "",
       "created":    "2026-07-30T02:10:00.123456+00:00",
@@ -667,7 +667,7 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   without either re-delivering an event already returned or skipping one written after the
   previous response — including when several events share one `ts` (see the cursor semantics
   paragraph above).
-- A run record's `state` MUST be one of `queued | running | succeeded | failed | cancelled`;
+- A run record's `state` MUST be one of `queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled`;
   `source` MUST be
   one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
   `dispatch` tool).
@@ -770,6 +770,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.3.1 (2026-10-07)
+
+- A run record's `state` also admits `waiting_input` and `waiting_approval`: a dispatch whose
+  task parked records that state, never `succeeded` (pod-dispatch.spec.md 6.33.0).
 
 ### Version 3.3.0 (2026-10-07)
 

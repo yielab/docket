@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.22.1
+**Version**: 1.22.2
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -204,7 +204,7 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
       "id":         "string (run-<uuid4>)",
       "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "string",
-      "state":      "queued | running | succeeded | failed | cancelled",
+      "state":      "queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled",
       "taskIds":    "array of strings",
       "error":      "string (empty unless state is failed)",
       "created":    "string (ISO-8601, local offset)",
@@ -228,7 +228,7 @@ Same shape as one element of `runs list`'s array, unwrapped (a bare object, not 
   "id":         "string (run-<uuid4>)",
   "source":     "cli | webhook | schedule | sweep | mcp",
   "project":    "string",
-  "state":      "queued | running | succeeded | failed | cancelled",
+  "state":      "queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled",
   "taskIds":    "array of strings",
   "error":      "string",
   "created":    "string (ISO-8601)",
@@ -492,6 +492,11 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.22.2 (2026-10-07)
+
+- `runs list|show --json` `state` also admits `waiting_input | waiting_approval` (a parked
+  dispatch is never `succeeded`, pod-dispatch.spec.md 6.33.0).
 
 ### Version 1.22.1 (2026-10-07)
 

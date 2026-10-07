@@ -48,7 +48,7 @@ def run_help(topic: str | None = None) -> int:
     B, G, C, D, R = _BOLD, _GREEN, _CYAN, _DIM, _RESET
 
     cheap = _mp.resolve_role_model("tester")
-    strong = _mp.resolve_role_model("programmer")
+    strong = _mp.resolve_role_model("implementer")
 
     text = f"""
 {B}docket — agent fleet control plane{R}

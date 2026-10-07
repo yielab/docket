@@ -616,3 +616,61 @@ Not a worker packet. The transcript goes to `internal-docs/cli-ux-audit-2026-10-
 and the score to ADR 0022 "Live run"; the first journey is `docket setup` on a fresh machine,
 `local` and a hosted provider against a fake. A new defect is a locator for triage, not a fix in
 this card.
+
+## Wave 91 returns (integrator, 2026-10-07)
+
+Six cards merged into `develop` in the packet's order (`5cbcac79` P39-4, `798bd56c` P39-6,
+`5cae754f` P39-3, `315dc23c` P39-5, `847c637c` P39-1, `54bb3977` P39-2) plus the integrator
+rollup. Conflicts were confined to two spec files (`cli-interface.spec.md` header and changelog;
+`pod-dispatch.spec.md`, where P39-3 and P39-5 both chose 6.32.0: P39-5's entry is now 6.33.0).
+The integrator deleted `config.py`'s `ORG_ROLES`/`ORG_SPECIALIST_ORDER`/`is_specialist`/
+`ROLE_WHY` (P39-6 had to leave them while P39-4's branch still read them) and pointed
+`cli/_help.py`'s strong-role lookup at `implementer`.
+
+**Decisions taken on worker questions.** P39-2's five writer goldens changed because the golden
+runner pipes stdout and plain mode is the card's acceptance (ADR 0022 decision 9); accepted,
+`gates_status` included. P39-1's one assertion edit in
+`tests/integration/test_auth_context_maintain_keys_add.py` follows the card's required error
+text; accepted. P39-6 reached into `core/models.py` (`AgentKind.specialist`, `AgentScope.org`
+removed); accepted under ADR 0022 §4. P39-4 followed the card's `ROLE_CLASS` rows where they
+differ from the archetype `modelClass` (`analyst` cheap, `critic` strong).
+
+**Follow-ups returned by workers, routed to the card that owns the file.**
+- P39-14 (`exec`/`log`/`start`/`stop`): `cli/_harness.py::_status` and `_terminal_result_from_run`
+  treat only `succeeded|failed|cancelled` as terminal; `waiting_input`/`waiting_approval` now
+  exist (P39-5). `task show <run-id>` replaces `harness status`, so settle it there.
+- P39-15 (`run`/`status`/`inbox`): `cli/__init__.py` `-w/--window` help says days, means
+  sessions; `cli/_metrics.py:32` hint still says `--role programmer`; `_doctor_json`/`healthy`
+  still counts warnings as issues (JSON path); `run_doctor`'s `--fix` ledger subtraction is
+  string-coupled.
+- P39-9 (`task` verbs): wire `core/dispatch.py::retry_task` to `task retry`; `task answer`
+  moves the raw `sys.stdin.isatty()` calls in `_chat.py` onto `_contract`.
+- P39-10 / P39-11 / P39-12 / P39-13: raw `sys.stdin.isatty()` in `_agents.py`, `_exporters.py`,
+  `_keys.py`, `_channels.py`, `_pod.py` move onto `cli/_contract.py`; `TAGLINE` is not yet read
+  by the bare greeting, `app help=` (`cli/__init__.py` near lines 37 and 85) or `pyproject.toml`;
+  `_gates.py` still carries markup literals (ratchet target in `console_voice_baseline.txt`);
+  `cli/_agents.py::run_init`'s hand-rolled unknown-option check (P39-6) goes when `init` becomes
+  a Typer command; `_parse_existing_pod_add_args` still parses `--project` by hand.
+- P39-20..22 (doc sweeps): old role names / specialists / `--portfolio` still in
+  `docs/WORKFLOW-GUIDE.md` (35-64, 597, 725, 832), `docs/CONFIGURATION.md` (73, 1148),
+  `docs/README.md` (36, 92, 136, 146), `docs/troubleshooting.md` (50, 453),
+  `docs/AGENT-TEAMS.md` (206, 372), `docs/DOCKET.md` (703), `docs/MODEL-GATEWAYS.md` (51, 54,
+  76); spec prose in `telegram-integration.spec.md:131`, `role-archetypes.spec.md:246/816`,
+  `security-gates.spec.md:627`, `audit.spec.md:70/325`; comments in
+  `edges/adapters/docket_runtime.py:460`, `tests/integration/test_telegram_channel.py:335/453`,
+  `tests/unit/core/test_pod.py:63`. `TODO.md:372` and `docs/adr/0022-one-cli-surface.md:31`
+  still cite `cli/_agents.py::_pod_for_directory` (now `cli/_target.py`).
+- Integrator (done in the rollup): `serve-read-api.spec.md` and `cli-json-shapes.spec.md` run
+  `state` enum gains the two parked states.
+- Integrator (done in the rollup): `core/models_policy.py::reapply_role_policy` resolved a
+  pod-scoped archetype to `cfg.DEFAULT_MODEL` (found by running `models preset local` on the
+  live home after P39-4: the `security-vetter` member flipped to Anthropic). Now goes through
+  `resolve_role_model(..., project=)`; `tests/unit/core/test_models_policy.py::TestReapplyRolePolicy`.
+  The agent-lane starter (`examples/starter/starter.py`) and `scripts/` role lists were also
+  moved to archetype names.
+- Operator (live home, done): `docket models reset` (it still uses a raw `input()`; pipe `y`)
+  then `docket models preset local`; `docket profile <vetter> default` repaired the member.
+  Three specialist workspaces and their `fleet.json` entries remain in `~/.docket` from before
+  P39-6 (`list` counts 6 agents, shows 3); doctor is silent about them by design. Remove by hand
+  or re-init when convenient. Was: re-run `docket models preset` so `docket-models.json` carries archetype
+  keys; `doctor` reports the old ones until then.

@@ -186,3 +186,38 @@ class TestOneRoleVocabulary:
         _cfg.MODEL_REGISTRY_FILE.unlink()
         _mp.write_registry({"role.programmer": "x/y"})
         assert "programmer" not in json.loads(_cfg.MODEL_REGISTRY_FILE.read_text()).get("roles", {})
+
+
+class TestReapplyRolePolicy:
+    """Re-resolution follows the same rule as a fresh resolution: the registry default, never
+    the compiled-in model, for a pod-scoped archetype with no row."""
+
+    def test_pod_scoped_archetype_follows_the_registry_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet as _fleet
+        from docket.edges import store as _store
+
+        home = _point_at(tmp_path, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.MODEL_REGISTRY_FILE.write_text(
+            json.dumps({"default": "local/local-model"}), encoding="utf-8"
+        )
+        aid = "demo-security-vetter"
+        path = _cfg.meta_path(aid)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(
+            path,
+            {
+                "schemaVersion": 1,
+                "kind": "project",
+                "scope": "project",
+                "role": "security-vetter",
+                "pod": "demo",
+                "model": _cfg.DEFAULT_MODEL,
+                "modelSource": "policy",
+            },
+        )
+
+        assert _mp.reapply_role_policy() == 1
+        assert _fleet.meta_get(aid, "model", "") == "local/local-model"

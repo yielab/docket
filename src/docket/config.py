@@ -198,24 +198,6 @@ META_FILE = ".docket-meta.json"
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
-ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager"])
-ORG_SPECIALIST_ORDER: tuple[str, ...] = ("manager", "knowledge", "security")
-
-
-def is_specialist(agent_id: str) -> bool:
-    return agent_id in ORG_ROLES
-
-
-ROLE_WHY: dict[str, str] = {
-    "manager": "high-volume coordination, shallow reasoning",
-    "reviewer": "triage and review, low reasoning density",
-    "tester": "run tests and report",
-    "knowledge": "retrieval and summarization",
-    "programmer": "code generation",
-    "security": "audit depth",
-    "repo": "project default for project (repo) agents",
-}
-
 
 def workspace_dir(agent_id: str) -> Path:
     """Resolve the workspace path for a pod member."""
