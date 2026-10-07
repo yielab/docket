@@ -632,6 +632,8 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`docket-cli`",
     ),
     (("DOCKET_NO_TRACE",), "Set to `1` to disable trace-store writes", "unset (tracing on)"),
+    (("NO_COLOR",), "Any value switches output to plain mode (no colour, ASCII symbols)", "unset"),
+    (("DOCKET_NO_HINTS",), "Set to `1` to silence the closing `Next:` line", "unset"),
     (
         ("DOCKET_NO_EXPORT",),
         "Set to `1` to disable every export queue/flush action",

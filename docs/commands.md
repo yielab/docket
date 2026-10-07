@@ -1596,6 +1596,8 @@ No command emits any other exit code today.
 | `DOCKET_SECRETS_BACKEND` | Stored-secret backend: `file` (default, `secrets.json`) or `keyring` (secret-tool/libsecret) | `file` |
 | `DOCKET_KEYRING_SERVICE` | The libsecret service name secrets are stored under when `DOCKET_SECRETS_BACKEND=keyring` | `docket-cli` |
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
+| `NO_COLOR` | Any value switches output to plain mode (no colour, ASCII symbols) | unset |
+| `DOCKET_NO_HINTS` | Set to `1` to silence the closing `Next:` line | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
