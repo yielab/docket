@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 92 (Phase 39, one CLI surface, D-57; opened 2026-10-07)
+> ## ▶ ACTIVE BOARD — WAVE 93a (Phase 39, one CLI surface, D-57; opened 2026-10-07)
 >
 > **Phase 39 opened 2026-10-07** (ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md)):
 > twenty-six cards over Waves 91–95, the active section at the end of this file. The CLI becomes
@@ -310,7 +310,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ▶ WAVE 92 ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
+## ▶ WAVE 93a ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
 
 **Decision:** ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md). Read the ADR's
 "Decision" section once; it is the contract every card below answers to. **Trigger (explicit
@@ -364,7 +364,9 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 | 94 | P39-17, P39-18 first; then P39-19, P39-20, P39-21, P39-22; then P39-23 | 17, 18, 19–22, 23 | P39-18's script runs before any Haiku doc card. P39-19 (README) is Sonnet. |
 | 95 | P39-24 | — | Integrator, live endpoint. |
 
-**Wave 91 closed 2026-10-07** (six merges `5cbcac79`..`54bb3977` plus the integrator rollup). Follow-ups the workers returned are recorded in the packets file under "Wave 91 returns"; Wave 92 (P39-7) is next and bases on the rollup commit.
+**Wave 91 closed 2026-10-07** (six merges `5cbcac79`..`54bb3977` plus the integrator rollup). Follow-ups the workers returned are recorded in the packets file under "Wave 91 returns"; Wave 92 (P39-7) based on the rollup commit.
+
+**Wave 92 closed 2026-10-07** (one merge `a99e0344` plus the integrator rollup): `cli/__init__.py` is a 177-line registry; the worker's return is under "Wave 92 returns" in the packets file. Wave 93a (P39-12, P39-13, P39-14, P39-15, P39-16) is next and bases on the Wave 92 rollup commit.
 
 ### P39-1 — one pod resolver: `--pod`, `DOCKET_POD`, then the directory you stand in
 
@@ -570,7 +572,7 @@ listing and `fleet.json`.
 
 ### P39-7 — split `cli/__init__.py` into one module per group, mechanically
 
-**Status:** IN PROGRESS (Wave 92 claimed 2026-10-07, branch `p39-7-split-registry` based on `69549e01`) · **Size:** M · **Wave:** 92 · **Model:** Sonnet (integrator reviews the script before it runs) · **Spec:** `test-framework.md` (lanes: one unit file per module)
+**Status:** DONE (merged to `develop` 2026-10-07, `a99e0344`) · **Size:** M · **Wave:** 92 · **Model:** Sonnet (integrator reviews the script before it runs) · **Spec:** `test-framework.md` (lanes: one unit file per module)
 
 **Trigger:** `cli/__init__.py` is 2,842 lines holding 46 command bodies; every Wave 93 card
 would edit it, so nothing in Wave 93 could run in parallel.

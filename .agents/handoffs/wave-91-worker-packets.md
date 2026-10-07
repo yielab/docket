@@ -674,3 +674,33 @@ differ from the archetype `modelClass` (`analyst` cheap, `critic` strong).
   P39-6 (`list` counts 6 agents, shows 3); doctor is silent about them by design. Remove by hand
   or re-init when convenient. Was: re-run `docket models preset` so `docket-models.json` carries archetype
   keys; `doctor` reports the old ones until then.
+
+## Wave 92 returns (integrator, 2026-10-07)
+
+- P39-7 merged as `a99e0344` (worker commit `5e08396c`, branch `p39-7-split-registry`, based on
+  `69549e01`). `cli/__init__.py` is 177 lines: the app, `_default`, sixteen module imports and
+  46 `app.command(...)(_module.cmd_x)` registrations. `scripts/maint/split_cli_registry.py`
+  (`--dry-run`, `--write`, `--check`) did the move; a second `--write` is a no-op; `--write`
+  refuses on an import conflict, a name clash, a stray line between definitions or a `cmd_*`
+  calling another `cmd_*`. `_run.py` was not created (nothing lands there until P39-15).
+- Integrator decisions: shared helpers moved by a `SHARED` table in the script, not by hand:
+  `_pick_agent` and `_test_cmd_for_stack` -> `cli/_agents.py` (its three lazy imports of them
+  deleted); `_delete_pod` -> `cli/_pod.py` (reached as `_pod._delete_pod`);
+  `_resolve_version` and `_version_callback` -> `cli/_setup.py`. `_default` is exempt from the
+  ten-line rule by name (`test-framework.md` rule 9, 2.19.0; `tests/guards/test_layout.py::
+  test_cli_registry_functions_are_short`, RED on the base with 57 functions listed). Every
+  target module imports at module level now; `docket --version` median 0.23 s -> 0.25 s.
+- Accepted deviations: `scripts/maint/comment_lint.py::_renders_user_help` treats a `cmd_*`
+  function as a Typer command (the decorator was its only proxy and the move detaches it;
+  `comment-baseline.json` untouched). `tests/guards/console_voice_baseline.txt` counts
+  relocated with the lines: the tree totals 209 literals before and after (the old
+  `cli/__init__.py 51` entry was stale-high; the real base count was 40).
+- Retargets outside the script: `tests/integration/test_audit_log.py` (`_remove.cmd_scope`/
+  `cmd_persona`, `_pod.cmd_profile`), `tests/integration/test_pod_provisioning.py`
+  (`_pod._delete_pod`).
+- Empty `SUBJECT` unit files (allowed for this card only): `tests/unit/cli/test__pod_config.py`,
+  `test__remove.py`, `test__setup_model.py`, `test__setup_notify.py`. The Wave 93 card that owns
+  each module fills its file.
+- Follow-ups by owner: P39-16 deletes `cli/_remove.py` whole and the `_default` greeting lines
+  that name `list`/`help`; P39-17 rewrites `_default`. `scripts/validate-specs.sh` printed one
+  warning on the branch (integrator checks it in the rollup gates).

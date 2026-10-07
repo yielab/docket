@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `manager`/`programmer`/`knowledge`/`security`/`repo` rows and the role document's
   `policyRole` key are gone (an unknown key is refused). An old `docket-models.json` is not
   rewritten: unknown role keys are ignored and reported by `doctor`; re-run `docket models preset`.
+- **`cli/__init__.py` is a registry.** It holds the Typer app, the callback and one registration
+  per command (177 lines, was 2,759); every command body lives in its group module
+  (`_task`, `_pod`, `_pod_config`, `_status`, `_log`, `_setup*`, `_service`, `_exec`, `_remove`),
+  moved byte for byte by `scripts/maint/split_cli_registry.py`. No behaviour or text changed;
+  a layout guard keeps every registry function at ten lines or fewer.
 - **Bare `docket gates isolate` no longer enables isolation** (it prints the posture and usage,
   exit 2, writes and audits nothing) and **bare `docket notify` no longer delivers** (usage,
   exit 2). An unknown action is a usage error (exit 2).
