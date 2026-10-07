@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 91 (Phase 39, one CLI surface, D-57; opened 2026-10-07)
+> ## ▶ ACTIVE BOARD — WAVE 92 (Phase 39, one CLI surface, D-57; opened 2026-10-07)
 >
 > **Phase 39 opened 2026-10-07** (ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md)):
 > twenty-six cards over Waves 91–95, the active section at the end of this file. The CLI becomes
@@ -310,7 +310,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ▶ WAVE 91 ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
+## ▶ WAVE 92 ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
 
 **Decision:** ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md). Read the ADR's
 "Decision" section once; it is the contract every card below answers to. **Trigger (explicit
@@ -570,7 +570,7 @@ listing and `fleet.json`.
 
 ### P39-7 — split `cli/__init__.py` into one module per group, mechanically
 
-**Status:** TODO · **Size:** M · **Wave:** 92 · **Model:** Sonnet (integrator reviews the script before it runs) · **Spec:** `test-framework.md` (lanes: one unit file per module)
+**Status:** IN PROGRESS (Wave 92 claimed 2026-10-07, branch `p39-7-split-registry` based on `69549e01`) · **Size:** M · **Wave:** 92 · **Model:** Sonnet (integrator reviews the script before it runs) · **Spec:** `test-framework.md` (lanes: one unit file per module)
 
 **Trigger:** `cli/__init__.py` is 2,842 lines holding 46 command bodies; every Wave 93 card
 would edit it, so nothing in Wave 93 could run in parallel.
