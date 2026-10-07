@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from docket import ui
+from docket.core import models_policy as _mp
 from docket.core import provider as _prov
 
 # The bare `add` shortcut's ctx/max-tokens: no home in the `local` built-in document (it carries
@@ -248,16 +249,8 @@ def _print_local_selection(name: str, model_id: str) -> None:
         ui.console.print("  docket models preset local")
         ui.console.print(f"    # selects the registered model: {name}/{model_id}")
     else:
-        for role in (
-            "manager",
-            "programmer",
-            "reviewer",
-            "tester",
-            "knowledge",
-            "security",
-            "repo",
-        ):
-            ui.console.print(f"  docket models set {role:<10} {name}/{model_id}")
+        for role in _mp.ALL_ROLES:
+            ui.console.print(f"  docket models set {role:<11} {name}/{model_id}")
     ui.console.print(
         "  docket models                                               "
         "# confirm the role→model table"
@@ -271,8 +264,4 @@ def _print_local_selection(name: str, model_id: str) -> None:
     ui.console.print(
         "  docket pod <project> dispatch                               "
         "# all roles use the selected local endpoint"
-    )
-    ui.console.print(
-        "  docket profile programmer                                   "
-        f"# confirm it resolves to {name}/{model_id}"
     )

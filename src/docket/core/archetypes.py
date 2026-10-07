@@ -19,12 +19,10 @@ lead, implementer, reviewer, tester (golden-tested; see
 `tests/integration/test_archetypes.py`). `STARTER_ARCHETYPES` ships six more:
 researcher, analyst, writer, critic, operator, monitor.
 
-`model_class` (cheap|strong) slots into the existing role->model policy
-(`core/models_policy.py`) rather than replacing it: the four legacy archetypes
-carry a `policy_role` override so their model resolves exactly as before (same
-named policy row, same `docket models set <role>` behavior); an archetype with
-no override resolves through its own `model_class` against the live rank
-anchors instead.
+`model_class` (cheap|strong) slots into the role->model policy
+(`core/models_policy.py`): an archetype's model row is its own name; a
+pod-scoped archetype with no row resolves through its own `model_class`
+against the live rank anchors instead.
 
 `token_budget` is the role's context-compiler budget -- how many approximate
 tokens of prior-hop carryover `core/context.py` may thread into that role's
@@ -123,10 +121,6 @@ class RoleArchetype:
     agents_template: str  # open prose; $-style variables, see `render`
     gate_contract: GateContract  # closed kind, see GateContract
     tool_profile: str  # open prose (not enforced; descriptive only)
-    # "" = policy role name == this archetype's own name (the extensible case).
-    # Non-empty only for the four legacy archetypes, preserving their existing
-    # named row in core/models_policy.py's ALL_ROLES/ROLE_CLASS untouched.
-    policy_role: str = ""
     description: str = ""  # open one-line prose, shown by `docket roles list/show`
     # This role's context-compiler token budget — see
     # the module docstring's "token_budget" paragraph and `core/context.py`.
@@ -174,11 +168,6 @@ class RoleArchetype:
         ):
             raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
 
-    @property
-    def resolved_policy_role(self) -> str:
-        """The role→model policy key this archetype resolves through (see module docstring)."""
-        return self.policy_role or self.name
-
     def to_wire(self) -> dict[str, Any]:
         """Serialize to the camelCase wire format (`docket roles show`, overlay persistence)."""
         doc: dict[str, Any] = {
@@ -192,8 +181,6 @@ class RoleArchetype:
             "toolProfile": self.tool_profile,
             "tokenBudget": self.token_budget,
         }
-        if self.policy_role:
-            doc["policyRole"] = self.policy_role
         if self.description:
             doc["description"] = self.description
         if self.denied_tools:
@@ -212,6 +199,9 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     doc_kind = doc.get("kind")
     if doc_kind is not None and doc_kind != "role":
         raise ArchetypeError(f"archetype {name!r}: expected kind: role, got kind: {doc_kind!r}")
+
+    if "policyRole" in doc:
+        raise ArchetypeError(f"archetype {name!r}: unknown key 'policyRole'")
 
     doc_name = doc.get("name", name)
     if doc_name != name:
@@ -249,7 +239,6 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         agents_template=str(doc.get("agentsTemplate", "")),
         gate_contract=gate,
         tool_profile=str(doc.get("toolProfile", "")),
-        policy_role=str(doc.get("policyRole", "")),
         description=str(doc.get("description", "")),
         token_budget=token_budget,
         denied_tools=tuple(str(t) for t in doc.get("deniedTools", [])),
@@ -381,7 +370,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="none"),
         tool_profile="coordination",
-        policy_role="manager",
         description="orchestrates the pod; never edits code",
         # Lead never receives prior-hop carryover (`_hop_message` returns
         # before any budgeting for this role) — a modest budget is declared
@@ -410,7 +398,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="mechanical"),
         tool_profile="full-repo",
-        policy_role="programmer",
         description="writes code in the project workspace",
         # The biggest consumer: needs the Lead's plan and (on rework) the
         # Reviewer's full REQUEST-CHANGES note to act on.
@@ -427,7 +414,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")),
         tool_profile="read-only",
-        policy_role="reviewer",
         description="read-only veto on diffs",
         token_budget=6000,
         # "Read-only: no write/edit/exec" (see `_REVIEWER_BODY` above) — now
@@ -443,7 +429,6 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         agents_template=_LEGACY_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("PASS", "FAIL")),
         tool_profile="read-only-exec",
-        policy_role="tester",
         description="behaviour-only PASS/FAIL",
         # Only needs the Implementer's summary to validate behaviour, not a
         # full review history.
@@ -974,12 +959,18 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     canonical["soulTemplate"] = soul
     canonical["agentsTemplate"] = agents if agents is not None else _STARTER_AGENTS_TEMPLATE
 
-    for key in ("scope", "version", "tokenBudget", "toolProfile", "hopInstruction", "policyRole"):
+    for key in ("scope", "version", "tokenBudget", "toolProfile", "hopInstruction"):
         if key in doc:
             canonical[key] = doc.pop(key)
     canonical.setdefault("scope", "pod")
     canonical.setdefault("version", 1)
     canonical.setdefault("tokenBudget", 6000)
+
+    unknown = sorted(set(doc) - {"name"})
+    if unknown:
+        raise ArchetypeError(
+            f"archetype {name!r}: unknown key(s) {', '.join(repr(k) for k in unknown)}"
+        )
 
     return canonical
 
@@ -1012,8 +1003,6 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
         doc["toolProfile"] = arch.tool_profile
     if arch.hop_instruction:
         doc["hopInstruction"] = arch.hop_instruction
-    if arch.policy_role:
-        doc["policyRole"] = arch.policy_role
 
     soul = arch.soul_template.rstrip("\n") + "\n"
     if arch.agents_template == _STARTER_AGENTS_TEMPLATE:

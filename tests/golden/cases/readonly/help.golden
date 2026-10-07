@@ -92,8 +92,8 @@ UTILITIES
 
 MODEL POLICY  (default: Anthropic — change with 'docket models preset')
   Each agent role maps to the cheapest adequate model:
-  cheap   anthropic/claude-haiku-4-5   manager reviewer tester knowledge task
-  strong  anthropic/claude-sonnet-4-6  programmer security repo
+  cheap   anthropic/claude-haiku-4-5   lead reviewer tester monitor analyst writer
+  strong  anthropic/claude-sonnet-4-6  implementer critic operator researcher
   'docket models' shows the full role→model table with pricing; 'docket profile <id>'
   pins one agent to any model (incl. opus-class) without changing the policy.
 

@@ -382,6 +382,34 @@ class TestLoadRoleFile:
             _arch.load_role_file(str(path))
 
 
+class TestPolicyRoleRefused:
+    def test_a_canonical_document_with_policy_role_is_refused_naming_the_key(self) -> None:
+        doc = {
+            "name": "scribe",
+            "scope": "pod",
+            "modelClass": "cheap",
+            "soulTemplate": "s",
+            "agentsTemplate": "a",
+            "policyRole": "manager",
+        }
+        with pytest.raises(ArchetypeError, match="policyRole"):
+            from_wire("scribe", doc)
+
+    def test_a_short_form_file_with_policy_role_is_refused_naming_the_key(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.core import archetypes as _arch
+
+        (tmp_path / "scribe.md").write_text("You are a scribe.\n", encoding="utf-8")
+        path = tmp_path / "scribe.yaml"
+        path.write_text(
+            json.dumps({"kind": "role", "name": "scribe", "model": "cheap", "policyRole": "x"}),
+            encoding="utf-8",
+        )
+        with pytest.raises(ArchetypeError, match="policyRole"):
+            _arch.load_role_file(str(path))
+
+
 class TestNormalizeRole:
     """The short role form (`kind: role`, `cannot:`, one gate key, `instructions: <file.md>`)
     normalizes into the exact canonical dict `from_wire` already accepts -- see

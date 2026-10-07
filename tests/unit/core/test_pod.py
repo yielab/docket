@@ -26,8 +26,8 @@ def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
 
 # A fixed role→model map so tests don't depend on the live registry.
 _MODELS = {
-    "manager": "anthropic/claude-haiku-4-5",
-    "programmer": "anthropic/claude-sonnet-4-6",
+    "lead": "anthropic/claude-haiku-4-5",
+    "implementer": "anthropic/claude-sonnet-4-6",
     "reviewer": "anthropic/claude-haiku-4-5",
     "tester": "anthropic/claude-haiku-4-5",
 }
@@ -147,9 +147,9 @@ class TestDefaultPod:
 
     def test_lead_gets_coordination_model_implementer_gets_codegen(self) -> None:
         members = {m.role: m for m in pod.plan_pod("shop", role_models=_MODELS)}
-        # Lead → manager policy (cheap), Implementer → programmer policy (strong).
-        assert members["lead"].model == _MODELS["manager"]
-        assert members["implementer"].model == _MODELS["programmer"]
+        # Lead -> lead row (cheap), Implementer -> implementer row (strong).
+        assert members["lead"].model == _MODELS["lead"]
+        assert members["implementer"].model == _MODELS["implementer"]
 
     def test_all_members_share_base_metadata_session_key(self) -> None:
         members = pod.plan_pod("shop", role_models=_MODELS)

@@ -177,7 +177,7 @@ def resolve_member(
     canon = normalize_role(role, project)
     arch = _archetypes.load_registry(project).get(canon)
     assert arch is not None  # normalize_role() already validated membership
-    model = _mp.resolve_role_model(arch.resolved_policy_role, role_models, project=project)
+    model = _mp.resolve_role_model(arch.name, role_models, project=project)
     return PodMember(
         project=project,
         role=canon,
@@ -243,14 +243,6 @@ def plan_added_member(
         project_key=project_key,
         role_models=role_models,
     )
-
-
-def policy_role_for(role: str) -> str:
-    """The role→model policy key ``role``'s archetype resolves through: the archetype's
-    ``policyRole`` override if set (the four legacy roles), else its own name (every
-    starter-library/user role); ``models_policy.agent_role()`` calls this directly."""
-    arch = _archetypes.load_registry().get(role)
-    return arch.resolved_policy_role if arch is not None else role
 
 
 def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = "") -> str:

@@ -59,8 +59,8 @@ class TestRankAnchorsOverride:
         }
         # Role defaults re-derive from the overridden anchors (cheap -> economy,
         # strong -> standard) — no Claude id survives anywhere in the result.
-        assert role_models["manager"] == "openai/gpt-4.1-nano"
-        assert role_models["programmer"] == "openai/gpt-4.1-mini"
+        assert role_models["lead"] == "openai/gpt-4.1-nano"
+        assert role_models["implementer"] == "openai/gpt-4.1-mini"
         assert not any("claude" in m.lower() for m in role_models.values())
 
     def test_malformed_anchor_entries_are_ignored(
@@ -324,7 +324,7 @@ class TestProviderGuidanceStringsAreReal:
         out = capsys.readouterr().out
         retired_brand = "open" + "claw"
         assert f"{retired_brand} models status" not in out
-        assert "docket profile programmer" in out
+        assert "docket models preset local" in out
 
     def test_every_docket_command_in_guidance_is_real(
         self, capsys: pytest.CaptureFixture[str]

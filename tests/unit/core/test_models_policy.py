@@ -151,3 +151,38 @@ class TestResolveRoleModelInPodScope:
         self._registry_on_local(home)
 
         assert _mp.resolve_role_model("nobody-here") == "local/x"
+
+
+class TestOneRoleVocabulary:
+    """The policy speaks archetype names: one vocabulary for a member, its archetype and its row."""
+
+    def test_policy_roles_are_the_archetype_names(self) -> None:
+        from docket.core import archetypes as _arch
+
+        names = set(_arch.BUILTIN_ARCHETYPES) | set(_arch.STARTER_ARCHETYPES)
+        assert set(_mp.ALL_ROLES) == names
+        assert set(_mp.ROLE_CLASS) == names
+
+    def test_implementer_reads_its_own_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _point_at(tmp_path, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.MODEL_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"implementer": "openai/gpt-4.1"}}), encoding="utf-8"
+        )
+        assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
+
+    def test_a_retired_role_key_is_ignored_and_reported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _point_at(tmp_path, monkeypatch)
+        home.mkdir(parents=True, exist_ok=True)
+        _cfg.MODEL_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"programmer": "openai/gpt-4.1"}}), encoding="utf-8"
+        )
+        assert _mp.resolve_role_model("implementer") != "openai/gpt-4.1"
+        assert _mp.find_registry_problems() == [("roles.programmer", "unknown role")]
+        _cfg.MODEL_REGISTRY_FILE.unlink()
+        _mp.write_registry({"role.programmer": "x/y"})
+        assert "programmer" not in json.loads(_cfg.MODEL_REGISTRY_FILE.read_text()).get("roles", {})

@@ -121,23 +121,13 @@ class TestBuiltinAndStarterArchetypes:
         found = arch.STARTER_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
 
-    def test_legacy_policy_roles_preserved(self) -> None:
-        """The four legacy archetypes must keep resolving through their historical
-        named policy row (manager/programmer/reviewer/tester) — this is what keeps
-        `docket models set manager ...` affecting every pod Lead unchanged."""
-        assert arch.BUILTIN_ARCHETYPES["lead"].resolved_policy_role == "manager"
-        assert arch.BUILTIN_ARCHETYPES["implementer"].resolved_policy_role == "programmer"
-        assert arch.BUILTIN_ARCHETYPES["reviewer"].resolved_policy_role == "reviewer"
-        assert arch.BUILTIN_ARCHETYPES["tester"].resolved_policy_role == "tester"
+    def test_every_builtin_and_starter_archetype_has_its_own_policy_row(self) -> None:
+        """One vocabulary: an archetype's model row is its own name."""
+        from docket.core import models_policy as mp
 
-    def test_starter_roles_have_no_policy_role_override(self) -> None:
-        """Starter-library roles resolve through their OWN name (no legacy alias) —
-        the extensible case `models_policy.resolve_role_model`'s archetype fallback
-        exists for."""
-        for name in arch.STARTER_ROLE_ORDER:
-            found = arch.STARTER_ARCHETYPES[name]
-            assert found.policy_role == ""
-            assert found.resolved_policy_role == name
+        names = {*arch.BUILTIN_ARCHETYPES, *arch.STARTER_ARCHETYPES}
+        assert set(mp.ROLE_CLASS) == names
+        assert set(mp.ALL_ROLES) == names
 
     def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
         """The archetype's `gateContract`, resolved through `core.orchestrator`, must produce

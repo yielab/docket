@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.22.0
+**Version**: 1.23.0
 **Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
@@ -63,7 +63,7 @@ This specification covers:
 
 - The archetype schema: `name`, `version`, `scope`, `modelClass`, `soulTemplate`,
   `agentsTemplate`, `gateContract`, `toolProfile`, `deniedTools`, and the optional
-  `policyRole`/`description`/`hopInstruction` fields — which are closed typed enums and which are
+  `description`/`hopInstruction` fields — which are closed typed enums and which are
   open prose
 - The `deniedTools` field and `registry_for_role`, the one function that turns it into an
   actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API (ROADMAP Phase 19
@@ -80,7 +80,7 @@ This specification covers:
 - The user-overlay registry (`~/.docket/docket-roles.json`) and its merge/override semantics
 - How `modelClass` integrates with the existing role→model policy (`model-profiles.spec.md`)
   without replacing it
-- How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`/`policy_role_for`
+- How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`
   resolve against this registry instead of a hardcoded list
 - The `docket roles list/show/add/validate` CLI surface
 - Shipped recipe bundles (`templates/recipes/<name>/`, P26-20): pre-authored role YAML(s) for a
@@ -117,7 +117,7 @@ This specification does NOT cover:
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
    `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
-   C-1; see "Context-compiler token budget" below). `policyRole`, `description`, `deniedTools`
+   C-1; see "Context-compiler token budget" below). `description`, `deniedTools`
    (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below), and `hopInstruction` (P26-7; see
    "Hop instructions" below) **MAY** be present (empty/absent is valid for all four); `tokenBudget`
    **MAY** be absent from a wire document (a pre-C-1 user overlay entry, or a hand-authored YAML
@@ -187,10 +187,10 @@ This specification does NOT cover:
    `tests/integration/test_pod_role_workspace_parity.py`, which embeds a frozen, independent
    copy of the pre-W-6 generator functions and diffs them against the live archetype-driven
    renderer.
-2. The four legacy archetypes **MUST** carry a `policyRole` override equal to their historical
-   policy-table row (`lead`→`manager`, `implementer`→`programmer`, `reviewer`→`reviewer`,
-   `tester`→`tester`) — see "Role→model policy integration" below. Their `modelClass` **MUST**
-   match that row's existing class (`manager`/`reviewer`/`tester` = cheap, `programmer` = strong).
+2. The four legacy archetypes resolve their model through their own name's row — see
+   "Role→model policy integration" below. Their `modelClass` **MUST** match that row's class
+   (`lead`/`reviewer`/`tester` = cheap, `implementer` = strong). There is no `policyRole` field;
+   a document that carries one is refused naming the key.
 3. Their `gateContract` **MUST** match this role's real gate behavior: `lead` = `none`,
    `implementer` = `mechanical` (the per-member `verifyCmd`, configured separately — see
    `docket-meta.spec.md`), `reviewer` = `verdict` with regexes `["APPROVE", "REQUEST-CHANGES"]`,
@@ -346,8 +346,8 @@ depended entirely on its own SOUL template to know its marker convention or task
 1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `critic`, `operator`,
    `monitor` (`core/archetypes.py`'s `STARTER_ARCHETYPES`). Each **MUST** pass
    `docket roles validate` (structural validation + a dry-run template render).
-2. None of the starter archetypes carries a `policyRole` override — each resolves through its own
-   name as the policy-role key (see "Role→model policy integration").
+2. Each starter archetype resolves through its own name as the model-policy key (see
+   "Role→model policy integration").
 3. Provisioning a starter role into a live pod (e.g. `docket pod <project> add researcher`) works
    because `normalize_role`/`resolve_member` resolve against this registry. A *preset roster*
    composing several starter roles into one pod shape in a single command (e.g. a `research pod`
@@ -400,8 +400,7 @@ to rediscover the same pitfalls.
 1. An archetype's `modelClass` **MUST** slot into the *existing* role→model policy
    (`model-profiles.spec.md`) rather than replace it. Resolution
    (`models_policy.resolve_role_model`) **MUST** first check the named policy table
-   (`ALL_ROLES`/`role_models`, keyed by `resolvedPolicyRole` — the archetype's `policyRole` if
-   set, else its own `name`); if the role is not a named entry there, it **MUST** fall back to
+   (`ALL_ROLES`/`role_models`, keyed by the archetype's own `name`); if the role is not a named entry there, it **MUST** fall back to
    resolving via the archetype's own `modelClass` against the live rank anchors (`economy` for
    `cheap`, `standard` for `strong`) rather than collapsing to the global default model
    unconditionally.
@@ -591,12 +590,12 @@ omits them — the same defaults `from_wire` already applies to the canonical fo
 
 ### Built-in archetypes (byte-identical to pre-W-6)
 
-| Name | Scope | modelClass | policyRole | gateContract | tokenBudget | deniedTools |
-| --- | --- | --- | --- | --- | --- | --- |
-| `lead` | pod | cheap | manager | none | 2000 | write, edit, bash |
-| `implementer` | pod | strong | programmer | mechanical | 8000 | *(none)* |
-| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
-| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | 4000 | write, edit |
+| Name | Scope | modelClass | gateContract | tokenBudget | deniedTools |
+| --- | --- | --- | --- | --- | --- |
+| `lead` | pod | cheap | none | 2000 | write, edit, bash |
+| `implementer` | pod | strong | mechanical | 8000 | *(none)* |
+| `reviewer` | pod | cheap | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
+| `tester` | pod | cheap | verdict (PASS\|FAIL) | 4000 | write, edit |
 
 ### Starter library
 
@@ -670,6 +669,14 @@ docket roles validate   # validates the whole live registry
   that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.23.0 (2026-10-07)
+
+- **One role vocabulary.** `policyRole` (`policy_role`, `resolved_policy_role`, `core/pod.py`'s
+  `policy_role_for`) is removed: an archetype's model row is its own name, and a role document
+  carrying `policyRole` (or any key the short form does not define) is refused naming the key.
+  "Role→model policy integration" requirement 1 and the built-in table now read the ten-name
+  `ALL_ROLES` of model-profiles.spec.md 3.0.0.
 
 ### Version 1.22.0 (2026-10-03)
 

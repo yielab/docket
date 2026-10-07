@@ -73,7 +73,7 @@ class TestCmdProfile:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["profile", "myshop"], oc_dir)
         assert rc == 0
-        assert "repo" in out  # role for type=repo project
+        assert "implementer" in out  # role for a bare project agent
 
     def test_profile_show_contains_source(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -241,21 +241,24 @@ class TestCmdModels:
         oc_dir = _setup_agent(tmp_path)
         rc, out, err = _run(["models"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        assert "repo" in out
-        assert "manager" in out
+        assert "implementer" in out
+        assert "lead" in out
 
     def test_models_list_shows_all_roles(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["models"], oc_dir)
         assert rc == 0
         for role in (
-            "manager",
-            "programmer",
+            "lead",
+            "implementer",
             "reviewer",
             "tester",
-            "knowledge",
-            "security",
-            "repo",
+            "researcher",
+            "analyst",
+            "writer",
+            "critic",
+            "operator",
+            "monitor",
         ):
             assert role in out
 
@@ -267,10 +270,10 @@ class TestCmdModels:
 
     def test_models_set_role(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        rc, _out, err = _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
-        assert reg["roles"]["programmer"] == "anthropic/claude-haiku-4-5"
+        assert reg["roles"]["implementer"] == "anthropic/claude-haiku-4-5"
 
     def test_models_set_default(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -281,8 +284,8 @@ class TestCmdModels:
 
     def test_models_set_reapplies_policy(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        # myshop type=repo, role=repo, source=policy
-        _run(["models", "set", "repo", "anthropic/claude-haiku-4-5"], oc_dir)
+        # myshop is a bare project agent: follows the implementer row, source=policy
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
         )
@@ -296,13 +299,13 @@ class TestCmdModels:
 
     def test_models_set_invalid_model_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "set", "programmer", "notamodel"], oc_dir)
+        rc, _, err = _run(["models", "set", "implementer", "notamodel"], oc_dir)
         assert rc == 1
         assert "Invalid" in err
 
     def test_models_set_missing_args_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, _err = _run(["models", "set", "programmer"], oc_dir)
+        rc, _, _err = _run(["models", "set", "implementer"], oc_dir)
         assert rc == 1
 
     def test_models_preset_list_exits_zero(self, tmp_path: Path) -> None:
@@ -320,7 +323,7 @@ class TestCmdModels:
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         # strong roles get gpt-4.1-mini (standard for openai)
-        assert reg["roles"]["programmer"] == "openai/gpt-4.1-mini"
+        assert reg["roles"]["implementer"] == "openai/gpt-4.1-mini"
 
     @pytest.mark.parametrize("preset", ["anthropic", "openai", "google", "local"])
     def test_preset_with_no_separate_registration_now_succeeds(
@@ -373,7 +376,7 @@ class TestCmdModels:
         # Pin myshop first
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         # Change the repo role policy
-        _run(["models", "set", "repo", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         # Pinned agent should NOT have changed
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()

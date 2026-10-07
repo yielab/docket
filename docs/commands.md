@@ -786,9 +786,10 @@ shows and sets the role policy.
 View and edit the role->model policy -- the single place that decides
 which model each kind of agent runs on.
 
-Built-in defaults put high-volume/low-reasoning roles (manager, reviewer,
-tester, knowledge) on the cheap model class and reasoning-dense roles
-(programmer, security, repo) on the strong class.
+Roles are the archetype names. Built-in defaults put high-volume/low-reasoning
+roles (lead, reviewer, tester, monitor, analyst, writer) on the cheap model
+class and reasoning-dense roles (implementer, critic, operator, researcher)
+on the strong class.
 
 Subcommands: (bare) show the role->model policy with pricing and why;
 `set <role> <provider/model>` change one role's model, or

@@ -167,18 +167,6 @@
       ],
       "default": null,
       "title": "Hopinstruction"
-    },
-    "policyRole": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Policyrole"
     }
   },
   "required": [

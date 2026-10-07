@@ -975,9 +975,7 @@ def cmd_profile(
         ui.header(f"Model: {name} ({aid})")
         ui.console.print()
         ui.console.print(f"  [bold]{'Current model:':<18}[/bold] {current}")
-        ui.console.print(
-            f"  [bold]{'Role:':<18}[/bold] {role}  [dim]({_cfg.ROLE_WHY.get(role, '')})[/dim]"
-        )
+        ui.console.print(f"  [bold]{'Role:':<18}[/bold] {role}  [dim]({_mp.role_why(role)})[/dim]")
         if src == "policy":
             ui.console.print(
                 f"  [bold]{'Source:':<18}[/bold] policy — follows the role's model (docket models)"
@@ -1164,9 +1162,10 @@ def cmd_models(ctx: typer.Context) -> None:
     """View and edit the role->model policy -- the single place that decides
     which model each kind of agent runs on.
 
-    Built-in defaults put high-volume/low-reasoning roles (manager, reviewer,
-    tester, knowledge) on the cheap model class and reasoning-dense roles
-    (programmer, security, repo) on the strong class.
+    Roles are the archetype names. Built-in defaults put high-volume/low-reasoning
+    roles (lead, reviewer, tester, monitor, analyst, writer) on the cheap model
+    class and reasoning-dense roles (implementer, critic, operator, researcher)
+    on the strong class.
 
     Subcommands: (bare) show the role->model policy with pricing and why;
     `set <role> <provider/model>` change one role's model, or
@@ -1264,7 +1263,7 @@ def _cmd_models_list() -> None:
             except Exception:
                 pass
         source = "user" if role in reg_roles and reg_roles[role] == m else "builtin"
-        why = _cfg.ROLE_WHY.get(role, "")
+        why = _mp.role_why(role)
         ui.console.print(fmt.format(role, m, price, source, why))
 
     ui.console.print()
