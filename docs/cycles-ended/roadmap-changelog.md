@@ -10,6 +10,24 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-07 (Phase 39 opened / D-57 recorded / ADR 0022) — one CLI surface, and nothing kept
+  for the past.** A read-only audit of the CLI on `2a245cac` (every command and action
+  inventoried; six journeys run live in a throwaway home; clig.dev, gh, docker, kubectl, fly,
+  terraform and Typer checked into a 20-rule list) measured 46 flat commands over 161 entry
+  points, zero real sub-apps, 23 hand-parsed action words, `--help` working at no level below the
+  top, the pod named seven ways, three off-TTY policies for destructive commands, and sixteen
+  defects of which five are blockers (`pod dispatch --dry-run` runs; bare `gates isolate` writes;
+  piped `delete <pod>` deletes silently; `pod remove` drops the Lead; a `done` task's worktree is
+  shown nowhere). Re-verification found the seventh unwired-machinery instance: the org
+  specialists and the portfolio manager are provisioned and never run. The maintainer chose the
+  strict reading over the audit's own recommendation, in three rounds (32, then 22, then
+  eleven: `init status inbox task run pod log setup start stop exec`; `pod` kept), the pod
+  from the cwd, approvals under `task`, roster and configuration under `pod`, the machine under
+  `setup`, one contract, one role vocabulary, no `agent` group, every redundant or
+  agent-era command and the pin, persona and specialists deleted outright, and the
+  no-compatibility rule written into `CONTRIBUTING.md`, `AGENTS.md` and ROADMAP §3 (which still
+  said removed commands get a notice). D-2 superseded. Twenty-four cards over Waves 91–95; packets
+  in `.agents/handoffs/wave-91-worker-packets.md`.
 - **2026-09-27 (Phase 32 opened / D-48 recorded / ADR 0014) — observability as configuration.**
   An explicit request the same day (telemetry configurable and adaptable to OpenTelemetry or
   Langfuse; enough abstraction to add remote destinations simply; destinations as YAML like

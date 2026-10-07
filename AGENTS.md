@@ -34,7 +34,11 @@ task; load only the referenced section or spec.
 3. Update the spec, add a failing behavioral test, then implement the smallest coherent change.
 4. Preserve `cli -> core -> edges`, `core/tools.py::dispatch_tool` as the sole tool chokepoint,
    and `edges/store.py` as the sole writer of docket-owned JSON.
-5. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
+5. Nothing is kept for the past (ROADMAP D-57, ADR 0022): docket has no users. Delete a removed
+   or renamed command, flag, alias, route, persisted shape or behaviour in the same change,
+   with its tests, spec text and docs. No alias, notice, migration, hidden command or no-op
+   flag; a retired name is an ordinary unknown command. `CHANGELOG.md` is the only record.
+6. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
    to hide an unintended change or edit a counting script to make a claim pass.
 
 Prefer compact evidence in handoffs: decision, files changed, tests run, unresolved risk, next
