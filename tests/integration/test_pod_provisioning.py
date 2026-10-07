@@ -193,13 +193,12 @@ class TestDeletePod:
     def test_delete_pod_removes_all_members(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from docket import cli
 
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
         # Non-TTY → _delete_pod skips the interactive confirm.
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        cli._delete_pod("demo", _pod.pod_member_ids("demo"))
+        _pod._delete_pod("demo", _pod.pod_member_ids("demo"))
         assert _ids(home) == []
         assert not (home / "workspaces" / "projects" / "demo-lead").exists()
 
@@ -209,7 +208,6 @@ class TestDeletePod:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        from docket import cli
 
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
@@ -235,7 +233,7 @@ class TestDeletePod:
         unrelated_trace.mkdir(parents=True)
 
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        cli._delete_pod("demo", members)
+        _pod._delete_pod("demo", members)
 
         assert not (home / "workspaces" / "pods" / "demo").exists()
         assert not any("demo" in entry.name for entry in (home / "sessions").iterdir())
@@ -251,12 +249,11 @@ class TestDeletePod:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Pod teardown (docket delete <pod>) writes a single agent.delete line."""
-        from docket import cli
 
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        cli._delete_pod("demo", _pod.pod_member_ids("demo"))
+        _pod._delete_pod("demo", _pod.pod_member_ids("demo"))
 
         entries = [e for e in _audit.read_audit() if e["action"] == "agent.delete"]
         assert len(entries) == 1

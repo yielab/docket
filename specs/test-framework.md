@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.18.0
+**Version**: 2.19.0
 **Status**: Active
 **Last Updated**: 2026-10-03
 
@@ -127,6 +127,10 @@ Requirements:
    its per-kind counts against `scripts/maint/comment-baseline.json`, which only falls.
 8. **Structure is guarded, and each guard is seen to fail before it ships**: unit↔module mapping,
    lane headers, agent-lane budget, no-subprocess-in-unit, duration ceilings, comment hygiene.
+9. **`src/docket/cli/__init__.py` is the registry.** It holds the Typer app, the default callback
+   and one registration per command, with every command body in its own `cli/_*.py` module. No
+   function in it is longer than ten lines, except the callback `_default`, which is exempt by
+   name. Enforced by `tests/guards/test_layout.py::test_cli_registry_functions_are_short`.
 
 Enforcement status: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the `agent-lane`
 CI job runs `uv run pytest tests/agent`). W31-C2
@@ -419,6 +423,11 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.19.0 (2026-10-07)
+
+- Rule 9 added: `cli/__init__.py` is the command registry and holds no function over ten lines
+  (the callback `_default` excepted); guarded by `tests/guards/test_layout.py`.
 
 ### Version 2.18.0 (2026-10-03)
 

@@ -47,12 +47,14 @@ class Finding:
 
 
 def _renders_user_help(node: ast.AST) -> bool:
-    """True for a Typer command or callback, whose docstring is printed to the user.
+    """True for a Typer command or callback (a ``cmd_*`` function counts), whose docstring is printed to the user.
 
     That docstring is product surface -- `docket <cmd> --help` and the generated
     reference both render it -- so the internal-commentary budget does not bind it.
     Archaeology still does: it would be archaeology in the user's terminal.
     """
+    if isinstance(node, ast.FunctionDef) and node.name.startswith("cmd_"):
+        return True
     for dec in getattr(node, "decorator_list", []):
         target = dec.func if isinstance(dec, ast.Call) else dec
         name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
