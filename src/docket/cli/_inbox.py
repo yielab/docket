@@ -11,6 +11,8 @@ from __future__ import annotations
 import datetime as _dt
 import json
 
+import typer
+
 import docket.config as _cfg
 from docket import ui
 from docket.core import approval as _approval
@@ -125,3 +127,16 @@ def run_inbox(args: list[str]) -> int:
                 _render_task(item)
         ui.console.print()
     return 0
+
+
+def cmd_inbox(ctx: typer.Context) -> None:
+    """List everything across every pod that needs you: waiting/blocked tasks and pending
+    approvals, plus failed/done/running context.
+
+    `docket inbox [--json] [--since <iso>] [--peek]`. A plain call advances a durable cursor so a
+    repeat call's `Done` section only shows newly-terminal tasks; `--peek` reads without
+    advancing it, and `--since <iso>` overrides the stored cursor for one call without touching
+    it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns."""
+    from docket.cli._inbox import run_inbox
+
+    raise typer.Exit(run_inbox(list(ctx.args)))

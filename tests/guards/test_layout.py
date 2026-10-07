@@ -137,3 +137,23 @@ def test_every_large_src_module_is_unit_covered_or_baselined() -> None:
         f"module(s) over {LARGE_MODULE_LINES} lines lack a unit file and are not in "
         f"layout_baseline.txt: {missing}"
     )
+
+
+REGISTRY_MAX_FUNCTION_LINES = 10
+REGISTRY_EXEMPT = {"_default"}
+
+
+def test_cli_registry_functions_are_short() -> None:
+    """cli/__init__.py is the registry: the app, the callback and one registration per command."""
+    path = SRC / "cli" / "__init__.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    long = [
+        f"{node.name}: {(node.end_lineno or 0) - node.lineno + 1} lines"
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name not in REGISTRY_EXEMPT
+        and (node.end_lineno or 0) - node.lineno + 1 > REGISTRY_MAX_FUNCTION_LINES
+    ]
+    assert not long, (
+        f"cli/__init__.py holds functions over {REGISTRY_MAX_FUNCTION_LINES} lines: {long}"
+    )

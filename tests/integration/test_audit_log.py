@@ -22,9 +22,9 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket import cli
 from docket.cli import _audit as audit_cli
 from docket.cli import _keys as keys_cli
+from docket.cli import _pod, _remove
 from docket.cli._agents import run_delete, run_init
 from docket.core import audit as _audit
 
@@ -718,7 +718,7 @@ class TestScopeAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_scope("demo", "set", "beta")
+        _remove.cmd_scope("demo", "set", "beta")
         entries = _entries("scope.set")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo=beta"
@@ -727,7 +727,7 @@ class TestScopeAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_scope("demo", "reset", None)
+        _remove.cmd_scope("demo", "reset", None)
         entries = _entries("scope.reset")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo"
@@ -738,7 +738,7 @@ class TestProfileAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_profile("demo", None, budget="5")
+        _pod.cmd_profile("demo", None, budget="5")
         entries = _entries("profile.budget")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo=$5"
@@ -747,7 +747,7 @@ class TestProfileAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_profile("demo", "anthropic/claude-haiku-4-5", budget=None)
+        _pod.cmd_profile("demo", "anthropic/claude-haiku-4-5", budget=None)
         entries = _entries("profile.model")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo=anthropic/claude-haiku-4-5 (pinned)"
@@ -758,7 +758,7 @@ class TestPersonaAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_persona("demo", "set", "Orion 🔭")
+        _remove.cmd_persona("demo", "set", "Orion 🔭")
         entries = _entries("persona.set")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo=Orion 🔭"
@@ -767,8 +767,8 @@ class TestPersonaAudit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_agent(tmp_path, monkeypatch)
-        cli.cmd_persona("demo", "set", "Orion 🔭")
-        cli.cmd_persona("demo", "clear", None)
+        _remove.cmd_persona("demo", "set", "Orion 🔭")
+        _remove.cmd_persona("demo", "clear", None)
         entries = _entries("persona.clear")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo"
