@@ -96,7 +96,7 @@ class TestRunsShowCli:
         rec = _runs.create_run("schedule", "demo")
         _runs.finish_run(rec["id"], state="failed", error="boom")
         rc = run_runs("show", [rec["id"]])
-        assert rc == 0
+        assert rc == 1
 
     def test_show_human_readable_includes_cancellation_lifecycle(
         self, runs_file: Path, capsys: pytest.CaptureFixture[str]

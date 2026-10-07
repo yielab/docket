@@ -588,6 +588,20 @@ def run_verify_cmd(
     return proc.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
 
 
+def process_alive(pid: int) -> bool:
+    """Whether a process with *pid* exists (signal 0 = probe only). A pid we may not signal
+    still exists; a non-positive pid never does."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _process_group_alive(pgid: int) -> bool:
     """Best-effort liveness check for a process group (signal 0 = probe only)."""
     try:

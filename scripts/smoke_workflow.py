@@ -1674,7 +1674,10 @@ def _verify_final_state(
         raise SmokeFailure("dispatch run registry is malformed")
     runs = cast(list[dict[str, Any]], runs_raw)
     _require(len(runs) == 2, "expected two dispatch run records")
-    _require(all(run.get("state") == "succeeded" for run in runs), "a dispatch run did not succeed")
+    _require(
+        [run.get("state") for run in runs] == ["waiting_approval", "succeeded"],
+        "expected one parked dispatch run, then one that succeeded",
+    )
     _require((home / "audit.log").is_file(), "audit log was not created")
 
 

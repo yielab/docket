@@ -21,6 +21,8 @@ _STATE_STYLE: dict[str, str] = {
     "failed": "red",
     "cancelled": "magenta",
     "running": "yellow",
+    "waiting_input": "yellow",
+    "waiting_approval": "yellow",
     "queued": "dim",
 }
 
@@ -107,6 +109,11 @@ def _list(args: list[str]) -> int:
     return 0
 
 
+def _show_exit_code(rec: dict[str, object]) -> int:
+    """1 when the run failed (it is failed when any task it returned failed), else 0."""
+    return 1 if rec.get("state") == "failed" else 0
+
+
 def _show(args: list[str]) -> int:
     if not args:
         ui.error("Usage: docket runs show <id> [--json]")
@@ -121,7 +128,7 @@ def _show(args: list[str]) -> int:
 
     if json_out:
         print(json.dumps(rec, indent=2))
-        return 0
+        return _show_exit_code(rec)
 
     ui.header(f"Run — {rec.get('id', run_id)}")
     ui.console.print()
@@ -154,7 +161,7 @@ def _show(args: list[str]) -> int:
         ui.console.print()
         ui.error(error)
     ui.console.print()
-    return 0
+    return _show_exit_code(rec)
 
 
 def _prune(args: list[str]) -> int:

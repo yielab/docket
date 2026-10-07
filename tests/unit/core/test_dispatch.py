@@ -927,3 +927,91 @@ class TestParkedApprovalToken:
 
     def test_none_when_the_prefix_matches_but_no_token_field_is_present(self) -> None:
         assert _dispatch._parked_approval_token("approval_parked: tool='bash'") is None
+
+
+def _put_task(project: str, task: dict[str, Any]) -> None:
+    from docket.edges import store as _store
+
+    _store.write_json(_dispatch.pod_task_list_path(project), {"tasks": [task]})
+
+
+def _audit_actions() -> list[str]:
+    from docket.core import audit as _audit
+
+    return [str(e.get("action")) for e in _audit.read_audit()]
+
+
+class TestRetryFailedTask:
+    """A ``failed`` task is re-queued by ``retry_task`` and the audit log records it."""
+
+    def test_failed_task_goes_back_to_pending_with_its_hops(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        hop = {"role": "lead", "output": "plan", "ok": True}
+        _put_task(
+            "myapp",
+            {
+                "id": "task-1",
+                "description": "x",
+                "status": "failed",
+                "reason": "verification failed",
+                "hops": [hop],
+            },
+        )
+
+        assert _dispatch.retry_task("myapp", "task-1") is True
+
+        task = _dispatch.read_tasks("myapp")[0]
+        assert task["status"] == "pending"
+        assert task["hops"] == [hop]
+        assert "task.retry" in _audit_actions()
+
+    def test_a_done_task_is_not_retried(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+        _put_task("myapp", {"id": "task-1", "description": "x", "status": "done"})
+
+        assert _dispatch.retry_task("myapp", "task-1") is False
+        assert _dispatch.read_tasks("myapp")[0]["status"] == "done"
+        assert "task.retry" not in _audit_actions()
+
+
+_GONE_PID = 2_000_000_000
+
+
+class TestStaleClaimReclaim:
+    """``--resume`` reclaims a ``running`` task whose claimant is gone, and only that one."""
+
+    def _running(self, claim_pid: int, claimed_at: str) -> dict[str, Any]:
+        return {
+            "id": "task-1",
+            "description": "x",
+            "status": "running",
+            "claimId": "c-1",
+            "claimPid": claim_pid,
+            "claimedAt": claimed_at,
+        }
+
+    def test_dead_claimant_is_reclaimed_and_audited(self, pod_home: Path) -> None:
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _put_task("myapp", self._running(_GONE_PID, _dispatch._now()))
+
+        results = _dispatch.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
+
+        assert [r.task_id for r in results] == ["task-1"]
+        assert _dispatch.read_tasks("myapp")[0]["status"] == "done"
+        assert "task.reclaimed" in _audit_actions()
+
+    def test_live_claimant_inside_the_lease_is_left_alone(self, pod_home: Path) -> None:
+        import os
+
+        from tests.fakes import FakeDriver
+
+        _seed_lean_pod("myapp")
+        _put_task("myapp", self._running(os.getpid(), _dispatch._now()))
+
+        results = _dispatch.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
+
+        assert results == []
+        assert _dispatch.read_tasks("myapp")[0]["status"] == "running"
+        assert "task.reclaimed" not in _audit_actions()

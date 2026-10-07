@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.32.0
+**Version**: 6.33.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -293,6 +293,16 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    claimed task's existing `hops[]` seed `dispatch_task`'s `resume_from`, and the roles they
    represent are skipped rather than re-invoked. Without `--resume`, a swept task **MUST** stay
    `failed` and untouched by future dispatch runs (crash recovery is never automatic).
+4a. A `running` task is **stale** when either condition holds: (i) the dispatcher process that
+   claimed it is gone -- the claim records `claimPid`, and `edges/adapters/system.py::process_alive`
+   reports that pid dead -- or (ii) its `claimedAt` is older than the pod's `turnTimeoutS` plus
+   `verifyTimeoutS` (each falling back to `DEFAULT_TIMEOUT` when unset). Under `--resume`,
+   `dispatch_pod` **MUST** reclaim a stale `running` task immediately, with no wait for
+   `CLAIM_STALE_TIMEOUT`: it is settled to `failed`/`stale_claim`, its `hops[]` kept, claimed again
+   and continued from its last persisted hop, and `audit_log("task.reclaimed", ...)` records the
+   task id and which condition fired. A `running` task whose claimant is alive and whose claim is
+   inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing is reclaimed (requirement
+   4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 is unchanged.
 5. Resuming correctly requires more than "which roles already ran" once the Reviewer's bounded
    rework loop exists, because a role can legitimately appear more than once in a resumed task's
    history (the Implementer re-runs after a REQUEST-CHANGES, then the Reviewer re-reviews).
@@ -426,17 +436,17 @@ was seeded once at binding time.)*
    `blockedReason`. A `blocked` task is not attempted again by any future `dispatch_pod` call —
    it is not in the claimable set at all — until one of exactly two operator-driven actions moves
    it back to `pending`:
-   - `docket pod <project> queue --retry <task-id>` (`retry_task`) — a single named task, a
-     no-op if that task isn't currently `blocked`.
+   - `retry_task` (`docket pod <project> queue --retry <task-id>`) — a single named task, a
+     no-op if that task is neither `blocked` nor `failed` (requirement 2).
    - A pod-wide budget change on the Lead (`docket profile <lead-id> --budget <n>` with `n > 0`,
      or `docket profile <lead-id> --resume`) — `unblock_pod` flips **every** `blocked` task in
      that pod's queue back to `pending` (see `cost-tracking.spec.md`).
 2. A plain `failed` task (a real graded gate/hop outcome — not a `RESUMABLE_FAILURE_KINDS`-tagged
    settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by
-   a later `dispatch_pod` call, with or without `--resume` (`--resume` only reclaims a task tagged
-   `stale_claim` or `dispatch_refused` — see "Claiming" requirement 3 and "Deterministic refusal
-   inside a claimed task"). There is no CLI action that moves a plain `failed` task back to
-   `pending` today — queuing a fresh task is the only path forward for a real failure.
+   a later `dispatch_pod` call, with or without `--resume`. It **MUST** be retryable by an
+   operator: `retry_task(project, task_id)` flips a `failed` (or `blocked`) task to `pending`,
+   keeps its `hops[]`, clears `failureKind`/`reason`/`completedAt`, and writes
+   `audit_log("task.retry", ...)`. It returns False for a missing task or any other status.
 
 ### Pipeline order and participation
 
@@ -1437,7 +1447,12 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    Dispatch **MUST** persist the hop evidence and transition its owning task to the additive
    terminal status `cancelled`, never `failed`; no later pipeline hop may start. Parallel children
    fold cancellation atomically so a sibling success cannot overwrite it.
-5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`) **MUST** be a no-op,
+4a. A run's terminal state is the worst outcome among the tasks it returned: `cancelled`, else
+   `failed`, else `waiting_approval`/`waiting_input` when a hop parked a task (the first parked
+   task in return order decides), else `succeeded`. A run whose task parked **MUST NOT** be
+   recorded `succeeded`; `waiting_input` and `waiting_approval` are terminal run states (the
+   dispatch invocation is over; the task is not) and are retained and pruned like the other three.
+5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`/`waiting_input`/`waiting_approval`) **MUST** be a no-op,
    reported as such, never re-signalled or double-finished. A run's own normal completion
    (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
    wrote back to `"succeeded"`/`"failed"`.
@@ -2036,6 +2051,12 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.33.0 (2026-10-07)
+
+- A run whose dispatch parked a task is recorded `waiting_input`/`waiting_approval`, never `succeeded` ("Cancellation" 4a).
+- A `failed` task is retryable through `retry_task` (status `pending`, hops kept, audited `task.retry`) ("blocked and terminal-failure re-entry" 1-2).
+- `--resume` reclaims a `running` task whose claimant pid is gone or whose lease exceeds `turnTimeoutS + verifyTimeoutS`, audited `task.reclaimed`; claims record `claimPid` ("Crash recovery" 4a).
 
 ### Version 6.32.0 (2026-10-07)
 

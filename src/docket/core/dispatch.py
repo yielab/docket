@@ -17,6 +17,7 @@ import datetime as _dt
 import fnmatch as _fnmatch
 import hashlib as _hashlib
 import json as _json
+import os as _os
 import re as _re
 import time as _time
 import uuid as _uuid
@@ -2775,6 +2776,7 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     task["hops"] = [_hop_record(h) for h in res.hops]
     task["costUsd"] = res.cost_usd
     task["claimId"] = None
+    task.pop("claimPid", None)
     task.pop("consultAnswer", None)  # delivered to the hop this result came from
     if res.status == "blocked":
         task["blockedReason"] = res.blocked_reason or res.reason
@@ -2881,6 +2883,7 @@ def _claim_next_task(
         t["startedAt"] = _now()
         t["claimId"] = str(_uuid.uuid4())
         t["claimedAt"] = _now()
+        t["claimPid"] = _os.getpid()
         t.pop("failureKind", None)
         claimed = dict(t)
         # A granted approval's gate-override is single-use — captured
@@ -3025,10 +3028,59 @@ def _sweep_stale_claims(project: str) -> None:
         )
 
 
+def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -> str:
+    """Why *task*'s ``running`` claim is stale, or ``""``: the claiming process is gone, or the
+    claim is older than *lease_s* (the pod's ``turnTimeoutS`` plus ``verifyTimeoutS``)."""
+    pid = task.get("claimPid")
+    if isinstance(pid, int) and not _sys.process_alive(pid):
+        return f"claimant pid {pid} is gone"
+    claimed_at = _parse_iso(str(task.get("claimedAt") or ""))
+    if claimed_at is None:
+        return ""
+    if (now - claimed_at).total_seconds() > lease_s:
+        return f"claim older than the {lease_s}s lease"
+    return ""
+
+
+def _reclaim_stale_running(project: str) -> None:
+    """``--resume``: settle every stale ``running`` claim to ``failed``/``stale_claim`` so the
+    claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``."""
+    now = _dt.datetime.now(_dt.UTC)
+    lease_s = _resolve_timeout(None, pod_turn_timeout(project)) + _resolve_timeout(
+        None, pod_verify_timeout(project)
+    )
+    reclaimed: list[tuple[str, str]] = []
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = (
+            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
+            if isinstance(tasks_raw, list)
+            else []
+        )
+        changed = False
+        for t in tasks:
+            if t.get("status") != "running":
+                continue
+            why = _claim_stale_reason(t, now, lease_s)
+            if not why:
+                continue
+            t["status"] = "failed"
+            t["reason"] = "stale claim — " + why
+            t["failureKind"] = "stale_claim"
+            t["claimId"] = None
+            reclaimed.append((str(t.get("id", "task")), why))
+            changed = True
+        return {"tasks": tasks} if changed else None
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    for task_id, why in reclaimed:
+        _audit.audit_log("task.reclaimed", f"{project}/{task_id}: {why}")
+
+
 def retry_task(project: str, task_id: str) -> bool:
-    """Un-block a single ``blocked`` task: a locked ``blocked`` -> ``pending`` flip, whatever
-    its ``blockedReason`` (including ``"input_expired"``). The only other re-entry path is a
-    pod-wide budget change (``unblock_pod``). Returns False if not found/not blocked."""
+    """Re-queue one ``blocked`` or ``failed`` task: a locked flip to ``pending`` that keeps its
+    hops and audits ``task.retry``. Returns False if not found or in any other status."""
     found = False
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -3038,15 +3090,18 @@ def retry_task(project: str, task_id: str) -> bool:
         for t in tasks:
             if t.get("id") == task_id:
                 _normalize_task(t)
-                if t.get("status") != "blocked":
+                if t.get("status") not in ("blocked", "failed"):
                     return None
                 t["status"] = "pending"
-                t.pop("blockedReason", None)
+                for key in ("blockedReason", "failureKind", "reason", "completedAt"):
+                    t.pop(key, None)
                 found = True
                 return {"tasks": tasks}
         return None
 
     _store.read_modify_write(pod_task_list_path(project), _fn)
+    if found:
+        _audit.audit_log("task.retry", f"{project}/{task_id}")
     return found
 
 
@@ -3308,6 +3363,8 @@ def dispatch_pod(
             "variable(s): " + ", ".join(missing)
         )
     _sweep_stale_claims(project)
+    if resume:
+        _reclaim_stale_running(project)
 
     results: list[TaskResult] = []
     while max_tasks is None or len(results) < max_tasks:

@@ -134,12 +134,11 @@ class TestReturnedResultFold:
             [],
             [
                 _dispatch.TaskResult(task_id="task-done", status="done"),
-                _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
                 _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
             ],
         ],
     )
-    def test_nonfailed_returned_statuses_keep_invocation_successful(
+    def test_unparked_nonfailed_returned_statuses_keep_invocation_successful(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,

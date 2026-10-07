@@ -34,8 +34,9 @@ def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 class _FakeTaskResult:
     """Minimal stand-in for dispatch.TaskResult (duck-typed by core/runs.py)."""
 
-    def __init__(self, task_id: str) -> None:
+    def __init__(self, task_id: str, status: str = "done") -> None:
         self.task_id = task_id
+        self.status = status
 
 
 class TestCreateRun:
@@ -148,6 +149,30 @@ class TestExecute:
         assert updated["state"] == "succeeded"
         assert updated["taskIds"] == ["task-a", "task-b"]
         assert updated["error"] == ""
+
+    @pytest.mark.parametrize("parked", ["waiting_input", "waiting_approval"])
+    def test_a_parked_task_is_never_recorded_succeeded(self, runs_file: Path, parked: str) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.execute(
+            rec["id"], lambda: [_FakeTaskResult("task-a"), _FakeTaskResult("task-b", parked)]
+        )
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == parked
+        assert updated["finishedAt"]
+
+    def test_failure_outranks_a_parked_task(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+
+        class _Failed(_FakeTaskResult):
+            reason = "gate said no"
+
+        _runs.execute(
+            rec["id"], lambda: [_FakeTaskResult("a", "waiting_input"), _Failed("b", "failed")]
+        )
+        updated = _runs.get_run(rec["id"])
+        assert updated is not None
+        assert updated["state"] == "failed"
 
     def test_failure_never_raises_and_records_error(self, runs_file: Path) -> None:
         rec = _runs.create_run("cli", "demo")
