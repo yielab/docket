@@ -379,13 +379,16 @@ def _configure_provider(
     )
     for role in (
         "default",
-        "manager",
-        "programmer",
+        "lead",
+        "implementer",
         "reviewer",
         "tester",
-        "knowledge",
-        "security",
-        "repo",
+        "researcher",
+        "analyst",
+        "writer",
+        "critic",
+        "operator",
+        "monitor",
     ):
         _run_cli(
             executable,

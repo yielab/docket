@@ -727,12 +727,12 @@ def _provision_agent(
 ) -> None:
     """Create workspace, write metadata, register in the fleet registry."""
     if not model:
-        model = _mp.resolve_role_model("repo")
+        model = _mp.resolve_role_model(_mp.REPO_AGENT_ROLE)
         model_source_val = "policy"
     else:
         with contextlib.suppress(Exception):
             model = _mp.validate_model(model)[0]
-        policy_model = _mp.resolve_role_model("repo")
+        policy_model = _mp.resolve_role_model(_mp.REPO_AGENT_ROLE)
         model_source_val = "policy" if model == policy_model else "pinned"
 
     session_key = f"agent:{agent_id}:{project_key}"

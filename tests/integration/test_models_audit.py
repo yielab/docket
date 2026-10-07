@@ -82,12 +82,12 @@ def _audit_entries(oc_dir: Path, action: str) -> list[dict[str, Any]]:
 class TestModelsSetAudit:
     def test_set_role_writes_one_entry_with_before_and_after(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        rc, _out, err = _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         entries = _audit_entries(oc_dir, "models.set")
         assert len(entries) == 1
         detail = entries[0]["detail"]
-        assert "role=programmer" in detail
+        assert "role=implementer" in detail
         assert "anthropic/claude-sonnet-4-6" in detail  # before (built-in strong default)
         assert "anthropic/claude-haiku-4-5" in detail  # after
         assert "->" in detail
@@ -103,7 +103,7 @@ class TestModelsSetAudit:
 
     def test_set_entry_carries_chain_fields(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         entries = _audit_entries(oc_dir, "models.set")
         assert entries[0]["seq"] == 1
         assert "prev_hash" in entries[0]
@@ -111,8 +111,8 @@ class TestModelsSetAudit:
 
     def test_set_second_change_shows_the_real_before_value(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
-        _run(["models", "set", "programmer", "openai/gpt-4.1"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "openai/gpt-4.1"], oc_dir)
         entries = _audit_entries(oc_dir, "models.set")
         assert len(entries) == 2
         # The second entry's "before" must be what the first entry set, not
@@ -128,7 +128,7 @@ class TestModelsSetAudit:
 
     def test_set_invalid_model_writes_no_entry(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, _err = _run(["models", "set", "programmer", "notamodel"], oc_dir)
+        rc, _, _err = _run(["models", "set", "implementer", "notamodel"], oc_dir)
         assert rc == 1
         assert _audit_entries(oc_dir, "models.set") == []
 
@@ -150,18 +150,21 @@ class TestModelsPresetAudit:
         assert "preset=openai" in detail
         assert "default:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini" in detail
         # cheap-class role
-        assert "manager:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano" in detail
+        assert "lead:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano" in detail
         # strong-class role
-        assert "programmer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini" in detail
+        assert "implementer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini" in detail
         # every ALL_ROLES member is named, not just a summary count
         for role in (
-            "manager",
+            "lead",
+            "implementer",
             "reviewer",
             "tester",
-            "knowledge",
-            "programmer",
-            "security",
-            "repo",
+            "researcher",
+            "analyst",
+            "writer",
+            "critic",
+            "operator",
+            "monitor",
         ):
             assert f"{role}:" in detail
 
@@ -180,18 +183,18 @@ class TestModelsPresetAudit:
 class TestModelsResetAudit:
     def test_reset_writes_one_entry_with_real_before_values(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         rc, _out, err = _run(["models", "reset"], oc_dir, input_text="y\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         entries = _audit_entries(oc_dir, "models.reset")
         assert len(entries) == 1
         detail = entries[0]["detail"]
-        assert "programmer:anthropic/claude-haiku-4-5->anthropic/claude-sonnet-4-6" in detail
+        assert "implementer:anthropic/claude-haiku-4-5->anthropic/claude-sonnet-4-6" in detail
         assert "default:" in detail
 
     def test_reset_aborted_confirmation_writes_no_entry(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         rc, out, _err = _run(["models", "reset"], oc_dir, input_text="n\n")
         assert rc == 0
         assert "Aborted" in out
@@ -213,7 +216,7 @@ class TestModelsResetAudit:
 class TestModelsAuditChainIntegrity:
     def test_audit_verify_passes_over_a_log_with_models_entries(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         _run(["models", "preset", "openai"], oc_dir)
         _run(["models", "reset"], oc_dir, input_text="y\n")
 
@@ -224,7 +227,7 @@ class TestModelsAuditChainIntegrity:
     def test_models_entries_interleave_cleanly_with_other_families(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         _register_openai(oc_dir)
-        _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         _run(["models", "preset", "openai"], oc_dir)
 

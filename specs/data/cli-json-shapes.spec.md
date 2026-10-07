@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.22.0
+**Version**: 1.22.1
 **Status**: Complete
-**Last Updated**: 2026-10-06
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -492,6 +492,12 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.22.1 (2026-10-07)
+
+- The role→model policy keys named by `docket models` (and the `role` an agent's model resolves
+  through) are archetype names (`lead`, `implementer`, ...), per model-profiles.spec.md 3.0.0; no
+  JSON shape changes.
 
 ### Version 1.22.0 (2026-10-06)
 

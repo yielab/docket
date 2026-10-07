@@ -69,7 +69,6 @@ class RoleDocument(BaseModel):
     tokenBudget: int | None = None
     toolProfile: str | None = None
     hopInstruction: str | None = None
-    policyRole: str | None = None
 
 
 class PipelineDocument(BaseModel):

@@ -11,27 +11,34 @@ from docket.core import provider as _provider
 from docket.edges import store as _store
 
 ALL_ROLES: tuple[str, ...] = (
-    "manager",
-    "programmer",
+    "lead",
+    "implementer",
     "reviewer",
     "tester",
-    "knowledge",
-    "security",
-    "repo",
+    "researcher",
+    "analyst",
+    "writer",
+    "critic",
+    "operator",
+    "monitor",
 )
 
 # cheap = high-volume / low reasoning-density; strong = reasoning-dense.
 ROLE_CLASS: dict[str, str] = {
-    "manager": "cheap",
+    "lead": "cheap",
     "reviewer": "cheap",
     "tester": "cheap",
-    "knowledge": "cheap",
-    "programmer": "strong",
-    "security": "strong",
-    "repo": "strong",
-    # portfolio-manager coordinates fleet metadata across pods, not code — cheap class.
-    "portfolio-manager": "cheap",
+    "monitor": "cheap",
+    "analyst": "cheap",
+    "writer": "cheap",
+    "implementer": "strong",
+    "critic": "strong",
+    "operator": "strong",
+    "researcher": "strong",
 }
+
+# The row a project agent that is not a pod member follows.
+REPO_AGENT_ROLE = "implementer"
 
 _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
@@ -227,13 +234,9 @@ def resolve_role_model(
 ) -> str:
     """Return the effective model for a role (loads registry if not supplied).
 
-    ``role`` may be a pod *archetype* name with no row of its own (a
-    starter-library/user-defined role with no ``policy_role`` set); those
-    fall through to ``_resolve_via_archetype_class``, resolving via the
-    archetype's ``modelClass`` against live rank anchors -- this is what lets
-    ``modelClass`` slot into policy instead of collapsing to
-    ``cfg.DEFAULT_MODEL``. The four legacy pod roles are unaffected: their
-    ``policy_role`` override already has a row in ``role_models``.
+    ``role`` may be a pod-scoped archetype name with no row of its own; it
+    falls through to ``_resolve_via_archetype_class``, resolving via the
+    archetype's ``modelClass`` against live rank anchors.
     """
     if role_models is None:
         role_models, _, _ = load_registry()
@@ -270,24 +273,23 @@ def resolve_step_model(model: str) -> str:
     return model
 
 
+def role_why(role: str) -> str:
+    """The one-line reason shown beside a role: its archetype's own description."""
+    from docket.core import archetypes as _arch
+
+    arch = _arch.load_registry().get(role)
+    return arch.description if arch is not None else ""
+
+
 def is_role(role: str) -> bool:
     return role in ROLE_CLASS
 
 
 def agent_role(agent_id: str) -> str:
-    """Policy role for an agent: specialist id, pod-member role, or ``repo``.
-    Pod members map their meta ``role`` (lead/implementer/...) to a
-    role->model policy key; otherwise specialist id or ``repo``."""
+    """Policy role for an agent: its pod-member archetype name, else ``REPO_AGENT_ROLE``."""
     from docket.core import fleet as _fleet
 
-    if cfg.is_specialist(agent_id):
-        return agent_id
-    pod_role = _fleet.meta_get(agent_id, "role", "")
-    if pod_role:
-        from docket.core import pod
-
-        return pod.policy_role_for(pod_role)
-    return "repo"
+    return _fleet.meta_get(agent_id, "role", "") or REPO_AGENT_ROLE
 
 
 def agent_model_source(agent_id: str) -> str:
@@ -355,14 +357,10 @@ def pricing_label(model: str) -> str:
 
 
 def policy_agent_ids() -> list[str]:
-    """All agent IDs governed by the role policy: project agents + installed specialists."""
+    """All agent IDs governed by the role policy: the project agents."""
     from docket.core.utils import project_ids
 
-    ids: list[str] = list(project_ids())
-    for spec in cfg.ORG_SPECIALIST_ORDER:
-        if (cfg.WORKSPACES_DIR / spec).is_dir():
-            ids.append(spec)
-    return ids
+    return list(project_ids())
 
 
 def reapply_role_policy() -> int:

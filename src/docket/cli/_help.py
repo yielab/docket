@@ -143,8 +143,8 @@ def run_help(topic: str | None = None) -> int:
 
 {B}MODEL POLICY{R}  (default: Anthropic — change with 'docket models preset')
   Each agent role maps to the cheapest adequate model:
-  {G}cheap{R}   {cheap}   manager reviewer tester knowledge task
-  {G}strong{R}  {strong}  programmer security repo
+  {G}cheap{R}   {cheap}   lead reviewer tester monitor analyst writer
+  {G}strong{R}  {strong}  implementer critic operator researcher
   'docket models' shows the full role→model table with pricing; 'docket profile <id>'
   pins one agent to any model (incl. opus-class) without changing the policy.
 

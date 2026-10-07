@@ -1695,7 +1695,7 @@ def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> 
     _run_cli(repo, env, *provider_args, process_timeout=None)
 
     model_ref = f"smoke-local/{live.model_id}"
-    for role in ("manager", "programmer", "reviewer", "tester"):
+    for role in ("lead", "implementer", "reviewer", "tester"):
         _run_cli(repo, env, "models", "set", role, model_ref, process_timeout=None)
     _run_cli(repo, env, "models", "set", "default", model_ref, process_timeout=None)
 

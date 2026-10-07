@@ -1,5 +1,5 @@
 """`core/pod.py`'s role model resolves against the archetype registry
-instead of a hardcoded 4-tuple — `normalize_role`/`member_id`/`policy_role_for`
+instead of a hardcoded 4-tuple — `normalize_role`/`member_id`
 must keep returning the exact same values for the four legacy roles, while
 also accepting a starter-library/user-defined role without a single new
 hardcoded string in `core/pod.py`.
@@ -105,17 +105,7 @@ class TestMemberIdUnaffected:
         assert pod.pod_of("demo-wizard") is None
 
 
-class TestPolicyRoleForLegacyAndStarterRoles:
-    def test_legacy_roles_preserve_named_policy_mapping(self) -> None:
-        assert pod.policy_role_for("lead") == "manager"
-        assert pod.policy_role_for("implementer") == "programmer"
-        assert pod.policy_role_for("reviewer") == "reviewer"
-        assert pod.policy_role_for("tester") == "tester"
-
-    def test_starter_roles_identity_map(self) -> None:
-        assert pod.policy_role_for("researcher") == "researcher"
-        assert pod.policy_role_for("monitor") == "monitor"
-
+class TestRegistryRoleNames:
     def test_registry_role_names_include_legacy_and_starter(self) -> None:
         names = set(_arch.load_registry().role_names())
         assert {"lead", "implementer", "reviewer", "tester"} <= names
@@ -125,13 +115,13 @@ class TestPolicyRoleForLegacyAndStarterRoles:
 class TestModelClassFallback:
     def test_legacy_roles_resolve_through_named_policy_row(self) -> None:
         role_models = {
-            "manager": "anthropic/claude-haiku-4-5",
-            "programmer": "anthropic/claude-sonnet-4-6",
+            "lead": "anthropic/claude-haiku-4-5",
+            "implementer": "anthropic/claude-sonnet-4-6",
             "reviewer": "anthropic/claude-haiku-4-5",
             "tester": "anthropic/claude-haiku-4-5",
         }
-        assert _mp.resolve_role_model("manager", role_models) == "anthropic/claude-haiku-4-5"
-        assert _mp.resolve_role_model("programmer", role_models) == "anthropic/claude-sonnet-4-6"
+        assert _mp.resolve_role_model("lead", role_models) == "anthropic/claude-haiku-4-5"
+        assert _mp.resolve_role_model("implementer", role_models) == "anthropic/claude-sonnet-4-6"
 
     def test_unlisted_cheap_archetype_resolves_via_economy_anchor(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

@@ -1,10 +1,10 @@
 # Model Policy Specification
 
-**Version**: 2.18.0
+**Version**: 3.0.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above both policy and pin, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -48,17 +48,20 @@ feasibility spike remains in ROADMAP and Git history.
 
 ### Roles and built-in policy
 
-1. The policy **MUST** know exactly seven roles: the six specialist roles
-   (`manager`, `programmer`, `reviewer`, `tester`, `knowledge`, `security`) plus the `repo`
-   project-agent policy role. There is no `task` role.
+1. The policy **MUST** know exactly ten roles, the archetype names (`core/archetypes.py`): the
+   four built-ins `lead`, `implementer`, `reviewer`, `tester` and the six starter archetypes
+   `researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`. One vocabulary names a pod
+   member, its archetype and its model row; there is no separate policy name. There is no `task`
+   role.
 2. Each role **MUST** belong to one of two built-in classes, chosen for token efficiency:
-   - **cheap** (high-volume, low reasoning density): `manager`, `reviewer`, `tester`,
-     `knowledge` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
-   - **strong** (reasoning-dense): `programmer`, `security`, `repo` → the standard rank
-     anchor (default `anthropic/claude-sonnet-4-6`)
+   - **cheap** (high-volume, low reasoning density): `lead`, `reviewer`, `tester`, `monitor`,
+     `analyst`, `writer` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
+   - **strong** (reasoning-dense): `implementer`, `critic`, `operator`, `researcher` → the
+     standard rank anchor (default `anthropic/claude-sonnet-4-6`)
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only as a per-agent pin.
-4. Each role **MUST** carry a short human-readable WHY string shown by `docket models`.
+4. Each role **MUST** carry a short human-readable WHY string shown by `docket models`: the
+   archetype's own `description`.
 5. Resolving a role not in this table **MUST NOT** collapse to the compiled-in `DEFAULT_MODEL`:
    if the role is a registered pod archetype (ROADMAP Phase 16 W-6; e.g. a starter-library role
    like `researcher`, or a recipe's own role applied into a pod's overlay) whose `modelClass`
@@ -73,6 +76,8 @@ feasibility spike remains in ROADMAP and Git history.
    to the registry's own `default` model (the one default of record; equal to `DEFAULT_MODEL` on
    a fresh install) — never to the compiled-in literal while an operator has set another
    default. No error, either way.
+6. A project agent that is not a pod member **MUST** follow the `implementer` row
+   (`models_policy.REPO_AGENT_ROLE`).
 
 ### User registry overlay
 
@@ -130,7 +135,7 @@ feasibility spike remains in ROADMAP and Git history.
 2. `docket models set <role> <provider/model>` **MUST** validate the model, persist the
    override to the registry, and apply it live.
 3. `docket models preset <name>` **MUST** map the preset's cheap/strong classes onto all
-   seven roles and persist them, plus the rank anchors and default.
+   ten roles and persist them, plus the rank anchors and default.
 4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
    and project, registered or not) **MUST** be re-resolved to its role's new model in
    `.docket-meta.json` — the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`
@@ -373,18 +378,21 @@ docket profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
 
 | Role | Class | Model | Why |
 | ---- | ----- | ----- | --- |
-| manager | cheap | claude-haiku-4-5 | high-volume coordination, shallow reasoning |
-| reviewer | cheap | claude-haiku-4-5 | triage and review, low reasoning density |
-| tester | cheap | claude-haiku-4-5 | run tests and report |
-| knowledge | cheap | claude-haiku-4-5 | retrieval and summarization |
-| programmer | strong | claude-sonnet-4-6 | code generation |
-| security | strong | claude-sonnet-4-6 | audit depth |
-| repo | strong | claude-sonnet-4-6 | project default for project agents |
+| lead | cheap | claude-haiku-4-5 | (archetype description) |
+| reviewer | cheap | claude-haiku-4-5 | (archetype description) |
+| tester | cheap | claude-haiku-4-5 | (archetype description) |
+| monitor | cheap | claude-haiku-4-5 | (archetype description) |
+| analyst | cheap | claude-haiku-4-5 | (archetype description) |
+| writer | cheap | claude-haiku-4-5 | (archetype description) |
+| implementer | strong | claude-sonnet-4-6 | (archetype description) |
+| critic | strong | claude-sonnet-4-6 | (archetype description) |
+| operator | strong | claude-sonnet-4-6 | (archetype description) |
+| researcher | strong | claude-sonnet-4-6 | (archetype description) |
 
-The role set above is `ALL_ROLES` (`core/models_policy.py`) — there is **no** `task` role
-(it left with the repo/task dual-type model). `portfolio-manager` is additionally accepted by
-`docket models set` (it is in `ROLE_CLASS`, cheap) but is not displayed in the `docket models`
-table unless set — a known display quirk.
+The role set above is `ALL_ROLES` (`core/models_policy.py`), keyed identically to `ROLE_CLASS`.
+A `docket-models.json` `roles:` key that is not one of these names is ignored at read time and
+reported by `docket doctor`; nothing rewrites the file. A pod-scoped archetype with no row
+resolves per requirement 5.
 
 ### Pricing Table (USD per MTok, Anthropic defaults)
 
@@ -410,7 +418,7 @@ left uncatalogued — gateways can route and re-price by provider/account — an
 ```json
 {
   "default": "anthropic/claude-sonnet-4-6",
-  "roles":       { "programmer": "openai/gpt-4.1" },
+  "roles":       { "implementer": "openai/gpt-4.1" },
   "rankAnchors": { "standard": "openai/gpt-4.1-mini" }
 }
 ```
@@ -432,12 +440,12 @@ found, invalid model, unknown role). There is no distinct exit code per error ki
 ```bash
 $ docket models
   ROLE          MODEL                        PRICE          SOURCE    WHY
-  manager       anthropic/claude-haiku-4-5   $0.80/$4.00    builtin   high-volume coordination...
-  programmer    anthropic/claude-sonnet-4-6  $3.00/$15.00   builtin   code generation
+  lead          anthropic/claude-haiku-4-5   $0.80/$4.00    builtin   orchestrates the pod; never edits code
+  implementer    anthropic/claude-sonnet-4-6  $3.00/$15.00   builtin   writes code in the project workspace
   ...
 
-$ docket models set programmer openai/gpt-4.1
-✓ programmer → openai/gpt-4.1
+$ docket models set implementer openai/gpt-4.1
+✓ implementer → openai/gpt-4.1
 
 → Re-resolving policy-following agents...
   1 agent(s) updated.
@@ -453,7 +461,7 @@ $ docket profile mywebsite anthropic/claude-opus-4-6
 ✓ Model pinned: anthropic/claude-sonnet-4-6 → anthropic/claude-opus-4-6
 
 $ docket profile mywebsite default
-✓ Model: anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 (follows role policy 'repo')
+✓ Model: anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 (follows role policy 'implementer')
 ```
 
 ### Switching the whole fleet to a free/local preset
@@ -469,8 +477,8 @@ $ docket models preset local
 
 $ docket models
   ROLE          MODEL                    PRICE        SOURCE    WHY
-  manager       local/qwen3-30b-a3b      $0 (local)   user      high-volume coordination...
-  programmer    local/qwen3-30b-a3b      $0 (local)   user      code generation
+  lead          local/qwen3-30b-a3b      $0 (local)   user      orchestrates the pod; never edits code
+  implementer   local/qwen3-30b-a3b      $0 (local)   user      writes code in the project workspace
   ...
   default       local/qwen3-30b-a3b
   rank anchors  local/qwen3-30b-a3b → local/qwen3-30b-a3b → local/qwen3-30b-a3b
@@ -498,6 +506,14 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.0.0 (2026-10-07)
+
+- **One role vocabulary.** The policy's roles are the ten archetype names; `manager`, `programmer`,
+  `knowledge`, `security` and `repo` are removed with no alias, and `docket-models.json` is not
+  migrated (an unknown `roles:` key is ignored and reported by `doctor`). `ROLE_CLASS` is keyed the
+  same way; `docket models` prints the archetype names and its WHY column is the archetype
+  description; `preset` writes archetype-keyed rows; org specialists no longer have a policy row.
 
 ### Version 2.18.0 (2026-10-03)
 
@@ -751,7 +767,7 @@ $ docket models
   `DEFAULT_MODEL`, for any role that is a registered pod archetype but has no named row in this
   policy's table (e.g. `researcher`). The four legacy pod roles (lead/implementer/reviewer/
   tester) are unaffected — they still resolve through their existing named
-  `manager`/`programmer`/`reviewer`/`tester` rows exactly as before. No new hardcoded role name
+  `manager`/`programmer`/`reviewer`/`tester` rows exactly as before (superseded by 3.0.0). No new hardcoded role name
   was added to `ALL_ROLES`/`ROLE_CLASS` — see role-archetypes.spec.md for the archetype
   registry this integrates with.
 
