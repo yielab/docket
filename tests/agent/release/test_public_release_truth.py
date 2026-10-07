@@ -236,13 +236,28 @@ def test_public_install_names_match_artifact_metadata() -> None:
     assert "brew install docket-cli" in readme
     assert "**`docket-runtime`**" in readme
     assert f'DOCKET_VERSION="${{DOCKET_VERSION:-{version}}}"' in installer
-    assert f'version "{version}"' in formula
-    assert "docket-v#{version}.tar.gz" in formula
-    # The url interpolates `version` when the class body runs, so the declaration must
-    # come first or the formula downloads ".../v/docket-v.tar.gz" (404).
-    assert re.search(r"^\s*version \"", formula, re.M).start() < formula.index('url "'), (
-        "Formula/docket-cli.rb declares `url` before `version`; the url interpolates to an empty version"
-    )
+    # The URL names the version literally. An interpolated `#{version}` is evaluated while
+    # the class body runs, before any `version` line, and downloads ".../v/docket-v.tar.gz".
+    assert f"/download/v{version}/docket-v{version}.tar.gz" in formula
+    url_lines = [line for line in formula.splitlines() if line.strip().startswith("url ")]
+    assert url_lines and all("#{version}" not in line for line in url_lines)
+
+
+def test_formula_vendors_every_runtime_dependency() -> None:
+    """Homebrew's pip installs with --no-deps, so each pyproject runtime dependency
+    needs a `resource` block or the installed `docket` fails on its first import."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    formula = (ROOT / "Formula" / "docket-cli.rb").read_text(encoding="utf-8")
+    vendored = set(re.findall(r'^\s*resource "([^"]+)"', formula, re.M))
+
+    missing = []
+    for spec in pyproject["project"]["dependencies"]:
+        name = re.match(r"[A-Za-z0-9_.-]+", spec).group(0).lower().replace("_", "-")
+        if name not in vendored:
+            missing.append(name)
+
+    assert not missing, f"Formula/docket-cli.rb lacks a resource block for: {missing}"
+    assert "venv.pip_install resources" in formula, "the formula never installs its resources"
 
 
 def _status_category(value: str) -> str:

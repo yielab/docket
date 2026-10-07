@@ -77,7 +77,8 @@ def test_publish_job_resolves_the_repository_without_a_checkout() -> None:
 def test_formula_uses_the_release_asset_and_apache_metadata() -> None:
     formula = FORMULA.read_text(encoding="utf-8")
 
-    assert "releases/download/v#{version}/docket-v#{version}.tar.gz" in formula
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    assert f"releases/download/v{version}/docket-v{version}.tar.gz" in formula
     assert 'license "Apache-2.0"' in formula
     checksum = re.search(r'^\s*sha256 "([0-9a-f]{64})"', formula, re.MULTILINE)
     assert checksum is not None

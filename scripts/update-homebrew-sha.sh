@@ -33,7 +33,13 @@ portable_sed_i() {
   fi
 }
 
-portable_sed_i "s|sha256 \"[0-9a-f]*\"|sha256 \"${sha}\"|" "$formula"
-portable_sed_i "s|version \"[^\"]*\"|version \"${version}\"|" "$formula"
+# Only the FIRST sha256 line is the release asset; the vendored Python
+# resources below it carry their own digests and must not be touched.
+tmp="${formula}.tmp"
+awk -v sha="$sha" '
+  !done && /sha256 "[0-9a-f]*"/ { sub(/sha256 "[0-9a-f]*"/, "sha256 \"" sha "\""); done = 1 }
+  { print }
+' "$formula" > "$tmp" && mv "$tmp" "$formula"
+portable_sed_i "s|/download/v[^/]*/docket-v[^\"]*\.tar\.gz|/download/v${version}/docket-v${version}.tar.gz|" "$formula"
 
 echo "Done. Commit the updated formula; it necessarily lands after the tag."
