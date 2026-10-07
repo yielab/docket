@@ -647,7 +647,7 @@ def _check_runtime_contract(ids: list[str]) -> int:
     ui.console.print()
     ui.console.print("[bold]Runtime startup contract:[/bold]")
     healed = 0
-    for aid in _managed_workspace_ids(ids):
+    for aid in ids:
         ws = _cfg.workspace_dir(aid)
         if not ws.is_dir() or _mem.contract_ok(ws):
             continue
@@ -662,16 +662,6 @@ def _check_runtime_contract(ids: list[str]) -> int:
     if healed == 0:
         ui.success(f"  All agents have a current {_mem.REQUIRED_STARTUP_FILE}")
     return 0
-
-
-def _managed_workspace_ids(ids: list[str]) -> list[str]:
-    """Project pod members plus any provisioned org specialists — all docket-managed,
-    including the opt-in Portfolio Manager (``docket init --portfolio``), never
-    auto-installed."""
-    specialists = [r for r in _cfg.ORG_SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
-    if _cfg.workspace_dir(_cfg.PORTFOLIO_MANAGER_ROLE).is_dir():
-        specialists.append(_cfg.PORTFOLIO_MANAGER_ROLE)
-    return list(ids) + specialists
 
 
 def _fmt_num(s: str) -> str:

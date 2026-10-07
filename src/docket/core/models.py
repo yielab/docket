@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AgentKind(StrEnum):
     project = "project"
-    specialist = "specialist"
 
 
 class ModelSource(StrEnum):
@@ -18,11 +17,9 @@ class ModelSource(StrEnum):
 
 
 class AgentScope(StrEnum):
-    """Whose data an agent may see. Orthogonal to ``kind``/``role``: ``org`` is a
-    shared, cross-cutting agent (one instance serves all projects); ``project`` is
-    scoped to a single project/pod, never shared across projects."""
+    """Whose data an agent may see: ``project`` is scoped to a single project/pod,
+    never shared across projects."""
 
-    org = "org"
     project = "project"
 
 

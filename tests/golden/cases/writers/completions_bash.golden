@@ -7,7 +7,7 @@ _docket_complete() {
 
   local commands="list status add init info delete maintain context wire unwire scope profile persona keys models pod pipeline roles logs edit cost config doctor gates conversations runs harness mcp audit snapshot serve completions validate plugins recipes exporters channels notify trace metrics policies approve deny chat inbox help"
 
-  # Live agent ids (project + specialist) from the workspace tree, basenames only.
+  # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
   local _ids="" _d _b
   if [[ -d "$_dh/workspaces/projects" ]]; then

@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Stable
 **Last Updated**: 2026-10-04
 
@@ -35,7 +35,7 @@ It does NOT cover the write endpoints' request handling (`POST /approvals/<token
 request/response body — those are implementation details gated by `Authorization: Bearer <token>`
 and documented in `src/docket/serve.py`.
 
-**API version:** `3`  (`SERVE_API_VERSION = "3"` in `src/docket/serve.py`)
+**API version:** `4`  (`SERVE_API_VERSION = "4"` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
 `/health`) require no auth. `/approvals`, `/inbox`, `/runs`, `/runs/<id>`, and the write endpoints
 all require `Authorization: Bearer <token>`.
@@ -79,15 +79,15 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 ```json
 {
-  "apiVersion": "3",
+  "apiVersion": "4",
   "timestamp":  "2026-06-25T10:00:00Z",
   "channels":   ["telegram"],
   "agents": [
     {
       "id":           "myapp-lead",
       "name":         "My App Lead",
-      "kind":         "project | specialist",
-      "scope":        "project | org",
+      "kind":         "project",
+      "scope":        "project",
       "model":        "anthropic/claude-haiku-4-5-20251001",
       "registered":   true,
       "bindings":     [{"channel": "telegram", "peerId": "-100123"}],
@@ -104,9 +104,9 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 
 | Field | Type | Notes |
 |---|---|---|
-| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"3"`. |
+| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"4"`. |
 | `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
-| `agents[*].scope` | `"project" \| "org"` | `project` for pod agents, `org` for shared specialists. |
+| `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
 | `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
 | `agents[*].lastActivity` | date string \| `"never"` | Date of the newest memory log file, or `"never"`. |
 | `totalCostUsd` | float | Sum of all agents' usage-derived cost estimates. |
@@ -650,7 +650,7 @@ Tack-granted approval must not be indistinguishable from a CI job's.
 ## Validation
 
 - `apiVersion` MUST be a string matching `SERVE_API_VERSION` in `src/docket/serve.py`.
-- `agents[*].scope` MUST be `"project"` or `"org"`.
+- `agents[*].scope` MUST be `"project"`; `agents[*].kind` MUST be `"project"`.
 - `agents[*].budgetUsd` MUST be a float or `null`.
 - `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
 - `/metrics` MUST conform to Prometheus text format 0.0.4.
@@ -770,6 +770,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.3.0 (2026-10-07)
+
+- Phase 39 (P39-6): `SERVE_API_VERSION` 3 -> 4. `/status.json` `agents` lists pod members only;
+  `kind` is always `project` and `scope` is always `project` (`specialist` and `org` are removed).
 
 ### Version 3.2.0 (2026-10-05)
 

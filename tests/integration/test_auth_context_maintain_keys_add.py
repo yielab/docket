@@ -421,8 +421,7 @@ class TestCmdAdd:
         assert rc == 0, out + err
         fleet = json.loads((home / "fleet.json").read_text())
         ids = {agent["id"] for agent in fleet["agents"]}
-        assert {"manager", "knowledge", "security"} <= ids
-        assert {"fresh-project-lead", "fresh-project-implementer"} <= ids
+        assert ids == {"fresh-project-lead", "fresh-project-implementer"}
 
     def test_add_extends_current_projects_existing_pod(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)

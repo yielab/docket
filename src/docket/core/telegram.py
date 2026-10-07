@@ -185,8 +185,8 @@ def _authorize(chat_id: str) -> str | None:
 
 def _lead_project(agent_id: str) -> str | None:
     """The pod project *agent_id* leads, or ``None`` if it isn't a pod Lead.
-    Only a pod Lead has a task queue to delegate against; an org specialist
-    or non-Lead pod member can still approve/deny/status but not delegate."""
+    Only a pod Lead has a task queue to delegate against; a non-Lead pod
+    member can still approve/deny/status but not delegate."""
     project = _pod.pod_of(agent_id)
     if project is None:
         return None

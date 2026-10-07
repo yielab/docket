@@ -431,9 +431,8 @@ work. Measure actuals for your own workload rather than relying on fixed figures
 > pod model (scope vs role, why pods exist, how to compose one). This document is the *technical*
 > deep-dive: routing, context isolation, dispatch internals, and per-role wiring.
 
-There are two kinds of agent. **Pod roles** are project-scoped and created per project by
-`docket init <project>` (managed with `docket pod <project>`). **Org specialists** are shared
-across the whole fleet and created lazily by the first `docket init`.
+Every agent is a **pod role**: project-scoped and created per project by
+`docket init <project>` (managed with `docket pod <project>`).
 
 ## Pod Roles
 
@@ -555,118 +554,6 @@ by name. Every MCP server is write-capable unless the operator declares it `--ki
 operator assertion, not something docket verifies). A role that denies `write` (Lead, Reviewer,
 Tester) gets no tools from a server left at the default and all the tools of a `--kind read`
 server; the Implementer gets both.
-
-## Org Specialists
-
-Shared across all projects, created lazily by the first `docket init`. The `manager` is a cross-cutting
-coordinator — **not** a router with a classifier, and it does not compress prompts into briefs.
-It has no task queue of its own: per-pod dispatch
-(`docket pod <project> delegate/queue/dispatch`) is the only queue, and the manager role is
-transitional, being superseded by per-pod Leads.
-
-### Manager
-
-**Role:** Cross-cutting coordination (transitional)
-
-**Capabilities:**
-- Coordinates work that spans more than one pod (advisory/instruction-level; no task-queue
-  tooling of its own — see [Portfolio Manager](#portfolio-manager-optional) below for the
-  fleet-visibility surface that replaced it)
-- Reads memory/snapshots, not full history
-
-**Tools:** the full built-in set is technically available — org specialists have no role
-archetype in `core/archetypes.py`, so unlike a pod's Lead/Reviewer/Tester there is no
-`denied_tools` list narrowing their registry. Its constraints are **prompt-level only**
-(SOUL.md's "never edit code, run builds, or commit"), backstopped by the same tool-call gate and
-high-risk classifier every call passes through (see [Security Model](#security-model)) — not a
-structural tool removal the way a pod role's is.
-
-**Cannot (by instruction, not tool removal):**
-- Edit code
-- Run commands
-- Commit
-
-**Model:** cheap class (role policy) (cross-cutting coordination, not code reasoning)
-
-### Knowledge
-
-**Role:** Pattern extraction and memory distillation
-
-**Capabilities:**
-- Extracts reusable patterns from completed tasks
-- Updates MEMORY.md with decisions
-- Maintains patterns/ library
-- Cross-project memory search
-
-**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`,
-`skill`, `consult`) — like
-every org specialist, it has no role archetype narrowing its registry; scope is prompt-level
-(SOUL.md), not tool-enforced. There is no separate semantic memory-search tool — docket's own
-turn loop has none of its own — so cross-project pattern extraction works by reading and
-`grep`-ing memory files directly, the same tools available to any agent.
-
-**Cannot (by instruction, not tool removal):**
-- Modify source code
-- Run tests
-- Commit
-
-**Model:** cheap class (role policy) (distillation is mechanical)
-
-**Cost Target:** <5K tokens/extraction
-
-### Security
-
-**Role:** Deep security audits and HITL gatekeeper
-
-**Capabilities:**
-- Deep threat modeling
-- HITL gate enforcement
-- Compliance audits (GDPR, HIPAA)
-- Proactive monitoring
-
-**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`,
-`skill`, `consult`) — no
-role archetype narrows it; the constraints below are prompt-level (SOUL.md), backstopped by the
-same tool-call gate and high-risk classifier every agent's calls pass through.
-
-**Cannot (by instruction, not tool removal):**
-- Modify code
-- Execute suspicious code
-- Approve own escalations
-- Commit
-
-**Model:** strong class (role policy) (security reasoning required)
-
-**Cost Target:** <10K tokens/audit
-
-### Portfolio Manager (optional)
-
-**Role:** Cross-pod planning and visibility surface (opt-in)
-
-Provisioned only by `docket init --portfolio`, which adds **one** `portfolio-manager`
-(`scope: org`). The flag is read only by the first `docket init`, the one that builds the shared
-foundation. It is a fleet-wide advisory layer, never a pod member. No dispatch path runs a turn
-for an org specialist, so today the Portfolio Manager is a provisioned workspace with no
-conversational entry point: Telegram accepts only five verbs and `/delegate`/`/answer` work only
-for a pod Lead binding.
-
-**Capabilities:**
-- Sees fleet **metadata** — which pods exist, their queues, budgets, and health
-- Recommends where to focus, rebalance, or pause, in words for a human
-
-**Tools:** the full built-in set is technically available (no role archetype narrows it), but its
-prompt scopes it to reading fleet metadata (`docket list`/`pod`/`cost`/`doctor` surface) and
-reporting in words — never project source.
-
-**Cannot (by instruction, not tool removal):**
-- Read or edit **project code** (it sees metadata, not source)
-- **Dispatch into pods** (each pod's own Lead owns execution)
-- Be a pod member, or run another pod's agents
-- Commit
-
-**Model:** cheap class (role policy) (planning/visibility, not reasoning-dense)
-
----
 
 ## Memory Management
 
@@ -854,9 +741,6 @@ Lead:        ✓ Per-pod orchestrator (owns context/memory, never edits code)
 Implementer: ✓ Runs in the project workspace (full read/write)
 Reviewer:    ✓ Read-only veto (6-point checklist)
 Tester:      ✓ Behavior-only validation
-Knowledge:   ✓ Org specialist (tools + memory management)
-Security:    ✓ Org specialist (HITL gates + threat modeling)
-Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 ```
 
 ### Features Implemented ✅
@@ -1143,14 +1027,12 @@ Implementer codes, a Reviewer or Tester gates), **autonomy** within clear respon
 - ✅ Changed: Coordination is a real dispatch state machine driving costed agent turns
   ([Dispatch Internals](#dispatch-internals)), not RPC and not memory-file signaling
 - ✅ Changed: Orchestration is a per-pod Lead, not a global router with a classifier
-- ✅ Changed: Security (separate specialist, not merged into Reviewer)
 
 See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full role model details.
 
 ### Q: Do I need to change how I use docket?
 
-**A:** No. The first `docket init` creates the org specialists as part of the shared foundation,
-and every `docket init` (run in a project directory, or `docket init <project> [path]`) provisions
+**A:** No. Every `docket init` (run in a project directory, or `docket init <project> [path]`) provisions
 that project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
@@ -1158,7 +1040,6 @@ that project's pod with the right templates. Everything else works the same.
 **A:** No. Templates are generated per-pod by `docket init` (and per member by `docket add`) and
 refreshed by
 `docket maintain <id> rebuild`:
-- Org specialists (manager, knowledge, security) are created lazily by the first `docket init`
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
 - Project agents are never touched by another project's setup
 
@@ -1200,8 +1081,7 @@ Inspect the boundary or copy the lazy constructors from
 
 ## Next Steps
 
-1. **First project:** `docket init` in the project directory (the first run also creates the org
-   specialists; the pod is a lead + implementer)
+1. **First project:** `docket init` in the project directory (the pod is a lead + implementer)
 2. **Add another project pod:** `docket init <project> [path]`
 3. **Inspect context:** `docket context <project>-lead show` (quick per-agent view)
 4. **Test workflow:** Assign bug fix, observe token usage

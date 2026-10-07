@@ -84,17 +84,10 @@ class TestAgentMeta:
     def test_extra_fields_survive_round_trip(self) -> None:
         from docket.core.models import AgentMeta
 
-        raw = {"kind": "specialist", "role": "programmer", "futureField": "x"}
+        raw = {"kind": "project", "role": "programmer", "futureField": "x"}
         meta = AgentMeta.model_validate(raw)
         dumped = meta.model_dump(by_alias=True)
         assert dumped.get("futureField") == "x"
-
-    def test_specialist_kind(self) -> None:
-        from docket.core.models import AgentKind, AgentMeta
-
-        meta = AgentMeta.model_validate({"kind": "specialist", "role": "security"})
-        assert meta.kind == AgentKind.specialist
-        assert meta.role == "security"
 
     # ── the scope axis ──────────────────────────────────────
 
@@ -105,21 +98,15 @@ class TestAgentMeta:
         assert meta.scope == AgentScope.project
         assert meta.model_dump(by_alias=True)["scope"] == "project"
 
-    def test_scope_explicit_value_is_respected(self) -> None:
-        from docket.core.models import AgentMeta, AgentScope
-
-        meta = AgentMeta.model_validate(
-            {"kind": "specialist", "role": "programmer", "scope": "org"}
-        )
-        assert meta.scope == AgentScope.org
-
     def test_scope_rejects_unknown_value(self) -> None:
         from pydantic import ValidationError
 
         from docket.core.models import AgentMeta
 
         with pytest.raises(ValidationError):
-            AgentMeta.model_validate({"kind": "project", "scope": "global"})
+            AgentMeta.model_validate({"kind": "project", "scope": "org"})
+        with pytest.raises(ValidationError):
+            AgentMeta.model_validate({"kind": "specialist"})
 
     def test_scope_defaults_to_project(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
@@ -190,7 +177,7 @@ class TestStore:
         from docket.core.models import AgentMeta
         from docket.edges import store
 
-        meta = AgentMeta.model_validate({"kind": "specialist", "role": "programmer"})
+        meta = AgentMeta.model_validate({"kind": "project", "role": "programmer"})
         path = tmp_path / "meta.json"
         store.write_json(path, meta)
         raw = json.loads(path.read_text())

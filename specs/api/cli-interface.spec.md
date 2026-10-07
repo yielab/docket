@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.66.0
+**Version**: 1.70.0
 **Status**: Complete
 **Last Updated**: 2026-10-06
 
@@ -107,15 +107,18 @@ state location is chosen with `DOCKET_HOME`, not a config file flag.
 ### Core Commands
 
 Invoking `docket` with no command **MUST** print only a compact command guide. It **MUST NOT**
-read or render the fleet, project agents, specialist agents, costs, bindings, or health checks.
+read or render the fleet, project agents, costs, bindings, or health checks.
 
 #### docket init
 **Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
 default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). On the first project only, it **MUST**
-also bootstrap the workstation-wide Docket home, shared org specialists, baseline policies, and
+also bootstrap the workstation-wide Docket home, baseline policies, and
 default security posture before provisioning the project. This global foundation is necessary;
 an extra user-facing setup command is not.
 **Syntax**: `docket init [project] [location] [--blueprint <name>] [--recipe <name|dir>] [--no-apply] [options]`
+
+`init` provisions the pod's own members and no shared agent. An option it does not define is a
+usage error: it prints one line and exits `2` before anything is provisioned.
 
 Before the first project is created, workstation bootstrap **MUST** validate that the selected
 model resolves to a callable OpenAI-compatible endpoint. An API key without a compatible endpoint
@@ -224,7 +227,7 @@ agent inventory.
 **Syntax**: `docket delete [agent-id]`
 **Arguments**:
 - `agent-id` (optional): A pod id (removes every member) or a legacy flat agent id; interactive
-  picker if omitted. Org specialists cannot be deleted this way
+  picker if omitted
 **Options**: None. A pod deletion requires typing the exact pod id to confirm in an interactive
 terminal; there is no `--force` or `--keep-logs`
 **Output**: Deletion confirmation
@@ -1289,6 +1292,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.70.0 (2026-10-07)
+
+- Phase 39 (P39-6): `docket init` no longer bootstraps shared org specialists or accepts
+  `--portfolio`; an undefined `init` option exits 2. `list`, `snapshot` and `/status.json` show pod
+  members only; `delete` text drops the specialist refusal; the no-argument guide drops the
+  "Org Specialists" entry.
 
 ### Version 1.66.0 (2026-10-06)
 

@@ -120,9 +120,7 @@ class TestApiContract:
     def test_agent_scope_field(self, api_home: Path) -> None:
         agents = serve.build_status()["agents"]
         for agent in agents:
-            assert agent["scope"] in ("project", "org"), (
-                f"scope must be 'project' or 'org', got {agent['scope']!r}"
-            )
+            assert agent["scope"] == "project", f"scope must be 'project', got {agent['scope']!r}"
 
     def test_agent_budget_field(self, api_home: Path) -> None:
         agents = serve.build_status()["agents"]
@@ -135,7 +133,7 @@ class TestApiContract:
     def test_agent_kind_field(self, api_home: Path) -> None:
         agents = serve.build_status()["agents"]
         for agent in agents:
-            assert agent["kind"] in ("project", "specialist")
+            assert agent["kind"] == "project"
 
     def test_total_cost_is_float(self, api_home: Path) -> None:
         st = serve.build_status()

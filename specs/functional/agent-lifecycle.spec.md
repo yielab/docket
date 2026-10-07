@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -79,7 +79,7 @@ present) or **deleted**. There is no separate stopped state; the docket-local `p
 
 Output **MUST** include:
 - Agent ID (slugified, unique)
-- Kind/scope (project agent vs org specialist; pod role where applicable)
+- Kind/scope (project; pod role where applicable)
 - Codebase path (if applicable)
 - Current model and source (policy or pinned)
 - Telegram binding status
@@ -109,8 +109,7 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
 
 1. **MUST** prompt for confirmation by typing the exact id (there is no `--force` bypass flag).
    For a pod, the typed-id prompt is shown only when stdin is a terminal; a non-interactive pod
-   delete proceeds without it (the `docket delete` help text documents this). Org specialists
-   **MUST** be refused outright
+   delete proceeds without it (the `docket delete` help text documents this)
 2. **MUST** remove the workspace directory completely for every pod member; for a legacy flat
    agent id the workspace removal is asked separately
 3. **MUST** unregister from docket's fleet registry (`fleet.json`)
@@ -323,6 +322,12 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.16.0 (2026-10-07)
+
+- Phase 39 (P39-6): there are no shared agents. `docket init` provisions the pod only; `list` and
+  `snapshot` show pod members; `delete` no longer has a specialist refusal because no specialist
+  exists.
 
 ### Version 1.15.0 (2026-10-03)
 

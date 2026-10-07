@@ -271,7 +271,7 @@ class TestConfigExplainNonPodAgent:
         ws.mkdir(parents=True)
         _store.write_json(
             _cfg.meta_path("solo"),
-            {"kind": "specialist", "role": "", "model": "", "name": "solo"},
+            {"kind": "project", "role": "", "model": "", "name": "solo"},
         )
         report = _explain_json("solo", capsys)
         assert report["pod"] == ""

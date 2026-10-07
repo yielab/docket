@@ -62,7 +62,7 @@ _docket_complete() {
 
   local commands="__COMMANDS__"
 
-  # Live agent ids (project + specialist) from the workspace tree, basenames only.
+  # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
   local _ids="" _d _b
   if [[ -d "$_dh/workspaces/projects" ]]; then

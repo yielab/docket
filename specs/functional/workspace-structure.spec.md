@@ -1,8 +1,8 @@
 # Workspace Structure Specification
 
-**Version**: 1.17.0
+**Version**: 1.18.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
-`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`. P26-9 gave
+`~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
 requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
 `docket pod <p> sync` — see the same requirement and pod-dispatch.spec.md. P26-20 added
@@ -27,7 +27,6 @@ their roles, and the permission rules that keep a workspace valid.
 This specification covers:
 
 - The directory and files that make up a project-agent (and pod-member) workspace
-- The org-specialist layout
 - Permission invariants
 - The boundary between a provisioned *workspace* (covered above) and shipped, read-only
   *package data* under `src/docket/templates/` (`templates/policies/`, and P26-20's
@@ -116,39 +115,13 @@ covers the resulting file set for either workspace kind, not blueprint selection
    `_check_template_version`) rather than silently skipping every pod member the way it
    did before this requirement.
 
-### Org specialists
+### No shared agents
 
-1. Org specialists (security, knowledge, manager, and the opt-in
-   `portfolio-manager`) live at `~/.docket/workspaces/<role>/` and **MUST**
-   have the same durable workspace set a project agent gets, minus `TOOLS.md`
-   and any codebase-specific field neither exists for:
-   - `SOUL.md` — role identity, scope, and a session key of the form
-     `agent:<role>:org` (the org-scoped counterpart of a project agent's
-     `agent:<id>:<project>`)
-   - `AGENTS.md` — the same session-startup protocol every project agent follows
-   - `HEARTBEAT.md` — the durable task ledger
-   - `WORKFLOW_AUTO.md` / `MEMORY.md` / `memory/YYYY-MM-DD.md` — the runtime
-     contract set, from the same `core/memory.py` `seed_contract` a project
-     agent uses
-   - `.docket-meta.json` (`kind: specialist`)
-   - `TOOLS.md` **MUST NOT** be written for a specialist — it has no fixed
-     codebase or build commands to document.
-2. The first `docket init` lazily provisions the full set above for every org specialist before
-   it creates the project pod. Provisioning is
-   idempotent and backfill-safe: `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` are
-   written only when absent (never clobbering agent-written content or a
-   persona-decorated `SOUL.md`), and `seed_contract` never overwrites an
-   existing `MEMORY.md` or daily log.
-3. `docket doctor`'s runtime-contract healer covers org specialists as well as
-   project agents (ROADMAP Phase 17 C-4 closed the gap where specialists had
-   no contract files and this healer never saw them): a specialist with a
-   missing or stale `WORKFLOW_AUTO.md` is re-seeded exactly like a project
-   agent's. A specialist workspace left fully bare by a pre-C-4 install
-   (`.docket-meta.json` only, no `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` at all)
-   is backfilled by the internal workstation bootstrap, which never touches a file
-   that already exists.
-4. The retired org-wide manager queue (`~/.docket/workspaces/manager/TASK_LIST.json`) is not part
-   of the current contract; if present it is left untouched and read by nothing.
+1. `docket init` **MUST** provision the pod's own members and nothing else: no workspace exists
+   under `~/.docket/workspaces/` outside `projects/<member>/`, and `fleet.json` registers only
+   pod members.
+2. `docket doctor` and `docket maintain` **MUST** act on pod members only; a directory under
+   `~/.docket/workspaces/` that is not a pod member is not read, healed or reported.
 
 ### Permissions
 
@@ -221,7 +194,7 @@ docket add <role> [--project <pod>]       # Add a member workspace to an existin
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 docket pod <project> sync [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
-docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md, project or specialist
+docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md in a pod member
 ```
 
 ## Examples
@@ -255,20 +228,6 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
     └── 2026-07-30.md
 ```
 
-### A provisioned org-specialist workspace
-
-```text
-~/.docket/workspaces/security/
-├── SOUL.md
-├── AGENTS.md
-├── HEARTBEAT.md
-├── WORKFLOW_AUTO.md
-├── MEMORY.md
-├── .docket-meta.json
-└── memory/
-    └── 2026-07-30.md
-```
-
 ## Validation
 
 ### Pre-conditions
@@ -280,9 +239,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 - After `docket init` (or `docket add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
-- After the first `docket init`, every org specialist (and the opt-in Portfolio Manager, when
-  provisioned) **MUST** have the specialist file set above with `700`/`600` permissions and a
-  current-version contract marker in `WORKFLOW_AUTO.md`.
+- After the first `docket init` in a fresh home, `workspaces/` holds only the pod's members.
 - After `docket maintain rebuild`, core files **MUST** be regenerated from metadata (persona
   reapplied from `.docket-meta.json`).
 
@@ -299,6 +256,12 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.18.0 (2026-10-07)
+
+Phase 39 (P39-6): the "Org specialists" requirements and the org-specialist example tree are
+replaced by "No shared agents". `docket init` provisions the pod only; `doctor` and `maintain`
+read pod members only.
 
 ### Version 1.17.0 (2026-10-04)
 

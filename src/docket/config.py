@@ -25,7 +25,7 @@ MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
 # overlaid by a user `roles:` map). See core/archetypes.py.
 ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
 # WORKSPACES_DIR: root of every managed workspace -- project pods live at
-# WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); org specialists and pod
+# WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); pod
 # members live directly at WORKSPACES_DIR/<role-or-project>/...
 WORKSPACES_DIR = DOCKET_HOME / "workspaces"
 PROJECTS_DIR = WORKSPACES_DIR / "projects"
@@ -194,25 +194,16 @@ DISPATCH_SWEEP_WORKERS = int(os.environ.get("DISPATCH_SWEEP_WORKERS", "4"))
 # SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
 TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
 
-# Opt-in org Portfolio Manager: cross-pod planning, never a default specialist.
-# Installed via `first docket init --portfolio`; excluded from ORG_SPECIALIST_ORDER
-# so it is never auto-provisioned or flagged missing on a default install.
-PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
-
 META_FILE = ".docket-meta.json"
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
-# Org agents are shared across projects; project roles live in pods (provisioned by docket add).
-ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager", PORTFOLIO_MANAGER_ROLE])
-
-# Install order: shared org agents only. Portfolio Manager is excluded — it is opt-in and
-# must never be auto-provisioned or flagged "missing" on a standard install.
+ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager"])
 ORG_SPECIALIST_ORDER: tuple[str, ...] = ("manager", "knowledge", "security")
 
-# Display order includes the opt-in Portfolio Manager. Consumers skip entries whose workspace
-# doesn't exist, so the Portfolio Manager appears only after `first docket init --portfolio`.
-ORG_DISPLAY_ORDER: tuple[str, ...] = (*ORG_SPECIALIST_ORDER, PORTFOLIO_MANAGER_ROLE)
+
+def is_specialist(agent_id: str) -> bool:
+    return agent_id in ORG_ROLES
 
 
 ROLE_WHY: dict[str, str] = {
@@ -223,28 +214,12 @@ ROLE_WHY: dict[str, str] = {
     "programmer": "code generation",
     "security": "audit depth",
     "repo": "project default for project (repo) agents",
-    "portfolio-manager": "cross-pod planning over fleet metadata, shallow reasoning",
 }
-
-TELEGRAM_GROUP_NAMES: dict[str, str] = {
-    "manager": "Manager",
-}
-
-
-def is_specialist(agent_id: str) -> bool:
-    return agent_id in ORG_ROLES
 
 
 def workspace_dir(agent_id: str) -> Path:
-    """Resolve the workspace path for any agent (project or specialist)."""
-    project_path = PROJECTS_DIR / agent_id
-    if project_path.is_dir():
-        return project_path
-    if is_specialist(agent_id):
-        specialist_path = WORKSPACES_DIR / agent_id
-        if specialist_path.is_dir():
-            return specialist_path
-    return project_path
+    """Resolve the workspace path for a pod member."""
+    return PROJECTS_DIR / agent_id
 
 
 def meta_path(agent_id: str) -> Path:

@@ -1,6 +1,6 @@
 EXIT:0
 
-  docket  8 agent(s)  1 channel binding(s)  │  v0.2.0b4
+  docket  2 agent(s)  1 channel binding(s)  │  v0.2.0b4
   ──────────────────────────────────────────────────────────────────
 PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
 
@@ -14,21 +14,6 @@ PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
   repo  │  claude-sonnet-4-6 (policy)  │  stack: Docker,git  │  0 day-log(s)
   path: ~/Sites/myshop  │  active: —
   ● registered  ● telegram (-1001234567890)  ○ no memory  ○ no reqs
-
-  ──────────────────────────────────────────────────────────────────
-  Telegram Setup Needed  (1 agent(s) without groups)
-
-    ○ manager  → create group "Manager" then: docket wire manager
-
-  Steps: 1) Create Telegram group  2) Add bot  3) docket wire <id> and follow the on-screen steps
-
-ORG SPECIALISTS (shared across all projects)
-
-  These work across ALL your projects. Don't wire them to individual groups.
-
-  ✓ manager      claude-haiku-4-5             (policy) — high-volume coordination, shallow reasoning
-  ✓ knowledge    claude-haiku-4-5             (policy) — retrieval and summarization
-  ✓ security     claude-sonnet-4-6            (policy) — audit depth
 
 ──────────────────────────────────────────────────────────────────────
   docket info <id>     detailed view
