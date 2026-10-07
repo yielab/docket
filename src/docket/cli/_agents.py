@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import json as _json
+import os
 import re as _re
 import shutil as _shutil
 import stat as _stat
@@ -24,6 +25,7 @@ from rich.markup import escape
 import docket.config as _cfg
 from docket import ui
 from docket.cli._flags import find_unknown_flag
+from docket.cli._target import TargetError, resolve_pod
 from docket.core import blueprints as _bp
 from docket.core import config_docs as _config_docs
 from docket.core import fleet as _fleet
@@ -355,59 +357,17 @@ def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[
     return project, forwarded
 
 
-def _pod_for_directory(directory: Path) -> tuple[str | None, list[str]]:
-    """Resolve the most-specific registered pod containing ``directory``. Metadata is
-    the authority: every member repeats the same codebase/workDir, so results dedup
-    by pod id; a nested cwd chooses the longest matching root."""
-    try:
-        cwd = directory.expanduser().resolve()
-    except OSError:
-        cwd = directory.expanduser().absolute()
-
-    matches: dict[str, int] = {}
-    for aid in project_ids():
-        raw = store.read_json(_cfg.meta_path(aid))
-        pod_id = str(raw.get("pod", ""))
-        if not pod_id:
-            continue
-        root_s = str(raw.get("workDir") or raw.get("codebase") or "")
-        if not root_s:
-            continue
-        try:
-            root = Path(root_s).expanduser().resolve()
-            cwd.relative_to(root)
-        except (OSError, ValueError):
-            continue
-        matches[pod_id] = max(matches.get(pod_id, 0), len(root.parts))
-
-    if not matches:
-        return None, []
-    best_depth = max(matches.values())
-    best = sorted(project for project, depth in matches.items() if depth == best_depth)
-    return (best[0] if len(best) == 1 else None), best
-
-
 def run_add(all_args: list[str]) -> int:
     """Add role agents to an existing pod; never provisions a new project."""
     explicit_project, forwarded = _parse_existing_pod_add_args(all_args)
     if explicit_project == "":
         return 1
 
-    project = explicit_project
-    if not project:
-        project, matches = _pod_for_directory(Path.cwd())
-        if project is None:
-            if matches:
-                ui.error(
-                    "Current directory matches multiple pods: "
-                    f"{', '.join(matches)}. Select one with --project <pod>."
-                )
-            else:
-                ui.error(
-                    "No initialized pod matches the current directory. "
-                    "Run 'docket init' here first, or select one with --project <pod>."
-                )
-            return 1
+    try:
+        project = resolve_pod(explicit_project or None, env=os.environ, cwd=Path.cwd())
+    except TargetError as exc:
+        ui.error(str(exc))
+        return 1
 
     if not forwarded or forwarded[0].startswith("-"):
         ui.error(

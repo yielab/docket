@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli._target import TargetError, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
@@ -128,20 +130,10 @@ def run_status(*, all_projects: bool, json_out: bool, directory: Path | None = N
             _render_all(summaries)
         return 0
 
-    from docket.cli._agents import _pod_for_directory
-
-    project, matches = _pod_for_directory(directory or Path.cwd())
-    if project is None:
-        if matches:
-            ui.error(
-                "Current directory matches multiple projects: "
-                f"{', '.join(matches)}. Use 'docket status --all'."
-            )
-        else:
-            ui.error(
-                "This directory is not inside an initialized Docket project. "
-                "Run 'docket init' here, or use 'docket status --all'."
-            )
+    try:
+        project = resolve_pod(None, env=os.environ, cwd=directory or Path.cwd())
+    except TargetError as exc:
+        ui.error(str(exc))
         return 1
 
     summary = next((item for item in summaries if item["id"] == project), _project_summary(project))

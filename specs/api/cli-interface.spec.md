@@ -102,6 +102,20 @@ These two are the whole global surface (`docket --help`). There is no `-h`, `-v`
 `--debug`, `--quiet`, `--config` or `--no-color` (any of them is an unknown option, exit 2);
 state location is chosen with `DOCKET_HOME`, not a config file flag.
 
+### Pod targeting
+
+Every pod-scoped command resolves its pod through `cli/_target.py::resolve_pod`, from three
+sources in this order: the `--pod`/`-p` option (declared by `pod_option()`), then the `DOCKET_POD`
+environment variable, then the registered pod whose codebase contains the current directory.
+When several registered codebases contain it, the deepest wins; two pods matching at the same
+depth are both named in the error. `docket status` and `docket add` use it.
+
+When no pod matches, the command prints one error line and exits 1:
+
+```
+No pod for <cwd> (looked for a registered codebase containing it). Run 'docket init' here, or pass --pod <name>.
+```
+
 ## Command Registry
 
 ### Core Commands
@@ -1305,6 +1319,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - `docket runs show <id>` exits 1 when the run or any task it returned failed, and for an unknown run; it exits 0 for any other recorded state, including `waiting_input`/`waiting_approval`.
 - `docket doctor` counts only lines marked with a red cross as critical issues (a warning never is), exits 0 with no critical line, and its footer hint names `docket doctor --fix`.
 - `docket metrics` success/failure/aborted counts come from the terminal task status each dispatch `session_end` event records (`done` success, `failed` failure, `cancelled`/`blocked` aborted; a parked task is not terminal and is not counted), not from a hard-coded `success`/`failure` payload no dispatch ever wrote.
+
+### Version 1.67.0 (2026-10-07)
+
+- Adds "Pod targeting": one resolver (`--pod`, `DOCKET_POD`, then the deepest codebase containing
+  the current directory) with a single no-match error; `status` and `add` use it.
+
 
 ### Version 1.66.0 (2026-10-06)
 

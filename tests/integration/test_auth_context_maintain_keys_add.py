@@ -498,7 +498,7 @@ class TestCmdAdd:
 
         assert rc == 1
         assert "docket init" in (out + err)
-        assert "--all" in (out + err)
+        assert "--pod" in (out + err)
 
     def test_from_yaml_without_pyyaml_gives_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
