@@ -1,6 +1,10 @@
 class DocketCli < Formula
   desc "Governed runtime and control plane for autonomous coding-agent pods"
   homepage "https://github.com/yielab/docket"
+  # `version` must be declared BEFORE `url`: the url string interpolates it at class-body
+  # time, and an undeclared version yields ".../download/v/docket-v.tar.gz" (404; found by the
+  # first Homebrew install, 2026-10-07). Pinned by test_public_release_truth.py.
+  version "0.2.0-beta.4"
   url "https://github.com/yielab/docket/releases/download/v#{version}/docket-v#{version}.tar.gz"
   # Digest of the published release asset, written by
   # scripts/update-homebrew-sha.sh AFTER the release exists -- never before.
@@ -12,7 +16,6 @@ class DocketCli < Formula
   # which skips while the release is absent and fails the moment it is stale.
   sha256 "a751db7f212031813782676e012a5edbb4932ba982eeddb07cdf2ac53709376c"
   license "Apache-2.0"
-  version "0.2.0-beta.4"
 
   # No Homebrew Bash dependency: bin/docket, the only shell this formula
   # installs, runs on the Bash 3.2 macOS ships.

@@ -27,6 +27,7 @@ Homebrew:
 
 ```bash
 brew tap yielab/docket-cli https://github.com/yielab/docket
+brew trust yielab/docket-cli            # Homebrew 7 loads a third-party tap only once trusted
 brew install docket-cli
 ```
 

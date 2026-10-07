@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Homebrew formula downloaded `.../download/v/docket-v.tar.gz` (404).** `url` interpolated
+  `#{version}` before `version` was declared, so every `brew install docket-cli` since
+  `v0.2.0-beta.1` failed at download; `version` now comes first, and the release lane pins the
+  order. Found by the first real Homebrew install, 2026-10-07.
+- **Homebrew 7 refuses an untrusted tap.** `brew install docket-cli` right after `brew tap` fails
+  with `Refusing to load formula ... from untrusted tap`; the README, the quick start and the
+  installer header now show `brew trust yielab/docket-cli` between the two.
+
 ## [0.2.0-beta.4] - 2026-10-06
 
 The team lives in the repository. A `.docket/` directory next to the code (roles, pipeline,

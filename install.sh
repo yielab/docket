@@ -10,6 +10,7 @@
 #
 # Homebrew (macOS/Linux):
 #   brew tap yielab/docket-cli https://github.com/yielab/docket
+#   brew trust yielab/docket-cli      # Homebrew 7: a third-party tap loads only once trusted
 #   brew install docket-cli
 
 set -euo pipefail

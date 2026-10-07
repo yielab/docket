@@ -238,6 +238,11 @@ def test_public_install_names_match_artifact_metadata() -> None:
     assert f'DOCKET_VERSION="${{DOCKET_VERSION:-{version}}}"' in installer
     assert f'version "{version}"' in formula
     assert "docket-v#{version}.tar.gz" in formula
+    # The url interpolates `version` when the class body runs, so the declaration must
+    # come first or the formula downloads ".../v/docket-v.tar.gz" (404).
+    assert re.search(r"^\s*version \"", formula, re.M).start() < formula.index('url "'), (
+        "Formula/docket-cli.rb declares `url` before `version`; the url interpolates to an empty version"
+    )
 
 
 def _status_category(value: str) -> str:
