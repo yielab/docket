@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.31.0
+**Version**: 6.32.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -206,6 +206,22 @@ requirement. `_pod_delegate` **MUST** remove a well-formed `--priority`/`-p` opt
 remaining task positional with one space, and apply the existing empty and 500-character checks to
 that reconstructed description before calling `enqueue_task`. A missing or invalid priority
 **MUST** fail without enqueueing.
+
+### Task references
+
+1. `core/task_ref.py::resolve_task(project, ref)` **MUST** resolve a full task id, the short id
+   `task list` prints (the first 18 characters), or any unambiguous prefix, within one pod or,
+   when `project` is `None`, across every dispatchable pod. An exact id wins over longer ids it
+   prefixes.
+2. A reference beginning `run-` **MUST** resolve through the run record to the task that run
+   dispatched; a run that dispatched no queued task, or more than one, or belongs to another pod
+   than the one asked for, **MUST** raise `TaskRefError`.
+3. The result `TaskRef` **MUST** carry `task_id`, `project`, `session_key` (equal to
+   `step_session_key` for the Lead hop), `run_ids` (every run record listing the task, newest
+   first) and the recorded worktree directory, empty when the task runs in place.
+4. An ambiguous reference **MUST** raise `TaskRefError` listing every candidate id with its pod;
+   an unknown one **MUST** raise it naming the pods searched. The resolver reads `read_tasks` and
+   never writes.
 
 ### Claiming (locked, race-free)
 
@@ -2020,6 +2036,10 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.32.0 (2026-10-07)
+
+- New "Task references": one resolver turns a full id, short id, prefix or run id into a task, its Lead-hop session key, runs and worktree (`core/task_ref.py`).
 
 ### Version 6.31.0 (2026-10-05)
 
