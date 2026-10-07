@@ -1101,15 +1101,24 @@ a one-line error naming it.
 
 ## Output Formats
 
-### Standard Output Structure
+### The console voice
 
-Messages go through the Rich helpers in `src/docket/ui.py`, which prefix a glyph rather than a
-bracketed level:
+`src/docket/ui.py` is the only module that knows symbols, colours and layout.
 
-- `→ text`: informational (`ui.info`, cyan)
-- `✓ text`: operation completed (`ui.success`, green)
-- `⚠ text`: warning (`ui.warn`, yellow)
-- `✗ Error: text`: error (`ui.error`, red, on **stderr**); `ui.fail` prints `✗ text` on stderr
+- **Five symbols**: `✓` done, `✗` failed or refused, `⚠` attention, `→` next step, `·` detail.
+- **Five colour roles**: `success`, `error`, `warn`, `accent` (names, ids, commands), `dim`.
+- **Shapes**: `header(noun, name)` renders `docket · pod myapp`; `section(title)` renders one of the
+  shared section names `Needs you`, `Running`, `Done`, `Failed`; `table(rows, columns)` wraps cells
+  at word boundaries and never cuts a word; `error(what, do)` renders `✗ <what>. <do>` on **stderr**
+  (without `do`, `✗ Error: <what>`); `hint(command)` renders `→ Next: <command>` on stderr.
+- **Plain mode**: when stdout is not a TTY or `NO_COLOR` is set, output carries no colour, no
+  boxes and only the ASCII symbols `ok`, `x`, `!`, `->`, `-`. `DOCKET_NO_COLOR` is not read.
+- **Tagline**: `ui.TAGLINE` is "docket runs teams of coding agents and governs what they may do".
+- **Copy rule**: a command that changes state ends with exactly one `→ Next:` line (on stderr,
+  silent under `DOCKET_NO_HINTS=1`); a read command ends with none; an error is one line that says
+  what happened and what to do.
+- A shrink-only guard (`tests/guards/test_console_voice.py`) counts Rich markup literals outside
+  `ui.py`.
 
 There is no debug output level.
 
@@ -1155,7 +1164,8 @@ distinguishes error kinds:
 | Code | Meaning | Used By |
 |------|---------|---------|
 | 0 | Success | All commands |
-| 1 | Any failure (not found, invalid arguments, permission, driver/model error, …) | All commands |
+| 1 | Any failure (not found, permission, refused confirmation, driver/model error, …) | All commands |
+| 2 | Usage: an unknown command, flag, subcommand or action, or a required action word left out | All commands |
 
 Code `2` (SKIP, role not installed / live mode off) was the one surviving exception to this flat
 convention, used only by the now-removed `docket eval` (CL-J). No command produces it anymore.
@@ -1220,11 +1230,16 @@ When agent-id is omitted for commands that need it:
 2. Allow typing ID directly
 
 ### Confirmation Prompts
-Required for destructive operations:
-- `docket delete` — type the exact pod (or agent) id to confirm; there is no `--force`
-- `docket maintain` reset/rebuild, `docket models reset`
+`cli/_contract.py` owns the interaction contract; no command prompts on its own.
 
-Format: `Continue? [y/N]: ` for the y/N prompts; `Type the ... id to confirm [<id>]: ` for deletes
+- `confirm(action, *, yes, typed=None)`: with a TTY, a `y/N` prompt, or the typed name when
+  `typed` is given; without a TTY it refuses with exit 1 naming `--yes` (or `--confirm <name>`
+  when `typed` is given). `yes=True` returns without prompting.
+- `require_value(name, value, flag)`: with no TTY and no value, exit 1 naming the flag; never a
+  picker.
+- `emit_json(obj)`: plain `json.dumps` to stdout, never Rich.
+- `next_step(command)`: the one `→ Next:` line described under "The console voice".
+- `sys.stdin.isatty()` is probed in one function, `_contract._is_tty`.
 
 ## Foreground dispatch progress and in-place approval
 
@@ -1319,6 +1334,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - `docket runs show <id>` exits 1 when the run or any task it returned failed, and for an unknown run; it exits 0 for any other recorded state, including `waiting_input`/`waiting_approval`.
 - `docket doctor` counts only lines marked with a red cross as critical issues (a warning never is), exits 0 with no critical line, and its footer hint names `docket doctor --fix`.
 - `docket metrics` success/failure/aborted counts come from the terminal task status each dispatch `session_end` event records (`done` success, `failed` failure, `cancelled`/`blocked` aborted; a parked task is not terminal and is not counted), not from a hard-coded `success`/`failure` payload no dispatch ever wrote.
+
+### Version 1.68.0 (2026-10-07)
+
+- One interaction contract (`cli/_contract.py`) and one console voice (`ui.py`): plain mode off a
+  TTY or under `NO_COLOR`, shared symbols and roles, `TAGLINE`, exit 2 for usage.
 
 ### Version 1.67.0 (2026-10-07)
 

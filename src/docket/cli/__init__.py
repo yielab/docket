@@ -2013,7 +2013,7 @@ def cmd_gates(ctx: typer.Context) -> None:
     if bad is not None:
         ui.error(f"docket gates: unrecognized flag '{bad}'")
         raise typer.Exit(2)
-    want = rest[0] if rest else "on"
+    want = rest[0] if rest else None
     raise typer.Exit(run_gates(sub, want=want))
 
 

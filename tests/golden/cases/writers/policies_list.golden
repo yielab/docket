@@ -2,6 +2,6 @@ EXIT:0
 
 Guardrail Policies
 
-⚠ No policies installed.
-→ Run: docket policies init
+! No policies installed.
+-> Run: docket policies init
 

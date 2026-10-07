@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.34.0
+**Version**: 0.34.1
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1120,7 +1120,8 @@ pre-grants", this section governs for `--answers stdin` only.
 docket gates status            # MUST report the gate as always-active, plus isolation posture
 docket gates <other>           # any other subcommand (enable/disable included): MUST print an
                                 #   unknown-subcommand error plus usage and exit 2
-docket gates isolate [on|off]  # MUST record on/off explicitly (on requires a usable backend per
+docket gates isolate [on|off]  # MUST record on/off explicitly; bare (or any other word) is a read: print the
+                                #   isolation posture plus usage, write and audit nothing, exit 2 (on requires a usable backend per
                                 #   sandbox_availability(), bwrap or docker). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
                                 #   turn (audited isolation.refused) when no docker/bwrap backend is
@@ -1565,6 +1566,11 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.34.1 (2026-10-07)
+
+- Bare `docket gates isolate` is a read: it prints the posture and usage, writes and audits
+  nothing, and exits 2; it no longer turns isolation on.
 
 ### Version 0.34.0 (2026-10-06)
 

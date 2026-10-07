@@ -54,9 +54,10 @@ def _run_flush() -> int:
 
 def run_notify(action: str, args: list[str]) -> int:
     """Dispatch one ``docket notify <action> ...`` call. Returns a process exit code."""
-    if action not in ("", "flush"):
-        ui.error(f"Unknown notify action '{action}'.\nUsage:\n  docket notify flush [--dry-run]")
-        return 1
+    if action != "flush":
+        shown = f"Unknown notify action '{action}'." if action else "notify needs an action."
+        ui.error(f"{shown}\nUsage:\n  docket notify flush [--dry-run]")
+        return 2
     if "--dry-run" in args:
         return _run_dry_run()
     return _run_flush()

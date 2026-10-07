@@ -74,7 +74,7 @@ def _status() -> int:
     return 0
 
 
-def _network(want: str) -> int:
+def _network(want: str | None) -> int:
     ui.header("Sandbox network")
     ui.console.print()
     if want not in ("none", "open"):
@@ -124,9 +124,18 @@ def _classes() -> int:
     return 0
 
 
-def _isolate(want: str) -> int:
+def _isolate(want: str | None) -> int:
     ui.header("Workspace isolation (bwrap or docker sandbox)")
     ui.console.print()
+
+    if want is None:
+        ui.console.print(f"  Isolation: {_off_label(_fleet.get_isolation_state())}")
+        ui.console.print("  Usage: docket gates isolate on|off")
+        return 2
+
+    if want not in ("on", "off"):
+        ui.console.print("  Usage: docket gates isolate on|off")
+        return 2
 
     if want == "off":
         _sec.disable_workspace_isolation()
@@ -157,12 +166,10 @@ def _isolate(want: str) -> int:
     return 0
 
 
-def run_gates(sub: str | None = None, *, want: str = "on") -> int:
-    """Dispatch the gates subcommand. Returns the process exit code.
+def run_gates(sub: str | None = None, *, want: str | None = None) -> int:
+    """Dispatch the gates subcommand; returns the exit code.
 
-    sub:   status (default) | isolate | network | classes | <anything else → usage, exit 2>
-    want:  on (default) | off — argument to 'isolate'; none | open for 'network'.
-    """
+    ``want`` is required by ``isolate`` (absent: usage, exit 2); ``none``/``open`` for ``network``."""
     subcmd = sub or "status"
     if subcmd == "status":
         return _status()

@@ -2,7 +2,7 @@ EXIT:0
 
 Tool-call gate
 
-✓ Policy engine + high-risk command classifier: always active
+ok Policy engine + high-risk command classifier: always active
 
 Workspace isolation: off (default) -- tools run on the host; docket gates isolate on jails them (needs bubblewrap or docker)
 

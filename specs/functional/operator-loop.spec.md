@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-06
 
@@ -303,7 +303,8 @@ in the derived inbox becomes an event on the wire.
     raising.
 15. The `console` dialect (`edges/adapters/channels/console.py::deliver`) MUST always succeed
     without sending anything — the console is already the inbox.
-16. `docket notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
+16. Bare `docket notify` (and any action other than `flush`) MUST print usage and exit 2
+    without calling `core.notify.flush`. `docket notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
     catalog and print the delivered/failed/skipped counts; `--dry-run` MUST print the pending
     events from `diff_events` without delivering or advancing the persisted snapshot. `docket
     channels test <name>` MUST build one synthetic `channel.test` event
@@ -773,6 +774,10 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.3.1 (2026-10-07)
+
+- Bare `docket notify` is usage (exit 2); only `flush` delivers.
 
 ### Version 1.3.0 (2026-10-06)
 
