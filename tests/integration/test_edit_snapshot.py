@@ -137,26 +137,6 @@ class TestCmdEdit:
         assert rc == 1
         assert "required" in err.lower()
 
-    def test_specialist_workspace_opened(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # Create specialist workspace
-        spec_ws = oc_dir / "workspaces" / "knowledge"
-        spec_ws.mkdir(parents=True)
-        (spec_ws / ".docket-meta.json").write_text(
-            json.dumps({"kind": "specialist", "name": "knowledge"})
-        )
-        (spec_ws / "SOUL.md").write_text("# Knowledge\nI retrieve.\n")
-        rc, out, _ = _run(["edit", "knowledge"], oc_dir, env={"EDITOR": "true"})
-        assert rc == 0
-        assert "Edits saved" in out
-
-
-# ---------------------------------------------------------------------------
-# docket snapshot
-# ---------------------------------------------------------------------------
-
-
-class TestCmdSnapshot:
     def test_json_output_has_required_keys(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["snapshot"], oc_dir)
@@ -234,21 +214,11 @@ class TestCmdSnapshot:
         assert rc == 0
         assert out_file.exists()
 
-    def test_specialist_included_when_workspace_exists(self, tmp_path: Path) -> None:
+    def test_leftover_shared_directory_not_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         spec_ws = oc_dir / "workspaces" / "knowledge"
         spec_ws.mkdir(parents=True)
-        (spec_ws / ".docket-meta.json").write_text(
-            json.dumps({"kind": "specialist", "name": "Knowledge"})
-        )
-        rc, out, _ = _run(["snapshot"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        ids = [a["id"] for a in data["agents"]]
-        assert "knowledge" in ids
-
-    def test_specialist_not_included_when_no_workspace(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
+        (spec_ws / ".docket-meta.json").write_text(json.dumps({"kind": "project"}))
         rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)

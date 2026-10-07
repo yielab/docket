@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.3.0
+**Version**: 3.4.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -8,8 +8,7 @@
 
 This specification defines the schema for `.docket-meta.json`, the per-agent metadata file
 that docket treats as its source of truth for an agent's identity and configuration. One file
-exists per agent at `~/.docket/workspaces/projects/<agent-id>/.docket-meta.json` (project agents)
-or `~/.docket/workspaces/<role>/.docket-meta.json` (specialist agents), and is read and written
+exists per agent at `~/.docket/workspaces/projects/<agent-id>/.docket-meta.json` (pod members), and is read and written
 through `core/fleet.py`'s typed `meta_get` / `meta_set` / `meta_read` helpers over the atomic JSON
 store in `edges/store.py`.
 
@@ -33,7 +32,6 @@ docket's single source of truth for that value.
 
 - Project / pod agents: `~/.docket/workspaces/projects/<agent-id>/.docket-meta.json`
   (pod members use the compound id `<project>-<role>`, e.g. `myapp-implementer`).
-- Org specialists: `~/.docket/workspaces/<role>/.docket-meta.json`.
 
 Every value is a JSON scalar (string, number, or boolean) — there are no nested objects or
 arrays (`persona` is the one structured exception; see its row). The documented field set below
@@ -59,12 +57,12 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
-| `kind` | enum | `project` or `specialist` | local | Yes | `add`, `install` | Whether this is a project or specialist agent |
-| `scope` | enum | `org` or `project` | local | No (defaults to `project`) | pod provisioning (`project`), `install` (`org`) | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent → `project` (the `AgentMeta` field default); nothing derives it from `kind`/`role` on read |
-| `role` | string | — | local | specialists + pod members | `install`, `add`, `pod add` | Role name: org-specialist role (e.g. `security`) or pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
+| `kind` | enum | `project` | local | Yes | `add` | Always `project` |
+| `scope` | enum | `project` | local | No (defaults to `project`) | pod provisioning | Whose data the agent may see: `project` = pod-scoped, never shared across projects. Absent → `project` (the `AgentMeta` field default); nothing derives it from `kind`/`role` on read |
+| `role` | string | — | local | pod members | `add`, `pod add` | Pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
 | `pod` | string | pod id | local | No (pod members) | `add`, `pod add` | The pod (project id) this member belongs to; read by `docket list`/`docket status`, which fall back to the `<project>-<role>` id convention when absent. **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
-| `codebase` | string | absolute path | local | `codebase`-kind project agents | `add` | Absolute path to the project (specialists, and `workdir`-kind pod members, have none) |
+| `codebase` | string | absolute path | local | `codebase`-kind project agents | `add` | Absolute path to the project (`workdir`-kind pod members have none) |
 | `workspaceKind` | enum | `codebase` or `workdir` | local | No (defaulted) | `add` (pod blueprints only, ROADMAP Phase 16 W-7) | Whether this agent's workspace is anchored to a codebase or a plain working directory. Absent on every record written before W-7 (and every `codebase`-kind pod member since — see pod-blueprints.spec.md) → implicitly `codebase`, which is what it already is; only ever written as the literal `workdir` |
 | `workDir` | string | absolute path | local | `workdir`-kind pod members | `add` (pod blueprints only) | The pod's shared working directory (ROADMAP Phase 16 W-7). Mutually exclusive with `codebase` — present only when `workspaceKind: workdir` |
 | `blueprint` | string | — | local | No | `add` (pod blueprints only) | Name of the pod blueprint that provisioned this agent (`software`, `research`, `content`, `ops`, …) — see pod-blueprints.spec.md. Absent for any agent not provisioned through a blueprint |
@@ -156,8 +154,8 @@ this one file (P19-6: there is no longer a second file to mirror either into).
 
 ## Field rules
 
-- `kind` MUST be `project` (for project agents) or `specialist` (for the org agents lazily
-  bootstrapped by the first `docket init`).
+- `kind` MUST be `project`; `scope`, when present, MUST be `project`. No shared (`org`) agent
+  exists.
 - `workspaceKind`, when present, MUST be `codebase` or `workdir` (ROADMAP Phase 16 W-7); absent
   means `codebase` (the field default).
 - `codebase` MUST be a readable absolute path for a `codebase`-kind agent; MUST be empty for a
@@ -246,6 +244,11 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.4.0 (2026-10-07)
+
+- Phase 39 (P39-6): `kind: specialist` and `scope: org` are removed with the org specialists;
+  `kind` and `scope` are always `project`, and no meta file lives at `workspaces/<role>/`.
 
 ### Version 3.3.0 (2026-10-04)
 

@@ -183,8 +183,12 @@ def run_init(all_args: list[str]) -> int:
     """Initialize a project pod, deriving ordinary defaults from the cwd (intentionally
     non-interactive with zero args: cwd is the location, its basename the pod id).
     Explicit args/options override; ``--from`` retains the declarative path."""
-    want_portfolio = "--portfolio" in all_args
-    project_args = [arg for arg in all_args if arg != "--portfolio"]
+    project_args = all_args
+    known_flags = _ADD_VALUE_FLAGS | {"--recipe", "--no-apply"}
+    for arg in project_args:
+        if arg.startswith("--") and arg.split("=", 1)[0] not in known_flags:
+            ui.error(f"No such option: {arg.split('=', 1)[0]}")
+            return 2
 
     foundation_missing = not _cfg.FLEET_FILE.is_file()
     if not foundation_missing:
@@ -202,7 +206,6 @@ def run_init(all_args: list[str]) -> int:
         ui.info("First project: preparing Docket's shared workstation foundation...")
         bootstrap_rc = _install.bootstrap_workstation(
             assume_yes=True,
-            want_portfolio=want_portfolio,
             continuing_to_project=True,
         )
         if bootstrap_rc != 0:
@@ -662,12 +665,6 @@ def _create_workspace(
         "  task does not survive a context reset.\n\n"
         "## Project Path\n"
         f"{codebase}\n\n"
-        "## Org Specialists\n"
-        "Escalate cross-cutting work to the shared org specialists:\n"
-        "| Concern           | Specialist   |\n"
-        "|-------------------|--------------|\n"
-        "| Memory/patterns   | knowledge    |\n"
-        "| Risky actions     | security     |\n\n"
         "## First Run\n"
         "If MEMORY.md is missing, read the codebase and write it:\n"
         "1. Check package.json / requirements.txt / composer.json\n"
@@ -922,13 +919,6 @@ def run_delete(agent_id: str | None) -> int:
         agent_id = _pick_agent("Delete project")
 
     aid: str = agent_id
-
-    if _cfg.is_specialist(aid):
-        ui.error(
-            f"'{aid}' is a specialist agent — shared team infrastructure managed by"
-            " the workstation foundation. It cannot be deleted with 'docket delete'."
-        )
-        return 1
 
     from docket.cli import _delete_pod, _pod
 

@@ -128,7 +128,7 @@ class TestRealTransportRoundTrip:
 
         result = asyncio.run(_call(server, "status", {}))
         assert result.is_error is False
-        assert result.structured_content["apiVersion"] == "3"
+        assert result.structured_content["apiVersion"] == "4"
         assert isinstance(result.structured_content["agents"], list)
         # Round-trips through the SDK's own JSON serialization too.
         assert json.loads(json.dumps(result.structured_content)) == result.structured_content

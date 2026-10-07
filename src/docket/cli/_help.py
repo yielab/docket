@@ -54,9 +54,6 @@ def run_help(topic: str | None = None) -> int:
 {B}docket — agent fleet control plane{R}
 
 {B}AGENT TYPES{R}
-  {C}Org Specialists{R}     Created lazily by the first 'docket init' — shared across all projects
-                        → manager, knowledge, security
-                        → Work across ALL projects (don't create/delete manually)
   {C}Project Pods{R}        Created by 'docket init' — one isolated pod per project
                         → lead + implementer (+ optional reviewer, tester)
                         → Manage with 'docket pod <project>'

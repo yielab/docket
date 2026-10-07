@@ -19,13 +19,10 @@ makes naive multi-agent setups fall apart.
 
 | Axis | Values | Meaning |
 |------|--------|---------|
-| **scope** | `org` \| `project` | Shared by every pod on this machine, or owned by exactly one project |
-| **role** | lead, implementer, reviewer, tester, manager, knowledge, security, portfolio-manager, … | What the agent is *for* |
+| **scope** | `project` | Owned by exactly one project; no agent is shared between pods |
+| **role** | lead, implementer, reviewer, tester, … | What the agent is *for* |
 
-From those two axes fall the two kinds of team member:
-
-- **Org specialists** — `scope: org`, genuinely cross-cutting, **one instance per machine**, shared by every pod.
-- **Project pods** — `scope: project`, a self-contained team **per project**, never shared.
+Every team member lives in a **project pod** — `scope: project`, a self-contained team **per project**, never shared.
 
 The role list above is the everyday roster, not a closed enum — see "Role archetypes" below for
 how a role is actually defined and how you add your own.
@@ -168,32 +165,6 @@ a repository's own `.docket/`, which plain `docket init` discovers, validates an
 is committed next to the code — see [the recipe library](recipes.md),
 [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe) and
 [§3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
-
----
-
-## Org specialists — shared by every pod
-
-The first `docket init` on a machine creates the cross-cutting specialists once, as part of the
-shared workstation foundation it builds before the project pod. They are genuinely machine-wide, so a
-per-project copy would be waste:
-
-- **manager** — cross-cutting coordination (transitional; it has no task queue of its own —
-  per-pod dispatch is the only queue, see below — so this role is being superseded by per-pod Leads).
-- **knowledge** — documentation, research, pattern extraction across projects.
-- **security** — deep security audits and threat modelling.
-
-These three are the **only** org specialists docket provisions. Implementer/Reviewer/Tester (and
-any starter or custom role) are pod-scoped — see "Project pods" above — never shared singletons.
-
-### Optional: the org Portfolio Manager
-
-`docket init --portfolio` adds **one** `portfolio-manager` (`scope: org`). The flag is read only
-by the **first** `docket init`, the one that builds the shared foundation; on a machine that
-already has one it is ignored. The Portfolio Manager is a cross-pod
-**planning and visibility** surface. It sees cross-pod *metadata* — which pods exist, their queues,
-budgets, and health — **not project code.** It is advisory: it recommends where to focus,
-rebalance, or pause, in words for a human. It never edits code and does not dispatch into pods
-(each pod's own Lead owns execution). It is opt-in, and it is never a pod member.
 
 ---
 
@@ -456,9 +427,7 @@ docket persona <member-id> set "<label>" # optional display persona
 docket persona <member-id> clear
 docket persona <member-id> show
 
-# Org specialists: created by the first `docket init` (manager, knowledge, security)
-docket init --portfolio               # first init only: + the optional org Portfolio Manager
 ```
 
 > Every project's pod owns its own delegate/queue/dispatch (see above). There is no org-wide
-> queue; the optional Portfolio Manager is advisory-only and never dispatches.
+> queue.

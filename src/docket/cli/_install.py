@@ -4,7 +4,7 @@
 1 when a hard preflight fails); the project initializer returns that code to the CLI.
 
 There is no external daemon: this provisions a purely docket-native home (directory
-structure under `DOCKET_HOME`, `fleet.json`, specialist agents, baseline policy templates)
+structure under `DOCKET_HOME`, `fleet.json`, baseline policy templates)
 through `core/fleet.py`/`edges/store.py` only, so the module is fully exercisable in a
 hermetic unit test.
 """
@@ -15,18 +15,14 @@ import contextlib
 import os
 import shutil
 import subprocess
-from datetime import UTC, datetime
-from pathlib import Path
 
 import docket.config as _cfg
 from docket import ui
 from docket.core import fleet as _fleet
-from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _policy
 from docket.core import provider as _provider
 from docket.core import secrets as _secrets
-from docket.edges import store
 
 
 def _check_dependencies() -> list[str]:
@@ -55,7 +51,7 @@ def _check_dependencies() -> list[str]:
 
 
 def _step_model_readiness(model: str) -> int:
-    """Step 5 — prove the selected runtime route is structurally callable."""
+    """Step 4 — prove the selected runtime route is structurally callable."""
     readiness = _provider.model_readiness(model)
     if readiness.ready:
         ui.success("Model provider ready")
@@ -100,7 +96,7 @@ def _harden_perms() -> None:
 
 
 def _step_security() -> None:
-    """Step 6 — harden secrets/config perms. The tool-call gate itself is always active.
+    """Step 5 — harden secrets/config perms. The tool-call gate itself is always active.
     See specs/functional/security-gates.spec.md."""
     _harden_perms()
     ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
@@ -108,7 +104,7 @@ def _step_security() -> None:
 
 
 def _step_policies() -> None:
-    """Step 7 — install the baseline guardrail policy templates (idempotent: never
+    """Step 6 — install the baseline guardrail policy templates (idempotent: never
     overwrites local edits). See specs/functional/security-gates.spec.md for why
     this step is what puts the policy engine on the live path at all."""
     result = _policy.install_policies()
@@ -125,232 +121,14 @@ def _step_policies() -> None:
     ui.dim('  List/tune: docket policies list  ·  docket policies test <hook> <role> "<text>"')
 
 
-# One-line role identity for each org specialist's SOUL.md `## Scope` section
-# (paraphrased from docs/DOCKET.md's per-role capability tables — the durable
-# description of what each shared singleton is *for*).
-_SPECIALIST_IDENTITY: dict[str, str] = {
-    "security": (
-        "Deep security audits, threat modeling, and the HITL gate for risky or "
-        "destructive actions — across every pod, not just one project."
-    ),
-    "knowledge": (
-        "Documentation, research, and pattern extraction across every project's "
-        "memory. You distill durable facts; you do not touch source code."
-    ),
-    "manager": (
-        "Cross-cutting coordination across pods (transitional — being superseded "
-        "by per-pod Leads). Advisory only: you read memory/snapshots, you don't "
-        "execute work yourself."
-    ),
-}
-
-
-def _specialist_session_key(role: str) -> str:
-    """Session key for an org specialist: `agent:<role>:org`. Mirrors project agents'
-    `agent:<id>:<project>` pattern, with ``org`` standing in for the project since a
-    specialist is shared fleet-wide. See specs/data/docket-meta.spec.md."""
-    return f"agent:{role}:org"
-
-
-def _specialist_agents_md(role: str) -> str:
-    """AGENTS.md for an org specialist: the same protocol as ``_create_workspace``,
-    minus codebase/stack sections. Section names matter: the turn loop re-injects the
-    "Session Startup"/"Red Lines" H2 blocks after every compaction verbatim."""
-    return (
-        f"# AGENTS.md — {role}\n\n"
-        "## Session Startup\n"
-        "_Lean — re-sent every turn._\n"
-        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol (the turn loop "
-        "requires this after every context reset).\n"
-        f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
-        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-        "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
-        "   specific memory/YYYY-MM-DD.md you need. Every byte you read is re-sent\n"
-        "   on every later turn.\n"
-        "4. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
-        "## Red Lines\n"
-        f"- You are the shared org **{role}** specialist: act across every pod,\n"
-        "  never as if you were a member of just one.\n"
-        "- Never edit code, run builds, or commit — that is a pod's own\n"
-        "  Implementer's job.\n"
-        f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an\n"
-        "  unwritten task does not survive a context reset.\n"
-    )
-
-
-def _specialist_soul(role: str) -> str:
-    """SOUL.md for an org specialist: identity, scope, and session key. Mirrors
-    ``_create_workspace``/``_member_soul``, adapted for a role with no codebase
-    and no single project (shared, singleton, cross-pod)."""
-    identity = _SPECIALIST_IDENTITY.get(role, f"You are the org-level **{role}** specialist.")
-    return (
-        f"# SOUL.md — {role}\n\n"
-        "## Identity\n"
-        f"You are the org-level **{role}** specialist — shared across every "
-        "project pod, not scoped to any single project.\n\n"
-        f"**Session Key:** `{_specialist_session_key(role)}`\n\n"
-        "This session key isolates your org-level context. You may only access "
-        "resources and memory within this coordinate space.\n\n"
-        "## Scope\n"
-        f"{identity}\n\n"
-        "## Traits\n"
-        f"- Proactive: check {_mem.HEARTBEAT_FILE} every session.\n"
-        "- You do not edit code, run builds, or commit — that is a pod's own "
-        "Implementer's job.\n\n"
-        "## Safety\n"
-        "- Never take a destructive or irreversible action without HITL approval.\n"
-    )
-
-
-def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> None:
-    """Give an org specialist (or the opt-in Portfolio Manager) the same durable
-    workspace contract a project agent gets, minus TOOLS.md (no fixed codebase/build
-    commands). Idempotent/backfill-safe: specs/functional/workspace-structure.spec.md."""
-    ws.mkdir(parents=True, exist_ok=True)
-    (ws / "memory").mkdir(exist_ok=True)
-
-    for fname, text in (
-        ("SOUL.md", soul_text),
-        ("AGENTS.md", _specialist_agents_md(role)),
-        (_mem.HEARTBEAT_FILE, _mem.heartbeat_seed(role)),
-    ):
-        fpath = ws / fname
-        if not fpath.is_file():
-            fpath.write_text(text, encoding="utf-8")
-        with contextlib.suppress(OSError):
-            fpath.chmod(0o600)
-
-    # Seed the files the turn loop's system-prompt composition re-reads every
-    # turn. Specialists have no codebase — say so plainly rather than the
-    # project default's "ask the human for the repo path" (which would be
-    # misleading).
-    _mem.seed_contract(
-        ws,
-        project=role,
-        codebase="(none — shared org specialist, not scoped to one project)",
-    )
-
-    with contextlib.suppress(OSError):
-        ws.chmod(0o700)
-        (ws / "memory").chmod(0o700)
-
-
-def _provision_specialists() -> None:
-    """Step 4 — register the shared **org** specialists + backfill meta/workspace contract.
-    Only cross-cutting roles (security, knowledge, manager) install as shared singletons;
-    project roles are NOT installed globally — they become per-pod workers via `docket add`,
-    so one programmer never serves two projects. Models follow the role->model policy, so a
-    provider preset switched before install takes effect here."""
-    for spec in _cfg.ORG_SPECIALIST_ORDER:
-        spec_model = _mp.resolve_role_model(spec)
-        spec_dir = _cfg.WORKSPACES_DIR / spec
-
-        if _fleet.agent_registered(spec):
-            ui.success(f"{spec}: already registered")
-        else:
-            ui.info(f"Creating {spec} agent...")
-            spec_dir.mkdir(parents=True, exist_ok=True)
-            _fleet.add_agent(spec)
-            why = _cfg.ROLE_WHY.get(spec, "")
-            ui.success(f"{spec}: created ({spec_model} — {why})")
-
-        # Specialists are first-class meta citizens: stamp .docket-meta.json so
-        # list/profile/doctor manage them like any other agent.
-        meta_file = spec_dir / _cfg.META_FILE
-        if spec_dir.is_dir() and not meta_file.is_file():
-            store.write_json(
-                meta_file,
-                {
-                    "kind": "specialist",
-                    "scope": "org",
-                    "role": spec,
-                    "name": spec,
-                    "model": spec_model,
-                    "modelSource": "policy",
-                    "sessionKey": _specialist_session_key(spec),
-                    "projectKey": "org",
-                    "created": datetime.now(UTC).isoformat(),
-                },
-            )
-
-        # Full workspace contract (SOUL/AGENTS/HEARTBEAT + the runtime's
-        # WORKFLOW_AUTO/MEMORY/daily-log set).
-        if spec_dir.is_dir():
-            _write_specialist_contract_files(spec, spec_dir, _specialist_soul(spec))
-
-
-_PORTFOLIO_SOUL_TEMPLATE = """# SOUL — Portfolio Manager
-
-**Scope:** org (cross-pod). **Role:** portfolio-manager. **Edits code:** never.
-
-**Session Key:** `{session_key}`
-
-You are the org-level Portfolio Manager: a single planning/visibility surface
-across every project pod. You see fleet **metadata** — agents, queues, budgets,
-health — not project source code, and you are distinct from each pod's Lead.
-
-## You do
-- Survey the fleet: which pods exist, their members, recent activity, spend.
-- Spot cross-cutting risk (budget pressure, stalled pods, drift) and surface it
-  to the human operator.
-- Recommend where to focus, rebalance, or pause — in words, for a human to act on.
-
-## You do NOT
-- Edit code or enter any project workspace.
-- Dispatch work into pods at runtime (a pod's own Lead + `docket pod <p> dispatch`
-  own execution). You are advisory in v1.
-- Replace per-pod Leads — each pod still owns its own context and humans comms.
-"""
-
-
-def _provision_portfolio_manager() -> None:
-    """Provision the single opt-in org Portfolio Manager: a `scope: org`,
-    `role: portfolio-manager` agent (cross-pod planning over fleet metadata, never
-    project code). Opt-in, idempotent, never a pod member; see
-    specs/functional/workspace-structure.spec.md."""
-    role = _cfg.PORTFOLIO_MANAGER_ROLE
-    model = _mp.resolve_role_model(role)
-    ws = _cfg.WORKSPACES_DIR / role
-
-    if _fleet.agent_registered(role):
-        ui.success(f"{role}: already registered")
-    else:
-        ui.info(f"Creating {role} agent...")
-        ws.mkdir(parents=True, exist_ok=True)
-        _fleet.add_agent(role)
-        ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
-
-    if ws.is_dir():
-        meta_file = ws / _cfg.META_FILE
-        if not meta_file.is_file():
-            store.write_json(
-                meta_file,
-                {
-                    "kind": "specialist",
-                    "scope": "org",
-                    "role": role,
-                    "name": role,
-                    "model": model,
-                    "modelSource": "policy",
-                    "sessionKey": _specialist_session_key(role),
-                    "projectKey": "org",
-                    "created": datetime.now(UTC).isoformat(),
-                },
-            )
-        soul = _PORTFOLIO_SOUL_TEMPLATE.format(session_key=_specialist_session_key(role))
-        _write_specialist_contract_files(role, ws, soul)
-
-
 def bootstrap_workstation(
     assume_yes: bool = False,
-    want_portfolio: bool = False,
     continuing_to_project: bool = False,
 ) -> int:
-    """Bootstrap a docket-native home + specialist agents; returns the process exit code.
-    want_portfolio adds the opt-in Portfolio Manager."""
+    """Bootstrap a docket-native home; returns the process exit code."""
     ui.header("Preparing Shared Workstation Foundation")
     ui.console.print()
-    ui.info("One Docket home with shared org specialists, policies, and security defaults.")
+    ui.info("One Docket home with policies and security defaults.")
     ui.dim(
         "  Project pods remain separate; the current project is initialized immediately after this."
     )
@@ -362,12 +140,7 @@ def bootstrap_workstation(
         ui.info("Existing Docket workstation foundation detected")
         ui.console.print()
 
-        missing_specialists = [
-            s for s in _cfg.ORG_SPECIALIST_ORDER if not _fleet.agent_registered(s)
-        ]
-        needs_update = (
-            [f"specialist agents: {' '.join(missing_specialists)}"] if missing_specialists else []
-        )
+        needs_update: list[str] = []
         readiness = _provider.model_readiness(selected_model)
         if not readiness.ready:
             needs_update.append(f"model provider: {readiness.issue}")
@@ -417,23 +190,15 @@ def bootstrap_workstation(
     ui.console.print(f"  Default model: {selected_model}")
     ui.console.print()
 
-    ui.header("Step 4: Provisioning specialist agents")
-    _provision_specialists()
-    if want_portfolio:
-        ui.console.print()
-        ui.info("Provisioning the org Portfolio Manager (--portfolio)...")
-        _provision_portfolio_manager()
-    ui.console.print()
-
-    ui.header("Step 5: Model provider readiness")
+    ui.header("Step 4: Model provider readiness")
     provider_missing = _step_model_readiness(selected_model) != 0
     ui.console.print()
 
-    ui.header("Step 6: Configuring security best practices")
+    ui.header("Step 5: Configuring security best practices")
     _step_security()
     ui.console.print()
 
-    ui.header("Step 7: Guardrail policies")
+    ui.header("Step 6: Guardrail policies")
     _step_policies()
     ui.console.print()
 
@@ -471,11 +236,6 @@ def _print_summary() -> None:
     step += 1
     ui.console.print(f"  {step}. Check system health:")
     ui.console.print("     [green]docket doctor[/green]")
-    ui.console.print()
-    ui.console.print("[bold]Org Specialists (auto-created, shared across projects):[/bold]")
-    ui.console.print("  • manager    - Cross-cutting coordination and task queue")
-    ui.console.print("  • knowledge  - Memory distillation and patterns")
-    ui.console.print("  • security   - Security audits and risk checks")
     ui.console.print()
     ui.console.print("[dim]Code workers (implementer/reviewer/tester) are per-project pod[/dim]")
     ui.console.print("[dim]members — run 'docket init' inside a project to create its pod.[/dim]")

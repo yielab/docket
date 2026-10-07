@@ -194,11 +194,11 @@ class TestCmdList:
         assert "myshop" in out
         assert "My Shop" in out
 
-    def test_list_human_shows_specialist_section(self, tmp_path: Path) -> None:
+    def test_list_human_has_no_specialist_section(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["list"], oc_dir)
         assert rc == 0
-        assert "ORG SPECIALISTS" in out
+        assert "SPECIALISTS" not in out
 
     def test_list_empty_no_agents(self, tmp_path: Path) -> None:
         oc_dir = tmp_path / ".docket"

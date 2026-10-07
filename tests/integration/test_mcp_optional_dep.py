@@ -174,6 +174,6 @@ class TestRealSdkIntegration:
         result = asyncio.run(_call())
         structured = result.structured_content
         assert isinstance(structured, dict)
-        assert structured["apiVersion"] == "3"
+        assert structured["apiVersion"] == "4"
         # Round-trips through the SDK's own JSON serialization too.
         assert _json.loads(_json.dumps(structured)) == structured

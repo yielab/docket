@@ -1,8 +1,7 @@
-"""Install — docket-native home + specialist bootstrap.
+"""Install — docket-native home bootstrap.
 
 There is no external daemon. These tests call ``bootstrap_workstation()`` in-process
-with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched to a temp seed; specialist
-registration writes straight to fleet.json (no shell-out to stub), and Step 5
+with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched to a temp seed, and Step 4
 (model credentials) is driven by seeding ``core/secrets.py``'s store
 directly.
 """
@@ -12,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
@@ -27,11 +25,6 @@ from docket.core import secrets as _secrets
 SUBJECT = "docket.core"
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
-
-# install provisions only the shared **org** roles. The project roles
-# (programmer/reviewer/tester) become per-pod workers via `docket add`.
-_ORG_SPECIALISTS = ("manager", "knowledge", "security")
-_PROJECT_ROLES = ("programmer", "reviewer", "tester")
 
 
 @pytest.fixture(autouse=True)
@@ -103,29 +96,12 @@ def test_provider_only_fleet_still_runs_first_project_foundation(
     assert bootstrap_calls == [
         {
             "assume_yes": True,
-            "want_portfolio": False,
             "continuing_to_project": True,
         }
     ]
 
 
 # ── full install run ────────────────────────────────────────────────────────────
-
-
-def test_install_creates_only_org_specialists(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # install registers the org roles only; project roles are NOT global.
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    rc = _install.bootstrap_workstation(assume_yes=True)
-    assert rc == 0
-
-    ids = {a.id for a in _fleet.list_agents()}
-    assert ids == set(_ORG_SPECIALISTS)
-    # No global programmer/reviewer/tester singleton.
-    assert not (ids & set(_PROJECT_ROLES))
 
 
 def test_install_explains_workstation_vs_project_scope(
@@ -141,140 +117,6 @@ def test_install_explains_workstation_vs_project_scope(
     assert "shared workstation foundation" in out.lower()
     assert "project pods remain separate" in out.lower()
     assert "docket init" in out
-
-
-def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    for spec in _ORG_SPECIALISTS:
-        meta_file = home / "workspaces" / spec / _cfg.META_FILE
-        assert meta_file.is_file(), f"missing meta for {spec}"
-        meta: dict[str, Any] = json.loads(meta_file.read_text())
-        assert meta["kind"] == "specialist"
-        assert meta["scope"] == "org"  # stamped at provisioning
-        assert meta["role"] == spec
-        assert meta["name"] == spec
-        assert meta["modelSource"] == "policy"
-        assert meta["model"].startswith("anthropic/") or "/" in meta["model"]
-        assert meta.get("created")  # ISO timestamp present
-
-    # Project roles are not provisioned as global workspaces.
-    for role in _PROJECT_ROLES:
-        assert not (home / "workspaces" / role / _cfg.META_FILE).is_file()
-
-
-# ── specialists join the workspace contract ────────────────────────────────
-
-
-def test_specialist_gets_full_workspace_contract(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A freshly provisioned specialist gets the same durable workspace set a project agent
-    gets -- SOUL/AGENTS/HEARTBEAT plus the WORKFLOW_AUTO/MEMORY/daily-log contract -- with
-    700/600 permissions and a current-version contract marker."""
-    from docket.core import memory as _mem
-
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    for spec in _ORG_SPECIALISTS:
-        ws = home / "workspaces" / spec
-        assert ws.stat().st_mode & 0o777 == 0o700
-
-        for fname in (
-            "SOUL.md",
-            "AGENTS.md",
-            "HEARTBEAT.md",
-            _mem.REQUIRED_STARTUP_FILE,
-            _mem.MEMORY_FILE,
-        ):
-            fpath = ws / fname
-            assert fpath.is_file(), f"{spec}: missing {fname}"
-            assert fpath.stat().st_mode & 0o777 == 0o600, f"{spec}: {fname} not 0600"
-
-        assert (ws / _mem.today_memory_relpath()).is_file(), f"{spec}: missing today's daily log"
-        assert _mem.contract_ok(ws), f"{spec}: WORKFLOW_AUTO.md missing/stale contract marker"
-
-        soul = (ws / "SOUL.md").read_text()
-        assert f"agent:{spec}:org" in soul
-        assert spec in soul
-
-        # TOOLS.md is deliberately NOT written — a specialist has no codebase.
-        assert not (ws / "TOOLS.md").exists()
-
-    meta = json.loads((home / "workspaces" / "security" / _cfg.META_FILE).read_text())
-    assert meta["sessionKey"] == "agent:security:org"
-    assert meta["projectKey"] == "org"
-
-
-def test_specialist_reprovisioning_preserves_real_content(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Re-running the workstation foundation bootstrap on an already-provisioned fleet must not
-    clobber a HEARTBEAT.md/MEMORY.md the agent has actually written to.
-    """
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-    _install.bootstrap_workstation(assume_yes=True)
-
-    ws = home / "workspaces" / "security"
-    hb = ws / "HEARTBEAT.md"
-    mem_md = ws / "MEMORY.md"
-    hb.write_text("# HEARTBEAT.md — security\n\n## Active Tasks\n- [ ] real in-flight task\n")
-    mem_md.write_text("# MEMORY.md — security\n\nreal curated memory, do not lose this\n")
-    soul_before = (ws / "SOUL.md").read_text()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    assert "real in-flight task" in hb.read_text()
-    assert "real curated memory, do not lose this" in mem_md.read_text()
-    assert (ws / "SOUL.md").read_text() == soul_before
-
-
-def test_specialist_backfills_bare_legacy_workspace(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A legacy install could leave specialists with only `.docket-meta.json`; a subsequent
-    foundation bootstrap must backfill the full workspace set without a fresh agent
-    registration."""
-    from docket.core import memory as _mem
-
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    # Simulate that legacy state: registered + meta only, nothing else.
-    ws = home / "workspaces" / "knowledge"
-    ws.mkdir(parents=True)
-    ws.chmod(0o700)
-    (ws / _cfg.META_FILE).write_text(
-        json.dumps(
-            {
-                "kind": "specialist",
-                "scope": "org",
-                "role": "knowledge",
-                "name": "knowledge",
-                "model": "anthropic/claude-haiku-4-5",
-                "modelSource": "policy",
-                "created": "2026-01-01T00:00:00+00:00",
-            }
-        )
-    )
-    (ws / _cfg.META_FILE).chmod(0o600)
-    _fleet.add_agent("knowledge")
-
-    assert not (ws / "SOUL.md").exists()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    assert (ws / "SOUL.md").is_file()
-    assert (ws / "AGENTS.md").is_file()
-    assert (ws / "HEARTBEAT.md").is_file()
-    assert _mem.contract_ok(ws)
 
 
 def test_install_configures_default_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -310,16 +152,14 @@ def test_install_workspaces_dir_is_owner_only(
 
 
 def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A second run reports specialists already registered and stays clean."""
+    """A second run stays clean."""
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
     assert _install.bootstrap_workstation(assume_yes=True) == 0
     assert _install.bootstrap_workstation(assume_yes=True) == 0
 
-    ids = [a.id for a in _fleet.list_agents()]
-    # No duplicate registrations on the second pass.
-    assert sorted(ids) == sorted(_ORG_SPECIALISTS)
+    assert _fleet.list_agents() == []
 
 
 # ── Step 5: model credentials ────────────────────────────────────────────────────

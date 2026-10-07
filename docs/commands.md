@@ -28,8 +28,7 @@ Complete reference for all docket commands, rendered from each command's own `--
 
 List all project agents.
 
-Shows every registered agent -- pod members for each project and the shared
-org specialists (manager, knowledge, security) -- with role/pod, model and
+Shows every registered agent -- pod members for each project -- with role/pod, model and
 its source, Telegram binding, and last activity. Telegram status reflects
 docket's own channel bindings (`~/.docket/fleet.json`); the session column
 shows the agent's current project key. `--json` emits the same listing as
@@ -47,7 +46,7 @@ Initialize the current project with its minimum isolated pod.
 Creates a new project pod -- an isolated team of project-scoped agents
 that owns one codebase. The default pod is lean: a Lead + an Implementer.
 The first invocation also creates docket's shared workstation foundation
-(fleet registry, org specialists, policies, default gates) -- there is no
+(fleet registry, policies, default gates) -- there is no
 separate setup step. See docs/AGENT-TEAMS.md.
 
 With no arguments, docket derives the project id, path, and stack from the
@@ -211,9 +210,7 @@ pod runtime directory, durable session history, and traces. The global
 audit record is preserved. Given a legacy flat agent id, separately asks
 whether to also remove its workspace.
 
-Cannot be undone -- back up first if unsure. Org specialists (manager,
-knowledge, security) cannot be removed this way -- the command errors
-outright rather than deleting a shared, fleet-wide agent. A deleted
+Cannot be undone -- back up first if unsure. A deleted
 member's git worktree is removed, but its dedicated branch remains in the
 source repository so committed code is not silently destroyed; remove
 that branch separately after reviewing it.
@@ -1010,7 +1007,7 @@ Exits 1 if any file is invalid.
 
 Export system state snapshot as JSON.
 
-Every project agent and specialist, its model, registration/binding
+Every project agent, its model, registration/binding
 status, last activity, and measured cost, plus the channel list. `-o`/
 `--output <path>` writes the JSON to a file instead of stdout.
 `costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows

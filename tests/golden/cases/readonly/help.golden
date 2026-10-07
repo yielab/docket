@@ -3,9 +3,6 @@ EXIT:0
 docket — agent fleet control plane
 
 AGENT TYPES
-  Org Specialists     Created lazily by the first 'docket init' — shared across all projects
-                        → manager, knowledge, security
-                        → Work across ALL projects (don't create/delete manually)
   Project Pods        Created by 'docket init' — one isolated pod per project
                         → lead + implementer (+ optional reviewer, tester)
                         → Manage with 'docket pod <project>'

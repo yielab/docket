@@ -103,8 +103,7 @@ def _default(
 def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -> None:
     """List all project agents.
 
-    Shows every registered agent -- pod members for each project and the shared
-    org specialists (manager, knowledge, security) -- with role/pod, model and
+    Shows every registered agent -- pod members for each project -- with role/pod, model and
     its source, Telegram binding, and last activity. Telegram status reflects
     docket's own channel bindings (`~/.docket/fleet.json`); the session column
     shows the agent's current project key. `--json` emits the same listing as
@@ -239,62 +238,6 @@ def _cmd_list_human() -> None:
         ui.console.print(f"  path: {path_short}  │  active: {activity}")
         ui.console.print(f"  {reg_badge}  {tg_b}  {mem_b}  {req_b}")
 
-    unwired: list[tuple[str, str]] = []
-    for aid in ids:
-        if tg_bindings.get(aid):
-            continue
-        expected = _cfg.TELEGRAM_GROUP_NAMES.get(aid)
-        if expected:
-            unwired.append((aid, expected))
-    # Manager is a specialist (not in the project list) — check it directly.
-    if not tg_bindings.get("manager") and _cfg.TELEGRAM_GROUP_NAMES.get("manager"):
-        unwired.append(("manager", _cfg.TELEGRAM_GROUP_NAMES["manager"]))
-
-    if unwired:
-        ui.console.print()
-        ui.console.print(f"  [dim]{'─' * 66}[/dim]")
-        ui.console.print(
-            f"  [bold yellow]Telegram Setup Needed[/bold yellow]  "
-            f"[dim]({len(unwired)} agent(s) without groups)[/dim]"
-        )
-        ui.console.print()
-        for uw_id, uw_name in unwired:
-            ui.console.print(
-                f"    [yellow]○[/yellow] [bold]{uw_id}[/bold]  "
-                f'[dim]→ create group "{uw_name}" then:[/dim] docket wire {uw_id}'
-            )
-        ui.console.print()
-        ui.dim(
-            "  Steps: 1) Create Telegram group  2) Add bot"
-            "  3) docket wire <id> and follow the on-screen steps"
-        )
-
-    ui.console.print()
-    ui.console.print(
-        "[bold green]ORG SPECIALISTS[/bold green] [dim](shared across all projects)[/dim]"
-    )
-    ui.console.print()
-    ui.console.print(
-        "  [dim]These work across ALL your projects. Don't wire them to individual groups.[/dim]"
-    )
-    ui.console.print()
-
-    for spec in _cfg.ORG_DISPLAY_ORDER:
-        spec_ws = _cfg.WORKSPACES_DIR / spec
-        if not spec_ws.is_dir():
-            continue
-        spec_meta = spec_ws / _cfg.META_FILE
-        if not spec_meta.is_file():
-            continue
-        spec_raw = store.read_json(spec_meta)
-        spec_model = str(spec_raw.get("model", _cfg.DEFAULT_MODEL))
-        spec_src = str(spec_raw.get("modelSource", ""))
-        spec_model_short = spec_model.split("/")[-1] if "/" in spec_model else spec_model
-        why = _cfg.ROLE_WHY.get(spec, "")
-        ui.console.print(
-            f"  [green]✓[/green] {spec:<12} [dim]{spec_model_short:<28} ({spec_src}) — {why}[/dim]"
-        )
-
     ui.console.print()
     ui.console.print("─" * 70)
     ui.dim("  docket info <id>     detailed view")
@@ -336,7 +279,7 @@ def cmd_init(ctx: typer.Context) -> None:
     Creates a new project pod -- an isolated team of project-scoped agents
     that owns one codebase. The default pod is lean: a Lead + an Implementer.
     The first invocation also creates docket's shared workstation foundation
-    (fleet registry, org specialists, policies, default gates) -- there is no
+    (fleet registry, policies, default gates) -- there is no
     separate setup step. See docs/AGENT-TEAMS.md.
 
     With no arguments, docket derives the project id, path, and stack from the
@@ -467,9 +410,7 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
     audit record is preserved. Given a legacy flat agent id, separately asks
     whether to also remove its workspace.
 
-    Cannot be undone -- back up first if unsure. Org specialists (manager,
-    knowledge, security) cannot be removed this way -- the command errors
-    outright rather than deleting a shared, fleet-wide agent. A deleted
+    Cannot be undone -- back up first if unsure. A deleted
     member's git worktree is removed, but its dedicated branch remains in the
     source repository so committed code is not silently destroyed; remove
     that branch separately after reviewing it."""
@@ -2323,7 +2264,7 @@ def cmd_snapshot(
 ) -> None:
     """Export system state snapshot as JSON.
 
-    Every project agent and specialist, its model, registration/binding
+    Every project agent, its model, registration/binding
     status, last activity, and measured cost, plus the channel list. `-o`/
     `--output <path>` writes the JSON to a file instead of stdout.
     `costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows
@@ -2363,29 +2304,6 @@ def cmd_snapshot(
                 "registered": pid in registered_ids,
                 "bindings": _agent_bindings(pid),
                 "lastActivity": _last_activity_or_never(pid),
-                "costUsd": round(cost, 6),
-            }
-        )
-
-    for spec in _cfg.ORG_SPECIALIST_ORDER:
-        ws = _cfg.WORKSPACES_DIR / spec
-        if not ws.is_dir():
-            continue
-        try:
-            raw = store.read_json(ws / _cfg.META_FILE)
-        except Exception:
-            raw = {}
-        cost = aggregate_cost(spec).cost_usd
-        total_cost += cost
-        agents_out.append(
-            {
-                "id": spec,
-                "name": str(raw.get("name", spec)),
-                "kind": "specialist",
-                "model": str(raw.get("model", "")),
-                "registered": spec in registered_ids,
-                "bindings": _agent_bindings(spec),
-                "lastActivity": _last_activity_or_never(spec),
                 "costUsd": round(cost, 6),
             }
         )

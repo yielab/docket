@@ -89,16 +89,6 @@ def _run(
 
 
 class TestCmdDelete:
-    def test_delete_specialist_blocked(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        # Set up a specialist workspace so workspace_dir resolves
-        spec_ws = home / "workspaces" / "knowledge"
-        spec_ws.mkdir(parents=True)
-        (spec_ws / ".docket-meta.json").write_text(json.dumps(META))
-        rc, _, err = _run(["delete", "knowledge"], home)
-        assert rc == 1
-        assert "specialist" in err.lower()
-
     def test_delete_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         rc, _, err = _run(["delete", "ghost"], home, "n\nghost\n")

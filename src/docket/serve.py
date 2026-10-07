@@ -43,9 +43,7 @@ DEFAULT_INTERVAL = 30
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
 # authenticated write/read-registry endpoints (/dispatch, /runs).
 # Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
-SERVE_API_VERSION = "3"
-
-_SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
+SERVE_API_VERSION = "4"
 
 # The channels the HTTP transport itself may claim on POST /approvals/<token>.
 # This is narrower than core.approval.APPROVAL_CHANNELS: "cli", "mcp" and
@@ -73,7 +71,6 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
     meta_path = cfg.meta_path(agent_id)
     meta: dict[str, Any] = store.read_json(meta_path) if meta_path.exists() else {}
     cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)
-    default_scope = "project" if kind == "project" else "org"
     budget_raw = meta.get("budgetUsd")
     budget: float | None = (
         float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
@@ -82,7 +79,7 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
         "id": agent_id,
         "name": str(meta.get("name", agent_id)),
         "kind": kind,
-        "scope": str(meta.get("scope", default_scope)),
+        "scope": str(meta.get("scope", "project")),
         "model": str(meta.get("model", "")),
         "registered": agent_id in registered,
         "bindings": fleet.agent_bindings(agent_id),
@@ -107,14 +104,6 @@ def build_status() -> dict[str, Any]:
         total_cost += float(rec["costUsd"])
         agents.append(rec)
 
-    for spec in _SPECIALISTS:
-        spec_dir = cfg.WORKSPACES_DIR / spec
-        if not spec_dir.is_dir():
-            continue
-        rec = _agent_record(spec, kind="specialist", registered=registered)
-        total_cost += float(rec["costUsd"])
-        agents.append(rec)
-
     return {
         "apiVersion": SERVE_API_VERSION,
         "timestamp": _utc_timestamp(),
@@ -125,9 +114,7 @@ def build_status() -> dict[str, Any]:
 
 
 def _cost_json() -> dict[str, Any]:
-    """Per-project cost payload: {agents:[{id,model,costUsd,turns}], totalUsd}.
-    Project agents only -- specialists are excluded.
-    """
+    """Per-project cost payload: {agents:[{id,model,costUsd,turns}], totalUsd}."""
     from docket.edges import store
 
     agents: list[dict[str, Any]] = []
