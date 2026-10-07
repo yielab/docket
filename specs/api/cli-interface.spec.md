@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.66.0
+**Version**: 1.69.0
 **Status**: Complete
-**Last Updated**: 2026-10-06
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -1289,6 +1289,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.69.0 (2026-10-07)
+
+- `docket runs show <id>` exits 1 when the run or any task it returned failed, and for an unknown run; it exits 0 for any other recorded state, including `waiting_input`/`waiting_approval`.
+- `docket doctor` counts only lines marked with a red cross as critical issues (a warning never is), exits 0 with no critical line, and its footer hint names `docket doctor --fix`.
+- `docket metrics` success/failure/aborted counts come from the terminal task status each dispatch `session_end` event records (`done` success, `failed` failure, `cancelled`/`blocked` aborted; a parked task is not terminal and is not counted), not from a hard-coded `success`/`failure` payload no dispatch ever wrote.
 
 ### Version 1.66.0 (2026-10-06)
 

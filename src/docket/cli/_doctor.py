@@ -971,35 +971,46 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
 
     ui.header("Docket Doctor — System Health Check")
     ui.console.print()
+    was_recording = ui.console.record
+    ui.console.record = True
+    ui.console.export_text(clear=True)
 
     ids = project_ids()
     cost = _batch_cost(ids)
 
-    issues = 0
-    issues += _check_dependencies()
-    issues += _check_project_agents(ids)
-    issues += _check_model_registry_entries()
-    issues += _check_archetype_overlay()
-    issues += _check_schedule_config()
-    issues += _check_dispatch_ledger(do_fix)
-    issues += _check_budget(ids, _batch_gating_cost(ids))
-    issues += _check_runaway(ids, cost)
+    _check_dependencies()
+    _check_project_agents(ids)
+    _check_model_registry_entries()
+    _check_archetype_overlay()
+    _check_schedule_config()
+    _check_dispatch_ledger(do_fix)
+    _check_budget(ids, _batch_gating_cost(ids))
+    _check_runaway(ids, cost)
     _check_key_hygiene()
-    issues += _check_provider_coverage(ids)
-    issues += _check_provider_catalog()
-    issues += _check_exporters()
-    issues += _check_notifications(ids)
-    issues += _check_security_gates()
-    issues += _check_policies()
-    issues += _check_pod_config_overlays()
+    _check_provider_coverage(ids)
+    _check_provider_catalog()
+    _check_exporters()
+    _check_notifications(ids)
+    _check_security_gates()
+    _check_policies()
+    _check_pod_config_overlays()
     _check_template_version(ids)
     _check_pod_sync(ids)
     _check_runtime_contract(ids)
 
     ui.console.print()
-    if issues == 0:
+    rendered = ui.console.export_text(clear=True)
+    ui.console.record = was_recording
+    return _print_summary(rendered)
+
+
+def _print_summary(rendered: str) -> int:
+    """Print the verdict from the report just shown: critical = lines marked with a cross."""
+    lines = rendered.splitlines()
+    critical = sum("✗" in ln for ln in lines) - sum("ledger re-synced" in ln for ln in lines)
+    if critical <= 0:
         ui.success("All checks passed — docket is healthy.")
         return 0
-    ui.console.print(f"[red][bold]{issues} critical issue(s) found.[/bold][/red]")
-    ui.console.print("  Project issues:  docket maintain [id] check")
+    ui.console.print(f"[red][bold]{critical} critical issue(s) found.[/bold][/red]")
+    ui.console.print("  Re-sync what can be fixed automatically:  docket doctor --fix")
     return 1

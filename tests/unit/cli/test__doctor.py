@@ -948,3 +948,37 @@ class TestPodSyncCheck:
 
     def test_non_pod_agents_are_skipped(self) -> None:
         assert _doctor._check_pod_sync([]) == 0
+
+
+class TestSummaryCountsOnlyCrosses:
+    """The summary's critical count is the number of cross-marked lines, never warnings."""
+
+    def _warn_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _check(*_a: Any, **_k: Any) -> int:
+            _doctor.ui.warn("  something advisory")
+            return 1
+
+        monkeypatch.setattr(_doctor, "_check_exporters", _check)
+
+    def test_a_warning_alone_is_not_critical(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        self._warn_only(monkeypatch)
+        rc = _doctor.run_doctor(json_out=False)
+        out = capsys.readouterr().out
+        assert "critical" not in out
+        assert rc == 0
+
+    def test_a_cross_is_critical_and_the_hint_is_a_real_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, full_workspace=False)
+        self._warn_only(monkeypatch)
+        rc = _doctor.run_doctor(json_out=False)
+        out = capsys.readouterr().out
+        assert rc == 1
+        crosses = sum(1 for ln in out.splitlines() if "✗" in ln)
+        assert f"{crosses} critical issue(s) found" in out
+        assert "docket doctor --fix" in out
+        assert "docket maintain" not in out.split("critical issue(s) found")[1]

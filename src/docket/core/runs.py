@@ -55,11 +55,21 @@ from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
-RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
-RunTerminalState = Literal["succeeded", "failed", "cancelled"]
+RunState = Literal[
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "waiting_input",
+    "waiting_approval",
+]
+RunTerminalState = Literal["succeeded", "failed", "cancelled", "waiting_input", "waiting_approval"]
 
 _SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})
-_TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
+_TERMINAL_STATES: frozenset[str] = frozenset(
+    {"succeeded", "failed", "cancelled", "waiting_input", "waiting_approval"}
+)
 _RETURNED_FAILURE_ERROR_CHARS = 1_024
 _RETURNED_FAILURE_ID_CHARS = 80
 _RETURNED_FAILURE_REASON_CHARS = 200
@@ -678,7 +688,8 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
 
     Marks ``running``, invokes *fn*, folds the outcome back: ``succeeded``
     plus task ids from *fn*'s duck-typed ``task_id`` results, or ``failed``
-    plus a bounded summary when any result is ``status="failed"``; a
+    plus a bounded summary when any result is ``status="failed"``, or
+    ``waiting_input``/``waiting_approval`` when a task parked and none failed; a
     ``status="cancelled"`` result takes precedence and terminalizes as
     cancelled. Exceptions keep their text. Both failure paths emit the same
     ``error`` trace event.
@@ -717,6 +728,7 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     task_ids: list[str] = []
     failures: list[Any] = []
     cancellations: list[Any] = []
+    parked: list[str] = []
     for result in results:
         task_ids.append(str(getattr(result, "task_id", "")))
         status = str(getattr(result, "status", ""))
@@ -724,11 +736,19 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
             cancellations.append(result)
         elif status == "failed":
             failures.append(result)
+        elif status in ("waiting_input", "waiting_approval"):
+            parked.append(status)
 
     error_text = _returned_failure_summary(failures) if failures else ""
-    state: RunTerminalState = (
-        "cancelled" if cancellations else "failed" if failures else "succeeded"
-    )
+    state: RunTerminalState
+    if cancellations:
+        state = "cancelled"
+    elif failures:
+        state = "failed"
+    elif parked:
+        state = "waiting_approval" if parked[0] == "waiting_approval" else "waiting_input"
+    else:
+        state = "succeeded"
     if cancellations:
         error_text = "cancelled by operator"
     applied = _finish_run_transition(

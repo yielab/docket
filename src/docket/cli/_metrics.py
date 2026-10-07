@@ -23,6 +23,18 @@ from typing import Any
 import docket.config as _cfg
 from docket import ui
 
+# A dispatch writes the task's own status on ``session_end``; older writers wrote the
+# success/failure/aborted words directly. ``None`` = not a terminal task (parked or unknown).
+_TERMINAL_OUTCOME: dict[str, str] = {
+    "done": "success",
+    "success": "success",
+    "failed": "failure",
+    "failure": "failure",
+    "cancelled": "aborted",
+    "blocked": "aborted",
+    "aborted": "aborted",
+}
+
 
 def _metrics_help() -> None:
     """Print usage help."""
@@ -78,7 +90,8 @@ def _compute_and_print(traces_dir: str, role_filter: str, project_filter: str, w
                         session_data["role"] = r.get("agent_role") or session_data["role"]
                     elif etype == "session_end":
                         has_end = True
-                        session_data["status"] = r.get("payload", {}).get("status", "success")
+                        raw_status = str(r.get("payload", {}).get("status", "success"))
+                        session_data["status"] = _TERMINAL_OUTCOME.get(raw_status)
                         session_data["end_ts"] = r.get("ts")
                         session_data["role"] = r.get("agent_role") or session_data["role"]
                     elif etype == "cost_charged":
@@ -93,8 +106,8 @@ def _compute_and_print(traces_dir: str, role_filter: str, project_filter: str, w
         except Exception:
             continue
 
-        if not has_end:
-            continue  # skip open sessions
+        if not has_end or session_data["status"] is None:
+            continue  # skip open sessions and parked tasks
 
         if session_data["start_ts"] and session_data["end_ts"]:
             try:
