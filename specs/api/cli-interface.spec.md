@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.66.0
+**Version**: 1.67.0
 **Status**: Complete
-**Last Updated**: 2026-10-06
+**Last Updated**: 2026-10-07
 
 ## Purpose
 
@@ -101,6 +101,20 @@ docket [global-options] <command> [command-options] [arguments]
 These two are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
 `--debug`, `--quiet`, `--config` or `--no-color` (any of them is an unknown option, exit 2);
 state location is chosen with `DOCKET_HOME`, not a config file flag.
+
+### Pod targeting
+
+Every pod-scoped command resolves its pod through `cli/_target.py::resolve_pod`, from three
+sources in this order: the `--pod`/`-p` option (declared by `pod_option()`), then the `DOCKET_POD`
+environment variable, then the registered pod whose codebase contains the current directory.
+When several registered codebases contain it, the deepest wins; two pods matching at the same
+depth are both named in the error. `docket status` and `docket add` use it.
+
+When no pod matches, the command prints one error line and exits 1:
+
+```
+No pod for <cwd> (looked for a registered codebase containing it). Run 'docket init' here, or pass --pod <name>.
+```
 
 ## Command Registry
 
@@ -1289,6 +1303,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.67.0 (2026-10-07)
+
+- Adds "Pod targeting": one resolver (`--pod`, `DOCKET_POD`, then the deepest codebase containing
+  the current directory) with a single no-match error; `status` and `add` use it.
 
 ### Version 1.66.0 (2026-10-06)
 
