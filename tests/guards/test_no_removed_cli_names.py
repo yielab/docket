@@ -21,26 +21,17 @@ assert _SPEC is not None and _SPEC.loader is not None
 rcn = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(rcn)
 
-# Roots proven free of removed names; a doc set joins this tuple when its sweep lands.
+# Roots proven free of removed names: the whole tree, minus what the script itself excludes.
 ROOTS: tuple[str, ...] = (
     "src/docket",
     "scripts",
-    "tests/unit",
-    "tests/integration",
-    "tests/guards",
+    "tests",
     "examples",
     "benchmarks",
-    "docs/CONFIGURATION.md",
-    "docs/SECURITY-SIMPLE.md",
-    "docs/troubleshooting.md",
-    "docs/MODEL-GATEWAYS.md",
-    "docs/README.md",
-    "docs/DEVELOPMENT-HARNESS.md",
-    "docs/ADOPTION-EVIDENCE.md",
-    "docs/AGENT-TEAMS.md",
-    "docs/DOCKET.md",
-    "docs/WORKFLOW-GUIDE.md",
+    "docs",
     "specs",
+    "README.md",
+    "CONTRIBUTING.md",
 )
 # Files inside ROOTS whose owners have not swept them yet.
 PENDING: tuple[str, ...] = ()

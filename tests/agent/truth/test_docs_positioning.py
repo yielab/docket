@@ -11,15 +11,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 LANE = "truth"
 REASON = "Keeps the README on one pitch told in the order a newcomer uses docket: the daily loop in the intro, install, a first team, the run, the gate and record, then configuration; each capability section with its asset, its limit and its proving commands; no self-description the ADRs reject, no stacked feature frames, no dollar-savings claim."
 RETIRE_WHEN = "the README front door is generated from a single source of truth instead of hand-maintained prose."
 
 _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
-CLAUDE_MD = _REPO / "CLAUDE.md"
 
 PATH_HEADINGS = (
     "## Quick start",
@@ -35,7 +32,8 @@ CAPABILITY_ASSETS = {
     "## The gate and the record": "governance.png",
 }
 LIMITED_SECTIONS = ("## The run", "## The gate and the record", "## Make it yours")
-LOOP_COMMANDS = ("`init`", "`delegate`", "`dispatch`", "`export`")
+LOOP_COMMANDS = ("`init`", "`task add`", "`run`", "`status`", "`inbox`", "`task approve`")
+POD_DEFINITION = "A **pod** is the team of agents attached to one repository"
 # Self-descriptions the ADRs reject: "fleet" implies a scale docket denies, "control plane"
 # implies a dashboard docket refuses to build, "enterprise" a buyer the ADRs scope out, and
 # "factory"/"substrate" are internal strategy words, not product ones.
@@ -91,6 +89,14 @@ class TestNewcomerPath:
         body = dict(_sections(_readme()))["## Make it yours"]
         for kind in ("kind: role", "kind: pipeline", "kind: pod", "kind: policy"):
             assert kind in body, f"Make it yours must show a {kind} document"
+
+    def test_quick_start_registers_a_model_with_setup_before_init(self) -> None:
+        t = _readme()
+        assert t.index("## Quick start") < t.index("docket setup\n") < t.index("docket init")
+
+    def test_the_pod_is_defined_where_the_first_pod_command_appears(self) -> None:
+        text = _readme()
+        assert 0 <= text.find(POD_DEFINITION) < text.index("`docket pod ")
 
     def test_each_capability_ends_claims_in_commands(self) -> None:
         bodies = dict(_sections(_readme()))
@@ -149,8 +155,3 @@ class TestNoDollarSavingsClaims:
 
     def test_readme(self) -> None:
         self._check(_readme(), "README.md")
-
-    def test_claude_md(self) -> None:
-        if not CLAUDE_MD.exists():
-            pytest.skip("CLAUDE.md is not committed to this repo")
-        self._check(CLAUDE_MD.read_text(encoding="utf-8"), "CLAUDE.md")
