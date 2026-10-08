@@ -24,7 +24,7 @@ pack, the resulting roster and `pipeline.yaml` before writing anything, and is s
 deploy/production-shaped operator command always asks a human too, independent of which
 pipeline step it reached.
 
-Answer the resulting approval with `docket task approve <token>` / `docket task deny <token>` (also
+Answer the resulting approval with `docket task approve <id>` / `docket task deny <id>` (`docket inbox` prints the exact line; also
 reachable over HTTP, MCP or Telegram `/approve` — every channel is audited). Unanswered
 requests are denied after `APPROVAL_TIMEOUT` (900s).
 
@@ -41,6 +41,6 @@ requests are denied after `APPROVAL_TIMEOUT` (900s).
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 rm ~/.docket/workspaces/pods/<project>/config/policies/ops-approval-high-risk.yaml
 ```

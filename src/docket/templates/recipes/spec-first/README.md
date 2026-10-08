@@ -36,8 +36,8 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-writer
-docket pod <project> remove <project>-critic
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-writer
+docket pod remove <project>-critic
+docket pod remove <project>-reviewer
 ```

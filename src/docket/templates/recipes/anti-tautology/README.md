@@ -47,5 +47,5 @@ test with old passing ones passes the check only if the file as a whole fails on
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```

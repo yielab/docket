@@ -10,5 +10,5 @@ privacy: minimal
 enabled: false
 note: >-
   Honeycomb's OTLP/HTTP ingest endpoint (US instance). For the EU instance, override `endpoint`
-  to https://api.eu1.honeycomb.io/v1/traces. Store the key with
-  `docket keys add HONEYCOMB_API_KEY` before enabling.
+  to https://api.eu1.honeycomb.io/v1/traces. `docket setup export enable
+  honeycomb` prompts for a missing `HONEYCOMB_API_KEY` and stores it.

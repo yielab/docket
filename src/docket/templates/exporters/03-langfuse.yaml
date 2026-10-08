@@ -14,5 +14,5 @@ enabled: false
 note: >-
   Langfuse's managed EU cloud endpoint. Override `endpoint` to
   https://us.cloud.langfuse.com/api/public/otel/v1/traces for the US region, or to your own
-  self-hosted instance's /api/public/otel/v1/traces. Store both keys with
-  `docket keys add LANGFUSE_PUBLIC_KEY` / `docket keys add LANGFUSE_SECRET_KEY` before enabling.
+  self-hosted instance's /api/public/otel/v1/traces. `docket setup export
+  enable langfuse` prompts for a missing public or secret key and stores it.

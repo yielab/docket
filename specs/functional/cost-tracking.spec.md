@@ -1,10 +1,10 @@
 # Cost Tracking Specification
 
-**Version**: 1.8.0
+**Version**: 1.8.1
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
 Docket's own `DocketDriver` and session store. See requirements 2-4 below.
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -16,8 +16,8 @@ per-agent budget caps, and where those caps are (and are not) enforced today.
 This specification covers:
 
 - Reporting usage and cost (`docket status`)
-- Per-agent budget caps (`docket profile --budget`)
-- Budget/runaway warnings (`docket doctor`) and the pause contract
+- Per-agent budget caps (`docket pod set budgetUsd`)
+- Budget/runaway warnings (`docket setup`) and the pause contract
 
 This specification does NOT cover the role→model policy or pricing table (see
 model-profiles.spec.md), nor the pod-dispatch pre-hop budget gate's mechanics (see
@@ -54,14 +54,14 @@ pod-dispatch.spec.md).
 
 ### Budget caps
 
-1. `docket profile <id> --budget <USD>` **MUST** store a `budgetUsd` cap in `.docket-meta.json`.
+1. `docket pod set budgetUsd <USD>` **MUST** store a `budgetUsd` cap in `.docket-meta.json`.
 2. A cap of `0` **MUST** mean "no cap" and **MUST** clear any existing cap.
 3. Setting a non-zero budget **MUST** clear a prior `paused` state (and, when the target is a
    pod's Lead, unblocks that pod's budget-blocked tasks — see pod-dispatch.spec.md).
 4. The budget value **MUST** be a non-negative number.
 5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are Docket-local (decision D-9).
    Enforcement therefore exists only where Docket itself is in the execution path.
-6. `docket profile <id> --resume` **MUST** clear `paused`/`pausedReason` on *id* and **MUST**
+6. `docket run --resume` **MUST** clear `paused`/`pausedReason` on *id* and **MUST**
    write a `profile.resume` audit-log entry. When *id* is a pod's Lead, it additionally
    unblocks that pod's budget-blocked tasks (mirroring the `--budget` behavior above) — a
    resume that left the tasks queued up behind the pause permanently `blocked` would not
@@ -79,7 +79,7 @@ pod-dispatch.spec.md).
    flipped to `running`, not merely re-blocked hop by hop — and emits a `paused_refused` trace
    event each time. This is a claim-time check (`core/dispatch.py`'s `_claim_next_task`), so a
    paused pod costs nothing further to not dispatch: no claim write, no wasted agent turn.
-3. **Implemented — resume.** `docket profile <id> --resume` clears both fields and writes an
+3. **Implemented — resume.** `docket run --resume` clears both fields and writes an
    audit entry (see "Budget caps" above); a fresh dispatch attempt can claim again.
 4. **Implemented — labelled estimate fallback for gating.** Recorded pod spend legitimately
    reads `0` always now: `DocketDriver` never reports a cost at all
@@ -93,7 +93,7 @@ pod-dispatch.spec.md).
    presented as, recorded spend; `docket status --all --json`'s recorded `costUsd` fields are
    completely unaffected by this fallback (see "Cost reporting" above).
 5. **Implemented — budget/runaway warnings read the same gating figure as the dispatch gate.**
-   `docket doctor`'s per-agent budget check (`cli/_doctor.py::_check_budget`) 
+   `docket setup`'s per-agent budget check (`cli/_setup_check.py::_check_budget`) 
    **MUST** warn/flag against the same recorded-or-estimated gating figure requirement 4
    describes (`core/utils.gating_cost`: recorded spend if nonzero, else the
    `estimate_cost_usd` token-count × pricing-table fallback), clearly labelled with the same
@@ -101,8 +101,8 @@ pod-dispatch.spec.md).
    at each check's own decimal precision — an estimate **MUST NOT** be
    presented as, or mixed into, recorded spend. Because recorded spend is always `0` under
    `DocketDriver` (requirement 4), in production both checks fire from the estimate: the ≥80%
-   warning / ≥100% flag in `docket doctor`. These remain display-only, independent of the pause writer. The turn-count
-   runaway check is unaffected (it never depended on cost); so is `docket doctor`'s `--json` per-agent `budget`/`runaway`
+   warning / ≥100% flag in `docket setup`. These remain display-only, independent of the pause writer. The turn-count
+   runaway check is unaffected (it never depended on cost); so is `docket setup`'s `--json` per-agent `budget`/`runaway`
    results, which still report only recorded spend (see "Cost reporting" above) — a known,
    unfixed instance of the same blind spot this requirement closes for the two human-facing
    warnings above.
@@ -120,10 +120,10 @@ pod-dispatch.spec.md).
 docket status                     # Pod tokens, labelled estimate, outcomes (table)
 docket status --all --json        # Machine-readable (see cli-json-shapes.spec.md)
 docket status --history [--days N]  # Daily history (see "Known gap" below)
-docket profile <agent-id> --budget <USD>   # Set/clear a cap (0 = none)
-docket profile <agent-id> --resume         # Clear an auto-pause; unblocks a paused pod's Lead
+docket pod set budgetUsd <USD>   # Set/clear a cap (0 = none)
+docket run --resume         # Clear an auto-pause; unblocks a paused pod's Lead
 docket run --resume                        # Same clear, then reclaims stale claims
-docket doctor                     # Includes budget/runaway check (display only)
+docket setup                     # Includes budget/runaway check (display only)
 ```
 
 ### Return Codes
@@ -148,7 +148,7 @@ new scope for `core/session.py`, not part of P19-7a; this is a named capability 
 $ docket status --pod mywebsite
   Tokens:                   50.0K in / 25.0K out (~$0.12 est.)
 
-$ docket profile mywebsite --budget 5
+$ docket pod set budgetUsd 5
 ✓ Budget cap set to $5 for 'mywebsite'.
 ```
 
@@ -166,11 +166,11 @@ ever records a real cost.
 $ docket run --pod myproject
 ⚠   [<task-id>] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
-$ docket info myproject-lead
+$ docket pod show --pod myproject
   ...
   Status:           PAUSED (budget)
 
-$ docket profile myproject-lead --resume
+$ docket run --resume
 →   Unblocked 1 budget-blocked task(s) in pod 'myproject'.
 ✓ Resumed 'myproject-lead' — auto-pause cleared.
 ```
@@ -202,6 +202,10 @@ $ docket profile myproject-lead --resume
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.8.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.8.0 (2026-10-07)
 

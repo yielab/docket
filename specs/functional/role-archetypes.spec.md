@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.23.1
+**Version**: 1.23.2
 **Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
@@ -42,7 +42,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -105,7 +105,7 @@ This specification does NOT cover:
   is validated to match `core/pipeline.py`'s `default_pipeline()` gates for the four legacy roles
   — see Requirements — not how the executor consumes it
 - The role→model policy's resolution mechanics themselves (rank anchors, presets, pinning,
-  `docket models`) — see `model-profiles.spec.md`; this spec only covers how an archetype's
+  `docket setup model`) — see `model-profiles.spec.md`; this spec only covers how an archetype's
   `modelClass` feeds into that existing system
 - The per-member runtime fields (`portRangeStart`, `scratchDir`, `verifyCmd`, …) written to
   `.docket-meta.json` — see `docket-meta.spec.md`
@@ -239,10 +239,10 @@ This specification does NOT cover:
    structural check over the actual rendered prompt, not a grep over template source.
 4. `core/pod_provisioning.py`'s `POD_TEMPLATE_VERSION` **MUST** be bumped whenever a built-in or
    starter template's generated text changes (as this requirement's own fix did, v2 → v3), so
-   `docket doctor` can in principle detect a pod member provisioned from a stale template — see
+   `docket setup` can in principle detect a pod member provisioned from a stale template — see
    workspace-structure.spec.md for what currently consumes that marker.
-5. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent and
-   org-specialist AGENTS.md generators (`cli/_agents.py`, `cli/_install.py`) carry their own,
+5. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent
+   AGENTS.md generator (`cli/_agents.py`) carries its own,
    separately hand-written copy of the same instruction this requirement removes from
    `core/archetypes.py`'s pod-member templates. They are a different code path (not archetype-
    driven) and CLI-layer, so a card scoped to `core/archetypes.py`/`core/memory.py` does not touch
@@ -347,7 +347,7 @@ depended entirely on its own SOUL template to know its marker convention or task
    `docket pod validate` (structural validation + a dry-run template render).
 2. Each starter archetype resolves through its own name as the model-policy key (see
    "Role→model policy integration").
-3. Provisioning a starter role into a live pod (e.g. `docket pod <project> add researcher`) works
+3. Provisioning a starter role into a live pod (e.g. `docket pod add researcher`) works
    because `normalize_role`/`resolve_member` resolve against this registry. A *preset roster*
    composing several starter roles into one pod shape in a single command (e.g. a `research pod`
    of Lead + Researcher + Analyst + Writer + Critic) is a **pod blueprint** — see the separate
@@ -462,7 +462,7 @@ to rediscover the same pitfalls.
    every access (not cached), silently skipping a malformed entry (never crashing a live fleet)
    rather than raising.
 5. Requirement 1's silent skip describes `load_registry` itself, which **MUST** keep resolving
-   without raising or warning. Read-only and separate from that path, `docket doctor` **MUST**
+   without raising or warning. Read-only and separate from that path, `docket setup` **MUST**
    run `core.archetypes.find_overlay_problems` and report every overlay entry `load_registry`
    skipped — the role name and the specific `ArchetypeError` reason `from_wire` raised — or an
    unreadable/malformed overlay file itself, naming the file. It never edits the overlay
@@ -492,7 +492,7 @@ to rediscover the same pitfalls.
    check in `cli/_pod.py`, and the custom-role hop-instruction lookup in `core/dispatch.py`)
    **MUST** resolve through the calling turn's or member's own project, so a pod-scoped override
    is genuinely enforced end to end, not only visible to `docket pod roles`. `find_overlay_problems`
-   **MUST** accept the same `project` and cover the pod file too, for `docket doctor`.
+   **MUST** accept the same `project` and cover the pod file too, for `docket setup`.
 
 ### CLI surface
 
@@ -571,7 +571,7 @@ refused naming both sets of keys, never normalized with the canonical keys silen
 kind: role
 name: security-vetter
 model: strong                        # cheap | strong -- a model id is rejected, naming
-                                      # `docket models set security-vetter <id>` instead
+                                      # `docket setup model set security-vetter <id>` instead
 description: read-only security pass over the implementer's change
 cannot: [write, edit, bash]          # -> deniedTools; the sole capability statement
                                       # (editRights is retired -- no such key to author)
@@ -667,6 +667,10 @@ docket pod validate ./producer.yaml
   that could not pass `docket pod apply` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.23.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.23.1 (2026-10-08)
 

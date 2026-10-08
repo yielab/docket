@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.26.0
+**Version**: 1.26.1
 **Status**: Implemented
 **Last Updated**: 2026-10-08
 
@@ -8,7 +8,7 @@
 
 This specification defines the **pod blueprint**: a named, versioned pod shape (`core/blueprints.py`)
 composing an archetype roster (`role-archetypes.spec.md`), a default pipeline (`pipeline-format.spec.md`),
-a workspace kind, and an optional default budget cap. Before ROADMAP Phase 16 W-7, `docket add`
+a workspace kind, and an optional default budget cap. Before ROADMAP Phase 16 W-7, `docket init`
 always provisioned the same four-role shape and every project agent implicitly assumed a
 codebase — a research pod, a content pod, an ops pod were inexpressible in one command. This spec
 documents the registry that generalizes pod *composition* the way `role-archetypes.spec.md`
@@ -21,7 +21,7 @@ This specification covers:
 - The blueprint schema: `name`, `version`, `workspaceKind`, `roles`, `defaultPipeline`,
   `defaultBudgetUsd`, and `description` — which fields are closed typed enums and which are open
 - The five built-in blueprints (`software`, `research`, `content`, `ops`, `agentic-product`) and
-  the byte-identical guarantee `software` carries over the pre-W-7 default `docket add`
+  the byte-identical guarantee `software` carries over the pre-W-7 default `docket init`
 - The `workspaceKind` (`codebase` | `workdir`) distinction and how a `workdir` blueprint's shared
   working directory is resolved/auto-provisioned
 - How `docket init --blueprint <name>` and `docket init --from <spec.yaml>` select and
@@ -86,7 +86,7 @@ This specification does NOT cover:
 1. Five blueprints **MUST** ship (`core/blueprints.py`'s `BUILTIN_BLUEPRINTS`): `software`,
    `research`, `content`, `ops`, `agentic-product` (see Interface Contracts for their exact
    rosters/kinds/budgets).
-2. `software` **MUST** be byte-identical to the pre-W-7 default `docket add` pod for any given
+2. `software` **MUST** be byte-identical to the pre-W-7 default `docket init` pod for any given
    input: same roster (`lead`, `implementer` — `core/pod.py`'s pre-existing `DEFAULT_POD_ROLES`),
    same `workspaceKind` (`codebase`), no default budget cap, and a `defaultPipeline` that is
    exactly `core.pipeline.default_pipeline()` (`pipeline-format.spec.md`'s own zero-migration
@@ -139,7 +139,7 @@ This specification does NOT cover:
 4. A pod member added later to an existing pod (`docket pod add <role>`) **MUST**
    inherit the pod's `workspaceKind`/working-directory (or codebase) from an existing member,
    never defaulting to `codebase`-kind for a pod that was provisioned `workdir`-kind.
-5. `docket doctor` **MUST NOT** flag a `workdir`-kind pod member as broken for lacking a `TOOLS.md`
+5. `docket setup` **MUST NOT** flag a `workdir`-kind pod member as broken for lacking a `TOOLS.md`
    — `TOOLS.md` is written only for an Implementer with allocated resources or a `verifyCmd`
    (`workspace-structure.spec.md`), which no built-in `workdir` blueprint's roster includes.
 
@@ -224,7 +224,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
    requirement 6's digest and "Pod manifests: export" below).
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
    (`core.config.pod_config_dir(project)/roles.json`), the same target `docket pod apply
-   --pod <project> <file.yaml>` already writes to — never the global user overlay
+   --pod <name> <file.yaml>` already writes to — never the global user overlay
    (`~/.docket/docket-roles.json`). `core/pod.py`'s roster helpers (the id-parsing
    `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of` depend on to resolve a
    pipeline's roster) resolve that pod's own overlay too (`core.archetypes.load_registry
@@ -317,7 +317,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     (an unresolvable name **MUST** exit 1 naming both scopes' recipe names, matching
     requirement 8) and print that directory's scope (omitted for a bare path outside both
     scopes), directory, derived summary, and its `README.md` body when the file is present.
-    Neither subcommand **MUST** install, remove, fetch, or write anything — `docket pod <p>
+    Neither subcommand **MUST** install, remove, fetch, or write anything — `docket pod
     apply`/`docket init --recipe` remain the only writers.
 11. **Recipe exporters (ADR 0014 rule 7): a recipe may name a destination, never carry one.**
     `pod.yaml`'s optional `exporters` list names zero or more observability destinations by their
@@ -336,8 +336,8 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     `apply` (and therefore `init --recipe`/a discovered `.docket/`) **MUST** print, after the
     plan, one line per named exporter — its state from `core.exporter.activation_state` (called
     with `health=None`: this read-only listing does not consult `exporters-health.json`) and,
-    unless already `enabled`, the exact `docket exporters enable <name>` command — e.g. `exporter
-    langfuse: disabled -> docket exporters enable langfuse` or `exporter otel-collector: enabled`.
+    unless already `enabled`, the exact `docket setup export enable <name>` command — e.g. `exporter
+    langfuse: disabled -> docket setup export enable langfuse` or `exporter otel-collector: enabled`.
     `export_pod` **MUST** write this pod's recorded `exporters` list back into `pod.yaml` (see
     "Pod manifests: export" below) when at least one is set — unlike `configSource`/
     `configDigest`, which describe provenance and are never written back, `exporters` is part of
@@ -558,7 +558,7 @@ $ docket init myproj --blueprint wizard-pod
   identical to what `docket init <project>` produced before this spec existed.
 - After provisioning a `workdir` blueprint, every member's `WORKFLOW_AUTO.md` **MUST** contain
   `## Your working directory` and **MUST NOT** contain `## Your codebase`.
-- `docket doctor` **MUST** report zero issues for a freshly provisioned, unmodified pod of any
+- `docket setup` **MUST** report zero issues for a freshly provisioned, unmodified pod of any
   built-in blueprint.
 
 ### Invariants
@@ -570,6 +570,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.26.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.26.0 (2026-10-08)
 

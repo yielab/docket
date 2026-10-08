@@ -1,11 +1,11 @@
 # Workspace Structure Specification
 
-**Version**: 1.19.0
+**Version**: 1.19.1
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
 requirement and role-archetypes.spec.md. P26-10 adds the operator-owned `INSTRUCTIONS.md` and
-`docket pod <p> sync` — see the same requirement and pod-dispatch.spec.md. P26-20 added
+`docket pod apply` — see the same requirement and pod-dispatch.spec.md. P26-20 added
 "Shipped-data templates" below: `templates/recipes/<name>/` ships alongside this spec's own
 `templates/policies/` as read-only package data, neither of which is itself a workspace. P31-2
 adds requirement 4: `$DOCKET_HOME/recipes/<name>/`, the operator's own recipes, is *not*
@@ -15,7 +15,7 @@ requirement 5: `templates/exporters/` joins `templates/providers/` as read-only 
 `docket-exporters.json`/`exporters-health.json` are documented in
 observability-export.spec.md, not here — this spec's scope is the workspace and template layer,
 not `DOCKET_HOME`'s own top-level registry files (see "Shipped-data templates").
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -53,7 +53,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
      always present; for a **pod member**, only an Implementer with allocated runtime resources
      or a `verifyCmd` gets one (allocated ports/scratch dir and the verify command, when set) —
      a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
-     **MUST NOT** be flagged missing one by `docket doctor`
+     **MUST NOT** be flagged missing one by `docket setup`
    - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;
      resumed after a context reset). For a pod **Lead**, this file additionally carries a
      delimited, docket-owned dispatch region inside `## Active Tasks`
@@ -75,14 +75,13 @@ covers the resulting file set for either workspace kind, not blueprint selection
    - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
-     `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket maintain
-     distill` (and `clean`/`reset`, which distill first by default; ROADMAP Phase 17
-     C-2) writes daily logs into instead of deleting them, one dated subdirectory per distillation
+     `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket pod reset`
+     (which distills first; ROADMAP Phase 17 C-2) writes daily logs into instead of deleting them, one dated subdirectory per distillation
      run. Never created at provisioning, never read by the runtime contract (a plain
      `memory/*.md` glob does not descend into it), and never counted as a "missing" file by
-     `docket doctor`
+     `docket setup`
 2. A `workflows/` directory **MAY** exist as a pre-existing artifact of the now-retired
-   `docket workflow`/Lobster surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
+   Lobster workflow surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
    creates, reads, or manages it; any `*.lobster.yml` files inside are left untouched on disk.
 3. Every project agent is provisioned from one template family; the former repo/task
    dual-type model was removed (the `type` field no longer exists). Every project agent has
@@ -100,17 +99,17 @@ covers the resulting file set for either workspace kind, not blueprint selection
 6. `INSTRUCTIONS.md` **MAY** exist in any project-agent workspace, pod member or not.
    Unlike every other file above it is **operator-owned**: docket **MUST NOT** create,
    write, regenerate, move, or delete it at any point — not at provisioning, not by
-   `docket pod <p> sync`, not by `set-verify`'s TOOLS.md rewrite, not by `docket maintain
-   rebuild`, and not by `docket doctor --fix`. When present, its content is composed into
+   `docket pod apply`, not by `pod set verify`'s TOOLS.md rewrite, not by `docket pod
+   reset`, and not by `docket setup --fix`. When present, its content is composed into
    the live prompt immediately after `SOUL.md` (agent-loop.spec.md requirement 30) so an
    operator's own instructions survive every regeneration path that would otherwise
    overwrite a generated file. A pod member's `SOUL.md`/`AGENTS.md`/`TOOLS.md` remain
-   fully regeneratable — `docket pod <p> sync [--dry-run]` re-renders whichever of them
+   fully regeneratable — `docket pod apply [--dry-run]` re-renders whichever of them
    have drifted from the member's current role archetype and stored metadata (a
    `POD_TEMPLATE_VERSION` bump, or the archetype's own content changing), applying the
    new text and restamping `templateVersion` in `.docket-meta.json`; `--dry-run` prints
    the same comparison as a diff without writing. A member with nothing stale is a no-op:
-   `sync` writes nothing and leaves `templateVersion` alone. `docket doctor` **MUST**
+   `sync` writes nothing and leaves `templateVersion` alone. `docket setup` **MUST**
    flag a stale pod member (advisory, same severity as the existing non-pod
    `_check_template_version`) rather than silently skipping every pod member the way it
    did before this requirement.
@@ -120,7 +119,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
 1. `docket init` **MUST** provision the pod's own members and nothing else: no workspace exists
    under `~/.docket/workspaces/` outside `projects/<member>/`, and `fleet.json` registers only
    pod members.
-2. `docket doctor` and `docket maintain` **MUST** act on pod members only; a directory under
+2. `docket setup` and `docket pod reset` **MUST** act on pod members only; a directory under
    `~/.docket/workspaces/` that is not a pod member is not read, healed or reported.
 
 ### Permissions
@@ -141,11 +140,11 @@ permission/provisioning rules apply to.
 
 1. `templates/policies/*.json` (baseline guardrail policies, installed by `docket init`) and
    `templates/recipes/<name>/` (P26-20's role/pipeline/policy bundles, applied by hand through
-   `docket roles`/`docket pod`/`docket policies` — never auto-applied) **MUST** both resolve
+   `docket pod roles`/`docket pod`/`docket pod policies` — never auto-applied) **MUST** both resolve
    through a `docket.config` accessor (`policy_templates_dir()`, `recipes_dir()`) rather than a
    hardcoded relative path, so a template's real location can never drift from where the
    installed package actually put it.
-2. A role a recipe provisions (e.g. `docket pod <p> add security-vetter` after `docket roles add
+2. A role a recipe provisions (e.g. `docket pod add security-vetter` after `docket pod apply
    templates/recipes/secure-build/roles/security-vetter.yaml`) **MUST** produce a workspace
    satisfying every requirement above — the same `700`/`600` permissions, the same required core
    files, the same contract marker. A recipe is a source of *archetype data*
@@ -159,9 +158,9 @@ permission/provisioning rules apply to.
    0013 §1 rule 4).** It resolves through `docket.config.user_recipes_dir()`, is writable by the
    operator (a plain directory drop-in, no registration step), and is never shipped in the wheel
    — unlike `recipes_dir()`, it does not fall under this section's "package, not workspace"
-   scope, and `docket maintain`/`docket doctor` never touch it. `core.pod_apply.resolve_recipe`
+   scope, and `docket pod reset`/`docket setup` never touch it. `core.pod_apply.resolve_recipe`
    checks it before the shipped `recipes_dir()`, so a same-named operator recipe wins; `docket
-   recipes list`/`show` (`cli-interface.spec.md`) is this directory's read-only discovery
+   pod recipes [name]` (`cli-interface.spec.md`) is this directory's read-only discovery
    surface, alongside the shipped library.
 5. `templates/exporters/*.yaml` (the five built-in `kind: exporter` documents, ADR 0014)
    **MUST** resolve through `docket.config.EXPORTER_TEMPLATES_DIR`, the same read-only,
@@ -190,11 +189,11 @@ Workspaces are created and repaired through commands, not edited by hand:
 
 ```bash
 docket init [<project>] [location] [--blueprint <name>]  # Provision a pod (see pod-blueprints.spec.md)
-docket add <role> [--project <pod>]       # Add a member workspace to an existing pod
-docket maintain <agent-id> check          # Verify/repair structure and permissions
-docket maintain <agent-id> rebuild        # Regenerate all files from metadata
-docket pod <project> sync [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
-docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md in a pod member
+docket pod add <role> [--pod <name>]         # Add a member workspace to an existing pod
+docket setup --fix          # Verify/repair structure and permissions
+docket pod reset <member>                 # Distill memory, then regenerate all files from metadata
+docket pod apply [--dry-run]     # Re-render stale pod-member SOUL/AGENTS/TOOLS
+docket setup [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md in a pod member
 ```
 
 ## Examples
@@ -237,10 +236,10 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ### Post-conditions
 
-- After `docket init` (or `docket add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
+- After `docket init` (or `docket pod add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
 - After the first `docket init` in a fresh home, `workspaces/` holds only the pod's members.
-- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata.
+- After `docket pod reset <member>`, core files **MUST** be regenerated from metadata.
 
 ### Invariants
 
@@ -255,6 +254,10 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.19.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.19.0 (2026-10-07)
 

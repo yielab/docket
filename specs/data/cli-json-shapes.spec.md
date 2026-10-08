@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.26.0
+**Version**: 1.26.1
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -31,7 +31,7 @@ structural rules hold everywhere:
 
 ## Schema
 
-### `docket doctor --json`
+### `docket setup --fix --json`
 
 ```json
 {
@@ -225,7 +225,7 @@ value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an e
 naming the offending key and exits 1, with nothing on stdout, instead of showing that key's
 default. A pod that does not exist exits 1.
 
-### `docket exporters list --json`
+### `docket setup export list --json`
 
 A JSON array, one object per catalog exporter (built-in + global, nearest-wins by name),
 sorted by name. `state` is `core.exporter.activation_state`'s pure classification; a present
@@ -367,7 +367,7 @@ when a source is recorded, one `Config source:` line carrying the digest prefix 
 `pod apply --dry-run --json` prints the plan and writes nothing; `pod apply --json` with no argument
 exits 1. Output is Rich-free on stdout.
 
-### `docket serve` HTTP endpoints
+### `docket start` HTTP endpoints
 
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
@@ -418,6 +418,10 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.26.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.26.0 (2026-10-08)
 

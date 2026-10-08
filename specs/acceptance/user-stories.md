@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.5.0
+**Version**: 1.5.1
 **Status**: Active
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Overview
 
@@ -65,7 +65,7 @@ story-to-test coverage: a criterion without a backing test is simply left unchec
 - [ ] Agent is created with unique ID in under 2 seconds
 - [ ] Workspace directory is created with correct permissions (700/600)
 - [ ] Stack is auto-detected from project files
-- [ ] The role→model policy assigns the agent's model (visible in `docket info`)
+- [ ] The role→model policy assigns the agent's model (visible in `docket pod show <member>`)
 - [ ] Agent appears in `docket status` immediately after creation
 - [ ] Session key is generated for project isolation
 - [ ] Creation fails gracefully if agent ID already exists
@@ -83,23 +83,22 @@ story-to-test coverage: a criterion without a backing test is simply left unchec
 **I want** to clear my agent's memory at the right depth
 **So that** I can clear context when switching tasks or fixing issues
 
-The numbered reset levels were retired. The surface is `docket maintain <id> <mode>`.
+The numbered reset levels were retired. The surface is `docket pod reset <member>`.
 
 **Acceptance Criteria:**
-- [ ] `clean` clears only the daily memory logs (`memory/*.md`)
-- [ ] `reset` clears memory logs, MEMORY.md, and HEARTBEAT.md
-- [ ] `rebuild` regenerates SOUL.md, AGENTS.md, and TOOLS.md from `.docket-meta.json`
-- [ ] `clean` and `reset` distill pending logs into MEMORY.md first (one driver-backed turn) and
-      archive the originals; `--no-distill-first` opts out
+- [ ] `pod reset` clears the member's memory logs, MEMORY.md, and HEARTBEAT.md
+- [ ] `pod reset` regenerates SOUL.md, AGENTS.md, and TOOLS.md from `.docket-meta.json`
+- [ ] `pod reset` distills pending logs into MEMORY.md first (one driver-backed turn) and
+      archives the originals
 - [ ] A failed distillation aborts the delete: nothing is touched
-- [ ] `clean`, `reset`, and `rebuild` ask for confirmation and need a TTY; a non-interactive
-      call is cancelled, not applied
-- [ ] Every mode preserves identity (`.docket-meta.json`, including codebase path and session
+- [ ] `pod reset` asks for confirmation on a TTY and needs `--yes` off one; a non-interactive
+      call without it is cancelled, not applied
+- [ ] Reset preserves identity (`.docket-meta.json`, including codebase path and session
       key, and fleet registration)
 
 **Definition of Done:**
-- Each maintain mode tested, including the distill-first abort path
-- User documentation lists the modes (`docket maintain --help`, docs/commands.md)
+- `pod reset` tested, including the distill-first abort path
+- User documentation lists the verb (`docket pod reset --help`, docs/commands.md)
 
 ### Story: AGT-003 - Monitor Agent Costs
 
@@ -108,9 +107,9 @@ The numbered reset levels were retired. The surface is `docket maintain <id> <mo
 **So that** I can manage AI spend effectively
 
 **Acceptance Criteria:**
-- [ ] Cost command shows tokens used (input/output/cache)
+- [ ] `docket status` shows tokens used (input/output/cache)
 - [ ] `Total cost` reads "none recorded for these sessions": `DocketDriver` records no dollar
-      spend, and `docket cost` never substitutes an estimate for it
+      spend, and `docket status` never substitutes an estimate for it
 - [ ] The token × pricing estimate appears only in the pod-dispatch budget gate, always labelled
       `(estimated — no cost recorded)`
 - [ ] `--history [--days N]` returns an empty history (known gap: sessions store no per-turn
@@ -133,7 +132,7 @@ were never implemented either — they were aspirational when written. Real, wor
 with actual execution lives in **Epic: Pod Lifecycle (Phase 10)** below, specifically
 **Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes this epic entirely.
 `team` is no longer a registered command (`docket team` is an ordinary unknown-command error,
-exit 2); use the `docket pod <project>` actions. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
+exit 2); use the `docket task` and `docket pod` verbs. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
 retains them; the durable retirement record is ROADMAP decision D-11.
 
 ## Epic: Workflow Automation (Retired, D-16 / W-3)
@@ -145,7 +144,7 @@ executed one (conditional branching, calling other workflows, retries, and progr
 tracking were never implemented — a separate "Lobster daemon" was always meant to run the
 YAML, and it never existed). The single pipeline dialect docket actually executes lives in
 `pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its executor (W-2, shipped), driven by
-`docket pipeline validate`/`plan`/`run`; `workflow` is no longer a registered command (`docket
+`docket pod validate`, `docket pod plan` and `docket run`; `workflow` is no longer a registered command (`docket
 workflow` is an ordinary unknown-command error, exit 2). The retired WF-001/WF-002 story bodies were removed when this
 epic was retired — git history retains them; the durable retirement record is ROADMAP decision
 D-16.
@@ -193,7 +192,7 @@ D-16.
 **Definition of Done:**
 - Approval flow tested end-to-end
 - Telegram integration reliable
-- Audit log tamper-evident (hash-chained, checked by `docket audit verify`; erasure is made
+- Audit log tamper-evident (hash-chained, checked by `docket log verify`; erasure is made
   visible, not prevented)
 - Documentation includes security guide
 
@@ -235,9 +234,8 @@ D-16.
 - [ ] Memory usage monitored
 - [ ] Stale sessions detected
 - [ ] Workspace corruption identified
-- [ ] Automatic repair attempted (not scheduled — no ROADMAP card; `docket maintain check`
-      offers to regenerate missing files, but only with an interactive TTY confirmation, never
-      unattended)
+- [ ] Automatic repair attempted (not scheduled — no ROADMAP card; `docket setup --fix` repairs
+      what it can, only when an operator runs it, never unattended)
 - [ ] Alerts sent for critical issues (not scheduled — no ROADMAP card, no alerting surface)
 - [ ] Health metrics dashboard available (not scheduled — no ROADMAP card, no dashboard)
 - [ ] Historical health data retained (not scheduled — no ROADMAP card)
@@ -280,16 +278,16 @@ When I run "docket init testapp ~/projects/app"
 Then the pod should be created successfully with members testapp-lead and testapp-implementer
 And workspaces should exist at ~/.docket/workspaces/projects/testapp-lead/ and testapp-implementer/
 
-When I run "docket info testapp-lead"
-Then I should see the agent details
+When I run "docket pod show testapp-lead --pod testapp"
+Then I should see the member's effective configuration
 And the session key should be "agent:testapp:default"
 
-When I run "docket maintain testapp-lead clean" in a terminal and confirm
+When I run "docket pod reset testapp-lead --pod testapp" in a terminal and confirm
 Then pending memory logs should be distilled into MEMORY.md and archived
 And the daily memory logs should be cleared
 But SOUL.md should remain unchanged
 
-When I run "docket delete testapp"
+When I run "docket pod delete --pod testapp"
 And I confirm the deletion
 Then the workspaces for all pod members should be removed
 And no testapp-* agents should appear in "docket status --all"
@@ -303,7 +301,7 @@ And the agent has processed 50000 input tokens
 And the agent has generated 25000 output tokens
 And the agent runs on anthropic/claude-sonnet-4-6 (role policy: programmer → strong class)
 
-When I run "docket cost webapp-implementer"
+When I run "docket status --pod webapp"
 Then I should see:
   | Metric        | Value          |
   | Input Tokens  | 50,000         |
@@ -325,15 +323,15 @@ And no dollar figure, recorded or estimated, should be printed as the total
 - [ ] `docket init myapp ~/code/myapp` creates `myapp-lead` and `myapp-implementer`
 - [ ] Each member gets an isolated workspace at `~/.docket/workspaces/projects/<member-id>/`
 - [ ] All members share the pod's session key `agent:myapp:default`
-- [ ] `docket pod myapp` lists the pod members with their roles
+- [ ] `docket pod show --pod myapp` lists the pod members with their roles
 - [ ] `docket init myapp ~/code/myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
 - [ ] A second `docket init myapp` fails with "A project or pod 'myapp' already exists." (exit 1)
       and does not touch the existing members
-- [ ] `docket delete myapp` removes all pod members and their workspaces
+- [ ] `docket pod delete --pod myapp` removes all pod members and their workspaces
 
 **Definition of Done:**
 - Pod provisioning covered by pytest and golden-parity tests
-- `docket pod <project>` correctly lists all members after creation
+- `docket pod show` correctly lists all members after creation
 - Deletion tears down all members atomically
 
 ### Story: POD-002 - Run the Pod Dispatch Pipeline
@@ -343,19 +341,19 @@ And no dollar figure, recorded or estimated, should be printed as the total
 **So that** the Lead, Implementer, and optional Reviewer/Tester execute in sequence
 
 **Acceptance Criteria:**
-- [ ] `docket pod myapp delegate "<task>"` queues a task on the Lead's TASK_LIST.json
-- [ ] `docket pod myapp queue` shows the task with status `pending` and `—` in the COST column
+- [ ] `docket task add "<task>"` queues a task on the Lead's TASK_LIST.json
+- [ ] `docket task list` shows the task with status `pending` and `—` in the COST column
       (no cost is recorded)
-- [ ] `docket pod myapp dispatch` runs Lead → Implementer → (Reviewer) → (Tester), one real LLM turn per hop
+- [ ] `docket run` runs Lead → Implementer → (Reviewer) → (Tester), one real LLM turn per hop
 - [ ] A Reviewer REQUEST-CHANGES sends the task back to the Implementer for one rework cycle by
       default; a Tester FAIL is terminal
 - [ ] Each hop is budget-gated against the Lead's `budgetUsd` (using the labelled estimate, since
       recorded spend is always 0). Over the cap, the task is set to `blocked` (never rewritten to
       `pending`) and the Lead is paused. The task re-enters the queue only via
-      `docket profile <lead-id> --resume`, `docket profile <lead-id> --budget <USD>`, or
-      `docket pod <project> queue --retry <task-id>`
-- [ ] Each hop emits a trace event visible in `docket trace tail myapp`
-- [ ] After completion, `docket pod myapp queue` shows the task as `done` (COST stays `—`)
+      `docket run --resume`, `docket pod set budgetUsd <USD>`, or
+      `docket task retry <task-id>`
+- [ ] Each hop emits a trace event visible in `docket task trace --tail`
+- [ ] After completion, `docket task list` shows the task as `done` (COST stays `—`)
 
 **Definition of Done:**
 - Dispatch pipeline covered by live-path tests with a deterministic `ChatBackend`
@@ -369,18 +367,18 @@ And no dollar figure, recorded or estimated, should be printed as the total
 **So that** I can add a review gate when work becomes higher-stakes without reprovisioning
 
 **Acceptance Criteria:**
-- [ ] `docket pod myapp add reviewer` adds `myapp-reviewer` to an existing pod
-- [ ] `docket pod myapp add implementer --count 2` adds `myapp-implementer-2` and `myapp-implementer-3`
-- [ ] `docket pod myapp remove myapp-reviewer` removes that member and its workspace
-- [ ] A second `docket pod myapp add reviewer` adds `myapp-reviewer-2`, since duplicated roles
+- [ ] `docket pod add reviewer` adds `myapp-reviewer` to an existing pod
+- [ ] `docket pod add implementer --count 2` adds `myapp-implementer-2` and `myapp-implementer-3`
+- [ ] `docket pod remove myapp-reviewer` removes that member and its workspace
+- [ ] A second `docket pod add reviewer` adds `myapp-reviewer-2`, since duplicated roles
       get indexed ids
-- [ ] `docket pod myapp add lead` is rejected — a pod may have only one Lead
-- [ ] `docket pod myapp` always reflects the current state after add/remove
+- [ ] `docket pod add lead` is rejected — a pod may have only one Lead
+- [ ] `docket pod show` always reflects the current state after add/remove
 
 **Definition of Done:**
 - Add/remove covered by pytest suite
 - Singleton-Lead constraint tested
-- `docket pod` output verified after each operation
+- `docket pod show` output verified after each operation
 
 ## Metrics
 
@@ -405,6 +403,10 @@ card that will make it true — none exists for these).
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.5.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.5.0 (2026-10-03)
 - Legacy compatibility removed (no users; maintainer decision 2026-10-03): `docket team` and

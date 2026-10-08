@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.9.1
+**Version**: 1.9.2
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -39,7 +39,7 @@ role that denies `write` gets zero tools from a mixed server exactly as before, 
 cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
 endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -49,7 +49,7 @@ dispatcher, which is the entire reason adopting it does not compromise the guard
 specification defines the MCP *client* half of that decision: how docket connects to an
 externally configured MCP tool server, enumerates the tools it offers, and adapts each one into
 an ordinary `core.tools.Tool` so it is registered — and therefore gated — exactly like a built-in
-tool. docket already ships an MCP *server* (`docket mcp serve`, Phase 18 L-3, see
+tool. docket already ships an MCP *server* (`docket start --mcp`, Phase 18 L-3, see
 `mcp-server.spec.md`); this is the other direction.
 
 ## Scope
@@ -86,7 +86,7 @@ This specification does NOT cover:
   tool is gated by the unmodified `dispatch_tool`/`evaluate_tool_call` — see `security-gates.spec.md`
   and this module's own acceptance test (`TestGatedExactlyLikeABuiltin` in
   `tests/integration/test_mcp_client.py`)
-- `docket mcp serve` (docket exposing its *own* control plane as MCP tools to an external host)
+- `docket start --mcp` (docket exposing its *own* control plane as MCP tools to an external host)
   — see `mcp-server.spec.md`; that document's prior scope note describing agent-side MCP
   consumption as "a deliberately separate, unbuilt card (ROADMAP Phase 18 L-4, daemon-gated)" is
   superseded by this specification now that D-19 has docket, not a daemon, own the loop
@@ -192,7 +192,7 @@ This specification does NOT cover:
 ### CLI (`docket setup mcp`)
 
 20. `docket setup mcp list` **MUST** show every configured server's name and launch command,
-    **MUST NOT** print any `env` value in the clear (mask as `KEY=****`, matching `docket keys
+    **MUST NOT** print any `env` value in the clear (mask as `KEY=****`, matching `docket setup provider
     list`'s masking convention), and **MUST NOT** connect to any server — it is a pure read of
     `load_mcp_servers()`.
 21. `docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command>
@@ -300,7 +300,7 @@ This specification does NOT cover:
 38. `PodSettings` `mcpServers` **MUST** accept a global name or a name in this pod's own
     pod-scoped file, and **MUST** refuse any other name; a name that belongs to another pod
     **MUST** be refused with an error saying so. Nothing installs a pod-scoped server except
-    `docket pod <p> apply` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
+    `docket pod apply` (ADR 0012): `validate`, `apply --dry-run`, `init --no-apply` and
     dispatch write nothing.
 
 ### Turn root for stdio servers
@@ -312,7 +312,7 @@ This specification does NOT cover:
     **MUST** carry it to every listing and adapted call
     (`list_remote_tools`/`call_remote_tool(..., launch)`, then `_stdio_params(config, launch)`). It is
     a runtime argument and **MUST NOT** be stored in `McpServerConfig` or any document. A caller
-    outside a turn (`docket setup mcp test`, `config explain`, listing) passes none and the
+    outside a turn (`docket setup mcp list`, `docket pod show`) passes none and the
     server inherits the process's directory, as before. With `launch` absent `_load_mcp_tools`
     **MUST** call `load_mcp_tools` exactly as before.
 40. When the turn is isolated (`launch.sandbox == "auto"`) a stdio server **MUST** start inside the
@@ -612,6 +612,10 @@ dispatch_tool(
   never as an ordinary turn outcome.
 
 ## Changelog
+
+### Version 1.9.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.9.1 (2026-10-07)
 

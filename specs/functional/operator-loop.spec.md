@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.5.0
+**Version**: 1.5.1
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-08
 
@@ -31,15 +31,15 @@ This specification covers:
   (`canonical_args_digest`)
 - The generated JSON Schema documents under `docs/contracts/operator-v1/`
 - How the derived inbox is assembled from live pod/approval state and exposed through every
-  surface (`core/inbox.py`, `cli/_inbox.py`, `docket serve`'s `GET /inbox`, `docket mcp serve`'s
+  surface (`core/inbox.py`, `cli/_inbox.py`, `docket start`'s `GET /inbox`, `docket start --mcp`'s
   `inbox` tool, and Telegram's `/status`)
 - The interruption forecast and the CLI/HTTP/MCP pre-grant surface (`core/interruptions.py`,
-  `docket pod <p> explain interruptions`, `docket task approve --for`)
+  `docket task show`'s forecast, `docket task approve --for`)
 
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
 
-- How `POST /tasks` and `docket pod <p> delegate` accept a pre-brief end-to-end (the CLI/HTTP/MCP
+- How `POST /tasks` and `docket task add` accept a pre-brief end-to-end (the CLI/HTTP/MCP
   surfaces); `core.dispatch.enqueue_task` itself gaining a `brief=` parameter is covered by
   `pod-dispatch.spec.md`'s "Task brief" section, requirement area 3 above
 - The `ntfy`, `desktop`, `email` and `telegram` dialects' own wire formats — requirement area 6
@@ -139,7 +139,7 @@ behaviour must satisfy, the same split "Park, don't block" (area 2) has with "Pa
 ### 4. Task assignment in a standard shape
 
 **Status: Implemented.** `TaskBrief` is the pre-brief shape `POST /tasks/<project>` and
-`docket pod <p> delegate --brief FILE.json` accept, validate, and pass through to
+`docket task add --brief FILE.json` accept, validate, and pass through to
 `core.dispatch.enqueue_task`'s own `brief=` parameter — see area 10, "Answer surfaces",
 requirements 3-4 for the exact CLI/HTTP contract.
 
@@ -191,7 +191,7 @@ of its own.
 7. `GET /inbox?since=<iso>` (`serve.py`) MUST require the same `Authorization: Bearer <token>`
    as `GET /approvals` and return the identical JSON shape `docket inbox --json` prints for the
    same state.
-8. `docket mcp serve`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`.
+8. `docket start --mcp`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`.
 9. `GET /metrics` MUST expose `docket_inbox_items{section="needsYou"|"failed"|"doneSince"|
    "running"}` as a gauge, one line per section, computed from `build_inbox(now=..., since=None)`.
 10. Telegram's `/status` (`core/telegram.py`) MUST render from `build_inbox`, filtered to the
@@ -248,7 +248,7 @@ in the derived inbox becomes an event on the wire.
    <name> [<level>] [--yes]` (`cli/_setup_notify.py`) MUST cover exactly this document's fields;
    it MUST NOT send anything to a dialect's actual destination — that is P34-11's `notify
    test`, `enable --test` and the delivery adapters.
-8. `docket validate` MUST accept `kind: channel` (`core.config_docs.KINDS` gains `channel`;
+8. `docket pod validate` MUST accept `kind: channel` (`core.config_docs.KINDS` gains `channel`;
    `core.config_docs._MODEL_FOR_KIND["channel"] = core.channel.ChannelSpec`), and
    `scripts/gen_config_schemas.py` MUST render `docs/contracts/config-v1/channel.schema.json`
    (and its package copy) directly from `ChannelSpec`, the same shape as `exporter`.
@@ -317,8 +317,8 @@ in the derived inbox becomes an event on the wire.
     (`core.notify.build_test_event`) and deliver it once through that one channel's dialect,
     regardless of the channel's `on` subscription, reporting success or failure — this and
     `docket setup notify flush` and `enable --test` are the only things in this specification's CLI surface that ever
-    send anything to a real destination. `serve.py`'s periodic sweep and `docket pod <p>
-    dispatch`'s foreground summary MUST each call `core.notify.flush` once, after their own
+    send anything to a real destination. `serve.py`'s periodic sweep and `docket run`'s
+    foreground summary MUST each call `core.notify.flush` once, after their own
     work, with the CLI dispatch path printing nothing beyond one warning line naming the
     failure count when a delivery failed and, when the flush found events and nothing
     delivers (item 17), the one line `unreached_warning` renders.
@@ -330,9 +330,9 @@ in the derived inbox becomes an event on the wire.
     text every surface prints: that only `console` is on, that console sends nothing, that a
     parked task waits unseen until `docket inbox`, and the two first-rung fixes `docket setup notify
     enable desktop` and `docket setup notify enable ntfy --set topic=<topic>`. Four surfaces MUST
-    consume it, none MAY enable a channel on its own: `docket doctor`'s `Notifications:` block
+    consume it, none MAY enable a channel on its own: `docket setup`'s `Notifications:` block
     (counted as an issue when at least one project agent exists, informational otherwise;
-    `--json` carries `checks.notifications {ok, delivering}`), `docket serve --dispatch` once
+    `--json` carries `checks.notifications {ok, delivering}`), `docket start --dispatch` once
     at startup, `docket init` after the created summary, and `docket run`'s
     post-run flush when that flush found events. One offer is allowed: `docket init` on a
     TTY where `edges.adapters.system.desktop_notifications_available()` holds MAY ask
@@ -417,13 +417,13 @@ pause a task and wait on a human -- without ever running a live dispatch.
 1. `forecast` MUST derive its `Interruption` items from exactly these sources, matching what a
    live dispatch would actually evaluate:
    - this pod's own effective `require_approval` policies (`core.policy.policy_files(project)` +
-     `core.policy.read_policy` -- the identical loader `docket policies test --pod` uses), kind
+     `core.policy.read_policy` -- the identical loader `docket pod check --pod` uses), kind
      `"policy"`, naming the policy id and its pattern (`match.pattern`, or `when.matches` when the
      canonical document carries no top-level `match`);
    - `core.security.HIGH_RISK_PATTERNS`, kind `"high_risk_class"` -- the same classes
      `classify_command` enforces unconditionally on every bash call. Shown for visibility, never
      counted toward "nothing will ask" (item 3 below): they are a docket-wide invariant, not this
-     pod's own configuration, and already have their own listing (`docket gates classes`);
+     pod's own configuration, and already have their own listing (`docket setup sandbox classes`);
    - the resolved pipeline's (`core.dispatch.effective_pipeline(project, None)`) own
      `ApprovalGate` and `input` steps, one level into a `parallel` group, kind `"pipeline_gate"`;
    - the pod's `requireApprovalRoles` (Lead meta, comma-split, lower-cased), kind `"role_gate"`;
@@ -433,17 +433,16 @@ pause a task and wait on a human -- without ever running a live dispatch.
      handled, never itself something that asks;
    - every enabled `kind: channel` document (`core.channel.load_catalog()`) whose capabilities
      include `notify`, kind `"channel"`.
-2. `docket pod <p> explain interruptions [--json]` MUST render the forecast: the
+2. `docket task show <ref>` MUST render the forecast: the
    `"policy"`/`"pipeline_gate"`/`"role_gate"` items (the ones that can actually pause a task) as
    the headline list, the resolved `approvalMode`/expiry as one context line, and the high-risk
    classes and enabled notifying channels each in their own labelled section, shown regardless of
-   whether the headline is empty. With `--json`, it MUST print exactly `{"pod": <project>,
-   "interruptions": [{"kind", "description", "detail"}, ...]}` and nothing else.
-3. When the headline list (`"policy"`/`"pipeline_gate"`/`"role_gate"`) is empty, `explain
-   interruptions` MUST print `Nothing in this pod will ask you.` in place of that list.
-4. `docket pod <p> delegate` MUST print one additional summary line after queuing:
+   whether the headline is empty. With `--json`, it MUST carry the same items as an `interruptions` list of
+   `{"kind", "description", "detail"}` objects beside the task's other fields.
+3. When the headline list (`"policy"`/`"pipeline_gate"`/`"role_gate"`) is empty, the forecast MUST print `Nothing in this pod will ask you.` in place of that list.
+4. `docket task add` MUST print one additional summary line after queuing:
    `Nothing in this pod will ask you.` when the same headline list is empty, else `May ask you:
-   <n> <kind>, ... — see: docket pod <project> explain interruptions` (kinds sorted, counts
+   <n> <kind>, ... — see: docket task show <ref>` (kinds sorted, counts
    grouped by kind with `_` rendered as a space, no further grammar).
 5. `docket task approve <ref> --for "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
    (body `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id,
@@ -512,7 +511,7 @@ functions, every surface is transport"; this area is that transport.
    the service's pid check says `docket start` is running, else the single `Next: docket run
    --pod <p>` line. A granted pending task is the "approved, ready" state `inbox` and `status`
    render.
-3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
+3. `docket task add --brief FILE.json` (`cli/_task.py`) MUST parse the
    file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
    and enqueue nothing. A well-formed brief MUST be passed through to
    `core.dispatch.enqueue_task`'s own `brief=` parameter and actually enqueue.
@@ -747,8 +746,8 @@ a == b  # True regardless of argument dict key order
 
 Deny reasons, REQUEST-CHANGES review texts, and declined answers are appended to a per-pod
 append-only corrections ledger (`~/.docket/corrections/<project>.jsonl`) as a source of truth
-for operator decisions and rejections. The ledger is queried by `docket pod <p> corrections
-[--json]` (outputs a table or JSON array).
+for operator decisions and rejections. The ledger is read back through `docket task show <ref>`, which lists
+the corrections recorded for that task (`corrections` under `--json`).
 
 ### Schema
 
@@ -779,6 +778,10 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.5.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.5.0 (2026-10-08)
 

@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.12.0
+**Version**: 2.12.1
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket log verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -46,7 +46,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    - `auth.setup` — **retired** in P19-7b (bf48ccc): it was written by the daemon-era auth
      wizard, which was deleted with the daemon; nothing writes it now.
    - `keys.add` / `keys.rotate` / `keys.remove` (`cli/_keys.py`, including the
-     `docket keys setup` wizard's per-key adds/rotations)
+     `docket setup` first-run flow's per-key adds/rotations)
    - `profile.model` / `profile.budget` / `profile.resume` (`cli/__init__.py`'s `profile`
      command; `profile.resume` is ROADMAP Phase 14 R-5's auto-pause clear)
    - `scope.set` / `scope.reset` (`cli/__init__.py`'s `scope` command)
@@ -83,14 +83,14 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      "an MCP call happened" record, the domain line is the same record any other channel producing
      that same effect would write. See `specs/api/mcp-server.spec.md`.
    - `runs.cancel` (`core/runs.py`'s `cancel_run`, ROADMAP Phase 16 W-4) — the one gap W-2 left
-     when it shipped `docket runs cancel`: every other privileged action already wrote an entry,
+     when it shipped `docket task cancel`: every other privileged action already wrote an entry,
      cancellation did not. Written only when a run is actually cancelled (i.e. `cancel_run`'s
      `ok=True` path); an unknown run id or a run already in a terminal state changes nothing and
      writes no entry. `detail` names the run id, its project, its state immediately before
      cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
-     `cli-interface.spec.md`'s `docket runs` entry. Written from `core/` rather than `cli/`, like
+     `cli-interface.spec.md`'s `docket task list` entry. Written from `core/` rather than `cli/`, like
      `approval.*`, the pod-path `agent.add`, `telegram.*`, `mcp_client.*` and `tool.*`.
-   - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket start --mcprs add|remove`,
+   - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket setup mcp add|remove`,
      ROADMAP Phase 19 P19-13) — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
      `remove_mcp_server` (P19-10). `detail` names the server and, for `add`, the launch command —
      never the server's `env` values, matching `keys.add`'s convention of naming a secret's key,
@@ -340,8 +340,8 @@ reports it as a break.
 ### Recording and viewing changes
 
 ```bash
-$ docket gates isolate on
-$ docket approve apr-1234…
+$ docket setup sandbox on
+$ docket task approve task-9a1b2c3d
 
 $ docket log 2
   2026-07-30T08:00:00.041Z  alice       gates.isolate     on
@@ -416,6 +416,10 @@ $ docket log verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.12.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 2.12.0 (2026-10-07)
 

@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.14.0
+**Version**: 2.14.1
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -36,7 +36,7 @@ edge the short form could already express keeps normalizing to the canonical `re
 byte-identical to before; every other `on:` shape that used to be refused as "not available yet"
 now loads. The canonical form itself, and everything this format's executor and CLI surface read
 beyond the new field, is unchanged.
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -83,7 +83,7 @@ This specification does NOT cover:
   cancellation is `core/orchestrator.py` + `core/dispatch.py` (ROADMAP Phase 16 **W-2**, shipped)
   — see `pod-dispatch.spec.md`'s "Generalized gate execution", "Parallel step groups", and
   "Cancellation" sections.
-- **The `docket pod validate`/`docket pod plan`/`docket runs cancel` CLI surface itself** (argument
+- **The `docket pod validate`/`docket pod plan`/`docket task cancel` CLI surface itself** (argument
   shapes, exit codes, `--pipeline`/`--resume`/`--timeout` flags) — see `cli-interface.spec.md`. This spec covers only the
   document format `docket pod validate`/the executor read. `docket pod plan` renders
   from the real executor's `core.orchestrator.resolve_plan`/`render_plan`, not a second
@@ -472,7 +472,7 @@ This spec defines a Python data model and pure functions in `core/pipeline.py`. 
 that reads it (`docket pod validate|plan` and `docket run --pipeline`) is documented in `cli-interface.spec.md`; `docket pod plan [--pipeline FILE]` **MUST** resolve the pod's bound or default pipeline (or FILE, validated by the same `core.config_docs.validate_path` as `pod validate`, refusing a step `model` naming an unknown provider) against the live roster and print `core.orchestrator.render_plan` of the result, starting nothing and spending no tokens; the
 executor that runs it (`core/orchestrator.py`, `core/dispatch.py`) is documented in
 `pod-dispatch.spec.md` (see "Does NOT cover"). A third caller validates a file for **storage**
-rather than one-off execution: `docket pod <project> config set pipeline <file>` calls
+rather than one-off execution: `docket pod set pipeline <file>` calls
 `load_pipeline` to validate a would-be **bound pipeline** before persisting a copy of it, per
 `pod-dispatch.spec.md`'s "Pipeline order and participation" requirement 6 and "Pod dispatch
 settings". This format itself is unchanged by that caller — no new field, no storage concept
@@ -648,6 +648,10 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.14.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 2.14.0 (2026-10-08)
 

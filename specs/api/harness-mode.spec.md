@@ -1,10 +1,10 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.7.0
+**Version**: 1.7.1
 **Status**: Implemented (`docket exec`). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below.
-**Last Updated**: 2026-10-04
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -216,7 +216,7 @@ section only documents the shape a v1.1 consumer sees, it does not gate on the f
 - `process_started`'s payload is exactly `{"pgid": <int>, "tool": "bash"}`.
 - `process_exited`'s payload is `{"pgid": <int>, "tool": "bash", "exitCode": <int>}` on a real
   exit, or `{"pgid": <int>, "tool": "bash", "signal": "SIGKILL"}` when the tool handler killed
-  the process group (a timeout or `docket runs cancel` reaching it) -- never both keys, never
+  the process group (a timeout or `docket task cancel` reaching it) -- never both keys, never
   neither.
 - Exactly one `process_started`/`process_exited` pair appears per `bash` call; a turn with no
   `bash` call carries neither event, byte-identical to before this capability existed.
@@ -226,7 +226,7 @@ test_a_bash_call_reports_process_lifecycle_events_on_the_v11_stream`, which spaw
 `docket exec --contract 1.1` subprocess with a scripted `bash` tool call and asserts both
 events appear on stdout in order with a real pgid.
 `tests/fixtures/harness-contract/v1.1/cancelled-process.ndjson` is a hand-authored sample of the
-signal-carrying shape (`docket runs cancel` reaching a live `bash` subprocess is exercised by
+signal-carrying shape (`docket task cancel` reaching a live `bash` subprocess is exercised by
 `tests/integration/test_bash_cancellation.py`, not by the harness subprocess tests, since it
 requires a `run` `cancel` call from a second thread rather than SIGTERM-ing the harness process
 itself).
@@ -351,11 +351,11 @@ and `answer-lines.ndjson` remain hand-authored samples of the shape.
 `docket exec --contract 1.1 --recipe NAME|DIR --task ...` runs one recipe, in place, for one
 task, and reports its hops through `HarnessResultV11.task`.
 
-1. **Arguments.** `--recipe` takes a name or directory that `docket recipes` resolves. It is
+1. **Arguments.** `--recipe` takes a name or directory that `docket pod recipes` resolves. It is
    mutually exclusive with `--role` (exit 2), needs `--contract 1.1` (exit 2 under 1.0), and
    refuses `--max-tokens` and `--agent-id` (exit 2): a recipe run's turns are dispatched by the
    pod, so the single-agent turn bound and id do not reach them. `--verify CMD` (valid only with
-   `--recipe`) sets the Implementer's verify command, validated as `docket add --verify` is. An
+   `--recipe`) sets the Implementer's verify command, validated as `docket pod add --verify` is. An
    unknown recipe is refused (exit 2) before any pod exists. `--task`/`--task-file`, `--model`,
    `--timeout`, `--token-file`, `--policy`, `--answers` and `--answer-timeout` keep their meaning.
 2. **Execution.** `core.harness_pipeline.run_recipe_task` provisions one ephemeral in-place pod on
@@ -369,7 +369,7 @@ task, and reports its hops through `HarnessResultV11.task`.
    no second channel exists.
 4. **Result.** `task` is `{status, hops, brief}`. `status` is the task record's own status. `task.evidence` is
    the task's evidence-v1 document (`core.evidence.task_evidence(project, task_id)` dumped by
-   alias), the same one `docket pod <p> evidence <task> --json` and `GET
+   alias), the same one `docket task show <task> --json` and `GET
    /tasks/<p>/<id>/evidence` serve, and `null` when no task record exists. Each
    hop is `{role, stepId, ok, verdict, verify, evidence}`, in order, read from the task record
    after the last dispatch. `brief` is the Lead's typed intake brief when one parsed, else `null`.
@@ -427,6 +427,10 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Version 1.7.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.7.0 (2026-10-07)
 
