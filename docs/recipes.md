@@ -172,7 +172,7 @@ spots. Here the Implementer runs on Anthropic and the Reviewer on OpenAI.
 
 **What docket's gates make structural:** `model: anthropic/claude-sonnet-4-6` on `build` and
 `model: openai/gpt-4.1-mini` on `review` pin the two families, whatever the pod's default or any
-`docket models set` pin.
+`docket setup model set` pin.
 The Reviewer's APPROVE/REQUEST-CHANGES verdict is a bounded rework edge: a REQUEST-CHANGES
 sends the task back to the Implementer (limited to one cycle) before the task is done.
 
@@ -527,7 +527,7 @@ exec allowlist leaves open by design.
 `node`, `ruby`, ...) can still reach the network through its own standard library
 (`urllib.request`, `fetch()`, ...) without ever naming a tool this pack recognises -- see
 security-gates.spec.md, "Network egress and the `fetch` tool", and known-true limit 3 in
-`CLAUDE.md`. Closing that gap is `docket gates network none` (the jail's network is cut; `fetch` stays the allowlisted path), not a policy.
+`CLAUDE.md`. Closing that gap is `docket setup sandbox network none` (the jail's network is cut; `fetch` stays the allowlisted path), not a policy.
 
 ### Apply it
 
@@ -969,7 +969,7 @@ with each other instead of with the brief.
 is briefed separately to write failing tests from the brief alone. The implementation step is
 gated on `verify: true` (the Implementer's own verify command), so tests must pass to proceed.
 The two steps pin different models (`openai/gpt-4.1-mini` writes the tests,
-`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket models set`
+`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket setup model set`
 pin. Set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (environment or `secrets.json`) first. To check
 that the new tests really fail on the base, add the `anti-tautology` recipe's step.
 

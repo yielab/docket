@@ -424,7 +424,7 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
 
     verified = _run(
         str(docket),
-        "audit",
+        "log",
         "verify",
         cwd=copied_starter,
         env=run_env,

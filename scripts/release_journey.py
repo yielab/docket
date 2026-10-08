@@ -452,7 +452,7 @@ def _verify_state(world: Path, executable: Path, env: dict[str, str]) -> None:
     _require('"event_type": "tool_call"' in trace_text, "trace omitted the tool call")
     _require('"event_type": "tool_result"' in trace_text, "trace omitted the tool result")
     _require((home / "audit.log").read_text(encoding="utf-8").strip() != "", "audit is empty")
-    _run_cli(executable, ["audit", "verify"], cwd=world / "codebase", env=env, label="audit verify")
+    _run_cli(executable, ["log", "verify"], cwd=world / "codebase", env=env, label="log verify")
     _run_cli(
         executable,
         ["runs", "list", "--project", PROJECT, "--json"],
@@ -523,12 +523,11 @@ def _run(world: Path, repo: Path, requested_endpoint: str | None) -> None:
         _run_cli(
             executable,
             [
-                "pipeline",
                 "run",
+                "--pod",
                 PROJECT,
-                "--file",
+                "--pipeline",
                 str(pipeline),
-                "--follow",
                 "--timeout",
                 "30",
             ],

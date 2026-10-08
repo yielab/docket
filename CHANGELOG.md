@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket setup` is the first run.** Bare `setup` prints the readiness report (model
+  endpoint, notifications, sandbox, shell completion, background service) with the command that
+  fixes each piece; on a terminal it then asks only for what is missing, required first, and
+  prints every command it runs; piped, it exits 1 while the endpoint is missing and writes
+  nothing. `--json` emits the report, `--fix` repairs. `setup provider add <name>` stores the
+  credential, probes `/models` and applies the provider's preset in one step; `setup model`,
+  `setup sandbox` (bare is a read) and `setup shell bash|zsh` are real sub-apps.
+- **Telegram in one step.** `docket setup notify enable telegram --chat <id>` stores the bot
+  token, sets the actors and binds every pod's Lead; nothing is sent unless `--test`. `setup
+  notify` carries the channel catalog, `bind`/`unbind`, `privacy` and `flush`; `setup export`
+  the exporter verbs; `setup mcp list|add|remove` the external tool servers.
+- **`docket run`.** Runs the pod's pending tasks through its pipeline with Typer-declared
+  options; `--dry-run` prints the executor's plan and starts nothing; `--resume` reclaims stale
+  claims and clears a budget pause; with no model endpoint it refuses naming `docket setup`.
+  A run ends with one summary line and one `Next:` line.
+- **`docket start` / `docket stop`.** `start` is the background service (`--http`, `--telegram`,
+  `--dispatch`, `--mcp` for the stdio MCP server) and records its pid in `$DOCKET_HOME/serve.pid`;
+  `stop` sends the two-stage stop and `status` reports whether the service runs.
 - **One pod resolver.** `docket status` and `docket add` pick the pod from `--pod`, then
   `DOCKET_POD`, then the registered codebase containing the working directory (deepest wins);
   a miss is one error naming the directory and the fix (`cli/_target.py::resolve_pod`).
@@ -24,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`log`, `exec`, `status`, `inbox`.** `docket log [N] [--json]` and `log verify` replace
+  `audit`; `docket exec` replaces `harness run` with the same NDJSON events, result line and exit
+  codes 0/1/2 (`harness status` is gone; Tack's probe changes one argv word). `status` shows the
+  pod's tokens with the labelled estimate, the done/failed/aborted counts and latency, the last
+  run and "approved, ready" tasks; `status --all --json` carries the inventory `snapshot` printed.
+  `inbox` takes declared options only, prints the exact `docket task approve|deny|answer <id>`
+  line on every item and never cuts a held command.
 - **One console voice.** `ui.py` is the only module that knows symbols, colour roles, headers,
   sections and tables; output is plain ASCII (`ok`/`x`/`!`/`->`) with no colour when stdout
   is piped or `NO_COLOR` is set. A shrink-only guard counts Rich markup literals outside `ui.py`.
@@ -43,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Twenty top-level commands.** `doctor`, `models`, `keys`, `gates`, `completions`,
+  `channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters`, `mcp`, `audit`, `serve`,
+  `harness`, `cost`, `metrics`, `snapshot`, `pod <p> dispatch`, `pipeline run`, and the seven
+  read views `list`, `context`, `logs`, `edit`, `scope`, `persona`, `help`. Each is an ordinary
+  unknown command (exit 2). With them: the operator-set session scope (the derived key stands),
+  the `SOUL.md` persona block and `AgentMeta.persona`, `EDITOR`/`VISUAL` from the environment
+  table, and the `docket init` home bootstrap (`init` builds the team and points at `setup`).
 - **The org specialists (`manager`, `knowledge`, `security`) and the opt-in portfolio manager.**
   No reader on the live path ever ran one. `docket init` provisions the pod only,
   `init --portfolio` is a usage error, `list`/`snapshot`/`doctor` and `/status.json` show pod

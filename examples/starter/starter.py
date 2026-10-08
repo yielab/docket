@@ -206,7 +206,7 @@ def _configure(docket: Path, endpoint: str, *, cwd: Path, env: dict[str, str]) -
     _command(
         [
             str(docket),
-            "models",
+            "setup",
             "provider",
             "add",
             PROVIDER,
@@ -237,7 +237,7 @@ def _configure(docket: Path, endpoint: str, *, cwd: Path, env: dict[str, str]) -
         "monitor",
     ):
         _command(
-            [str(docket), "models", "set", role, model],
+            [str(docket), "setup", "model", "set", role, model],
             cwd=cwd,
             env=env,
             label=f"{role} model selection",
@@ -314,10 +314,10 @@ def _dispatch(docket: Path, pipeline: Path, *, cwd: Path, env: dict[str, str]) -
     _command(
         [
             str(docket),
-            "pipeline",
             "run",
+            "--pod",
             PROJECT,
-            "--file",
+            "--pipeline",
             str(pipeline),
             "--timeout",
             "30",
@@ -416,7 +416,7 @@ def _inspect_public_cli(
     _require(pair[0].get("session_id") == pair[1].get("session_id"), "trace identity mismatched")
 
     verified = _command(
-        [str(docket), "audit", "verify"],
+        [str(docket), "log", "verify"],
         cwd=cwd,
         env=env,
         label="public audit verification",
@@ -496,7 +496,7 @@ def _run(workspace: Path) -> None:
     print(f"Inspect: docket runs list --project {PROJECT} --json")
     print(f"Inspect: docket runs show {run_id} --json")
     print(f"Inspect: docket trace export {PROJECT}")
-    print("Inspect: docket audit verify")
+    print("Inspect: docket log verify")
     print("STARTER JOURNEY PASS", flush=True)
 
 

@@ -704,3 +704,63 @@ differ from the archetype `modelClass` (`analyst` cheap, `critic` strong).
 - Follow-ups by owner: P39-16 deletes `cli/_remove.py` whole and the `_default` greeting lines
   that name `list`/`help`; P39-17 rewrites `_default`. `scripts/validate-specs.sh` printed one
   warning on the branch (integrator checks it in the rollup gates).
+
+## Wave 93a returns (integrator, 2026-10-07)
+
+Base `dd483ba8` (the board claim on top of the seed `f768584c`, which added `cli/_setup.py::setup_app`
+and `readiness()` so the three cards that meet there never carried a red suite). Merged in the
+packet order with `--no-ff`: P39-12 `3633ed8d`, P39-13 `7c4acba1`, P39-14 `c81aac07`, P39-15
+`77ca8ed6`, P39-16 `e29436be`; integrator wiring `f61f1bac`; then the rollup. Every conflict was in
+a shared file the packets predicted (`cli/__init__.py` registration lines, `cli-interface.spec.md`
+header and changelog, `scripts/gen_cli_docs.py::GROUPS`, the completions goldens and
+`docs/commands.md`, both regenerated from the merged tree after each merge) plus five test files
+three cards edited by class. Live-home check after the merge: `setup`, `status [--all]`,
+`inbox --peek`, `log 3`, `setup notify list`, `setup model list`, `setup sandbox` and
+`run --dry-run --pod rack-cli` all behave; `doctor` and `pod <p> dispatch` are unknown.
+
+**Decisions taken at merge.**
+- Two version collisions renumbered by keeping both bullets under one block instead of a second
+  bump: `audit.spec.md` 2.12.0 (P39-14 and P39-16) and `agent-lifecycle.spec.md` 1.17.0 (P39-12
+  and P39-16); `operator-loop.spec.md` 1.4.0 likewise (P39-13 and P39-15). Next time, pre-assign
+  every number.
+- `cli/_mcp.py` keeps the MCP server half as the module behind `start --mcp`; P39-13's deletion
+  of the servers half had also dropped the `docket.config` import P39-14's `tool_cost` needs; the
+  import is back. `tool_cost` reads `core.utils`/`edges.store` directly (no `_cost` module).
+- `tests/integration/test_completions_eval_metrics_help.py` is deleted: each of its three classes
+  belonged to a removed command and each card removed its own.
+- Integrator wiring (`f61f1bac`): the wizard's Telegram step calls
+  `cli/_setup_notify.py::enable_telegram` (seam test `test__setup.py::TestTelegramStep`);
+  `status` asks `cli/_service.py::is_running()`; `docket run` is pinned to refuse through the real
+  `readiness()` on a fresh home (`test__run.py::...test_refuses_through_the_real_readiness_report`).
+- P39-14: no `--http/--no-http` on `start` (`run_serve` cannot run without HTTP and `serve.py` is
+  frozen), no `--no-dispatch`; `--mcp` with `--dispatch`/`--telegram`/`--token-file` exits 2. The
+  pinned stderr line is now `docket exec: run <token> ...` (Tack does not match it; see below).
+- P39-15: no `run --dry-run` golden (the golden home cannot hold a pod); `writers/status_--all`
+  added instead. `serve /inbox` items are unchanged; `state`/`command` are CLI-side.
+- P39-16: `info_*` goldens kept (output unchanged); `core/utils.py::aggregate_cost`/`last_activity`
+  stay (callers in `core/dispatch.py`, `serve.py`, `cli/_agents.py`).
+
+**Tack (one-line changes, not applied here):** `crates/tack-runner/src/harness/docket/probe.rs`
+(~l.106) `"harness", "run",` becomes `"exec",`; same in `harness/docket.rs` (~l.336) and
+`docket/tests.rs` (three places). Tack's stderr match on `docket harness:` needs `docket exec:`.
+
+**Follow-ups by owning card (locators only).**
+- P39-8/P39-10 (93b, `cli/_pod.py`): `cmd_pod` help and `_pod_*` messages (~l.542) still say
+  `dispatch`; `cli/_pod.py:1162,1165` name removed commands; `cli/_pod_config.py::cmd_pipeline`
+  help mentions `run`; `docket info` is still a top-level command (P39-10 folds it into `pod show`).
+- P39-9 (93b): `harness status`'s replacement is `task show <run-id>` through `core/task_ref`.
+- P39-17: `tests/golden/run.sh` `cases_dir()` read-only list still names `list|scope|context|help`
+  (every new read-only case sits under `cases/writers/`); the bare `docket` greeting; the
+  hand-written completion word lists in `cli/_setup_shell.py` (no `setup` sub-word list beyond
+  the first level); `serve.py`'s banner prints "docket serve" (frozen file, one string).
+- P39-18/P39-19/P39-20..22: old names in `docs/*.md`, `README.md` (the quick-start route pinned by
+  `tests/agent/release/test_public_release_truth.py:211` still says `docket pod myapp dispatch`),
+  `scripts/render-doc-assets.py` transcripts (SVGs not re-rendered), `templates/channels/07-telegram.yaml`,
+  `templates/exporters/03-langfuse.yaml`, `04-honeycomb.yaml`, `core/telegram.py:55`,
+  `edges/adapters/channels/telegram.py:33`, `serve.py:746`, `core/agent_loop.py:136,141` (comments
+  mention persona; frozen file), `scripts/maint/split_cli_registry.py` (spent; mentions `_remove`).
+- Specs not in any 93a scope that still mention removed names: `security-gates`, `pod-dispatch`,
+  `pod-blueprints`, `cli-json-shapes` (text), `cli-interface.spec.md` ~l.463 and ~l.685; audit.spec.md
+  has no entry for the new `run.resume` action (P39-23's spec 2.0.0 pass).
+- `setup mcp test` was not requested and does not exist; `bind` without `--chat` runs the guided
+  discovery on a TTY only; `readiness().service` only checks for the systemd user unit file.

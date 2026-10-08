@@ -178,7 +178,7 @@ _PLAN = [
 ]
 
 _DISPATCH = [
-    "$ docket pod myapp dispatch",
+    "$ docket run --pod myapp",
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
     "✓   [task-a36c9b20-2eb4-4b06-af17-79080473964e] done — 3 hop(s), $0.0000",
     "$ docket trace agent:myapp:task-a36c9b20-2eb4-4b06-af17-79080473964e",
@@ -257,7 +257,7 @@ _GATE = [
     '    "Publish the fix. Lead: never call the consult tool and do not ask questions, the '
     "operator already decided; hand this to the implementer as is. Implementer: run exactly this "
     'bash command once and report its output: git push origin production"',
-    "$ docket pod myapp dispatch",
+    "$ docket run --pod myapp",
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
     "⚠   [task-31f81c52-d1fd-481d-a679-6e315a587197] waiting_approval — implementer hop parked "
     "for approval (token=apr-12f07fc8-d922-4958-9738-8bab58932c2e)",

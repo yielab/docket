@@ -142,7 +142,7 @@ def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
             "created": "2026-09-02T00:00:00+00:00",
         },
     )
-    _public_cli(home, workspace, "pipeline", "run", "demo")
+    _public_cli(home, workspace, "run", "--pod", "demo", "--dry-run")
 
 
 def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
