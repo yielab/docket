@@ -173,12 +173,27 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
 
 **Usage:** `docket status`
 
-Show current-project status, or every project with --all.
+Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all.
 
-The current-project view shows state without mixing in the global agent
-inventory or workstation health: configured path, readiness, pod roles,
-and task counts. `docket list` remains the detailed global agent
-inventory; `docket doctor` remains the global technical health check.
+Tokens are measured; the dollar figure is a labelled estimate, never billed spend.
+--all --json also carries the fleet inventory (agents, channels, total cost).
+
+Example: docket status --all
+
+
+---
+
+### run
+
+**Usage:** `docket run`
+
+Run the pod's pending tasks through its pipeline, one real agent turn per hop.
+
+Each task is claimed before its first hop and every hop is saved as it finishes, so a
+crash loses at most the hop in flight. --dry-run prints the plan the executor would
+follow and starts nothing; --resume reclaims stale claims and clears a budget pause.
+
+Example: docket run --dry-run
 
 
 ---
@@ -826,43 +841,6 @@ error.
 
 ---
 
-### cost
-
-**Usage:** `docket cost`
-
-Token usage and cost breakdown, with per-agent budget caps and
-runaway-session detection.
-
-With no agent id, aggregates all agents; with one, shows its own
-breakdown. `--json` emits machine-readable output for either form.
-`--history` shows a per-day cost breakdown instead of the current
-totals; `--days N` (default 0 = no limit) restricts `--history` to the
-last N days.
-
-Token counts (input/output/cache read/cache write, turns) are real and
-measured -- reported by the model endpoint per call and accumulated by
-docket's own session storage. The dollar total is not: docket's own turn
-loop (DocketDriver) reports no billed spend at all, so `Total cost`
-always reads as "none recorded for these sessions" rather than a dollar
-figure -- a known, plainly-stated gap, not a bug, because converting a
-token count into a dollar figure is exactly the estimate-to-billing-claim
-conversion docket refuses to make inside this command. See
-`docket models` for a comparative, clearly-labelled estimate (never
-presented as billed spend), and the same estimate's use by the
-budget-auto-pause gate. docket does not print a projected "savings if
-you switched models" figure either -- that would compound one estimate
-on top of another. `--history`/`--days` currently return no rows against
-the production driver: per-day breakdowns aren't tracked by docket's own
-session store (a session's usage is one running total for its lifetime,
-not timestamped per turn) -- a documented, known limitation. The pricing
-table (`docket models`) is a manual snapshot, not a live feed, and is
-not surfaced inside this command. Useful for detecting runaway sessions
-by turn count; budget management works off the token-based estimate the
-pod-dispatch gate itself computes, not this command's dollar column.
-
-
----
-
 ### doctor
 
 **Usage:** `docket doctor`
@@ -1006,24 +984,6 @@ a file argument validates that one file. Prints one line per file -- `ok
 <file> (<kind> <name>)` or its error -- with invalid files listed first,
 plus a `note:` line for a file loaded without a top-level `kind:` key.
 Exits 1 if any file is invalid.
-
-
----
-
-### snapshot
-
-**Usage:** `docket snapshot`
-
-Export system state snapshot as JSON.
-
-Every project agent, its model, registration/binding
-status, last activity, and measured cost, plus the channel list. `-o`/
-`--output <path>` writes the JSON to a file instead of stdout.
-`costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows
-no recorded spend today:
-this is a snapshot of measured-token agents, not of billed dollars.
-Useful for backups, dashboards, or feeding fleet state into another
-tool.
 
 
 ---
@@ -1270,13 +1230,12 @@ denies it. Same token format, idempotency, and provenance rules as
 
 **Usage:** `docket inbox`
 
-List everything across every pod that needs you: waiting/blocked tasks and pending
-approvals, plus failed/done/running context.
+List what needs you across every pod: approvals, questions, failures, finished work.
 
-`docket inbox \[--json\] \[--since <iso>\] \[--peek\]`. A plain call advances a durable cursor so a
-repeat call's `Done` section only shows newly-terminal tasks; `--peek` reads without
-advancing it, and `--since <iso>` overrides the stored cursor for one call without touching
-it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns.
+Every item carries the exact docket command that moves it forward. A plain call advances
+a cursor so a repeat call shows only newly finished tasks; --peek and --since do not.
+
+Example: docket inbox --peek
 
 
 ---
@@ -1351,25 +1310,6 @@ docket's own session store into the trace store.
 Traces are stored at `~/.docket/traces/<project>/<session-id>.jsonl`.
 Each dispatch hop writes events such as tool_call, cost_charged,
 approval_requested.
-
-
----
-
-### metrics
-
-**Usage:** `docket metrics`
-
-Show session success-rate and drift metrics.
-
-Computes success rate, latency, cost, and guardrail trip counts from
-trace data. `-r`/`--role` filters to a specific agent role; `-p`/
-`--project` to a specific project; `-w`/`--window N` (default 50,
-METRICS_WINDOW env-overridable) sets the rolling window size in
-sessions. Output: success rate, duration (mean/p95), cost (total/mean),
-and guardrail trip counts.
-
-`--escalation` prints escalation metrics instead: task starts (dispatch claims),
-operator questions by kind and outcome, and decision latency.
 
 
 ---
@@ -1566,9 +1506,9 @@ No command emits any other exit code today.
 | `TOOL_APPROVAL_TIMEOUT` | The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT` | `120` |
 | `TOOL_APPROVAL_POLL_INTERVAL_S` | How often the in-turn approval wait re-checks the record while blocked | `2` |
 | `CLAIM_STALE_TIMEOUT` | A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep | `1800` |
-| `METRICS_WINDOW` | Rolling terminal-session count for `docket metrics` | `50` |
-| `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket doctor`/`docket cost` flag a session as runaway | `200` |
-| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway | `20` |
+| `METRICS_WINDOW` | Rolling terminal-session count for `docket status` | `50` |
+| `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket doctor` flags a session as runaway | `200` |
+| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket doctor` flags a session as runaway | `20` |
 | `DOCKET_KEY_MAX_AGE_DAYS` | `docket doctor`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
 | `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket trace expire` deletes it | `30` |
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
@@ -1649,13 +1589,13 @@ done
 docket models preset openrouter-free
 ```
 
-### Cost Monitoring
+### Usage Monitoring
 
-Track daily costs:
+Track daily usage:
 
 ```bash
 # Add to crontab
-0 23 * * * docket cost >> ~/docket-costs-$(date +%Y-%m).log
+0 23 * * * docket status --all --json >> ~/docket-status-$(date +%Y-%m).log
 ```
 
 ### Backup Strategy
@@ -1670,7 +1610,7 @@ tar -czf ~/backups/docket-$(date +%s).tar.gz \
   ~/.docket/workspaces/
 
 # Or a single-file fleet snapshot
-docket snapshot -o ~/backups/fleet-$(date +%s).json
+docket status --all --json > ~/backups/fleet-$(date +%s).json
 ```
 
 

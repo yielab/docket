@@ -54,7 +54,7 @@ run 1-team.txt docket pipeline plan myapp
 run 1-team.txt "docket pod myapp set-verify myapp-implementer \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\""
 
 run 2-dispatch.txt 'docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"'
-run 2-dispatch.txt docket pod myapp dispatch
+run 2-dispatch.txt docket run --pod myapp
 run 2-dispatch.txt docket runs list
 session="$(basename "$(ls -t "$HOME"/.docket/traces/myapp/*.jsonl | head -1)" .jsonl)"
 run 2-dispatch.txt "docket trace $session"
@@ -69,7 +69,7 @@ run 3-isolation.txt "git -C $worktree diff main"
 
 run 4-gate.txt "docket policies test pre_tool_call implementer 'git push origin production'"
 run 4-gate.txt 'docket pod myapp delegate "Publish the fix. Lead: never call the consult tool and do not ask questions, the operator already decided; hand this to the implementer as is. Implementer: run exactly this bash command once and report its output: git push origin production"'
-run 4-gate.txt docket pod myapp dispatch
+run 4-gate.txt docket run --pod myapp
 run 4-gate.txt docket audit
 run 4-gate.txt "docket trace export myapp | grep '\"deny\"'"
 run 4-gate.txt docket audit verify

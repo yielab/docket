@@ -1,7 +1,7 @@
 """``docket notify`` -- manually flush operator events to every enabled channel, or preview
 what a flush would send without delivering (``--dry-run``).
 
-``serve.py``'s sweep and ``docket pod <p> dispatch`` already call `core.notify.flush` after
+``serve.py``'s sweep and ``docket run`` already call `core.notify.flush` after
 every real state change (ADR 0016 SS7); this command exists for an operator who wants to force
 one between those points, or inspect what is pending first.
 """

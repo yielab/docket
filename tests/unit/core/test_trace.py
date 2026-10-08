@@ -172,3 +172,49 @@ class TestIngestNotifiesSubscribers:
             trace.trace_ingest("myshop")
         tracefile = trace.project_trace_dir("myshop") / f"{session_key}.jsonl"
         assert received == trace.read_trace(tracefile)
+
+
+def _session(project: str, name: str, status: str, end: str = "10:00:05") -> None:
+    import json
+
+    import docket.config as _cfg
+
+    d = _cfg.TRACES_DIR / project
+    d.mkdir(parents=True, exist_ok=True)
+    events = [
+        {"event_type": "session_start", "ts": "2026-10-01T10:00:00Z", "agent_role": "lead"},
+        {
+            "event_type": "session_end",
+            "ts": f"2026-10-01T{end}Z",
+            "agent_role": "lead",
+            "payload": {"status": status},
+        },
+    ]
+    (d / f"{name}.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+
+class TestTerminalOutcomes:
+    def test_counts_done_failed_and_aborted_sessions(self) -> None:
+        _session("demo", "a", "done")
+        _session("demo", "b", "failed")
+        _session("demo", "c", "failed")
+        _session("demo", "d", "cancelled")
+
+        out = trace.terminal_outcomes("demo", window=50)
+
+        assert (out.success, out.failure, out.aborted) == (1, 2, 1)
+        assert out.mean_ms == 5000
+
+    def test_a_parked_task_is_not_terminal(self) -> None:
+        _session("demo", "a", "done")
+        _session("demo", "b", "waiting_input")
+        assert trace.terminal_outcomes("demo", window=50).total == 1
+
+    def test_the_window_keeps_only_the_newest_sessions(self) -> None:
+        _session("demo", "a", "failed")
+        _session("demo", "b", "done")
+        out = trace.terminal_outcomes("demo", window=1)
+        assert (out.success, out.failure) == (1, 0)
+
+    def test_an_unknown_project_is_all_zero(self) -> None:
+        assert trace.terminal_outcomes("nobody", window=50).total == 0

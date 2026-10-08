@@ -1,6 +1,6 @@
 """Foreground dispatch progress and the in-place approval prompt.
 
-``docket pod <p> dispatch`` is silent while a hop blocks on an in-turn
+``docket run`` is silent while a hop blocks on an in-turn
 approval, so an operator watching a TTY has no way to learn it is waiting
 or to answer it without a second terminal and the token. This module renders
 one stderr line per trace event worth surfacing (see ``render_event``) while

@@ -1,0 +1,2 @@
+EXIT:0
+! No initialized projects. Run docket init inside a project directory.

@@ -1,9 +1,8 @@
-"""Project-level status views for the current directory or every pod."""
+"""The status command: where a pod stands, or every pod with --all."""
 
 from __future__ import annotations
 
-import json
-import json as _json
+import datetime as _dt
 import os
 from collections import Counter
 from pathlib import Path
@@ -13,15 +12,26 @@ import typer
 
 import docket.config as _cfg
 from docket import ui
-from docket.cli._target import TargetError, resolve_pod
+from docket.cli import _contract
+from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
-from docket.core.utils import aggregate_cost, last_activity, project_ids
+from docket.core import runs as _runs
+from docket.core import trace as _trace
+from docket.core.utils import (
+    DayRecord,
+    aggregate_cost,
+    cost_history,
+    gating_cost,
+    last_activity,
+    project_ids,
+    si_format,
+)
 from docket.edges import store
 
 
-def _project_ids() -> list[str]:
+def pod_ids() -> list[str]:
     """Return registered pod ids once each, excluding flat legacy agents."""
     projects: set[str] = set()
     for agent in _fleet.list_agents():
@@ -30,6 +40,53 @@ def _project_ids() -> list[str]:
         if project:
             projects.add(project)
     return sorted(projects)
+
+
+def _last_activity_or_never(agent_id: str) -> str:
+    """``last_activity`` with the ``never`` sentinel the HTTP status route also emits."""
+    val = last_activity(agent_id)
+    return "never" if val == "—" else val
+
+
+def _start_running() -> bool:
+    """True when ``docket start`` is running: its pid file exists and the process answers."""
+    try:
+        pid = int((_cfg.DOCKET_HOME / "serve.pid").read_text(encoding="utf-8").strip())
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _approved_ready(task: dict[str, Any]) -> bool:
+    """A pending task whose approval was granted and now only waits for ``docket run``."""
+    return task.get("status") == "pending" and bool(
+        task.get("pregrants") or task.get("gateOverridePipelineIndex") is not None
+    )
+
+
+def _usage(member_ids: list[str]) -> dict[str, Any]:
+    tokens_in = tokens_out = 0
+    estimate = 0.0
+    for mid in member_ids:
+        totals = aggregate_cost(mid)
+        tokens_in += totals.input_tokens
+        tokens_out += totals.output_tokens
+        amount, _estimated = gating_cost(mid)
+        estimate += amount
+    return {"input": tokens_in, "output": tokens_out, "estimateUsd": round(estimate, 6)}
+
+
+def _last_run(project: str) -> dict[str, Any] | None:
+    runs = _runs.list_runs(project)
+    if not runs:
+        return None
+    run = runs[0]
+    return {
+        "id": str(run.get("id", "")),
+        "state": str(run.get("state", "")),
+        "finishedAt": run.get("finishedAt"),
+    }
 
 
 def _project_summary(project: str) -> dict[str, Any]:
@@ -64,6 +121,7 @@ def _project_summary(project: str) -> dict[str, Any]:
     else:
         state = "ready"
 
+    outcomes = _trace.terminal_outcomes(project, window=_cfg.METRICS_WINDOW)
     return {
         "id": project,
         "path": roots[0] if roots else "",
@@ -76,227 +134,225 @@ def _project_summary(project: str) -> dict[str, Any]:
             "running": counts["running"],
             "waitingApproval": counts["waiting_approval"],
             "failed": counts["failed"],
-            "completed": counts["completed"],
+            "completed": counts["completed"] + counts["done"],
+            "approvedReady": sum(1 for task in tasks if _approved_ready(task)),
         },
+        "usage": _usage([m["id"] for m in member_rows]),
+        "outcomes": {
+            "success": outcomes.success,
+            "failure": outcomes.failure,
+            "aborted": outcomes.aborted,
+            "meanMs": outcomes.mean_ms,
+            "p95Ms": outcomes.p95_ms,
+        },
+        "lastRun": _last_run(project),
     }
 
 
-def _render_current(summary: dict[str, Any]) -> None:
-    tasks = summary["tasks"]
-    roles = ", ".join(member["role"] for member in summary["members"])
-    ui.console.print(f"[bold]Project:[/bold] {summary['id']}")
-    ui.console.print(f"[bold]Path:[/bold] {summary['path'] or '—'}")
-    ui.console.print(f"[bold]Status:[/bold] {summary['status']}")
-    ui.console.print(f"[bold]Members:[/bold] {summary['memberCount']} ({roles})")
-    ui.console.print(f"[bold]Isolation:[/bold] {summary['isolation']}")
-    ui.console.print(
-        "[bold]Tasks:[/bold] "
-        f"{tasks['pending']} pending · {tasks['running']} running · "
-        f"{tasks['waitingApproval']} waiting approval · {tasks['failed']} failed"
-    )
-
-
-def _render_all(summaries: list[dict[str, Any]]) -> None:
-    from rich.table import Table
-
-    if not summaries:
-        ui.warn("No initialized projects. Run 'docket init' inside a project directory.")
-        return
-    table = Table(title="Docket projects — global status")
-    table.add_column("PROJECT", style="bold")
-    table.add_column("STATUS")
-    table.add_column("MEMBERS", justify="right")
-    table.add_column("TASKS")
-    table.add_column("PATH", style="dim")
-    for summary in summaries:
-        tasks = summary["tasks"]
-        task_text = (
-            f"{tasks['pending']} pending / {tasks['running']} running / "
-            f"{tasks['waitingApproval']} waiting"
-        )
-        table.add_row(
-            summary["id"],
-            summary["status"],
-            str(summary["memberCount"]),
-            task_text,
-            summary["path"] or "—",
-        )
-    ui.console.print(table)
-
-
-def run_status(*, all_projects: bool, json_out: bool, directory: Path | None = None) -> int:
-    """Render current-project status by default, or one row per pod globally."""
-    summaries = [_project_summary(project) for project in _project_ids()]
-    if all_projects:
-        if json_out:
-            print(json.dumps({"projects": summaries}, indent=2))
-        else:
-            _render_all(summaries)
-        return 0
-
-    try:
-        project = resolve_pod(None, env=os.environ, cwd=directory or Path.cwd())
-    except TargetError as exc:
-        ui.error(str(exc))
-        return 1
-
-    summary = next((item for item in summaries if item["id"] == project), _project_summary(project))
-    if json_out:
-        print(json.dumps(summary, indent=2))
-    else:
-        _render_current(summary)
-    return 0
-
-
-def cmd_status(
-    all_projects: bool = typer.Option(False, "--all", help="Show every project"),
-    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
-) -> None:
-    """Show current-project status, or every project with --all.
-
-    The current-project view shows state without mixing in the global agent
-    inventory or workstation health: configured path, readiness, pod roles,
-    and task counts. `docket list` remains the detailed global agent
-    inventory; `docket doctor` remains the global technical health check."""
-    from docket.cli._status import run_status
-
-    raise typer.Exit(run_status(all_projects=all_projects, json_out=json_out))
-
-
-def cmd_cost(
-    agent_id: str | None = typer.Argument(None),
-    json_out: bool = typer.Option(False, "--json"),
-    history: bool = typer.Option(False, "--history"),
-    days: int = typer.Option(0, "--days"),
-) -> None:
-    """Token usage and cost breakdown, with per-agent budget caps and
-    runaway-session detection.
-
-    With no agent id, aggregates all agents; with one, shows its own
-    breakdown. `--json` emits machine-readable output for either form.
-    `--history` shows a per-day cost breakdown instead of the current
-    totals; `--days N` (default 0 = no limit) restricts `--history` to the
-    last N days.
-
-    Token counts (input/output/cache read/cache write, turns) are real and
-    measured -- reported by the model endpoint per call and accumulated by
-    docket's own session storage. The dollar total is not: docket's own turn
-    loop (DocketDriver) reports no billed spend at all, so `Total cost`
-    always reads as "none recorded for these sessions" rather than a dollar
-    figure -- a known, plainly-stated gap, not a bug, because converting a
-    token count into a dollar figure is exactly the estimate-to-billing-claim
-    conversion docket refuses to make inside this command. See
-    `docket models` for a comparative, clearly-labelled estimate (never
-    presented as billed spend), and the same estimate's use by the
-    budget-auto-pause gate. docket does not print a projected "savings if
-    you switched models" figure either -- that would compound one estimate
-    on top of another. `--history`/`--days` currently return no rows against
-    the production driver: per-day breakdowns aren't tracked by docket's own
-    session store (a session's usage is one running total for its lifetime,
-    not timestamped per turn) -- a documented, known limitation. The pricing
-    table (`docket models`) is a manual snapshot, not a live feed, and is
-    not surfaced inside this command. Useful for detecting runaway sessions
-    by turn count; budget management works off the token-based estimate the
-    pod-dispatch gate itself computes, not this command's dollar column."""
-    from docket.cli._cost import run_cost
-
-    raise typer.Exit(run_cost(agent_id, json_out=json_out, history=history, days=days))
-
-
-def _last_activity_or_never(agent_id: str) -> str:
-    """Like ``last_activity`` but returns ``"never"`` for no logs -- mirrors
-    ``serve.py``'s ``_last_activity_or_never`` so ``docket snapshot`` and
-    ``/status.json`` emit the same sentinel (cli-json-shapes.spec.md)."""
-    val = last_activity(agent_id)
-    return "never" if val == "—" else val
-
-
-def cmd_snapshot(
-    output: str | None = typer.Option(None, "--output", "-o", help="Write JSON to file"),
-) -> None:
-    """Export system state snapshot as JSON.
-
-    Every project agent, its model, registration/binding
-    status, last activity, and measured cost, plus the channel list. `-o`/
-    `--output <path>` writes the JSON to a file instead of stdout.
-    `costUsd`/`totalCostUsd` are 0.0 for the same reason `docket cost` shows
-    no recorded spend today:
-    this is a snapshot of measured-token agents, not of billed dollars.
-    Useful for backups, dashboards, or feeding fleet state into another
-    tool."""
-    import datetime as _dt
-
+def _inventory() -> dict[str, Any]:
+    """The fleet inventory ``status --all --json`` adds beside the per-pod rows."""
     fleet_state = _fleet.load_fleet()
-    channels = _fleet.channel_names(fleet_state)
-    registered_ids = {a.id for a in _fleet.list_agents(fleet_state)}
-
-    def _agent_bindings(aid: str) -> list[dict[str, Any]]:
-        return [
-            {"channel": b.channel, "peerId": b.peer_id}
-            for b in fleet_state.bindings
-            if b.agent_id == aid
-        ]
-
-    agents_out: list[dict[str, Any]] = []
-    total_cost = 0.0
-
+    registered = {a.id for a in _fleet.list_agents(fleet_state)}
+    agents: list[dict[str, Any]] = []
+    total = 0.0
     for pid in project_ids():
-        try:
-            raw = store.read_json(_cfg.meta_path(pid))
-        except Exception:
-            raw = {}
+        raw = store.read_json(_cfg.meta_path(pid))
         cost = aggregate_cost(pid).cost_usd
-        total_cost += cost
-        agents_out.append(
+        total += cost
+        agents.append(
             {
                 "id": pid,
                 "name": str(raw.get("name", pid)),
                 "kind": "project",
                 "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
-                "registered": pid in registered_ids,
-                "bindings": _agent_bindings(pid),
+                "registered": pid in registered,
+                "bindings": [
+                    {"channel": b.channel, "peerId": b.peer_id}
+                    for b in fleet_state.bindings
+                    if b.agent_id == pid
+                ],
                 "lastActivity": _last_activity_or_never(pid),
                 "costUsd": round(cost, 6),
             }
         )
-
-    timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    result = {
-        "timestamp": timestamp,
-        "channels": channels,
-        "agents": agents_out,
-        "totalCostUsd": round(total_cost, 6),
+    return {
+        "timestamp": _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "channels": _fleet.channel_names(fleet_state),
+        "agents": agents,
+        "totalCostUsd": round(total, 6),
     }
 
-    out = _json.dumps(result, indent=2)
-    if output:
-        Path(output).write_text(out + "\n", encoding="utf-8")
-        ui.success(f"Snapshot written to {output}")
-    else:
-        print(out)
+
+def cost_snapshot() -> dict[str, Any]:
+    """Per-agent recorded cost and the fleet total, as a bare dict."""
+    rows = []
+    total = 0.0
+    for pid in project_ids():
+        raw = store.read_json(_cfg.meta_path(pid))
+        totals = aggregate_cost(pid)
+        budget = raw.get("budgetUsd")
+        total += totals.cost_usd
+        rows.append(
+            {
+                "id": pid,
+                "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
+                "input": totals.input_tokens,
+                "output": totals.output_tokens,
+                "costUsd": round(totals.cost_usd, 6),
+                "pricingKnown": True,
+                "turns": totals.turns,
+                "budgetUsd": float(budget) if budget and str(budget) not in ("", "0") else None,
+            }
+        )
+    return {"agents": rows, "totalUsd": round(total, 6)}
 
 
-def cmd_metrics(
-    role: str = typer.Option("", "--role", "-r", help="Restrict to one role"),
-    project: str = typer.Option("", "--project", "-p", help="Restrict to one project"),
-    window: int | None = typer.Option(None, "--window", "-w", help="Window in days"),
-    escalation: bool = typer.Option(
-        False, "--escalation", help="Show escalation metrics (task starts, questions, latency)"
-    ),
+def _seconds(ms: int | None) -> str:
+    return "—" if ms is None else f"{ms / 1000:.1f}s"
+
+
+def _render_current(summary: dict[str, Any]) -> None:
+    tasks = summary["tasks"]
+    usage = summary["usage"]
+    out = summary["outcomes"]
+    roles = ", ".join(member["role"] for member in summary["members"])
+    run = summary["lastRun"]
+    tokens = (
+        f"{si_format(usage['input'])} in / {si_format(usage['output'])} out "
+        f"(~${usage['estimateUsd']:.2f} est.)"
+        if usage["input"] or usage["output"]
+        else "none yet"
+    )
+    rows = [
+        ("Path", summary["path"] or "—"),
+        ("Status", summary["status"]),
+        ("Members", f"{summary['memberCount']} ({roles})"),
+        ("Isolation", summary["isolation"]),
+        (
+            "Tasks",
+            f"{tasks['pending']} pending · {tasks['running']} running · "
+            f"{tasks['waitingApproval']} waiting approval · {tasks['failed']} failed",
+        ),
+        ("Approved, ready", str(tasks["approvedReady"])),
+        ("Tokens", tokens),
+        (
+            "Done / failed / aborted",
+            f"{out['success']} / {out['failure']} / {out['aborted']}"
+            f" · latency mean {_seconds(out['meanMs'])}, p95 {_seconds(out['p95Ms'])}",
+        ),
+        ("Last run", f"{run['id']} {run['state']}" if run else "none"),
+        ("docket start", "running" if summary["running"] else "not running"),
+    ]
+    ui.header("Pod", summary["id"])
+    ui.console.print()
+    for label, value in rows:
+        ui.console.print(f"  {label + ':':<26}{value}", markup=False)
+
+
+def _render_all(summaries: list[dict[str, Any]]) -> None:
+    if not summaries:
+        ui.warn("No initialized projects. Run docket init inside a project directory.")
+        return
+    rows = []
+    for s in summaries:
+        t = s["tasks"]
+        rows.append(
+            [
+                s["id"],
+                s["status"],
+                str(s["memberCount"]),
+                f"{t['pending']} pending / {t['running']} running / "
+                f"{t['waitingApproval']} waiting / {t['failed']} failed",
+                s["path"] or "—",
+            ]
+        )
+    ui.table(rows, ["POD", "STATUS", "MEMBERS", "TASKS", "PATH"])
+
+
+def _history(pods: list[str], days: int, json_out: bool) -> None:
+    merged: dict[str, DayRecord] = {}
+    registered = [a.id for a in _fleet.list_agents()]
+    for pod_id in pods:
+        for member_id, _role, _idx in _pod.members_of(registered, pod_id):
+            for rec in cost_history(member_id):
+                old = merged.get(rec.date)
+                merged[rec.date] = (
+                    rec
+                    if old is None
+                    else DayRecord(
+                        date=rec.date,
+                        turns=old.turns + rec.turns,
+                        input_tokens=old.input_tokens + rec.input_tokens,
+                        output_tokens=old.output_tokens + rec.output_tokens,
+                        cost_usd=round(old.cost_usd + rec.cost_usd, 6),
+                    )
+                )
+    ordered = sorted(merged.values(), key=lambda r: r.date)
+    if days > 0:
+        ordered = ordered[-days:]
+    if json_out:
+        _contract.emit_json(
+            {
+                "history": [
+                    {
+                        "date": r.date,
+                        "turns": r.turns,
+                        "input": r.input_tokens,
+                        "output": r.output_tokens,
+                        "costUsd": r.cost_usd,
+                    }
+                    for r in ordered
+                ]
+            }
+        )
+        return
+    if not ordered:
+        ui.dim("No dated session data yet")
+        return
+    ui.table(
+        [
+            [r.date, str(r.turns), si_format(r.input_tokens), si_format(r.output_tokens)]
+            for r in ordered
+        ],
+        ["DATE", "TURNS", "INPUT", "OUTPUT"],
+    )
+
+
+def cmd_status(
+    all_projects: bool = typer.Option(False, "--all", help="Show every pod"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+    history: bool = typer.Option(False, "--history", help="Show tokens per day"),
+    days: int = typer.Option(0, "--days", min=0, help="With --history, only the last N days"),
+    pod: str | None = pod_option(),
 ) -> None:
-    """Show session success-rate and drift metrics.
+    """Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all.
 
-    Computes success rate, latency, cost, and guardrail trip counts from
-    trace data. `-r`/`--role` filters to a specific agent role; `-p`/
-    `--project` to a specific project; `-w`/`--window N` (default 50,
-    METRICS_WINDOW env-overridable) sets the rolling window size in
-    sessions. Output: success rate, duration (mean/p95), cost (total/mean),
-    and guardrail trip counts.
+    Tokens are measured; the dollar figure is a labelled estimate, never billed spend.
+    --all --json also carries the fleet inventory (agents, channels, total cost).
 
-    `--escalation` prints escalation metrics instead: task starts (dispatch claims),
-    operator questions by kind and outcome, and decision latency."""
-    from docket.cli._metrics import run_escalation_metrics, run_metrics
-
-    if escalation:
-        raise typer.Exit(run_escalation_metrics())
-    raise typer.Exit(run_metrics(role=role, project=project, window=window))
+    Example: docket status --all
+    """
+    pods = pod_ids()
+    if all_projects:
+        if history:
+            _history(pods, days, json_out)
+            return
+        summaries = [dict(_project_summary(p), running=_start_running()) for p in pods]
+        if json_out:
+            _contract.emit_json({"projects": summaries, **_inventory()})
+        else:
+            _render_all(summaries)
+        return
+    try:
+        project = resolve_pod(pod, env=os.environ, cwd=Path.cwd())
+    except TargetError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+    if history:
+        _history([project], days, json_out)
+        return
+    summary = dict(_project_summary(project), running=_start_running())
+    if json_out:
+        _contract.emit_json(summary)
+    else:
+        _render_current(summary)

@@ -245,7 +245,7 @@ def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
     figure); the ``MODEL_PRICING`` estimate `docket cost` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
-    from docket.cli._cost import cost_snapshot
+    from docket.cli._status import cost_snapshot
 
     snapshot = cost_snapshot()
     if not agent_id:

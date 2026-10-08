@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.33.0
+**Version**: 6.34.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -243,7 +243,7 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
 3. Eligible-for-claim rules: a `pending` task is always eligible. A `failed` task whose
    `failureKind` is one of `RESUMABLE_FAILURE_KINDS` — `"stale_claim"` (see "Crash recovery"
    below) or `"dispatch_refused"` (see "Deterministic refusal inside a claimed task" below) — is
-   eligible **only** when the caller passed `resume=True` (`docket pod <project> dispatch
+   eligible **only** when the caller passed `resume=True` (`docket run
    --resume`); crash/refusal recovery is opt-in, never automatic, and neither tag waits out a
    staleness timer at claim time (a swept `stale_claim` already waited for
    `CLAIM_STALE_TIMEOUT` to be tagged in the first place; a `dispatch_refused` task's claim was
@@ -260,8 +260,8 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    locked claim operation (pause changes are rare, operator-driven events, not something
    concurrent claims race over), so a paused pod costs nothing further to not dispatch: no claim
    write, no wasted agent turn.
-6. The CLI's pre-flight "is there anything to do?" gate (`cli/_pod.py::_pod_dispatch`, shared by
-   `docket pod <project> dispatch` and `docket pipeline run`) **MUST NOT** require a `pending` or
+6. The CLI's pre-flight "is there anything to do?" gate (`cli/_run.py::_pod_dispatch`, behind
+   `docket run`) **MUST NOT** require a `pending` or
    already-tagged-resumable task to exist before it will even attempt a dispatch when `--resume`
    is passed and some task is `running`. A `running` task's claim may or may not actually be
    stale — the CLI does not duplicate that judgment — so it only needs to let the call *proceed*
@@ -288,7 +288,7 @@ that reconstructed description before calling `enqueue_task`. A missing or inval
    `failureKind: "stale_claim"` and a `stale_claim` trace event, its `claimId` cleared, and its
    already-persisted `hops[]` left untouched. This is the presumption that the dispatcher which
    claimed it crashed mid-task.
-4. `docket pod <project> dispatch --resume` **MUST** reclaim a `stale_claim`-failed task (per the
+4. `docket run --resume` **MUST** reclaim a `stale_claim`-failed task (per the
    eligibility rule above) and continue it from its last persisted hop rather than hop 0: the
    claimed task's existing `hops[]` seed `dispatch_task`'s `resume_from`, and the roles they
    represent are skipped rather than re-invoked. Without `--resume`, a swept task **MUST** stay
@@ -635,7 +635,7 @@ was seeded once at binding time.)*
    `turnTimeoutS` and `verifyTimeoutS` respectively, both optional fields on the pod Lead's
    `.docket-meta.json` (see `docket-meta.spec.md`).
 2. Resolution order for a given dispatch invocation, highest precedence first: (a) an explicit
-   override passed to that specific invocation — `docket pod <project> dispatch --timeout
+   override passed to that specific invocation — `docket run --timeout
    <seconds>` for a CLI-triggered run (this one flag overrides **both** the turn and verify
    timeout for that run), or the process-wide `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S`
    env config for a run `docket serve` triggers (webhook, due schedule, or the sweep loop); (b)
@@ -644,7 +644,7 @@ was seeded once at binding time.)*
 3. When `docket serve`'s process-wide timeout env vars are set, they take the "explicit
    override" slot for every pod that server instance dispatches (webhook/schedule/sweep) — for
    those runs they are resolved *before* that pod's own Lead-meta setting is even consulted, not
-   layered beneath it. A CLI-triggered `docket pod <project> dispatch` (no `--timeout`) is
+   layered beneath it. A CLI-triggered `docket run` (no `--timeout`) is
    unaffected by the serve-wide env vars; it resolves straight to Lead-meta, then
    `DEFAULT_TIMEOUT`.
 
@@ -816,7 +816,7 @@ was seeded once at binding time.)*
 2. **Caller-scoped default.** An *unset* pod `approvalMode` (no key at all in the Lead's stored
    meta — `pod_approval_mode_is_set`) no longer fixes to `"wait"`. It resolves through the
    caller's own `caller_default`: `serve.py::_run_sweeps`'s dispatch loop and `dispatch_pod`'s
-   default both pass `"park"`; `cli/_pod.py::_pod_dispatch` passes `"wait"` when `sys.stdin`
+   default both pass `"park"`; `cli/_run.py::_pod_dispatch` passes `"wait"` when `sys.stdin`
    is a real TTY, else `"park"`. An explicit stored `approvalMode` (including an explicit
    `"wait"`) always wins over the caller's default. A pod that never had `approvalMode` set and
    is dispatched from a real foreground TTY sees no behavior change from before this section
@@ -1037,7 +1037,7 @@ was seeded once at binding time.)*
    the pod (always true under `DocketDriver`, which reports `cost_usd = 0.0` — see "Runtime driver
    resolution" and `cost-tracking.spec.md`), dispatch **MUST** fall back to a labelled token-based estimate (`pod_gating_cost`) so a real
    cap can still trip. This estimate is for gating only and is rendered distinctly labelled
-   wherever it appears (never mixed into `docket cost`'s recorded figures).
+   wherever it appears (never mixed into `docket status`'s recorded figures).
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
    terminal-failure re-entry"; `blockedReason` persisted) and the pipeline **MUST NOT** attempt
    the gated hop or any later one for this task. A `budget_exceeded` trace event **MUST** be
@@ -1403,8 +1403,8 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    `edges.adapters.docket_runtime.default_driver()`. `DocketDriver` dispatches every tool call
    through `core/tools.py`'s gated chokepoint (`pre_tool_call`, approval, and audit). An
    **injected** `runner` (a test double or explicit alternate implementation) always wins; this
-   requirement governs the no-injected-runner path used by real `docket pod <p> dispatch` and
-   `docket pipeline run` invocations.
+   requirement governs the no-injected-runner path used by real `docket run` and
+   `docket run --pipeline` invocations.
 2. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
    `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) — real measured
    token counts are still recorded (`core.session`'s `MeasuredUsage`, surfaced through
@@ -1847,11 +1847,28 @@ card), scores nothing, and carries no dollar figure.*
    `cancelled`. A run whose body never observes the request (a wedged thread) stays nonterminal
    with `cancellation.requestedAt` set. Dispatch itself is unchanged.
 
+### CLI entry: `docket run`
+
+1. `docket run` **MUST** be the one foreground entry to this pipeline. It takes `--resume`,
+   `--timeout S`, `--progress`, `--no-prompt`, `--pipeline FILE`, repeatable `--var k=v`,
+   `--dry-run` and the pod selector; an undeclared flag **MUST** exit 2 naming it, never be dropped.
+2. `--dry-run` **MUST** print the plan `core.orchestrator.render_plan` renders for the effective
+   pipeline against the pod's roster and **MUST NOT** claim a task, create a run record, write a
+   trace event or change a task status. It **MUST NOT** require a model endpoint.
+3. The "Running N task(s) through: ..." banner **MUST** list the effective pipeline's runnable
+   steps after roster filtering, so a two-member pod names two hops, not four.
+4. Without a model endpoint (`cli/_setup.py::readiness().endpoint` not ok) `run` **MUST** exit 1
+   with `No model endpoint yet. Run docket setup` before any run record exists.
+5. `--resume` **MUST** also clear the Lead's budget auto-pause and un-block the pod's
+   budget-blocked tasks (audited `run.resume`) before it reclaims stale claims.
+6. A run ends with one summary line (`<n> done · <n> failed · <tokens> tokens (~$<x> est.)`, the
+   dollar figure a labelled estimate, never billed spend) and one `Next:` line.
+
 ## Interface Contracts
 
 This spec defines behavior only; the CLI surface that triggers it (`docket pod <project>
 dispatch [--resume] [--timeout <seconds>]`, `docket pod <project> queue --retry <task-id>`,
-`docket pipeline run <project> [--file <path>] [--resume] [--timeout <seconds>]`, `docket serve
+`docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`, `docket serve
 --dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry record each
 invocation of this pipeline creates (`docket runs`, `GET /runs`), including its `pids` field and
 the `"cancelled"` state `docket runs cancel <id>` produces, is documented in
@@ -1900,7 +1917,7 @@ input_expired                  # an unanswered question passed its deadline (tas
 ### A lean pod (Lead + Implementer, no `verifyCmd`) completing normally
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
 [dispatch] verification skipped — verifyCmd not set for myapp-implementer
   [task-3f2a1c9e-...] done — 2 hop(s), $0.0000
 ```
@@ -1908,7 +1925,7 @@ $ docket pod myapp dispatch
 ### A full pod blocked by a Tester FAIL
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
   [task-91a2c410-...] failed — tester reported FAIL
   Details: docket runs show run-...
 ```
@@ -1919,7 +1936,7 @@ exits 0 — see `cli-interface.spec.md`.)
 ### A Reviewer REQUEST-CHANGES driving one rework cycle, then approving
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
 Dispatching 1 pending task(s) through: lead → implementer → reviewer → tester
   [task-7c1e2b90-...] done — 6 hop(s), $0.0000
 ```
@@ -1931,7 +1948,7 @@ Implementer and Reviewer once each.)
 ### A pod blocked on budget, auto-paused, then resumed
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
   [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
 $ docket profile myapp-lead --resume
@@ -1942,7 +1959,7 @@ $ docket profile myapp-lead --resume
 ### A crashed dispatch resumed
 
 ```text
-$ docket pod myapp dispatch --resume
+$ docket run --resume
 Dispatching 0 pending, 1 resumable task(s) through: lead → implementer → reviewer
   [task-a1b2c3d4-...] done — 3 hop(s), $0.0000
 ```
@@ -1953,25 +1970,25 @@ run continues from the Reviewer.)
 ### A require_approval gate (pod-level), granted, then continued (G-1)
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
 
 $ docket approve apr-1234
 ✓ Approval granted: apr-1234
   The waiting action may now proceed.
 
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
 (The Lead hop already completed before the gate fired is not re-invoked; `docket approve` moves
-the task back to `pending`, and the *next* `docket pod myapp dispatch` continues from the
+the task back to `pending`, and the *next* `docket run` continues from the
 Implementer — the exact hop the gate stopped it on.)
 
 ### The same gate, denied instead
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
 
 $ docket deny apr-1234
@@ -1980,7 +1997,7 @@ $ docket deny apr-1234
 ```
 
 (The task is now `failed`, `failureKind: "approval_denied"`, immediately — no further dispatch
-run is needed to observe this; a later `docket pod myapp dispatch` — with or without `--resume`
+run is needed to observe this; a later `docket run` — with or without `--resume`
 — will not touch it again.)
 
 ## Validation
@@ -2051,6 +2068,10 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.34.0 (2026-10-07)
+
+- New "CLI entry: `docket run`": `docket run` replaces `docket pod <p> dispatch` and `docket pipeline run`; `--dry-run` starts nothing, the banner is roster-filtered, `--resume` clears a budget pause, no endpoint refuses with the setup line.
 
 ### Version 6.33.0 (2026-10-07)
 

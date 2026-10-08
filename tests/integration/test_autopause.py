@@ -410,7 +410,7 @@ class TestRecordedSpendNeverContaminated:
         # though plenty of tokens (and a known price) exist to estimate from.
         assert _utils.aggregate_cost(lead_id).cost_usd == 0.0
 
-    def test_docket_cost_reports_none_recorded_not_a_dollar_figure(
+    def test_status_labels_the_dollar_figure_an_estimate(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
@@ -419,14 +419,13 @@ class TestRecordedSpendNeverContaminated:
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
         runner = CliRunner()
-        result = runner.invoke(_app, ["cost", lead_id])
+        result = runner.invoke(_app, ["status", "--pod", "demo"])
         assert result.exit_code == 0, result.output
-        assert "none recorded" in result.output
-        # The estimate ($4.80 for these tokens/model) must never appear here
-        # dressed up as a cost figure.
-        assert "4.80" not in result.output
+        # The estimate ($4.80 for these tokens/model) appears only labelled as one.
+        assert "~$4.80 est." in result.output
+        assert "recorded" not in result.output
 
-    def test_docket_cost_json_cost_field_stays_zero(
+    def test_status_all_json_inventory_cost_field_stays_zero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
@@ -435,8 +434,9 @@ class TestRecordedSpendNeverContaminated:
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
         runner = CliRunner()
-        result = runner.invoke(_app, ["cost", "--json"])
+        result = runner.invoke(_app, ["status", "--all", "--json"])
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         agent_row = next(a for a in data["agents"] if a["id"] == lead_id)
         assert agent_row["costUsd"] == 0.0
+        assert data["totalCostUsd"] == 0.0

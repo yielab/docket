@@ -246,7 +246,7 @@ def _print_summary() -> None:
     ui.console.print()
     ui.console.print("[bold]Cost Management:[/bold]")
     ui.console.print(f"  Default model: {_cfg.DEFAULT_MODEL}")
-    ui.console.print("  View usage: [green]docket cost[/green]")
+    ui.console.print("  View usage: [green]docket status[/green]")
     ui.console.print(
         "  Role→model policy: [green]docket models[/green]   "
         "Pin one agent: [green]docket profile <id> <provider/model>[/green]"

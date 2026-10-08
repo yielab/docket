@@ -1,34 +1,35 @@
-"""``docket inbox`` — one derived view of everything across every pod that needs a human.
+"""The inbox command: everything across every pod that needs a human.
 
-Renders `core.inbox.build_inbox`'s four sections. A plain call advances a durable cursor
-(`config.INBOX_CURSOR_FILE`, through `edges/store.py`) so a repeat call shows only newly-terminal
-tasks; `--peek` reads without advancing it and `--since <iso>` overrides the stored cursor for
-one call without touching it either.
+A plain call advances a durable cursor so a repeat call shows only newly finished tasks;
+--peek reads without advancing it and --since overrides the stored cursor for one call.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
-import json
+from typing import Any
 
 import typer
 
 import docket.config as _cfg
 from docket import ui
+from docket.cli import _contract, _status
 from docket.core import approval as _approval
+from docket.core import dispatch as _dispatch
 from docket.core import inbox as _inbox
-from docket.core.operator_contract import ApprovalView, TaskView
+from docket.core.operator_contract import ApprovalView, InboxView, TaskView
 from docket.edges import store as _store
 
+APPROVED_READY = "approved_ready"
 
-def _flag(args: list[str], name: str) -> str | None:
-    """Return the value after ``--name`` (or ``--name=value``), else None."""
-    for i, a in enumerate(args):
-        if a == name and i + 1 < len(args):
-            return args[i + 1]
-        if a.startswith(name + "="):
-            return a.split("=", 1)[1]
-    return None
+_TASK_STATES = {
+    "waiting_approval": ("needs_approval", "docket task approve {id}"),
+    "waiting_input": ("needs_answer", "docket task answer {id}"),
+    "blocked": ("blocked", "docket task retry {id}"),
+    "failed": ("failed", "docket task retry {id}"),
+    "done": ("done", "docket task show {id}"),
+    "running": ("running", "docket task show {id}"),
+}
 
 
 def _utc_now() -> str:
@@ -36,8 +37,7 @@ def _utc_now() -> str:
 
 
 def _read_cursor() -> str | None:
-    data = _store.read_json(_cfg.INBOX_CURSOR_FILE)
-    since = data.get("since")
+    since = _store.read_json(_cfg.INBOX_CURSOR_FILE).get("since")
     return str(since) if since else None
 
 
@@ -45,98 +45,129 @@ def _write_cursor(value: str) -> None:
     _store.write_json(_cfg.INBOX_CURSOR_FILE, {"since": value})
 
 
-def _render_task(view: TaskView) -> None:
-    ui.console.print(f"  [{view.a2a_state}] task {view.id}  pod={view.pod}  status={view.status}")
-    label = view.description or view.reason or ""
-    if label:
-        ui.dim(f"    {label[:120]}")
-    if view.approval_token and view.status == "waiting_approval":
-        _render_held_approval(view.approval_token)
-        return
-    question = view.question
-    if question is None or view.status != "waiting_input":
-        return
-    ui.console.print(f"    Q: {question.message[:160]}")
-    options = getattr(question, "options", None) or []
-    if options:
-        recommended = getattr(getattr(question, "recommendation", None), "option_id", None)
-        rendered = ", ".join(
-            f"{o.id} ({o.label})" + (" (recommended)" if o.id == recommended else "")
-            for o in options
-        )
-        ui.dim(f"    options: {rendered}")
-    ui.dim(f"    answer: docket chat {view.id}")
+def _approved_ready_tasks() -> list[TaskView]:
+    """Pending tasks whose approval was granted: nothing is left but ``docket run``."""
+    out: list[TaskView] = []
+    for project in _status.pod_ids():
+        for task in _dispatch.read_tasks(project):
+            if task.get("status") == "pending" and (
+                task.get("pregrants") or task.get("gateOverridePipelineIndex") is not None
+            ):
+                out.append(_inbox.task_view(project, task))
+    return out
 
 
-def _render_held_approval(token: str) -> None:
-    """The action a task's folded approval asks about, and how to answer it."""
+def _state_and_command(item: TaskView | ApprovalView, *, ready: bool = False) -> tuple[str, str]:
+    """The item's state word and the one command that moves it forward."""
+    if isinstance(item, ApprovalView):
+        return "needs_approval", f"docket task approve {item.token}"
+    if ready:
+        return APPROVED_READY, f"docket run --pod {item.pod}"
+    state, command = _TASK_STATES.get(item.status, (item.status, "docket task show {id}"))
+    return state, command.format(id=item.id)
+
+
+def _as_dict(item: TaskView | ApprovalView, *, ready: bool = False) -> dict[str, Any]:
+    state, command = _state_and_command(item, ready=ready)
+    row = item.model_dump(by_alias=True, mode="json")
+    row.update(state=state, command=command)
+    return row
+
+
+def _json_view(view: InboxView, ready: list[TaskView]) -> dict[str, Any]:
+    body: dict[str, Any] = view.model_dump(by_alias=True, mode="json")
+    body["needsYou"] = [_as_dict(i) for i in view.needs_you] + [
+        _as_dict(t, ready=True) for t in ready
+    ]
+    for key, items in (
+        ("failed", view.failed),
+        ("doneSince", view.done_since),
+        ("running", view.running),
+    ):
+        body[key] = [_as_dict(i) for i in items]
+    return body
+
+
+def _held_action(token: str) -> str:
     try:
-        record = _approval.approval_get(token)
+        return str(_approval.approval_get(token).get("action") or "")
     except _approval.ApprovalError:
+        return ""
+
+
+def _say(text: str) -> None:
+    ui.console.print(text, markup=False)
+
+
+def _render_item(item: TaskView | ApprovalView, *, ready: bool = False) -> None:
+    state, command = _state_and_command(item, ready=ready)
+    if isinstance(item, ApprovalView):
+        _say(f"  approval {item.token}  pod={item.pod}  role={item.role}")
+        if item.action:
+            _say(f"    asks: {item.action}")
+        _say(f"    approve: {command}")
+        _say(f"    deny:    docket task deny {item.token}")
         return
-    action = str(record.get("action") or "")
-    if action:
-        ui.console.print(f"    asks: {action[:160]}")
-    ui.dim(f"    approve: docket approve {token}   deny: docket deny {token}")
+    _say(f"  task {item.id}  pod={item.pod}  {state.replace('_', ' ')}")
+    label = item.description or item.reason or ""
+    if label:
+        _say(f"    {label}")
+    if state == "needs_approval":
+        action = _held_action(item.approval_token) if item.approval_token else ""
+        if action:
+            _say(f"    asks: {action}")
+        _say(f"    approve: {command}")
+        _say(f"    deny:    docket task deny {item.id}")
+    elif state == "needs_answer" and item.question is not None:
+        _say(f"    Q: {item.question.message}")
+        options = getattr(item.question, "options", None) or []
+        if options:
+            rec = getattr(getattr(item.question, "recommendation", None), "option_id", None)
+            rendered = ", ".join(
+                f"{o.id} ({o.label})" + (" (recommended)" if o.id == rec else "") for o in options
+            )
+            _say(f"    options: {rendered}")
+        _say(f"    answer: {command}")
+    else:
+        _say(f"    next: {command}")
 
 
-def _render_approval(view: ApprovalView) -> None:
-    ui.console.print(
-        f"  [{view.a2a_state}] approval {view.token}  pod={view.pod}  role={view.role}"
-    )
-    if view.action:
-        ui.dim(f"    {view.action[:120]}")
+def cmd_inbox(
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+    since: str | None = typer.Option(
+        None, "--since", help="Show tasks finished after this ISO time; leaves the cursor alone"
+    ),
+    peek: bool = typer.Option(False, "--peek", help="Read without advancing the cursor"),
+) -> None:
+    """List what needs you across every pod: approvals, questions, failures, finished work.
 
+    Every item carries the exact docket command that moves it forward. A plain call advances
+    a cursor so a repeat call shows only newly finished tasks; --peek and --since do not.
 
-def run_inbox(args: list[str]) -> int:
-    """List everything that needs the operator, across every pod, plus recent context."""
-    json_out = "--json" in args
-    peek = "--peek" in args
-    explicit_since = _flag(args, "--since")
-    since = explicit_since if explicit_since is not None else _read_cursor()
-
-    view = _inbox.build_inbox(now=_utc_now(), since=since)
-
-    if not peek and explicit_since is None and view.next:
+    Example: docket inbox --peek
+    """
+    view = _inbox.build_inbox(now=_utc_now(), since=since if since is not None else _read_cursor())
+    if not peek and since is None and view.next:
         _write_cursor(view.next)
-
+    ready = _approved_ready_tasks()
     if json_out:
-        print(json.dumps(view.model_dump(by_alias=True, mode="json"), indent=2))
-        return 0
-
+        _contract.emit_json(_json_view(view, ready))
+        return
     ui.header("Inbox")
-    ui.console.print()
-    sections: list[tuple[str, list[TaskView | ApprovalView]]] = [
-        ("Needs you", list(view.needs_you)),
-        ("Failed", list(view.failed)),
-        ("Done", list(view.done_since)),
-        ("Running", list(view.running)),
+    sections: list[tuple[str, list[tuple[TaskView | ApprovalView, bool]]]] = [
+        (
+            "Needs you",
+            [(i, False) for i in view.needs_you] + [(t, True) for t in ready],
+        ),
+        ("Failed", [(i, False) for i in view.failed]),
+        ("Done", [(i, False) for i in view.done_since]),
+        ("Running", [(i, False) for i in view.running]),
     ]
     if not any(items for _, items in sections):
-        ui.dim("  Nothing needs you.")
-        ui.console.print()
-        return 0
+        ui.dim("Nothing needs you.")
+        return
     for title, items in sections:
-        if not items:
-            continue
-        ui.console.print(f"{title}:")
-        for item in items:
-            if isinstance(item, ApprovalView):
-                _render_approval(item)
-            else:
-                _render_task(item)
-        ui.console.print()
-    return 0
-
-
-def cmd_inbox(ctx: typer.Context) -> None:
-    """List everything across every pod that needs you: waiting/blocked tasks and pending
-    approvals, plus failed/done/running context.
-
-    `docket inbox [--json] [--since <iso>] [--peek]`. A plain call advances a durable cursor so a
-    repeat call's `Done` section only shows newly-terminal tasks; `--peek` reads without
-    advancing it, and `--since <iso>` overrides the stored cursor for one call without touching
-    it either. `--json` emits the same shape `docket serve`'s `GET /inbox` returns."""
-    from docket.cli._inbox import run_inbox
-
-    raise typer.Exit(run_inbox(list(ctx.args)))
+        if items:
+            ui.section(title)
+            for item, is_ready in items:
+                _render_item(item, ready=is_ready)

@@ -5,7 +5,7 @@ _docket() {
   local -a commands
   commands=(
     'list:List all project agents'
-    'status:Show current-project status, or every project with --all'
+    'status:Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all'
     'add:Add role agents to an existing project pod'
     'init:Initialize the current project with its minimum isolated pod'
     'info:Detailed status of one agent'
@@ -24,7 +24,6 @@ _docket() {
     'roles:Manage declarative role archetypes: list/show/add/validate'
     'logs:View an agent'\''s latest memory log'
     'edit:Open agent workspace files in $EDITOR'
-    'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
     'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
     'gates:Show docket'\''s tool-call gate and manage workspace isolation'
@@ -33,7 +32,6 @@ _docket() {
     'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
     'mcp:Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)'
     'audit:Show the audit log, or verify its tamper-evidence chain'
-    'snapshot:Export system state snapshot as JSON'
     'serve:Local HTTP endpoints: /status.json /metrics /health'
     'completions:Shell completion helpers'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
@@ -43,12 +41,12 @@ _docket() {
     'channels:Notification/conversation/decision destinations: list, inspect, and enable'
     'notify:Flush operator events to every enabled channel'
     'trace:View agent execution traces'
-    'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'
     'approve:Approve a pending tool-action'
     'deny:Deny a pending tool-action'
     'chat:See and answer one task'\''s parked question'
-    'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
+    'inbox:List what needs you across every pod: approvals, questions, failures, finished work'
+    'run:Run the pod'\''s pending tasks through its pipeline, one real agent turn per hop'
     'help:Show help'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
   )
@@ -71,9 +69,9 @@ _docket() {
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue config apply export ;;
     mcp)             compadd serve servers ;;
-    pipeline)        compadd validate plan run ;;
+    pipeline)        compadd validate plan ;;
     runs)            compadd list show cancel prune ;;
     conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
@@ -86,7 +84,6 @@ _docket() {
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
     completions)     compadd bash zsh ;;
-    cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|delete|profile|wire|unwire|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac

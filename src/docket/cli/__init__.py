@@ -19,6 +19,7 @@ from docket.cli import (
     _pod,
     _pod_config,
     _remove,
+    _run,
     _service,
     _setup,
     _setup_export,
@@ -105,7 +106,6 @@ app.command(
 )(_pod_config.cmd_roles)
 app.command("logs")(_remove.cmd_logs)
 app.command("edit")(_remove.cmd_edit)
-app.command("cost")(_status.cmd_cost)
 app.command(
     "config",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -132,7 +132,6 @@ app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_setup_mcp.cmd_mcp)
 app.command("audit")(_log.cmd_audit)
-app.command("snapshot")(_status.cmd_snapshot)
 app.command("serve")(_service.cmd_serve)
 app.command("completions")(_setup.cmd_completions)
 app.command("validate")(_pod_config.cmd_validate)
@@ -160,7 +159,6 @@ app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_trace)
-app.command("metrics")(_status.cmd_metrics)
 app.command(
     "policies",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -171,8 +169,6 @@ app.command(
     "chat",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_chat)
-app.command(
-    "inbox",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_inbox.cmd_inbox)
+app.command("inbox")(_inbox.cmd_inbox)
+app.command("run")(_run.cmd_run)
 app.command("help")(_remove.cmd_help)

@@ -10,13 +10,9 @@ removed-command-notice coverage.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
-from tests.conftest import repoint_docket_home
 
-from docket.cli import _completions, _help, _metrics
+from docket.cli import _completions, _help
 
 SUBJECT = "docket.cli"
 
@@ -68,140 +64,6 @@ class TestCompletions:
         second = capsys.readouterr().out
         assert first == second
         assert first.endswith("complete -F _docket_complete docket\n")
-
-
-# ── metrics ─────────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    d = tmp_path / ".docket"
-    d.mkdir()
-    repoint_docket_home(monkeypatch, d)
-    return d
-
-
-class TestMetrics:
-    def test_no_traces_dir_returns_1(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _metrics.run_metrics()
-        out = capsys.readouterr().out
-        assert rc == 1
-        assert "No traces directory found" in out
-        assert "docket trace ingest" in out
-
-    def test_empty_traces_dir_no_sessions(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        (oc_dir / "traces").mkdir()
-        rc = _metrics.run_metrics()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "No terminal sessions found" in out
-
-    def test_help_prints_usage(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _metrics.run_metrics(show_help=True)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket metrics" in out
-        assert "Filter by agent role" in out
-
-    def test_computes_success_rate(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        proj = oc_dir / "traces" / "myapp"
-        proj.mkdir(parents=True)
-        session = [
-            {
-                "event_type": "session_start",
-                "ts": "2026-06-23T10:00:00",
-                "agent_role": "programmer",
-            },
-            {"event_type": "cost_charged", "cost_usd": 0.05},
-            {
-                "event_type": "session_end",
-                "ts": "2026-06-23T10:01:00",
-                "agent_role": "programmer",
-                "payload": {"status": "success"},
-            },
-        ]
-        (proj / "sess1.jsonl").write_text(
-            "\n".join(json.dumps(r) for r in session) + "\n", encoding="utf-8"
-        )
-        rc = _metrics.run_metrics()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket metrics" in out
-        assert "Success rate" in out
-        assert "100.0%" in out
-        assert "1 success / 0 failure / 0 aborted" in out
-        assert "total=$0.05" in out
-
-    def test_role_filter(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        proj = oc_dir / "traces" / "myapp"
-        proj.mkdir(parents=True)
-        rec = [
-            {"event_type": "session_start", "ts": "2026-06-23T10:00:00", "agent_role": "tester"},
-            {
-                "event_type": "session_end",
-                "ts": "2026-06-23T10:00:30",
-                "agent_role": "tester",
-                "payload": {"status": "success"},
-            },
-        ]
-        (proj / "s.jsonl").write_text(
-            "\n".join(json.dumps(r) for r in rec) + "\n", encoding="utf-8"
-        )
-        rc = _metrics.run_metrics(role="programmer")
-        out = capsys.readouterr().out
-        assert rc == 0
-        # role filter excludes the tester session
-        assert "No terminal sessions found" in out
-
-    def test_guardrail_block_reported_from_a_real_g2_producer(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`guardrail_block` is the live-path producer this reader waits for, bucketed by the
-        tripped policy's id -- the reader's `payload.get("action", etype)` convention is fed
-        the policy id, not the generic word "block", so the table names which policy fired."""
-        proj = oc_dir / "traces" / "myapp"
-        proj.mkdir(parents=True)
-        session = [
-            {"event_type": "session_start", "ts": "2026-06-23T10:00:00", "agent_role": "lead"},
-            {
-                "event_type": "guardrail_check",
-                "ts": "2026-06-23T10:00:05",
-                "agent_role": "lead",
-                "payload": {"hook": "pre_output", "policy": "forbidden-marker", "action": "block"},
-            },
-            {
-                "event_type": "guardrail_block",
-                "ts": "2026-06-23T10:00:05",
-                "agent_role": "lead",
-                "payload": {
-                    "hook": "pre_output",
-                    "policy": "forbidden-marker",
-                    "action": "forbidden-marker",
-                },
-            },
-            {
-                "event_type": "session_end",
-                "ts": "2026-06-23T10:00:10",
-                "agent_role": "lead",
-                "payload": {"status": "failure"},
-            },
-        ]
-        (proj / "sess1.jsonl").write_text(
-            "\n".join(json.dumps(r) for r in session) + "\n", encoding="utf-8"
-        )
-        rc = _metrics.run_metrics()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Guardrail trips:" in out
-        assert "forbidden-marker" in out
-        # guardrail_check is a pure audit-trail event, deliberately not tallied
-        # here too — it would double-count the same trip guardrail_block already
-        # reports (see core/dispatch.py's module docstring).
-        assert out.count("forbidden-marker") == 1
 
 
 # ── help ────────────────────────────────────────────────────────────────────────

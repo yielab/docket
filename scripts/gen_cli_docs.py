@@ -42,7 +42,7 @@ def _load_click_group():
 # appear in exactly one group; `help` is folded into Global Options instead
 # of its own heading, matching the previous hand-written structure.
 GROUPS: list[tuple[str, list[str]]] = [
-    ("Lifecycle Commands", ["list", "init", "add", "status", "info", "delete", "maintain"]),
+    ("Lifecycle Commands", ["list", "init", "add", "status", "run", "info", "delete", "maintain"]),
     ("Session and Context Management", ["scope", "context", "persona"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     ("Telegram Integration", ["wire", "unwire", "conversations"]),
@@ -54,14 +54,12 @@ GROUPS: list[tuple[str, list[str]]] = [
             "edit",
             "profile",
             "models",
-            "cost",
             "doctor",
             "setup",
             "config",
             "serve",
             "completions",
             "validate",
-            "snapshot",
             "mcp",
         ],
     ),
@@ -71,7 +69,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Observability Commands",
-        ["runs", "trace", "metrics", "harness", "exporters", "channels", "notify"],
+        ["runs", "trace", "harness", "exporters", "channels", "notify"],
     ),
 ]
 
@@ -459,15 +457,15 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep",
         "`1800`",
     ),
-    (("METRICS_WINDOW",), "Rolling terminal-session count for `docket metrics`", "`50`"),
+    (("METRICS_WINDOW",), "Rolling terminal-session count for `docket status`", "`50`"),
     (
         ("RUNAWAY_TURNS_THRESHOLD",),
-        "Past this many turns, `docket doctor`/`docket cost` flag a session as runaway",
+        "Past this many turns, `docket doctor` flags a session as runaway",
         "`200`",
     ),
     (
         ("RUNAWAY_COST_THRESHOLD",),
-        "Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway",
+        "Past this estimated USD, `docket doctor` flags a session as runaway",
         "`20`",
     ),
     (
@@ -763,13 +761,13 @@ done
 docket models preset openrouter-free
 ```
 
-### Cost Monitoring
+### Usage Monitoring
 
-Track daily costs:
+Track daily usage:
 
 ```bash
 # Add to crontab
-0 23 * * * docket cost >> ~/docket-costs-$(date +%Y-%m).log
+0 23 * * * docket status --all --json >> ~/docket-status-$(date +%Y-%m).log
 ```
 
 ### Backup Strategy
@@ -784,7 +782,7 @@ tar -czf ~/backups/docket-$(date +%s).tar.gz \\
   ~/.docket/workspaces/
 
 # Or a single-file fleet snapshot
-docket snapshot -o ~/backups/fleet-$(date +%s).json
+docket status --all --json > ~/backups/fleet-$(date +%s).json
 ```
 """
 

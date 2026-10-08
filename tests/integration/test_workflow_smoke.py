@@ -1021,7 +1021,7 @@ def test_run_cli_does_not_start_after_canary_abort(
     monkeypatch.setattr(subprocess, "Popen", unexpected_popen)
 
     with pytest.raises(_smoke.SmokeFailure, match="disqualification"):
-        _smoke._run_cli(tmp_path, {}, "pipeline", "run", "smoke", abort_event=abort)
+        _smoke._run_cli(tmp_path, {}, "run", "--pod", "smoke", abort_event=abort)
 
 
 def test_run_cli_terminates_in_flight_process_on_canary_abort(
@@ -1051,7 +1051,7 @@ def test_run_cli_terminates_in_flight_process_on_canary_abort(
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
 
     with pytest.raises(_smoke.SmokeFailure, match="stopped after canary disqualification"):
-        _smoke._run_cli(tmp_path, {}, "pipeline", "run", "smoke", abort_event=abort)
+        _smoke._run_cli(tmp_path, {}, "run", "--pod", "smoke", abort_event=abort)
 
     assert process.terminated is True
 

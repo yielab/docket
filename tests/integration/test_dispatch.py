@@ -50,6 +50,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
+def _endpoint_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`docket run` refuses without a model endpoint; these tests drive a FakeDriver."""
+    from docket.cli._setup import Piece, Readiness
+
+    ready = Readiness(endpoint=Piece("model endpoint", True, "", ""))
+    monkeypatch.setattr("docket.cli._run.readiness", lambda: ready)
+
+
 def _seed_pod(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1432,7 +1440,8 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
         monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
         monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
 
-        result = CliRunner().invoke(app, ["pod", "demo", "dispatch", "--resume"])
+        _endpoint_ready(monkeypatch)
+        result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
 
         assert "No pending tasks" not in result.output
         assert _dispatch.read_tasks("demo")[0]["status"] == "done"
@@ -1446,7 +1455,8 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
 
         _seed_pod(tmp_path, monkeypatch)
 
-        result = CliRunner().invoke(app, ["pod", "demo", "dispatch", "--resume"])
+        _endpoint_ready(monkeypatch)
+        result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
 
         assert "No pending tasks" in result.output
 
@@ -1572,10 +1582,10 @@ class TestLegacyQueueLoads:
         assert _dispatch.read_tasks("demo") == []
 
 
-# ── `docket pod <p> dispatch`'s prologue names the resolved pipeline's roles ──
+# ── `docket run`'s prologue names the resolved pipeline's roles ──
 
 
-class TestPodDispatchCliPrologue:
+class TestRunCliPrologue:
     """The "Dispatching N pending task(s) through: <roles>" prologue must name the pod's
     own resolved pipeline, not the legacy four-role ``PIPELINE_ORDER`` filter a
     non-``software`` pod never matches past "lead"."""
@@ -1597,7 +1607,8 @@ class TestPodDispatchCliPrologue:
         _dispatch.enqueue_task("rsch", "look into it")
         monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
 
-        result = CliRunner().invoke(app, ["pod", "rsch", "dispatch"])
+        _endpoint_ready(monkeypatch)
+        result = CliRunner().invoke(app, ["run", "--pod", "rsch"])
 
         assert "through: lead → researcher → analyst → writer → critic" in result.output
 

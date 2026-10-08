@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.70.0
+**Version**: 1.74.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -203,18 +203,35 @@ provisioning belongs to `init`, including multi-project automation.
 **Return**: 0 on success, 1 when the pod/role is missing or invalid.
 
 #### docket status
-**Purpose**: Show project-level status without mixing it with workstation diagnostics or the
-agent inventory.
-**Syntax**: `docket status [--all] [--json]`
+**Purpose**: Show where a pod stands — tasks, tokens, outcomes, the last run — or every pod.
+**Syntax**: `docket status [--all] [--json] [--history] [--days N] [--pod <name>]`
 **Behavior**:
-- With no flag, resolve the most-specific initialized pod whose `codebase`/`workDir` contains the
-  current directory and report its path, members, task counts, and readiness.
-- `--all` reports the same summary for every registered pod, once per project rather than once per
-  agent.
+- With no flag, resolve the pod (`--pod`, `DOCKET_POD`, then the most-specific initialized pod
+  whose `codebase`/`workDir` contains the current directory) and report its path, members, task
+  counts (including failed and "approved, ready"), measured tokens with a labelled dollar
+  estimate, the success/failure/aborted counts and latency from trace `session_end` events, the
+  last run, and whether `docket start` is running (its `serve.pid` names a live process).
+- `--all` reports the same summary for every registered pod, once per project rather than once
+  per agent, with failed counts; `--all --json` also carries the fleet inventory
+  (`timestamp`, `channels`, `agents`, `totalCostUsd`).
+- `--history [--days N]` shows tokens per day (empty against the production driver; see
+  cost-tracking.spec.md "Known gap").
 - No current-directory match **MUST** fail with an actionable `docket init`/`--all` message.
 - `doctor` remains workstation-wide technical health; `list` remains the detailed global agent
-  inventory. Neither behavior is an implicit side effect of `status` or bare `docket`.
-**Return**: 0 on success, 1 when current-project resolution fails.
+  inventory.
+**Return**: 0 on success, 1 when current-project resolution fails, 2 on an unknown flag.
+
+#### docket run
+**Purpose**: Run a pod's pending tasks through its pipeline, one real agent turn per hop.
+**Syntax**: `docket run [--resume] [--timeout S] [--progress] [--no-prompt] [--pipeline FILE]
+[--var k=v]... [--dry-run] [--pod <name>]`
+**Behavior**: see pod-dispatch.spec.md "CLI entry: `docket run`". `--dry-run` prints the plan and
+starts nothing; `--resume` reclaims stale claims and clears a budget auto-pause; `--pipeline
+FILE` runs a pipeline file instead of the pod's own (pipeline-format.spec.md); repeatable
+`--var k=v` supplies its variables. With no model endpoint it exits 1 naming `docket setup`.
+**Output**: the banner of runnable steps, one line per task, one summary line, one `Next:` line.
+**Return**: `0` on success or an expected pause, `1` when a task ended `failed`, the run record
+ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknown flag.
 
 #### docket list
 **Purpose**: Display all agents
@@ -380,14 +397,14 @@ its `pod.yaml` sets one; a file target prints neither
 was **retired** in Phase 16 (D-16) — its validator silently ignored four constructs its own
 template emitted, so docket was linting a dialect it could not fully execute. `workflow` (and
 `wf`) are not registered commands — invoking one is an ordinary unknown-command error (exit 2).
-The single pipeline dialect docket executes is `docket pipeline validate` / `plan` / `run`
+The single pipeline dialect docket executes is `docket pipeline validate` / `plan` and `docket run --pipeline`
 (`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
 existing `<workspace>/workflows/*.lobster.yml` files are left on disk untouched, but no longer
 read by docket. (The former workflow-integration.spec.md was removed 2026-07-30; ROADMAP
 decision D-16 is the durable retirement record.)
 
 #### docket pipeline
-**Purpose**: Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1 format / W-2
+**Purpose**: Validate and plan a docket-native pipeline (`docket run --pipeline` runs one) (ROADMAP Phase 16 W-1 format / W-2
 executor). See pipeline-format.spec.md for the file format.
 See pod-dispatch.spec.md for how it actually runs.
 Not the Lobster dialect — `docket workflow` was retired by ROADMAP Phase 16 W-3 (see above).
@@ -398,23 +415,10 @@ Not the Lobster dialect — `docket workflow` was retired by ROADMAP Phase 16 W-
 - `plan <project> [--file <path>]`: Render the resolved step plan for *project*'s pod, from the
   real executor (`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone
   pretty-printer; does not execute or consume tokens. `--file` omitted resolves the pod's
-  zero-migration default pipeline (identical to what `run`/`docket pod <project> dispatch` would
+  zero-migration default pipeline (identical to what `docket run` would
   actually execute)
-- `run <project> [--file <path>] [--resume] [--timeout <seconds>] [--follow]`: Dispatch
-  *project*'s pending (and, with `--resume`, crash-recoverable) tasks through the given (or
-  default) pipeline — the same real, costed pipeline `docket pod <project> dispatch` drives
-  (identical run-registry recording, budget/approval gating, retries, crash resume); `--file`
-  selects a custom `PipelineSpec` instead of the pod's zero-migration default. `--follow`
-  (ROADMAP Phase 16 W-4) runs that same dispatch on a background thread while the foreground
-  thread tails new trace events for *project* to stdout as they're written — an operator sees
-  hop-by-hop progress rather than only the final summary; Ctrl-C stops *watching* only; the
-  dispatch keeps running and recording in the background. See pod-dispatch.spec.md for the
-  full state machine and pipeline-format.spec.md for the file format
-**Output**: Validation result, rendered plan, or per-task dispatch results (including cost);
-with `--follow`, also every new trace event observed while the dispatch is in flight
-**Return**: `0` on success; `1` on an invalid/missing file, an unknown project/pod, a dispatch
-error, or a dispatch whose run record ends `failed` because a task failed — the same rule as
-`docket pod <project> dispatch` (see `docket runs show <id>` for the recorded error)
+**Output**: Validation result or rendered plan
+**Return**: `0` on success; `1` on an invalid/missing file or an unknown project/pod
 
 ### Pod Commands
 
@@ -426,7 +430,7 @@ below. (The former team-coordination.spec.md
 was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 
 #### docket pod
-**Purpose**: Manage a project's pod (list/add/remove members; delegate, queue, and dispatch real work)
+**Purpose**: Manage a project's pod (list/add/remove members; delegate and queue work)
 **Syntax**: `docket pod <project> <action> [args]`
 **Actions**:
 - `list`: Show the pod's members (Lead, Implementer, optional Reviewer/Tester)
@@ -508,27 +512,11 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
   other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
   `blocked` task is never retried automatically
-- `dispatch [--resume] [--timeout <seconds>]`: Run the pod's pending (and, with `--resume`,
-  crash-recoverable) tasks through its real pipeline — one real, costed agent turn per hop
-  (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`. Gated by the budget
-  cap (which now auto-pauses the pod's Lead when reached), the Implementer's `verifyCmd` (if
-  set, run in its worktree when one exists), a Reviewer verdict gate with a bounded rework loop
-  (if a Reviewer is present), and — when a Tester is present — a structural PASS/FAIL parse of
-  the Tester's reply (FD-2). `--resume` (Phase 14 R-1) also reclaims any task a prior dispatcher
-  left `failed` with a stale claim (it crashed mid-task) and continues each one from its last
-  persisted hop instead of hop 0. `--timeout <seconds>` (Phase 14 R-2) overrides both the
-  agent-turn and `verifyCmd` timeout for this run only. Every invocation (this CLI path, the
-  serve webhook, a due schedule, or the sweep loop) is recorded in the run registry (`docket
-  runs`, Phase 14 R-3) with a queryable outcome. See `pod-dispatch.spec.md` for the full state
-  machine
-**Output**: Pod roster, queue listing, or per-task dispatch results (including cost). Every
+**Output**: Pod roster or queue listing. Every
 bracketed identifier (`[<task-id>]`, `[<role>]`, `[<member-id>]`) and every task description or
 failure reason is printed literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
-the project, dispatch raised an exception, or any task in this dispatch ended `failed` — the exit
-status matches the run record's `failed` state; see `docket runs show <id>` for the recorded
-error). A task left `blocked` or `waiting_approval` is an expected pause, not a failure, and
-exits `0`
+the project)
 
 #### docket roles
 **Purpose**: Inspect and manage declarative role archetypes — built-in, starter-library, and
@@ -686,27 +674,7 @@ visibility, not shared workspace or session state.
 When issues are found the footer points at `docket maintain [id] check`.
 **Return**: 0 if healthy, 1 when any issue is flagged
 
-#### docket cost
-**Purpose**: Display usage and costs
-**Syntax**: `docket cost [agent-id] [--json] [--history [--days N]]`
-**Arguments**:
-- `agent-id` (optional): Specific agent or all
-**Options**:
-- `--json`: Emit JSON (see `cli-json-shapes.spec.md`)
-- `--history`: Per-day history view (see cost-tracking.spec.md for why it is currently empty)
-- `--days N`: History window in days (default `0`, meaning no limit)
-**Output**: Cost breakdown table
-**Return**: 0 always
-
 ### Monitoring Commands
-
-#### docket snapshot
-**Purpose**: Emit JSON system state for dashboards or CI artifacts
-**Syntax**: `docket snapshot [--output <file>]`
-**Options**:
-- `--output <file>`: Write JSON to a file instead of stdout
-**Output**: JSON object (`timestamp`, `channels`, `agents`, `totalCostUsd`)
-**Return**: 0 on success
 
 #### docket serve
 **Purpose**: Background loop — refresh fleet status and optionally drive pod dispatch pipelines
@@ -810,16 +778,6 @@ doctor` no longer prints an eval-results advisory section. (The former eval.spec
 **Output**: Human-readable event log, raw JSONL, or an expiry summary (scanned/kept/deleted
 counts and per-file detail)
 **Return**: 0 on success, 1 if session not found
-
-#### docket metrics
-**Purpose**: Compute success rate, latency, cost, and guardrail trip counts
-**Syntax**: `docket metrics [--role <role>] [--project <project>] [--window <N>]`
-**Options**:
-- `--role <role>`: Filter to a specific agent role
-- `--project <project>`: Filter to a specific project
-- `--window <N>`: Rolling window size in sessions (default: `METRICS_WINDOW`)
-**Output**: Table of success rate, mean/p95 duration, total/mean cost, guardrail trips
-**Return**: 0 always
 
 #### docket policies
 **Purpose**: Manage declarative guardrail policies
@@ -972,18 +930,19 @@ non-interactively
 blocked by a `pre_input` policy, or fails the question's own schema validation
 
 #### docket inbox
-**Purpose**: List everything across every pod that needs the operator, in one call (Phase 34,
-D-50, ADR 0016; see operator-loop.spec.md "One inbox, derived")
+**Purpose**: List everything across every pod that needs the operator, in one call (see
+operator-loop.spec.md "One inbox, derived")
 **Syntax**: `docket inbox [--json] [--since <iso>] [--peek]`
 **Behavior**: Derives, fresh on every call, a pure `InboxView` (`core/operator_contract.py`) over
-every pod's tasks and pending approvals — `needsYou` (waiting/blocked tasks and pending
-approvals), `failed`, `doneSince`, `running`. A plain call advances a durable cursor
-(`~/.docket/inbox-cursor.json`) so a repeat call's `doneSince` only shows newly-terminal tasks
-since the last call; `--peek` reads without advancing the cursor; `--since <iso>` overrides the
-stored cursor for this one call without touching it either. `--json` emits the identical shape
-`docket serve`'s `GET /inbox` and the MCP `inbox` tool return
+every pod's tasks and pending approvals — `Needs you` (waiting/blocked tasks, pending approvals
+and "approved, ready" tasks), `Failed`, `Done`, `Running`. A plain call advances a durable
+cursor (`~/.docket/inbox-cursor.json`) so a repeat call's `Done` only shows newly finished tasks;
+`--peek` reads without advancing it; `--since <iso>` overrides the stored cursor for this one
+call without touching it. Each item prints the exact `docket task approve|deny|answer <id>` (or
+`retry`, `run`) command and the full held command or question, never truncated. `--json` emits
+the `GET /inbox` shape with `state` and `command` added to every item.
 **Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
-**Return**: 0 always — an empty inbox is not an error
+**Return**: 0 always — an empty inbox is not an error; 2 on an unknown flag
 
 #### docket channels
 **Purpose**: Manage `kind: channel` documents — notification/conversation/decision destinations
@@ -1014,7 +973,7 @@ refused content widening
 **Purpose**: Flush operator events to every enabled channel (Phase 34, D-50, ADR 0016 §6; see
 operator-loop.spec.md "Notifications")
 **Syntax**: `docket notify flush [--dry-run]`
-**Behavior**: `docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
+**Behavior**: `docket serve`'s sweep and `docket run` already flush after every real
 state change; this command forces one in between, or previews it. With no `--dry-run`, diffs the
 inbox against the last flush's saved snapshot, delivers each new event
 (`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
@@ -1219,7 +1178,7 @@ the contract-level summary follows.
 
 ### Numeric Validation
 - Budget values: non-negative USD (`profile --budget`)
-- History window: positive days (`cost --history --days N`)
+- History window: non-negative days (`status --history --days N`)
 - Timeout values: 1-3600
 
 ## Interactive Features
@@ -1245,7 +1204,7 @@ When agent-id is omitted for commands that need it:
 
 ### Rendering
 
-`docket pod <project> dispatch` (and `docket pipeline run`, which drives the same function) MUST
+`docket run` MUST
 render one line per event on stderr while the dispatch runs, whenever stderr is a real TTY or
 `--progress` is given:
 
@@ -1278,7 +1237,7 @@ notice and the prompt keeps waiting on the next event; it MUST NOT raise out of 
 
 Neither flag applies to `docket harness run` or a non-interactive dispatch caller (`serve
 --dispatch`, a due schedule, the MCP `dispatch` tool) — this section governs only the foreground
-CLI path (`cli/_pod.py::_pod_dispatch`, `cli/_progress.py`).
+CLI path (`cli/_run.py::_pod_dispatch`, `cli/_progress.py`).
 
 ## Error Message Standards
 
@@ -1321,6 +1280,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.74.0 (2026-10-07)
+
+- `docket run` (pod-dispatch.spec.md "CLI entry: `docket run`") replaces `docket pod <p> dispatch` and `docket pipeline run`; `docket status` absorbs `cost`, `metrics` and `snapshot` (per-pod tokens, labelled estimate, outcomes, last run, `docket start` state; `--all --json` carries the inventory); `docket inbox` takes declared options only, prints the exact `docket task ...` command per item and never truncates. `dispatch`, `pod dispatch`, `pipeline run`, `cost`, `metrics` and `snapshot` are unknown commands.
 
 ### Version 1.70.0 (2026-10-07)
 

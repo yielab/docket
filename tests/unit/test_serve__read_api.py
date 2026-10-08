@@ -256,7 +256,6 @@ class TestInboxEndpoint:
         assert set(body.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
     def test_matches_docket_inbox_json_for_the_same_state(self, inbox_live_server: str) -> None:
-        from docket.cli import _inbox as _cli_inbox
         from docket.cli import _pod
 
         _pod.build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
@@ -267,13 +266,12 @@ class TestInboxEndpoint:
         status, http_body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
         assert status == 200
 
-        import contextlib
-        import io
+        from typer.testing import CliRunner
 
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            code = _cli_inbox.run_inbox(["--json", "--peek"])
-        assert code == 0
-        cli_body = json.loads(buf.getvalue())
+        from docket.cli import app
+
+        result = CliRunner().invoke(app, ["inbox", "--json", "--peek"])
+        assert result.exit_code == 0
+        cli_body = json.loads(result.stdout)
 
         assert http_body == cli_body
