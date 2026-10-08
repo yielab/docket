@@ -84,6 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every document names the eleven-command surface.** The README and the quick start follow the
+  daily loop (`setup`, `init`, `task add`, `run`, `status`, `inbox`, `task approve`) and define a
+  pod where the first `docket pod` command appears; the guides, the reference docs, the recipe
+  READMEs, the channel and exporter templates and 25 specs were rewritten by
+  `scripts/maint/rewrite_cli_names.py` and by hand where no one-to-one form existed;
+  `cli-interface.spec.md` 2.0.0 is one section per command. A spec's changelog is the record and
+  keeps the names of its day.
 - **The pod has no positional id and no action word.** `docket pod <project> <action>` is gone;
   `pod show` replaces `config explain <agent>` and `pod <p> config get`, `pod set budgetUsd`
   replaces `profile --budget`, `pod set verify --member` replaces `pod <p> set-verify`, and

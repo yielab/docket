@@ -372,6 +372,8 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 
 **Wave 93b closed 2026-10-08** (seed `f54020ee`, four merges `f2dcfb4b`, `372c46d4`, `9fba00fb`, `2f1105e1`, the integrator release-lane pass `515a606b`, its completion `70b41380` and the rollup): `task` (`add|list|show|diff|trace|prune|approve|deny|answer|retry|cancel`) and `pod` (`show|add|remove|reset|set|unset|delete|apply|export|validate|plan|check|recipes|roles|policies`) are real groups; eleven top-level commands remain (`init status inbox task run pod log setup start stop exec`), the tree ADR 0022 names. The workers' returns are under "Wave 93b returns" in the packets file. Wave 94 (P39-17 and P39-18 first, then P39-19..P39-22, then P39-23) is next and bases on the Wave 93b rollup commit.
 
+**Wave 94 closed 2026-10-08** (stage one: P39-17 `cc81c003` and P39-18 `254fba94` with the integrator fixes `55b77647` and `a5f04351`; the integrator pass `70fbec81`, `4aeedf8c` (`cli-interface` 2.0.0), `7ea2d5c3`; stage two: P39-21 `22861f7b`, P39-20 `305e05ed`, P39-22 `7a1a85ce`, P39-19 `d362eb5f`, with `c6b4cc53` and `dbc3b49d`; then the rollup): grouped help under one tagline, `-h` everywhere, the bare three-part guide, completions from the tree, the three CLI guards, the rename script and its guard over the whole tree, and every doc, template and spec on the eleven-command surface. P39-23's remaining items (Tack's one line, the live asset capture, the board archive) are listed on the card; the workers' returns are under "Wave 94 returns" in the packets file. Wave 95 (P39-24, the measurement) is next and bases on the Wave 94 rollup commit.
+
 ### P39-1 — one pod resolver: `--pod`, `DOCKET_POD`, then the directory you stand in
 
 **Status:** DONE (merged to `develop` 2026-10-07, `847c637c`) · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (new section "Pod targeting" under "Global Command Structure")
@@ -920,7 +922,7 @@ test is parametrized over these seven; fails on the base (exit 0).
 
 ### P39-17 — grouped help, one tagline, the bare guide, completions and the three guards
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-17-help-guards` based on `4ce57b6c`) · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` ("Help" rewritten: the eleven commands in three panels, examples, exit codes), `test-framework.md` (the guards)
+**Status:** DONE (merged to `develop` 2026-10-08, `cc81c003`) · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` ("Help" rewritten: the eleven commands in three panels, examples, exit codes), `test-framework.md` (the guards)
 
 **Trigger (ADR 0022 decisions 1 and 6):** `docket --help` lists 46 commands in registration
 order; four taglines; 0 of 21 actions show their own help; the completion script offers agent ids
@@ -946,7 +948,7 @@ flag. Oracle: the guards themselves, after they have been seen red.
 
 ### P39-18 — the mechanical rename script
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-18-rename-script` based on `4ce57b6c`) · **Size:** S · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (tooling)
+**Status:** DONE (merged to `develop` 2026-10-08, `254fba94`) · **Size:** S · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (tooling)
 
 **Trigger:** about 357 doc lines, 142 source lines, 42 test lines and 17 script lines invoke
 `docket pod ...`; the templates carry `docket pod <project> config unset pipeline` thirteen
@@ -967,7 +969,7 @@ top-level name over `docs`, `src/docket/templates`, `scripts`, `specs`, `tests/a
 
 ### P39-19 — README and quick start on the new surface
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-19-readme` based on `a5f04351`) · **Size:** M · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (README is descriptive, D-37); agent-lane prose tests rebuilt
+**Status:** DONE (merged to `develop` 2026-10-08, `d362eb5f`) · **Size:** M · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (README is descriptive, D-37); agent-lane prose tests rebuilt
 
 **Goal:** after P39-18, rewrite `README.md` ("Quick start", "Your first team", "The run", "The
 gate and the record", "Make it yours", "Everything is configuration", "Also shipped", "Known
@@ -984,7 +986,7 @@ integrator spot-checks six). Oracle: the agent lane and the check.
 
 ### P39-20 — the guides: AGENT-TEAMS, DOCKET, WORKFLOW-GUIDE
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-20-guides` based on `a5f04351`) · **Size:** M · **Wave:** 94 · **Model:** Haiku · **Spec:** none
+**Status:** DONE (merged to `develop` 2026-10-08, `305e05ed`) · **Size:** M · **Wave:** 94 · **Model:** Haiku · **Spec:** none
 
 **Goal:** after P39-18's mechanical pass, the three guides read as one surface: every remaining
 unmappable line (listed by the script) is rewritten by hand, the "Org specialists" section of
@@ -1000,7 +1002,7 @@ the two commands.
 
 ### P39-21 — the reference docs: CONFIGURATION, SECURITY-SIMPLE, troubleshooting, MODEL-GATEWAYS, docs index, contracts
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-21-reference` based on `a5f04351`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** none
+**Status:** DONE (merged to `develop` 2026-10-08, `22861f7b`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** none
 
 **Goal:** same method as P39-20 over `docs/CONFIGURATION.md`, `docs/SECURITY-SIMPLE.md`
 (`gates` → `setup sandbox` throughout; the opt-in section keeps its content),
@@ -1014,7 +1016,7 @@ docket profile|docket maintain|harness run` over `docs/` is empty. Oracle: the t
 
 ### P39-22 — recipe READMEs, templates and the specs' prose
 
-**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-22-templates-specs` based on `a5f04351`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** every spec that names a CLI command in prose (26 files, listed in the packet); versions bumped patch-level with one changelog line each: "command names follow ADR 0022"
+**Status:** DONE (merged to `develop` 2026-10-08, `7a1a85ce`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** every spec that names a CLI command in prose (26 files, listed in the packet); versions bumped patch-level with one changelog line each: "command names follow ADR 0022"
 
 **Goal:** after the script: the eighteen recipe `README.md` files under `src/docket/templates/
 recipes/` (thirteen say `docket pod <project> config unset pipeline`; they now say `docket pod
@@ -1030,7 +1032,7 @@ checks.
 
 ### P39-23 — assets, CHANGELOG, spec close, Tack's one line, board archive
 
-**Status:** TODO · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` 2.0.0 (status, the registry rewritten as the eleven commands; a `#### docket <cmd>` section per top-level command, each with its verbs)
+**Status:** IN PROGRESS (integrator, 2026-10-08: CHANGELOG, `cli-interface` 2.0.0, the spec index, `metrics --check` done on `develop`; remaining: Tack's `exec` line and the live asset re-capture, both refused by the session's permission classifier, and the board archive at the phase close) · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` 2.0.0 (status, the registry rewritten as the eleven commands; a `#### docket <cmd>` section per top-level command, each with its verbs)
 
 **Goal:** `scripts/maint/capture-doc-journey.sh` re-run on the local endpoint and
 `scripts/render-doc-assets.py` re-transcribed so the hero GIF and both PNGs show commands that

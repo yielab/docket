@@ -837,3 +837,126 @@ answer outside a pod, `pod plan|apply|show`, `task list` refuse outside one nami
   `policies init` and the whole-registry `roles validate`; `cli/_setup_check.py::
   _check_template_version` keeps an unused `drift` counter.
 - `tests/integration/test_doctor_ledger_drift.py:106` expects `Fix with: docket setup --fix`.
+
+## Wave 94 returns (integrator, 2026-10-08)
+
+Base `d6c7f493` (the board claim on the Wave 93b rollup `4ce57b6c`). Stage one ran P39-17 and
+P39-18 as two Sonnet workers in parallel (the board listed P39-17 as integrator-owned; it was
+delegated whole and reviewed at merge). Merged `--no-ff`: P39-17 `cc81c003` (clean), followed by
+the integrator fix `55b77647`; P39-18 `254fba94` (clean), followed by the integrator fix `a5f04351`. Stage two (P39-19 Sonnet, P39-20 and P39-21
+Haiku, P39-22 Sonnet, upgraded because telling a requirement from prose in 26 specs is a
+judgement) based on the claim `6ac5e765`; merged in return order rather than card order, since the four file sets are disjoint: P39-21 `22861f7b`, P39-20 `305e05ed`, P39-22 `7a1a85ce`, P39-19 `d362eb5f`, with the integrator fixes `c6b4cc53` (two rename-table entries) and `dbc3b49d` (the assets table and the CONTRIBUTING example).
+
+**Decisions taken at merge.**
+- **Did-you-mean comes from the live tree only.** The card's acceptance example (`docket dispatch`
+  -> "did you mean `run`") needed a table of removed names, which ADR 0022 decision 4 forbids;
+  it was dropped. `cli/_help.py::DocketGroup` offers Click's similarity matches over the live
+  top-level names plus every group that has a verb of that name (`docket add x` names `docket
+  task add` and `docket pod add`); `docket dispatch` and `docket delegate x` exit 2 with a bare
+  `No such command`. P39-24 scores the live run against this, not the card's example.
+- `cli/_help.py` takes click from the module `TyperGroup`'s base class lives in: Typer 0.26
+  vendors click as `typer._click`, the floor `typer==0.16` does not. Verified by importing the
+  module and running the help tests in a `--resolution lowest-direct` environment.
+- `setup mcp list` gained `--json` (the JSON-surface guard had carried it as a strict xfail;
+  ADR 0022 decision 6 says every list has it) and `log --json` on a home with no log prints the
+  empty JSONL rather than the human text. Both in `55b77647`.
+- The golden runner keys the read-only directory on the verb words (`cases_dir "$@"`); the nine
+  existing cases moved to `cases/readonly/` byte-identical. A bare `docket` invocation cannot be
+  a golden case (the case id is the argv), so the three-part guide is pinned in
+  `tests/unit/cli/test__help.py`.
+- `pyproject.toml`'s description is the tagline. `docket init --help` gained its `Example:` line
+  (the help-examples guard was red on the base for it).
+
+**Follow-ups by owning card (locators only).**
+- P39-23: `cli/_agents.py::cmd_init` still hand-parses its flags through `allow_extra_args`
+  (the one leaf left that violates the real-sub-app rule; its `--help` lists the flags in prose);
+  the bare `setup` report exits 1 while the endpoint is unconfigured, so the JSON-surface guard
+  allows 0 or 1 for it alone; no golden covers the root `--help` (it would land under `writers/`).
+- `scripts/maint/comment_lint.py --check` lists five pre-existing `long-def-doc` findings in
+  `cli/_agents.py` and `cli/_setup_check.py`.
+
+**P39-18 at merge.**
+- The script never touches `CHANGELOG.md` (the record) and never checks it; the card's
+  "`[Unreleased]` only" clause was dropped. `docs/cycles-ended/`, `docs/adr/`, the golden
+  cases, the frozen harness contract and its fixtures are excluded; an `ALLOW` tuple holds the
+  two substrings that look like invocations and are not (the contract's schema title, one test
+  asserting a removed word is absent).
+- `runs` counts as an invocation only before `show|list|cancel` or at a line or backtick end,
+  because "docket runs teams of coding agents" (the tagline) is prose.
+- The worker's `--write` pass covered `src/docket/` (minus templates), `scripts/`, the three
+  default test lanes, `examples/` and `benchmarks/`: 62 files of comments, docstrings and
+  example headers. The guard's `PENDING` tuple (files inside the roots not yet swept) was
+  closed at merge down to `src/docket/templates` (P39-22): `cli/_setup_check.py` and its test
+  were P39-17's, and the comments and the service banner in `serve.py` and
+  `core/agent_loop.py` were rewritten by the script (no route, event or behaviour changed).
+- The table turned `docket add --from` into `docket pod add --from`, a flag that verb does not
+  have; the entry now maps to `docket init --from`.
+- On the base the check listed 1,457 lines over the default roots; after stage one, 0 over the
+  swept roots and these for the doc cards: `docs/` 612 (51 unmappable), `specs/` 661 (80),
+  `README.md` 30 (1), `CONTRIBUTING.md` 1 (1), `tests/agent/` 9, `src/docket/templates/` 31.
+
+
+**Integrator pass between the stages (on `develop`, no worker file touched).**
+- `CHANGELOG.md` `[Unreleased]`: the "Removed" section is one line per old name with its
+  replacement (ADR 0022 decision 5, every row) and "Added" carries the grouped help and the
+  rename script (`70fbec81`).
+- `specs/api/cli-interface.spec.md` 2.0.0 (`4aeedf8c`): one `#### docket <cmd>` section per
+  top-level command in `--help` order, each with its verbs; the eight grouped headings, the
+  `workflow`/`team`/`eval` retirement notes, the project picker, the positional pod id and the
+  `profile`/`keys` examples are gone; a `pod roles` section was missing and was written; the
+  index row mirrors the header.
+- The rename script treats a spec's `## Changelog` as the record (`7ea2d5c3`): never checked,
+  never rewritten (the version history names commands as they were). P39-22 was told mid-card
+  to revert any changelog hunk its `--write` produced.
+- Denied by the session's permission classifier, left for the maintainer: the one-line
+  `"harness","run"` -> `"exec"` change in Tack (`objetivosMios/crates/tack-runner/src/harness/
+  docket.rs:336`, `docket/probe.rs:106` and three argv arrays in `docket/tests.rs`) and its
+  harness tests; and the live re-capture of the doc assets (`scripts/maint/capture-doc-journey.sh`
+  against the local endpoint). The assets were re-rendered from the transcript in Wave 93b
+  (`scripts/render-doc-assets.py`) and show the new verbs; the live capture is what P39-23 asked
+  for and is still owed.
+
+**Stage two at merge.**
+- An invocation linter (`lint_invocations.py`, integrator scratch, not committed) checks every
+  `docket ...` line in code spans and code blocks against the live Click tree: verbs, options,
+  positional counts. It found about twenty wrong lines in P39-21's first return (`setup sandbox
+  isolate on`, `setup notify content`, `status <agent>`, `pod plan <p>`, `task list --retry`, a
+  `pod check` argument order, a `programmer` role) that the rename check could not see, because
+  they are new-form lines naming things the tree does not have. The worker fixed them on a second
+  pass; four lines in `docs/README.md` it left were fixed at merge. Every later card ran the
+  linter before returning. **Lesson: a rename check proves old names are gone; only a check
+  against the live tree proves the new lines are true. Ship the linter as a guard in Wave 95.**
+- P39-19's Sonnet worker was stopped mid-card by the account's session rate limit with its work
+  uncommitted. The integrator finished the card in its worktree: the diff was sound except a
+  fabricated `docket setup` report block (replaced with the real output of a throwaway home) and
+  a wrong Telegram token line (`enable telegram --chat <id>` stores the token). Its agent-lane
+  run failed only the spec-index test, already fixed on `develop` at `4951c751`.
+- P39-22 ran one `docket setup --fix --json` against the real `~/.docket` (a missing `DOCKET_HOME`
+  export); it reported healthy and the live audit log shows no new entry. The worker reverted
+  every rewrite inside a spec's `## Changelog` and emptied the guard's `PENDING`; `specs` joined
+  the roots at merge, and the index notes in `specs/README.md` were swept by the script and by
+  hand (three lines).
+- The guard's final roots are the whole tree (`src/docket`, `scripts`, `tests`, `examples`,
+  `benchmarks`, `docs`, `specs`, `README.md`, `CONTRIBUTING.md`), `PENDING` is empty, and the
+  two `docket add --from` rejection tuples in `test_public_release_truth.py` went (the guard
+  covers `examples/`). `git grep 'docket pod '` outside `docs/cycles-ended/` and `CHANGELOG.md`
+  finds the old form only in `ROADMAP.md`'s decision history and `.agents/handoffs/` records.
+- The live spot-check of the new README and quick start (sixteen lines, throwaway home and pod,
+  local endpoint registered, no turn run): every line exits 0.
+
+**Spec locators P39-22 returned for the P39-23 spec pass (requirements, not prose).**
+- `mcp-server.spec.md` Syntax/Return: the old `docket mcp` exit codes 0/1 became the exit-2
+  conflict of `start --mcp` with `--dispatch|--telegram|--token-file` (P39-13, P39-14).
+- `operator-loop.spec.md` requirements 2-3: the forecast is rendered by `task show <ref>` (P39-8).
+- `input-validation.spec.md` section 7 still cites `cli/_keys.py::_KEY_PREFIXES` and `_keys_add`
+  (P39-12: `setup provider`).
+- `cli-json-shapes.spec.md`: no shape for bare `setup --json` (`ready`, `pieces`) (P39-12).
+- `audit.spec.md`: no entries for `pod.reset`, `pod.delete`, `pod.unset-verify`, `run.resume`.
+- `observability-export.spec.md` 963-977 is a recorded transcript showing `setup provider add
+  LANGFUSE_* --credential`; left as recorded output.
+- `cli/_agents.py::run_init` help says there is no `docket blueprints add <file>` (a true
+  negative, awkward in `--help`); `pod-blueprints.spec.md` 49 and 171 say the same.
+- `cli/_setup_check.py` prints `docket setup provider add <name> <url> --credential <NAME>` for a
+  missing named credential, but `--credential` takes the key value: the hint should name the
+  provider verb for that credential's owner (`setup notify enable telegram`, `setup export
+  enable <name>`), P39-23.

@@ -218,7 +218,7 @@ Each specification document must include:
 | Test Framework | 2.20.1 | Active | Hermetic `DOCKET_HOME`, lane placement contract (product lanes in the default run, budgeted agent lane for prose/release/harness checks, one unit file per module, `cli/__init__.py` as a registry of short functions, comment hygiene), portable development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, byte-exact artifact gates, and public release-truth checks |
 | Starter Journey | 1.0.2 | Implemented | The smallest copied-outside-checkout path from an exact built artifact to an inspectable governed mutation, run against a deterministic loopback model with no source checkout, `docket-runtime`, or hosted credentials; requirement 6's `HandoffArtifact` field list corrected to include `brief` (Phase 34 added it, the starter's own persisted-shape check caught the drift) |
 | Operator Loop | 1.5.1 | Implemented | Only `setup notify flush` delivers; `console` is a silent dialect and `Catalog.delivering()`/`unreached_warning` make its being the only channel on a loud, counted `doctor` issue; the `operator-v1` contract (`core/operator_contract.py`): A2A 1.0.0 task states, MCP-elicitation-shaped questions/answers, CloudEvents 1.0 event envelopes; park/pre-grant, the Lead's intake, the derived inbox, notifications over every v1 channel dialect, answers, interruption forecasting and pre-grants from intake — every requirement area shipped across Phase 34 (D-50, ADR 0016) |
-| User Stories | 1.5.0 | Active | Acceptance criteria (not a `.spec.md`) |
+| User Stories | 1.5.1 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links
 
