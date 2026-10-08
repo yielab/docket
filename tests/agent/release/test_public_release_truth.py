@@ -155,7 +155,7 @@ def test_public_commands_and_claims_match_shipped_boundaries() -> None:
         (
             ROOT / "examples" / "configs" / "README.md",
             r"docket add --from",
-            "declarative provisioning belongs to `docket init --from`",
+            "declarative provisioning belongs to `docket init --recipe` or a committed `.docket/`",
         ),
         (
             ROOT / "examples" / "configs" / "agents.yaml",
@@ -189,6 +189,10 @@ def test_public_commands_and_claims_match_shipped_boundaries() -> None:
             if re.search(pattern, line, flags=re.IGNORECASE):
                 offenders.append(f"{path.relative_to(ROOT)}:{line_number}: {reason}")
 
+    for doc in (README, QUICKSTART):
+        if "docket pod myapp" in doc.read_text(encoding="utf-8"):
+            offenders.append(f"{doc.name}: the newcomer path never types a pod name")
+
     readme = re.sub(r"\s+", " ", README.read_text(encoding="utf-8").lower())
     if "not published to any index" not in readme:
         offenders.append("README.md: runtime package publication limit is missing")
@@ -204,14 +208,14 @@ def test_quickstart_has_one_ordered_artifact_to_governed_turn_route() -> None:
     text = QUICKSTART.read_text(encoding="utf-8")
     ordered_steps = (
         f"/releases/download/v{version}/",
-        "docket models provider add",
-        "docket models preset local",
+        "docket setup provider add",
         "docket init --recipe",
-        "docket pod myapp delegate",
-        "docket pod myapp dispatch",
-        "docket runs list",
-        "docket trace",
-        "docket pod myapp export",
+        "docket task add",
+        "docket run\n",
+        "docket task list",
+        "docket task show <id>",
+        "docket task trace <id>",
+        "docket pod export",
     )
     missing = [step for step in ordered_steps if step not in text]
     assert missing == [], f"quickstart is missing release-to-first-turn step(s): {missing}"
