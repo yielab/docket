@@ -137,7 +137,7 @@ def test_restore_write_failure_keeps_recovery_inputs_and_cleans_temporary_file(
     assert not _quarantine(path).with_suffix(".corrupt.tmp").exists()
 
 
-def test_runs_list_cli_recovers_the_prior_complete_registry(
+def test_task_prune_cli_recovers_the_prior_complete_registry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "docket-runs.json"
@@ -159,10 +159,9 @@ def test_runs_list_cli_recovers_the_prior_complete_registry(
     path.write_bytes(_CORRUPT_PRIMARY)
     monkeypatch.setattr(_cfg, "RUNS_FILE", path, raising=True)
 
-    result = CliRunner().invoke(app, ["runs", "list", "--json"])
+    result = CliRunner().invoke(app, ["task", "prune", "--traces", "--dry-run", "--pod", "demo"])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == prior
     assert json.loads(path.read_bytes()) == prior
     assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
 

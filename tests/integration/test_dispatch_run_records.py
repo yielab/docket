@@ -355,16 +355,22 @@ class TestCliDispatchPath:
 
         assert f"[task-x] {status}" in capsys.readouterr().out
 
-    def test_delegate_prints_the_queued_task_id_and_description_literally(
+    def test_task_add_prints_the_queued_task_id_and_description_literally(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The queued task id and a bracket-bearing description survive rendering."""
         _seed_pod(tmp_path, monkeypatch, project="demo")
 
-        _pod.dispatch("demo", "delegate", ["Fix [/bold] parsing in [red] mode"])
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        result = CliRunner().invoke(
+            app, ["task", "add", "Fix [/bold] parsing in [red] mode", "--pod", "demo"]
+        )
 
         task_id = _dispatch.read_tasks("demo")[0]["id"]
-        assert f"[{task_id}] Fix [/bold] parsing in [red] mode" in capsys.readouterr().out
+        assert f"[{task_id}] Fix [/bold] parsing in [red] mode" in result.output
 
     def test_exception_is_recorded_and_cli_exits_nonzero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

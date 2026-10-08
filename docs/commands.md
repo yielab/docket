@@ -1153,66 +1153,60 @@ ever displays -- use `docket pod <p> answer` to answer non-interactively.
 
 Queue, inspect and answer a pod's tasks.
 
+### task add
+
+**Usage:** `docket task add`
+
+Queue a task for the pod; `docket run` works the queue.
+
+Example: docket task add "fix the login redirect"
+
+### task list
+
+**Usage:** `docket task list`
+
+The pod's task queue with status, cost and the worktree path when one exists.
+
+Example: docket task list --json
+
+### task show
+
+**Usage:** `docket task show`
+
+One task's whole story: hops, evidence, runs, corrections and its worktree.
+
+Example: docket task show task-04ff
+
+### task diff
+
+**Usage:** `docket task diff`
+
+Print what the task changed in its worktree, against the commit it started from.
+
+Example: docket task diff task-04ff
+
+### task trace
+
+**Usage:** `docket task trace`
+
+The task's trace: every tool call, model call, cost and approval, in order.
+
+Example: docket task trace task-04ff --tail
+
+### task prune
+
+**Usage:** `docket task prune`
+
+Remove finished tasks' worktrees; with --traces, also expire old traces and run records.
+
+A dirty worktree or unmerged branch is kept unless --force.
+
+Example: docket task prune --dry-run
+
 
 ---
 
 ## Observability Commands
-
-### runs
-
-**Usage:** `docket runs`
-
-Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation.
-
-One persisted record per pod-dispatch invocation, whatever triggered it
-(the CLI, the `docket serve` webhook, a due schedule, or the sweep loop).
-Answers "is it done, did it fail, or did it never run" for background
-dispatch, whose failures are otherwise invisible.
-
-Subcommands: `list \[--project <project>\] \[--json\]`; `show <run-id>
-\[--json\]`; `cancel <run-id>` persists one cancellation request and
-signals every in-flight hop process group -- queued work is terminal
-immediately, a running record stays "running (cancel requested)" until
-the executor observes the request and fully stops, then the task and run
-become cancelled; writes one audit entry; in-process backend work
-already executing returns to a safe checkpoint, where its late response
-is discarded before any tool or later pipeline hop can start. `prune
-\[--dry-run\] \[--days N\]` deletes terminal (succeeded/failed/cancelled)
-records past the retention window (default `TRACE_RETENTION_DAYS`) --
-the same pruning `docket serve`'s periodic sweep already does; queued
-and running records are never touched.
-
-A run record's `source` is one of cli|webhook|schedule|sweep|mcp;
-`state` is one of queued|running|succeeded|failed|cancelled. A failed
-run carries the exception text in `error`. Persisted to
-`~/.docket/docket-runs.json`. `show` and both JSON read surfaces expose
-cancellation requestedAt/observedAt/stoppedAt; a missing stop timestamp
-means the executor has not fully returned yet. `POST /dispatch/<project>`
-(see `docket serve`) returns {"run": "<id>"} immediately, before any
-dispatch work is attempted; `GET /runs/<id>` and `GET /runs?project=`
-mirror this command over HTTP (Bearer-authed, same as /approvals).
-
-
----
-
-### trace
-
-**Usage:** `docket trace`
-
-View agent execution traces.
-
-Every dispatch hop emits a JSONL trace event; use this to inspect them.
-Subcommands: `<session-id>` renders one session human-readable; `tail
-<project>` follows the latest open session live; `export <project>
-\[--since DATE\]` is a raw JSONL passthrough; `ingest <project>` projects
-docket's own session store into the trace store.
-
-Traces are stored at `~/.docket/traces/<project>/<session-id>.jsonl`.
-Each dispatch hop writes events such as tool_call, cost_charged,
-approval_requested.
-
-
----
 
 ### exec
 
@@ -1275,12 +1269,12 @@ No command emits any other exit code today.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
-| `TRACES_DIR` | Root of per-session trace JSONL files (`docket trace`) | `$DOCKET_HOME/traces` |
+| `TRACES_DIR` | Root of per-session trace JSONL files (`docket task trace`) | `$DOCKET_HOME/traces` |
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
-| `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket pod <p> corrections`) | `$DOCKET_HOME/corrections` |
+| `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
@@ -1302,7 +1296,7 @@ No command emits any other exit code today.
 | `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket setup` flags a session as runaway | `200` |
 | `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket setup` flags a session as runaway | `20` |
 | `DOCKET_KEY_MAX_AGE_DAYS` | `docket setup --fix`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
-| `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket trace expire` deletes it | `30` |
+| `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket task prune --traces` deletes it | `30` |
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
 | `EXPORT_FLUSH_TIMEOUT_S` | Per-flush wall-clock bound for the background exporter sender | `5.0` |
 | `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump | `4` |
@@ -1336,6 +1330,7 @@ No command emits any other exit code today.
 | `DOCKET_KEYRING_SERVICE` | The libsecret service name secrets are stored under when `DOCKET_SECRETS_BACKEND=keyring` | `docket-cli` |
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
 | `NO_COLOR` | Any value switches output to plain mode (no colour, ASCII symbols) | unset |
+| `DOCKET_POD` | Pod a command acts on when `--pod` is not given | unset (the pod whose codebase contains the current directory) |
 | `DOCKET_NO_HINTS` | Set to `1` to silence the closing `Next:` line | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket setup sandbox on`) | `alpine:3.20` |

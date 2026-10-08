@@ -69,12 +69,11 @@ _docket_complete() {
   case "$cmd" in
     status)          words="--all --json" ;;
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue config apply export" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove config apply export" ;;
     setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
     pipeline)        words="validate plan" ;;
-    runs)            words="list show cancel prune" ;;
+    task)            words="add list show diff trace prune" ;;
     audit)           words="verify --json" ;;
-    trace)           words="tail export ingest expire" ;;
     policies)        words="list show init test validate" ;;
     recipes)         words="list show" ;;
     roles)           words="list show add validate" ;;
@@ -114,12 +113,11 @@ __ZSH_COMMANDS__
   case "${words[2]}" in
     status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue config apply export ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove config apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
     pipeline)        compadd validate plan ;;
-    runs)            compadd list show cancel prune ;;
+    task)            compadd add list show diff trace prune ;;
     audit)           compadd verify --json ;;
-    trace)           compadd tail export ingest expire ;;
     policies)        compadd list show init test validate ;;
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;

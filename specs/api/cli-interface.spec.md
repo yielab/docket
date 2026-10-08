@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.75.0
+**Version**: 1.76.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -402,12 +402,12 @@ Not the Lobster dialect — `docket workflow` was retired by ROADMAP Phase 16 W-
 `docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
 dispatcher and never executed anything. Delegation now belongs to each project's pod
 (pod-dispatch.spec.md). `team` is not a registered command — `docket team <anything>` is an
-ordinary unknown-command error (exit 2); use `docket pod <project> delegate|queue|dispatch`
-below. (The former team-coordination.spec.md
+ordinary unknown-command error (exit 2); use `docket task add|list` and `docket run`
+(see "docket task"). (The former team-coordination.spec.md
 was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 
 #### docket pod
-**Purpose**: Manage a project's pod (list/add/remove members; delegate and queue work)
+**Purpose**: Manage a project's pod (list/add/remove members)
 **Syntax**: `docket pod <project> <action> [args]`
 **Actions**:
 - `list`: Show the pod's members (Lead, Implementer, optional Reviewer/Tester)
@@ -417,15 +417,6 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 - `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
-- `evidence <task-id> [--json]`: Show what a task's hops kept (evidence-v1, built by
-  `core.evidence.task_evidence`): a table of hop, role, ok, verdict, verify exit code, short
-  commit and measured tokens in/out. `--json` prints that document byte-for-byte as `GET
-  /tasks/<project>/<id>/evidence` returns it. An unknown task prints an error and exits `1`
-- `worktrees prune [--dry-run] [--force]`: Remove the worktrees of this pod's finished
-  (`done`/`failed`/`cancelled`) tasks, deleting each branch merged into the codebase's current
-  branch and recording `worktree.prunedAt`. Dirty or unmerged ones are kept and reported with
-  the reason; `--force` removes them anyway (the unmerged branch itself stays) and audits it
-  (`pod.worktrees.prune`); `--dry-run` changes nothing. Other usage exits `1`
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
   `pipeline.yaml`, a small `pod.yaml` naming
   `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
@@ -456,13 +447,6 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
-- `delegate <task> [--priority high|normal|low] [--brief FILE.json]`: Queue the complete
-  free-form task on this pod's own list whether it arrives as one quoted argv item or several
-  ordinary positional words (one queue per pod, at
-  `~/.docket/workspaces/<project>-lead/TASK_LIST.json`). `--brief` (Phase 34, P34-13) loads and
-  validates the file as a `TaskBrief` (operator-v1); an invalid one exits non-zero and enqueues
-  nothing. A *valid* one is passed through to `core.dispatch.enqueue_task`'s own `brief=`
-  parameter and actually enqueues
 - `answer <task-id> [text] [--option <id>] [--field name=value]... [--decline]`: Answer a parked
   question (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills
   the single property of a one-property question schema; `--option <id>` picks one of a
@@ -470,14 +454,6 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   ids); `--field` sets named properties explicitly
   (required for a multi-property schema); `--decline` ignores any `text`/`--field`. Calls
   `core.answers.answer_task(channel="cli", actor=<OS user>)`
-- `explain interruptions [--json]` (Phase 34, P34-15, ADR 0016 §10): Forecast, from this pod's
-  own effective configuration, everything that could pause a task before it is even dispatched —
-  matching `require_approval` policies, pipeline `ApprovalGate`/`input` steps,
-  `requireApprovalRoles`, plus context on the pod's resolved `approvalMode`, the always-on
-  `core/security.py` high-risk classes, and enabled notifying channels. Prints
-  `core.interruptions.NOTHING_WILL_ASK` when nothing would ask. `--json` emits `{"pod",
-  "interruptions": [{"kind", "description", "detail"}, ...]}`. A bare `explain` with no
-  `interruptions` argument, or any other topic, prints usage and exits 1
 - `pregrant <task-id> "<command>" [--tool bash]` (Phase 34, P34-15, ADR 0016 §10): Record a
   single-use pre-grant for one exact command on one task, ahead of dispatch — the CLI counterpart
   of `POST /tasks/<id>/pregrants` and the MCP `task_pregrant` tool. Calls
@@ -485,13 +461,8 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `core.approval.create_pregrant` exactly as an in-turn park does; when the pipeline later
   reaches that exact call (matched by `core.operator_contract.canonical_args_digest`), it passes
   once without asking again
-- `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
-  `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
-  other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
-  `blocked` task is never retried automatically
-**Output**: Pod roster or queue listing. Every
-bracketed identifier (`[<task-id>]`, `[<role>]`, `[<member-id>]`) and every task description or
-failure reason is printed literally, never interpreted as terminal markup
+**Output**: Pod roster. Every bracketed identifier (`[<role>]`, `[<member-id>]`) is printed
+literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
 the project)
 
@@ -516,16 +487,9 @@ user-defined (see role-archetypes.spec.md)
 archetype definition
 
 #### docket runs
-**Purpose**: Inspect the persisted dispatch-run registry — one record per invocation of a pod's
-pipeline, whatever triggered it (ROADMAP Phase 14 R-3); cancel one in flight (ROADMAP Phase 16 W-2)
-**Syntax**: `docket runs <list|show|cancel> [args]`
+**Purpose**: Cancel one dispatch run in flight (ROADMAP Phase 16 W-2)
+**Syntax**: `docket runs cancel <run-id>`
 **Actions**:
-- `list [--project <project>] [--json]`: Show run records, newest first; `--project` filters to
-  one pod
-- `show <run-id> [--json]`: Show one run record (source, project, state, task ids, error,
-  timestamps, and — for a `webhook` source, ROADMAP Phase 16 W-4 — the resolved pipeline
-  `variables` its payload was dispatched with). Human output also shows cancellation request,
-  observation, and full-stop timestamps when present.
 - `cancel <run-id>`: Kill every hop subprocess currently recorded as in-flight for that run — its
   whole process group, not just the immediate child (see pod-dispatch.spec.md's "Cancellation")
   — and durably request cancellation. Queued work becomes terminal immediately; running work stays
@@ -534,10 +498,8 @@ pipeline, whatever triggered it (ROADMAP Phase 14 R-3); cancel one in flight (RO
   genuine cancellation writes exactly one `runs.cancel` audit entry
   (ROADMAP Phase 16 W-4; see audit.spec.md) naming the run, its project, its pre-cancel state,
   and how many process groups were killed — the no-op paths write nothing
-**Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`); a
-confirmation message for `cancel`
-**Return**: `0` on success; `1` if `show`'s run id is unknown or no id was given, or if `cancel`'s
-run id is unknown or already terminal
+**Output**: A confirmation message
+**Return**: `0` on success; `1` if the run id is unknown or already terminal
 
 #### docket setup mcp
 **Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
@@ -636,28 +598,49 @@ doctor` no longer prints an eval-results advisory section. (The former eval.spec
 
 ### Observability
 
-#### docket trace
-**Purpose**: View, tail, export, ingest, or expire agent-action JSONL traces
-**Syntax**: `docket trace <session-id | subcommand> [args]`
-**Subcommands**:
-- `<session-id>`: Render one session's events human-readable
-- `tail <project>`: Follow the most-recent open session live
-- `export <project> [--since YYYY-MM-DD]`: Print raw JSONL to stdout
-- `ingest <project>`: Project the active driver's session history (`core/session.py`, via
-  `DocketDriver`) into the trace store — no daemon session-JSONL format left to parse
-  (ROADMAP Phase 19 P19-7b)
-- `expire [project] [--dry-run] [--days N]`: Delete TERMINATED trace files (one with a
-  `session_end` event, real or the synthetic one `sweep_all` appends to a timed-out session)
-  whose last event is older than the retention window. An OPEN trace (no `session_end` yet) is
-  never deleted regardless of age — a live turn may still be appending to it. `--dry-run`
-  previews what would be deleted without deleting anything or touching the ingest index.
-  `--days N` overrides `TRACE_RETENTION_DAYS` (default 30) for one run. Omitting `[project]`
-  sweeps every project. `audit.log` is out of scope — this command only ever touches
-  `$TRACES_DIR` (`core/audit.py` is an intentionally separate, non-lossy record; see
-  ROADMAP P22-6)
-**Output**: Human-readable event log, raw JSONL, or an expiry summary (scanned/kept/deleted
-counts and per-file detail)
-**Return**: 0 on success, 1 if session not found
+#### docket task
+**Purpose**: Queue a pod's tasks and read each one's whole story: status, hops, evidence, runs,
+corrections, interruption forecast, worktree, diff and trace
+**Syntax**: `docket task <add|list|show|diff|trace|prune> [args] [--pod <p>]`
+A `<ref>` is a full task id, the short id `task list` prints, a unique prefix, or a run id
+(`core/task_ref.py`); an unknown or ambiguous ref exits 1 and an ambiguous one lists every
+candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every pod.
+**Verbs**:
+- `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--pod <p>]`: Queue the task on
+  the resolved pod's own list (`~/.docket/workspaces/<project>-lead/TASK_LIST.json`). The text is
+  one argument; empty text or text over 500 characters exits 1, an unknown priority exits 2.
+  `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one exits 1
+  and enqueues nothing, a valid one is passed to `core.dispatch.enqueue_task(brief=)`. Prints the
+  one-line interruption forecast (`core.interruptions.NOTHING_WILL_ASK`, or `May ask you: ...`
+  naming `docket task show`) and ends with `Next: docket run`
+- `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status, cost,
+  the worktree path when one exists, description. `--json` prints `{"pod", "tasks": [...]}`
+  (`cli-json-shapes.spec.md`)
+- `show <ref> [--json] [--pod <p>]`: Status, hop evidence (evidence-v1, `core.evidence`), the
+  runs that worked the task, its corrections, and the interruption forecast (what could pause
+  it: matching `require_approval` policies, pipeline approval and `input` steps,
+  `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
+  channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
+  and the exact `git -C <path> diff <base>` and merge commands; a task that ran in place prints no
+  worktree block. A `run-` ref resolves its task and exits 1 when the run failed
+- `diff <ref> [--pod <p>]`: Print `git diff <base>` of the task's worktree
+  (`edges/adapters/system.py::git_diff`); a task without a worktree, or a failed diff, exits 1
+- `trace <ref> [--tail] [--export] [--json] [--pod <p>]`: The task's trace
+  (`$TRACES_DIR/<project>/agent:<project>:<task-id>.jsonl`), one line per event with the tool
+  name on `tool_call` lines; `--tail` follows until a `session_end` event and then returns;
+  `--export` prints the raw JSONL; `--json` prints `{"pod", "events": [...]}`. A task with no
+  trace exits 1
+- `prune [--dry-run] [--force] [--yes] [--traces] [--days N] [--pod <p>]`: Remove the worktrees of
+  the pod's finished (`done`/`failed`/`cancelled`) tasks, deleting each branch merged into the
+  codebase's current branch and recording `worktree.prunedAt`. Dirty or unmerged ones are kept
+  and reported with the reason; `--force` (confirmed, or `--yes` off a TTY) removes them anyway
+  (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
+  TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
+  and terminal run records past the same window; `--days N` overrides it and without `--traces`
+  exits 2. `--dry-run` changes nothing. Ends with `Next: docket task list`
+**Output**: Every bracketed identifier and every task description or failure reason is printed
+literally, never interpreted as terminal markup
+**Return**: `0` on success, `1` on error (no pod, unknown or ambiguous ref, invalid input)
 
 #### docket policies
 **Purpose**: Manage declarative guardrail policies
@@ -1094,6 +1077,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.76.0 (2026-10-08)
+
+- Phase 39 (P39-8): `docket task add|list|show|diff|trace|prune` replace `delegate`, `pod <p>
+  delegate|queue|explain|evidence|corrections|worktrees`, `runs list|show|prune` and `trace`; the
+  five old names are ordinary unknown commands or pod actions (exit 2 / exit 1). `task show`
+  prints the task worktree (path, branch, base, diff and merge commands); `task trace --tail`
+  ends at `session_end`; `task prune --traces` replaces `trace expire` and `runs prune`.
 
 ### Version 1.75.0 (2026-10-07)
 

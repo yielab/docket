@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.34.0
+**Version**: 6.35.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -149,13 +149,12 @@ This specification does NOT cover:
 - `core/approval.py`'s own approval-record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
   channels, audit-log parity) — see `security-gates.spec.md`. This spec covers only how
   *dispatch* creates and reacts to a record, not the record's own store contract
-- The CLI surface for queuing/inspecting/dispatching tasks (`docket pod <project>
-  delegate/queue/add/set-verify/dispatch`, `docket pipeline validate/plan/run`, `docket runs
-  cancel`, including their flags) — see `cli-interface.spec.md`
+- The CLI surface for queuing/inspecting/dispatching tasks (`docket task add|list|show|diff|trace|prune`, `docket pod <project>
+  add/set-verify`, `docket run`, `docket runs cancel`, including their flags) — see `cli-interface.spec.md`
 - Budget-cap accounting in general, and the `docket profile <id> --budget`/`--resume` CLI
   contract — see `cost-tracking.spec.md`. This spec covers only the pre-hop budget check and the
   auto-pause/claim-refusal mechanics it drives
-- The persisted dispatch-run registry (`core/runs.py`, `docket runs`, `GET /runs`) that records
+- The persisted dispatch-run registry (`core/runs.py`, `GET /runs`) that records
   *invocations* of this pipeline (one record per `dispatch_pod` call, whatever triggered it),
   including its `pids`/cancellation-outcome fields — see `serve-read-api.spec.md` and
   `cli-json-shapes.spec.md`. This spec is scoped to what happens *inside* one such invocation and
@@ -185,7 +184,7 @@ This specification does NOT cover:
 
 ### Task lifecycle and identity
 
-1. A newly queued task (`docket pod <project> delegate`) **MUST** be created with a unique
+1. A newly queued task (`docket task add`) **MUST** be created with a unique
    `task-<uuid4>` id (not a timestamp — concurrent enqueues under the same millisecond would
    otherwise collide and leak false ordering), `status: "pending"`, a `created` timestamp,
    `priority` (`high`/`normal`/`low`, default `normal`), an empty `hops` array, `costUsd: 0.0`,
@@ -1144,9 +1143,8 @@ was seeded once at binding time.)*
    after creation), and a conversation's `updated` timestamp.
 4. `docket serve`'s periodic sweep (`_run_sweeps`) **MUST** run all three prunes, each
    independently best-effort like the existing trace/approval-expiry sweeps — one store's prune
-   failing **MUST NOT** block the others or the server. `docket runs prune` and `docket
-   conversations prune` (both `[--dry-run] [--days N]`) **MUST** expose the same underlying
-   functions for on-demand use between sweeps.
+   failing **MUST NOT** block the others or the server. `docket task prune --traces [--days N]` **MUST** expose the same
+   underlying functions for on-demand use between sweeps.
 
 ### Implementer verification gate (`verifyCmd`)
 
@@ -1648,7 +1646,7 @@ any CLI rendering of this evidence.*
    `tasks/` directory and delete each task branch merged into the codebase's current branch; a
    branch that is not merged is kept and reported with the manual `git branch -D` command.
 6. Docket never merges a task's work. A finished task's worktree lives until the member is
-   removed or `docket pod <p> worktrees prune` removes it (requirement 7).
+   removed or `docket task prune` removes it (requirement 7).
 7. `core.pod_provisioning.prune_task_worktrees(project, force=False, dry_run=False)` **MUST**
    consider only tasks whose status is `done`, `failed` or `cancelled`, with a recorded
    `worktree.dir` and no `worktree.prunedAt`; a pending, running, blocked or waiting task is never
@@ -1812,7 +1810,7 @@ card), scores nothing, and carries no dollar figure.*
    when the endpoint reported no tokens, in which case the hop's `usage` is `null`. `trace` is
    `null` under `DOCKET_NO_TRACE`.
 5. The trace link is an identifier the existing readers accept: `session` is the task's trace
-   session id (`agent:<project>:<taskId>`), the argument of `docket trace <session>`
+   session id (`agent:<project>:<taskId>`), the file `docket task trace <ref>` reads
    (`core.trace.find_trace` resolves `<TRACES_DIR>/<project>/<session>.jsonl`); `project` is the
    argument of `GET /traces/<project>`. `firstTs` is taken just before the hop's turn and `lastTs`
    after its closing `tool_result`/`error` event is written (before the hop is persisted), both in
@@ -1927,7 +1925,7 @@ $ docket run
 ```text
 $ docket run
   [task-91a2c410-...] failed — tester reported FAIL
-  Details: docket runs show run-...
+  Details: docket task show run-...
 ```
 
 (The command exits 1 because the run ended `failed`; a `blocked` or `waiting_approval` task
@@ -2005,7 +2003,7 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 ### Pre-conditions
 
 - The target project **MUST** have a provisioned pod with at least a Lead.
-- The task **MUST** already be queued (`docket pod <project> delegate`) and eligible for claim
+- The task **MUST** already be queued (`docket task add`) and eligible for claim
   (`pending`, or `failed`/`stale_claim` when `--resume` is passed).
 
 ### Post-conditions
@@ -2055,7 +2053,7 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   it — the property `docket pipeline plan` and the real executor both rely on to never drift from
   each other.
 - Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
-  trace tail <project>` — nothing in the pipeline is silent (including the printed
+  task trace <ref> --tail` — nothing in the pipeline is silent (including the printed
   verification-skipped notice), for any role/archetype, not only the built-in four.
 - Every production pod-turn loop event **MUST** join that same task-wide trace even though its
   messages and measured usage are persisted under a step-scoped history key.
@@ -2068,6 +2066,16 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.35.0 (2026-10-08)
+
+- Task views move to the `task` group: `docket task add` queues (and prints the interruption
+  forecast and `Next: docket run`), `task list` shows the queue with the worktree path, `task show
+  <ref>` prints hops, evidence, runs, corrections, the forecast and, for a task with a recorded
+  worktree, its path, branch, base commit and the exact diff and merge commands (a run id
+  resolves to its task), `task diff` prints the worktree diff, `task prune` removes finished
+  worktrees (and, with `--traces`, old traces and run records). `pod <p> delegate|queue|explain|
+  evidence|corrections|worktrees`, `runs list|show|prune` and `trace` are removed.
 
 ### Version 6.34.0 (2026-10-07)
 
@@ -2092,7 +2100,7 @@ Waves 89-90 close (W89-10): the entries below were Unreleased and are now this v
 - A command step's `env` reaches its process under the task coordinates and never the trace ("Conditional steps and command steps" 4).
 - Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
   130/143 ("Sweep workers" 4-5).
-- `docket pod <p> worktrees prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).
+- `docket task prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).
 
 ### Version 6.30.0 (2026-10-05)
 
@@ -2281,8 +2289,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
   run registry, the approval store, and the conversation registry now share one retention sweep
   (`config.TRACE_RETENTION_S`, the same knob trace expiry uses) that removes only records already
   terminal — a live record is never touched regardless of age. `docket serve`'s periodic sweep
-  runs all three prunes independently best-effort; `docket runs prune` / `docket conversations
-  prune` (`[--dry-run] [--days N]`) expose the same functions on demand.
+  runs all three prunes independently best-effort; `docket task prune --traces [--days N]` exposes the same functions on demand.
 
 ### Version 6.13.0 (2026-09-26)
 

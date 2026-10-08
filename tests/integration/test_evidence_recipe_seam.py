@@ -64,10 +64,11 @@ def test_harness_recipe_task_evidence_equals_the_cli_json_of_the_same_home(
             sys.executable,
             "-m",
             "docket",
-            "pod",
-            harness_doc["pod"],
-            "evidence",
+            "task",
+            "show",
             harness_doc["taskId"],
+            "--pod",
+            harness_doc["pod"],
             "--json",
         ],
         cwd=REPO_ROOT,
@@ -78,4 +79,4 @@ def test_harness_recipe_task_evidence_equals_the_cli_json_of_the_same_home(
         check=False,
     )
     assert cli.returncode == 0, cli.stderr
-    assert json.loads(cli.stdout) == harness_doc
+    assert json.loads(cli.stdout)["evidence"] == harness_doc

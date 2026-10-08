@@ -20,10 +20,9 @@ import json as _json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import typer
-from pydantic import ValidationError
 from rich.markup import escape
 from rich.table import Table
 
@@ -36,7 +35,6 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import interruptions as _interruptions
 from docket.core import models_policy as _mp
-from docket.core import operator_contract as _oc
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
@@ -249,16 +247,10 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_remove(project, extra)
     elif action == "set-verify":
         _pod_set_verify(project, extra)
-    elif action == "delegate":
-        _pod_delegate(project, extra)
     elif action == "answer":
         _pod_answer(project, extra)
-    elif action == "explain":
-        _pod_explain(project, extra)
     elif action == "pregrant":
         _pod_pregrant(project, extra)
-    elif action == "queue":
-        _pod_queue(project, extra)
     elif action == "config":
         _pod_config(project, extra)
     elif action == "sync":
@@ -267,17 +259,10 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_apply_cmd(project, extra)
     elif action == "export":
         _pod_export_cmd(project, extra)
-    elif action == "corrections":
-        _pod_corrections(project, extra)
-    elif action == "evidence":
-        _pod_evidence(project, extra)
-    elif action == "worktrees":
-        _pod_worktrees(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "delegate | answer | explain | pregrant | queue | dispatch | config | sync | "
-            "apply | export | corrections | evidence | worktrees."
+            "answer | pregrant | config | sync | apply | export."
         )
         raise typer.Exit(1)
 
@@ -448,23 +433,6 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     (ws / "TOOLS.md").write_text(content, encoding="utf-8")
 
 
-def _pod_worktrees(project: str, extra: list[str]) -> None:
-    """``worktrees prune [--dry-run] [--force]``: remove finished tasks' worktrees."""
-    flags = set(extra[1:])
-    if not extra or extra[0] != "prune" or not flags <= {"--dry-run", "--force"}:
-        ui.error("Usage: docket pod <project> worktrees prune [--dry-run] [--force]")
-        raise typer.Exit(1)
-    entries = _pp.prune_task_worktrees(
-        project, force="--force" in flags, dry_run="--dry-run" in flags
-    )
-    if not entries:
-        ui.info("No finished task worktrees to prune.")
-        return
-    for e in entries:
-        line = f"{e.task_id}: {e.action}" + (f" ({e.reason})" if e.reason else "")
-        (ui.warn if e.action == "kept" else ui.info)(line)
-
-
 def _pod_set_verify(project: str, extra: list[str]) -> None:
     """Set the verify command on an existing Implementer and rewrite TOOLS.md. The
     command is validated (no NUL/newline, length-capped — ``_validate_verify_cmd``)
@@ -492,61 +460,6 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     _regenerate_member_tools(member_id, project)
     audit_log("pod.set-verify", f"member={member_id} cmd={verify_cmd!r}")
     ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")
-
-
-def _pod_delegate(project: str, extra: list[str]) -> None:
-    """Queue a task: ``docket pod <project> delegate [--priority P] [--brief FILE.json]
-    <task>``. ``--brief`` validates the file as a `TaskBrief` and passes it through;
-    an invalid file exits non-zero and enqueues nothing."""
-    priority = "normal"
-    brief_path: str | None = None
-    rest: list[str] = []
-    i = 0
-    while i < len(extra):
-        if extra[i] in ("--priority", "-p"):
-            if i + 1 >= len(extra):
-                ui.error("Missing priority. Use: high | normal | low")
-                raise typer.Exit(1)
-            priority = extra[i + 1]
-            i += 2
-        elif extra[i] == "--brief":
-            if i + 1 >= len(extra):
-                ui.error("Missing file. Use: --brief FILE.json")
-                raise typer.Exit(1)
-            brief_path = extra[i + 1]
-            i += 2
-        else:
-            rest.append(extra[i])
-            i += 1
-
-    brief: dict[str, Any] | None = None
-    if brief_path is not None:
-        try:
-            raw = _json.loads(Path(brief_path).read_text(encoding="utf-8"))
-            _oc.TaskBrief.model_validate(raw)
-        except (OSError, _json.JSONDecodeError, ValidationError) as exc:
-            ui.error(f"Invalid brief file '{brief_path}': {exc}")
-            raise typer.Exit(1) from exc
-        brief = raw
-
-    description = " ".join(rest)
-    if not description.strip():
-        ui.error("Usage: docket pod <project> delegate [--priority high|normal|low] <task>")
-        raise typer.Exit(1)
-    if priority not in ("high", "normal", "low"):
-        ui.error(f"Invalid priority '{priority}'. Use: high | normal | low")
-        raise typer.Exit(1)
-    if len(description) > 500:
-        ui.error(f"Description too long ({len(description)} chars). Limit: 500.")
-        raise typer.Exit(1)
-    try:
-        task = _dispatch.enqueue_task(project, description, priority, brief=brief)
-    except _dispatch.DispatchError as ex:
-        ui.error(str(ex))
-        raise typer.Exit(1) from ex
-    ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {description}"))
-    ui.info(f"Run the pipeline: docket pod {project} dispatch")
-    ui.dim(f"  {_interruption_summary(project)}")
 
 
 def _pod_answer(project: str, extra: list[str]) -> None:
@@ -649,76 +562,6 @@ def _pod_answer(project: str, extra: list[str]) -> None:
     ui.success(f"Answered task '{task_id}' in pod '{project}' ({action}).")
 
 
-def _caller_default() -> Literal["wait", "park"]:
-    """Same TTY resolution `_pod_dispatch` applies to an unset pod `approvalMode`."""
-    return "wait" if sys.stdin.isatty() else "park"
-
-
-def _interruption_summary(project: str) -> str:
-    """One line for `delegate`'s own summary (ADR 0016 SS10): what could pause this pod's
-    next dispatch before it starts."""
-    items = _interruptions.forecast(project, caller_default=_caller_default())
-    askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
-    if not askers:
-        return _interruptions.NOTHING_WILL_ASK
-    counts: dict[str, int] = {}
-    for i in askers:
-        counts[i.kind] = counts.get(i.kind, 0) + 1
-    parts = [f"{n} {kind.replace('_', ' ')}" for kind, n in sorted(counts.items())]
-    return f"May ask you: {', '.join(parts)} — see: docket pod {project} explain interruptions"
-
-
-def _pod_explain(project: str, extra: list[str]) -> None:
-    """``docket pod <project> explain interruptions [--json]`` — forecast what could pause
-    a task before it is dispatched (ADR 0016 SS10)."""
-    if not pod_member_ids(project):
-        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
-        raise typer.Exit(1)
-    as_json = "--json" in extra
-    topic = next((a for a in extra if a != "--json"), "")
-    if topic != "interruptions":
-        ui.error("Usage: docket pod <project> explain interruptions [--json]")
-        raise typer.Exit(1)
-
-    items = _interruptions.forecast(project, caller_default=_caller_default())
-    if as_json:
-        print(
-            _json.dumps(
-                {
-                    "pod": project,
-                    "interruptions": [
-                        {"kind": i.kind, "description": i.description, "detail": i.detail}
-                        for i in items
-                    ],
-                },
-                indent=2,
-            )
-        )
-        return
-
-    ui.header(f"Interruption forecast — {project}")
-    askers = [i for i in items if i.kind in _interruptions.ASK_KINDS]
-    if not askers:
-        ui.console.print(f"  {_interruptions.NOTHING_WILL_ASK}")
-    else:
-        for i in askers:
-            ui.console.print(escape(f"  - {i.description}"))
-    mode_item = next((i for i in items if i.kind == "mode"), None)
-    if mode_item is not None:
-        ui.console.print()
-        ui.dim(f"  {mode_item.description}")
-    always_on = [i for i in items if i.kind == "high_risk_class"]
-    if always_on:
-        ui.dim("  Always enforced, for visibility:")
-        for i in always_on:
-            ui.dim(escape(f"    - {i.description}"))
-    channels = [i for i in items if i.kind == "channel"]
-    if channels:
-        ui.dim("  Will notify:")
-        for i in channels:
-            ui.dim(escape(f"    - {i.description}"))
-
-
 def _pod_pregrant(project: str, extra: list[str]) -> None:
     """``docket pod <project> pregrant <task-id> "<command>" [--tool bash]`` — a single-use
     pre-grant for one exact command on one task, ahead of dispatch (ADR 0016 SS10)."""
@@ -753,45 +596,6 @@ def _pod_pregrant(project: str, extra: list[str]) -> None:
     ui.success(
         escape(f"Pre-granted '{command}' on task '{task_id}' in pod '{project}' (token={token}).")
     )
-
-
-def _pod_queue(project: str, extra: list[str]) -> None:
-    """Show the pod's task queue, or ``queue --retry <task-id>`` to un-block one task.
-    A ``blocked`` task never retries on its own — ``--retry`` is the explicit,
-    single-task way back to ``pending``; a budget change un-blocks the whole queue."""
-    if "--retry" in extra:
-        i = extra.index("--retry")
-        task_id = extra[i + 1] if i + 1 < len(extra) else ""
-        if not task_id:
-            ui.error("Usage: docket pod <project> queue --retry <task-id>")
-            raise typer.Exit(1)
-        if _dispatch.retry_task(project, task_id):
-            ui.success(f"Requeued '{task_id}' for pod '{project}' — status set to pending.")
-        else:
-            ui.error(f"'{task_id}' is not a blocked task in pod '{project}'.")
-            raise typer.Exit(1)
-        return
-
-    tasks = _dispatch.read_tasks(project)
-    if not tasks:
-        ui.warn(f"No tasks queued for pod '{project}'.")
-        return
-    table = Table(title=f"Pod queue — {project}")
-    table.add_column("ID", style="bold")
-    table.add_column("PRI")
-    table.add_column("STATUS")
-    table.add_column("COST", justify="right")
-    table.add_column("DESCRIPTION", style="dim")
-    for t in tasks:
-        cost = t.get("costUsd")
-        table.add_row(
-            str(t.get("id", "?"))[:18],
-            str(t.get("priority", "normal")),
-            str(t.get("status", "?")),
-            f"${float(cost):.4f}" if cost else "—",
-            str(t.get("description", "")),
-        )
-    ui.console.print(table)
 
 
 def _pod_config(project: str, extra: list[str]) -> None:
@@ -1104,80 +908,6 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
     _fleet.meta_set(lead_id, "schedule", coerced)
     audit_log("pod.config", f"project={project} action=set key=schedule value={coerced!r}")
     ui.success(f"Set schedule={coerced} for pod '{project}'.")
-
-
-def _pod_corrections(project: str, extra: list[str]) -> None:
-    """Show the pod's corrections ledger (deny reasons, REQUEST-CHANGES, declined answers).
-    ``docket pod <project> corrections [--json]`` prints a table or JSON."""
-    from docket.core import corrections as _corrections
-
-    as_json = "--json" in extra
-
-    records = _corrections.read(project)
-    if not records:
-        ui.warn(f"No corrections recorded for pod '{project}'.")
-        return
-
-    if as_json:
-        print(_json.dumps({"pod": project, "corrections": records}, indent=2))
-        return
-
-    table = Table(title=f"Corrections — {project}")
-    table.add_column("TIMESTAMP", style="dim")
-    table.add_column("KIND")
-    table.add_column("ROLE")
-    table.add_column("TASK")
-    table.add_column("TEXT", style="dim")
-
-    for record in records:
-        ts = str(record.get("ts", ""))[:19]  # YYYY-MM-DDTHH:MM:SS
-        kind = str(record.get("kind", ""))
-        role = str(record.get("role", ""))
-        task = str(record.get("taskId", ""))[:18]
-        text = str(record.get("text", ""))
-        # Truncate text to 80 chars
-        if len(text) > 80:
-            text = text[:77] + "..."
-
-        table.add_row(ts, kind, role, task, text)
-
-    ui.console.print(table)
-
-
-def _pod_evidence(project: str, extra: list[str]) -> None:
-    """``docket pod <project> evidence <task> [--json]``: what the task's hops kept.
-    ``--json`` prints the evidence-v1 document exactly as ``core.evidence`` builds it."""
-    from docket.core import evidence as _evidence
-
-    task_ids = [a for a in extra if not a.startswith("--")]
-    if len(task_ids) != 1:
-        ui.error("Usage: docket pod <project> evidence <task-id> [--json]")
-        raise typer.Exit(1)
-    try:
-        ev = _evidence.task_evidence(project, task_ids[0])
-    except _evidence.EvidenceNotFound as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
-
-    if "--json" in extra:
-        print(ev.model_dump_json(by_alias=True))
-        return
-
-    table = Table(title=f"Evidence - {project} {ev.task_id} ({ev.status})")
-    for col in ("HOP", "ROLE", "OK", "VERDICT", "VERIFY", "COMMIT", "TOKENS IN", "TOKENS OUT"):
-        table.add_column(col)
-    for hop in ev.hops:
-        table.add_row(
-            hop.step_id,
-            hop.role,
-            "yes" if hop.ok else "no",
-            hop.verdict or "-",
-            str(hop.verify.exit_code) if hop.verify else "-",
-            hop.commit[:8] if hop.commit else "-",
-            str(hop.usage.input) if hop.usage else "-",
-            str(hop.usage.output) if hop.usage else "-",
-        )
-    ui.console.print(table)
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:

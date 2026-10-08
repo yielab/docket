@@ -60,7 +60,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Observability Commands",
-        ["runs", "trace", "exec"],
+        ["exec"],
     ),
 ]
 
@@ -329,7 +329,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("TRACES_DIR",),
-        "Root of per-session trace JSONL files (`docket trace`)",
+        "Root of per-session trace JSONL files (`docket task trace`)",
         "`$DOCKET_HOME/traces`",
     ),
     (
@@ -354,7 +354,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("CORRECTIONS_DIR",),
-        "Per-pod append-only ledger of operator decisions and rejections (`docket pod <p> corrections`)",
+        "Per-pod append-only ledger of operator decisions and rejections (`docket task show`)",
         "`$DOCKET_HOME/corrections`",
     ),
     (
@@ -457,7 +457,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("TRACE_RETENTION_DAYS",),
-        "How long a terminated trace file survives before `docket trace expire` deletes it",
+        "How long a terminated trace file survives before `docket task prune --traces` deletes it",
         "`30`",
     ),
     (
@@ -614,6 +614,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (("DOCKET_NO_TRACE",), "Set to `1` to disable trace-store writes", "unset (tracing on)"),
     (("NO_COLOR",), "Any value switches output to plain mode (no colour, ASCII symbols)", "unset"),
+    (
+        ("DOCKET_POD",),
+        "Pod a command acts on when `--pod` is not given",
+        "unset (the pod whose codebase contains the current directory)",
+    ),
     (("DOCKET_NO_HINTS",), "Set to `1` to silence the closing `Next:` line", "unset"),
     (
         ("DOCKET_NO_EXPORT",),

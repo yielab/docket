@@ -67,7 +67,7 @@ def test_memory_smoke_delegation_routes_private_context_only_through_typed_hando
         "exactly: PYTHONPATH=src python -m unittest discover -s tests -v. "
         "No alternatives, wrappers, inline code, or redirects. Never copy private logs."
     )
-    assert calls == [("pod", "smoke", "delegate", description)]
+    assert calls == [("task", "add", description, "--pod", "smoke")]
     assert "Each downstream role must use only the Lead's typed handoff" in description
     assert "Never search or access Docket private control paths" in description
     assert "with project tools" in description
@@ -127,7 +127,7 @@ def test_basic_smoke_delegation_remains_byte_identical() -> None:
 
     _smoke._delegate_smoke_task(recorder, _smoke._BASIC_SCENARIO)
 
-    assert calls == [("pod", "smoke", "delegate", _smoke._basic_task_description())]
+    assert calls == [("task", "add", _smoke._basic_task_description(), "--pod", "smoke")]
 
 
 @pytest.mark.parametrize(
@@ -899,6 +899,10 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
         ),
         encoding="utf-8",
     )
+    (home / "docket-runs.json").write_text(
+        json.dumps({"runs": [{"id": "run-live", "project": "smoke", "state": "running"}]}),
+        encoding="utf-8",
+    )
     calls: list[tuple[str, ...]] = []
 
     def fake_run_cli(
@@ -910,22 +914,17 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
     ) -> subprocess.CompletedProcess[str]:
         del repo, env, process_timeout, abort_event
         calls.append(args)
-        if args == ("runs", "list", "--project", "smoke", "--json"):
-            return subprocess.CompletedProcess(
-                args, 0, json.dumps({"runs": [{"id": "run-live", "state": "running"}]}), ""
-            )
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(_smoke, "_run_cli", fake_run_cli)
 
     with (
         pytest.raises(_smoke.SmokeFailure) as exc_info,
-        _smoke._approve_live_tool_calls(tmp_path, {}, home) as state,
+        _smoke._approve_live_tool_calls(tmp_path, {"DOCKET_HOME": str(home)}, home) as state,
     ):
         assert state.abort.wait(2)
 
     assert calls == [
-        ("runs", "list", "--project", "smoke", "--json"),
         ("runs", "cancel", "run-live"),
         ("deny", "approval-private"),
     ]
@@ -981,6 +980,10 @@ def test_live_approval_grants_only_typed_allowed_call(
                 "context": {"tool": "bash", "callId": call_id},
             }
         ),
+        encoding="utf-8",
+    )
+    (home / "docket-runs.json").write_text(
+        json.dumps({"runs": [{"id": "run-live", "project": "smoke", "state": "running"}]}),
         encoding="utf-8",
     )
     calls: list[tuple[str, ...]] = []
