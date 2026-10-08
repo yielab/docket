@@ -920,7 +920,7 @@ test is parametrized over these seven; fails on the base (exit 0).
 
 ### P39-17 — grouped help, one tagline, the bare guide, completions and the three guards
 
-**Status:** TODO · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` ("Help" rewritten: the eleven commands in three panels, examples, exit codes), `test-framework.md` (the guards)
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-17-help-guards` based on `4ce57b6c`) · **Size:** M · **Wave:** 94 · **Model:** Integrator · **Spec:** `cli-interface.spec.md` ("Help" rewritten: the eleven commands in three panels, examples, exit codes), `test-framework.md` (the guards)
 
 **Trigger (ADR 0022 decisions 1 and 6):** `docket --help` lists 46 commands in registration
 order; four taglines; 0 of 21 actions show their own help; the completion script offers agent ids
@@ -946,7 +946,7 @@ flag. Oracle: the guards themselves, after they have been seen red.
 
 ### P39-18 — the mechanical rename script
 
-**Status:** TODO · **Size:** S · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (tooling)
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-18-rename-script` based on `4ce57b6c`) · **Size:** S · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (tooling)
 
 **Trigger:** about 357 doc lines, 142 source lines, 42 test lines and 17 script lines invoke
 `docket pod ...`; the templates carry `docket pod <project> config unset pipeline` thirteen
