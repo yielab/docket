@@ -523,6 +523,22 @@ class TestTaskApprove:
         assert "docket run" not in result.stderr
         assert "will pick it up" in result.stdout
 
+    def test_a_token_ref_resolves_its_pod_and_ends_with_the_hint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _service
+
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it")
+        token = _park_on_approval("demo", task["id"])
+        monkeypatch.setattr(_service, "is_running", lambda: False)
+
+        result = _task("approve", token)
+
+        assert result.exit_code == 0
+        assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
+        assert "docket run --pod demo" in result.stderr
+
     def test_for_writes_a_single_use_pregrant_on_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -579,6 +595,24 @@ class TestTaskDeny:
         assert result.exit_code == 0
         assert _ap.approval_get(token)["state"] == "denied"
         assert _dispatch.read_tasks("demo")[0]["failureKind"] == "approval_denied"
+
+    def test_the_reason_reaches_the_task_and_its_corrections(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "ship it")
+        _park_on_approval("demo", task["id"])
+
+        assert _task("deny", task["id"], "--reason", "too risky").exit_code == 0
+
+        after = _dispatch.read_tasks("demo")[0]
+        assert after["reason"] == "approval denied: too risky"
+        shown = json.loads(_task("show", task["id"], "--json").stdout)
+        assert [(c["kind"], c["text"]) for c in shown["corrections"]] == [
+            ("deny_reason", "too risky")
+        ]
+        inbox = json.loads(_runner.invoke(app, ["inbox", "--json"]).stdout)
+        assert [i["reason"] for i in inbox["failed"]] == ["approval denied: too risky"]
 
     def test_a_task_waiting_on_nothing_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

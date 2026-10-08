@@ -521,11 +521,16 @@ def _approval_actor(reason: str) -> str:
     return _actor() if reason else ""
 
 
-def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None]:
-    """The approval token *ref* stands for and its pod: an ``apr-`` token as given, or the
-    token the named task is parked on."""
+def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None, str]:
+    """The approval token *ref* stands for, its pod and the label to confirm with: an
+    ``apr-`` token as given (its pod read from the record), or the token the named task is
+    parked on."""
     if ref.startswith("apr-"):
-        return ref, None
+        try:
+            project = str(_ap.approval_get(ref).get("project") or "")
+        except _ap.ApprovalError:
+            project = ""
+        return ref, project or None, ref
     found = _resolve(pod, ref)
     task = _task_record(found)
     token = str(task.get("approvalToken") or "")
@@ -536,7 +541,7 @@ def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None]:
             "Run docket inbox",
         )
         raise typer.Exit(1)
-    return token, found.project
+    return token, found.project, short_id(found.task_id)
 
 
 def _pregrant(pod: str | None, ref: str, command: str, tool: str) -> None:
@@ -583,7 +588,7 @@ def _task_approve(
             raise typer.Exit(2)
         _pregrant(pod, ref, for_command, tool)
         return
-    token, project = _pending_token(pod, ref)
+    token, project, label = _pending_token(pod, ref)
     actor = _approval_actor(reason)
     try:
         if task:
@@ -599,7 +604,7 @@ def _task_approve(
     _, note = _dispatch.resolve_waiting_approval_detail(
         token, "granted", channel="cli", actor=actor
     )
-    ui.success(f"Approved {short_id(ref) if project else ref}")
+    ui.success(f"Approved {label}")
     if note:
         ui.warn(note)
     if project:
@@ -616,7 +621,7 @@ def _task_deny(
 
     Example: docket task deny 2026-10-08T10-00 --reason "touches production"
     """
-    token, project = _pending_token(pod, ref)
+    token, _project, label = _pending_token(pod, ref)
     actor = _approval_actor(reason)
     try:
         _ap.approval_deny(token, channel="cli", actor=actor, reason=reason)
@@ -627,8 +632,8 @@ def _task_deny(
     except _ap.ApprovalError as err:
         ui.error(str(err))
         raise typer.Exit(1) from err
-    _dispatch.resolve_waiting_approval(token, "denied")
-    ui.success(f"Denied {short_id(ref) if project else ref}; the action is blocked")
+    _dispatch.resolve_waiting_approval(token, "denied", channel="cli", actor=actor, reason=reason)
+    ui.success(f"Denied {label}; the action is blocked")
 
 
 def _question_of(found: TaskRef) -> dict[str, Any]:

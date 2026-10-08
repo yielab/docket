@@ -1166,7 +1166,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             # (grant) or kill (deny) it — see core/dispatch.py's
             # resolve_waiting_approval. A no-op for any other approval.
             _, note = _dispatch.resolve_waiting_approval_detail(
-                approval_token, decision, channel=channel, actor=actor
+                approval_token, decision, channel=channel, actor=actor, reason=reason
             )
             rec = approval.approval_get(approval_token)
             payload: dict[str, object] = {

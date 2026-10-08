@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.5.1
+**Version**: 1.5.2
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-08
 
@@ -504,10 +504,13 @@ functions, every surface is transport"; this area is that transport.
    item 3 folded it into its task.
 2a. `docket task approve <ref>` MUST resolve the task's pending approval from the task's own
    `approvalToken` (a task not `waiting_approval` is refused, exit 1; an `apr-` token is accepted
-   as given for an approval no task carries) and grant it with `channel="cli"`; `--task` MUST
+   as given, the one the progress view prints, and its pod is read from the approval record so
+   the run hint below still names it) and grant it with `channel="cli"`; `--task` MUST
    set the `approve_task` option first, and `--once` (the default) conflicts with it (exit 2).
-   `docket task deny <ref>` MUST deny the same approval. After a grant, an answer, a pre-grant or
-   a retry the command MUST end with the run hint: `docket is running and will pick it up` when
+   `docket task deny <ref>` MUST deny the same approval and hand `--reason` to
+   `resolve_waiting_approval` so the failed task's `reason` reads `approval denied: <reason>`
+   (pod-dispatch.spec.md). After a grant, an answer, a pre-grant or a retry, whichever form the
+   ref took, the command MUST end with the run hint: `docket is running and will pick it up` when
    the service's pid check says `docket start` is running, else the single `Next: docket run
    --pod <p>` line. A granted pending task is the "approved, ready" state `inbox` and `status`
    render.
@@ -765,7 +768,9 @@ Each JSONL line is a JSON object with these fields:
 ### Writers
 
 1. **deny_reason**: recorded when `approval_deny()` is called with a non-empty `reason`
-   parameter (source: the approval's `channel`)
+   parameter (source: the approval's `channel`); `taskId` is the id the gate stored in the
+   record's `context` (dispatch's pre-hop and pipeline-step gates), so `task show` lists it under
+   its task. A parked in-turn call's record names no task and its correction is keyed empty
 2. **request_changes**: recorded when a Reviewer hop's verdict is `REQUEST-CHANGES` and a rework
    is triggered (source: `"reviewer"`, text: the hop output)
 3. **declined_answer**: recorded when an answer to a parked input step has `action == "decline"`
@@ -778,6 +783,14 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.5.2 (2026-10-08)
+
+- Found by the Phase 39 live run: `task approve <apr-token>` printed no run hint (the record's
+  `project` now supplies the pod), and a deny's reason never reached its task (`approval_deny`
+  keyed the `deny_reason` correction by a top-level `taskId` the record stores under `context`,
+  so `task show` never matched it; the task's own `reason` was the fixed `approval denied`).
+  Requirement 2a and the corrections writer say what now holds.
 
 ### Version 1.5.1 (2026-10-08)
 

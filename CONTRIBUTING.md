@@ -114,7 +114,7 @@ All contributions must include appropriate tests:
   is budgeted, never the default suite, and runs in its own CI job
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **4,190 tests** in the default suite
+For scale, so you know what you're getting into: **4,193 tests** in the default suite
 (`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
 runs separately), **~44,877 lines** of Python in the shipped package, **32 specifications**
 validated in CI, and **11 commands** in the [command reference](docs/commands.md).
@@ -138,7 +138,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 4,190-test Python suite
+uv run pytest   # 4,193-test Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent

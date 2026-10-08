@@ -422,11 +422,14 @@ def approval_deny(
         audit_detail += f" reason={_redact(reason)}"
     audit_log("approval.deny", audit_detail)
 
-    # Record the denial reason to the corrections ledger (only if reason is given and project exists)
+    # The denial reason joins the corrections ledger under the task the gate named (dispatch
+    # stores it in the record's context); an approval no task carries is keyed empty.
     if reason and project != "operator":
         from docket.core import corrections as _corrections
 
-        task_id = str(data.get("taskId", ""))
+        raw_context = data.get("context")
+        context: dict[str, Any] = raw_context if isinstance(raw_context, dict) else {}
+        task_id = str(data.get("taskId") or context.get("taskId") or "")
         _corrections.record(
             project,
             "deny_reason",

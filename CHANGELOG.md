@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   least one of the named verbs (`docket pod <apply|export> a b c` is a finding). `init` is no
   longer exempt: its options are on the live tree.
 
+### Fixed
+
+- **The operator's decision reaches the record.** `docket task approve <apr-token>` (the form
+  the progress view prints) now ends with the run hint like the task-ref form, its pod read from
+  the approval record. `docket task deny --reason` puts the reason on the failed task
+  (`reason: approval denied: <reason>`, shown by the inbox's Failed entry) and the `deny_reason`
+  correction is keyed by the task id the gate stored under the record's `context`, so
+  `task show` lists it; it was keyed by a top-level field no gate wrote, and the task's reason
+  was the fixed `approval denied`. `POST /approvals/<token>` with `reason` carries it the same way.
+
 ### Changed
 
 - **Documentation describes the eleven-command surface in prose, not only in code spans.**

@@ -607,6 +607,21 @@ class TestApprovalReasonAndActor:
         assert "actor=testuser" in last_line["detail"]
         assert "reason=" in last_line["detail"]
 
+    def test_deny_reason_is_recorded_against_the_tasks_id(self, approvals_dir: Path) -> None:
+        """The correction carries the task id dispatch stores under ``context``."""
+        from docket.core import corrections as _corrections
+
+        token = _approval.approval_create(
+            "proj", "implementer", "deploy", context={"taskId": "task-1", "pipelineIndex": 1}
+        )
+
+        _approval.approval_deny(token, channel="cli", actor="op", reason="not ready")
+
+        records = _corrections.read("proj")
+        assert [(r["kind"], r["taskId"], r["text"], r["source"]) for r in records] == [
+            ("deny_reason", "task-1", "not ready", "cli")
+        ]
+
     def test_deny_without_reason_matches_original_format(self, approvals_dir: Path) -> None:
         """A deny without reason is byte-identical to the original format."""
         token = _approval.approval_create("proj", "implementer", "action")

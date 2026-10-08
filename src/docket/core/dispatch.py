@@ -3136,14 +3136,16 @@ TASK_GRANT_CAP = 20
 
 
 def resolve_waiting_approval(
-    token: str, decision: str, *, channel: str = "", actor: str = ""
+    token: str, decision: str, *, channel: str = "", actor: str = "", reason: str = ""
 ) -> bool:
     """:func:`resolve_waiting_approval_detail`'s boolean."""
-    return resolve_waiting_approval_detail(token, decision, channel=channel, actor=actor)[0]
+    return resolve_waiting_approval_detail(
+        token, decision, channel=channel, actor=actor, reason=reason
+    )[0]
 
 
 def resolve_waiting_approval_detail(
-    token: str, decision: str, *, channel: str = "", actor: str = ""
+    token: str, decision: str, *, channel: str = "", actor: str = "", reason: str = ""
 ) -> tuple[bool, str]:
     """React to a just-applied approval decision by mutating the dispatch task it gated, if
     any -- never mutates the approval record itself, only reacts to a transition
@@ -3165,6 +3167,10 @@ def resolve_waiting_approval_detail(
     A parked grant whose record chose ``approve_task`` also appends the exact
     ``(tool, argsDigest)`` to the task's ``taskGrants`` (at most ``TASK_GRANT_CAP``);
     ``_compose_hop`` mints a single-use pre-grant from each for every later hop.
+
+    A deny carries the operator's *reason* into the task's ``reason`` as
+    ``approval denied: <reason>`` so the inbox and ``task show`` say why; without one the
+    text is ``approval denied``.
 
     Returns ``(updated, note)``: ``False`` as a harmless no-op for an unrelated/already-resolved
     token or a mismatched task; *note* is non-empty only when a task-wide grant was refused."""
@@ -3221,7 +3227,7 @@ def resolve_waiting_approval_detail(
                     t["gateOverridePipelineIndex"] = pending_index
             else:
                 t["status"] = "failed"
-                t["reason"] = "approval denied"
+                t["reason"] = f"approval denied: {reason}" if reason else "approval denied"
                 t["failureKind"] = "approval_denied"
                 t["completedAt"] = _now()
                 t["claimId"] = None

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.36.1
+**Version**: 6.36.2
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1094,7 +1094,9 @@ was seeded once at binding time.)*
      invocation is still required to actually continue the pipeline.
    - **On a deny:** transition the task `waiting_approval` -> `failed` **immediately** (no agent
      turn needed to fail a task that never ran its gated hop), `failureKind: "approval_denied"`,
-     `reason: "approval denied"`, `completedAt` set, `claimId` cleared. Terminal — never
+     `reason: "approval denied"` (or `approval denied: <reason>` when the decision carried the
+     operator's reason, so the inbox's Failed entry and `task show` say why), `completedAt` set,
+     `claimId` cleared. Terminal — never
      auto-retried by a later `dispatch_pod` call, with or without `--resume`.
    - Resolving a token not created by this gate (missing `context.taskId`/`project`), an unknown
      token, or a task no longer `waiting_approval` on that exact token (already resolved by a
@@ -2073,6 +2075,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.36.2 (2026-10-08)
+
+- A deny's operator reason reaches the task: `resolve_waiting_approval[_detail]` take `reason=`
+  and the failed task's `reason` is `approval denied: <reason>` when one was given (`docket task
+  deny --reason`, `POST /approvals/<token>` with `reason`); without one it stays `approval denied`.
 
 ### Version 6.36.1 (2026-10-08)
 

@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.1.0
+**Version**: 2.1.1
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -302,7 +302,8 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   same call for the rest of the task; `--once` is the default and conflicts with `--task` (exit
   2). `--for` records a single-use pre-grant for one exact command ahead of dispatch instead
   (`core.interruptions.record_pregrant`) and conflicts with `--task`
-- `deny` denies the same approval; the task fails with `approval_denied`
+- `deny` denies the same approval; the task fails with `approval_denied` and, when `--reason`
+  was given, `reason: approval denied: <reason>` (what the inbox's Failed entry shows)
 - `answer` answers the parked question through `core.answers.answer_task`; on a TTY with no
   text, field or option it prompts, off a TTY it exits 1 naming `--option`
 - `retry` calls `core.dispatch.retry_task` (a `failed` or `blocked` task goes back to `pending`,
@@ -312,7 +313,7 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   `running` claim as `failed` (`core.dispatch.reclaim_stale_running`)
 **Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
 hint: `docket is running and will pick it up` when `docket start` is running, else
-`Next: docket run --pod <p>` on stderr; `cancel` ends with `Next: docket task retry <id>` when it
+`Next: docket run --pod <p>` on stderr, for a task ref and for an `apr-` token alike; `cancel` ends with `Next: docket task retry <id>` when it
 settled a stale claim
 **Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
 an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
@@ -932,6 +933,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.1.1 (2026-10-08)
+
+- `task approve <apr-token>` ends with the run hint like the task-ref form (the pod comes from
+  the approval record); `task deny --reason` puts the reason on the failed task.
 
 ### Version 2.1.0 (2026-10-08)
 
