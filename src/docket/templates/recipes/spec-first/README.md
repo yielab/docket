@@ -16,7 +16,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe spec-first          # a new pod for the current repository
-docket pod <project> apply spec-first    # onto an existing pod
+docket pod apply spec-first    # onto an existing pod
 ```
 
 `pod.yaml` names the three members this recipe adds (`writer`, `critic`, `reviewer`); `apply`

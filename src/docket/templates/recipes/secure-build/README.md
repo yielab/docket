@@ -10,7 +10,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe secure-build          # a new pod for the current repository
-docket pod <project> apply secure-build    # onto an existing pod
+docket pod apply secure-build    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`security-vetter`); `apply` validates the

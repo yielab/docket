@@ -988,7 +988,7 @@ def _cancel_active_smoke_run(repo: Path, env: dict[str, str]) -> str:
     run_id = str(active.get("id", "")) if isinstance(active, dict) else ""
     if not run_id:
         raise SmokeFailure("active smoke run was not found")
-    _run_cli(repo, env, "runs", "cancel", run_id, process_timeout=30)
+    _run_cli(repo, env, "task", "cancel", run_id, process_timeout=30)
     return run_id
 
 
@@ -1775,12 +1775,12 @@ def _run(
 
         if scenario == _MEMORY_SCENARIO:
             lead_ws = _seed_memory_logs(home)
-            run_cli("maintain", "smoke-lead", "distill")
+            run_cli("pod", "reset", "smoke-lead", "--yes", "--pod", "smoke")
             _verify_distilled_memory(lead_ws)
             print("[check] memory logs distilled and archived with current decisions retained")
 
         _delegate_smoke_task(run_cli, scenario)
-        run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
+        run_cli("pod", "plan", "--pod", "smoke", "--pipeline", str(pipeline))
         first_run = ["run", "--pod", "smoke", "--pipeline", str(pipeline)]
         if live is None:
             first_run.extend(["--timeout", "30"])
@@ -2272,7 +2272,7 @@ def _run_operator_loop_scenario(
         run_cli("init", "--from", str(alpha_spec))
         run_cli("init", "--from", str(beta_spec))
         run_cli("setup", "sandbox", "off")
-        run_cli("pod", "alpha", "apply", "prod-approval")
+        run_cli("pod", "apply", "prod-approval", "--pod", "alpha")
         run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
 

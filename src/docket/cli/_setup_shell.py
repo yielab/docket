@@ -70,12 +70,8 @@ _docket_complete() {
     status)          words="--all --json" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="show add remove reset set unset delete apply export" ;;
     setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
-    pipeline)        words="validate plan" ;;
     task)            words="add list show diff trace prune" ;;
     audit)           words="verify --json" ;;
-    policies)        words="list show init test validate" ;;
-    recipes)         words="list show" ;;
-    roles)           words="list show add validate" ;;
     *)               words="" ;;
   esac
   mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
@@ -111,12 +107,8 @@ __ZSH_COMMANDS__
     status)          compadd --all --json ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd show add remove reset set unset delete apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
-    pipeline)        compadd validate plan ;;
     task)            compadd add list show diff trace prune ;;
     audit)           compadd verify --json ;;
-    policies)        compadd list show init test validate ;;
-    recipes)         compadd list show ;;
-    roles)           compadd list show add validate ;;
   esac
 }
 _docket "$@"

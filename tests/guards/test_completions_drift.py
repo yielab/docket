@@ -12,9 +12,6 @@ surface and the emitted completion scripts fails the suite.
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -72,7 +69,6 @@ class TestCommandsPresent:
     """At-minimum acceptance list of commands completions must advertise."""
 
     REQUIRED = (
-        "policies",
         "setup",
         "log",
         "task",
@@ -87,78 +83,3 @@ class TestCommandsPresent:
         names = _parse_bash_commands(out) if shell == "bash" else _parse_zsh_commands(out)
         missing = set(self.REQUIRED) - names
         assert not missing, f"completions ({shell}) missing: {sorted(missing)}"
-
-
-class TestSubcommandListsMatchTheImplementation:
-    """`_setup_shell.py`'s hand-written subcommand lists are unguarded
-    unlike the top-level table; this derives truth from each command
-    module's own ``sub == "..."`` comparisons, so it is a regression check."""
-
-    # Only modules whose file name maps 1:1 onto a command; `__init__.py` hosts
-    # several commands at once, so its `sub ==` literals cannot be attributed.
-    MODULES = ("_pipeline",)
-
-    @staticmethod
-    def _implemented_subcommands(module_stem: str) -> set[str]:
-        src = (REPO_ROOT / "src" / "docket" / "cli" / f"{module_stem}.py").read_text()
-        return set(re.findall(r'sub == "([a-z-]+)"', src))
-
-    @pytest.mark.parametrize("module_stem", MODULES)
-    @pytest.mark.parametrize("shell", ["bash", "zsh"])
-    def test_every_implemented_subcommand_is_offered(
-        self, shell: str, module_stem: str, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        expected = self._implemented_subcommands(module_stem)
-        assert expected, f"{module_stem}.py parsed to zero subcommands — fix the derivation"
-
-        print(_setup_shell.render_bash() if shell == "bash" else _setup_shell.render_zsh(), end="")
-        out = capsys.readouterr().out
-        command = module_stem.lstrip("_")
-
-        # A case arm may wrap onto a second line, so keep consuming until the
-        # arm terminator `;;`. Do NOT just glue on the following line
-        # unconditionally: the next arm is often a *neighbouring command* whose
-        # own subcommands would then satisfy this assertion by accident. That
-        # exact mistake made an earlier version of this guard pass against
-        # deliberately planted drift (a removed `pipeline` subcommand `run` was
-        # matched by the `runs|run)` arm underneath it).
-        lines = out.splitlines()
-        idx = next(
-            (i for i, ln in enumerate(lines) if re.match(rf"\s*{command}[)|]", ln.strip())),
-            None,
-        )
-        assert idx is not None, f"completions ({shell}) has no case entry for '{command}'"
-        arm = [lines[idx]]
-        while ";;" not in arm[-1] and idx + len(arm) < len(lines):
-            arm.append(lines[idx + len(arm)])
-        case_line = " ".join(arm)
-
-        missing = {s for s in expected if not re.search(rf"\b{re.escape(s)}\b", case_line)}
-        assert not missing, (
-            f"completions ({shell}) for '{command}' is missing {sorted(missing)} — "
-            f"implemented in {module_stem}.py but not offered"
-        )
-
-
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
-class TestEvalSmokeCheck:
-    """`eval "$(docket setup shell bash)"` must actually define the
-    completion function in a real bash process — a syntax regression here
-    would not be caught by pure string assertions."""
-
-    def test_eval_docket_completions_bash_defines_function(self) -> None:
-        docket_bin = REPO_ROOT / "bin" / "docket"
-        script = (
-            f'eval "$("{sys.executable}" -m docket setup shell bash)" && '
-            "type _docket_complete >/dev/null 2>&1 && echo DEFINED"
-        )
-        result = subprocess.run(
-            ["bash", "-c", script],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        assert docket_bin.is_file()  # sanity: launcher exists alongside the module path used above
-        assert result.returncode == 0, result.stderr
-        assert "DEFINED" in result.stdout

@@ -277,7 +277,7 @@ def create_run(
 
     *variables* is the pipeline namespace this run resolved against (only
     the serve webhook populates it; others get ``{}``). Recording it here,
-    not just accepting it, is what lets ``docket runs show``/``GET /runs``
+    not just accepting it, is what lets ``docket task show``/``GET /runs``
     answer what variables a dispatch actually saw.
     """
     if source not in _SOURCES:
@@ -602,7 +602,7 @@ def cancel_run(run_id: str) -> CancelOutcome:
         if killed
         else f"requested cancellation for run {run_id} (nothing in flight to kill)"
     )
-    # Every other privileged action writes an audit entry; `docket runs
+    # Every other privileged action writes an audit entry; `docket task
     # cancel` matches that. Logged only on an actual cancellation
     # (this line), never for the unknown-id/already-terminal no-op returns
     # above — those change nothing, so there is nothing to audit. `state` here

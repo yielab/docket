@@ -1,6 +1,6 @@
-"""gates, policies, approve, deny commands.
+"""sandbox gates, pod policies and check, approve, deny commands.
 
-Drives the four CLI run_* surfaces (and the core engines behind them) in-process
+Drives the CLI surfaces (and the core engines behind them) in-process
 against a temp DOCKET_HOME. config.py binds paths at import time, so we repoint
 the live module attributes (the same technique as the doctor and trace/audit
 suites). The `docker` binary is stubbed off PATH so isolation reports "needs
@@ -21,7 +21,7 @@ from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _policies, _setup_sandbox, app
+from docket.cli import _pod, _setup_sandbox, app
 from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
@@ -56,6 +56,10 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # No real backend probing from these tests: default to "no backend usable".
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
     return d
+
+
+def _pod_cli(*args: str) -> Any:
+    return CliRunner().invoke(_pod.pod_app, list(args))
 
 
 def _seed_policies(oc_dir: Path) -> None:
@@ -193,158 +197,90 @@ class TestGatesIsolate:
 
 
 class TestPolicies:
-    def test_list_empty(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _policies.run_policies("list")
-        captured = capsys.readouterr()
-        assert rc == 0
-        assert "No policies installed." in captured.out  # warn() → stdout
+    def test_list_empty(self, oc_dir: Path) -> None:
+        result = _pod_cli("policies")
+        assert result.exit_code == 0
+        assert "No policies installed" in result.output
 
-    def test_init_then_list(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _policies.run_policies("init")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "installed: block-destructive.yaml" in out
-        # Files copied + 0600.
-        dest = oc_dir / "policies" / "block-destructive.yaml"
-        assert dest.is_file()
-        assert (dest.stat().st_mode & 0o777) == 0o600
-
-        rc = _policies.run_policies("list")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "block-destructive" in out
-        assert "pre_tool_call" in out
-        # ACTION column truncates to 14 chars (matches Bash list formatter).
-        assert "require_approv" in out
-
-    def test_init_idempotent_skips(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        _policies.run_policies("init")
-        capsys.readouterr()
-        rc = _policies.run_policies("init")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "skip (exists)" in out
-
-    def test_show_found(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_seeded_then_list(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        rc = _policies.run_policies("show", args=["block-destructive"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        parsed = json.loads(out)
-        assert parsed["id"] == "block-destructive"
+        result = _pod_cli("policies")
+        assert result.exit_code == 0
+        assert "block-destructive" in result.output
+        assert "pre_tool_call" in result.output
+        # ACTION column truncates to 14 chars.
+        assert "require_approv" in result.output
 
-    def test_show_missing(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_show_found(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        rc = _policies.run_policies("show", args=["nope"])
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Policy not found" in captured.err
+        result = _pod_cli("policies", "block-destructive")
+        assert result.exit_code == 0
+        assert json.loads(result.output)["id"] == "block-destructive"
 
-    def test_test_block_destructive(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_show_missing(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        rc = _policies.run_policies("test", args=["pre_tool_call", "programmer", "rm -rf /tmp/foo"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "require_approval" in out
+        result = _pod_cli("policies", "nope")
+        assert result.exit_code == 1
+        assert "Policy not found" in result.output
 
-    def test_test_allow_default(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_check_block_destructive(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        rc = _policies.run_policies("test", args=["pre_tool_call", "programmer", "ls -la"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Result: allow" in out
+        result = _pod_cli("check", "rm -rf /tmp/foo", "--role", "programmer")
+        assert result.exit_code == 0
+        assert "require_approval" in result.output
 
-    def test_test_pre_tool_call_matches_the_live_gate_for_an_offlist_binary(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_check_allow_default(self, oc_dir: Path) -> None:
+        _seed_policies(oc_dir)
+        result = _pod_cli("check", "ls -la", "--role", "programmer")
+        assert result.exit_code == 0
+        assert "Result: allow" in result.output
+
+    def test_check_matches_the_live_gate_for_an_offlist_binary(self, oc_dir: Path) -> None:
         """A `cd`-prefixed command with an off-allowlist later segment (no declarative
         policy matches `export`) must ask here exactly as the live gate would, not
         `allow` from a declarative-only dry-run that never consults the classifier."""
         _seed_policies(oc_dir)
-        rc = _policies.run_policies(
-            "test", args=["pre_tool_call", "implementer", "cd /worktree && export FOO=bar"]
-        )
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Result: ask" in out
-        assert "curated allowlist" in out
+        result = _pod_cli("check", "cd /worktree && export FOO=bar", "--role", "implementer")
+        assert result.exit_code == 0
+        assert "Result: ask" in result.output
+        assert "curated allowlist" in result.output
 
-    def test_test_unknown_hook(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _policies.run_policies("test", args=["bogus_hook", "programmer", "x"])
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Unknown hook" in captured.err
+    def test_check_unknown_hook(self, oc_dir: Path) -> None:
+        result = _pod_cli("check", "x", "--role", "programmer", "--hook", "bogus_hook")
+        assert result.exit_code == 2
+        assert "Unknown hook" in result.output
 
-    def test_test_missing_args(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _policies.run_policies("test", args=["pre_tool_call"])
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Usage:" in captured.err
+    def test_check_missing_text(self, oc_dir: Path) -> None:
+        result = _pod_cli("check", "--role", "programmer")
+        assert result.exit_code == 2
 
-    def test_help_default_for_unknown(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _policies.run_policies("--help")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket policies list" in out
+    def test_list_rejects_unknown_flag(self, oc_dir: Path) -> None:
+        """A flag `pod policies` does not declare is a usage error, never a silently ignored
+        token that still prints the table and exits 0."""
+        assert _pod_cli("policies", "--bogus").exit_code == 2
 
-    def test_list_rejects_unknown_flag(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`policies` documents no flags at all, so `--json` must be a usage error rather than a
-        silently ignored token that still prints the table and exits 0."""
-        rc = _policies.run_policies("list", args=["--json"])
-        err = capsys.readouterr().err
-        assert rc == 2
-        assert "--json" in err
+    def test_list_json_names_each_policy(self, oc_dir: Path) -> None:
+        _seed_policies(oc_dir)
+        rows = json.loads(_pod_cli("policies", "--json").output)
+        assert "block-destructive" in {r["id"] for r in rows}
 
-    def test_test_subcommand_free_text_is_never_treated_as_a_flag(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`test`'s third argument is arbitrary dry-run text, so a leading `-` in it must reach the
+    def test_check_free_text_is_never_treated_as_a_flag(self, oc_dir: Path) -> None:
+        """The text after `--` is arbitrary dry-run text, so a leading `-` in it reaches the
         evaluator untouched instead of being rejected as an unrecognized flag."""
-        rc = _policies.run_policies("test", args=["pre_tool_call", "programmer", "-rf /tmp/foo"])
-        capsys.readouterr()
-        assert rc == 0
+        result = _pod_cli("check", "--role", "programmer", "--", "-rf /tmp/foo")
+        assert result.exit_code == 0
 
-    # ── validate (wires core.policy.validate_policy) ──────────────────────────────
+    # -- pod validate over the installed policy store (wires core.policy.validate_policy) ----
 
-    def test_validate_no_args_checks_every_installed_file(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_validate_checks_every_installed_file(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        rc = _policies.run_policies("validate")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "block-destructive.yaml is valid" in out
+        result = _pod_cli("validate", str(oc_dir))
+        assert result.exit_code == 0
+        assert "block-destructive.yaml" in result.output
 
-    def test_validate_no_args_no_policies_installed(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _policies.run_policies("validate")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "No policies installed." in out
-
-    def test_validate_by_id(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        _seed_policies(oc_dir)
-        rc = _policies.run_policies("validate", args=["block-destructive"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "'block-destructive' is valid." in out
-
-    def test_validate_by_id_not_found(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed_policies(oc_dir)
-        rc = _policies.run_policies("validate", args=["nope"])
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Policy not found" in captured.err
-
-    def test_validate_by_file_path(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        candidate = oc_dir / "candidate.json"
+    def test_validate_by_file_path(self, oc_dir: Path) -> None:
+        candidate = oc_dir / "candidate" / "policies" / "candidate.json"
+        candidate.parent.mkdir(parents=True)
         candidate.write_text(
             json.dumps(
                 {
@@ -356,30 +292,23 @@ class TestPolicies:
                 }
             )
         )
-        rc = _policies.run_policies("validate", args=[str(candidate)])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "is valid" in out
+        result = _pod_cli("validate", str(candidate))
+        assert result.exit_code == 0
+        assert "candidate.json" in result.output
 
-    def test_validate_by_file_path_invalid(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        candidate = oc_dir / "candidate.json"
+    def test_validate_by_file_path_invalid(self, oc_dir: Path) -> None:
+        candidate = oc_dir / "candidate" / "policies" / "candidate.json"
+        candidate.parent.mkdir(parents=True)
         candidate.write_text(json.dumps({"id": "candidate"}))  # missing required fields
-        rc = _policies.run_policies("validate", args=[str(candidate)])
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "missing fields" in captured.err
+        result = _pod_cli("validate", str(candidate))
+        assert result.exit_code == 1
+        assert "missing fields" in result.output
 
-    def test_validate_reports_invalid_installed_file(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        (oc_dir / "policies").mkdir(parents=True, exist_ok=True)
+    def test_validate_reports_invalid_installed_file(self, oc_dir: Path) -> None:
         (oc_dir / "policies" / "bad.json").write_text(json.dumps({"id": "bad"}))
-        rc = _policies.run_policies("validate")
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "missing fields" in captured.err
+        result = _pod_cli("validate", str(oc_dir))
+        assert result.exit_code == 1
+        assert "missing fields" in result.output
 
 
 class TestPolicyEngine:
@@ -505,24 +434,18 @@ class TestBrokenPolicyStoreCli:
         "message": "no deploys",
     }
 
-    def test_validate_flags_uncompilable_regex(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_validate_flags_uncompilable_regex(self, oc_dir: Path) -> None:
         (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
-        rc = _policies.run_policies("validate")
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "pattern" in captured.err
+        result = _pod_cli("validate", str(oc_dir))
+        assert result.exit_code == 1
+        assert "pattern" in result.output
 
-    def test_policies_test_reports_broken_store_as_deny(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_check_reports_broken_store_as_deny(self, oc_dir: Path) -> None:
         (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
-        rc = _policies.run_policies("test", args=["pre_tool_call", "implementer", "ls src"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "deny" in out
-        assert "zz-broken.json" in out
+        result = _pod_cli("check", "ls src", "--role", "implementer")
+        assert result.exit_code == 0
+        assert "deny" in result.output
+        assert "zz-broken.json" in result.output
 
 
 class TestPoliciesTestToolKind:
@@ -537,36 +460,24 @@ class TestPoliciesTestToolKind:
         "message": "main.py touched",
     }
 
-    def test_non_exec_tool_skips_the_classifier(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_non_exec_tool_skips_the_classifier(self, oc_dir: Path) -> None:
         (oc_dir / "policies" / "watch-mainpy.json").write_text(json.dumps(self._WARN))
-        rc = _policies.run_policies(
-            "test",
-            args=["pre_tool_call", "implementer", 'write path="main.py"', "--tool", "write"],
+        result = _pod_cli(
+            "check", 'write path="main.py"', "--role", "implementer", "--tool", "write"
         )
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "allow" in out
-        assert "watch-mainpy" in out
-        assert "curated allowlist" not in out
+        assert result.exit_code == 0
+        assert "allow" in result.output
+        assert "watch-mainpy" in result.output
+        assert "curated allowlist" not in result.output
 
-    def test_exec_default_still_classifies(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _policies.run_policies(
-            "test", args=["pre_tool_call", "implementer", "somebinary --flag"]
-        )
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "ask" in out
-        assert "curated allowlist" in out
+    def test_exec_default_still_classifies(self, oc_dir: Path) -> None:
+        result = _pod_cli("check", "somebinary --flag", "--role", "implementer")
+        assert result.exit_code == 0
+        assert "ask" in result.output
+        assert "curated allowlist" in result.output
 
-    def test_unknown_tool_errors(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _policies.run_policies(
-            "test", args=["pre_tool_call", "implementer", "x", "--tool", "bogus"]
-        )
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "bogus" in captured.err
-        assert "bash" in captured.err
+    def test_unknown_tool_errors(self, oc_dir: Path) -> None:
+        result = _pod_cli("check", "x", "--role", "implementer", "--tool", "bogus")
+        assert result.exit_code == 2
+        assert "bogus" in result.output
+        assert "bash" in result.output

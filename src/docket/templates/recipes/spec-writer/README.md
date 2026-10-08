@@ -20,7 +20,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe spec-writer          # a new pod for the current repository
-docket pod <project> apply spec-writer    # onto an existing pod
+docket pod apply spec-writer    # onto an existing pod
 ```
 
 `pod.yaml` carries a `description` only (the recipe adds no new members or settings);

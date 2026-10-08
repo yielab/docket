@@ -317,29 +317,28 @@ Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → T
 (PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches
 those steps — same skip-absent-roles behavior `docket pod <project> dispatch` always had.
 Installing this feature changes nothing about an existing pod until you write a file and pass
-`--file`.
+`--pipeline`.
 
-### `docket pipeline validate` — check a file before you point a pod at it
+### `docket pod validate` — check a file before you point a pod at it
 
 Pure structural validation, no project or pod involved. Every level of the document rejects an
 unrecognized key — a typo fails loudly instead of being silently ignored:
 
 ```bash
-$ docket pipeline validate workflows/release.yml
-✓ Pipeline 'workflows/release.yml' is valid
+$ docket pod validate workflows/release.yml
+✓ workflows/release.yml (pipeline release)
 
-$ docket pipeline validate workflows/broken.yml
-✗ Error: Pipeline 'workflows/broken.yml' is invalid:
-  ✗ steps.0.verifyCommand: Extra inputs are not permitted
+$ docket pod validate workflows/broken.yml
+✗ workflows/broken.yml:1 steps.0.verifyCommand: Extra inputs are not permitted
 ```
 
-### `docket pipeline plan` — see what would actually run, without running it
+### `docket pod plan` — see what would actually run, without running it
 
 `plan` renders straight from the real executor (`core.orchestrator.resolve_plan`/`render_plan`)
 — never a second, drift-prone pretty-printer, and never a token spent:
 
 ```bash
-$ docket pipeline plan myapp
+$ docket pod plan
 
 Pipeline plan — myapp
 Source: built-in default
@@ -397,7 +396,7 @@ steps:
 ```
 
 ```bash
-$ docket pipeline plan myapp --file workflows/release.yml
+$ docket pod plan --pipeline workflows/release.yml
 
 Pipeline plan — myapp
 Source: file 'workflows/release.yml'
@@ -410,12 +409,12 @@ Pipeline: release
   [review] role=reviewer -> myapp-reviewer [gate: verdict(approve, rework->fanout)]
   [ship] role=tester -> myapp-tester [gate: approval]
 
-$ docket pipeline run myapp --file workflows/release.yml
+$ docket run --pipeline workflows/release.yml
 ```
 
 `run` dispatches through `cli._pod._pod_dispatch` — the exact same rendering, run-registry
 recording, budget/approval gating, retries, and crash resume `docket pod myapp dispatch` uses.
-`--file` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes,
+`--pipeline` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes,
 including the exit status: `1` when a task's run ends `failed`.
 
 Three gate kinds, plus one step kind that isn't a gate at all — it doesn't judge a hop's output,
@@ -442,10 +441,10 @@ steps:
 ```
 
 ```bash
-$ docket pipeline run myapp --var env=staging
+$ docket run --var env=staging
 ```
 
-`--var key=value` is repeatable and works from `docket pipeline run`; the `docket serve` webhook
+`--var key=value` is repeatable and works from `docket run`; the `docket serve` webhook
 resolves the same namespace from its JSON body. Either way, resolution happens once, up front: a
 `required` variable with no value supplied is rejected before a run record is even created, and if
 any step's `instructions` still reference a `${name}` the resolved namespace doesn't cover, the
@@ -474,12 +473,10 @@ $ docket runs show run-3f2a1c9e-... --json
 $ docket runs list --project myapp --json     # for scripting/dashboards
 ```
 
-`--follow` on `docket pipeline run` tails the same durable trace store a hop already writes to,
-so you see hop-by-hop progress live instead of only the final summary:
+`--progress` on `docket run` shows hop-by-hop progress live instead of only the final summary:
 
 ```bash
-$ docket pipeline run myapp --follow
-→ Following dispatch for 'myapp' (Ctrl-C stops watching, not the dispatch)
+$ docket run --progress
 
   2026-07-29T10:02:00  tool_call                  (lead)
   2026-07-29T10:02:05  tool_result                (lead)
@@ -558,12 +555,12 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7331/runs/run-3f2a1c9
 ```
 
 The JSON body is resolved against the pod's own configured/default pipeline's declared
-`variables` **before** a run record is even created, exactly like `--var` on `docket pipeline run`
+`variables` **before** a run record is even created, exactly like `--var` on `docket run`
 (see the section above): a missing `required` variable is rejected with `400` and no run record is
 created at all; an unresolved `${name}` in a step's `instructions` also refuses the run before any
 hop starts. The resolved namespace is persisted on the run record (`docket runs show <id>` shows
 it), so you can answer "what did this dispatch actually see". The webhook always uses the pod's own
-pipeline; it has no way to supply a `--file` of its own, only variable *values*.
+pipeline; it has no way to supply a `--pipeline` of its own, only variable *values*.
 
 ---
 
@@ -638,7 +635,7 @@ generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
 `maxConsultationsPerTask`, `network`. A repository's `.docket/pod.yaml` can carry the same keys under
-`settings:`, applied by `docket init` or `docket pod <project> apply`.
+`settings:`, applied by `docket init` or `docket pod apply`.
 
 ```bash
 docket pod myapp config get                    # every key, with its source (default vs. set)
@@ -654,7 +651,7 @@ validate-then-store: `config set pipeline <file>` checks the file and writes a h
 the pod's own workspace before recording it, and `config set schedule "<spec>"` validates the cron/
 interval spec the same way (see "Schedules" below). Binding a pipeline this way makes it the
 **default for every trigger** — CLI dispatch, the serve webhook, a due schedule — whereas `docket
-pipeline run --file <f>` only swaps the spec for that one invocation. See
+run --pipeline <f>` only swaps the spec for that one invocation. See
 [CONFIGURATION.md](CONFIGURATION.md) for the full reference on every key.
 
 To check what will actually run for a given agent before you dispatch, `docket config explain
@@ -837,7 +834,7 @@ Telegram" sections — kept in one place rather than duplicated here.
 delegate → dispatch → Lead → Implementer → (Reviewer) → (Tester) → you review + commit
 ```
 
-**Pipelines** (`docket pipeline validate/plan/run`, `docket runs list/show/cancel`):
+**Pipelines** (`docket pod validate`, `docket pod plan`, `docket run`):
 - The docket-native pipeline is the one dialect
   docket executes, and a pod with no pipeline file runs the built-in one unchanged.
 - Every dispatch — CLI, `--follow`, a schedule, a webhook, or the sweep loop — lands one record

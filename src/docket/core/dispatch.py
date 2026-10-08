@@ -491,7 +491,7 @@ def _bound_pipeline(project: str, pipeline_hash: str) -> _pipeline.PipelineSpec:
 
 # Resolution order: this pod's bound pipeline (PodSettings.pipeline) -> the Lead's
 # ``blueprint`` meta's default_pipeline -> the built-in default. *source* is the
-# human-readable label ``docket pipeline plan`` names ("bound pipeline (hash ...)",
+# human-readable label ``docket pod plan`` names ("bound pipeline (hash ...)",
 # "blueprint '<name>'", or "built-in default" -- see pod-dispatch.spec.md, "Pipeline order
 # and participation").
 def _blueprint_pipeline(project: str) -> tuple[_pipeline.PipelineSpec, str]:
@@ -3345,7 +3345,7 @@ def dispatch_pod(
     and continue from the last persisted hop. Returns one TaskResult per task attempted.
     Raises DispatchError if the pod has no Lead, or -- checked once, here, before any task is
     claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
-    e.g. the serve webhook's resolved body, or ``docket pipeline run --var``) leaves any step's
+    e.g. the serve webhook's resolved body, or ``docket run --var``) leaves any step's
     own ``instructions`` with an unresolved ``${var}`` reference. See
     specs/functional/pipeline-format.spec.md ("Variables"). *approval_default* is this caller's
     own resolution for an unset pod ``approvalMode`` (ADR 0016 SS2) -- forwarded to every task's

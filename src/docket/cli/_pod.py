@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib as _hashlib
-import json as _json
 import os
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -200,20 +198,6 @@ def build_pod_from_blueprint(
         ui.warn(f"  pod provisioning failed: {exc}")
         return []
     return _render_created(result.members)
-
-
-def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
-    """The last legacy pod actions, reached by tests until their verbs land on ``pod_app``."""
-    action = sub or "sync"
-    if action == "sync":
-        _pod_sync(project, extra)
-    elif action == "apply":
-        _pod_apply_cmd(project, extra)
-    elif action == "export":
-        _pod_export_cmd(project, extra)
-    else:
-        ui.error(f"Unknown pod action {action!r}. Use: sync | apply | export.")
-        raise typer.Exit(1)
 
 
 def _pod_name(name: str | None) -> str:
@@ -699,159 +683,6 @@ def cmd_unset(
     Example: docket pod unset verify --member demo-implementer"""
     unset_setting(_pod_name(pod_name), key, member=member)
     _contract.next_step("docket pod show")
-
-
-def _pod_sync(project: str, extra: list[str]) -> None:
-    """``docket pod <project> sync [--dry-run]`` -- re-render stale SOUL/AGENTS/TOOLS
-    from the current archetype + metadata; ``--dry-run`` diffs without writing.
-    Never touches ``INSTRUCTIONS.md`` (operator-owned); an in-sync pod is a no-op."""
-    dry_run = "--dry-run" in extra
-    member_ids = pod_member_ids(project)
-    if not member_ids:
-        ui.warn(f"No pod found for '{project}'. Create one with: docket init {project}")
-        return
-    stale_ids = []
-    for member_id in member_ids:
-        status = _pp.member_sync_status(member_id)
-        if status is None or not status.stale:
-            continue
-        stale_ids.append(member_id)
-        if dry_run:
-            ui.console.print(
-                f"[bold]{member_id}[/bold] — stale "
-                f"(v{status.stored_template_version or '?'} -> v{_pp.POD_TEMPLATE_VERSION})"
-            )
-            for name, diff in status.diffs.items():
-                ui.console.print(escape(diff) if diff else f"  {name}: no content change")
-        else:
-            written = _pp.resync_member(member_id)
-            audit_log("pod.sync", f"member={member_id} files=({','.join(written)})")
-            ui.success(f"  {member_id}: re-rendered {', '.join(written) or '(version stamp only)'}")
-    if not stale_ids:
-        ui.success(f"Pod '{project}' is already in sync.")
-    elif dry_run:
-        ui.dim(f"  {len(stale_ids)} member(s) stale — rerun without --dry-run to apply.")
-
-
-def _pod_apply_default_dir(project: str) -> Path:
-    """``<codebase>/.docket`` from the Lead's own recorded meta -- the default
-    ``apply`` reads when no directory is given."""
-    lead_id = pod.member_id(project, "lead")
-    codebase = _fleet.meta_get(lead_id, "codebase", "")
-    return Path(codebase) / ".docket"
-
-
-def render_apply_header(project: str, directory: Path, summary: _pod_apply.RecipeSummary) -> None:
-    """Print ``Apply plan``, the recipe's own ``description`` when set, then its derived
-    summary line -- shown before the plan itself. Shared by ``pod <p> apply`` and ``docket
-    init``/``--recipe`` so the two never render a recipe differently."""
-    ui.header(f"Apply plan — {project} <- {directory}")
-    if summary.description:
-        ui.console.print(escape(summary.description))
-    ui.console.print(f"  {escape(summary.render())}")
-
-
-def render_apply_plan(plan: _pod_apply.ApplyPlan) -> None:
-    """Print an apply plan one item per line, then one exporter-state line per named
-    destination (``render_exporter_states``). Shared by ``pod <p> apply`` and ``docket init``;
-    the action is escaped because Rich would otherwise read ``[add]`` as a style tag."""
-    for item in plan.items:
-        ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")
-        if item.note:
-            ui.console.print(f"      {escape(item.name)}: {escape(item.note)}")
-    render_exporter_states(plan.exporters)
-
-
-def render_exporter_states(names: tuple[str, ...]) -> None:
-    """Print one line per exporter in *names* -- its state and (unless ``enabled``) the exact
-    enable command -- never activating anything (ADR 0014 rule 7). Shared by
-    ``render_apply_plan`` and ``docket recipes show``, so the two never disagree."""
-    if not names:
-        return
-    from docket.core import exporter as _exporter
-
-    catalog = _exporter.load_catalog()
-    for name in names:
-        spec = catalog.get(name)
-        if spec is None:
-            continue  # named at apply time; the catalog may have since dropped it
-        state, missing = _exporter.activation_state(spec, health=None)
-        if state == "enabled":
-            line = f"exporter {name}: enabled"
-        elif state == "needs credential":
-            line = (
-                f"exporter {name}: needs credential {', '.join(missing)} "
-                f"-> docket exporters enable {name}"
-            )
-        else:
-            line = f"exporter {name}: {state} -> docket exporters enable {name}"
-        ui.console.print(f"  {escape(line)}")
-
-
-def _pod_apply_cmd(project: str, extra: list[str]) -> None:
-    """``docket pod <project> apply [<name|dir>] [--dry-run] [--json]`` -- plan and, unless
-    ``--dry-run``, write a recipe/manifest directory onto this pod; a bare name resolves to a
-    shipped recipe as ``init --recipe`` does. An invalid manifest exits 1 with nothing written."""
-    dry_run = "--dry-run" in extra
-    json_out = "--json" in extra
-    rest = [a for a in extra if a not in ("--dry-run", "--json")]
-    if len(rest) > 1:
-        ui.error("Usage: docket pod <project> apply [<name|dir>] [--dry-run] [--json]")
-        raise typer.Exit(1)
-
-    try:
-        directory = _pod_apply.resolve_recipe(rest[0]) if rest else _pod_apply_default_dir(project)
-        plan = _pod_apply.plan_apply(project, directory)
-    except _pod_apply.PodApplyError as ex:
-        ui.error(str(ex))
-        raise typer.Exit(1) from ex
-
-    if json_out:
-        print(
-            _json.dumps(
-                {"items": [asdict(item) for item in plan.items]},
-                indent=2,
-            )
-        )
-    else:
-        render_apply_header(project, directory, _pod_apply.summarize_recipe(directory))
-        render_apply_plan(plan)
-
-    if dry_run:
-        return
-
-    result = _pod_apply.apply(plan)
-    if not json_out:
-        changed = [item for item in result.items if item.action != "skip"]
-        if changed:
-            ui.success(f"Applied {len(changed)} change(s) to pod '{project}' from {directory}.")
-        else:
-            ui.success(f"Pod '{project}' already matches {directory}.")
-
-
-def _pod_export_cmd(project: str, extra: list[str]) -> None:
-    """``docket pod <project> export [<dir>] [--force]`` -- write this pod's own scope into
-    ``<dir>``, defaulting to ``<codebase>/.docket`` like ``apply``. Refuses a non-empty
-    ``<dir>`` unless ``--force``; nothing is written on any refusal."""
-    force = "--force" in extra
-    rest = [a for a in extra if a != "--force"]
-    if len(rest) > 1:
-        ui.error("Usage: docket pod <project> export [<dir>] [--force]")
-        raise typer.Exit(1)
-    directory = Path(rest[0]) if rest else _pod_apply_default_dir(project)
-
-    if directory.exists() and any(directory.iterdir()) and not force:
-        ui.error(f"'{directory}' is not empty. Use --force to overwrite.")
-        raise typer.Exit(1)
-
-    try:
-        _pod_apply.export_pod(project, directory)
-    except _pod_apply.PodApplyError as ex:
-        ui.error(str(ex))
-        raise typer.Exit(1) from ex
-
-    audit_log("pod.export", f"project={project} dir={directory}")
-    ui.success(f"Exported pod '{project}' to {directory}.")
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the

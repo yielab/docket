@@ -59,7 +59,7 @@ a blueprint's roster is actually provisioned.
 Blueprints are Python literals in this module (the same "workspace prose is
 generated inline in Python" convention ``core/archetypes.py`` follows for its
 own built-ins) — there is no user-authored blueprint YAML format yet (unlike
-``docket roles add``); the five built-ins are the whole registry today.
+``docket pod apply``); the five built-ins are the whole registry today.
 """
 
 from __future__ import annotations

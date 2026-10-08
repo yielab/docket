@@ -16,7 +16,7 @@ output as a second, independent line of defense.
 
 ```bash
 docket init --recipe secrets-guard          # a new pod for the current directory
-docket pod <project> apply secrets-guard    # onto an existing pod
+docket pod apply secrets-guard    # onto an existing pod
 ```
 
 `apply` validates all three policy files and plans them (`policy` items only), and is safe to
@@ -25,9 +25,9 @@ run again (a second run plans every item `skip`). `--dry-run` prints the plan wi
 ## See it fire
 
 ```bash
-docket pod <project> apply secrets-guard
-docket policies test pre_tool_call implementer "" --tool write --arg path=config/.env --pod <project>
-docket policies test pre_tool_call implementer "" --tool write --arg path=README.md --pod <project>
+docket pod apply secrets-guard
+docket pod check "" --role implementer --tool write --arg path=config/.env
+docket pod check "" --role implementer --tool write --arg path=README.md
 ```
 
 The first names `secrets-guard-block-paths` and blocks; the second (an ordinary path) allows.

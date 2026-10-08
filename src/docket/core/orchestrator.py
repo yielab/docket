@@ -10,7 +10,7 @@ step's *resolved* gate -- its own, or (only when omitted) its archetype's
 Deliberately **pure and dispatch-independent**: no filesystem I/O, no subprocess, no
 import of ``core/dispatch.py`` (the dependency runs one-way -- ``dispatch.py``'s hop
 loop calls back into :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
-:func:`run_group`; the reverse would be a cycle). ``docket pipeline plan`` renders
+:func:`run_group`; the reverse would be a cycle). ``docket pod plan`` renders
 directly from :func:`resolve_plan` too, so there is never a second, drift-prone
 pretty-printer.
 
@@ -87,7 +87,7 @@ PlannedNode = PlannedUnit | PlannedGroup
 class ExecutionPlan:
     """The fully resolved, ready-to-run shape of a pipeline against one pod. ``nodes``
     is top-level order (``parallel`` groups as a single node); a role-targeted unit
-    the pod doesn't have still appears, marked ``skipped`` -- so ``docket pipeline
+    the pod doesn't have still appears, marked ``skipped`` -- so ``docket pod
     plan`` can show an operator *why* a step won't run, not silently omit it."""
 
     pipeline_name: str
@@ -204,7 +204,7 @@ def resolve_plan(
 
 
 def render_plan(plan: ExecutionPlan) -> str:
-    """Human-readable rendering of *plan* — the one and only ``docket pipeline
+    """Human-readable rendering of *plan* — the one and only ``docket pod
     plan`` renderer (no second pretty-printer; the CLI just prints this)."""
     lines = [f"Pipeline: {plan.pipeline_name}"]
     for node in plan.nodes:

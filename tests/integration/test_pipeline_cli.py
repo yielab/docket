@@ -1,10 +1,4 @@
-"""``docket pipeline`` CLI surface.
-
-Exercises ``cli/_pipeline.py``'s ``run_pipeline`` dispatcher directly (the
-same layer ``cli/__init__.py``'s ``cmd_pipeline`` delegates to) — validate,
-plan, and run — plus a CliRunner smoke test proving it's actually wired on
-the Typer app.
-"""
+"""``docket pod validate`` and ``docket pod plan`` on a pipeline file, through the pod group."""
 
 from __future__ import annotations
 
@@ -14,15 +8,17 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli._pipeline import run_pipeline
+from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 
 SUBJECT = "docket.core"
 
 _VALID_PIPELINE = """\
+kind: pipeline
 name: sample
 description: A sample pipeline.
 steps:
@@ -36,6 +32,7 @@ steps:
 """
 
 _INVALID_PIPELINE = """\
+kind: pipeline
 name: broken
 steps:
   - id: build
@@ -78,115 +75,105 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     _fleet.add_agent(member_id)
 
 
-class TestPipelineValidateCli:
-    def test_missing_arg_is_an_error(self) -> None:
-        assert run_pipeline("validate", []) == 1
+def _run(*args: str) -> Any:
+    return CliRunner().invoke(_pod.pod_app, list(args))
 
+
+def _plan(*args: str) -> Any:
+    return _run("plan", "--pod", "demo", *args)
+
+
+class TestPipelineValidateCli:
     def test_missing_file_is_an_error(self, tmp_path: Path) -> None:
-        assert run_pipeline("validate", [str(tmp_path / "nope.yaml")]) == 1
+        assert _run("validate", str(tmp_path / "nope.yaml")).exit_code == 1
 
     def test_valid_file_returns_zero(self, tmp_path: Path) -> None:
         f = tmp_path / "sample.pipeline.yaml"
         f.write_text(_VALID_PIPELINE)
-        assert run_pipeline("validate", [str(f)]) == 0
+        assert _run("validate", str(f)).exit_code == 0
 
     def test_invalid_file_returns_one(self, tmp_path: Path) -> None:
         f = tmp_path / "broken.pipeline.yaml"
         f.write_text(_INVALID_PIPELINE)
-        assert run_pipeline("validate", [str(f)]) == 1
+        assert _run("validate", str(f)).exit_code == 1
 
     def test_unresolvable_step_model_provider_returns_one_naming_the_step(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path
     ) -> None:
         f = tmp_path / "bad-model.pipeline.yaml"
         f.write_text(_VALID_PIPELINE.replace("gate:", "model: nope/x\n    gate:"))
-        rc = run_pipeline("validate", [str(f)])
-        assert rc == 1
-        out = capsys.readouterr().out
-        assert "build" in out
-        assert "nope" in out
+        result = _run("validate", str(f))
+        assert result.exit_code == 1
+        assert "build" in result.output
+        assert "nope" in result.output
 
 
 class TestPipelinePlanCli:
-    def test_missing_arg_is_an_error(self) -> None:
-        assert run_pipeline("plan", []) == 1
-
     def test_unknown_project_is_an_error(self) -> None:
-        assert run_pipeline("plan", ["no-such-project"]) == 1
+        assert _run("plan", "--pod", "no-such-project").exit_code == 1
 
-    def test_default_pipeline_plan_renders(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_default_pipeline_plan_renders(self) -> None:
         _write_meta("demo-lead")
-        rc = run_pipeline("plan", ["demo"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "default" in out
-        assert "lead" in out
-        assert "demo-lead" in out
+        result = _plan()
+        assert result.exit_code == 0
+        assert "default" in result.output
+        assert "lead" in result.output
+        assert "demo-lead" in result.output
 
-    def test_research_pod_plan_renders_its_blueprint_pipeline_with_no_skips(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """A caller-spec-free dispatch now resolves the blueprint pipeline, so every one of a
-        research pod's five steps has a present member -- none renders as "skipped — role not
-        in pod"."""
+    def test_research_pod_plan_renders_its_blueprint_pipeline_with_no_skips(self) -> None:
+        """Every one of a research pod's five steps has a present member -- none renders as
+        "skipped — role not in pod"."""
         _write_meta("demo-lead", {"blueprint": "research"})
         for role in ("researcher", "analyst", "writer", "critic"):
             _write_meta(f"demo-{role}")
 
-        rc = run_pipeline("plan", ["demo"])
+        result = _plan()
 
-        assert rc == 0
-        out = capsys.readouterr().out
+        assert result.exit_code == 0
         for role in ("researcher", "analyst", "writer", "critic"):
-            assert role in out
-        assert "skipped — role not in pod" not in out
+            assert role in result.output
+        assert "skipped — role not in pod" not in result.output
 
-    def test_custom_file_plan_renders_that_pipeline(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_custom_file_plan_renders_that_pipeline(self, tmp_path: Path) -> None:
         _write_meta("demo-lead")
         f = tmp_path / "sample.pipeline.yaml"
         f.write_text(_VALID_PIPELINE)
-        rc = run_pipeline("plan", ["demo", "--file", str(f)])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Pipeline: sample" in out
-        assert "build" in out
-        assert f"Source: file '{f}'" in out
+        result = _plan("--pipeline", str(f))
+        assert result.exit_code == 0
+        assert "Pipeline: sample" in result.output
+        assert "build" in result.output
+        assert f"Source: file '{f}'" in result.output
 
-    def test_plan_renders_a_step_model_override(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_a_pipeline_file_without_kind_is_planned(self, tmp_path: Path) -> None:
+        _write_meta("demo-lead")
+        f = tmp_path / "plain.yaml"
+        f.write_text(_VALID_PIPELINE.replace("kind: pipeline\n", ""))
+        assert _plan("--pipeline", str(f)).exit_code == 0
+
+    def test_plan_renders_a_step_model_override(self, tmp_path: Path) -> None:
         _write_meta("demo-lead")
         _write_meta("demo-implementer")
         f = tmp_path / "with-model.pipeline.yaml"
         f.write_text(_VALID_PIPELINE.replace("gate:", "model: strong\n    gate:"))
-        rc = run_pipeline("plan", ["demo", "--file", str(f)])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "model=strong" in out
+        result = _plan("--pipeline", str(f))
+        assert result.exit_code == 0
+        assert "model=strong" in result.output
 
-    def test_default_pipeline_plan_names_the_built_in_source(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_default_pipeline_plan_names_the_built_in_source(self) -> None:
         _write_meta("demo-lead")
-        rc = run_pipeline("plan", ["demo"])
-        assert rc == 0
-        assert "Source: built-in default" in capsys.readouterr().out
+        result = _plan()
+        assert result.exit_code == 0
+        assert "Source: built-in default" in result.output
 
-    def test_blueprint_pipeline_plan_names_the_blueprint_source(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_blueprint_pipeline_plan_names_the_blueprint_source(self) -> None:
         _write_meta("demo-lead", {"blueprint": "research"})
         for role in ("researcher", "analyst", "writer", "critic"):
             _write_meta(f"demo-{role}")
-        rc = run_pipeline("plan", ["demo"])
-        assert rc == 0
-        assert "Source: blueprint 'research'" in capsys.readouterr().out
+        result = _plan()
+        assert result.exit_code == 0
+        assert "Source: blueprint 'research'" in result.output
 
-    def test_bound_pipeline_plan_names_the_bound_source(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_bound_pipeline_plan_names_the_bound_source(self, tmp_path: Path) -> None:
         from docket.cli._pod import _pod_config_set_pipeline
 
         _write_meta("demo-lead")
@@ -194,34 +181,28 @@ class TestPipelinePlanCli:
         f = tmp_path / "sample.pipeline.yaml"
         f.write_text(_VALID_PIPELINE)
         _pod_config_set_pipeline("demo", "demo-lead", str(f))
-        capsys.readouterr()
 
-        rc = run_pipeline("plan", ["demo"])
+        result = _plan()
 
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Source: bound pipeline (hash " in out
-        assert "Pipeline: sample" in out
+        assert result.exit_code == 0
+        assert "Source: bound pipeline (hash " in result.output
+        assert "Pipeline: sample" in result.output
 
     def test_invalid_custom_file_is_an_error(self, tmp_path: Path) -> None:
         _write_meta("demo-lead")
         f = tmp_path / "broken.pipeline.yaml"
         f.write_text(_INVALID_PIPELINE)
-        assert run_pipeline("plan", ["demo", "--file", str(f)]) == 1
+        assert _plan("--pipeline", str(f)).exit_code == 1
 
-    def test_plan_renders_from_the_real_executor_not_a_second_printer(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`plan`'s output must come from core.orchestrator.render_plan/
-        resolve_plan -- the exact same function the real executor calls --
-        never a hand-written second interpretation of the spec."""
+    def test_plan_renders_from_the_real_executor_not_a_second_printer(self) -> None:
+        """`plan`'s output must come from core.orchestrator.render_plan/resolve_plan -- the
+        exact same function the real executor calls."""
         from docket.core import archetypes as _archetypes
         from docket.core import orchestrator as _orch
 
         _write_meta("demo-lead")
-        rc = run_pipeline("plan", ["demo"])
-        assert rc == 0
-        out = capsys.readouterr().out
+        result = _plan()
+        assert result.exit_code == 0
 
         expected_spec = _dispatch.effective_pipeline("demo", None)
         expected_plan = _orch.resolve_plan(
@@ -229,33 +210,4 @@ class TestPipelinePlanCli:
             _dispatch.pod_full_roster("demo"),
             registry=_archetypes.load_registry(),
         )
-        assert _orch.render_plan(expected_plan) in out
-
-
-class TestPipelineUnknownSubcommand:
-    def test_unknown_subcommand_errors(self) -> None:
-        assert run_pipeline("bogus", []) == 1
-
-    def test_no_subcommand_errors(self) -> None:
-        assert run_pipeline(None, []) == 1
-
-
-class TestPipelineCommandWiring:
-    def test_pipeline_validate_wired_on_app(self, tmp_path: Path) -> None:
-        from typer.testing import CliRunner
-
-        from docket.cli import app
-
-        f = tmp_path / "sample.pipeline.yaml"
-        f.write_text(_VALID_PIPELINE)
-        runner = CliRunner()
-        result = runner.invoke(app, ["pipeline", "validate", str(f)])
-        assert result.exit_code == 0
-
-    def test_pipeline_is_a_top_level_command(self) -> None:
-        import typer.main
-
-        from docket.cli import app
-
-        click_command = typer.main.get_command(app)
-        assert "pipeline" in click_command.commands
+        assert _orch.render_plan(expected_plan) in result.output

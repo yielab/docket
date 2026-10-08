@@ -2,7 +2,7 @@
 
 Lead -> Researcher -> Analyst -> Writer -> Critic, gated on the Critic's APPROVE/REJECT
 verdict with one bounded rework cycle back to the Writer. `researcher`, `analyst`, `writer`
-and `critic` are all built-in starter archetypes (`docket roles list`) — no role YAML to add,
+and `critic` are all built-in starter archetypes (`docket pod roles`) — no role YAML to add,
 just roster and pipeline.
 
 This is the same pipeline shape as the built-in `research` pod blueprint
@@ -15,7 +15,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe research-review          # a new pod for the current directory
-docket pod <project> apply research-review    # onto an existing pod
+docket pod apply research-review    # onto an existing pod
 ```
 
 `pod.yaml` names the four built-in-archetype members this recipe adds; `apply` validates the

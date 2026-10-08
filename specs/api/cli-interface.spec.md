@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.78.0
+**Version**: 1.79.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -164,12 +164,12 @@ passes without a key.
   `<location>/.docket/`: giving both fails cleanly (exit 1) naming both sources, before
   provisioning
 - `--no-apply`: Provision the pod only, skipping the apply step for a present `.docket/` or a
-  resolved `--recipe`; prints the `docket pod <p> apply <dir>` command that would apply it
+  resolved `--recipe`; prints the `docket pod apply <dir>` command that would apply it
 
-A repository's own `<location>/.docket/` (the same directory shape `docket pod <p> apply` reads,
+A repository's own `<location>/.docket/` (the same directory shape `docket pod apply` reads,
 see pod-blueprints.spec.md, "Pod manifests: apply") is discovered automatically: `init` validates
 every document under it before provisioning anything, and — unless `--no-apply` is given — applies
-it after provisioning through the same `plan_apply`/`apply` path `docket pod <p> apply` uses. A
+it after provisioning through the same `plan_apply`/`apply` path `docket pod apply` uses. A
 validation error exits 1 naming the file and field, with nothing provisioned.
 **Output**: Creation progress and confirmation with member IDs. The closing `created with N
 members` line and the id list that follows it count every member of the pod as it stands after
@@ -269,50 +269,92 @@ any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup 
 unreachable, a required value or confirmation is missing, or the sandbox has no backend; 2 on a
 usage error.
 
-#### docket validate
-**Purpose**: Validate role, pipeline, policy, and pod configuration documents (see
-`config-format.spec.md`) — one command for every kind, rather than a separate `validate`
-subcommand per kind
-**Syntax**: `docket validate [dir|file]`
+#### docket pod validate
+**Purpose**: Validate any configuration document — role, pipeline, policy, pod manifest, MCP
+server — or every document in a directory (see `config-format.spec.md`); one validator for every
+kind (`core.config_docs.validate_path`)
+**Syntax**: `docket pod validate [PATH]`
 **Arguments**:
-- `dir|file` (optional): A directory to validate every document under (default `<cwd>/.docket`
+- `PATH` (optional): A directory to validate every document under (default `<cwd>/.docket`
   when it exists, else the current directory), or a single file to validate alone
-**Output**: One line per file — `ok <file> (<kind> <name>)` or its error — invalid files
-printed first, plus one `note:` line per file loaded without a `kind:` key. A directory target
-also prints, after the per-file lines, `summary: <line>` — `core.pod_apply.summarize_recipe`'s
-derived roles/policies/members/pipeline/plugins/skills/settings counts
-(`pod-blueprints.spec.md` 1.14.0) — and the directory's own `description` on its own line when
-its `pod.yaml` sets one; a file target prints neither
+**Output**: One line per file — `ok <file> (<kind> <name>)` on stdout, or its error on stderr —
+invalid files first, plus a warning per file loaded without a `kind:` key. A pipeline whose step
+`model` names a provider absent from the catalog is invalid. A directory target also prints,
+after the per-file lines, `core.pod_apply.summarize_recipe`'s derived summary line
+(`pod-blueprints.spec.md` 1.14.0) and the directory's own `description` when its `pod.yaml` sets
+one; a file target prints neither
 **Return**: 0 if every file is valid, 1 if any file is invalid or the target does not exist
 
+#### docket pod apply
+**Purpose**: Install configuration onto the pod, or re-sync its instructions
+**Syntax**: `docket pod apply [NAME|DIR|FILE] [--dry-run] [--json] [--pod <p>]`
+**Arguments**:
+- `NAME|DIR|FILE` (optional): a directory (`roles/*.yaml`, `policies/*`, `pipeline.yaml`, a small
+  `pod.yaml` naming `members`/`settings`/`pipeline`/`description`/`exporters`) or, failing that, a
+  recipe name resolved exactly as `docket init --recipe` resolves it (an unresolvable name exits
+  1 naming both scopes' recipes), is planned and written whole; an existing file is one `kind:
+  role` or `kind: policy` document installed into the pod's own scope (any other kind exits 1);
+  with no argument, members whose stored template version is stale are re-rendered from the
+  current archetype and metadata (`INSTRUCTIONS.md` is never touched)
+**Options**: `--dry-run` prints the plan or the diffs and writes nothing; `--json` prints `{"items":
+[{kind, name, action, note}]}` (exit 1 with no argument)
+**Output**: For a directory or recipe: a header (`Apply plan`, the directory's `description` when
+set, `core.pod_apply.summarize_recipe`'s derived summary line), one `[action] kind: name` line per
+item, then one line per named exporter — its state from `core.exporter.activation_state` and,
+unless `enabled`, the exact `docket setup export enable <name>` command; nothing is ever written
+to `docket-exporters.json` from this path. Validates every role, the roster the pipeline would
+resolve against once `members` join, every setting, and every `exporters` name before writing
+anything; idempotent (a second run plans every item `skip`). A state-changing run ends with `->
+Next: docket pod show`. See `pod-blueprints.spec.md`, "Pod manifests: apply"
+**Return**: 0 on success, 1 on an invalid document, an unresolvable name, or no pod
+
+#### docket pod export
+**Purpose**: Write the pod's own configuration into a directory
+**Syntax**: `docket pod export [DIR] [--force] [--pod <p>]`
+**Output**: This pod's own scope, every YAML file in the short form with a `# yaml-language-server:`
+header — pod-overlay `roles/<name>.yaml` (+ paired `roles/<name>.md` instructions), this pod's
+own `policies/<stem>.yaml`, a bound `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`,
+`name`, non-Lead `members`, every non-default `setting`, this pod's recorded `exporters` (when
+set), and the four config-v1 JSON Schemas copied into `.schemas/` — into `DIR`, the same shape
+`apply` reads back. `DIR` defaults to `<codebase>/.docket`. Global scope (the operator's own role
+overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty `DIR` (including
+the default) unless `--force`. Ends with `-> Next: docket pod validate <DIR>`. See
+`pod-blueprints.spec.md`, "Pod manifests: export"
+**Return**: 0 on success, 1 on a refusal or no pod
+
+#### docket pod plan
+**Purpose**: Show the steps the pod's pipeline would run, from the real executor
+(`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone pretty-printer. See
+`pipeline-format.spec.md` for the file format and `pod-dispatch.spec.md` for how it runs
+**Syntax**: `docket pod plan [--pipeline FILE] [--pod <p>]`
+**Options**: `--pipeline FILE` plans that file (validated like `pod validate`, a document with no
+`kind:` accepted as a pipeline) instead of the pod's bound or default pipeline
+**Output**: A header, `Source: <where the pipeline came from>`, and the rendered plan; nothing
+executes and no tokens are spent
+**Return**: `0` on success; `1` on an invalid or missing file or an unresolvable pod
+
+#### docket pod check
+**Purpose**: Would the pod's rules allow this? A dry run of the evaluator (no traces emitted)
+**Syntax**: `docket pod check TEXT --role R [--hook pre_input|pre_tool_call|pre_output] [--tool
+NAME] [--arg key=value]... [--pod <p>]`
+**Options**: `--hook` defaults to `pre_tool_call`; `--tool` (default `bash`) names the built-in
+tool simulated — an `exec`-kind tool is judged by the command classifier plus the policy hook,
+exactly like the live gate, any other kind by the policy hook alone; `--arg` (repeatable) supplies
+the call arguments a rule's `when:` can test
+**Output**: Hook, role, text, `Result:` (`allow`, `ask`, `deny`, `warn`, `redact`, ...), the
+classifier's reason when it decided, and the deciding policy id
+**Return**: `0` with a verdict; `2` on an unknown hook or tool or a missing `--role`
 ### Pipeline Commands
 
 `docket workflow` (the Lobster YAML surface: author/validate/plan a `.lobster.yml` template)
 was **retired** in Phase 16 (D-16) — its validator silently ignored four constructs its own
 template emitted, so docket was linting a dialect it could not fully execute. `workflow` (and
 `wf`) are not registered commands — invoking one is an ordinary unknown-command error (exit 2).
-The single pipeline dialect docket executes is `docket pipeline validate` / `plan` and `docket run --pipeline`
+The single pipeline dialect docket executes is checked by `docket pod validate`, shown by `docket pod plan` and run by `docket run --pipeline`
 (`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
 existing `<workspace>/workflows/*.lobster.yml` files are left on disk untouched, but no longer
 read by docket. (The former workflow-integration.spec.md was removed 2026-07-30; ROADMAP
 decision D-16 is the durable retirement record.)
-
-#### docket pipeline
-**Purpose**: Validate and plan a docket-native pipeline (`docket run --pipeline` runs one) (ROADMAP Phase 16 W-1 format / W-2
-executor). See pipeline-format.spec.md for the file format.
-See pod-dispatch.spec.md for how it actually runs.
-Not the Lobster dialect — `docket workflow` was retired by ROADMAP Phase 16 W-3 (see above).
-**Syntax**: `docket pipeline <action> ...`
-**Actions**:
-- `validate <file>`: Structural validation of a pipeline YAML file; does not execute; no project
-  involved
-- `plan <project> [--file <path>]`: Render the resolved step plan for *project*'s pod, from the
-  real executor (`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone
-  pretty-printer; does not execute or consume tokens. `--file` omitted resolves the pod's
-  zero-migration default pipeline (identical to what `docket run` would
-  actually execute)
-**Output**: Validation result or rendered plan
-**Return**: `0` on success; `1` on an invalid/missing file or an unknown project/pod
 
 ### Pod Commands
 
@@ -350,64 +392,6 @@ Each state-changing verb ends with one `Next:` line on stderr.
 
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
 removal; missing confirmation; failed distillation), `2` on a usage error.
-
-#### docket pod (configuration actions)
-**Purpose**: Apply, export and re-sync a project's pod configuration
-**Syntax**: `docket pod <project> <action> [args]`
-**Actions**:
-- `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
-  `pipeline.yaml`, a small `pod.yaml` naming
-  `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
-  composing the same `roles add`/`add <role>`/`config set` writers rather than a new write path;
-  the argument resolves as a directory path if one exists there, else as a shipped recipe name,
-  exactly as `docket init --recipe` resolves it (an unresolvable name exits 1 naming the shipped
-  recipes); with no argument it defaults to `<codebase>/.docket`. Validates every role, the
-  roster the pipeline would resolve against once `members` join, every setting, and every
-  `exporters` name against `core.exporter.load_catalog()`, before writing anything; idempotent
-  (a second run plans every item `skip`); `--dry-run` prints the plan without writing. The
-  non-`--json` plan is preceded by a header — `Apply plan — <project> <- <dir>`, the directory's
-  own `description` when set, then `core.pod_apply.summarize_recipe`'s derived summary line —
-  the same header `docket init --recipe`/a discovered `.docket/` prints
-  (`cli/_pod.py::render_apply_header`), and followed, after the plan, by one line per named
-  exporter — its state from `core.exporter.activation_state` and, unless already `enabled`, the
-  exact `docket exporters enable <name>` command (`cli/_pod.py::render_apply_plan`/
-  `render_exporter_states`); nothing is ever written to `docket-exporters.json` from this path.
-  See `pod-blueprints.spec.md`, "Pod manifests: apply"
-- `export [<dir>] [--force]`: Write this pod's own scope, every YAML file in the short form with
-  a `# yaml-language-server:` header — pod-overlay `roles/<name>.yaml` (+ paired
-  `roles/<name>.md` instructions), this pod's own `policies/<stem>.yaml`, a bound
-  `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`, `name`, non-Lead `members`,
-  every non-default `setting`, this pod's recorded `exporters` (when set), and the four
-  config-v1 JSON Schemas copied into
-  `.schemas/` — into `<dir>`, the same shape `apply` reads back. `<dir>` defaults to
-  `<codebase>/.docket`, like `apply`. Global scope (the operator's
-  own role overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty
-  `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
-  "Pod manifests: export"
-**Output**: Pod roster. Every bracketed identifier (`[<role>]`, `[<member-id>]`) is printed
-literally, never interpreted as terminal markup
-**Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
-the project)
-
-#### docket roles
-**Purpose**: Inspect and manage declarative role archetypes — built-in, starter-library, and
-user-defined (see role-archetypes.spec.md)
-**Syntax**: `docket roles <list|show|add|validate> [args] [--pod <p>]`
-**Actions**:
-- `list [--pod <p>]`: Show every registered archetype (name, scope, model class, gate contract,
-  edit rights, description); with `--pod <p>`, also resolves pod `<p>`'s own role overlay on top
-- `show <name> [--pod <p>]`: Print one archetype's full definition (YAML, or JSON if PyYAML is
-  unavailable), resolved the same way as `list`
-- `add <file.yaml> [--pod <p>]`: Validate a standalone archetype YAML file and merge it into the
-  user overlay (`~/.docket/docket-roles.json`), or — with `--pod <p>` — into pod `<p>`'s own
-  overlay instead; either overrides a built-in/starter/global-overlay archetype by reusing its
-  name
-- `validate [file.yaml]`: With no argument, validate every archetype in the live registry; with
-  a file argument, validate that candidate definition without persisting it. Takes no `--pod`
-**Output**: Archetype listing, one archetype's definition, or a per-archetype pass/fail report.
-`list`/`show` report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`
-**Return**: `0` on success, `1` on an unknown subcommand, an unknown `show` target, or an invalid
-archetype definition
 
 #### docket setup mcp
 **Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
@@ -550,58 +534,38 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
 literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (no pod, unknown or ambiguous ref, invalid input)
 
-#### docket policies
-**Purpose**: Manage declarative guardrail policies
-**Syntax**: `docket policies <subcommand> [args]`
-**Subcommands**:
-- `list [--pod <p>]`: List installed policies in `$POLICIES_DIR`, plus that pod's own policy
-  directory when `--pod` is given (a pod's policies only ever add to the global set; ROADMAP
-  P27-2); omitted, output is unchanged
-- `show <name>`: Print one policy's JSON
-- `init`: Copy the six baseline policies (block-destructive, prompt-injection,
-  secret-pii-redact, high-risk-payment, high-risk-deploy, high-risk-credentials)
-- `validate [name] [--pod <p>]`: Schema-check one installed policy, or every one; `--pod` also
-  checks that pod's own directory
-- `test <hook> <role> <text> [--tool <name>] [--pod <p>]`: Dry-run the evaluator (no traces
-  emitted); `--pod` scopes the evaluation to that pod's own policies too
-**Output**: Policy listing, JSON, or evaluation result
-**Return**: 0 on success, 1 on invalid subcommand
-
-#### docket plugins
-**Purpose**: List operator-applied predicate plugins a policy's `when.plugin` can reach
-**Syntax**: `docket plugins <subcommand> [args]`
-**Subcommands**:
-- `list [--pod <p>]`: Table (name, scope, file, sha256) of every predicate `core.plugins.discover`
-  finds -- global (`$PLUGINS_DIR`) first, then that pod's own `config/plugins/` when `--pod` is
-  given; `"No plugins applied."` when empty. Never lists a codebase's own `.docket/plugins/` --
-  only the two applied scopes are ever searched
-**Output**: Plugin listing, or an error naming an unknown/duplicate predicate
-**Return**: 0 on success, 1 on invalid subcommand or a `PluginError`
-
-#### docket recipes
+#### docket pod policies
+**Purpose**: List the guardrail policies in force, or show one; the predicate plugins a rule's
+`when.plugin` can reach are a section of the listing
+**Syntax**: `docket pod policies [ID] [--json] [--plugins] [--pod <p>]`
+**Arguments**:
+- `ID` (optional): print that policy's JSON
+**Options**: `--plugins` adds the predicate plugins `core.plugins.discover` finds — global
+(`$PLUGINS_DIR`) first, then the pod's own `config/plugins/`; never a codebase's own
+`.docket/plugins/`; it cannot be combined with `ID`
+**Output**: The installed policies in `$POLICIES_DIR` plus the pod's own policy directory (a pod's
+policies only ever add; ROADMAP P27-2), or one policy's JSON; `--json` prints a list of
+`{id, hook, action, description}` (with `--plugins`, `{policies, plugins}` where each plugin is
+`{name, scope, file, sha256}`)
+**Return**: `0` on success, `1` on an unknown `ID` or a `PluginError`, `2` on a usage error
+#### docket pod recipes
 **Purpose**: List and inspect the recipe library (ADR 0013 §1 rule 5) -- read-only discovery
 over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fetches nothing;
-`docket pod <p> apply`/`docket init --recipe` remain the only writers
-**Syntax**: `docket recipes <subcommand> [args]`
-**Subcommands**:
-- `list [--json]`: Table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe `core.pod_apply.
-  list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before the
-  shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. BRINGS is
-  derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
-  summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
-  `nothing` for an empty directory). `--json` prints a list of objects carrying `name`, `scope`,
-  `brings`, `directory`, `description`, and every `core.pod_apply.RecipeSummary` count
-- `show <name|dir> [--json]`: Resolve *name|dir* through the same `resolve_recipe` order
-  `docket pod <p> apply` uses and print its scope, directory, derived summary line
-  (`pod-blueprints.spec.md` 1.14.0), one line per exporter the directory's `pod.yaml` names —
-  the same state lines `docket pod <p> apply` prints, from `core.exporter.activation_state`
-  (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when present; `--json` adds a
-  `readme` field to the same object shape `list --json` prints
-**Output**: Recipe listing, one recipe's detail, or the `resolve_recipe` error naming both
-scopes' recipe names
-**Return**: 0 on success, 1 on invalid subcommand or an unresolvable name, 2 on an unrecognized
-flag
-
+`docket pod apply`/`docket init --recipe` remain the only writers
+**Syntax**: `docket pod recipes [NAME|DIR] [--json]`
+**Output**: With no argument, a table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe
+`core.pod_apply.list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before
+the shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. BRINGS is
+derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
+summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
+`nothing` for an empty directory). With an argument, the recipe resolved through the same
+`resolve_recipe` order `docket pod apply` uses: its scope, directory, derived summary line
+(`pod-blueprints.spec.md` 1.14.0), one line per exporter its `pod.yaml` names — the same state
+lines `docket pod apply` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
+present. `--json` prints a list of objects carrying `name`, `scope`, `brings`, `directory`,
+`description`, `unjailed_mcp_servers` and every `core.pod_apply.RecipeSummary` count; with an
+argument one such object plus a `readme` field
+**Return**: `0` on success, `1` on an unresolvable name, `2` on an unrecognized flag
 #### docket setup export
 **Purpose**: List, inspect, and enable an observability export destination (`kind: exporter`
 document, `core.exporter`) by authenticating -- the requested experience is "the YAML exists,
@@ -987,6 +951,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
+### Version 1.79.0 (2026-10-08)
+
+- The pod group gains its configuration half: `docket pod apply [NAME|DIR|FILE]` (a file installs one role or policy document; no argument re-syncs stale instructions), `pod export [DIR]`, `pod validate [PATH]` (one validator for every `kind:` document), `pod plan [--pipeline FILE]`, `pod check TEXT --role R`, `pod recipes|roles|policies [NAME]` (with `--json`; `--plugins` on `policies`). The commands `validate`, `pipeline`, `roles`, `policies`, `recipes`, `plugins` and the pod actions `apply`, `export`, `sync` are unknown. `policies init` and the whole-registry `roles validate` have no replacement; `docket setup` installs the baseline policies.
 ### Version 1.78.0 (2026-10-08)
 
 - Phase 39 (P39-10): `docket add`, `info`, `delete`, `maintain`, `profile` and `config` are

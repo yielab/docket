@@ -17,7 +17,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe cross-family-review          # a new pod for the current repository
-docket pod <project> apply cross-family-review    # onto an existing pod
+docket pod apply cross-family-review    # onto an existing pod
 ```
 
 Set both providers' credentials first: `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, as

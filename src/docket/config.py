@@ -105,7 +105,7 @@ KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
 
 # TRACE_RETENTION_DAYS: how long a TERMINATED trace file (one with a
 # session_end event, real or the synthetic one core/trace.py's sweep_all()
-# appends to a timed-out session) survives before `docket trace expire` --
+# appends to a timed-out session) survives before `docket task prune --traces` --
 # and, once wired, the periodic sweep -- deletes it. An OPEN trace (no
 # session_end yet) is never touched by age alone; see
 # core/trace.py::expire_old_traces for the liveness reasoning.

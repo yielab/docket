@@ -210,7 +210,7 @@ its fixtures validates against that committed file. It adds, all under the one `
 - **Recipe runs.** `--recipe NAME|DIR`, with `--verify CMD` and `--task` or `--task-file`, runs one
   recipe in place for one task, and the result's `task` block lists its hops. It is mutually
   exclusive with `--role`, and refuses `--max-tokens` and `--agent-id`. `requireVerify` is set, so an
-  Implementer hop with no verify command fails. A `--recipe` name is one of `docket recipes list`
+  Implementer hop with no verify command fails. A `--recipe` name is one of `docket pod recipes`
   (for example `tdd`); a pod blueprint name such as `software` is not a recipe and is refused.
 - **Approvals on the result.** `approvals` lists each approval the run requested and its outcome
   (`accepted`, `declined`, `timed_out` or `unanswered`). A denied approval still ends the run by its
@@ -666,7 +666,7 @@ detail, including the exact reviewer checklist, gate/approval-channel mechanics 
 loop, lives in
 **[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)** — this section intentionally isn't a second copy.
 
-A declarative policy engine (`docket policies`) adds a fourth layer on the dispatch path itself —
+A declarative policy engine (`docket pod policies`) adds a fourth layer on the dispatch path itself —
 `pre_input`/`pre_output` hooks that can redact, warn, block, or route a task to human approval.
 See [The policy engine on the dispatch path](#the-policy-engine-on-the-dispatch-path) for the
 mechanics. Since Phase 19, this is no longer the whole in-turn story either: `pre_tool_call` —
@@ -745,12 +745,12 @@ Tester:      ✓ Behavior-only validation
 - [x] Behavior-only validation
 - [x] HITL gate protocols
 - [x] Cost tracking & optimization
-- [x] Declarative role archetypes (`docket roles`) and pod blueprints (`docket init --blueprint`)
-- [x] Docket-native pipeline format + executor (`docket pipeline validate/plan/run`), generalized
+- [x] Declarative role archetypes (`docket pod roles`) and pod blueprints (`docket init --blueprint`)
+- [x] Docket-native pipeline format + executor (`docket pod validate`, `docket pod plan`, `docket run`), generalized
   mechanical/verdict/approval gates and bounded rework
 - [x] Typed handoff artifacts between hops + a per-role token-budgeted context compiler
 - [x] Run registry and cancellation (`docket runs`)
-- [x] Declarative policy engine on the live dispatch path (`docket policies`)
+- [x] Declarative policy engine on the live dispatch path (`docket pod policies`)
 - [x] RuntimeDriver port — one typed protocol, one shipped driver (`core/runtime_driver.py`,
   `edges/adapters/docket_runtime.py`'s `DocketDriver`)
 - [x] docket as an MCP server (`docket mcp serve`, optional `[mcp]` extra)
@@ -763,14 +763,14 @@ Tester:      ✓ Behavior-only validation
 - [x] The configuration contract: `docket config explain` names each effective value and the
   scope it came from (built-in, global, pod), and `docket doctor` names every entry a loader
   skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
-- [x] Configuration format v1: every YAML document declares `kind:`, `docket validate` checks it,
+- [x] Configuration format v1: every YAML document declares `kind:`, `docket pod validate` checks it,
   short forms normalize to the canonical one, pipelines route with `on:` and skip with `when`
 - [x] The provider catalog: model endpoints are `kind: provider` documents, fourteen built in
   (`docket models provider add|list|show|remove|export`)
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
-  (`docket pod <p> apply|export`, `docket init` applies it), with drift reported by
+  (`docket pod apply|export`, `docket init` applies it), with drift reported by
   `config explain`
-- [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket recipes`), the
+- [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket pod recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
 - [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
   (`docket exporters`), five destinations built in, all off
@@ -904,9 +904,9 @@ counters they are lifetime-of-current-storage counts and must not be alerted on 
 
 Before the platform work, dispatch hardcoded a four-role Lead → Implementer → Reviewer → Tester
 order and its own Reviewer/Tester verdict parsing. Today `core/orchestrator.py`'s `resolve_plan`
-takes a `PipelineSpec` (the docket-native YAML format — `docket pipeline validate/plan/run`,
+takes a `PipelineSpec` (the docket-native YAML format — `docket pod validate`/`pod plan`/`run`,
 `core/pipeline.py`) plus a pod's live roster and the role-archetype registry (`core/archetypes.py`
-— see `docket roles`), and produces a deterministic `ExecutionPlan`: the same spec, roster, and
+— see `docket pod roles`), and produces a deterministic `ExecutionPlan`: the same spec, roster, and
 registry always yield the same step DAG, independent of wall-clock time or dict-iteration order.
 A pod with no pipeline file resolves the built-in default pipeline — behaviorally identical to
 the old hardcoded order, so a pod created before any of this shipped keeps working unchanged.
@@ -987,7 +987,7 @@ A run can have more than one pid recorded at once when a `parallel` step has mul
 
 ### The policy engine on the dispatch path
 
-Declarative policies (`docket policies`, `core/policy.py`) are evaluated at two points on the live
+Declarative policies (`docket pod policies`, `core/policy.py`) are evaluated at two points on the live
 dispatch path, not just in the CLI's own dry-run tester: `pre_input` once, at task enqueue (so the
 same task text doesn't re-trip a wildcard-scoped policy at every hop), and `pre_output` on every
 hop's real output, before it is embedded in the carried-forward artifact. A `block` verdict on
@@ -996,7 +996,7 @@ straight into `waiting_approval`. A `block` on `pre_output` fails the hop the sa
 agent turn does; `redact` scrubs the text in place; `warn` only logs and feeds `docket metrics`.
 In-turn tool calls have their own separate hook — `pre_tool_call`, evaluated by `core/tools.py`'s
 `dispatch_tool` on every call docket's own turn loop makes (Phase 19 P19-3) — which this
-dispatch-level engine does not duplicate; `docket policies test pre_tool_call <role> "<text>"`
+dispatch-level engine does not duplicate; `docket pod check "<text>" --role <role>`
 dry-runs that hook specifically, against `bash` by default. Pass `--tool <name>` to test a
 non-`bash` tool instead, so it is evaluated on its own terms rather than misclassified against the
 shell command allowlist.

@@ -14,7 +14,7 @@ either role runs one, independent of whatever pipeline step reached it, closing 
 
 ```bash
 docket init --recipe prod-approval          # a new pod for the current directory
-docket pod <project> apply prod-approval    # onto an existing pod
+docket pod apply prod-approval    # onto an existing pod
 ```
 
 `apply` validates the policy file and plans it (a `policy` item only), and is safe to run again
@@ -23,9 +23,9 @@ docket pod <project> apply prod-approval    # onto an existing pod
 ## See it fire
 
 ```bash
-docket pod <project> apply prod-approval
-docket policies test pre_tool_call implementer "terraform apply" --pod <project>
-docket policies test pre_tool_call operator "git push origin main" --pod <project>
+docket pod apply prod-approval
+docket pod check "terraform apply" --role implementer
+docket pod check "git push origin main" --role operator
 ```
 
 Both name `prod-approval-high-risk` and ask.

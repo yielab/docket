@@ -302,7 +302,7 @@ def _build_on_process(
     project: str, session_key: str, role: str
 ) -> Callable[[str, dict[str, Any]], None]:
     """A `ToolContext.on_process` for one turn: trace a tool call's process lifecycle and,
-    while a dispatch run is current, register/clear its pgid against it so `docket runs
+    while a dispatch run is current, register/clear its pgid against it so `docket task
     cancel` reaches a live subprocess."""
 
     def _on_process(kind: str, data: dict[str, Any]) -> None:

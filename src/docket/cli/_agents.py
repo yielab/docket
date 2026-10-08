@@ -153,7 +153,7 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     except _pod_apply.PodApplyError as exc:
         ui.error(str(exc))
         return 1
-    from docket.cli._pod import render_apply_header, render_apply_plan
+    from docket.cli._pod_config import render_apply_header, render_apply_plan
 
     render_apply_header(aid, apply_source, _pod_apply.summarize_recipe(apply_source))
     render_apply_plan(plan)
@@ -705,7 +705,7 @@ def cmd_init(ctx: typer.Context) -> None:
                              rather than only the exit code in a script.
       --recipe <name|dir>   apply a shipped or local recipe directory after
                              provisioning -- a directory path as given, else a
-                             shipped recipe by name (`docket recipes list`
+                             shipped recipe by name (`docket pod recipes`
                              shows all of them). An unresolvable
                              name errors naming the shipped recipe names and
                              exits 1 before any provisioning. Mutually

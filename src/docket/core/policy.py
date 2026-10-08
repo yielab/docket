@@ -258,7 +258,7 @@ def read_policy(path: Path) -> dict[str, Any]:
 
 def validate_policy(path: Path) -> str:
     """Validate one policy file: '' if valid, else an error message. Wired into ``docket
-    policies validate`` and shared with the evaluator's fail-closed check via ``_validate_doc``."""
+    pod validate`` and shared with the evaluator's fail-closed check via ``_validate_doc``."""
     try:
         p = read_policy(path)
     except Exception as exc:
@@ -533,12 +533,12 @@ def install_policies() -> PolicyInstallResult:
     """Copy the baseline policy templates into ``$POLICIES_DIR`` (idempotent).
 
     An existing destination file is left untouched (skipped, never overwritten) — the same
-    "install once, edit locally after that" contract ``docket policies init`` has always had.
+    "install once, edit locally after that" contract ``docket setup`` keeps.
     Directory created 0700, each copied file 0600. Returns an empty ``entries`` list (not an
     error) when the template directory itself is missing; check ``template_dir.is_dir()`` first
     if that distinction matters to the caller. Pure logic, no UI: this is the shared producer
-    behind both ``docket policies init`` and `the workstation foundation bootstrap`'s own
-    policy-provisioning step, so the two can never drift on what "installed" means."""
+    behind the workstation foundation bootstrap's policy-provisioning step, so what "installed"
+    means has one definition."""
     template_dir = _cfg.policy_templates_dir()
     result = PolicyInstallResult(template_dir=template_dir, policies_dir=_cfg.POLICIES_DIR)
     if not template_dir.is_dir():

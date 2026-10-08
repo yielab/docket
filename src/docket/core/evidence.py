@@ -45,7 +45,7 @@ class UsageEvidence(_Model):
 
 
 class TraceLink(_Model):
-    """``session`` is the identifier ``docket trace <session>`` and the trace reader accept;
+    """``session`` is the identifier ``docket task trace <ref>`` and the trace reader accept;
     ``project`` is the identifier ``GET /traces/<project>`` accepts. ``firstTs``/``lastTs`` are
     the second-resolution window of this hop's events within that session's file."""
 

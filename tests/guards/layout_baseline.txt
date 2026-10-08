@@ -7,10 +7,7 @@ docket.cli._agents
 docket.cli._conversations
 docket.cli._help
 docket.cli._mcp
-docket.cli._pipeline
 docket.cli._pod
-docket.cli._policies
-docket.cli._roles
 docket.cli._runs
 docket.config
 docket.core.archetypes

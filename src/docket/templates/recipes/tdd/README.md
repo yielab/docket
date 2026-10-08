@@ -17,7 +17,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe tdd          # a new pod for the current repository
-docket pod <project> apply tdd    # onto an existing pod
+docket pod apply tdd    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`tester`); `apply` validates the roster and

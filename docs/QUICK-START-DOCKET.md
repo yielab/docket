@@ -112,13 +112,13 @@ pod for one repository. Two other ways to start:
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
-| a shipped or local recipe | `docket init --recipe secure-build` (`docket recipes list` shows all eighteen, or a directory) | the recipe applied onto the default pod |
+| a shipped or local recipe | `docket init --recipe secure-build` (`docket pod recipes` shows all eighteen, or a directory) | the recipe applied onto the default pod |
 
 Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
 ```bash
 docket pod myapp set-verify myapp-implementer "python3 -m pytest -q"
-docket pipeline plan myapp                # what would run, resolved against the real roster
+docket pod plan                       # what would run, resolved against the real roster
 ```
 
 ```text
@@ -203,7 +203,7 @@ A gate looks like this when it fires. Ask docket what it would do with a command
 tries it:
 
 ```bash
-docket policies test pre_tool_call implementer 'git push origin production'
+docket pod check 'git push origin production' --role implementer
 ```
 
 ```text
@@ -285,7 +285,7 @@ instructions: security-vetter.md
 Then:
 
 ```bash
-docket validate                           # every document under .docket/, invalid files first
+docket pod validate                           # every document under .docket/, invalid files first
 docket pod myapp apply --dry-run          # the plan: add / replace / skip per item
 docket pod myapp apply                    # writes it; a second run plans every item skip
 git add .docket && git commit -m "Add: the myapp agent team"
@@ -296,7 +296,7 @@ re-read `.docket/`, and `config explain` shows `drift: yes` once the directory m
 what was applied. A policy in the repo can only add restrictions: it accumulates with your
 global policies under most-restrictive-wins.
 
-**Add one thing later.** A recipe does not have to be a whole team. `docket recipes list` shows
+**Add one thing later.** A recipe does not have to be a whole team. `docket pod recipes` shows
 eighteen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
 that fail a task whose tests prove nothing, and a tool pack. `docket pod myapp apply git-safety` adds two guardrail policies and nothing else;
 `docket pod myapp apply tdd` swaps the route for a test-first one. Apply what you need, then
@@ -308,7 +308,7 @@ agent go in its operator-owned `INSTRUCTIONS.md`
 (`~/.docket/workspaces/projects/myapp-implementer/INSTRUCTIONS.md`), which docket never
 regenerates. The file-by-file reference, with what reads each file on the live path, is
 [Configuration](CONFIGURATION.md); the shipped recipes and every role are listed by
-`docket roles list` and in [Agent teams](AGENT-TEAMS.md).
+`docket pod roles` and in [Agent teams](AGENT-TEAMS.md).
 
 ---
 

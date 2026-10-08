@@ -1,15 +1,14 @@
-"""``docket validate`` CLI surface -- exercises ``cli/_validate.py``'s ``run_validate`` directly,
-the same function ``cli/__init__.py``'s ``cmd_validate`` delegates to."""
+"""``docket pod validate`` over directories: invalid files first, a note for a kind-less file."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+from typer.testing import CliRunner
 
-from docket.cli._validate import run_validate
+from docket.cli import _pod
 
-SUBJECT = "docket.cli._validate"
+SUBJECT = "docket.cli._pod_config"
 
 _GOOD_ROLE = (
     "kind: role\n"
@@ -21,16 +20,18 @@ _GOOD_ROLE = (
 )
 
 
-def test_a_directory_with_one_good_role_and_one_bad_kind_file_exits_one(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def _validate(path: Path) -> tuple[int, str]:
+    result = CliRunner().invoke(_pod.pod_app, ["validate", str(path)])
+    return result.exit_code, result.output
+
+
+def test_a_directory_with_one_good_role_and_one_bad_kind_file_exits_one(tmp_path: Path) -> None:
     roles_dir = tmp_path / "roles"
     roles_dir.mkdir()
     (roles_dir / "good.yaml").write_text(_GOOD_ROLE, encoding="utf-8")
     (roles_dir / "bad.yaml").write_text("kind: banana\nname: whatever\n", encoding="utf-8")
 
-    rc = run_validate([str(tmp_path)])
-    out = capsys.readouterr().out
+    rc, out = _validate(tmp_path)
 
     assert rc == 1
     assert "bad.yaml" in out
@@ -47,15 +48,12 @@ _ROLE_WITHOUT_KIND = (
 )
 
 
-def test_a_role_file_without_kind_loads_ok_with_a_note(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_role_file_without_kind_loads_ok_with_a_note(tmp_path: Path) -> None:
     roles_dir = tmp_path / "roles"
     roles_dir.mkdir()
     (roles_dir / "plain.yaml").write_text(_ROLE_WITHOUT_KIND, encoding="utf-8")
 
-    rc = run_validate([str(tmp_path)])
-    out = capsys.readouterr().out
+    rc, out = _validate(tmp_path)
 
     assert rc == 0
     assert "ok " in out

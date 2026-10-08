@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.13.0
+**Version**: 2.14.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -12,7 +12,7 @@ and command steps" section below. **P27-5** removes this format's one remaining 
 `instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
 Requirement 8 below and `role-archetypes.spec.md`'s "Hop instructions". The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
-`PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan` and `docket run --pipeline`
+`PipelineSpec` over the pod-dispatch state machine, and the `docket pod validate|plan` and `docket run --pipeline`
 CLI surface, now exist — see `pod-dispatch.spec.md` for execution semantics and
 `cli-interface.spec.md` for the CLI contract. `core.pipeline.resolve_variables` (W-4) resolves a
 caller-supplied `{name: value}` mapping (the serve webhook's JSON body, or `docket run
@@ -83,9 +83,9 @@ This specification does NOT cover:
   cancellation is `core/orchestrator.py` + `core/dispatch.py` (ROADMAP Phase 16 **W-2**, shipped)
   — see `pod-dispatch.spec.md`'s "Generalized gate execution", "Parallel step groups", and
   "Cancellation" sections.
-- **The `docket pipeline`/`docket runs cancel` CLI surface itself** (argument shapes, exit codes,
-  `--file`/`--resume`/`--timeout` flags) — see `cli-interface.spec.md`. This spec covers only the
-  document format `docket pipeline validate`/the executor read. `docket pipeline plan` renders
+- **The `docket pod validate`/`docket pod plan`/`docket runs cancel` CLI surface itself** (argument
+  shapes, exit codes, `--pipeline`/`--resume`/`--timeout` flags) — see `cli-interface.spec.md`. This spec covers only the
+  document format `docket pod validate`/the executor read. `docket pod plan` renders
   from the real executor's `core.orchestrator.resolve_plan`/`render_plan`, not a second
   pretty-printer.
 - **The Lobster dialect itself**, its validator, or the mechanics of its retirement — see ROADMAP
@@ -441,7 +441,7 @@ This specification does NOT cover:
    validation error naming the entry; a non-string value **MUST** be a validation error. It is
    accepted in canonical and short form (`- lint: {run: ..., env: {...}}`), carried on the planned
    unit, and survives `pod export` because the bound pipeline is exported verbatim.
-3. `docket pipeline validate`/`plan` **MUST** treat a `when`/`run` shape violation exactly like
+3. `docket pod validate`/`plan` **MUST** treat a `when`/`run` shape violation exactly like
    any other schema violation (one error string naming the offending field's dotted location);
    `plan`'s rendering of a `run` step and a `when`-bearing step is specified in `pod-dispatch.spec.md`
    (the executor) since this format itself defines no renderer.
@@ -469,7 +469,7 @@ This specification does NOT cover:
 ## Interface Contracts
 
 This spec defines a Python data model and pure functions in `core/pipeline.py`. The CLI surface
-that reads it (`docket pipeline validate|plan` and `docket run --pipeline`) is documented in `cli-interface.spec.md`; the
+that reads it (`docket pod validate|plan` and `docket run --pipeline`) is documented in `cli-interface.spec.md`; `docket pod plan [--pipeline FILE]` **MUST** resolve the pod's bound or default pipeline (or FILE, validated by the same `core.config_docs.validate_path` as `pod validate`, refusing a step `model` naming an unknown provider) against the live roster and print `core.orchestrator.render_plan` of the result, starting nothing and spending no tokens; the
 executor that runs it (`core/orchestrator.py`, `core/dispatch.py`) is documented in
 `pod-dispatch.spec.md` (see "Does NOT cover"). A third caller validates a file for **storage**
 rather than one-off execution: `docket pod <project> config set pipeline <file>` calls
@@ -644,10 +644,14 @@ steps:
   explicit gates declare, checked by the same test class and by
   `tests/integration/test_archetypes.py`.
 - This format module itself (`core/pipeline.py`) still contains no executor, CLI command, or
-  dry-run renderer — those now exist, but in `core/orchestrator.py` and `cli/_pipeline.py`
+  dry-run renderer — those now exist, but in `core/orchestrator.py` and `cli/_pod_config.py`
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.14.0 (2026-10-08)
+
+- `docket pod plan [--pipeline FILE]` is the plan renderer (was `docket pipeline plan <project> --file`); a pipeline file is checked by `docket pod validate`, which also refuses a step `model` naming an unknown provider.
 
 ### Version 2.13.0 (2026-10-07)
 

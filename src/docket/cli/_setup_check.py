@@ -502,7 +502,7 @@ def _check_policies() -> int:
     ui.section("Guardrail policies:")
     files = _pol.policy_files()
     if not files:
-        ui.dim("  No policies installed — docket policies init")
+        ui.dim("  No policies installed — docket setup")
         return 0
     broken = 0
     for f in files:
@@ -512,7 +512,7 @@ def _check_policies() -> int:
             ui.console.print(f"[red]✗[/red]   {f.name}: broken — every matching call fails closed")
             ui.console.print(f"    {err}")
     if broken:
-        ui.console.print("  Fix or remove the file(s); check with: docket policies validate")
+        ui.console.print("  Fix or remove the file(s); check with: docket pod validate")
         return broken
     ui.success(f"  {len(files)} policy file(s) valid")
     return 0
@@ -588,7 +588,7 @@ def _check_template_version(ids: list[str]) -> int:
 def _check_pod_sync(ids: list[str]) -> int:
     """Flag pod members whose managed files drifted from the current archetype +
     metadata -- the pod counterpart of ``_check_template_version``, which skips pod
-    members outright. Advisory; ``docket pod <project> sync`` re-renders."""
+    members outright. Advisory; ``docket pod apply`` re-renders."""
     from docket.core import pod as _pod
     from docket.core import pod_provisioning as _pp
 
@@ -605,7 +605,7 @@ def _check_pod_sync(ids: list[str]) -> int:
             stale += 1
             ui.console.print(
                 f"[red]✗[/red]   {aid}: stale (v{status.stored_template_version or '?'}, "
-                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod <project> sync"
+                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod apply"
             )
         else:
             ui.success(f"  {aid}: v{status.stored_template_version} (current)")

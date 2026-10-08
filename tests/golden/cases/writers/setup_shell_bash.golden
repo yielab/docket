@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="status init pipeline roles exec start stop validate plugins recipes policies inbox run setup pod log task"
+  local commands="status init exec start stop inbox run setup pod log task"
 
   # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
@@ -33,12 +33,8 @@ _docket_complete() {
     status)          words="--all --json" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="show add remove reset set unset delete apply export" ;;
     setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
-    pipeline)        words="validate plan" ;;
     task)            words="add list show diff trace prune" ;;
     audit)           words="verify --json" ;;
-    policies)        words="list show init test validate" ;;
-    recipes)         words="list show" ;;
-    roles)           words="list show add validate" ;;
     *)               words="" ;;
   esac
   mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")

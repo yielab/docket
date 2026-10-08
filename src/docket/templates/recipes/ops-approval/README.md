@@ -2,7 +2,7 @@
 
 Gate an Operator's action behind an explicit human sign-off: the approval gate stops the run
 *before* the Operator's own turn, not after, so nothing runs unattended. `operator` is a
-built-in starter archetype (`docket roles list`) — no role YAML to add.
+built-in starter archetype (`docket pod roles`) — no role YAML to add.
 
 This is narrower than the built-in `ops` pod blueprint (`docket init --blueprint ops`, which
 also provisions a Monitor and requires choosing that blueprint at pod creation). Use this
@@ -14,7 +14,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe ops-approval          # a new pod for the current directory
-docket pod <project> apply ops-approval    # onto an existing pod
+docket pod apply ops-approval    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`operator`); `apply` validates the policy

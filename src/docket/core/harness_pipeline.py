@@ -1,7 +1,7 @@
 """In-place ephemeral pods: run one recipe against one codebase, for one task.
 
 ``run_recipe_task`` provisions a throwaway pod whose Implementer works in the codebase itself
-(no git worktree), applies a recipe the way ``docket pod <p> apply`` does, pins every member to
+(no git worktree), applies a recipe the way ``docket pod apply`` does, pins every member to
 one model, sets the pod's approval mode and ``requireVerify`` through the typed ``PodSettings``
 writer, then dispatches exactly that one task. When the task parks on an operator question and
 the caller supplies a ``next_answer`` source, the answer is resolved through

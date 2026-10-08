@@ -122,7 +122,7 @@ def _write_vetter_overlay(path: Path, denied_tools: list[str] | None = None) -> 
 class TestPodScopedRoleInRoster:
     """A role defined only in a pod's own overlay (`pod_config_dir(project)/roles.json`)
     must be recognized by the roster helpers a pipeline dispatch depends on, not only by
-    `docket roles`."""
+    `docket pod roles`."""
 
     def test_pod_scoped_role_resolves_in_the_roster(self) -> None:
         _write_vetter_overlay(_cfg.pod_config_dir("acme") / "roles.json")

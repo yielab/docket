@@ -6,15 +6,9 @@ _docket() {
   commands=(
     'status:Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all'
     'init:Initialize the current project with its minimum isolated pod'
-    'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
-    'roles:Manage declarative role archetypes: list/show/add/validate'
     'exec:Run one agent for one task in a workspace you own, for programs'
     'start:Start the background service: the local HTTP API, sweeps, and what you turn on'
     'stop:Stop the background service: let sweeps finish, then abandon them if they hang'
-    'validate:Validate role, pipeline, policy, and pod configuration documents'
-    'plugins:List predicate plugins an operator has applied'
-    'recipes:List and inspect the recipe library'
-    'policies:Manage tool-approval policies'
     'inbox:List what needs you across every pod: approvals, questions, failures, finished work'
     'run:Run the pod'\''s pending tasks through its pipeline, one real agent turn per hop'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
@@ -40,12 +34,8 @@ _docket() {
     status)          compadd --all --json ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd show add remove reset set unset delete apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
-    pipeline)        compadd validate plan ;;
     task)            compadd add list show diff trace prune ;;
     audit)           compadd verify --json ;;
-    policies)        compadd list show init test validate ;;
-    recipes)         compadd list show ;;
-    roles)           compadd list show add validate ;;
   esac
 }
 _docket "$@"

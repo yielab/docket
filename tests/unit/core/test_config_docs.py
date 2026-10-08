@@ -1,5 +1,5 @@
 """Unit coverage for ``core.config_docs``'s envelope dispatch -- see
-``tests/integration/test_validate_cli.py`` for the ``docket validate`` command itself."""
+``tests/integration/test_validate_cli.py`` for the ``docket pod validate`` command itself."""
 
 from __future__ import annotations
 

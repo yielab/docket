@@ -57,16 +57,16 @@ explains how a feature is specified before it is built.
 ```bash
 # The team
 docket init                                   # this directory -> a Lead + Implementer pod
-docket recipes list                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
+docket pod recipes                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
 docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
-docket validate                               # check every document under ./.docket/
+docket pod validate                               # check every document under ./.docket/
 docket pod myapp apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
 docket pod myapp export                       # write the pod's own scope back to ./.docket/
-docket roles list                             # every role: built-in, starter, yours
+docket pod roles                             # every role: built-in, starter, yours
 
 # Work
 docket pod myapp delegate "<task>"            # queue a task
-docket pipeline plan myapp                    # what would run, without running it
+docket pod plan                         # what would run, without running it
 docket pod myapp dispatch                     # run the pipeline once, now
 docket serve --dispatch                       # drain every pod's queue in the background
 
