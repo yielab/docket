@@ -256,3 +256,21 @@ transcript is the gitignored `internal-docs/cli-ux-audit-2026-10-07/live-run-aft
   deny reason reaches the log only; `status` has no "waiting input" bucket; `pod check` requires
   `--role`; a custom provider without `--model` records `local-model`; three `Example:` lines pass
   a timestamp as a task ref.
+
+## Closed with, and carried
+
+Phase 39 closed 2026-10-08: twenty-five cards over Waves 91–95, every gate green on `develop`,
+the live run above as the measurement. Integrator corrections made while merging are in each
+card's status line on the board (archived in `docs/cycles-ended/todo-waves.md`).
+
+Carried, by name:
+- Tack's one string: `"harness", "run"` becomes `"exec"` in its docket adapter, probe and tests,
+  then that crate's harness tests. The contract itself did not change. Refused by the permission
+  classifier of the session that integrated the phase; the maintainer applies it.
+- The live asset re-capture (`scripts/maint/capture-doc-journey.sh`, then
+  `scripts/render-doc-assets.py` re-transcribed): the committed visuals show the eleven-command
+  names, but their output lines were rewritten by name, not re-captured. Refused likewise.
+- The landing page, after the release that ships the names.
+- The eighteen locators of the live run, as a triage list; the six worth a card are named above.
+- Two gaps in `scripts/maint/lint_cli_invocations.py`: any upper-case word passes as a
+  placeholder, and positional counts go unchecked after an `<a|b>` verb.

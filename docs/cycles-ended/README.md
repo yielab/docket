@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (56 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (57 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (23 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
@@ -21,6 +21,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,803 |
 | 2026-10-05 | ☑ WAVE 88 COMPLETE — Phase 38 CLOSED 2026-10-05 — the execution envelope (D-55), Waves 85–88 (opened 2026-10-05) | `todo-waves.md` | 18,813 |
 | 2026-10-05 | ☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05) | `todo-waves.md` | 16,884 |
 | 2026-10-04 | ☑ WAVE 73 COMPLETE — Phase 35 CLOSED 2026-10-04 — docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29) | `todo-waves.md` | 29,104 |

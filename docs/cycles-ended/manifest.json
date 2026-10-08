@@ -638,5 +638,13 @@
     "heading": "☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05)",
     "bytes": 16884,
     "sha256": "59b918f424b53fcb923f39c653b5eaa88f45dcbd6ca3a1d3bdddf5c1d2bc9a74"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)",
+    "bytes": 65803,
+    "sha256": "b0968dc1c9a9000b220322a3f5caedaf240526f31f6b17eaeba96bff7deeecaf"
   }
 ]
