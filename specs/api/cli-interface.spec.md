@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.80.0
+**Version**: 2.0.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -53,8 +53,6 @@ unknown-command usage error (`No such command`, exit 2).
 - `command` MUST be one of the entries in the Command Registry below.
 - `arguments` are positional and command-specific (see [Arguments](#arguments)).
 
-When a required `agent-id` argument is omitted, commands that operate on a single agent
-MUST fall back to interactive selection (a numbered menu).
 The per-command entries in the Command Registry are the authoritative source for each
 command's exact syntax.
 
@@ -64,12 +62,14 @@ Positional arguments are command-specific; the following conventions apply acros
 
 | Argument | Applies to | Rules |
 |----------|------------|-------|
-| `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
+| `<ref>` | `task show|diff|trace|approve|deny|answer|retry|cancel` | A full task id, the short id `task list` prints, a unique prefix, or a run id (`core/task_ref.py`); never omitted, never picked from a menu |
+| `MEMBER` | `pod show|remove|reset`, `pod set|unset --member` | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; a member of the resolved pod |
+| `KEY VALUE` | `pod set|unset` | A `PodSettings` key, or `verify` with `--member` |
 | `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
-| `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
-| `action` | `pod` | MUST be a verb from that command's documented action set |
+| `provider/model` | `setup model set`, `exec --model` | MUST be well-formed `<provider>/<model-id>`; `setup model set` also accepts the literal `default` |
+| `NAME` | `setup provider|notify|export|mcp` verbs, `pod recipes|roles|policies` | A catalog or document name; an unknown one exits 1 |
 
-Unrecognized or excess positional arguments MUST produce a clear error and exit 1.
+Unrecognized or excess positional arguments are a usage error (exit 2). No command takes a positional pod id; the pod comes from Pod targeting below.
 
 ## Options
 
@@ -119,7 +119,12 @@ No pod for <cwd> (looked for a registered codebase containing it). Run 'docket i
 
 ## Command Registry
 
-### Core Commands
+
+Eleven commands, in the order `docket --help` shows them (Daily: `init`, `status`, `inbox`,
+`task`, `run`; The pod: `pod`, `log`; Machine: `setup`, `start`, `stop`, `exec`). Each top-level
+command has one section below with every verb it owns. A name that is not one of the eleven, or
+a verb a group does not have, is an ordinary unknown-command usage error (exit 2).
+
 
 Invoking `docket` with no command **MUST** print only a compact guide of three parts, in this
 order: the tagline (`ui.TAGLINE`), the five daily commands with one-line meanings (`docket init`,
@@ -209,6 +214,104 @@ provisioning belongs to `init`, including multi-project automation.
   of `status` or bare `docket`.
 **Return**: 0 on success, 1 when current-project resolution fails, 2 on an unknown flag.
 
+#### docket inbox
+**Purpose**: List everything across every pod that needs the operator, in one call (see
+operator-loop.spec.md "One inbox, derived")
+**Syntax**: `docket inbox [--json] [--since <iso>] [--peek]`
+**Behavior**: Derives, fresh on every call, a pure `InboxView` (`core/operator_contract.py`) over
+every pod's tasks and pending approvals — `Needs you` (waiting/blocked tasks, pending approvals
+and "approved, ready" tasks), `Failed`, `Done`, `Running`. A plain call advances a durable
+cursor (`~/.docket/inbox-cursor.json`) so a repeat call's `Done` only shows newly finished tasks;
+`--peek` reads without advancing it; `--since <iso>` overrides the stored cursor for this one
+call without touching it. Each item prints the exact `docket task approve|deny|answer <id>` (or
+`retry`, `run`) command and the full held command or question, never truncated. `--json` emits
+the `GET /inbox` shape with `state` and `command` added to every item.
+**Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
+**Return**: 0 always — an empty inbox is not an error; 2 on an unknown flag
+
+#### docket task
+**Purpose**: Queue a pod's tasks, read each one's whole story (status, hops, evidence, runs,
+corrections, interruption forecast, worktree, diff and trace) and move one forward: grant or
+refuse what it waits on, answer its question, retry it or stop it
+**Syntax**: `docket task <add|list|show|diff|trace|prune|approve|deny|answer|retry|cancel> [args] [--pod <p>]`
+A `<ref>` is a full task id, the short id `task list` prints, a unique prefix, or a run id
+(`core/task_ref.py`); an unknown or ambiguous ref exits 1 and an ambiguous one lists every
+candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every pod.
+**Verbs**:
+- `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--pod <p>]`: Queue the task on
+  the resolved pod's own list (`~/.docket/workspaces/<project>-lead/TASK_LIST.json`). The text is
+  one argument; empty text or text over 500 characters exits 1, an unknown priority exits 2.
+  `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one exits 1
+  and enqueues nothing, a valid one is passed to `core.dispatch.enqueue_task(brief=)`. Prints the
+  one-line interruption forecast (`core.interruptions.NOTHING_WILL_ASK`, or `May ask you: ...`
+  naming `docket task show`) and ends with `Next: docket run`
+- `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status, cost,
+  the worktree path when one exists, description. `--json` prints `{"pod", "tasks": [...]}`
+  (`cli-json-shapes.spec.md`)
+- `show <ref> [--json] [--pod <p>]`: Status, hop evidence (evidence-v1, `core.evidence`), the
+  runs that worked the task, its corrections, and the interruption forecast (what could pause
+  it: matching `require_approval` policies, pipeline approval and `input` steps,
+  `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
+  channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
+  and the exact `git -C <path> diff <base>` and merge commands; a task that ran in place prints no
+  worktree block. A `run-` ref resolves its task and exits 1 when the run failed
+- `diff <ref> [--pod <p>]`: Print `git diff <base>` of the task's worktree
+  (`edges/adapters/system.py::git_diff`); a task without a worktree, or a failed diff, exits 1
+- `trace <ref> [--tail] [--export] [--json] [--pod <p>]`: The task's trace
+  (`$TRACES_DIR/<project>/agent:<project>:<task-id>.jsonl`), one line per event with the tool
+  name on `tool_call` lines; `--tail` follows until a `session_end` event and then returns;
+  `--export` prints the raw JSONL; `--json` prints `{"pod", "events": [...]}`. A task with no
+  trace exits 1
+- `prune [--dry-run] [--force] [--yes] [--traces] [--days N] [--pod <p>]`: Remove the worktrees of
+  the pod's finished (`done`/`failed`/`cancelled`) tasks, deleting each branch merged into the
+  codebase's current branch and recording `worktree.prunedAt`. Dirty or unmerged ones are kept
+  and reported with the reason; `--force` (confirmed, or `--yes` off a TTY) removes them anyway
+  (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
+  TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
+  and terminal run records past the same window; `--days N` overrides it and without `--traces`
+  exits 2. `--dry-run` changes nothing. Ends with `Next: docket task list`
+**Output**: Every bracketed identifier and every task description or failure reason is printed
+literally, never interpreted as terminal markup
+**Return**: `0` on success, `1` on error (no pod, unknown or ambiguous ref, invalid input)
+
+**`task approve | deny | answer | retry | cancel`**
+The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.md "Cancellation"):
+**Syntax**:
+- `docket task approve <ref> [--reason TEXT] [--once|--task] [--for "<command>" [--tool bash]] [--pod <p>]`
+- `docket task deny <ref> [--reason TEXT] [--pod <p>]`
+- `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline] [--pod <p>]`
+- `docket task retry <ref> [--pod <p>]`
+- `docket task cancel <ref> [--pod <p>]`
+**Arguments**:
+- `ref` (required): a task id, its short id, a unique prefix, or a run id (`core.task_ref.resolve_task`);
+  every pod is searched unless `--pod` or `DOCKET_POD` names one. `approve` and `deny` also
+  accept an `apr-*` token as given, for an approval no task carries. The approval store has
+  three production producers (pod-level/pipeline-step `require_approval` gates, a `pre_input`
+  policy match at enqueue, an in-turn `core/tools.py` tool-call gate) and is the only approval
+  system
+**Behavior**:
+- `approve` resolves the task's pending approval from its own `approvalToken` and grants it
+  (`channel="cli"`); a task that is not `waiting_approval` exits 1. `--task` also allows the
+  same call for the rest of the task; `--once` is the default and conflicts with `--task` (exit
+  2). `--for` records a single-use pre-grant for one exact command ahead of dispatch instead
+  (`core.interruptions.record_pregrant`) and conflicts with `--task`
+- `deny` denies the same approval; the task fails with `approval_denied`
+- `answer` answers the parked question through `core.answers.answer_task`; on a TTY with no
+  text, field or option it prompts, off a TTY it exits 1 naming `--option`
+- `retry` calls `core.dispatch.retry_task` (a `failed` or `blocked` task goes back to `pending`,
+  audited `task.retry`)
+- `cancel` requests cancellation of the task's live run (`core.runs.cancel_run`, which writes
+  one `runs.cancel` audit entry and kills every tracked process group) and settles a stale
+  `running` claim as `failed` (`core.dispatch.reclaim_stale_running`)
+**Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
+hint: `docket is running and will pick it up` when `docket start` is running, else
+`Next: docket run --pod <p>` on stderr; `cancel` ends with `Next: docket task retry <id>` when it
+settled a stale claim
+**Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
+an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
+opposite way, a blocked or invalid answer, or a `cancel` with nothing in flight; 2 on a usage
+error
+
 #### docket run
 **Purpose**: Run a pod's pending tasks through its pipeline, one real agent turn per hop.
 **Syntax**: `docket run [--resume] [--timeout S] [--progress] [--no-prompt] [--pipeline FILE]
@@ -221,12 +324,173 @@ FILE` runs a pipeline file instead of the pod's own (pipeline-format.spec.md); r
 **Return**: `0` on success or an expected pause, `1` when a task ended `failed`, the run record
 ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknown flag.
 
-### Configuration Commands
+#### docket pod
+
+**Purpose**: The pod: its roster, its settings and its configuration of record
+**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|apply|export|validate|plan|check|recipes|roles|policies> [args] [--pod <p>]`
+
+A real Typer sub-app (`cli/_pod.py::pod_app`): every verb declares its arguments and options, a
+bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
+help ends with an `Example:` line. Each verb resolves its pod through `--pod`/`-p`,
+`DOCKET_POD`, then the current directory (Pod targeting above); there is no positional pod id.
+Each state-changing verb ends with one `Next:` line on stderr.
+
+- `show [MEMBER] [--json]`: the pod, or one member's whole effective configuration
+  (agent-lifecycle.spec.md "Pod Information"; the JSON shapes are `docket pod show --json` and
+  `docket pod show <member> --json` in cli-json-shapes.spec.md). Read-only, no `Next:` line.
+- `add ROLE [--count N] [--verify "<cmd>"]`: add members to the existing pod; never creates a
+  project. `--verify` is implementer-only (warned and ignored otherwise). An unknown role prints
+  one line and exits 1; a second Lead is refused.
+- `remove MEMBER [--yes]`: remove one member. Confirms on a terminal; off one it exits 1 naming
+  `--yes`. The Lead is refused ("delete the pod instead").
+- `reset MEMBER [--yes]`: distill the member's memory, clear it and rebuild its workspace files
+  from metadata; a failed distillation exits 1 with nothing deleted (agent-lifecycle.spec.md
+  "Member Reset").
+- `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
+  `PodSettings` key (`budgetUsd` included); `verify` with `--member` writes or clears an
+  implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
+- `delete [--confirm NAME]`: destroy the pod. The name is typed on a terminal; off one,
+  `--confirm NAME` is required. A member id is refused; there is no picker.
+
+**Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
+removal; missing confirmation; failed distillation), `2` on a usage error.
+
+**`pod apply`**
+**Purpose**: Install configuration onto the pod, or re-sync its instructions
+**Syntax**: `docket pod apply [NAME|DIR|FILE] [--dry-run] [--json] [--pod <p>]`
+**Arguments**:
+- `NAME|DIR|FILE` (optional): a directory (`roles/*.yaml`, `policies/*`, `pipeline.yaml`, a small
+  `pod.yaml` naming `members`/`settings`/`pipeline`/`description`/`exporters`) or, failing that, a
+  recipe name resolved exactly as `docket init --recipe` resolves it (an unresolvable name exits
+  1 naming both scopes' recipes), is planned and written whole; an existing file is one `kind:
+  role` or `kind: policy` document installed into the pod's own scope (any other kind exits 1);
+  with no argument, members whose stored template version is stale are re-rendered from the
+  current archetype and metadata (`INSTRUCTIONS.md` is never touched)
+**Options**: `--dry-run` prints the plan or the diffs and writes nothing; `--json` prints `{"items":
+[{kind, name, action, note}]}` (exit 1 with no argument)
+**Output**: For a directory or recipe: a header (`Apply plan`, the directory's `description` when
+set, `core.pod_apply.summarize_recipe`'s derived summary line), one `[action] kind: name` line per
+item, then one line per named exporter — its state from `core.exporter.activation_state` and,
+unless `enabled`, the exact `docket setup export enable <name>` command; nothing is ever written
+to `docket-exporters.json` from this path. Validates every role, the roster the pipeline would
+resolve against once `members` join, every setting, and every `exporters` name before writing
+anything; idempotent (a second run plans every item `skip`). A state-changing run ends with `->
+Next: docket pod show`. See `pod-blueprints.spec.md`, "Pod manifests: apply"
+**Return**: 0 on success, 1 on an invalid document, an unresolvable name, or no pod
+
+**`pod export`**
+**Purpose**: Write the pod's own configuration into a directory
+**Syntax**: `docket pod export [DIR] [--force] [--pod <p>]`
+**Output**: This pod's own scope, every YAML file in the short form with a `# yaml-language-server:`
+header — pod-overlay `roles/<name>.yaml` (+ paired `roles/<name>.md` instructions), this pod's
+own `policies/<stem>.yaml`, a bound `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`,
+`name`, non-Lead `members`, every non-default `setting`, this pod's recorded `exporters` (when
+set), and the four config-v1 JSON Schemas copied into `.schemas/` — into `DIR`, the same shape
+`apply` reads back. `DIR` defaults to `<codebase>/.docket`. Global scope (the operator's own role
+overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty `DIR` (including
+the default) unless `--force`. Ends with `-> Next: docket pod validate <DIR>`. See
+`pod-blueprints.spec.md`, "Pod manifests: export"
+**Return**: 0 on success, 1 on a refusal or no pod
+
+**`pod validate`**
+**Purpose**: Validate any configuration document — role, pipeline, policy, pod manifest, MCP
+server — or every document in a directory (see `config-format.spec.md`); one validator for every
+kind (`core.config_docs.validate_path`)
+**Syntax**: `docket pod validate [PATH]`
+**Arguments**:
+- `PATH` (optional): A directory to validate every document under (default `<cwd>/.docket`
+  when it exists, else the current directory), or a single file to validate alone
+**Output**: One line per file — `ok <file> (<kind> <name>)` on stdout, or its error on stderr —
+invalid files first, plus a warning per file loaded without a `kind:` key. A pipeline whose step
+`model` names a provider absent from the catalog is invalid. A directory target also prints,
+after the per-file lines, `core.pod_apply.summarize_recipe`'s derived summary line
+(`pod-blueprints.spec.md` 1.14.0) and the directory's own `description` when its `pod.yaml` sets
+one; a file target prints neither
+**Return**: 0 if every file is valid, 1 if any file is invalid or the target does not exist
+
+**`pod plan`**
+**Purpose**: Show the steps the pod's pipeline would run, from the real executor
+(`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone pretty-printer. See
+`pipeline-format.spec.md` for the file format and `pod-dispatch.spec.md` for how it runs
+**Syntax**: `docket pod plan [--pipeline FILE] [--pod <p>]`
+**Options**: `--pipeline FILE` plans that file (validated like `pod validate`, a document with no
+`kind:` accepted as a pipeline) instead of the pod's bound or default pipeline
+**Output**: A header, `Source: <where the pipeline came from>`, and the rendered plan; nothing
+executes and no tokens are spent
+**Return**: `0` on success; `1` on an invalid or missing file or an unresolvable pod
+
+**`pod check`**
+**Purpose**: Would the pod's rules allow this? A dry run of the evaluator (no traces emitted)
+**Syntax**: `docket pod check TEXT --role R [--hook pre_input|pre_tool_call|pre_output] [--tool
+NAME] [--arg key=value]... [--pod <p>]`
+**Options**: `--hook` defaults to `pre_tool_call`; `--tool` (default `bash`) names the built-in
+tool simulated — an `exec`-kind tool is judged by the command classifier plus the policy hook,
+exactly like the live gate, any other kind by the policy hook alone; `--arg` (repeatable) supplies
+the call arguments a rule's `when:` can test
+**Output**: Hook, role, text, `Result:` (`allow`, `ask`, `deny`, `warn`, `redact`, ...), the
+classifier's reason when it decided, and the deciding policy id
+**Return**: `0` with a verdict; `2` on an unknown hook or tool or a missing `--role`
+
+**`pod recipes`**
+**Purpose**: List and inspect the recipe library (ADR 0013 §1 rule 5) -- read-only discovery
+over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fetches nothing;
+`docket pod apply`/`docket init --recipe` remain the only writers
+**Syntax**: `docket pod recipes [NAME|DIR] [--json]`
+**Output**: With no argument, a table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe
+`core.pod_apply.list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before
+the shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. BRINGS is
+derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
+summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
+`nothing` for an empty directory). With an argument, the recipe resolved through the same
+`resolve_recipe` order `docket pod apply` uses: its scope, directory, derived summary line
+(`pod-blueprints.spec.md` 1.14.0), one line per exporter its `pod.yaml` names — the same state
+lines `docket pod apply` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
+present. `--json` prints a list of objects carrying `name`, `scope`, `brings`, `directory`,
+`description`, `unjailed_mcp_servers` and every `core.pod_apply.RecipeSummary` count; with an
+argument one such object plus a `readme` field
+**Return**: `0` on success, `1` on an unresolvable name, `2` on an unrecognized flag
+
+**`pod roles`**
+**Purpose**: List the role archetypes a pod can use, or show one in full (role-archetypes.spec.md)
+**Syntax**: `docket pod roles [NAME] [--json] [--pod <p>]`
+**Output**: With no argument, one row per archetype (name, scope, model source, denied tools);
+with a name, that role's effective document, pod overlay included when the pod has one.
+`--json` prints the same as objects. Read-only, no `Next:` line
+**Return**: `0` on success, `1` on an unknown name or no pod when a pod overlay is needed, `2` on a usage error
+
+**`pod policies`**
+**Purpose**: List the guardrail policies in force, or show one; the predicate plugins a rule's
+`when.plugin` can reach are a section of the listing
+**Syntax**: `docket pod policies [ID] [--json] [--plugins] [--pod <p>]`
+**Arguments**:
+- `ID` (optional): print that policy's JSON
+**Options**: `--plugins` adds the predicate plugins `core.plugins.discover` finds — global
+(`$PLUGINS_DIR`) first, then the pod's own `config/plugins/`; never a codebase's own
+`.docket/plugins/`; it cannot be combined with `ID`
+**Output**: The installed policies in `$POLICIES_DIR` plus the pod's own policy directory (a pod's
+policies only ever add; ROADMAP P27-2), or one policy's JSON; `--json` prints a list of
+`{id, hook, action, description}` (with `--plugins`, `{policies, plugins}` where each plugin is
+`{name, scope, file, sha256}`)
+**Return**: `0` on success, `1` on an unknown `ID` or a `PluginError`, `2` on a usage error
+
+#### docket log
+**Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
+(see audit.spec.md for the exact recorded families and the coverage gap)
+**Syntax**: `docket log [N] [--json]` · `docket log verify`
+**Arguments**:
+- `N` (optional): Number of recent entries to show (default: 20)
+**Options/Actions**:
+- `--json`: Emit the raw JSONL passthrough instead of a formatted table
+- `verify`: Walk the current log's `seq`/`prev_hash` hash chain and report the first broken link,
+  instead of listing entries
+**Output**: Timestamped log of mutating operations, or a chain-verification result
+**Return**: 0 for the listing form; for `verify`, 0 when the chain is clean (or no log exists
+yet), 1 when a broken link is detected; 2 for an unknown verb
 
 #### docket setup
 **Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
 catalog, idempotent, in two modes chosen by the terminal (the interaction contract's rule).
-**Syntax**: `docket setup [--json] [--fix]` · `docket setup provider|model|sandbox|shell ...`
+**Syntax**: `docket setup [--json] [--fix]` · `docket setup provider|model|sandbox|shell|notify|export|mcp ...`
 **Bare `setup`** always starts with a report: one line per piece with its state and the exact
 command that fixes it — the model endpoint (the only required piece: a provider, its credential,
 and `lead`/`implementer` resolving to a model), notifications (`console only (nobody is told)` is
@@ -273,304 +537,55 @@ any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup 
 unreachable, a required value or confirmation is missing, or the sandbox has no backend; 2 on a
 usage error.
 
-#### docket pod validate
-**Purpose**: Validate any configuration document — role, pipeline, policy, pod manifest, MCP
-server — or every document in a directory (see `config-format.spec.md`); one validator for every
-kind (`core.config_docs.validate_path`)
-**Syntax**: `docket pod validate [PATH]`
-**Arguments**:
-- `PATH` (optional): A directory to validate every document under (default `<cwd>/.docket`
-  when it exists, else the current directory), or a single file to validate alone
-**Output**: One line per file — `ok <file> (<kind> <name>)` on stdout, or its error on stderr —
-invalid files first, plus a warning per file loaded without a `kind:` key. A pipeline whose step
-`model` names a provider absent from the catalog is invalid. A directory target also prints,
-after the per-file lines, `core.pod_apply.summarize_recipe`'s derived summary line
-(`pod-blueprints.spec.md` 1.14.0) and the directory's own `description` when its `pod.yaml` sets
-one; a file target prints neither
-**Return**: 0 if every file is valid, 1 if any file is invalid or the target does not exist
-
-#### docket pod apply
-**Purpose**: Install configuration onto the pod, or re-sync its instructions
-**Syntax**: `docket pod apply [NAME|DIR|FILE] [--dry-run] [--json] [--pod <p>]`
-**Arguments**:
-- `NAME|DIR|FILE` (optional): a directory (`roles/*.yaml`, `policies/*`, `pipeline.yaml`, a small
-  `pod.yaml` naming `members`/`settings`/`pipeline`/`description`/`exporters`) or, failing that, a
-  recipe name resolved exactly as `docket init --recipe` resolves it (an unresolvable name exits
-  1 naming both scopes' recipes), is planned and written whole; an existing file is one `kind:
-  role` or `kind: policy` document installed into the pod's own scope (any other kind exits 1);
-  with no argument, members whose stored template version is stale are re-rendered from the
-  current archetype and metadata (`INSTRUCTIONS.md` is never touched)
-**Options**: `--dry-run` prints the plan or the diffs and writes nothing; `--json` prints `{"items":
-[{kind, name, action, note}]}` (exit 1 with no argument)
-**Output**: For a directory or recipe: a header (`Apply plan`, the directory's `description` when
-set, `core.pod_apply.summarize_recipe`'s derived summary line), one `[action] kind: name` line per
-item, then one line per named exporter — its state from `core.exporter.activation_state` and,
-unless `enabled`, the exact `docket setup export enable <name>` command; nothing is ever written
-to `docket-exporters.json` from this path. Validates every role, the roster the pipeline would
-resolve against once `members` join, every setting, and every `exporters` name before writing
-anything; idempotent (a second run plans every item `skip`). A state-changing run ends with `->
-Next: docket pod show`. See `pod-blueprints.spec.md`, "Pod manifests: apply"
-**Return**: 0 on success, 1 on an invalid document, an unresolvable name, or no pod
-
-#### docket pod export
-**Purpose**: Write the pod's own configuration into a directory
-**Syntax**: `docket pod export [DIR] [--force] [--pod <p>]`
-**Output**: This pod's own scope, every YAML file in the short form with a `# yaml-language-server:`
-header — pod-overlay `roles/<name>.yaml` (+ paired `roles/<name>.md` instructions), this pod's
-own `policies/<stem>.yaml`, a bound `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`,
-`name`, non-Lead `members`, every non-default `setting`, this pod's recorded `exporters` (when
-set), and the four config-v1 JSON Schemas copied into `.schemas/` — into `DIR`, the same shape
-`apply` reads back. `DIR` defaults to `<codebase>/.docket`. Global scope (the operator's own role
-overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty `DIR` (including
-the default) unless `--force`. Ends with `-> Next: docket pod validate <DIR>`. See
-`pod-blueprints.spec.md`, "Pod manifests: export"
-**Return**: 0 on success, 1 on a refusal or no pod
-
-#### docket pod plan
-**Purpose**: Show the steps the pod's pipeline would run, from the real executor
-(`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone pretty-printer. See
-`pipeline-format.spec.md` for the file format and `pod-dispatch.spec.md` for how it runs
-**Syntax**: `docket pod plan [--pipeline FILE] [--pod <p>]`
-**Options**: `--pipeline FILE` plans that file (validated like `pod validate`, a document with no
-`kind:` accepted as a pipeline) instead of the pod's bound or default pipeline
-**Output**: A header, `Source: <where the pipeline came from>`, and the rendered plan; nothing
-executes and no tokens are spent
-**Return**: `0` on success; `1` on an invalid or missing file or an unresolvable pod
-
-#### docket pod check
-**Purpose**: Would the pod's rules allow this? A dry run of the evaluator (no traces emitted)
-**Syntax**: `docket pod check TEXT --role R [--hook pre_input|pre_tool_call|pre_output] [--tool
-NAME] [--arg key=value]... [--pod <p>]`
-**Options**: `--hook` defaults to `pre_tool_call`; `--tool` (default `bash`) names the built-in
-tool simulated — an `exec`-kind tool is judged by the command classifier plus the policy hook,
-exactly like the live gate, any other kind by the policy hook alone; `--arg` (repeatable) supplies
-the call arguments a rule's `when:` can test
-**Output**: Hook, role, text, `Result:` (`allow`, `ask`, `deny`, `warn`, `redact`, ...), the
-classifier's reason when it decided, and the deciding policy id
-**Return**: `0` with a verdict; `2` on an unknown hook or tool or a missing `--role`
-### Pipeline Commands
-
-`docket workflow` (the Lobster YAML surface: author/validate/plan a `.lobster.yml` template)
-was **retired** in Phase 16 (D-16) — its validator silently ignored four constructs its own
-template emitted, so docket was linting a dialect it could not fully execute. `workflow` (and
-`wf`) are not registered commands — invoking one is an ordinary unknown-command error (exit 2).
-The single pipeline dialect docket executes is checked by `docket pod validate`, shown by `docket pod plan` and run by `docket run --pipeline`
-(`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
-existing `<workspace>/workflows/*.lobster.yml` files are left on disk untouched, but no longer
-read by docket. (The former workflow-integration.spec.md was removed 2026-07-30; ROADMAP
-decision D-16 is the durable retirement record.)
-
-### Pod Commands
-
-`docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
-dispatcher and never executed anything. Delegation now belongs to each project's pod
-(pod-dispatch.spec.md). `team` is not a registered command — `docket team <anything>` is an
-ordinary unknown-command error (exit 2); use `docket task add|list` and `docket run`
-(see "docket task"). (The former team-coordination.spec.md
-was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
-
-#### docket pod show | add | remove | reset | set | unset | delete
-
-A real Typer sub-app (`cli/_pod.py::pod_app`): every verb declares its arguments and options, a
-bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
-help ends with an `Example:` line. Each verb resolves its pod through `--pod`/`-p`,
-`DOCKET_POD`, then the current directory (Pod targeting above); there is no positional pod id.
-Each state-changing verb ends with one `Next:` line on stderr.
-
-- `show [MEMBER] [--json]`: the pod, or one member's whole effective configuration
-  (agent-lifecycle.spec.md "Pod Information"; the JSON shapes are `docket pod show --json` and
-  `docket pod show <member> --json` in cli-json-shapes.spec.md). Read-only, no `Next:` line.
-- `add ROLE [--count N] [--verify "<cmd>"]`: add members to the existing pod; never creates a
-  project. `--verify` is implementer-only (warned and ignored otherwise). An unknown role prints
-  one line and exits 1; a second Lead is refused.
-- `remove MEMBER [--yes]`: remove one member. Confirms on a terminal; off one it exits 1 naming
-  `--yes`. The Lead is refused ("delete the pod instead").
-- `reset MEMBER [--yes]`: distill the member's memory, clear it and rebuild its workspace files
-  from metadata; a failed distillation exits 1 with nothing deleted (agent-lifecycle.spec.md
-  "Member Reset").
-- `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
-  `PodSettings` key (`budgetUsd` included); `verify` with `--member` writes or clears an
-  implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
-- `delete [--confirm NAME]`: destroy the pod. The name is typed on a terminal; off one,
-  `--confirm NAME` is required. A member id is refused; there is no picker.
-
-**Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
-removal; missing confirmation; failed distillation), `2` on a usage error.
-
-#### docket setup mcp
-**Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
-tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client.spec.md`)
-**Syntax**: `docket setup mcp <list|add|remove>` (a real sub-app of `setup`)
+**`setup notify`**
+**Purpose**: Manage `kind: channel` documents -- notification/conversation/decision
+destinations -- and connect Telegram in one step (Phase 34, D-50, ADR 0016 §7; see
+operator-loop.spec.md "Notifications" and telegram-integration.spec.md)
+**Syntax**: `docket setup notify <list|show|enable|disable|add|remove|export|privacy|test|bind|unbind|flush>`
+(a real sub-app of `setup`; bare `docket setup notify` prints its help)
 **Subcommands**:
-- `list`: Every configured server's name, launch command, `kind`, `tools` allow-list (empty =
-  all), timeout and whether it runs in the jail or on the host; `env` values are masked
-- `add <name> [--env K=V ...] [--timeout S] [--kind read|write] [--tools NAME,...] [--no-isolate]
-  -- <command> [args]`: Everything after `--` is the launch command, verbatim. `--kind` declares
-  the server's trust level (default `write`); `--no-isolate` starts the server on the host
-  instead of in the turn's jail (audited, shown by `list`). A bad `--kind`, a malformed `--env`,
-  a bad or duplicate name exits 1 writing nothing; a missing command exits 2
-- `remove <name>`: Remove a configured server; an unknown name exits 1
-**Return**: 0 on success, 1 on a refused value, 2 on a usage error
+- `list [--json]`: Every catalog channel's dialect, enabled state, capabilities and content level
+- `show <name> [--json]`: One channel's effective document and scope; `show telegram` also lists
+  the bindings in `fleet.json` and the open Telegram conversations in the registry
+- `enable <name> [--set k=v ...] [--chat ID ...] [--token T] [--test]`: Writes only the `enabled`
+  flag plus the overrides given (`--set actors=a,b` sets the actors list, `--set secret=NAME`
+  sets the credential name, anything else lands in `config`); refuses without writing while a
+  required field the built-in names is still empty (`ntfy` needs a non-empty `topic`).
+  `enable telegram --chat <id>` is one operation: it stores the bot token (`--token`, then
+  `TELEGRAM_BOT_TOKEN` in the environment, then a hidden prompt on a TTY; a stored token is
+  kept when none is given), sets `actors`, binds every pod Lead to the first chat, and prints
+  what it wrote in each store. It sends nothing unless `--test` is given; with no chat id, or
+  no token off a TTY, nothing is written
+- `disable <name>`: Turns it back off
+- `add <file.yaml>` / `remove <name> [--yes]`: Manage a full document; a built-in with no global
+  override refuses naming it as built-in
+- `export <name> [<file>]`: Print or write one back out
+- `privacy <name> [<level>] [--yes]`: Show or change how much a delivery carries (`minimal <
+  actions < conversation`); widening prints the change and asks for confirmation on a TTY, or
+  refuses off one without `--yes` -- narrowing never asks
+- `test <name>`: Sends one synthetic `dev.docket.channel.test` event through that one channel and
+  reports success or failure -- useful to verify a webhook URL or a command binary before relying
+  on it
+- `bind <member> [--channel telegram] [--chat ID]`: Bind one pod member to a chat (the per-pod
+  exception to `enable telegram`) and seed its conversation registry entry; without `--chat` a
+  TTY runs the one-time `/wire <code>` discovery with manual entry as the fallback, and off a TTY
+  the command refuses naming `--chat`. The binding is the entire authorization boundary
+- `unbind <member> [--channel telegram] [--yes]`: Remove that binding after a confirmation
+- `flush [--dry-run]`: `docket start`'s sweep and `docket run` already flush after
+  every real state change; this forces one in between, or previews it. With no `--dry-run`, diffs
+  the inbox against the last flush's saved snapshot, delivers each new event
+  (`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
+  delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash
+  mid-flush never re-emits; a failed delivery is recorded in `~/.docket/channels-health.json` and
+  not retried on the next flush (at-most-once). `--dry-run` delivers nothing and leaves the
+  snapshot untouched
+Only `test`, `enable --test` and `flush` ever send anything; every other subcommand edits the
+catalog or `fleet.json`
+**Output**: A table/document, or a confirmation
+**Return**: 0 on success, 1 on an unknown channel or member, a missing required field on
+`enable`, a refused widening, or a failed delivery; 2 on a usage error
 
-#### docket exec
-**Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
-caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
-contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
-**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
-[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1] [--answers stdin]
-[--answer-timeout S] [--token-file PATH] [--max-tokens N] [--policy FILE]... [--recipe NAME|DIR]
-[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2
-**Output**: Streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
-every log goes to stderr
-**Return**: 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the one
-named exception to the flat convention, see Return Code Convention)
-
-### Memory and Context Commands
-
-### Maintenance Commands
-
-### Monitoring Commands
-
-#### docket start
-**Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
-optionally drive pod dispatch pipelines
-**Syntax**: `docket start [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
-**Options**:
-- `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
-- `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
-- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
-- `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
-  (needs `TELEGRAM_BOT_TOKEN`; see telegram-integration.spec.md)
-- `--mcp`: Serve docket's control plane as an MCP stdio server instead of the HTTP service
-  (`mcp-server.spec.md`); it prints nothing to stdout but JSON-RPC and exits 2 when combined with
-  `--dispatch`, `--telegram` or `--token-file`
-- `--token-file <path>`: Write the Bearer token for the authenticated routes to this file (0600)
-  instead of printing it
-**Output**: Serves the HTTP API on `http://localhost:<port>/` — unauthenticated read routes
-(`/status.json`, `/metrics`, `/health`) plus Bearer-authenticated routes (`/approvals`, `/runs`,
-`/tasks`, `/traces`, `POST /approvals/<token>`, `POST /dispatch/<project>`, `POST /pods`); full
-contract in serve-read-api.spec.md.
-With `--dispatch`, also logs each dispatch hop. Records its pid in `$DOCKET_HOME/serve.pid`
-before serving and removes it on exit
-**Return**: 0 on clean shutdown (Ctrl-C or `docket stop`); 1 when a service is already running
-(its pid names it); 2 for `--mcp` with a flag that prints to stdout
-
-#### docket stop
-**Purpose**: Stop the background service started by `docket start`
-**Syntax**: `docket stop [--wait <s>]`
-**Options**:
-- `--wait <s>`: Seconds to let running sweeps finish after the first signal before sending the
-  second, which abandons them (default: 15)
-**Output**: One line; nothing running is reported as such and is not an error
-**Return**: 0 when stopped or nothing was running; 1 when the process is still alive after the
-second signal
-
-#### docket log
-**Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
-(see audit.spec.md for the exact recorded families and the coverage gap)
-**Syntax**: `docket log [N] [--json]` · `docket log verify`
-**Arguments**:
-- `N` (optional): Number of recent entries to show (default: 20)
-**Options/Actions**:
-- `--json`: Emit the raw JSONL passthrough instead of a formatted table
-- `verify`: Walk the current log's `seq`/`prev_hash` hash chain and report the first broken link,
-  instead of listing entries
-**Output**: Timestamped log of mutating operations, or a chain-verification result
-**Return**: 0 for the listing form; for `verify`, 0 when the chain is clean (or no log exists
-yet), 1 when a broken link is detected; 2 for an unknown verb
-
-`docket eval` (the specialist-role eval harness: structural checks + optional live golden
-tasks) was **removed** (CL-J) — `tests/evals/` was dead code wired to the retired runtime and
-skipped silently rather than failing, which is why the drift went unnoticed. Unlike
-`docket workflow`/`docket team`, there is **no replacement command**: no CLI entry point runs a
-single agent turn to repoint the harness at (`DocketDriver.run_turn` is only reached from pod
-dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
-private port, not fixing a bug. (That was true when CL-J landed; since Phase 24, `docket
-exec` is such an entry point — see harness-mode.spec.md — but no eval harness was rebuilt on it.)
-`eval` (and `evals`) are not registered commands — invoking one is an ordinary unknown-command
-error (exit 2). `tests/evals/` and `cli/_eval.py` are deleted; `docket
-doctor` no longer prints an eval-results advisory section. (The former eval.spec.md was removed
-2026-08-04; ROADMAP decision CL-J is the durable retirement record.)
-
-### Observability
-
-#### docket task
-**Purpose**: Queue a pod's tasks and read each one's whole story: status, hops, evidence, runs,
-corrections, interruption forecast, worktree, diff and trace
-**Syntax**: `docket task <add|list|show|diff|trace|prune> [args] [--pod <p>]`
-A `<ref>` is a full task id, the short id `task list` prints, a unique prefix, or a run id
-(`core/task_ref.py`); an unknown or ambiguous ref exits 1 and an ambiguous one lists every
-candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every pod.
-**Verbs**:
-- `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--pod <p>]`: Queue the task on
-  the resolved pod's own list (`~/.docket/workspaces/<project>-lead/TASK_LIST.json`). The text is
-  one argument; empty text or text over 500 characters exits 1, an unknown priority exits 2.
-  `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one exits 1
-  and enqueues nothing, a valid one is passed to `core.dispatch.enqueue_task(brief=)`. Prints the
-  one-line interruption forecast (`core.interruptions.NOTHING_WILL_ASK`, or `May ask you: ...`
-  naming `docket task show`) and ends with `Next: docket run`
-- `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status, cost,
-  the worktree path when one exists, description. `--json` prints `{"pod", "tasks": [...]}`
-  (`cli-json-shapes.spec.md`)
-- `show <ref> [--json] [--pod <p>]`: Status, hop evidence (evidence-v1, `core.evidence`), the
-  runs that worked the task, its corrections, and the interruption forecast (what could pause
-  it: matching `require_approval` policies, pipeline approval and `input` steps,
-  `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
-  channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
-  and the exact `git -C <path> diff <base>` and merge commands; a task that ran in place prints no
-  worktree block. A `run-` ref resolves its task and exits 1 when the run failed
-- `diff <ref> [--pod <p>]`: Print `git diff <base>` of the task's worktree
-  (`edges/adapters/system.py::git_diff`); a task without a worktree, or a failed diff, exits 1
-- `trace <ref> [--tail] [--export] [--json] [--pod <p>]`: The task's trace
-  (`$TRACES_DIR/<project>/agent:<project>:<task-id>.jsonl`), one line per event with the tool
-  name on `tool_call` lines; `--tail` follows until a `session_end` event and then returns;
-  `--export` prints the raw JSONL; `--json` prints `{"pod", "events": [...]}`. A task with no
-  trace exits 1
-- `prune [--dry-run] [--force] [--yes] [--traces] [--days N] [--pod <p>]`: Remove the worktrees of
-  the pod's finished (`done`/`failed`/`cancelled`) tasks, deleting each branch merged into the
-  codebase's current branch and recording `worktree.prunedAt`. Dirty or unmerged ones are kept
-  and reported with the reason; `--force` (confirmed, or `--yes` off a TTY) removes them anyway
-  (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
-  TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
-  and terminal run records past the same window; `--days N` overrides it and without `--traces`
-  exits 2. `--dry-run` changes nothing. Ends with `Next: docket task list`
-**Output**: Every bracketed identifier and every task description or failure reason is printed
-literally, never interpreted as terminal markup
-**Return**: `0` on success, `1` on error (no pod, unknown or ambiguous ref, invalid input)
-
-#### docket pod policies
-**Purpose**: List the guardrail policies in force, or show one; the predicate plugins a rule's
-`when.plugin` can reach are a section of the listing
-**Syntax**: `docket pod policies [ID] [--json] [--plugins] [--pod <p>]`
-**Arguments**:
-- `ID` (optional): print that policy's JSON
-**Options**: `--plugins` adds the predicate plugins `core.plugins.discover` finds — global
-(`$PLUGINS_DIR`) first, then the pod's own `config/plugins/`; never a codebase's own
-`.docket/plugins/`; it cannot be combined with `ID`
-**Output**: The installed policies in `$POLICIES_DIR` plus the pod's own policy directory (a pod's
-policies only ever add; ROADMAP P27-2), or one policy's JSON; `--json` prints a list of
-`{id, hook, action, description}` (with `--plugins`, `{policies, plugins}` where each plugin is
-`{name, scope, file, sha256}`)
-**Return**: `0` on success, `1` on an unknown `ID` or a `PluginError`, `2` on a usage error
-#### docket pod recipes
-**Purpose**: List and inspect the recipe library (ADR 0013 §1 rule 5) -- read-only discovery
-over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fetches nothing;
-`docket pod apply`/`docket init --recipe` remain the only writers
-**Syntax**: `docket pod recipes [NAME|DIR] [--json]`
-**Output**: With no argument, a table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe
-`core.pod_apply.list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before
-the shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by name. BRINGS is
-derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
-summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
-`nothing` for an empty directory). With an argument, the recipe resolved through the same
-`resolve_recipe` order `docket pod apply` uses: its scope, directory, derived summary line
-(`pod-blueprints.spec.md` 1.14.0), one line per exporter its `pod.yaml` names — the same state
-lines `docket pod apply` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
-present. `--json` prints a list of objects carrying `name`, `scope`, `brings`, `directory`,
-`description`, `unjailed_mcp_servers` and every `core.pod_apply.RecipeSummary` count; with an
-argument one such object plus a `readme` field
-**Return**: `0` on success, `1` on an unresolvable name, `2` on an unrecognized flag
-#### docket setup export
+**`setup export`**
 **Purpose**: List, inspect, and enable an observability export destination (`kind: exporter`
 document, `core.exporter`) by authenticating -- the requested experience is "the YAML exists,
 I only put the key" (observability-export.spec.md "Activation"); and show or change what an
@@ -629,111 +644,67 @@ privacy confirmation or refusal, or a preview of what a destination would receiv
 **Return**: 0 on success, 1 on an unknown exporter, a missing credential, an unreachable
 endpoint, a refused widening, or (`preview`) an unknown session
 
-#### docket task approve|deny|answer|retry|cancel
-**Purpose**: Move one task forward: grant or refuse what it waits on, answer its question, put a
-failed task back on the queue, or stop it (operator-loop.spec.md "Answer surfaces",
-pod-dispatch.spec.md "Cancellation")
-**Syntax**:
-- `docket task approve <ref> [--reason TEXT] [--once|--task] [--for "<command>" [--tool bash]] [--pod <p>]`
-- `docket task deny <ref> [--reason TEXT] [--pod <p>]`
-- `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline] [--pod <p>]`
-- `docket task retry <ref> [--pod <p>]`
-- `docket task cancel <ref> [--pod <p>]`
-**Arguments**:
-- `ref` (required): a task id, its short id, a unique prefix, or a run id (`core.task_ref.resolve_task`);
-  every pod is searched unless `--pod` or `DOCKET_POD` names one. `approve` and `deny` also
-  accept an `apr-*` token as given, for an approval no task carries. The approval store has
-  three production producers (pod-level/pipeline-step `require_approval` gates, a `pre_input`
-  policy match at enqueue, an in-turn `core/tools.py` tool-call gate) and is the only approval
-  system
-**Behavior**:
-- `approve` resolves the task's pending approval from its own `approvalToken` and grants it
-  (`channel="cli"`); a task that is not `waiting_approval` exits 1. `--task` also allows the
-  same call for the rest of the task; `--once` is the default and conflicts with `--task` (exit
-  2). `--for` records a single-use pre-grant for one exact command ahead of dispatch instead
-  (`core.interruptions.record_pregrant`) and conflicts with `--task`
-- `deny` denies the same approval; the task fails with `approval_denied`
-- `answer` answers the parked question through `core.answers.answer_task`; on a TTY with no
-  text, field or option it prompts, off a TTY it exits 1 naming `--option`
-- `retry` calls `core.dispatch.retry_task` (a `failed` or `blocked` task goes back to `pending`,
-  audited `task.retry`)
-- `cancel` requests cancellation of the task's live run (`core.runs.cancel_run`, which writes
-  one `runs.cancel` audit entry and kills every tracked process group) and settles a stale
-  `running` claim as `failed` (`core.dispatch.reclaim_stale_running`)
-**Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
-hint: `docket is running and will pick it up` when `docket start` is running, else
-`Next: docket run --pod <p>` on stderr; `cancel` ends with `Next: docket task retry <id>` when it
-settled a stale claim
-**Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
-an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
-opposite way, a blocked or invalid answer, or a `cancel` with nothing in flight; 2 on a usage
-error
-
-#### docket inbox
-**Purpose**: List everything across every pod that needs the operator, in one call (see
-operator-loop.spec.md "One inbox, derived")
-**Syntax**: `docket inbox [--json] [--since <iso>] [--peek]`
-**Behavior**: Derives, fresh on every call, a pure `InboxView` (`core/operator_contract.py`) over
-every pod's tasks and pending approvals — `Needs you` (waiting/blocked tasks, pending approvals
-and "approved, ready" tasks), `Failed`, `Done`, `Running`. A plain call advances a durable
-cursor (`~/.docket/inbox-cursor.json`) so a repeat call's `Done` only shows newly finished tasks;
-`--peek` reads without advancing it; `--since <iso>` overrides the stored cursor for this one
-call without touching it. Each item prints the exact `docket task approve|deny|answer <id>` (or
-`retry`, `run`) command and the full held command or question, never truncated. `--json` emits
-the `GET /inbox` shape with `state` and `command` added to every item.
-**Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
-**Return**: 0 always — an empty inbox is not an error; 2 on an unknown flag
-
-#### docket setup notify
-**Purpose**: Manage `kind: channel` documents -- notification/conversation/decision
-destinations -- and connect Telegram in one step (Phase 34, D-50, ADR 0016 §7; see
-operator-loop.spec.md "Notifications" and telegram-integration.spec.md)
-**Syntax**: `docket setup notify <list|show|enable|disable|add|remove|export|privacy|test|bind|unbind|flush>`
-(a real sub-app of `setup`; bare `docket setup notify` prints its help)
+**`setup mcp`**
+**Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
+tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client.spec.md`)
+**Syntax**: `docket setup mcp <list|add|remove>` (a real sub-app of `setup`)
 **Subcommands**:
-- `list [--json]`: Every catalog channel's dialect, enabled state, capabilities and content level
-- `show <name> [--json]`: One channel's effective document and scope; `show telegram` also lists
-  the bindings in `fleet.json` and the open Telegram conversations in the registry
-- `enable <name> [--set k=v ...] [--chat ID ...] [--token T] [--test]`: Writes only the `enabled`
-  flag plus the overrides given (`--set actors=a,b` sets the actors list, `--set secret=NAME`
-  sets the credential name, anything else lands in `config`); refuses without writing while a
-  required field the built-in names is still empty (`ntfy` needs a non-empty `topic`).
-  `enable telegram --chat <id>` is one operation: it stores the bot token (`--token`, then
-  `TELEGRAM_BOT_TOKEN` in the environment, then a hidden prompt on a TTY; a stored token is
-  kept when none is given), sets `actors`, binds every pod Lead to the first chat, and prints
-  what it wrote in each store. It sends nothing unless `--test` is given; with no chat id, or
-  no token off a TTY, nothing is written
-- `disable <name>`: Turns it back off
-- `add <file.yaml>` / `remove <name> [--yes]`: Manage a full document; a built-in with no global
-  override refuses naming it as built-in
-- `export <name> [<file>]`: Print or write one back out
-- `privacy <name> [<level>] [--yes]`: Show or change how much a delivery carries (`minimal <
-  actions < conversation`); widening prints the change and asks for confirmation on a TTY, or
-  refuses off one without `--yes` -- narrowing never asks
-- `test <name>`: Sends one synthetic `dev.docket.channel.test` event through that one channel and
-  reports success or failure -- useful to verify a webhook URL or a command binary before relying
-  on it
-- `bind <member> [--channel telegram] [--chat ID]`: Bind one pod member to a chat (the per-pod
-  exception to `enable telegram`) and seed its conversation registry entry; without `--chat` a
-  TTY runs the one-time `/wire <code>` discovery with manual entry as the fallback, and off a TTY
-  the command refuses naming `--chat`. The binding is the entire authorization boundary
-- `unbind <member> [--channel telegram] [--yes]`: Remove that binding after a confirmation
-- `flush [--dry-run]`: `docket serve`'s sweep and `docket pod <p> dispatch` already flush after
-  every real state change; this forces one in between, or previews it. With no `--dry-run`, diffs
-  the inbox against the last flush's saved snapshot, delivers each new event
-  (`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
-  delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash
-  mid-flush never re-emits; a failed delivery is recorded in `~/.docket/channels-health.json` and
-  not retried on the next flush (at-most-once). `--dry-run` delivers nothing and leaves the
-  snapshot untouched
-Only `test`, `enable --test` and `flush` ever send anything; every other subcommand edits the
-catalog or `fleet.json`
-**Output**: A table/document, or a confirmation
-**Return**: 0 on success, 1 on an unknown channel or member, a missing required field on
-`enable`, a refused widening, or a failed delivery; 2 on a usage error
+- `list`: Every configured server's name, launch command, `kind`, `tools` allow-list (empty =
+  all), timeout and whether it runs in the jail or on the host; `env` values are masked
+- `add <name> [--env K=V ...] [--timeout S] [--kind read|write] [--tools NAME,...] [--no-isolate]
+  -- <command> [args]`: Everything after `--` is the launch command, verbatim. `--kind` declares
+  the server's trust level (default `write`); `--no-isolate` starts the server on the host
+  instead of in the turn's jail (audited, shown by `list`). A bad `--kind`, a malformed `--env`,
+  a bad or duplicate name exits 1 writing nothing; a missing command exits 2
+- `remove <name>`: Remove a configured server; an unknown name exits 1
+**Return**: 0 on success, 1 on a refused value, 2 on a usage error
 
-### Identity & Conversations
+#### docket start
+**Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
+optionally drive pod dispatch pipelines
+**Syntax**: `docket start [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
+**Options**:
+- `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
+- `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
+- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
+- `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
+  (needs `TELEGRAM_BOT_TOKEN`; see telegram-integration.spec.md)
+- `--mcp`: Serve docket's control plane as an MCP stdio server instead of the HTTP service
+  (`mcp-server.spec.md`); it prints nothing to stdout but JSON-RPC and exits 2 when combined with
+  `--dispatch`, `--telegram` or `--token-file`
+- `--token-file <path>`: Write the Bearer token for the authenticated routes to this file (0600)
+  instead of printing it
+**Output**: Serves the HTTP API on `http://localhost:<port>/` — unauthenticated read routes
+(`/status.json`, `/metrics`, `/health`) plus Bearer-authenticated routes (`/approvals`, `/runs`,
+`/tasks`, `/traces`, `POST /approvals/<token>`, `POST /dispatch/<project>`, `POST /pods`); full
+contract in serve-read-api.spec.md.
+With `--dispatch`, also logs each dispatch hop. Records its pid in `$DOCKET_HOME/serve.pid`
+before serving and removes it on exit
+**Return**: 0 on clean shutdown (Ctrl-C or `docket stop`); 1 when a service is already running
+(its pid names it); 2 for `--mcp` with a flag that prints to stdout
 
+#### docket stop
+**Purpose**: Stop the background service started by `docket start`
+**Syntax**: `docket stop [--wait <s>]`
+**Options**:
+- `--wait <s>`: Seconds to let running sweeps finish after the first signal before sending the
+  second, which abandons them (default: 15)
+**Output**: One line; nothing running is reported as such and is not an error
+**Return**: 0 when stopped or nothing was running; 1 when the process is still alive after the
+second signal
+
+#### docket exec
+**Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
+caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
+contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
+**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
+[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1] [--answers stdin]
+[--answer-timeout S] [--token-file PATH] [--max-tokens N] [--policy FILE]... [--recipe NAME|DIR]
+[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2
+**Output**: Streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
+every log goes to stderr
+**Return**: 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the one
+named exception to the flat convention, see Return Code Convention)
 
 ### Help
 
@@ -744,8 +715,8 @@ catalog or `fleet.json`
 
 An unknown top-level word is a usage error (exit 2, `No such command`). Its message offers, from
 the live command tree only, the top-level commands the word resembles and every group that has a
-verb of that name (`docket add x` names `docket task add` and `docket pod add`; `docket approve`
-names `docket task approve`). A word that resembles nothing and is no verb gets no suggestion.
+verb of that name (a top-level `add x` names `docket task add` and `docket pod add`; a top-level
+`approve` names `docket task approve`). A word that resembles nothing and is no verb gets no suggestion.
 No table of retired names exists.
 
 ## Output Formats
@@ -815,9 +786,6 @@ distinguishes error kinds:
 | 1 | Any failure (not found, permission, refused confirmation, driver/model error, …) | All commands |
 | 2 | Usage: an unknown command, flag, subcommand or action, or a required action word left out | All commands |
 
-Code `2` (SKIP, role not installed / live mode off) was the one surviving exception to this flat
-convention, used only by the now-removed `docket eval` (CL-J). No command produces it anymore.
-
 `docket exec` is the one live exception, and it is deliberate. Its stdout is a wire protocol
 that a caller outside this repository parses, so the exit code has to separate "the run happened and
 ended badly" from "the run never started", which a printed message cannot do for a program:
@@ -829,11 +797,10 @@ ended badly" from "the run never started", which a printed message cannot do for
 | 2 | Refused before any turn began: preflight rejected the environment, or the arguments were unusable. Exactly one `result` line with `status: "refused"`, no run record, no meta written |
 
 No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
-unknown option or command, before any command body runs — including every retired command name
-and former alias) exit `2`. Commands that parse their own trailing arguments report the same
-class of usage error with `2` too: an unrecognized flag (`find_unknown_flag`). (Earlier revisions of this
-spec described codes 2–9 and 127 per failure kind; those were never implemented — removed in
-v1.5.0.)
+unknown option, command or verb, before any command body runs) exit `2`; the unknown-word
+message names the live commands the word could mean (Help above). `docket init`, the one
+command that parses its own trailing flags, reports an unrecognized one with `2` too
+(`find_unknown_flag`).
 
 ## Validation
 
@@ -844,7 +811,7 @@ the contract-level summary follows.
 ### Agent ID Validation
 - Pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
 - Length: 3-50 characters
-- Reserved IDs: manager, system, docket
+- Reserved IDs: system, docket
 - **Not enforced today** beyond `core/provisioning.py::slugify` — the length and reserved-id
   checks, and the path checks below beyond existence, have no implementing function (see
   input-validation.spec.md's Status; open maintainer decision)
@@ -862,16 +829,11 @@ the contract-level summary follows.
 - Tier names (`economy`, `standard`, `premium`) are **not accepted** — removed in 0.2.0 (D-2 exit); they hard-error like any other malformed input (see input-validation.spec.md)
 
 ### Numeric Validation
-- Budget values: non-negative USD (`profile --budget`)
+- Budget values: non-negative USD (`pod set budgetUsd N`)
 - History window: non-negative days (`status --history --days N`)
 - Timeout values: 1-3600
 
 ## Interactive Features
-
-### Project Picker
-When agent-id is omitted for commands that need it:
-1. Show a numbered menu (there is no fzf integration)
-2. Allow typing ID directly
 
 ### Confirmation Prompts
 `cli/_contract.py` owns the interaction contract; no command prompts on its own.
@@ -932,13 +894,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Example
 ```
-✗ Error: Usage: docket keys add <KEY_NAME>
+✗ No pod for /work/app (looked for a registered codebase containing it). Run 'docket init' here, or pass --pod <name>.
 ```
 
 ## Performance Requirements
 
 ### Response Times
-- Simple queries (list, info): < 500ms
+- Simple queries (`status`, `task list`, `pod show`): < 500ms
 - Creation operations: < 2s
 - Deletion operations: < 1s
 - Repair operations: < 5s
@@ -957,14 +919,27 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Retired Names
 - docket carries no backward-compatibility layer for its own CLI: no alias table, no
-  retired-command notices, no deprecated no-op flags. A command name docket used to have
-  (`install`, `setup`, `reset`, `repair`, `cleanup`, `model`, `team`, `workflow`, `eval`,
-  `auth`, …) or a former alias (`show`, `rm`, `telegram`, …) is an ordinary unknown command
-  (exit 2). Package installation belongs to the package manager; first-project initialization
-  bootstraps global state lazily.
+  retired-command notice, no deprecated no-op flag, no suggestion of a former name (ADR 0022
+  decision 4). A name docket used to have, or a former alias, is an ordinary unknown command
+  (exit 2); `CHANGELOG.md` is the only record of what went and what replaced it.
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.0.0 (2026-10-08)
+
+- The registry is the eleven commands of ADR 0022 and nothing else: one `#### docket <cmd>` section
+  per top-level command (`init`, `status`, `inbox`, `task`, `run`, `pod`, `log`, `setup`, `start`,
+  `stop`, `exec`), each carrying its verbs (`task` with its answering verbs, `pod` with its
+  configuration half and `pod roles`, `setup` with `notify`, `export` and `mcp`). The grouped
+  headings, the retirement notes for `workflow`, `team` and `eval`, the project picker, the
+  positional pod id and the `profile`/`keys` examples are gone, not struck through. Arguments are
+  the task ref, the member, the setting key and the catalog name; excess positionals exit 2.
+  Retired names are an ordinary unknown command and `CHANGELOG.md` is their only record.
+
+### Version Detection
+- Docket's supported state root is `~/.docket` (or `DOCKET_HOME`). It does not import state from a
+  retired runtime; the first `docket init` writes a Docket-owned home.
 
 ### Version 1.80.0 (2026-10-08)
 
