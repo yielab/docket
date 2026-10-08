@@ -58,12 +58,12 @@ docket init myapp ~/code/myapp --with reviewer   # lean pod + a reviewer
 cd ~/code/myapp && docket init       # same lean pod, id/path/stack derived from the cwd;
                                      # a committed .docket/ is validated and applied
 docket init --recipe secure-build    # lean pod + a shipped recipe (or a directory of your own)
-docket pod myapp                     # inspect the pod and its roles
-docket add reviewer --project myapp  # add a role to an existing pod (never creates one)
-docket pod myapp add implementer     # scale out: adds myapp-implementer-2
-docket pod myapp add reviewer        # add a role later
-docket pod myapp remove myapp-tester # drop a member
-docket delete myapp                  # tear down the whole pod
+docket pod show                      # inspect the pod and its roles
+docket pod add reviewer              # add a role to an existing pod (never creates one)
+docket pod add implementer           # scale out: adds another implementer
+docket pod add reviewer              # add a role later
+docket pod remove <member-id>        # drop a member
+docket pod delete                    # tear down the whole pod
 ```
 
 A pod has **exactly one Lead** (its single orchestrator); every other role may be duplicated.
@@ -101,7 +101,7 @@ ships six more you can drop into any pod without writing a line of YAML:
 | `monitor` *(starter)* | cheap | approval | write, edit, bash |
 
 Provisioning a starter role into a live pod works exactly like any other role:
-`docket pod <project> add researcher`. A user-authored archetype (a standalone YAML file,
+`docket pod add researcher`. A user-authored archetype (a standalone YAML file,
 `docket pod apply`) can add a brand-new role name or override an existing one — merged into
 `~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
 is absent from that role's turn, not merely discouraged: it is the only capability statement a role
@@ -121,7 +121,7 @@ next section.
 
 ## Pod blueprints — named pod shapes
 
-`docket add` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
+`docket pod add` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
 (`core/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
@@ -149,9 +149,9 @@ review + test gate is warranted by default rather than opt-in. `--pod full`/`--w
 the `software` roster — passing them against another blueprint warns and provisions that
 blueprint's own fixed roster instead of trying to combine the two.
 
-There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
+The five built-ins above are the whole blueprint registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
-`docket pod <project> add <role>`. For a pre-built shape instead of composing by hand, use a
+`docket pod add <role>`. For a pre-built shape instead of composing by hand, use a
 **recipe**. Eighteen ship with docket: teams (`secure-build`, `research-review`,
 `ops-approval`, `intake`), policy packs that change no roster (`git-safety`, `no-egress`,
 `secrets-guard`, `prod-approval`), methodology pipelines that are the practice (`tdd`,
@@ -188,7 +188,7 @@ The pod model is not decoration. It exists to fix three concrete failures of the
 
 ## Real dispatch — the pipeline actually runs
 
-docket can drive a pod's queued work through its pipeline, **one real agent turn per hop**:
+The `docket run` command drives a pod's queued work through its pipeline, **one real agent turn per hop**:
 
 ```
 Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
@@ -201,17 +201,17 @@ orchestrator — it invokes each hop through its own turn loop (`core/agent_loop
 result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
 
 ```bash
-docket pod myapp delegate "Fix the null-token login crash"   # queue a task
-docket pod myapp queue                                        # see the queue + per-task status/cost
-docket pod myapp dispatch                                     # run the pipeline once, now
-docket serve --dispatch                                       # background: drive every pod's queue each refresh
+docket task add "Fix the null-token login crash"   # queue a task
+docket task list                                        # see the queue + per-task status/cost
+docket run                                     # run the pipeline once, now
+docket start --dispatch                                       # background: drive every pod's queue each refresh
 ```
 
 Each hop that isn't the Lead is **gated** before the pipeline advances past it:
 
 - **Implementer → mechanical gate.** If the Implementer has a `verifyCmd` set
-  (`docket pod <project> add implementer --verify "<cmd>"` or
-  `docket pod <project> set-verify <member-id> "<cmd>"`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
+  (`docket pod add implementer --verify "<cmd>"` or
+  `docket pod set verify "<cmd>" --member <member-id>`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
   advancing to Reviewer/Tester. An unset `verifyCmd` is never silently skipped — it's a visible
   "verification skipped" line, so you can always tell "not configured" from "configured and
   passing."
@@ -226,19 +226,19 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
 Three guarantees hold on every dispatch:
 
 - **Budget-gated.** Before *each* hop docket checks the pod's token-based dollar estimate against
-  the Lead's budget cap (`docket profile <project>-lead --budget N`) — docket's own turn loop
+  the Lead's budget cap (`docket pod set budgetUsd N`) — docket's own turn loop
   reports no billed spend, so the gate always runs off this labelled estimate. Over budget → the
   task is left **blocked** (not run) and the pod's Lead is paused until you raise its cap or run
-  `docket profile <project>-lead --resume`.
-- **Traced.** Every hop emits a Phase-8 trace event (`docket trace`), on a per-task session
+  `docket run --resume`.
+- **Traced.** Every hop emits a Phase-8 trace event (`docket task trace`), on a per-task session
   `agent:<project>:<task_id>` — so a run is fully auditable, with no manual Telegram relay.
   An enabled trace exporter sends the same session to OpenTelemetry or Langfuse, at the privacy
-  level you set for it (`docket exporters`).
+  level you set for it (`docket setup export`).
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
   cross-pod dispatch path** — one pod can never run another pod's agents.
 
-> Each hop is a real, costed LLM turn. That is why dispatch is explicit (`docket pod … dispatch`)
-> or opt-in (`docket serve --dispatch`) — never silent. The read-only `docket serve` monitor does
+> Each hop is a real, costed LLM turn. That is why dispatch is explicit (`docket run`)
+> or opt-in (`docket start --dispatch`) — never silent. The read-only `docket start` monitor does
 > not dispatch.
 
 **A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
@@ -247,13 +247,13 @@ move the task to `waiting_approval` rather than failing it. Under `serve --dispa
 non-interactive `dispatch`, that `ask` **parks** — it records the exact call and moves on to the
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
 needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
-enable (`docket channels enable desktop`, `ntfy` or `telegram`; the default `console` sends
-nothing, and `docket doctor` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket approve`/
-`docket deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
+enable (`docket setup notify enable desktop`, `ntfy` or `telegram`; the default `console` sends
+nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task approve`/
+`docket task deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
 single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
 can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
-the Lead's own typed intake brief when it decides it's missing something — which is `docket chat
-<task-id>` or `docket pod <p> answer`'s job, not `docket approve`'s. See
+the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
+<task-id>` or `docket task answer`'s job, not `docket task approve`'s. See
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
 
 ---
@@ -290,7 +290,7 @@ hop ever runs, whether or not the agent would have written it down itself. Every
 region — an agent's own hand-written notes, every other heading in the file — is never touched by
 the sync.
 
-`docket doctor` flags any divergence between the two: a task `running` in `TASK_LIST.json` with no
+`docket setup` flags any divergence between the two: a task `running` in `TASK_LIST.json` with no
 matching ledger entry, or a ledger entry naming a task that is not (or is no longer) running.
 `--fix` re-syncs the ledger from `TASK_LIST.json`, which is always the source of truth.
 
@@ -299,15 +299,15 @@ matching ledger entry, or a ledger entry naming a task that is not (or is no lon
 ## Identity — role first
 
 An agent's identity is a pure function of its metadata: its **role** (structural — "I am this pod's
-Implementer," from `SOUL.md`). Display names (`docket info`) resolve name → role, never from a
-self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
+Implementer," from `SOUL.md`). Display names resolve from role; docket-managed workspaces never read
+self-authored `IDENTITY.md`. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
 templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod apply` when
 they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
 `SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and a
 `projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
-named with `docket pod <project> config set projectInstructions <path,...>`, screened through the same
+named with `docket pod set projectInstructions <path,...>`, screened through the same
 `pre_input` policy hook as any other input and restricted to relative paths that can't escape the
 codebase root. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 
@@ -323,7 +323,7 @@ Start lean and grow only when the work earns it:
 | Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
 | Behaviour you want validated independently of the diff | add a **Tester** (`--with tester`) |
 | High-stakes or high-blast-radius work | **full** pod (`--pod full`) |
-| One Implementer is the bottleneck | `docket pod <p> add implementer` (parallel doers) |
+| One Implementer is the bottleneck | `docket pod add implementer` (parallel doers) |
 | Non-software work (research, writing, ops) | pick a **blueprint** (`--blueprint research`) instead of building roles up by hand |
 
 The Reviewer and Tester are the difference between "an agent changed the code" and "a change was
@@ -347,7 +347,7 @@ workspaces isolate files, memory, and identity.
 
 Each role maps to the **cheapest model adequate for its workload** — coordination and
 review/test are cheap-class; the Implementer (and security audits) get the strong class. Change a
-role once and every policy-following agent re-resolves; pin one agent with `docket profile`. A
+role once and every policy-following agent re-resolves; override per-pod with a role overlay or set per step (`model:` in the pipeline). A
 starter or custom archetype with no dedicated policy-table row falls back to resolving through its
 own `modelClass` (`cheap`/`strong`) instead of the global default — see `docket pod roles <name>`
 for what class a given role carries.
@@ -358,7 +358,6 @@ for what class a given role carries.
 | Implementer | programmer | strong |
 | Reviewer | reviewer | cheap |
 | Tester | tester | cheap |
-| Portfolio Manager | portfolio-manager | cheap |
 
 See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 [Command Reference](commands.md) for every flag.
@@ -382,11 +381,11 @@ docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a 
 docket pod apply <name|dir>    # apply a recipe name or a directory such as .docket
 docket pod export [<dir>]      # write the pod's own scope back to .docket/
 docket pod validate [<dir|file>]       # check every kind: document before applying
-docket pod <project>                     # list members
-docket pod <project> add <role> [--count N]
-docket add <role> [--project <project>] [--count N]  # same, pod inferred from the cwd
-docket pod <project> remove <member-id>
-docket delete <project>                  # tear down the whole pod
+docket pod show                         # list members
+docket pod add <role> [--count N]
+docket pod add <role> [--pod <name>] [--count N]  # same, from outside the repo
+docket pod remove <member-id>
+docket pod delete                      # tear down the whole pod
 
 # Role archetypes
 docket pod roles                        # every registered archetype
@@ -395,21 +394,20 @@ docket pod apply <file.yaml>             # register/override a custom archetype
 docket pod validate [file.yaml]        # dry-run schema + template validation
 
 # Run the pipeline
-docket pod <project> delegate [--priority high|normal|low] [--brief FILE.json] "<task>"
-docket pod <project> queue
-docket pod <project> dispatch
-docket pod <project> add implementer --verify "<cmd>"   # Implementer's mechanical gate
-docket pod <project> set-verify <member-id> "<cmd>"
-docket serve --dispatch                  # autonomous: drive every pod's queue
+docket task add [--priority high|normal|low] [--brief FILE.json] "<task>"
+docket task list
+docket run
+docket pod add implementer --verify "<cmd>"   # Implementer's mechanical gate
+docket pod set verify "<cmd>" --member <member-id>
+docket start --dispatch                  # autonomous: drive every pod's queue
 
 # The operator loop: what needs you, and answering it
 docket inbox [--json] [--since <iso>] [--peek]           # everything across every pod that needs you
-docket chat <task-id> [--pod <project>]                  # see + answer one task's parked question
-docket pod <project> answer <task-id> [text] [--field k=v]... [--decline]   # answer, non-interactively
-docket pod <project> pregrant <task-id> "<command>" [--tool bash]          # pre-approve one exact call
-docket pod <project> explain interruptions [--json]      # what could pause this pod's next task
-docket channels list|show|enable <name>|disable <name>   # who gets notified, and how much they see
-docket notify flush [--dry-run]                          # push pending notifications now
+docket task answer <task-id> [--pod <project>]                  # see + answer one task's parked question
+docket task answer <task-id> [text]                   # answer, non-interactively
+docket task approve <task-id> --for "<command>"         # pre-approve one exact call
+docket setup notify list                                # who gets notified, and how much they see
+docket setup notify flush                               # push pending notifications now
 
 ```
 
