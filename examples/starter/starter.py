@@ -277,11 +277,14 @@ steps:
 
 
 def _pending_token(docket: Path, *, cwd: Path, env: dict[str, str]) -> str:
-    result = _command([str(docket), "approve"], cwd=cwd, env=env, label="approval listing")
-    tokens = sorted(set(re.findall(r"\bapr-[0-9a-f-]+\b", result.stdout)))
-    if len(tokens) != 1:
-        raise StarterFailure(f"expected one pending approval, found {len(tokens)}")
-    return str(tokens[0])
+    """The id of the one task parked for approval; `task approve|deny` resolve its token."""
+    result = _command([str(docket), "inbox", "--peek"], cwd=cwd, env=env, label="approval listing")
+    tasks = sorted(
+        set(re.findall(r"\btask (task-[0-9a-f-]+)\s+pod=\S+\s+needs approval\b", result.stdout))
+    )
+    if len(tasks) != 1:
+        raise StarterFailure(f"expected one pending approval, found {len(tasks)}")
+    return str(tasks[0])
 
 
 def _decision(expected: str) -> None:

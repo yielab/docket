@@ -382,23 +382,25 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     for locator in (task_lists[0], run_home / "traces" / PROJECT):
         assert str(locator) in output
 
-    exported = _run(
-        str(docket),
-        "task",
-        "trace",
-        str(done_task.get("id")),
-        "--export",
-        "--pod",
-        PROJECT,
-        cwd=copied_starter,
-        env=run_env,
-        timeout=_remaining(deadline),
-    )
-    _require_success(exported, "public trace export")
-    records = _json_lines(exported.stdout)
+    records: list[dict[str, Any]] = []
+    for task in (denied_tasks[0], done_task):
+        exported = _run(
+            str(docket),
+            "task",
+            "trace",
+            str(task.get("id")),
+            "--export",
+            "--pod",
+            PROJECT,
+            cwd=copied_starter,
+            env=run_env,
+            timeout=_remaining(deadline),
+        )
+        _require_success(exported, "public trace export")
+        records.extend(_json_lines(exported.stdout))
     event_types = [record.get("event_type") for record in records]
-    assert event_types.count("approval_denied") == 1
-    assert event_types.count("approval_granted") == 1
+    assert event_types.count("approval_task_denied") == 1
+    assert event_types.count("approval_resumed") == 1
     assert event_types.count("approval_required") == 2
     pair = [
         record

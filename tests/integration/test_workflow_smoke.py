@@ -925,7 +925,7 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
         assert state.abort.wait(2)
 
     assert calls == [
-        ("runs", "cancel", "run-live"),
+        ("task", "cancel", "run-live"),
         ("task", "deny", "approval-private"),
     ]
     error = str(exc_info.value)

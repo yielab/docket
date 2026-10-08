@@ -103,7 +103,7 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          rather than only the exit code in a script.
   --recipe <name|dir>   apply a shipped or local recipe directory after
                          provisioning -- a directory path as given, else a
-                         shipped recipe by name (`docket recipes list`
+                         shipped recipe by name (`docket pod recipes`
                          shows all of them). An unresolvable
                          name errors naming the shipped recipe names and
                          exits 1 before any provisioning. Mutually

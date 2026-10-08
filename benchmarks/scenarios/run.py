@@ -160,7 +160,7 @@ def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
         },
     )
     command = "approve" if state == "granted" else "deny"
-    _public_cli(home, workspace, command, token)
+    _public_cli(home, workspace, "task", command, token)
 
     audit = [
         json.loads(line)

@@ -55,10 +55,10 @@ The final output includes the exact target, task-list, trace, and audit paths. I
 installed public inspection commands it ran:
 
 ```text
-docket runs list --project docket-starter --json
-docket runs show <run-id> --json
-docket trace export docket-starter
-docket audit verify
+docket task list --pod docket-starter --json
+docket task show <task-id> --pod docket-starter --json
+docket task trace <task-id> --export --pod docket-starter
+docket log verify
 ```
 
 The persisted final hop contains a typed handoff. The run registry, trace export, and audit verifier

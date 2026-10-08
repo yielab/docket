@@ -130,7 +130,7 @@
     },
     "TraceLink": {
       "additionalProperties": false,
-      "description": "``session`` is the identifier ``docket trace <session>`` and the trace reader accept;\n``project`` is the identifier ``GET /traces/<project>`` accepts. ``firstTs``/``lastTs`` are\nthe second-resolution window of this hop's events within that session's file.",
+      "description": "``session`` is the identifier ``docket task trace <ref>`` and the trace reader accept;\n``project`` is the identifier ``GET /traces/<project>`` accepts. ``firstTs``/``lastTs`` are\nthe second-resolution window of this hop's events within that session's file.",
       "properties": {
         "firstTs": {
           "title": "Firstts",
