@@ -46,20 +46,16 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Session and Context Management", ["scope", "context", "persona"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     ("Telegram Integration", ["wire", "unwire", "conversations"]),
-    ("Keys and Authentication", ["keys"]),
     (
         "Utility Commands",
         [
             "logs",
             "edit",
             "profile",
-            "models",
             "cost",
-            "doctor",
             "setup",
             "config",
             "serve",
-            "completions",
             "validate",
             "snapshot",
             "mcp",
@@ -67,7 +63,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Security and Audit",
-        ["gates", "audit", "policies", "plugins", "approve", "deny", "inbox", "chat"],
+        ["audit", "policies", "plugins", "approve", "deny", "inbox", "chat"],
     ),
     (
         "Observability Commands",
@@ -146,6 +142,8 @@ def _render_command(name: str, cmd) -> str:
         out.append("\n")
     help_text = cmd.help or cmd.get_short_help_str(limit=10_000) or ""
     out.append(_render_help_body(help_text) + "\n")
+    for sub_name, sub in getattr(cmd, "commands", {}).items():
+        out.append(_render_command(f"{name} {sub_name}", sub))
     return "\n".join(out)
 
 
@@ -196,7 +194,7 @@ _EXIT_CODES = """\
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
 """
@@ -354,7 +352,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("POLICIES_DIR",),
-        "Root of installed/edited policy JSON (`docket policies`, `docket gates`)",
+        "Root of installed/edited policy JSON (`docket policies`, `docket setup sandbox`)",
         "`$DOCKET_HOME/policies`",
     ),
     (
@@ -399,7 +397,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("PROVIDERS_FILE",),
-        "Global provider catalog scope (`docket models provider add`, `core/provider.py`)",
+        "Global provider catalog scope (`docket setup provider add`, `core/provider.py`)",
         "`$DOCKET_HOME/docket-providers.json`",
     ),
     (
@@ -462,17 +460,17 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     (("METRICS_WINDOW",), "Rolling terminal-session count for `docket metrics`", "`50`"),
     (
         ("RUNAWAY_TURNS_THRESHOLD",),
-        "Past this many turns, `docket doctor`/`docket cost` flag a session as runaway",
+        "Past this many turns, `docket cost` flags a session as runaway",
         "`200`",
     ),
     (
         ("RUNAWAY_COST_THRESHOLD",),
-        "Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway",
+        "Past this estimated USD, `docket cost` flags a session as runaway",
         "`20`",
     ),
     (
         ("DOCKET_KEY_MAX_AGE_DAYS",),
-        "`docket doctor`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry",
+        "`docket setup --fix`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry",
         "`90`",
     ),
     (
@@ -492,7 +490,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("TEMPLATE_VERSION",),
-        "Workspace-prompt schema version; `docket doctor` flags older agents for rebuild past a bump",
+        "Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump",
         "`4`",
     ),
     (
@@ -642,13 +640,18 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DOCKET_SANDBOX_IMAGE",),
-        "Image for the Docker exec-jail (`docket gates isolate on`)",
+        "Image for the Docker exec-jail (`docket setup sandbox on`)",
         "`alpine:3.20`",
     ),
     (
         ("DOCKET_SANDBOX_BACKEND",),
         "Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed",
         "auto-detected (docker > bwrap > none)",
+    ),
+    (
+        ("SHELL",),
+        "Login shell name; `docket setup` uses it to name the completion command it offers",
+        "unset (bash assumed)",
     ),
     (("EDITOR",), "Text editor for `docket edit`, checked before `VISUAL`", "`nano`"),
     (("VISUAL",), "Fallback text editor for `docket edit` when `EDITOR` is unset", "`nano`"),
@@ -685,7 +688,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "Per-provider API key, named by a built-in provider document's `auth.credentials` "
         "(`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
         "catalog-resolved credential is already present; also checked against docket's own "
-        "secret store (`docket keys add`). A provider absent from the catalog falls back to "
+        "secret store (`docket setup provider add`). A provider absent from the catalog falls back to "
         "`<PROVIDER>_API_KEY`",
         "unset",
     ),
@@ -760,7 +763,7 @@ done
 
 # Cheaper models fleet-wide: change the policy once — every
 # policy-following agent updates automatically (pins are untouched)
-docket models preset openrouter-free
+docket setup model preset openrouter-free
 ```
 
 ### Cost Monitoring

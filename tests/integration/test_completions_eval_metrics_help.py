@@ -1,4 +1,4 @@
-"""completions, metrics, help commands.
+"""metrics and help commands.
 
 These call the public run_* entry points in-process. stdout is captured with
 capsys to assert on the rendered text; the return value is the process exit
@@ -16,59 +16,9 @@ from pathlib import Path
 import pytest
 from tests.conftest import repoint_docket_home
 
-from docket.cli import _completions, _help, _metrics
+from docket.cli import _help, _metrics
 
 SUBJECT = "docket.cli"
-
-# ── completions ─────────────────────────────────────────────────────────────────
-
-
-class TestCompletions:
-    def test_bash_emits_completion_function(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _completions.run_completions("bash")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "_docket_complete()" in out
-        assert "complete -F _docket_complete docket" in out
-        # command table is present
-        assert "list status add init info delete maintain" in out
-
-    def test_zsh_emits_completion_function(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _completions.run_completions("zsh")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "#compdef docket" in out
-        assert "_docket()" in out
-        assert "_docket_ids()" in out
-        assert "'init:Initialize the current project with its minimum isolated pod'" in out
-
-    def test_no_arg_prints_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _completions.run_completions(None)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Usage: docket completions <bash|zsh>" in out
-
-    def test_help_token_prints_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _completions.run_completions("--help")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Usage: docket completions <bash|zsh>" in out
-
-    def test_unknown_shell_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _completions.run_completions("fish")
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "Unknown shell 'fish'" in err
-
-    def test_bash_is_byte_stable(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Re-emitting yields identical bytes (drift guard)."""
-        _completions.run_completions("bash")
-        first = capsys.readouterr().out
-        _completions.run_completions("bash")
-        second = capsys.readouterr().out
-        assert first == second
-        assert first.endswith("complete -F _docket_complete docket\n")
-
 
 # ── metrics ─────────────────────────────────────────────────────────────────────
 
@@ -245,10 +195,10 @@ class TestHelp:
             assert cmd in out
 
     def test_topic_prints_that_commands_own_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _help.run_help("doctor")
+        rc = _help.run_help("status")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "doctor" in out
+        assert "status" in out
         assert "AGENT TYPES" not in out  # differs from the bare `docket help` reference
 
     def test_unknown_topic_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -258,7 +208,7 @@ class TestHelp:
         assert "not-a-real-command" in err
 
     def test_topic_differs_from_bare_help(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _help.run_help("doctor")
+        _help.run_help("status")
         topic_out = capsys.readouterr().out
         _help.run_help()
         bare_out = capsys.readouterr().out

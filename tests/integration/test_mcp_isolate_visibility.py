@@ -1,6 +1,6 @@
 """MCP server isolation state visibility in doctor, config, and recipes.
 
-Requirement 40: unjailed MCP servers (isolate: false) are shown by `docket doctor`,
+Requirement 40: unjailed MCP servers (isolate: false) are shown by `docket setup --fix`,
 `docket config explain`, and `docket recipes show --json`, with pod context where applicable.
 """
 
@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 from tests.conftest import repoint_docket_home
 
-from docket.cli import _config, _doctor, _pod
+from docket.cli import _config, _pod, _setup_check
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod
 
-SUBJECT = "docket.cli._doctor"
+SUBJECT = "docket.cli._setup_check"
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo"
 class TestDoctorJsonShowsUnjailedMcpServers:
     """doctor --json names unjailed servers with their pod context."""
 
-    def test_global_unjailed_server_in_doctor_json(
+    def test_global_unjailed_server_in_check_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
@@ -48,14 +48,14 @@ class TestDoctorJsonShowsUnjailedMcpServers:
         )
 
         capsys.readouterr()
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         output = capsys.readouterr().out
         report = json.loads(output)
 
         unjailed = report["checks"]["securityGates"]["unjailedMcpServers"]
         assert any(s["name"] == "local-tool" and s["pod"] == "" for s in unjailed)
 
-    def test_pod_scoped_unjailed_server_in_doctor_json(
+    def test_pod_scoped_unjailed_server_in_check_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
@@ -69,7 +69,7 @@ class TestDoctorJsonShowsUnjailedMcpServers:
         _mcp_tools.write_pod_mcp_servers("research", research_servers)
 
         capsys.readouterr()
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         output = capsys.readouterr().out
         report = json.loads(output)
 

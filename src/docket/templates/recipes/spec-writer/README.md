@@ -10,7 +10,7 @@ with each other instead of with the brief.
 is briefed separately to write failing tests from the brief alone. The implementation step is
 gated on `verify: true` (the Implementer's own verify command), so tests must pass to proceed.
 The two steps pin different models (`openai/gpt-4.1-mini` writes the tests,
-`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket models set`
+`anthropic/claude-sonnet-4-6` implements), whatever the pod's default or any `docket setup model set`
 pin. Set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (environment or `secrets.json`) first. To check
 that the new tests really fail on the base, add the `anti-tautology` recipe's step.
 

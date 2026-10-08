@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -48,6 +48,10 @@ This specification does NOT cover:
 7. **MUST** set appropriate file permissions (700 for dirs, 600 for files)
 8. **SHOULD** auto-detect project stack (`codebase`-kind blueprints only)
 9. **SHOULD** suggest appropriate model profile based on project type
+10b. **MUST NOT** bootstrap the workstation home. When `cli/_setup.py::readiness()` reports no model
+   endpoint, it **MUST** still build the team and end with a `No model endpoint yet` warning and the
+   single next step `docket setup`; the endpoint, baseline policies and security posture are
+   `docket setup`'s (api/cli-interface.spec.md).
 10. **MAY** initialize with custom description
 11. **MUST** stamp the active template version into agent metadata so prompt drift is detectable
 12. **MAY** provision one or more agents declaratively from a spec file (`docket init --from <file>`)
@@ -166,7 +170,7 @@ commands. Six modes **MUST** be supported.
   ledger region dispatch mechanically maintains (ROADMAP Phase 17 C-3; see
   pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"). If a task is genuinely `running` in
   `TASK_LIST.json` at reset time, the ledger and the queue now disagree until the next dispatch
-  lifecycle event (claim/hop/retry/finalize) or `docket doctor --fix` re-syncs it — `reset` is an
+  lifecycle event (claim/hop/retry/finalize) or `docket setup --fix` re-syncs it — `reset` is an
   operator action on a workspace file, not a dispatch-aware operation, so it does not special-case
   a Lead mid-task
 - Reset conversation context
@@ -322,6 +326,13 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.17.0 (2026-10-07)
+
+- Phase 39 (P39-12): first run. `docket init` no longer bootstraps the home: with no model endpoint
+  (`cli/_setup.py::readiness()`) it still builds the team and ends with `No model endpoint yet` and
+  the single next step `docket setup`; the endpoint, baseline policies and permissions are
+  `docket setup`'s.
 
 ### Version 1.16.0 (2026-10-07)
 

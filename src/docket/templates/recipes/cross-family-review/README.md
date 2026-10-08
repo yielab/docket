@@ -7,7 +7,7 @@ spots. Here the Implementer runs on Anthropic and the Reviewer on OpenAI.
 
 **What docket's gates make structural:** `model: anthropic/claude-sonnet-4-6` on `build` and
 `model: openai/gpt-4.1-mini` on `review` pin the two families, whatever the pod's default or any
-`docket models set` pin.
+`docket setup model set` pin.
 The Reviewer's APPROVE/REQUEST-CHANGES verdict is a bounded rework edge: a REQUEST-CHANGES
 sends the task back to the Implementer (limited to one cycle) before the task is done.
 

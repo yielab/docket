@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.70.0
+**Version**: 1.71.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -67,7 +67,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
 | `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
-| `action` | `scope`, `keys`, `pod`, `gates` | MUST be a verb from that command's documented action set |
+| `action` | `scope`, `pod` | MUST be a verb from that command's documented action set |
 
 Unrecognized or excess positional arguments MUST produce a clear error and exit 1.
 
@@ -125,20 +125,19 @@ read or render the fleet, project agents, costs, bindings, or health checks.
 
 #### docket init
 **Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
-default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). On the first project only, it **MUST**
-also bootstrap the workstation-wide Docket home, baseline policies, and
-default security posture before provisioning the project. This global foundation is necessary;
-an extra user-facing setup command is not.
+default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). It **MUST NOT** bootstrap the
+workstation-wide home beyond creating the directories it needs; the endpoint, the baseline
+policies and the security posture belong to `docket setup`.
 **Syntax**: `docket init [project] [location] [--blueprint <name>] [--recipe <name|dir>] [--no-apply] [options]`
 
 `init` provisions the pod's own members and no shared agent. An option it does not define is a
 usage error: it prints one line and exits `2` before anything is provisioned.
 
-Before the first project is created, workstation bootstrap **MUST** validate that the selected
-model resolves to a callable OpenAI-compatible endpoint. An API key without a compatible endpoint
-is not ready. Failure returns 1, omits every ready/continuation claim, and prints the exact
-`docket models provider ...` plus `docket models preset ...` recovery sequence. A registered local
-endpoint may pass without a key.
+When `docket setup`'s readiness report (`cli/_setup.py::readiness()`) shows no model endpoint
+(the selected role models do not resolve to a callable OpenAI-compatible endpoint; an API key
+without a compatible endpoint is not ready), `init` still builds the team and ends with
+`⚠ No model endpoint yet` and the single next step `docket setup`. A registered local endpoint
+passes without a key.
 **Arguments**:
 - `project` (optional): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`);
   omitted defaults to the current directory name
@@ -212,7 +211,7 @@ agent inventory.
 - `--all` reports the same summary for every registered pod, once per project rather than once per
   agent.
 - No current-directory match **MUST** fail with an actionable `docket init`/`--all` message.
-- `doctor` remains workstation-wide technical health; `list` remains the detailed global agent
+- `docket setup --fix` remains workstation-wide technical health; `list` remains the detailed global agent
   inventory. Neither behavior is an implicit side effect of `status` or bare `docket`.
 **Return**: 0 on success, 1 when current-project resolution fails.
 
@@ -296,31 +295,6 @@ flag
 **Output**: Profile change confirmation or current profile
 **Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
-#### docket models
-**Purpose**: View and update the role→model policy; switch provider presets; manage the provider
-catalog
-**Syntax**: `docket models [set <role> <provider/model> | preset <name> | provider <action> | reset]`
-**Actions**:
-- (no args): Show the current role→model table (role, model, price, source, why)
-- `set <role> <provider/model>`: Override the model for a specific role
-- `preset <name>`: Switch all roles to a provider preset from the catalog (`anthropic`, `openai`,
-  `google`, `openrouter`, `openrouter-free`, `ai-gateway`, `local` among others); a built-in
-  hosted preset needs only its credential -- no separate registration -- and applying one prints
-  a readiness line naming that credential as present or missing
-- `provider add <file.yaml>`: Register a `kind: provider` document
-- `provider add <name> <base-url> [--model ID] [--ctx N] [--max-tokens N] [--credential NAME]`:
-  Today's shortcut over the same document; registration probes `<base-url>/models` with the
-  resolved credential and classifies the result (model-profiles.spec.md "Provider readiness" 3)
-  -- only a transport failure refuses; every HTTP status registers, with a warning when it is not
-  a clean 200
-- `provider list`: List every provider (name, scope, dialect, base URL, credential)
-- `provider show <name> [--json]`: Show one provider's resolved entry and scope
-- `provider remove <name>`: Remove a global override; a built-in with none refuses
-- `provider export <name> [<file>]`: Print (or write) the provider as a `kind: provider` document
-- `reset`: Restore built-in defaults
-**Output**: Role→model table or update confirmation
-**Return**: 0 on success, 1 on invalid role, preset, or provider action
-
 #### docket scope
 **Purpose**: Manage session keys for project isolation
 **Syntax**: `docket scope [agent-id] [action] [value]`
@@ -331,32 +305,55 @@ catalog
 **Output**: Current or updated session key
 **Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
-#### docket keys
-**Purpose**: Manage API keys centrally; the model resolver reads selected-provider keys directly
-and matching credentials sync to agent workspaces
-**Syntax**: `docket keys [action] [key-name]`
-**Actions**:
-- `list`: Show all stored keys (values masked) — default
-- `setup`: Interactive setup wizard for all keys
-- `add <KEY_NAME>`: Add a key (errors, exit 1, if the name already exists — use `rotate`)
-- `rotate <KEY_NAME>`: Replace the value of an existing key (exit 1 if it does not exist)
-- `validate [KEY_NAME]`: Check known local format rules (no network validation)
-- `remove <KEY_NAME>`: Remove a key
-- `export`: Print keys as shell environment variables
-**Key names**: at least `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`,
-`OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`; other syntactically valid uppercase names are allowed
-**Output**: Key status or update confirmation
-**Return**: 0 on success, 1 on missing/invalid arguments or invalid key-name syntax
-**Note**: `keys` is the real, and now the only, model-auth credential path. `setup` prompts for
-every built-in provider credential the provider catalog declares, in catalog order (see
-api-keys.spec.md).
+#### docket setup
+**Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
+catalog, idempotent, in two modes chosen by the terminal (the interaction contract's rule).
+**Syntax**: `docket setup [--json] [--fix]` · `docket setup provider|model|sandbox|shell ...`
+**Bare `setup`** always starts with a report: one line per piece with its state and the exact
+command that fixes it — the model endpoint (the only required piece: a provider, its credential,
+and `lead`/`implementer` resolving to a model), notifications (`console only (nobody is told)` is
+a warning), the sandbox (state and whether bwrap or docker was found), shell completion and the
+background service. The report is computed by `cli/_setup.py::readiness()`, which prints and
+writes nothing; `init` and `run` read it.
+- **On a terminal** it continues by asking only for what is missing, required first: choose a
+  provider (the catalog's built-ins plus `local`), the credential (stored 0600, never echoed),
+  probe `/models`, apply the preset and confirm the two roles resolve; then the optional pieces,
+  each defaulting to `N`: desktop notifications when a desktop session exists, Telegram, the
+  sandbox when a backend exists, shell completion. It prints every command it runs
+  (`ran: docket setup provider add anthropic --credential`) and ends with
+  `Ready.` and `→ Next: cd into a repo and run docket init`. A second run prints `Ready.` and
+  asks nothing.
+- **Off a terminal** it prints the report with the commands and exits 1 when the model endpoint
+  is missing, 0 otherwise; it writes nothing. `--json` emits the report
+  (`{"ready": bool, "pieces": [{name, ok, reason, command}]}`) with the same exit code.
+- `--fix` hardens the permissions of docket-owned files, installs the baseline guardrail
+  policies and runs the health checks with repair (permissions, missing workspace files,
+  session-key resync, the dispatch ledger re-sync); it is the only `setup` form that repairs.
+The wizard has no logic of its own: it calls the functions the verbs call, so every store keeps
+one writer.
 
-`docket auth` (provider API-key status plus honest-gone `login`/`key`/`setup` stubs) was
-**retired** in Phase 29 (D-45) — the provider catalog (`docket models provider add`, above
-`docket keys`) replaced the daemon-era shape that command was reporting the absence of. `auth`
-is not a registered command: `docket auth <anything>` is an ordinary unknown-command error
-(exit 2). Store a credential with `docket keys add`; register an endpoint with `docket models
-provider add`. (ROADMAP decision D-45 is the durable retirement record.)
+**`setup provider`** — `add <name> [url] [--credential KEY] [--model ID] [--ctx N]
+[--max-tokens N] [--no-preset]` does the whole intent: store the credential (the flag, else the
+provider's environment variable, else a hidden prompt on a terminal; off a terminal with none it
+exits 1 naming `--credential`), probe `<url>/models` with it and classify the result
+(model-profiles.spec.md "Provider readiness" 3), register the provider, then apply the provider's
+preset unless `--no-preset` and print which role resolves to what. `add <file.yaml>` registers a
+`kind: provider` document. `list [--json]`, `show <name> [--json]`, `remove <name> [--yes]`
+(confirms on a terminal; off one it exits 1 naming `--yes`), `export <name> [<file>]`,
+`rotate <name> [--credential KEY]`.
+**`setup model`** — bare or `list [--json]` shows the role→model table (role, model, price,
+source, why); `set <role|default> <provider/model>`; `preset [name]` lists or applies a provider
+preset to every role; `reset [--yes]` restores the built-in policy.
+**`setup sandbox`** — bare or `status [--json]` is a read: the gate is always active, plus the
+isolation state, the network mode and the backend found. `on` needs bwrap or a reachable docker
+(exit 1 naming both otherwise), `off`, `network none|open` (any other word is a usage error,
+exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate` and
+`gates.network`. See security-gates.spec.md.
+**`setup shell <bash|zsh>`** — prints the completion script generated from the live command tree;
+any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup shell bash)"`.
+**Return**: 0 on success; 1 when the model endpoint is missing off a terminal, a provider is
+unreachable, a required value or confirmation is missing, or the sandbox has no backend; 2 on a
+usage error.
 
 #### docket validate
 **Purpose**: Validate role, pipeline, policy, and pod configuration documents (see
@@ -648,44 +645,6 @@ peer's activity, and no successor; the command reports memory logs only.
 
 ### Maintenance Commands
 
-#### docket doctor
-**Purpose**: Workstation-wide diagnostics across the complete registered fleet. Human-readable
-output **MUST** label the project-agent section as global so running it from one repository cannot
-be mistaken for a repository-local listing; seeing another registered project is inventory
-visibility, not shared workspace or session state.
-**Syntax**: `docket doctor [--json] [--fix]`
-**Options**:
-- `--json`: Emit the machine-readable health probe (see `cli-json-shapes.spec.md`)
-- `--fix`: Apply auto-fixes for detected drift
-**Output**: System health report
-**Checks** (ROADMAP Phase 19 P19-7b — no daemon left to check status of):
-- Required command availability (`python3`; no optional binaries are probed)
-- Fleet registry (`fleet.json`) and agent-registration validity
-- Malformed `docket-models.json` entries (unknown rank anchor or role, bad model id) that the
-  registry loader would silently ignore
-- Workspace permissions and template drift
-- Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture (when docker is
-  the jail backend in use, the `DOCKET_SANDBOX_IMAGE` image is probed once for `git` and a missing
-  one warns with the fix)
-- Global guardrail policy files, plus every provisioned pod's own `config/` overlay
-  (role archetypes and policy files) — a malformed pod-scoped entry is named with the
-  pod, not silently skipped
-- Global provider catalog documents (`docket-providers.json`) — a malformed entry is named
-  with the file and the failing field, e.g. an unknown `auth.type`
-- Enabled exporters' recorded health (`exporters-health.json`) — a non-zero `failed` count
-  since the exporter's last success is named with `docket exporters test <name>` as the fix
-- Notification reach (`Notifications:`): the enabled channels that deliver somewhere other
-  than the console (`core.channel.Catalog.delivering()`). None, with at least one project
-  agent registered, is a counted issue printed as `core.channel.unreached_warning`'s text
-  (only `console` is on and it sends nothing; a parked task waits unseen until `docket inbox`;
-  fix with `docket channels enable desktop` or `ntfy --set topic=<topic>`); none with no
-  agents is informational. `--json` carries `checks.notifications {ok, delivering}`
-- MCP server isolation state: unjailed servers (isolate: false) from both global and per-pod
-  registries while isolation is on (human output warns; `--json` lists with pod context)
-
-When issues are found the footer points at `docket maintain [id] check`.
-**Return**: 0 if healthy, 1 when any issue is flagged
-
 #### docket cost
 **Purpose**: Display usage and costs
 **Syntax**: `docket cost [agent-id] [--json] [--history [--days N]]`
@@ -725,39 +684,6 @@ When issues are found the footer points at `docket maintain [id] check`.
 contract in serve-read-api.spec.md.
 With `--dispatch`, also logs each dispatch hop
 **Return**: 0 on clean shutdown (Ctrl-C)
-
-### Security and Gates
-
-#### docket gates
-**Purpose**: Report docket's own tool-call gate and manage workspace isolation. The gate itself
-(the policy engine + argument-aware command classifier) is unconditionally active on every tool
-call docket dispatches — there is nothing to enable or disable — so what this command manages is
-isolation-mode posture.
-**Syntax**: `docket gates [status | isolate <on|off> | network <none|open> | classes]`
-**Actions**:
-- `status` (default): Report the gate as always-active, plus the isolation state
-  (`off (default)` with no recorded choice, `on`, or `off`)
-- `isolate <on|off>`: Record exec isolation on or off explicitly, audited as `gates.isolate`.
-  Isolation is opt-in (off by default). `on` needs a backend (bwrap on Linux, or a reachable
-  docker daemon) and exits 1 naming both when there is none. `DocketDriver` reads it on every
-  turn (`edges/adapters/docket_runtime.py`, `get_isolation_enabled`): when on, `bash` and stdio
-  MCP servers run in the bwrap/docker jail and a turn fails closed when no backend is available
-  (see security-gates.spec.md)
-- `network <none|open>`: Record the global sandbox network mode (default open), audited as
-  `gates.network`; any other value prints usage, exit 2. `none` cuts the jail's network and
-  refuses turns that would run with isolation off (`network.refused`); `status` reports the mode
-- `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
-  secret-access); read-only, makes no config changes. All three are now fully enforced by
-  `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
-  security-gates.spec.md v0.11.0 for why prod-deploy's `git`/`npm` overlap is no longer merely
-  documented policy
-
-Any other subcommand (including `enable`/`disable`, which do not exist) prints
-`docket gates: unknown subcommand '<sub>'` plus the usage and exits 2; any flag after the
-subcommand is an unrecognized flag (exit 2). There is no approval-routing flag to report or set.
-**Output**: Gates status or update confirmation
-**Return**: 0 on success; 1 when `isolate on` finds no usable sandbox backend; 2 on an unknown
-subcommand or flag
 
 #### docket audit
 **Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
@@ -891,11 +817,11 @@ exporter shares beyond bare structure, as a confirmed command
   sent); `--json` adds `missingCredentials` and the raw `health` record
 - `enable <name> [--endpoint URL] [--privacy <level>|--share a,b] [--events ...] [--no-verify]
   [--yes]`: For each of *name*'s credentials that resolves to no value, prompts on a TTY and
-  stores it (`docket keys add`'s own storage path), or on a non-TTY names `docket keys add
-  <NAME>` per missing credential and exits 1 writing nothing. A `--privacy`/`--share` that
+  stores it (the credential store `docket setup provider add` writes), or on a non-TTY names
+  `docket setup provider add <name> --credential` per missing credential and exits 1 writing nothing. A `--privacy`/`--share` that
   widens what the exporter shares (`core.exporter.is_widening`) follows the same
   confirm-or-refuse rule as `docket exporters privacy`. Then probes the (possibly overridden)
-  endpoint and classifies it exactly like `docket models provider add`; a transport failure
+  endpoint and classifies it exactly like `docket setup provider add`; a transport failure
   exits 1 and writes nothing unless `--no-verify` is given. On success, writes only
   `{kind, name, enabled: true, <overrides given>}` to the global catalog through
   `core.exporter.enable_exporter` -- every other field is inherited from the built-in of the
@@ -1079,14 +1005,6 @@ Phase 19 wave 14).
 **Output**: Unbind confirmation. No gateway-restart step (see `docket wire` above).
 **Return**: 0 on success, 1 if not found
 
-#### docket completions
-**Purpose**: Emit a shell completion script for bash or zsh
-**Syntax**: `docket completions <bash|zsh>`
-**Arguments**:
-- `bash` or `zsh` (required): Target shell
-**Output**: Shell script — source with `eval "$(docket completions bash)"`
-**Return**: 0 on success, 1 on invalid shell
-
 ### Help
 
 #### docket help
@@ -1186,8 +1104,7 @@ and 1 only for a missing token.
 No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
 unknown option or command, before any command body runs — including every retired command name
 and former alias) exit `2`. Commands that parse their own trailing arguments report the same
-class of usage error with `2` too: an unrecognized flag (`find_unknown_flag`), an unknown
-`docket gates` subcommand, or an unknown `docket context` action. (Earlier revisions of this
+class of usage error with `2` too: an unrecognized flag (`find_unknown_flag`), an unknown `docket context` action. (Earlier revisions of this
 spec described codes 2–9 and 127 per failure kind; those were never implemented — removed in
 v1.5.0.)
 
@@ -1321,6 +1238,17 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.71.0 (2026-10-07)
+
+- Phase 39 (P39-12): `setup` is the first-run flow. Bare `docket setup` prints the readiness
+  report (model endpoint, notifications, sandbox, shell completion, background service), asks
+  only for what is missing on a terminal, and off one exits 1 when the endpoint is missing;
+  `--json` emits the report and `--fix` repairs. `setup provider` (`add` stores the credential,
+  probes `/models` and applies the preset), `setup model`, `setup sandbox` and `setup shell` are
+  real sub-apps. `doctor`, `models`, `models provider`, `keys`, `gates` and `completions` are
+  unknown commands. `init` no longer bootstraps the home: with no endpoint it builds the team and
+  ends with `No model endpoint yet` and `docket setup`.
 
 ### Version 1.70.0 (2026-10-07)
 

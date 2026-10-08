@@ -1,6 +1,6 @@
 """docket-owned secrets storage: ~/.docket/secrets.json + secrets.meta.json.
 
-Provider API keys `docket keys` manages, and their bookkeeping metadata
+Provider API keys `docket setup provider` manages, and their bookkeeping metadata
 (added/rotated timestamps). Always docket-owned — never an external-runtime file
 format — and living under ``DOCKET_HOME``.
 
@@ -62,7 +62,7 @@ def secret_value(name: str) -> str | None:
 def secret_values() -> list[str]:
     """Return the stored secret VALUES (for trace/Telegram redaction).
 
-    Mirrors the file-vs-keyring backend split ``docket keys`` uses: the file
+    Mirrors the file-vs-keyring backend split ``docket setup provider`` uses: the file
     backend stores ``{KEY: value}`` in secrets.json, so the values are the
     dict values; the keyring backend keeps only an index there (no values at
     rest), so it returns nothing. Empty/short values are the caller's concern.
@@ -88,7 +88,7 @@ def touch_meta(name: str, event: str) -> None:
     """Record an add/rotate/remove event for *name* in secrets.meta.json.
 
     ``event``: "added" | "rotated" | "removed". Mirrors the timestamps
-    ``docket doctor``'s key-hygiene report reads.
+    ``docket setup --fix``'s key-hygiene report reads.
     """
     import datetime as _dt
 

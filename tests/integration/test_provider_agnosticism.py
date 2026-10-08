@@ -244,10 +244,10 @@ class TestNonAnthropicPresetShowsNoResidue:
     def test_openai_preset_then_models_has_no_claude_residue(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _register_provider(home, "openai", "gpt-4.1-mini")
-        rc, _out, err = _run(["models", "preset", "openai"], home)
+        rc, _out, err = _run(["setup", "model", "preset", "openai"], home)
         assert rc == 0, err
 
-        rc, out, err = _run(["models"], home)
+        rc, out, err = _run(["setup", "model"], home)
         assert rc == 0, err
         # The policy table + default + rank-anchor lines (the part of the
         # display that reflects *this fleet's* configuration) must carry no
@@ -255,7 +255,7 @@ class TestNonAnthropicPresetShowsNoResidue:
         # menu line further down still legitimately names anthropic as one of
         # several *available* presets — that's not residue, so this check is
         # scoped to the lines above it.
-        policy_section = out.split("Change: docket models set", 1)[0]
+        policy_section = out.split("Change: docket setup model set", 1)[0]
         assert "claude" not in policy_section.lower()
         assert "anthropic" not in policy_section.lower()
         # The rank-anchor line reflects the OpenAI preset, not the old Claude
@@ -266,7 +266,7 @@ class TestNonAnthropicPresetShowsNoResidue:
     def test_preset_persists_rank_anchors_to_registry(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _register_provider(home, "google", "gemini-2.5-flash")
-        rc, _out, err = _run(["models", "preset", "google"], home)
+        rc, _out, err = _run(["setup", "model", "preset", "google"], home)
         assert rc == 0, err
         reg = json.loads((home / "docket-models.json").read_text())
         assert reg["rankAnchors"]["standard"] == "google/gemini-2.5-flash"
@@ -275,7 +275,7 @@ class TestNonAnthropicPresetShowsNoResidue:
 class TestLocalPresetCli:
     def test_local_preset_listed(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["models", "preset"], home)
+        rc, out, err = _run(["setup", "model", "preset"], home)
         assert rc == 0, err
         assert "local" in out
 
@@ -283,65 +283,20 @@ class TestLocalPresetCli:
         """The preset note, including any bracketed text, reaches the terminal unchanged."""
         home = _setup_agent(tmp_path)
         _register_provider(home, "local", "qwen3-30b-a3b")
-        rc, out, err = _run(["models", "preset", "local"], home)
+        rc, out, err = _run(["setup", "model", "preset", "local"], home)
         assert rc == 0, err
         note = _mp.preset_table()["local"]["note"]
         assert note in out
-        assert "docket models provider add" in note
+        assert "docket setup provider add" in note
 
     def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _register_provider(home, "local", "qwen3-30b-a3b")
-        rc, _out, err = _run(["models", "preset", "local"], home)
+        rc, _out, err = _run(["setup", "model", "preset", "local"], home)
         assert rc == 0, err
 
-        rc, out, err = _run(["models"], home)
+        rc, out, err = _run(["setup", "model"], home)
         assert rc == 0, err
         assert "$0 (local)" in out
         assert "n/a" not in out
         assert "$0.00" not in out
-
-
-# ---------------------------------------------------------------------------
-# cli/_provider.py: the two dead-end guidance strings now name real commands
-# ---------------------------------------------------------------------------
-
-
-class TestProviderGuidanceStringsAreReal:
-    def test_no_task_role_guidance_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from docket.cli import _provider as _prov_cli
-
-        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
-        out = capsys.readouterr().out
-        assert "models set task" not in out
-        # 'task' is not a role at all any more (ALL_ROLES has no such entry).
-        assert "task" not in _mp.ALL_ROLES
-
-    def test_no_retired_runtime_command_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from docket.cli import _provider as _prov_cli
-
-        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
-        out = capsys.readouterr().out
-        retired_brand = "open" + "claw"
-        assert f"{retired_brand} models status" not in out
-        assert "docket models preset local" in out
-
-    def test_every_docket_command_in_guidance_is_real(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Every `docket <word>` token printed must be a real top-level command."""
-        import re
-
-        import typer.main
-
-        from docket.cli import _provider as _prov_cli
-        from docket.cli import app
-
-        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
-        out = capsys.readouterr().out
-
-        click_command = typer.main.get_command(app)
-        real_commands = set(click_command.commands)
-
-        for m in re.finditer(r"\bdocket (\w[\w-]*)", out):
-            assert m.group(1) in real_commands, f"'docket {m.group(1)}' is not a real command"

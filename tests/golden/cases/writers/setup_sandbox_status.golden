@@ -1,0 +1,7 @@
+EXIT:0
+
+Sandbox
+ok Tool-call gate: always active (policy engine + high-risk command classifier)
+! Isolation: off (default); tools run on the host
+Turn it on: docket setup sandbox on (needs bubblewrap or docker)
+Network: open (a pod's network none still narrows it)

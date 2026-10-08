@@ -239,14 +239,14 @@ class TestCmdScope:
 class TestCmdModels:
     def test_models_list_exits_zero(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["models"], oc_dir)
+        rc, out, err = _run(["setup", "model"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         assert "implementer" in out
         assert "lead" in out
 
     def test_models_list_shows_all_roles(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["models"], oc_dir)
+        rc, out, _ = _run(["setup", "model"], oc_dir)
         assert rc == 0
         for role in (
             "lead",
@@ -264,20 +264,22 @@ class TestCmdModels:
 
     def test_models_list_shows_pricing(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["models"], oc_dir)
+        rc, out, _ = _run(["setup", "model"], oc_dir)
         assert rc == 0
         assert "$" in out  # pricing column
 
     def test_models_set_role(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
+        rc, _out, err = _run(
+            ["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir
+        )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         assert reg["roles"]["implementer"] == "anthropic/claude-haiku-4-5"
 
     def test_models_set_default(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, _ = _run(["models", "set", "default", "anthropic/claude-haiku-4-5"], oc_dir)
+        rc, _, _ = _run(["setup", "model", "set", "default", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         assert reg["default"] == "anthropic/claude-haiku-4-5"
@@ -285,7 +287,7 @@ class TestCmdModels:
     def test_models_set_reapplies_policy(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         # myshop is a bare project agent: follows the implementer row, source=policy
-        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
         )
@@ -293,24 +295,26 @@ class TestCmdModels:
 
     def test_models_set_unknown_role_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "set", "unicorn", "anthropic/claude-haiku-4-5"], oc_dir)
+        rc, _, err = _run(
+            ["setup", "model", "set", "unicorn", "anthropic/claude-haiku-4-5"], oc_dir
+        )
         assert rc == 1
         assert "Unknown" in err
 
     def test_models_set_invalid_model_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "set", "implementer", "notamodel"], oc_dir)
+        rc, _, err = _run(["setup", "model", "set", "implementer", "notamodel"], oc_dir)
         assert rc == 1
         assert "Invalid" in err
 
-    def test_models_set_missing_args_exits_1(self, tmp_path: Path) -> None:
+    def test_models_set_missing_args_is_a_usage_error(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, _err = _run(["models", "set", "implementer"], oc_dir)
-        assert rc == 1
+        rc, _, _err = _run(["setup", "model", "set", "implementer"], oc_dir)
+        assert rc == 2
 
     def test_models_preset_list_exits_zero(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["models", "preset"], oc_dir)
+        rc, out, err = _run(["setup", "model", "preset"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         for p in ("anthropic", "openai", "google", "openrouter-free", "openrouter"):
             assert p in out
@@ -319,7 +323,7 @@ class TestCmdModels:
         oc_dir = _setup_agent(tmp_path)
         (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         register_local_provider(oc_dir, "openai", [{"id": "gpt-4.1-mini"}])
-        rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
+        rc, _out, err = _run(["setup", "model", "preset", "openai"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         # strong roles get gpt-4.1-mini (standard for openai)
@@ -330,15 +334,15 @@ class TestCmdModels:
         self, tmp_path: Path, preset: str
     ) -> None:
         """anthropic/openai/google/local are built-in catalog documents, so applying one of
-        these presets needs no separate `docket models provider add` first (model-profiles
+        these presets needs no separate `docket setup provider add` first (model-profiles
         spec, "Presets")."""
         oc_dir = _setup_agent(tmp_path)
 
-        rc, out, err = _run(["models", "preset", preset], oc_dir)
+        rc, out, err = _run(["setup", "model", "preset", preset], oc_dir)
 
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         assert (oc_dir / "docket-models.json").exists()
-        assert f"Preset '{preset}' applied." in out + err
+        assert f"Preset {preset} applied" in out + err
 
     def test_local_preset_selects_the_exact_registered_model(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -350,7 +354,7 @@ class TestCmdModels:
             base_url="http://127.0.0.1:8081/v1",
         )
 
-        rc, out, err = _run(["models", "preset", "local"], oc_dir)
+        rc, out, err = _run(["setup", "model", "preset", "local"], oc_dir)
 
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
@@ -361,22 +365,21 @@ class TestCmdModels:
 
     def test_models_preset_unknown_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "preset", "notapreset"], oc_dir)
+        rc, _, err = _run(["setup", "model", "preset", "notapreset"], oc_dir)
         assert rc == 1
         assert "Unknown" in err
 
-    def test_models_unknown_subcommand_exits_1(self, tmp_path: Path) -> None:
+    def test_models_unknown_subcommand_is_a_usage_error(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "fly"], oc_dir)
-        assert rc == 1
-        assert "Unknown" in err
+        rc, _, _err = _run(["setup", "model", "fly"], oc_dir)
+        assert rc == 2
 
     def test_models_set_pinned_agent_not_touched(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         # Pin myshop first
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         # Change the repo role policy
-        _run(["models", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
+        _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         # Pinned agent should NOT have changed
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
@@ -390,7 +393,7 @@ class TestCmdModels:
 
 
 class TestM4CommandsPortedFromStubs:
-    @pytest.mark.parametrize("cmd", [["profile", "ghost"], ["scope", "ghost"], ["models"]])
+    @pytest.mark.parametrize("cmd", [["profile", "ghost"], ["scope", "ghost"], ["setup", "model"]])
     def test_does_not_exit_127(self, cmd: list[str], tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, _, _ = _run(cmd, oc_dir)

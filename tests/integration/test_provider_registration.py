@@ -128,7 +128,7 @@ def test_add_registers_at_401_with_a_warning_naming_the_credential(
         result = _runner.invoke(
             _app,
             [
-                "models",
+                "setup",
                 "provider",
                 "add",
                 "hosted",
@@ -136,7 +136,7 @@ def test_add_registers_at_401_with_a_warning_naming_the_credential(
                 "--model",
                 "m",
                 "--credential",
-                "HOSTED_API_KEY",
+                "hosted-secret-value",
             ],
         )
     assert result.exit_code == 0, result.stdout
@@ -154,13 +154,13 @@ def test_add_refuses_on_transport_failure_and_does_not_persist(
     home = _seed(tmp_path, monkeypatch)
     result = _runner.invoke(
         _app,
-        ["models", "provider", "add", "deadend", "http://127.0.0.1:1/v1", "--model", "m"],
+        ["setup", "provider", "add", "deadend", "http://127.0.0.1:1/v1", "--model", "m"],
     )
     assert result.exit_code == 1
     assert _providers(home) == {}
     assert not (home / "docket-providers.json").exists()
     assert "Could not reach" in result.stderr
-    assert "Provider was not registered" in result.stderr
+    assert "Nothing was registered" in result.stderr
 
 
 def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
@@ -170,7 +170,7 @@ def test_add_at_200_reports_unadvertised_ids_as_a_suggestion_only(
     body = json.dumps({"data": [{"id": "known"}, {"id": "extra-model"}]}).encode()
     with _serve(200, body) as base_url:
         result = _runner.invoke(
-            _app, ["models", "provider", "add", "hosted2", base_url, "--model", "known"]
+            _app, ["setup", "provider", "add", "hosted2", base_url, "--model", "known"]
         )
     assert result.exit_code == 0, result.stdout
     assert "extra-model" in result.stdout
@@ -186,7 +186,7 @@ def test_export_then_add_round_trips_through_show_json(
         added_a = _runner.invoke(
             _app,
             [
-                "models",
+                "setup",
                 "provider",
                 "add",
                 "roundtrip",
@@ -200,20 +200,20 @@ def test_export_then_add_round_trips_through_show_json(
             ],
         )
         assert added_a.exit_code == 0, added_a.stdout
-        show_a = _runner.invoke(_app, ["models", "provider", "show", "roundtrip", "--json"])
+        show_a = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
         assert show_a.exit_code == 0, show_a.stdout
 
         export_file = tmp_path / "roundtrip.yaml"
         exported = _runner.invoke(
-            _app, ["models", "provider", "export", "roundtrip", str(export_file)]
+            _app, ["setup", "provider", "export", "roundtrip", str(export_file)]
         )
         assert exported.exit_code == 0, exported.stdout
         assert export_file.read_text().startswith("kind: provider\n")
 
         _seed(tmp_path / "b", monkeypatch)
-        added_b = _runner.invoke(_app, ["models", "provider", "add", str(export_file)])
+        added_b = _runner.invoke(_app, ["setup", "provider", "add", str(export_file)])
         assert added_b.exit_code == 0, added_b.stdout
-        show_b = _runner.invoke(_app, ["models", "provider", "show", "roundtrip", "--json"])
+        show_b = _runner.invoke(_app, ["setup", "provider", "show", "roundtrip", "--json"])
         assert show_b.exit_code == 0, show_b.stdout
 
     assert json.loads(show_a.stdout) == json.loads(show_b.stdout)
@@ -225,7 +225,7 @@ def test_preset_anthropic_on_fresh_home_names_the_missing_credential(
     """A built-in hosted preset needs only its credential -- the built-in document is the
     registration; no separate `provider add` is required for it to apply."""
     _seed(tmp_path, monkeypatch)
-    result = _runner.invoke(_app, ["models", "preset", "anthropic"])
+    result = _runner.invoke(_app, ["setup", "model", "preset", "anthropic"])
     assert result.exit_code == 0, result.stdout
     assert "ANTHROPIC_API_KEY" in result.stdout
 
@@ -234,6 +234,6 @@ def test_remove_refuses_for_a_built_in_with_no_global_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _seed(tmp_path, monkeypatch)
-    result = _runner.invoke(_app, ["models", "provider", "remove", "anthropic"])
+    result = _runner.invoke(_app, ["setup", "provider", "remove", "anthropic"])
     assert result.exit_code == 1
     assert "built-in" in result.stderr.lower()

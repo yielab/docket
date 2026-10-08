@@ -1,0 +1,24 @@
+EXIT:0
+
+Role to model policy
+ROLE         MODEL                        PRICE         SOURCE   WHY
+lead         anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  orchestrates the pod; never edits
+                                                                 code
+implementer  anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  writes code in the project
+                                                                 workspace
+reviewer     anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  read-only veto on diffs
+tester       anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  behaviour-only PASS/FAIL
+researcher   anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  gathers and synthesizes source
+                                                                 material
+analyst      anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  analyzes data/evidence and draws
+                                                                 conclusions
+writer       anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  drafts the pod's content
+                                                                 deliverable
+critic       anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  vets the pod's output; veto power
+operator     anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  executes real operational actions
+monitor      anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  observes signals and reports
+                                                                 status; no unilateral action
+default  anthropic/claude-sonnet-4-6
+rank anchors  anthropic/claude-opus-4-6 -> anthropic/claude-sonnet-4-6 -> anthropic/claude-haiku-4-5
+PRICE is an estimate from a snapshot, not recorded spend
+Change: docket setup model set <role|default> <provider/model>

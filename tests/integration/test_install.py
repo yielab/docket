@@ -1,9 +1,7 @@
-"""Install — docket-native home bootstrap.
+"""First run: `init` no longer bootstraps the home; `setup` owns the steps and the readiness report.
 
-There is no external daemon. These tests call ``bootstrap_workstation()`` in-process
-with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched to a temp seed, and Step 4
-(model credentials) is driven by seeding ``core/secrets.py``'s store
-directly.
+Readiness is read from the stored credential, the registered provider and the role policy;
+the baseline policies and the owner-only permissions are steps of `setup`, not of `init`.
 """
 
 from __future__ import annotations
@@ -16,336 +14,155 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _agents, _install
-from docket.core import fleet as _fleet
+from docket.cli import _agents, _setup
 from docket.core import models_policy as _models_policy
 from docket.core import provider as _prov
 from docket.core import secrets as _secrets
 
 SUBJECT = "docket.core"
 
-# ── seed helpers ───────────────────────────────────────────────────────────────
-
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-    # No registry file → built-in role→model defaults apply.
-    yield
-    os.environ.pop("DOCKET_LLM_BASE_URL", None)
-    os.environ.pop("DOCKET_LLM_API_KEY", None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Repoint config modules at a temp DOCKET_HOME."""
+def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / ".docket"
+    home.mkdir(parents=True)
     repoint_docket_home(monkeypatch, home)
+    return home
 
 
-def _no_auth() -> None:
-    _secrets.save_secrets({})
-
-
-def _ok_auth() -> None:
-    _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
-    os.environ["DOCKET_LLM_BASE_URL"] = "http://127.0.0.1:9999/v1"
-
-
-def _register_local_provider(
-    name: str, base_url: str, model_id: str, ctx: int, max_tokens: int
-) -> None:
-    """Write *name* into the isolated global provider catalog -- the document-shaped
-    replacement for ``fleet.add_local_provider``."""
+def _register_local(name: str, base_url: str, model_id: str) -> None:
     _prov.save_provider(
         _prov.ProviderSpec(
             name=name,
             baseUrl=base_url,
             auth=_prov.AuthSpec(type="none"),
             local=True,
-            models=[_prov.ModelRow(id=model_id, contextWindow=ctx, maxTokens=max_tokens)],
+            models=[_prov.ModelRow(id=model_id, contextWindow=16384, maxTokens=8192)],
         )
     )
-
-
-def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Empty DOCKET_HOME with a minimal fleet.json (already-initialized path)."""
-    home = tmp_path / ".docket"
-    home.mkdir(parents=True)
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
-    fleet_file.chmod(0o600)
-    _point_at(home, monkeypatch)
-    return home
-
-
-def test_provider_only_fleet_still_runs_first_project_foundation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _register_local_provider("local", "http://127.0.0.1:8081/v1", "qwen-live-id", 16384, 8192)
-    bootstrap_calls: list[dict[str, object]] = []
-
-    def _stop_after_bootstrap(**kwargs: object) -> int:
-        bootstrap_calls.append(kwargs)
-        return 1
-
-    monkeypatch.setattr(_install, "bootstrap_workstation", _stop_after_bootstrap)
-
-    assert _agents.run_init([]) == 1
-    assert bootstrap_calls == [
-        {
-            "assume_yes": True,
-            "continuing_to_project": True,
-        }
-    ]
-
-
-# ── full install run ────────────────────────────────────────────────────────────
-
-
-def test_install_explains_workstation_vs_project_scope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    assert _install.bootstrap_workstation(assume_yes=True) == 0
-    out = capsys.readouterr().out
-    assert "shared workstation foundation" in out.lower()
-    assert "project pods remain separate" in out.lower()
-    assert "docket init" in out
-
-
-def test_install_configures_default_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    assert _models_policy.load_registry()[2] == _cfg.DEFAULT_MODEL
-
-
-def test_install_creates_directories(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    assert (home / "workspaces" / "projects").is_dir()
-
-
-def test_install_workspaces_dir_is_owner_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`workspaces/` is an intermediate dir of the `PROJECTS_DIR.mkdir(parents=True)` call --
-    only `DOCKET_HOME` and `PROJECTS_DIR` itself were hardened to 0700, leaving this level at
-    whatever the operator's umask allows."""
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    assert (home / "workspaces").stat().st_mode & 0o777 == 0o700
-
-
-def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A second run stays clean."""
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    assert _install.bootstrap_workstation(assume_yes=True) == 0
-    assert _install.bootstrap_workstation(assume_yes=True) == 0
-
-    assert _fleet.list_agents() == []
-
-
-# ── Step 5: model credentials ────────────────────────────────────────────────────
-
-
-def test_step5_detects_existing_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-    out = capsys.readouterr().out
-    assert "Model provider ready" in out
-    assert "ANTHROPIC_API_KEY configured (value hidden)" in out
-    # auth_missing is False → next steps must NOT include the credential nudge.
-    assert "Store a model-provider credential" not in out
-
-
-def test_step5_unresolved_default_fails_before_ready_claim(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """`anthropic` is a built-in catalog document with a real base URL, so an unauthenticated
-    default resolves and fails only for the missing credential, never as an unreachable
-    endpoint (model-profiles.spec.md, "Provider readiness")."""
-    _seed_fresh(tmp_path, monkeypatch)
-    _no_auth()
-
-    rc = _install.bootstrap_workstation(assume_yes=True)
-    assert rc == 1
-    out = capsys.readouterr().out
-    assert "anthropic/claude-sonnet-4-6" in out
-    assert "ANTHROPIC_API_KEY is required for the resolved endpoint" in out
-    assert "docket models provider add" in out
-    assert "docket models preset local" in out
-    assert "Foundation Ready" not in out
-    assert "Continuing with project initialization" not in out
-
-
-def test_step5_direct_anthropic_key_is_sufficient_endpoint_readiness(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """anthropic's built-in document supplies the base URL, so a stored ANTHROPIC_API_KEY
-    alone satisfies readiness (model-profiles.spec.md, "Provider readiness")."""
-    _seed_fresh(tmp_path, monkeypatch)
-    _no_auth()
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
-
-    rc = _install.bootstrap_workstation(assume_yes=True)
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Model provider ready" in out
-    assert "ANTHROPIC_API_KEY configured (value hidden)" in out
-    assert "Workstation Foundation Ready" in out
-
-
-def test_step5_registered_local_endpoint_needs_no_api_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _no_auth()
-    _register_local_provider("local", "http://127.0.0.1:8081/v1", "qwen-local", 16384, 8192)
     _models_policy.write_registry(
         {
-            "default": "local/qwen-local",
-            "rank.economy": "local/qwen-local",
-            "rank.standard": "local/qwen-local",
-            "rank.premium": "local/qwen-local",
-            **{f"role.{role}": "local/qwen-local" for role in _models_policy.ALL_ROLES},
+            "default": f"{name}/{model_id}",
+            **{f"role.{role}": f"{name}/{model_id}" for role in _models_policy.ALL_ROLES},
         }
     )
 
-    rc = _install.bootstrap_workstation(assume_yes=True, continuing_to_project=True)
-    out = capsys.readouterr().out
 
-    assert rc == 0
-    assert "Model provider ready" in out
-    assert "local/qwen-local" in out
-    assert "http://127.0.0.1:8081/v1" in out
-    assert "No API key required" in out
-    assert "Shared Workstation Foundation Ready" in out
+# ── readiness: the endpoint piece ───────────────────────────────────────────────────
 
 
-# ── Step 6 security: perms hardening ──────────────────────────────────────────────
-
-
-def test_install_always_reports_tool_call_gate_always_active(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_an_unresolved_default_is_missing_and_names_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The real tool-call gate (policy engine + high-risk classifier) is unconditionally
-    active -- install must never imply otherwise."""
     _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
+    _secrets.save_secrets({})
 
-    _install.bootstrap_workstation(assume_yes=True)
-    out = capsys.readouterr().out
-    assert "policy engine" in out or "high-risk classifier" in out
+    piece = _setup.readiness().endpoint
+
+    assert piece.ok is False
+    assert "ANTHROPIC_API_KEY is required for the resolved endpoint" in piece.reason
+    assert piece.command.startswith("docket setup provider add")
 
 
-# ── perms hardening ──────────────────────────────────────────────────────────────
+def test_a_direct_anthropic_key_is_sufficient_endpoint_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
+
+    piece = _setup.readiness().endpoint
+
+    assert piece.ok is True
+    assert piece.command == ""
 
 
-def test_install_hardens_world_readable_secrets(
+def test_a_registered_local_endpoint_needs_no_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _register_local("local", "http://127.0.0.1:8081/v1", "qwen-local")
+
+    piece = _setup.readiness().endpoint
+
+    assert piece.ok is True
+    assert "local/qwen-local" in piece.reason
+
+
+# ── the steps ───────────────────────────────────────────────────────────────────────
+
+
+def test_step_security_hardens_world_readable_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
     secrets_file = home / "secrets.json"
     secrets_file.write_text("{}")
     secrets_file.chmod(0o644)
 
-    _install.bootstrap_workstation(assume_yes=True)
+    _setup.step_security()
 
     assert secrets_file.stat().st_mode & 0o777 == 0o600
     assert "Tightened permissions to 600" in capsys.readouterr().out
 
 
-def test_install_reports_already_hardened(
+def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = _seed_fresh(tmp_path, monkeypatch)
+
+    _setup.step_policies()
+    first = capsys.readouterr().out
+    _setup.step_policies()
+    second = capsys.readouterr().out
+
+    installed = {f.name for f in (home / "policies").glob("*.json")}
+    assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
+    assert "Installed" in first
+    assert "Installed" not in second
+
+
+# ── init ────────────────────────────────────────────────────────────────────────────
+
+
+def _init_args(tmp_path: Path) -> list[str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    return ["--codebase", str(repo), "--name", "demo"]
+
+
+def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = _seed_fresh(tmp_path, monkeypatch)
+    monkeypatch.delenv("DOCKET_NO_HINTS", raising=False)
+
+    rc = _agents.run_init(_init_args(tmp_path))
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "No model endpoint yet" in captured.out
+    assert "docket setup" in captured.err
+    assert (home / "workspaces" / "projects" / "demo-lead").is_dir()
+    assert not (home / "docket-models.json").exists()
+    assert not (home / "policies").exists()
+
+
+def test_init_with_an_endpoint_does_not_mention_setup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
+    _register_local("local", "http://127.0.0.1:8081/v1", "qwen-local")
 
-    _install.bootstrap_workstation(assume_yes=True)
-    assert "permissions already owner-only" in capsys.readouterr().out
+    rc = _agents.run_init(_init_args(tmp_path))
 
-
-# ── guardrail policies ───────────────────────────────────────────────────────────
-
-
-def test_install_seeds_guardrail_policies(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """the workstation foundation bootstrap runs the same producer as `docket policies init` —
-    the policy engine has nothing to evaluate against an empty $POLICIES_DIR."""
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-
-    policies_dir = home / "policies"
-    assert policies_dir.is_dir()
-    installed = {f.name for f in policies_dir.glob("*.json")}
-    assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
-    assert "Installed" in capsys.readouterr().out
-
-
-def test_install_policies_step_is_idempotent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    home = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth()
-
-    _install.bootstrap_workstation(assume_yes=True)
-    capsys.readouterr()
-    _install.bootstrap_workstation(assume_yes=True)
-    out = capsys.readouterr().out
-
-    assert "already installed" in out
-    # No duplicate/overwritten files — still exactly the shipped template set.
-    installed = {f.name for f in (home / "policies").glob("*.json")}
-    assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
-
-
-# ── dependency detection (Step 1) ────────────────────────────────────────────────
-
-
-def test_check_dependencies_passes_with_python_and_git() -> None:
-    """The real Step-1 probe finds python3/git on PATH (the real dev/CI
-    environment) and does not flag them."""
-    missing = _install._check_dependencies()
-    assert "python3" not in missing
-    assert "git" not in missing
-
-
-def test_check_dependencies_flags_missing_git(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With no `git` on PATH, the real probe reports it missing — and a full
-    install aborts with a non-zero exit."""
-    empty = tmp_path / "empty-bin"
-    empty.mkdir()
-    monkeypatch.setenv("PATH", str(empty))  # nothing at all on PATH
-    assert "git" in _install._check_dependencies()
-
-    home = _seed_fresh(tmp_path, monkeypatch)
-    monkeypatch.setenv("PATH", str(empty))  # _seed_fresh's fixtures don't touch PATH; re-assert
-    assert home.exists()
-    assert _install.bootstrap_workstation(assume_yes=True) == 1
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "No model endpoint yet" not in captured.out
+    assert json.loads(Path(_cfg.FLEET_FILE).read_text())["agents"]
+    assert os.path.isdir(_cfg.PROJECTS_DIR)

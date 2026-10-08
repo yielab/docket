@@ -1,12 +1,12 @@
-"""docket doctor — system-wide health checks + auto-fixes.
+"""docket setup --fix and the health engine: system-wide checks + auto-fixes.
 
-`run_doctor(json_out)` returns the process exit code: 0 healthy, 1 when
+`run_check(json_out, do_fix)` returns the process exit code: 0 healthy, 1 when
 issues are flagged. Each check is its own function, testable in isolation.
 
 All fleet/agent state is read through `core/fleet.py` and `store`; this
 module never opens a daemon config file — there is no daemon to have one.
 Where a check has no daemon-era equivalent, its own docstring says so and
-why (see `_check_dependencies`, `_check_security_gates`, `_doctor_json`).
+why (see `_check_dependencies`, `_check_security_gates`, `_check_json`).
 """
 
 from __future__ import annotations
@@ -109,8 +109,7 @@ def _check_project_agents(ids: list[str]) -> int:
         ui.warn("No project agents found — run: docket init")
         return 0
 
-    ui.console.print()
-    ui.console.print("[bold]Project agents (global fleet across all registered projects):[/bold]")
+    ui.section("Project agents (global fleet across all registered projects):")
     issues = 0
     fleet = _fleet.load_fleet()
     registered = {a.id for a in _fleet.list_agents(fleet)}
@@ -142,8 +141,7 @@ def _check_model_registry_entries() -> int:
     """Flag every malformed ``docket-models.json`` entry (unknown rank anchor/role, or a
     bad model id) that ``load_registry`` silently ignores at read time -- naming the file,
     key, and reason. Read-only: never edits the registry."""
-    ui.console.print()
-    ui.console.print("[bold]Model registry entries (docket-models.json):[/bold]")
+    ui.section("Model registry entries (docket-models.json):")
     problems = _mp.find_registry_problems()
     if not problems:
         ui.success("  All registry entries are well-formed")
@@ -160,8 +158,7 @@ def _check_archetype_overlay() -> int:
     Read-only: never edits the overlay."""
     from docket.core import archetypes as _arch
 
-    ui.console.print()
-    ui.console.print("[bold]Role archetype overlay (docket-roles.json):[/bold]")
+    ui.section("Role archetype overlay (docket-roles.json):")
     problems = _arch.find_overlay_problems()
     if not problems:
         ui.success("  All overlay entries are well-formed")
@@ -178,8 +175,7 @@ def _check_schedule_config() -> int:
     never edits the schedules file (use ``docket pod <p> config set/unset schedule``)."""
     from docket.core import schedule as _sched
 
-    ui.console.print()
-    ui.console.print("[bold]Schedules (docket-schedules.json):[/bold]")
+    ui.section("Schedules (docket-schedules.json):")
     problems = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
     if not problems:
         ui.success("  All schedules are well-formed")
@@ -206,8 +202,7 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
     if not pods:
         return 0
 
-    ui.console.print()
-    ui.console.print("[bold]Dispatch task ledger (TASK_LIST.json <-> HEARTBEAT.md):[/bold]")
+    ui.section("Dispatch task ledger (TASK_LIST.json <-> HEARTBEAT.md):")
     issues = 0
     for project in pods:
         lead_id = _pod.member_id(project, "lead")
@@ -233,7 +228,7 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
             ui.success(f"  {project}: ledger re-synced from TASK_LIST.json")
             issues -= 1
         else:
-            ui.console.print("    Fix with: docket doctor --fix")
+            ui.console.print("    Fix with: docket setup --fix")
     return issues
 
 
@@ -243,8 +238,7 @@ def _check_budget(ids: list[str], cost: dict[str, tuple[str, float, bool]]) -> i
     same ``~$… (estimated — no cost recorded)`` label the dispatch gate uses."""
     if not ids:
         return 0
-    ui.console.print()
-    ui.console.print("[bold]Budget check:[/bold]")
+    ui.section("Budget check:")
     issues = 0
     for aid in ids:
         budget_s, cost_f, estimated = cost.get(aid, ("", 0.0, False))
@@ -273,8 +267,7 @@ def _check_runaway(ids: list[str], cost: dict[str, tuple[str, float, int]]) -> i
     """Per-agent runaway session detection (high turns or high cost)."""
     if not ids:
         return 0
-    ui.console.print()
-    ui.console.print("[bold]Runaway session check:[/bold]")
+    ui.section("Runaway session check:")
     issues = 0
     for aid in ids:
         _budget, cost_f, turns = cost.get(aid, ("", 0.0, 0))
@@ -292,8 +285,7 @@ def _check_key_hygiene() -> int:
     report = _keys_age_report()
     if not report:
         return 0
-    ui.console.print()
-    ui.console.print("[bold]API key hygiene:[/bold]")
+    ui.section("API key hygiene:")
     if _secrets_backend() == "keyring":
         ui.success("  Backend: keyring (values in OS keyring, not plaintext at rest)")
     else:
@@ -327,8 +319,7 @@ def _check_provider_coverage(ids: list[str]) -> int:
             missing.append((aid, model, expected))
     if not missing:
         return 0
-    ui.console.print()
-    ui.console.print("[bold]Provider key coverage:[/bold]")
+    ui.section("Provider key coverage:")
     for aid, model, expected in missing:
         ui.console.print(f"[red]✗[/red]   Missing key: {aid} ({model}) — needs {expected}")
         ui.console.print(f"    Add with: docket keys add {expected}")
@@ -365,8 +356,7 @@ def _check_provider_catalog() -> int:
     """Flag every malformed global provider document -- naming the file, provider
     name and failing field, the way `_check_archetype_overlay` names a malformed
     role. Read-only: never edits the catalog."""
-    ui.console.print()
-    ui.console.print("[bold]Provider catalog (docket-providers.json):[/bold]")
+    ui.section("Provider catalog (docket-providers.json):")
     problems = _provider_catalog_problems()
     if not problems:
         ui.success("  All provider documents are well-formed")
@@ -384,8 +374,7 @@ def _check_exporters() -> int:
     """Warn for every enabled exporter whose health shows a failure since its last success,
     plus informational lines (not counted as issues) for a `conversation`/`full` exporter
     reaching a non-loopback host."""
-    ui.console.print()
-    ui.console.print("[bold]Exporters:[/bold]")
+    ui.section("Exporters:")
     catalog = _exporter.load_catalog()
     enabled = sorted(name for name, spec in catalog.entries.items() if spec.enabled)
     issues = 0
@@ -412,8 +401,7 @@ def _check_exporters() -> int:
 def _check_notifications(ids: list[str]) -> int:
     """Warn when no enabled channel delivers beyond the console -- a parked task would wait
     unseen. Counted as an issue only once a project agent exists to park anything."""
-    ui.console.print()
-    ui.console.print("[bold]Notifications:[/bold]")
+    ui.section("Notifications:")
     delivering = _channel.load_catalog().delivering()
     text = _channel.unreached_warning(delivering)
     if text is None:
@@ -458,8 +446,7 @@ def _check_security_gates() -> int:
     The gate itself is unconditionally active on every tool call docket dispatches (see
     specs/functional/security-gates.spec.md) — there is no "is it enabled" question left to ask,
     only whether execution is sandboxed."""
-    ui.console.print()
-    ui.console.print("[bold]Security gates:[/bold]")
+    ui.section("Security gates:")
 
     ui.success("  Tool-call gate: always active (policy engine + high-risk command classifier)")
 
@@ -512,8 +499,7 @@ def _check_policies() -> int:
     """Guardrail policy store integrity: flags any file the evaluator would fail closed on,
     through the same ``core.policy`` validation, so doctor can never call a store healthy that
     a live turn would block on (security-gates.spec.md, policy engine requirement 7)."""
-    ui.console.print()
-    ui.console.print("[bold]Guardrail policies:[/bold]")
+    ui.section("Guardrail policies:")
     files = _pol.policy_files()
     if not files:
         ui.dim("  No policies installed — docket policies init")
@@ -539,8 +525,7 @@ def _check_pod_config_overlays() -> int:
     from docket.core import archetypes as _arch
     from docket.core import dispatch as _dispatch
 
-    ui.console.print()
-    ui.console.print("[bold]Pod config overlays (<pod>/config/):[/bold]")
+    ui.section("Pod config overlays (<pod>/config/):")
     pods = _dispatch.dispatchable_pods()
     if not pods:
         ui.dim("  No pods provisioned")
@@ -614,8 +599,7 @@ def _check_pod_sync(ids: list[str]) -> int:
     member_ids = [aid for aid in ids if _pod.pod_of(aid) is not None]
     if not member_ids:
         return 0
-    ui.console.print()
-    ui.console.print("[bold]Pod member templates:[/bold]")
+    ui.section("Pod member templates:")
     stale = 0
     for aid in member_ids:
         status = _pp.member_sync_status(aid)
@@ -644,8 +628,7 @@ def _check_runtime_contract(ids: list[str]) -> int:
     the run."""
     from docket.core import memory as _mem
 
-    ui.console.print()
-    ui.console.print("[bold]Runtime startup contract:[/bold]")
+    ui.section("Runtime startup contract:")
     healed = 0
     for aid in ids:
         ws = _cfg.workspace_dir(aid)
@@ -713,7 +696,7 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     return out
 
 
-def _doctor_json_fleet_state() -> tuple[int, dict[str, Any], _fleet.FleetConfig | None]:
+def _check_json_fleet_state() -> tuple[int, dict[str, Any], _fleet.FleetConfig | None]:
     """Load the fleet for the JSON report; a load failure is one issue and yields the
     error shape callers below treat as "no fleet"."""
     fleet_data: dict[str, Any]
@@ -733,7 +716,7 @@ def _doctor_json_fleet_state() -> tuple[int, dict[str, Any], _fleet.FleetConfig 
     return issues, fleet_data, fleet
 
 
-def _doctor_json_agents(
+def _check_json_agents(
     ids: list[str], fleet: _fleet.FleetConfig | None
 ) -> tuple[int, list[dict[str, Any]]]:
     """Per-project workspace/registration issues, JSON shape of `_check_project_agents`."""
@@ -764,7 +747,7 @@ def _doctor_json_agents(
     return issues, agents_json
 
 
-def _doctor_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
+def _check_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
     """TASK_LIST.json vs. HEARTBEAT.md ledger agreement, JSON shape of `_check_dispatch_ledger`."""
     from docket.core import dispatch as _dispatch_mod
     from docket.core import pod as _pod_ledger_mod
@@ -788,7 +771,7 @@ def _doctor_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
     return issues, dispatch_ledger_results
 
 
-def _doctor_json_budget_runaway(
+def _check_json_budget_runaway(
     ids: list[str],
 ) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]]]:
     """Per-agent budget cap + runaway session usage, JSON shape of `_check_budget` and
@@ -826,7 +809,7 @@ def _doctor_json_budget_runaway(
     return issues, budget_results, runaway_results
 
 
-def _doctor_json_key_hygiene(
+def _check_json_key_hygiene(
     ids: list[str],
 ) -> tuple[int, list[dict[str, str]], list[dict[str, str]]]:
     """Key age report + missing provider keys, JSON shape of `_check_key_hygiene` and
@@ -846,7 +829,7 @@ def _doctor_json_key_hygiene(
     return issues, keys_list, missing_keys
 
 
-def _doctor_json_security() -> dict[str, Any]:
+def _check_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
     return {
         "toolCallGate": "always-on",
@@ -858,20 +841,20 @@ def _doctor_json_security() -> dict[str, Any]:
     }
 
 
-def _doctor_json_notifications(ids: list[str]) -> tuple[int, dict[str, Any]]:
+def _check_json_notifications(ids: list[str]) -> tuple[int, dict[str, Any]]:
     """Notification reach, JSON shape of `_check_notifications`."""
     delivering = _channel.load_catalog().delivering()
     ok = bool(delivering) or not ids
     return (0 if ok else 1), {"ok": ok, "delivering": delivering}
 
 
-def _doctor_json_provider_catalog() -> tuple[int, list[dict[str, str]]]:
+def _check_json_provider_catalog() -> tuple[int, list[dict[str, str]]]:
     """Malformed global provider documents, JSON shape of `_check_provider_catalog`."""
     problems = _provider_catalog_problems()
     return len(problems), [{"name": name, "reason": reason} for name, reason in problems]
 
 
-def _doctor_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
+def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
     """Template/prompt version drift, JSON shape of `_check_template_version`.
     Advisory — never contributes to the issue count."""
     from docket.core import pod as _pod_mod
@@ -894,7 +877,7 @@ def _doctor_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
     return tmpl_results
 
 
-def _doctor_json() -> dict[str, Any]:
+def _check_json() -> dict[str, Any]:
     """Assemble the machine-readable health report; channel-binding presence is
     covered per agent below."""
     issues = 0
@@ -904,29 +887,29 @@ def _doctor_json() -> dict[str, Any]:
     if not has_py:
         issues += 1
 
-    fleet_issues, fleet_data, fleet = _doctor_json_fleet_state()
+    fleet_issues, fleet_data, fleet = _check_json_fleet_state()
     issues += fleet_issues
 
-    agents_issues, agents_json = _doctor_json_agents(ids, fleet)
+    agents_issues, agents_json = _check_json_agents(ids, fleet)
     issues += agents_issues
 
-    ledger_issues, dispatch_ledger_results = _doctor_json_dispatch_ledger()
+    ledger_issues, dispatch_ledger_results = _check_json_dispatch_ledger()
     issues += ledger_issues
 
-    budget_issues, budget_results, runaway_results = _doctor_json_budget_runaway(ids)
+    budget_issues, budget_results, runaway_results = _check_json_budget_runaway(ids)
     issues += budget_issues
 
-    key_issues, keys_list, missing_keys = _doctor_json_key_hygiene(ids)
+    key_issues, keys_list, missing_keys = _check_json_key_hygiene(ids)
     issues += key_issues
 
-    provider_catalog_issues, provider_catalog_problems = _doctor_json_provider_catalog()
+    provider_catalog_issues, provider_catalog_problems = _check_json_provider_catalog()
     issues += provider_catalog_issues
 
-    notify_issues, notifications = _doctor_json_notifications(ids)
+    notify_issues, notifications = _check_json_notifications(ids)
     issues += notify_issues
 
-    security = _doctor_json_security()
-    tmpl_results = _doctor_json_template_drift(ids)
+    security = _check_json_security()
+    tmpl_results = _check_json_template_drift(ids)
 
     return {
         "healthy": issues == 0,
@@ -950,16 +933,16 @@ def _doctor_json() -> dict[str, Any]:
     }
 
 
-def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
+def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     """Run all health checks; return 0 when healthy, 1 when issues are flagged.
     json_out emits the machine-readable report (health probe); do_fix re-syncs
     the dispatch ledger from TASK_LIST.json."""
     if json_out:
-        report = _doctor_json()
+        report = _check_json()
         print(_json.dumps(report, indent=2))
         return 0 if report.get("healthy") else 1
 
-    ui.header("Docket Doctor — System Health Check")
+    ui.header("Setup check")
     ui.console.print()
     was_recording = ui.console.record
     ui.console.record = True
@@ -1002,5 +985,5 @@ def _print_summary(rendered: str) -> int:
         ui.success("All checks passed — docket is healthy.")
         return 0
     ui.console.print(f"[red][bold]{critical} critical issue(s) found.[/bold][/red]")
-    ui.console.print("  Re-sync what can be fixed automatically:  docket doctor --fix")
+    ui.console.print("  Re-sync what can be fixed automatically:  docket setup --fix")
     return 1

@@ -208,7 +208,7 @@ def record_isolation_off(home: Path) -> None:
 
 
 def record_isolation_on(home: Path) -> None:
-    """Record `docket gates isolate on` in *home*'s fleet.json, merging into any existing file."""
+    """Record `docket setup sandbox on` in *home*'s fleet.json, merging into any existing file."""
     _record_isolation_mode(home, "non-main")
 
 

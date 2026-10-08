@@ -2,8 +2,8 @@
 
 `core/exporter.py` owns the `kind: exporter` document, the merged catalog and pure
 classification (`activation_state`, `verify_endpoint`); this module renders those results,
-prompts for a missing credential (`cli/_keys.py::prompt_and_store`), and dispatches the wire
-probe by dialect -- the same split `cli/_provider.py` keeps from `core/provider.py`.
+prompts for a missing credential (`cli/_setup_model.py::prompt_and_store`), and dispatches the wire
+probe by dialect.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from docket import ui
-from docket.cli import _keys
+from docket.cli import _setup_model
 from docket.cli._exporters_preview import run_preview
 from docket.core import exporter as _exp
 from docket.core import privacy as _privacy
@@ -286,7 +286,7 @@ def _run_enable(args: list[str]) -> int:
     if missing:
         if sys.stdin.isatty():
             for cred in missing:
-                if not _keys.prompt_and_store(cred):
+                if not _setup_model.prompt_and_store(cred):
                     ui.error(f"'{cred}' was not stored. Exporter '{name}' was not enabled.")
                     return 1
         else:

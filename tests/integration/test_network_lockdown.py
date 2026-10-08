@@ -17,7 +17,7 @@ import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _gates
+from docket.cli import _setup_sandbox
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core.audit import read_audit
@@ -136,19 +136,24 @@ class TestResolution:
 
 class TestGatesCommand:
     def test_network_none_is_recorded_and_audited(self) -> None:
-        assert _gates.run_gates("network", want="none") == 0
+        assert _setup_sandbox.network("none") == 0
         assert _fleet.get_network_mode() == "none"
         assert [e for e in read_audit() if e["action"] == "gates.network"][-1]["detail"] == "none"
-        assert _gates.run_gates("network", want="open") == 0
+        assert _setup_sandbox.network("open") == 0
         assert _fleet.get_network_mode() == "open"
 
     def test_bad_value_is_usage_error(self) -> None:
-        assert _gates.run_gates("network", want="sideways") == 2
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        result = CliRunner().invoke(app, ["setup", "sandbox", "network", "sideways"])
+        assert result.exit_code == 2
 
     def test_status_names_the_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
         _fleet.set_network_mode("none")
-        _gates.run_gates("status")
-        assert "Network: none (global)" in capsys.readouterr().out
+        _setup_sandbox.status()
+        assert "Network: none" in capsys.readouterr().out
 
 
 class TestRefusal:
@@ -169,8 +174,8 @@ class TestRefusal:
                 "solo-agent", "agent:solo-agent:default", "go", 30
             )
 
-        assert "docket gates network" in str(excinfo.value)
-        assert "docket gates isolate" in str(excinfo.value)
+        assert "docket setup sandbox network" in str(excinfo.value)
+        assert "docket setup sandbox on" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "network.refused"]
 
 

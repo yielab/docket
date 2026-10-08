@@ -556,7 +556,7 @@ def run_verify_cmd(
     if risk_cls is not None:
         return False, (
             f"[verify command refused: matches high-risk class '{risk_cls.name}' "
-            f"({risk_cls.description}) -- see `docket gates classes`]"
+            f"({risk_cls.description}) -- see `docket setup sandbox classes`]"
         )
     try:
         proc = subprocess.Popen(

@@ -1,6 +1,6 @@
 EXIT:0
 #compdef docket
-# docket(1) zsh completion — eval "$(docket completions zsh)"
+# docket(1) zsh completion — eval "$(docket setup shell zsh)"
 _docket() {
   local -a commands
   commands=(
@@ -17,8 +17,6 @@ _docket() {
     'scope:Manage session scope / project isolation key'
     'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
-    'keys:API key management (add/list/remove/rotate/validate/export/setup)'
-    'models:View and edit the role->model policy -- the single place that decides which model each kind of agent runs on'
     'pod:Manage a project'\''s pod: list members, add/remove a role, set an implementer'\''s verify command, and run its dispatch pipeline'
     'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
     'roles:Manage declarative role archetypes: list/show/add/validate'
@@ -26,8 +24,6 @@ _docket() {
     'edit:Open agent workspace files in $EDITOR'
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
-    'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
-    'gates:Show docket'\''s tool-call gate and manage workspace isolation'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set/prune)'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
@@ -35,7 +31,6 @@ _docket() {
     'audit:Show the audit log, or verify its tamper-evidence chain'
     'snapshot:Export system state snapshot as JSON'
     'serve:Local HTTP endpoints: /status.json /metrics /health'
-    'completions:Shell completion helpers'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
     'recipes:List and inspect the recipe library'
@@ -72,20 +67,17 @@ _docket() {
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
+    setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
     conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates)           compadd status isolate network classes ;;
-    keys)            compadd add list remove rotate setup validate export ;;
-    models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;
     policies)        compadd list show init test validate ;;
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
-    completions)     compadd bash zsh ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|delete|profile|wire|unwire|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;

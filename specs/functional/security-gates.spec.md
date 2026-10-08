@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 0.34.1
+**Version**: 0.35.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
-MCP, and Telegram producers, all answering identically; workspace isolation is opt-in (`docket gates
-isolate on`), and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
+MCP, and Telegram producers, all answering identically; workspace isolation is opt-in (`docket setup sandbox
+on`), and fails closed when on without a usable backend. `ToolContext.approval_mode` (default `"wait"`) picks whether an
 `ask` verdict blocks on that store or is refused immediately with no record and no wait — see the
 in-turn tool-call gate section below, now with two producers (harness mode and, since ROADMAP
 P26-5, a pod's own `approvalMode` setting). There is no approval-routing posture flag: it and
@@ -163,9 +163,9 @@ are owned here, not there.
    `prevent_path_traversal`).
 3. Workspace isolation is **opt-in** (ADR 0021, reversing ADR 0020 §1): a `DOCKET_HOME` with no
    recorded choice (`FleetSecurity.isolation_mode == "unset"`) runs tools on the host, exactly as
-   an explicit off does. `docket gates isolate on` records on and succeeds only when
-   `sandbox_availability()` finds a backend; `isolate off` records an explicit off; both are
-   audited (`gates.isolate`). `docket gates status` and `docket doctor` show `off (default)`, `on`
+   an explicit off does. `docket setup sandbox on` records on and succeeds only when
+   `sandbox_availability()` finds a backend; `setup sandbox off` records an explicit off; both are
+   audited (`gates.isolate`). `docket setup sandbox` and `docket setup` show `off (default)`, `on`
    or `off`. The requirement a host must meet to turn it on is one backend: bubblewrap (`bwrap`,
    Linux only) or a reachable docker daemon (the only backend on macOS). No backend is ever needed
    while isolation is off.
@@ -175,7 +175,7 @@ are owned here, not there.
    `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
    The docker jail is only as capable as `DOCKET_SANDBOX_IMAGE` (default `alpine:3.20`, which docket
    does not ship an image for): a jailed `git commit` needs an image with `git`, and python-based
-   recipes need `python3`. `docket doctor` probes the image once (`command -v git`) when docker is
+   recipes need `python3`. `docket setup` probes the image once (`command -v git`) when docker is
    the backend in use and isolation is not off, and warns with the fix. Real-docker tests build a
    `FROM alpine:3.20` + `apk add --no-cache git` image to prove a jailed commit in a linked worktree
    and `network none` against a host-side listener.
@@ -203,19 +203,19 @@ are owned here, not there.
    `security.approvalRoutingState`/`approvalRoutingMode` fleet.json fields, their
    `core/fleet.py` accessors, `core/security.py`'s `apply_approval_routing`/
    `disable_approval_routing`, `docket init`'s `--gates`/`--no-gates` options, the retired
-   `docket gates enable`/`disable` subcommands, and the posture lines in `docket gates status`
-   and `docket doctor` (human and `--json`) are all gone. The flag had a writer and two display
+   `enable`/`disable` subcommands, and the posture lines in `docket setup sandbox`
+   and `docket setup` (human and `--json`) are all gone. The flag had a writer and two display
    readers and no reader on the live path (`core/tools.py`, `core/approval.py`,
    `core/telegram.py`, `core/agent_loop.py`, `serve.py`), so deleting it changed no delivery
    behaviour. A `fleet.json` that still carries the keys loads (the fleet models tolerate extra
    keys) and nothing reads them. An `ask` verdict always sits in docket's own approval store,
    where the CLI, HTTP, MCP, and Telegram channels answer it identically; docket never pushes an
    approval prompt to any channel on its own — see telegram-integration.spec.md's Command-grammar
-   requirements 7-8 (inbound-only, no notification on a newly-created approval). `docket gates`
-   with any subcommand other than `status`, `isolate` or `classes` (`enable`/`disable`
-   included) **MUST** print an unknown-subcommand error plus usage and exit 2, and an
-   unrecognised flag (e.g. `--force`) **MUST** exit 2.
-3. There **MUST** be a way to verify gate status (`docket doctor`, `docket gates status`) —
+   requirements 7-8 (inbound-only, no notification on a newly-created approval). `docket setup sandbox`
+   with any verb other than `status`, `on`, `off`, `network` or `classes` (`enable`/`disable`
+   included) **MUST** be a usage error (exit 2), and an unrecognised flag (e.g. `--force`)
+   **MUST** exit 2.
+3. There **MUST** be a way to verify gate status (`docket setup`, `docket setup sandbox`) —
    reporting the gate as always-active plus the current isolation posture.
 
 ### High-risk action classes (implemented, FD-3)
@@ -260,7 +260,7 @@ are owned here, not there.
    footing as money-movement and secret-access above.
 5. The full high-risk class list — name, description, pattern, and (for prod-deploy) which
    allowlisted bins it overlaps, and that the classifier's own argument-awareness is what still
-   gates it despite the overlap — **MUST** be visible, read-only, via `docket gates classes`.
+   gates it despite the overlap — **MUST** be visible, read-only, via `docket setup sandbox classes`.
    This command **MUST NOT** change any configuration.
 
 ### Docket-launched process classification (implemented, ROADMAP Phase 15 G-3)
@@ -293,7 +293,7 @@ requirement 2 above for why `resolve_command_action` in particular could never h
 2. `edges/adapters/system.py`'s `run_verify_cmd` **MUST** classify its `cmd` argument against
    `core.security.match_high_risk` before starting the subprocess. A match **MUST** fail
    closed — the shell command **MUST NOT** be started at all — and the returned failure message
-   **MUST** name the matched class and point at `docket gates classes`. Refusing outright is a
+   **MUST** name the matched class and point at `docket setup sandbox classes`. Refusing outright is a
    stronger posture than routing to an approval prompt, and it is the only honest one available
    here: `run_verify_cmd` runs synchronously inside a dispatch hop with no interactive approver
    reachable to answer — the same fail-closed philosophy `TOOL_APPROVAL_TIMEOUT` and
@@ -412,7 +412,7 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    and to every hook and role when the JSON itself is unreadable — with `PolicyHit.policy_id`
    naming the broken file and `message` naming the reason, so the existing non-`allow`
    audit/trace paths attribute the denial to the file. The `--trusted` injection-id skip applies
-   only when the file's `id` is readable and matches; brokenness never widens it. `docket doctor`
+   only when the file's `id` is readable and matches; brokenness never widens it. `docket setup`
    **MUST** report each broken policy file as an issue.
 8. `docket policies test <hook> <role> "<text>"` **MUST** accept `--tool <name>` (default
    `bash`): the name is resolved against the built-in tool registry (unknown → error, exit 1,
@@ -794,7 +794,7 @@ either.
 2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
    `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
    handler **MUST NOT** ask for a jail unless the caller explicitly sets `sandbox="auto"`. This
-   mirrors the existing Docker workspace isolation posture (`docket gates isolate`, also opt-in) for
+   mirrors the existing Docker workspace isolation posture (`docket setup sandbox on|off`, also opt-in) for
    the same reason: docker is not installed on every developer machine, bwrap is a Linux-only
    binary docket has never previously depended on, and turning a jail on by default for a codebase
    that does not have Rack CLI's own testing behind it risks breaking ordinary tool calls in ways
@@ -802,7 +802,7 @@ either.
    filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
    path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
    `"off"` until an operator has verified docker or bwrap works on their fleet's hosts**, then opt
-   in fleet-wide with `docket gates isolate on` — the same "opt in, verify, then adopt" path Docker
+   in fleet-wide with `docket setup sandbox on` — the same "opt in, verify, then adopt" path Docker
    workspace isolation already used before it, too, was wired live (W18-3; see requirement 9).
 3. **The jail is additive to `resolve_within`, never a replacement.** A `bwrap` jail binds the whole
    host filesystem read-only over itself, then re-binds each of `ToolContext.roots` read-write on
@@ -815,7 +815,7 @@ either.
    place. Both are test-pinned (`tests/integration/test_sandboxed_exec.py`).
 4. **Honest capability reporting: two distinct questions, two distinct answers.**
    - *"Is sandboxing configured/available?"* — a pure, side-effect-free capability probe,
-     `sandbox_availability()`, answerable with no command run at all (the future `docket doctor`
+     `sandbox_availability()`, answerable with no command run at all (the future `docket setup`
      hook this card leaves for; not wired to any CLI surface yet, per this wave's file-ownership
      split).
    - *"Did **this** command run in a jail?"* — a per-call answer. `toolbox.run_bash` **MUST** report
@@ -883,7 +883,7 @@ either.
    - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed directly
      (tests, and any future driver). `DocketDriver.run_turn` is the one call site that can pass
      `"auto"`, and only does so when `core.fleet.get_isolation_enabled()` is true, which only a
-     recorded `docket gates isolate on` makes it. A `DOCKET_HOME` with no recorded choice is not
+     recorded `docket setup sandbox on` makes it. A `DOCKET_HOME` with no recorded choice is not
      isolated, and its turns never probe for a backend.
    - **Fail closed, not fail open, when isolation is on and no backend is usable.**
      `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
@@ -898,10 +898,10 @@ either.
      per-call marker only an operator reading raw tool output would ever see is not an acceptable
      substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
      before any call gets the chance to degrade. The refusal text names both fixes: install
-     bubblewrap (or start docker), or run `docket gates isolate off`.
-   - `docket doctor` probes `sandbox_availability()` and reports the backend a turn would use, or
+     bubblewrap (or start docker), or run `docket setup sandbox off`.
+   - `docket setup` probes `sandbox_availability()` and reports the backend a turn would use, or
      that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
-     (`off (default)` | `on` | `off`) and `sandboxBackend`. `docket gates status` reports the
+     (`off (default)` | `on` | `off`) and `sandboxBackend`. `docket setup sandbox` reports the
      isolation state only (no host-dependent probe).
    - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
      what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
@@ -979,7 +979,7 @@ otherwise.
    **MUST** be audited (`fetch.result_warn`). `allow`, or no hit, passes the outcome byte-identical
    with no audit entry.
 7. **A network lockdown mode (ADR 0020 §4).** Open stays the default. The global mode
-   (`docket gates network none|open`, `FleetSecurity.network_mode`, audited `gates.network`) and
+   (`docket setup sandbox network none|open`, `FleetSecurity.network_mode`, audited `gates.network`) and
    the pod setting `network` (`none`|`open`, default `open`) resolve through
    `core.pod.effective_network`: `none` when either says `none`, so a pod's `open` never widens a
    global `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed
@@ -990,7 +990,7 @@ otherwise.
    before any model call (`DispatchError`, as for the isolation refusal: one attempt, one
    `network.refused` audit entry, task `dispatch_refused`), naming both settings. `fetch` runs in
    docket's own process and is untouched: its domain allowlist stays the inspectable path.
-   `docket gates status`, `docket doctor` and `docket config explain` report the mode and scope.
+   `docket setup sandbox`, `docket setup` and `docket config explain` report the mode and scope.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
@@ -1111,27 +1111,27 @@ pre-grants", this section governs for `--answers stdin` only.
 
 ## Interface Contracts
 
-### `docket gates` command (implemented)
+### `docket setup sandbox` command (implemented)
 
 ```bash
 # The tool-call gate itself (policy engine + high-risk command classifier) is unconditionally
 # active (Phase 19 P19-3) -- nothing below turns IT on or off. These commands manage
-# isolation posture only (core/fleet.py's FleetSecurity), per cli/_gates.py.
-docket gates status            # MUST report the gate as always-active, plus isolation posture
-docket gates <other>           # any other subcommand (enable/disable included): MUST print an
+# isolation posture only (core/fleet.py's FleetSecurity), per cli/_setup_sandbox.py.
+docket setup sandbox            # MUST report the gate as always-active, plus isolation posture
+docket setup sandbox <other>           # any other subcommand (enable/disable included): MUST print an
                                 #   unknown-subcommand error plus usage and exit 2
-docket gates isolate [on|off]  # MUST record on/off explicitly; bare (or any other word) is a read: print the
+docket setup sandbox on|off [on|off]  # MUST record on/off explicitly; bare (or any other word) is a read: print the
                                 #   isolation posture plus usage, write and audit nothing, exit 2 (on requires a usable backend per
                                 #   sandbox_availability(), bwrap or docker). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
                                 #   turn (audited isolation.refused) when no docker/bwrap backend is
                                 #   usable -- see Exec sandbox requirement 9
-docket gates network none|open # MUST record the global network mode (audited gates.network);
+docket setup sandbox network none|open # MUST record the global network mode (audited gates.network);
                                 #   anything else: usage, exit 2. See Network egress requirement 7
-docket gates classes           # MUST list the documented high-risk action classes, read-only
+docket setup sandbox classes           # MUST list the documented high-risk action classes, read-only
 docket init                    # the tool-call gate needs no install step (always active); there
                                 #   is no --gates/--no-gates option (Enablement requirement 2)
-docket doctor                  # MUST report gate status, isolation posture and the backend
+docket setup sandbox           # MUST report gate status, isolation posture and the backend (a read)
 ```
 
 ### Approval channels
@@ -1246,7 +1246,7 @@ docket metrics  (window: 12 terminal sessions)
 ### High-risk action classes (implemented)
 
 ```text
-$ docket gates classes
+$ docket setup sandbox classes
 High-risk action classes
 
   Documented action classes considered especially consequential
@@ -1283,7 +1283,7 @@ $ docket pod myapp dispatch
 
 The task's trace records a `verification_failed` event whose `output` names the matched class:
 `[verify command refused: matches high-risk class 'money-movement' (Payment/financial
-operations: charges, refunds, payouts, transfers) -- see \`docket gates classes\`]` — the
+operations: charges, refunds, payouts, transfers) -- see \`docket setup sandbox classes\`]` — the
 subprocess is never started, not merely reported as failing.
 
 A hop that reports having run a high-risk command is flagged, not blocked, on the `pre_output`
@@ -1347,7 +1347,7 @@ $ docket audit
 These are `toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
 `tests/integration/test_sandboxed_exec.py` asserts, not shell transcripts a user can run directly — but
 unlike the P19-9 version of this section, they are no longer hypothetical: `DocketDriver.run_turn`
-is a real, live caller that picks `sandbox="auto"` for exactly these shapes whenever `docket gates
+is a real, live caller that picks `sandbox="auto"` for exactly these shapes whenever `docket setup sandbox
 isolate on` is set and a backend is usable (`tests/integration/test_docket_driver.py`'s
 `TestIsolationWiring`).
 
@@ -1566,6 +1566,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.35.0 (2026-10-07)
+
+- Phase 39 (P39-12): the sandbox surface is `docket setup sandbox` (`status`, `on`, `off`,
+  `network none|open`, `classes`); bare `setup sandbox` and `status` are reads that write and audit
+  nothing. `docket gates` and `docket doctor` are unknown commands; the posture is also a line of
+  `docket setup`'s report and `docket setup --fix` runs the checks that repaired.
 
 ### Version 0.34.1 (2026-10-07)
 

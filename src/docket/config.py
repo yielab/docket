@@ -91,13 +91,13 @@ CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
 # RUNAWAY_TURNS_THRESHOLD / RUNAWAY_COST_THRESHOLD: shared "this session looks
-# stuck" heuristic used by both `docket doctor` and `docket cost` -- one pair
+# stuck" heuristic used by both `docket setup --fix` and `docket cost` -- one pair
 # of thresholds so the two commands never disagree about what counts as
 # runaway. 200 turns / $20 are round, deliberately generous defaults: past
 # either, a human should look, not assume the model is still making progress.
 RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
 RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
-# KEY_MAX_AGE_DAYS: `docket doctor`'s key-hygiene report flags a stored
+# KEY_MAX_AGE_DAYS: `docket setup --fix`'s key-hygiene report flags a stored
 # secret as STALE past this age -- a rotation nudge, not an expiry (docket
 # never blocks anything on it).
 KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
@@ -449,7 +449,7 @@ FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))
 
 # ── docket-owned Telegram approval channel ──
 # The bot token is stored as an ordinary docket-keys secret (core/secrets.py)
-# under this name -- `docket keys add TELEGRAM_BOT_TOKEN` -- rather than a
+# under this name -- `docket setup provider add TELEGRAM_BOT_TOKEN` -- rather than a
 # bespoke config file, so it inherits the same at-rest handling (0600 JSON)
 # and the same redaction path (core/trace.py's redact() reads every stored
 # secret VALUE via core.secrets.secret_values()) every other credential

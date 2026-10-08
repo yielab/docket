@@ -228,12 +228,12 @@ _ISOLATION = [
     "  Session Key:       agent:myapp:default",
     "  Project Scope:     default",
     "⋯",
-    "$ docket gates status",
-    "Tool-call gate",
-    "✓ Policy engine + high-risk command classifier: always active",
-    "✓ Workspace isolation: on (consulted by the turn loop; a turn refuses to run rather "
-    "than falling back unsandboxed; docket doctor names the backend)",
-    "Network: open (default) -- a pod's network=none narrows it; docket gates network none",
+    "$ docket setup sandbox",
+    "Sandbox",
+    "✓ Tool-call gate: always active (policy engine + high-risk command classifier)",
+    "✓ Isolation: non-main (backend bwrap); a turn refuses to run rather than fall back "
+    "unsandboxed",
+    "Network: open (a pod's network none still narrows it)",
     "$ git worktree list",
     "~/code/myapp                                              0150f26 [main]",
     "~/.docket/workspaces/projects/myapp-implementer/tasks/task-a36c9b20-2eb4-4b06-af17-79080473964e  "

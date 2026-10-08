@@ -270,7 +270,7 @@ class TestDoctorExporterHealth:
     def test_doctor_warns_naming_exporters_test_on_recorded_failures(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.cli._doctor import run_doctor
+        from docket.cli._setup_check import run_check
 
         _seed(tmp_path, monkeypatch)
         _store_langfuse_keys()
@@ -283,7 +283,7 @@ class TestDoctorExporterHealth:
         _cfg.EXPORTERS_HEALTH_FILE.write_text(json.dumps({"langfuse": {"failed": 3, "lastOk": ""}}))
 
         capsys.readouterr()
-        run_doctor()
+        run_check()
         out = capsys.readouterr().out
         assert "docket exporters test langfuse" in out
 

@@ -733,7 +733,7 @@ def load_registry(project: str = "") -> ArchetypeRegistry:
 
 def find_overlay_problems(project: str = "") -> list[tuple[str, str]]:
     """Return ``(role, reason)`` pairs for a malformed overlay entry ``load_registry``
-    silently skips -- for ``docket doctor``. Read-only. When *project* is given, also
+    silently skips -- for ``docket setup --fix``. Read-only. When *project* is given, also
     covers that pod's own overlay file, not only the global one."""
     problems = _overlay_problems(cfg.ARCHETYPE_REGISTRY_FILE)
     if project:
@@ -922,7 +922,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         if model not in MODEL_CLASSES:
             raise ArchetypeError(
                 f"archetype {name!r}: model must be one of {sorted(MODEL_CLASSES)} "
-                f"(got {model!r}); to pin a model id, run: docket models set {name} <id>"
+                f"(got {model!r}); to pin a model id, run: docket setup model set {name} <id>"
             )
         canonical["modelClass"] = model
 

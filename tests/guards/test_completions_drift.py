@@ -1,10 +1,10 @@
 """Drift guard: shell completions must advertise exactly the live
 Typer command set.
 
-`_completions.py` generates the top-level command table from the Typer
+`_setup_shell.py` generates the top-level command table from the Typer
 `app` registry at call time (see its module docstring). These tests
 independently re-derive the "true" command set straight from the registry
-(not by importing `_completions`'s own helper), so this is a real
+(not by importing `_setup_shell`'s own helper), so this is a real
 regression check, not a tautology: any future drift between the CLI
 surface and the emitted completion scripts fails the suite.
 """
@@ -19,13 +19,13 @@ from pathlib import Path
 
 import pytest
 
-from docket.cli import _completions
+from docket.cli import _setup_shell
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _live_command_names() -> set[str]:
-    """Walk the Typer `app` registry directly (independent of _completions)."""
+    """Walk the Typer `app` registry directly (independent of _setup_shell)."""
     from typer.core import TyperGroup
     from typer.main import get_command
 
@@ -54,7 +54,7 @@ class TestBashCompletionsMatchRegistry:
     def test_advertises_exactly_the_live_command_set(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _completions.run_completions("bash")
+        print(_setup_shell.render_bash(), end="")
         out = capsys.readouterr().out
         assert _parse_bash_commands(out) == _live_command_names()
 
@@ -63,7 +63,7 @@ class TestZshCompletionsMatchRegistry:
     def test_advertises_exactly_the_live_command_set(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _completions.run_completions("zsh")
+        print(_setup_shell.render_zsh(), end="")
         out = capsys.readouterr().out
         assert _parse_zsh_commands(out) == _live_command_names()
 
@@ -76,11 +76,10 @@ class TestCommandsPresent:
         "approve",
         "deny",
         "metrics",
-        "keys",
+        "setup",
         "context",
         "snapshot",
         "audit",
-        "gates",
         "trace",
     )
 
@@ -88,7 +87,7 @@ class TestCommandsPresent:
     def test_required_commands_present(
         self, shell: str, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _completions.run_completions(shell)
+        print(_setup_shell.render_bash() if shell == "bash" else _setup_shell.render_zsh(), end="")
         out = capsys.readouterr().out
         names = _parse_bash_commands(out) if shell == "bash" else _parse_zsh_commands(out)
         missing = set(self.REQUIRED) - names
@@ -96,7 +95,7 @@ class TestCommandsPresent:
 
 
 class TestSubcommandListsMatchTheImplementation:
-    """`_completions.py`'s hand-written subcommand lists are unguarded
+    """`_setup_shell.py`'s hand-written subcommand lists are unguarded
     unlike the top-level table; this derives truth from each command
     module's own ``sub == "..."`` comparisons, so it is a regression check."""
 
@@ -117,7 +116,7 @@ class TestSubcommandListsMatchTheImplementation:
         expected = self._implemented_subcommands(module_stem)
         assert expected, f"{module_stem}.py parsed to zero subcommands — fix the derivation"
 
-        _completions.run_completions(shell)
+        print(_setup_shell.render_bash() if shell == "bash" else _setup_shell.render_zsh(), end="")
         out = capsys.readouterr().out
         command = module_stem.lstrip("_")
 
@@ -148,14 +147,14 @@ class TestSubcommandListsMatchTheImplementation:
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
 class TestEvalSmokeCheck:
-    """`eval "$(docket completions bash)"` must actually define the
+    """`eval "$(docket setup shell bash)"` must actually define the
     completion function in a real bash process — a syntax regression here
     would not be caught by pure string assertions."""
 
     def test_eval_docket_completions_bash_defines_function(self) -> None:
         docket_bin = REPO_ROOT / "bin" / "docket"
         script = (
-            f'eval "$("{sys.executable}" -m docket completions bash)" && '
+            f'eval "$("{sys.executable}" -m docket setup shell bash)" && '
             "type _docket_complete >/dev/null 2>&1 && echo DEFINED"
         )
         result = subprocess.run(

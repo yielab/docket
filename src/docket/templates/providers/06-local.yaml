@@ -9,5 +9,5 @@ presets:
     ranks: {economy: qwen3-30b-a3b, standard: qwen3-30b-a3b, premium: qwen3-30b-a3b}
     note: >-
       Local OpenAI-compatible endpoint (llama.cpp/LM Studio/vLLM/Ollama) — no API key,
-      no per-token cost. Register your endpoint first: docket models provider add
+      no per-token cost. Register your endpoint first: docket setup provider add
       <name> <base-url>.

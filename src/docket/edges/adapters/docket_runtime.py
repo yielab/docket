@@ -257,10 +257,10 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     )
     audit_log("isolation.refused", detail)
     return False, (
-        "isolation is on ('docket gates isolate on') but no sandbox backend (bubblewrap or docker) is "
+        "isolation is on ('docket setup sandbox on') but no sandbox backend (bubblewrap or docker) is "
         "usable on this host -- refusing to run this turn unsandboxed rather than silently "
         "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
-        "or record an explicit opt-out with 'docket gates isolate off'."
+        "or record an explicit opt-out with 'docket setup sandbox off'."
     )
 
 
@@ -273,12 +273,14 @@ def _resolve_network(agent_id: str, role: str, want_sandbox: bool) -> tuple[bool
     if want_sandbox:
         return False, None
     audit_log("network.refused", f"agent={agent_id} role={role or '?'} scope={scope}")
-    setting = "'docket gates network none'" if scope == "global" else "the pod's network=none"
+    setting = (
+        "'docket setup sandbox network none'" if scope == "global" else "the pod's network=none"
+    )
     return False, (
         f"network is none ({setting}) but isolation is off, and only the sandbox can cut "
         "the network -- refusing to run this turn with the network open. Fix one of two "
-        "ways: turn isolation on with 'docket gates isolate on', or lift the lockdown "
-        "with 'docket gates network open' (and the pod's network setting)."
+        "ways: turn isolation on with 'docket setup sandbox on', or lift the lockdown "
+        "with 'docket setup sandbox network open' (and the pod's network setting)."
     )
 
 

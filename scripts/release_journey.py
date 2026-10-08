@@ -361,7 +361,7 @@ def _configure_provider(
     _run_cli(
         executable,
         [
-            "models",
+            "setup",
             "provider",
             "add",
             PROVIDER,
@@ -372,6 +372,7 @@ def _configure_provider(
             "16384",
             "--max-tokens",
             "1024",
+            "--no-preset",
         ],
         cwd=cwd,
         env=env,
@@ -392,7 +393,7 @@ def _configure_provider(
     ):
         _run_cli(
             executable,
-            ["models", "set", role, model],
+            ["setup", "model", "set", role, model],
             cwd=cwd,
             env=env,
             label=f"{role} model selection",

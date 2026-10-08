@@ -1,42 +1,25 @@
-"""docket completions — emit a shell completion script.
-
-`run_completions(shell)` prints the bash or zsh completion script to stdout
-and returns the process exit code. Only bash and zsh are supported.
-
-The top-level command table is derived at *call time* from the live Typer `app`
-registry (see `_top_level_commands`) rather than hand-maintained, because a static
-literal drifts silently — it can go on advertising a removed command and never
-learn a new one. Deriving it live means it can never disagree with `docket --help`.
-
-Every docket command here is a flat Typer command (none are Click sub-groups
-— second-level verbs like `maintain check|clean|reset` are parsed by hand
-inside each command body, not registered with Click). That means the
-sub-command word lists embedded in `_BASH_TEMPLATE` / `_ZSH_TEMPLATE` below
-cannot be introspected the same way and remain hand-maintained — keep them in
-sync with the relevant command's own action parsing if you add, rename, or
-remove a subcommand action. The custom agent-id completion (reads live
-workspace ids from the filesystem) is unrelated to the Typer registry and is
-untouched by this generation.
-"""
+"""`docket setup shell bash|zsh`: print the completion script for the live command tree."""
 
 from __future__ import annotations
 
-from docket import ui
+from enum import StrEnum
+
+import typer
+from typer.core import TyperGroup
+from typer.main import get_command
+
+
+class Shell(StrEnum):
+    bash = "bash"
+    zsh = "zsh"
 
 
 def _top_level_commands() -> list[tuple[str, str]]:
-    """(name, one-line help) for every visible top-level command, in
-    registration order, read live from `docket.cli.app` — see module
-    docstring. Hidden commands are excluded; they're not part of the public
-    CLI surface.
-    """
-    from typer.core import TyperGroup
-    from typer.main import get_command
-
+    """(name, one-line help) for every visible top-level command, read live from the app."""
     from docket.cli import app
 
     click_group = get_command(app)
-    assert isinstance(click_group, TyperGroup)  # narrows for the .commands access below
+    assert isinstance(click_group, TyperGroup)
     pairs: list[tuple[str, str]] = []
     for name, cmd in click_group.commands.items():
         if getattr(cmd, "hidden", False):
@@ -47,14 +30,13 @@ def _top_level_commands() -> list[tuple[str, str]]:
 
 
 def _zsh_escape(text: str) -> str:
-    """Escape a string for embedding inside a single-quoted zsh literal."""
     return text.replace("'", "'\\''")
 
 
 # bash completion script template; __COMMANDS__ is substituted at runtime
 # with the space-joined live command names (see _top_level_commands).
 _BASH_TEMPLATE = """\
-# docket(1) bash completion — eval "$(docket completions bash)"
+# docket(1) bash completion — eval "$(docket setup shell bash)"
 _docket_complete() {
   local cur prev cword
   cur="${COMP_WORDS[COMP_CWORD]}"
@@ -90,20 +72,17 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
+    setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs)            words="list show cancel prune" ;;
     conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
-    gates)           words="status isolate network classes" ;;
-    keys)            words="add list remove rotate setup validate export" ;;
-    models)          words="list set preset reset provider" ;;
     trace)           words="tail export ingest expire" ;;
     policies)        words="list show init test validate" ;;
     recipes)         words="list show" ;;
     roles)           words="list show add validate" ;;
-    completions)     words="bash zsh" ;;
     cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
     info|delete|profile|wire|unwire|logs|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
@@ -118,7 +97,7 @@ complete -F _docket_complete docket
 # with 'name:help' entries (one per line, see _top_level_commands).
 _ZSH_TEMPLATE = """\
 #compdef docket
-# docket(1) zsh completion — eval "$(docket completions zsh)"
+# docket(1) zsh completion — eval "$(docket setup shell zsh)"
 _docket() {
   local -a commands
   commands=(
@@ -144,20 +123,17 @@ __ZSH_COMMANDS__
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
+    setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
     conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
-    gates)           compadd status isolate network classes ;;
-    keys)            compadd add list remove rotate setup validate export ;;
-    models)          compadd list set preset reset provider ;;
     trace)           compadd tail export ingest expire ;;
     policies)        compadd list show init test validate ;;
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
-    completions)     compadd bash zsh ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|delete|profile|wire|unwire|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
@@ -166,44 +142,21 @@ __ZSH_COMMANDS__
 _docket "$@"
 """
 
-_USAGE = """\
-Usage: docket completions <bash|zsh>
 
-Enable now (current shell):
-  bash:  eval "$(docket completions bash)"
-  zsh:   eval "$(docket completions zsh)"
-
-Enable permanently:
-  bash:  echo 'eval "$(docket completions bash)"' >> ~/.bashrc
-  zsh:   echo 'eval "$(docket completions zsh)"' >> ~/.zshrc
-"""
-
-
-def _render_bash() -> str:
+def render_bash() -> str:
     names = [name for name, _help in _top_level_commands()]
     return _BASH_TEMPLATE.replace("__COMMANDS__", " ".join(names))
 
 
-def _render_zsh() -> str:
+def render_zsh() -> str:
     lines = [f"    '{name}:{_zsh_escape(help_text)}'" for name, help_text in _top_level_commands()]
     return _ZSH_TEMPLATE.replace("__ZSH_COMMANDS__", "\n".join(lines))
 
 
-def run_completions(shell: str | None) -> int:
-    """Emit a shell completion script for ``shell`` (bash|zsh).
+def cmd_shell(shell: Shell = typer.Argument(..., help="bash or zsh")) -> None:
+    """Print the completion script for bash or zsh.
 
-    Empty / help → usage text (exit 0). Unknown shell → error (exit 1).
-    Returns the process exit code; the coordinator wraps it in typer.Exit.
-    """
-    if shell == "bash":
-        # print() adds the trailing newline that the heredoc closes with.
-        print(_render_bash(), end="")
-        return 0
-    if shell == "zsh":
-        print(_render_zsh(), end="")
-        return 0
-    if shell in (None, "", "-h", "--help", "help"):
-        print(_USAGE, end="")
-        return 0
-    ui.error(f"Unknown shell '{shell}' (supported: bash, zsh)")
-    return 1
+    Enable it for the current shell with: eval "$(docket setup shell bash)"
+
+    Example: docket setup shell zsh"""
+    print(render_bash() if shell is Shell.bash else render_zsh(), end="")

@@ -243,7 +243,7 @@ class ScheduleError(ValueError):
 def describe_spec_error(spec: str) -> str | None:
     """None if *spec* is a recognized ``@every``/``HH:MM``/cron schedule string, else the
     reason it is not -- the detail ``is_schedule_due``'s silent ``False`` drops on an
-    unrecognised format, surfaced here for ``docket doctor`` and the config-set writer below."""
+    unrecognised format, surfaced here for ``docket setup --fix`` and the config-set writer below."""
     if parse_interval(spec) is not None:
         return None
     if parse_daily_time(spec) is not None:
@@ -292,7 +292,7 @@ def unset_schedule(path: Path, project: str) -> None:
 
 def find_schedule_problems(path: Path) -> list[tuple[str, str]]:
     """Return ``(key, reason)`` pairs for a malformed schedules file or an unrecognized
-    spec that ``load_schedules``/``is_schedule_due`` silently drop -- for ``docket doctor``.
+    spec that ``load_schedules``/``is_schedule_due`` silently drop -- for ``docket setup --fix``.
     *key* is *path* itself for a file-level problem, else the offending project name."""
     if not path.exists():
         return []
