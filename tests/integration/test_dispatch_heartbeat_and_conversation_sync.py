@@ -6,7 +6,7 @@ call ``core/memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence
 durable ledger is true whether or not the agent ever wrote anything there itself.
 ``_persist_hop`` also calls ``core/conversations.py``'s ``touch_for_hop`` so a wired channel
 thread's ``last_message``/``task_ref`` reflect the dispatch actually working, not just whatever
-``docket wire`` seeded once. Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
+``docket setup notify bind`` seeded once. Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
 ``FakeDriver``/plain runner callables, no real subprocess).
 """
 

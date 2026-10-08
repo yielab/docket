@@ -316,7 +316,7 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
 
 
 def build_test_event(spec: Any, *, now: str) -> CloudEvent:
-    """A synthetic `channel.test` event for `docket channels test <name>` -- an operator
+    """A synthetic `channel.test` event for `docket setup notify test <name>` -- an operator
     verifying one channel's delivery path before relying on it. Source pod is `cli`: a test
     is triggered by an operator command, not by any real pod's state."""
     data = {"pod": "cli", "channel": spec.name, "message": "docket channel test"}

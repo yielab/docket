@@ -73,37 +73,11 @@ class TestMissingSdkSimulated:
         err = capsys.readouterr().err
         assert err == _mcp.MISSING_SDK_HINT + "\n"
 
-    def test_run_mcp_serve_returns_the_same_exit_code(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        def _fake_serve_stdio() -> int:
-            return 1
-
-        monkeypatch.setattr(_mcp, "serve_stdio", _fake_serve_stdio)
-        assert _mcp.run_mcp("serve", []) == 1
-
 
 class TestUsage:
-    def test_no_subcommand_prints_usage_and_exits_zero(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp(None, [])
-        assert rc == 0
-        err = capsys.readouterr().err
-        assert "docket mcp serve" in err
-
-    def test_unknown_subcommand_exits_nonzero(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("bogus", [])
-        assert rc == 1
-
-    def test_mcp_command_is_wired_on_the_typer_app(self) -> None:
-        """Smoke-test only: never invokes `serve` (would block on stdio, or just print+exit if
-        the SDK is absent). Also asserts the mcp-extra lock's transitive cryptography package
-        stays outside CVE-2026-69247's affected ``>=44,<50`` range."""
-        from typer.testing import CliRunner
-
-        from docket.cli import app
-
+    def test_mcp_extra_lock_stays_outside_the_cryptography_cve_range(self) -> None:
+        """The mcp-extra lock's transitive cryptography package stays outside
+        CVE-2026-69247's affected ``>=44,<50`` range."""
         root = Path(__file__).resolve().parents[2]
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
         assert project["project"]["optional-dependencies"]["mcp"], "MCP extra was removed"
@@ -118,19 +92,6 @@ class TestUsage:
             "CVE-2026-69247 affects cryptography >=44,<50; "
             f"committed lock resolves {crypto_versions}"
         )
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["mcp"])
-        assert result.exit_code == 0
-        assert "docket mcp serve" in result.output
-
-    def test_mcp_is_a_top_level_command(self) -> None:
-        import typer.main
-
-        from docket.cli import app
-
-        click_command = typer.main.get_command(app)
-        assert "mcp" in click_command.commands
 
 
 class TestRealSdkIntegration:

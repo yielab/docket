@@ -117,7 +117,7 @@ def record(
 
     Only provided fields overwrite; ``created`` is set once. ``updated`` is always
     bumped to *now*. Idempotent seeding: calling with no topic/status just refreshes
-    ``updated`` (used by ``docket wire`` to register a binding).
+    ``updated`` (used by ``setup notify bind`` to register a binding).
     """
     cid = make_id(agent_id, peer_id, channel)
     existing = get(reg, cid)
@@ -171,7 +171,7 @@ def touch_for_hop(
 
     A pod dispatch hop is real, observable work — a human
     watching a wired channel thread should see the task it's actually on and a
-    preview of what it last said, not just whatever ``docket wire`` seeded once
+    preview of what it last said, not just whatever ``setup notify bind`` seeded once
     at binding time. Pure: ``touch_for_hop_durable`` owns its locked
     read-modify-write round-trip, while this helper remains usable in tests and
     other in-memory transforms.

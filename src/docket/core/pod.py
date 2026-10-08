@@ -524,9 +524,7 @@ class PodSettings(BaseModel):
                         f"{name!r} is an MCP server of another pod ({owner}); "
                         "a pod selects only global servers and its own"
                     )
-                raise ValueError(
-                    f"{name!r} is not a configured MCP server (docket mcp servers list)"
-                )
+                raise ValueError(f"{name!r} is not a configured MCP server (docket setup mcp list)")
             kept.setdefault(name, None)
         return tuple(kept.keys()) or None
 

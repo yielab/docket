@@ -9,7 +9,6 @@ Complete reference for all docket commands, rendered from each command's own `--
 - [Lifecycle Commands](#lifecycle-commands)
 - [Session and Context Management](#session-and-context-management)
 - [Pod Coordination](#pod-coordination)
-- [Telegram Integration](#telegram-integration)
 - [Keys and Authentication](#keys-and-authentication)
 - [Utility Commands](#utility-commands)
 - [Security and Audit](#security-and-audit)
@@ -595,85 +594,6 @@ body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
 
 ---
 
-## Telegram Integration
-
-### wire
-
-**Usage:** `docket wire`
-
-Wire or update a channel group binding (Telegram by default).
-
-Inbound only: the binding authorizes a chat to send /approve, /deny,
-/status and /delegate; docket never messages the group on its own --
-there is no notification on a pending approval and no report when a task
-finishes, you poll with /status.
-
-With `TELEGRAM_BOT_TOKEN` configured, docket shows a one-time command such
-as `/wire A1B2C3` -- send it in the Telegram group, return to the
-terminal, and press Enter, and docket discovers and binds that group
-automatically. You can paste a numeric group ID instead; manual entry is
-also the fallback when the bot token is missing, Telegram cannot be
-reached, or no matching message is found.
-
-`--channel <name>` (default telegram) selects which channel to wire; the
-flag exists so additional channels can be added without a breaking
-change to this command's syntax, though Telegram is the only one shipped
-today.
-
-Updates docket's own fleet registry (`~/.docket/fleet.json`) bindings,
-and seeds an entry in the conversation registry (`docket conversations`).
-The binding is the entire authorization boundary once
-`docket serve --telegram` is running: anyone who can post in that chat
-can act as this agent. Guided discovery reads the matching one-time
-/wire message without advancing the Telegram poller's durable offset or
-processing unrelated messages -- if `docket serve --telegram` is already
-polling, stop it during setup so it does not receive the one-time
-command first.
-
-
----
-
-### unwire
-
-**Usage:** `docket unwire`
-
-Remove a channel binding (Telegram by default).
-
-`--channel <name>` (default telegram) selects which channel binding to
-remove. Removes the entry from docket's own fleet registry
-(`~/.docket/fleet.json`); the agent can still function without it, but
-approvals then require CLI, HTTP, or MCP interaction.
-
-
----
-
-### conversations
-
-**Usage:** `docket conversations`
-
-Inspect and resume the conversation registry (list/show/resume/set/prune).
-
-docket's durable index of channel threads: docket's own turn loop keeps
-no durable transcript of its own, so this registry tracks which agent
-handles each thread, its topic, status, and a resume pointer.
-
-Subcommands: `list` (default) all tracked conversations; `show <id|
-agent-id>` full detail for one; `resume <id|agent-id>` marks it
-in_progress and prints a resume brief; `set <agent-id> <peer-id>
-\[--topic\] \[--status\] \[--last\] \[--task\]` edits an entry directly;
-`prune \[--dry-run\] \[--days N\]` deletes `done` conversations past the
-retention window (default `TRACE_RETENTION_DAYS`) -- the same pruning
-`docket serve`'s periodic sweep already does.
-
-Auto-seeded when you `docket wire` an agent to a channel; cleaned up on
-`docket delete`. `status` is one of active | in_progress | waiting |
-done. Durable conversation content lives in the agent's HEARTBEAT.md +
-memory/ (resumed on its next turn via the durability contract); this
-registry tracks state only.
-
-
----
-
 ## Keys and Authentication
 
 ### keys
@@ -1028,69 +948,6 @@ tool.
 
 ---
 
-### mcp
-
-**Usage:** `docket mcp`
-
-Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`).
-
-"Rent the protocol": external tools are configuration, not code.
-
-Subcommands:
-  serve      expose docket's own control plane as an MCP server over
-              stdio, so an external MCP client (an IDE, another agent
-              runtime) can inspect and drive the fleet through typed
-              tool calls instead of shelling out to the CLI. Requires
-              the optional \[mcp\] extra (`pip install 'docket\[mcp\]'` or
-              `uv sync --extra mcp`) -- prints an install hint to stderr
-              and exits 1 if missing. Transport: newline-delimited
-              JSON-RPC 2.0 on stdin/stdout -- no HTTP, no bind address,
-              no bearer token; the trust boundary is whoever can spawn
-              the process. Exposes 13 tools (every call audit-logged as
-              `mcp.<tool>`): status, pods, queue, delegate, dispatch,
-              runs, approvals_list, approvals_grant, approvals_deny,
-              task_answer, task_pregrant, inbox, cost -- each mirrors the
-              equivalent CLI/HTTP path through the exact same `core/` function, no
-              parallel logic, no auto-approve. `dispatch` creates a run
-              record and returns its id immediately, then runs the
-              pipeline in the background -- poll `runs` for the outcome.
-  servers    list/add/remove external MCP tool servers (stdio transport)
-              so their tools become available to an agent's turn, gated
-              by the same pre_tool_call policy and dispatch_tool
-              chokepoint as any built-in -- a remote server can never
-              shadow bash/read/write/edit/glob/grep. `add <name>
-              \[--env K=V ...\] \[--timeout S\] \[--kind read|write\]
-              \[--tools NAME,NAME,...\] \[--no-isolate\] -- <command>
-              \[args...\]`: everything after `--` is passed to the server
-              verbatim as its launch command and arguments; the options
-              must come before `--`. Tools register as
-              `mcp__<name>__<tool>`. `--kind` declares the server's
-              trust level (default: write) -- a role that denies write
-              gets no tools from a server left at the default, but does
-              get tools from one declared `--kind read`, since docket's
-              role narrowing excludes by tool kind, not by name.
-              `--tools` restricts registration to a comma-separated
-              allow-list of that server's own tool names (default: all).
-              A stdio server starts inside the turn's sandbox (its
-              roots and network mode) while isolation is on;
-              `--no-isolate` is the audited assertion that it must run
-              on the host.
-
-Its tools are reachable from a live turn: the client namespaces them
-`mcp__<server>__<tool>`, and the turn loop folds them into the registry
-before gating and before per-role narrowing, so a Reviewer (or any role
-that denies write) never gets a write-capable MCP tool no matter what a
-configured server advertises. `docket mcp` alone prints usage and exits
-0; an unrecognized subcommand exits 1. A tool call's own success/failure
-is expressed inside the MCP protocol (isError), never as a process exit
-code. Configured servers persist in
-`~/.docket/docket-mcp-servers.json` (docket-owned JSON); env values are
-masked when listed. Every `mcp servers add`/`remove` is audit-logged.
-See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md.
-
-
----
-
 ## Security and Audit
 
 ### gates
@@ -1408,80 +1265,6 @@ is `live`, `finished` (with a best-effort reconstructed result), or
 
 ---
 
-### exporters
-
-**Usage:** `docket exporters`
-
-Observability export destinations: list, inspect, and enable by authenticating.
-
-Subcommands: `list \[--json\]` prints every catalog exporter's dialect,
-activation state, credential names and its privacy level (SHARES). `show
-<name> \[--json\]` prints one exporter's effective document, source, state,
-health counters and a "Leaves this host" disclosure of every content
-class. `enable <name> \[--endpoint URL\] \[--privacy <level>|--share a,b\]
-\[--events ...\] \[--no-verify\] \[--yes\]` prompts for a missing credential on
-a TTY (else names `docket keys add` and exits), probes the endpoint, and
-writes only the `enabled` flag plus the overrides given. `disable <name>`
-turns it back off; stored keys are kept. `test <name>` re-probes without
-changing anything. `add <file.yaml> \[--no-verify\] \[--yes\]` and `remove
-<name>` manage a full document; `export <name> \[<file>\]` prints or writes
-one back out. `privacy <name> \[<level>|--share a,b\] \[--max-chars N\]
-\[--yes\]` shows or changes what an exporter shares beyond bare structure;
-widening the shared classes prints what is newly granted and the
-destination host, then asks for confirmation on a TTY or refuses off one
-without `--yes` -- narrowing never asks. `preview <name> \[--session <id>\] \[--level
-<level>|--share a,b\] \[--json\]` projects a local session through the
-exporter's policy and prints what it would send -- no network call, no
-write.
-
-
----
-
-### channels
-
-**Usage:** `docket channels`
-
-Notification/conversation/decision destinations: list, inspect, and enable.
-
-Subcommands: `list \[--json\]` prints every catalog channel's dialect,
-enabled state, capabilities and content level. `show <name> \[--json\]`
-prints one channel's effective document and scope. `enable <name> \[--set
-k=v ...\]` writes only the `enabled` flag plus the overrides given (`--set
-actors=a,b` sets the actors list, `--set secret=NAME` sets the credential
-name, anything else lands in `config`); it refuses without writing when a
-required field the built-in names is still empty (`ntfy` needs a
-non-empty `topic`, `telegram` needs a non-empty `actors`). `disable
-<name>` turns it back off. `add <file.yaml>` and `remove <name>` manage a
-full document; `export <name> \[<file>\]` prints or writes one back out.
-`content <name> \[<level>\] \[--yes\]` shows or changes how much a delivery
-carries (`minimal < actions < conversation`); widening prints the change
-and asks for confirmation on a TTY or refuses off one without `--yes` --
-narrowing never asks. `test <name>` sends one synthetic
-`dev.docket.channel.test` event through that one channel and reports
-success or failure -- useful to verify a webhook URL or a command binary
-before relying on it. Every other subcommand here only edits the catalog;
-`test` and `docket notify` are the only things in this command group that
-ever send anything.
-
-
----
-
-### notify
-
-**Usage:** `docket notify`
-
-Flush operator events to every enabled channel.
-
-`docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
-state change; this command forces one in between, or previews it. `docket notify
-flush \[--dry-run\]` -- with no `--dry-run`, diffs the inbox against the last flush,
-delivers each new event (`dev.docket.task.*`/`approval.*`) to every enabled channel
-whose `on` matches, and prints the counts; `--dry-run` prints what would be sent
-without delivering or advancing the dedupe snapshot.
-
-
----
-
 ## Global Options
 
 ### --help / -h
@@ -1552,7 +1335,7 @@ No command emits any other exit code today.
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
-| `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
+| `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
 | `PROVIDERS_FILE` | Global provider catalog scope (`docket models provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
 | `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
 | `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |

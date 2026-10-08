@@ -1,7 +1,7 @@
 """Conversation registry (Option B) — docket's durable index of channel threads.
 
-Guards core/conversations.py: pure registry ops + the load/save round-trip, plus
-the CLI resolver helpers. This registry is Docket's source of truth for what conversations exist
+Guards core/conversations.py: pure registry ops and the load/save round-trip. The registry is
+Docket's source of truth for what conversations exist
 and their resume state.
 """
 
@@ -14,7 +14,6 @@ from threading import Barrier, Thread
 import pytest
 
 import docket.config as _cfg
-from docket.cli import _conversations as cli
 from docket.core import conversations as C
 from docket.edges import store as _store
 
@@ -289,24 +288,8 @@ class TestLockedMutations:
         assert len(C.load(p).conversations) == 1
 
 
-class TestCliHelpers:
-    def test_flag_space_and_equals(self) -> None:
-        assert cli._flag(["--topic", "audit"], "--topic") == "audit"
-        assert cli._flag(["--topic=audit"], "--topic") == "audit"
-        assert cli._flag(["--other", "x"], "--topic") is None
-
-    def test_find_by_id_or_agent(self) -> None:
-        r = _reg(
-            C.Conversation(id="telegram:a:-1", agent_id="a", updated="t2"),
-            C.Conversation(id="telegram:a:-2", agent_id="a", updated="t9"),
-        )
-        assert cli._find(r, "telegram:a:-1").id == "telegram:a:-1"  # exact id
-        assert cli._find(r, "a").id == "telegram:a:-2"  # bare agent → most recent
-        assert cli._find(r, "missing") is None
-
-
-class TestPruneCli:
-    """``docket conversations prune`` -- the manual counterpart to ``docket serve``'s sweep."""
+class TestPruneDurable:
+    """``prune_closed_durable`` -- the call ``docket serve``'s sweep makes."""
 
     def test_prune_removes_old_done_conversations(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -325,7 +308,7 @@ class TestPruneCli:
             p,
         )
 
-        assert cli.run_conversations("prune", ["--days", "0"]) == 0
+        assert C.prune_closed_durable(retention_s=0) == 1
 
         assert C.load(p).conversations == []
 
@@ -346,6 +329,6 @@ class TestPruneCli:
             p,
         )
 
-        assert cli.run_conversations("prune", ["--dry-run", "--days", "0"]) == 0
+        assert C.prune_closed_durable(retention_s=0, dry_run=True) == 1
 
         assert len(C.load(p).conversations) == 1

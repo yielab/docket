@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="list status add init info delete maintain context wire unwire scope profile persona keys models pod pipeline roles logs edit cost config doctor gates conversations runs harness mcp audit snapshot serve completions validate plugins recipes exporters channels notify trace metrics policies approve deny chat inbox help setup"
+  local commands="list status add init info delete maintain context scope profile persona keys models pod pipeline roles logs edit cost config doctor gates runs harness audit snapshot serve completions validate plugins recipes trace metrics policies approve deny chat inbox help setup"
 
   # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
@@ -35,10 +35,8 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
-    mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs)            words="list show cancel prune" ;;
-    conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
     gates)           words="status isolate network classes" ;;
@@ -50,7 +48,7 @@ _docket_complete() {
     roles)           words="list show add validate" ;;
     completions)     words="bash zsh" ;;
     cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|logs|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac

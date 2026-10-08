@@ -687,14 +687,14 @@ class TestInitReadsRepoConfig:
 
         out = capsys.readouterr().out
         assert rc == 0
-        assert "docket channels enable desktop" in out
+        assert "docket setup notify enable desktop" in out
 
     def test_tty_with_a_desktop_session_offers_desktop_and_enables_on_yes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         import builtins
 
-        from docket.cli import _channels
+        from docket.cli import _setup_notify
         from docket.core import channel as _channel
         from docket.edges.adapters import system as _sys
 
@@ -702,15 +702,15 @@ class TestInitReadsRepoConfig:
         monkeypatch.setattr("sys.stdin", type("Tty", (), {"isatty": staticmethod(lambda: True)})())
         monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
         monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
-        sent: list[list[str]] = []
-        monkeypatch.setattr(_channels, "_run_test", lambda args: sent.append(args) or 0)
+        sent: list[str] = []
+        monkeypatch.setattr(_setup_notify, "send_test", lambda name: sent.append(name) or 0)
 
         rc = _agents.run_init(["--codebase", str(tmp_path / "codebase"), "--name", "demo"])
 
         out = capsys.readouterr().out
         assert rc == 0
         assert _channel.load_catalog().delivering() == ["desktop"]
-        assert sent == [["desktop"]]
+        assert sent == ["desktop"]
         assert "Channel enabled: desktop" in out
 
     def test_tty_offer_declined_enables_nothing(
@@ -744,7 +744,7 @@ class TestInitReadsRepoConfig:
 
         out = capsys.readouterr().out
         assert rc == 0
-        assert "docket channels enable" not in out
+        assert "docket setup notify enable" not in out
 
     def test_recipe_with_an_existing_docket_dir_is_rejected_before_provisioning(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

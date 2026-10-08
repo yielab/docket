@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.3.1
+**Version**: 1.4.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-06
 
@@ -234,14 +234,14 @@ in the derived inbox becomes an event on the wire.
    such precondition in this area.
 6. `set_content(name, level)` MUST accept only `minimal`, `actions` or `conversation`, on the
    closed order `minimal < actions < conversation`; `core.channel.is_widening(old, new)` MUST
-   return `True` exactly when `new` is strictly richer than `old`. The CLI (`docket channels
-   content <name> <level>`) MUST treat a widening change as a confirmed, audited command,
-   exactly as `docket exporters privacy` does: `--yes` proceeds immediately, a TTY is asked
+   return `True` exactly when `new` is strictly richer than `old`. The CLI (`docket setup notify
+   privacy <name> <level>`) MUST treat a widening change as a confirmed, audited command,
+   exactly as `docket setup export privacy` does: `--yes` proceeds immediately, a TTY is asked
    `y/N`, and a non-TTY refuses naming `--yes` without asking. Narrowing never asks.
-7. `docket channels list|show|enable [--set k=v]|disable|add <file>|remove|export|content
-   <name> [<level>] [--yes]` (`cli/_channels.py`) MUST cover exactly this document's fields;
-   it MUST NOT send anything to a dialect's actual destination — that is P34-11's `channels
-   test` and delivery adapters.
+7. `docket setup notify list|show|enable [--set k=v]|disable|add <file>|remove|export|privacy
+   <name> [<level>] [--yes]` (`cli/_setup_notify.py`) MUST cover exactly this document's fields;
+   it MUST NOT send anything to a dialect's actual destination — that is P34-11's `notify
+   test`, `enable --test` and the delivery adapters.
 8. `docket validate` MUST accept `kind: channel` (`core.config_docs.KINDS` gains `channel`;
    `core.config_docs._MODEL_FOR_KIND["channel"] = core.channel.ChannelSpec`), and
    `scripts/gen_config_schemas.py` MUST render `docs/contracts/config-v1/channel.schema.json`
@@ -303,14 +303,14 @@ in the derived inbox becomes an event on the wire.
     raising.
 15. The `console` dialect (`edges/adapters/channels/console.py::deliver`) MUST always succeed
     without sending anything — the console is already the inbox.
-16. Bare `docket notify` (and any action other than `flush`) MUST print usage and exit 2
-    without calling `core.notify.flush`. `docket notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
+16. Bare `docket setup notify` (and any action other than a declared one) MUST print usage or
+    exit 2 without calling `core.notify.flush`. `docket setup notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
     catalog and print the delivered/failed/skipped counts; `--dry-run` MUST print the pending
     events from `diff_events` without delivering or advancing the persisted snapshot. `docket
-    channels test <name>` MUST build one synthetic `channel.test` event
+    setup notify test <name>` MUST build one synthetic `channel.test` event
     (`core.notify.build_test_event`) and deliver it once through that one channel's dialect,
     regardless of the channel's `on` subscription, reporting success or failure — this and
-    `docket notify flush` are the only things in this specification's CLI surface that ever
+    `docket setup notify flush` and `enable --test` are the only things in this specification's CLI surface that ever
     send anything to a real destination. `serve.py`'s periodic sweep and `docket pod <p>
     dispatch`'s foreground summary MUST each call `core.notify.flush` once, after their own
     work, with the CLI dispatch path printing nothing beyond one warning line naming the
@@ -322,8 +322,8 @@ in the derived inbox becomes an event on the wire.
     in `capabilities` whose dialect is not silent, and `core.channel.unreached_warning(
     delivering)` MUST return `None` when that list is non-empty and otherwise the one warning
     text every surface prints: that only `console` is on, that console sends nothing, that a
-    parked task waits unseen until `docket inbox`, and the two first-rung fixes `docket channels
-    enable desktop` and `docket channels enable ntfy --set topic=<topic>`. Four surfaces MUST
+    parked task waits unseen until `docket inbox`, and the two first-rung fixes `docket setup notify
+    enable desktop` and `docket setup notify enable ntfy --set topic=<topic>`. Four surfaces MUST
     consume it, none MAY enable a channel on its own: `docket doctor`'s `Notifications:` block
     (counted as an issue when at least one project agent exists, informational otherwise;
     `--json` carries `checks.notifications {ok, delivering}`), `docket serve --dispatch` once
@@ -774,6 +774,12 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.4.0 (2026-10-07)
+
+- Phase 39 (P39-13): the channel and flush commands live under `docket setup notify` (`channels`
+  and `notify` are removed; `content` is `privacy`): `docket setup notify flush [--dry-run]` is the
+  manual flush, and `enable telegram`/`enable --test` join `test` as the only senders.
 
 ### Version 1.3.1 (2026-10-07)
 

@@ -1,11 +1,11 @@
-"""`docket mcp servers add/list/remove` -- a CLI over the MCP client config.
+"""`docket setup mcp add/list/remove` -- a CLI over the MCP client config.
 Pure presentation over the tested `core/mcp_tools.py` functions (`add_mcp_server`/
 `load_mcp_servers`/`remove_mcp_server`): validates flags, calls them unchanged, never talks to a
 remote server, and never touches `core/tools.py` or built-in tool registration (the ownership-row
 guard checked by `TestServersCliNeverReachesTheToolboxOrCoreTools` below).
-Pins: `add`'s `--`-separator parsing (everything after a literal `--` is the launch command
-verbatim; missing `--`, malformed `--env`, or an unknown flag before it all reject with exit 1,
-never a traceback); a bad/duplicate name's `ValueError` surfacing the same way; `add`/`remove`
+Pins: `add`'s `--`-separator (everything after a literal `--` is the launch command verbatim;
+a missing command, malformed `--env`, or an unknown flag before it all reject, never a
+traceback); a bad/duplicate name's `ValueError` surfacing the same way; `add`/`remove`
 writing an audit entry that never carries an `--env` *value* in the clear (masked `KEY=****` in
 both the audit log and `list`, mirroring `keys.add`). See specs/functional/mcp-client.spec.md
 Requirements 21-24.
@@ -24,7 +24,7 @@ import pytest
 from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _mcp, app
+from docket.cli import app
 from docket.core import audit as _audit
 from docket.core import mcp_tools as _mt
 
@@ -39,6 +39,14 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
 
 
+_runner = CliRunner()
+
+
+def _mcp_run(args: list[str]) -> tuple[int, str, str]:
+    result = _runner.invoke(app, ["setup", "mcp", *args])
+    return result.exit_code, result.stdout, result.stderr
+
+
 def _audit_actions() -> list[str]:
     return [e["action"] for e in _audit.read_audit()]
 
@@ -51,63 +59,49 @@ def _audit_details(action: str) -> list[str]:
 
 
 class TestServersList:
-    def test_no_servers_configured(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["list"])
-        out = capsys.readouterr().out
+    def test_no_servers_configured(self) -> None:
+        rc, out, _ = _mcp_run(["list"])
         assert rc == 0
         assert "No MCP servers configured" in out
         assert _audit_actions() == []  # read-only: never audited
 
-    def test_shows_configured_server_and_command(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_shows_configured_server_and_command(self) -> None:
         _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx", args=["-y", "wx"]))
-        rc = _mcp.run_mcp("servers", ["list"])
-        out = capsys.readouterr().out
+        rc, out, _ = _mcp_run(["list"])
         assert rc == 0
         assert "weather" in out
         assert "npx -y wx" in out
 
-    def test_env_values_are_masked_never_printed_in_the_clear(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_env_values_are_masked_never_printed_in_the_clear(self) -> None:
         _mt.add_mcp_server(
             _mt.McpServerConfig(
-                name="search", command="search-server", env={"SEARCH_API_KEY": "sk-super-secret"}
+                name="search", command="search-server", env={"SEARCH_API_KEY": "tok-super-secret"}
             )
         )
-        out = capsys.readouterr().out  # drain the add's own output first
-        rc = _mcp.run_mcp("servers", ["list"])
-        out = capsys.readouterr().out
+        rc, out, _ = _mcp_run(["list"])
         assert rc == 0
         assert "SEARCH_API_KEY" in out
-        assert "sk-super-secret" not in out
+        assert "tok-super-secret" not in out
 
-    def test_never_connects_to_a_server_pure_read(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_never_connects_to_a_server_pure_read(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """`list` must be a pure `load_mcp_servers()` read -- proven by making
         `load_mcp_tools` (the only thing that would ever connect to a server)
         explode if called, then confirming `list` still succeeds."""
 
         def _boom(*a: object, **kw: object) -> None:
-            raise AssertionError("docket mcp servers list must never call load_mcp_tools")
+            raise AssertionError("docket setup mcp list must never call load_mcp_tools")
 
         monkeypatch.setattr(_mt, "load_mcp_tools", _boom, raising=True)
         _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
-        rc = _mcp.run_mcp("servers", ["list"])
-        assert rc == 0
+        assert _mcp_run(["list"])[0] == 0
 
 
 # ── add ──────────────────────────────────────────────────────────────────────
 
 
 class TestServersAdd:
-    def test_basic_add_persists_via_core_mcp_tools(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp(
-            "servers", ["add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"]
-        )
-        out = capsys.readouterr().out
+    def test_basic_add_persists_via_core_mcp_tools(self) -> None:
+        rc, out, _ = _mcp_run(["add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"])
         assert rc == 0
         assert "playwright" in out
         loaded = _mt.load_mcp_servers()
@@ -117,106 +111,95 @@ class TestServersAdd:
         assert loaded[0].args == ["-y", "@playwright/mcp@latest"]
 
     def test_env_and_timeout_flags_before_the_separator(self) -> None:
-        rc = _mcp.run_mcp(
-            "servers",
+        rc, _, _ = _mcp_run(
             [
                 "add",
                 "search",
                 "--env",
-                "SEARCH_API_KEY=sk-123",
+                "SEARCH_API_KEY=tok-123",
                 "--timeout",
                 "20",
                 "--",
                 "search-server",
                 "--flag-that-belongs-to-the-command",
-            ],
+            ]
         )
         assert rc == 0
         loaded = _mt.load_mcp_servers()[0]
-        assert loaded.env == {"SEARCH_API_KEY": "sk-123"}
+        assert loaded.env == {"SEARCH_API_KEY": "tok-123"}
         assert loaded.timeout == 20.0
         assert loaded.command == "search-server"
         assert loaded.args == ["--flag-that-belongs-to-the-command"]
 
     def test_env_equals_flag_form(self) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "s", "--env=KEY=value", "--", "cmd"])
+        rc, _, _ = _mcp_run(["add", "s", "--env=KEY=value", "--", "cmd"])
         assert rc == 0
         assert _mt.load_mcp_servers()[0].env == {"KEY": "value"}
 
-    def test_missing_separator_is_rejected_not_misparsed(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "playwright", "npx", "-y", "@playwright/mcp@latest"])
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "--" in err
+    def test_a_command_flag_without_the_separator_is_rejected_not_misparsed(self) -> None:
+        rc, _, _ = _mcp_run(["add", "playwright", "npx", "-y", "@playwright/mcp@latest"])
+        assert rc != 0
         assert _mt.load_mcp_servers() == []
 
-    def test_no_command_after_separator_is_rejected(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "playwright", "--"])
-        assert rc == 1
+    def test_no_command_after_separator_is_rejected(self) -> None:
+        rc, _, _ = _mcp_run(["add", "playwright", "--"])
+        assert rc != 0
         assert _mt.load_mcp_servers() == []
 
-    def test_malformed_env_flag_is_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "s", "--env", "NOT_KEY_VALUE", "--", "cmd"])
-        err = capsys.readouterr().err
+    def test_malformed_env_flag_is_rejected(self) -> None:
+        rc, _, err = _mcp_run(["add", "s", "--env", "NOT_KEY_VALUE", "--", "cmd"])
         assert rc == 1
         assert "KEY=VALUE" in err
         assert _mt.load_mcp_servers() == []
 
-    def test_malformed_timeout_is_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "s", "--timeout", "not-a-number", "--", "cmd"])
+    def test_malformed_timeout_is_rejected(self) -> None:
+        rc, _, _ = _mcp_run(["add", "s", "--timeout", "not-a-number", "--", "cmd"])
+        assert rc != 0
+        assert _mt.load_mcp_servers() == []
+
+    def test_unknown_flag_before_separator_is_rejected(self) -> None:
+        rc, _, _ = _mcp_run(["add", "s", "--bogus", "--", "cmd"])
+        assert rc != 0
+        assert _mt.load_mcp_servers() == []
+
+    def test_a_bad_kind_is_rejected(self) -> None:
+        rc, _, _ = _mcp_run(["add", "s", "--kind", "bogus", "--", "cmd"])
         assert rc == 1
         assert _mt.load_mcp_servers() == []
 
-    def test_unknown_flag_before_separator_is_rejected(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "s", "--bogus", "--", "cmd"])
-        assert rc == 1
-        assert _mt.load_mcp_servers() == []
+    def test_no_args_at_all_is_rejected(self) -> None:
+        assert _mcp_run(["add"])[0] != 0
 
-    def test_no_args_at_all_is_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["add"])
-        assert rc == 1
-
-    def test_duplicate_name_surfaces_as_a_cli_error_not_a_traceback(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_duplicate_name_surfaces_as_a_cli_error_not_a_traceback(self) -> None:
         _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
-        rc = _mcp.run_mcp("servers", ["add", "weather", "--", "npx", "-y", "wx2"])
-        err = capsys.readouterr().err
+        rc, _, err = _mcp_run(["add", "weather", "--", "npx", "-y", "wx2"])
         assert rc == 1
         assert "already configured" in err
         # the original config survives untouched
         assert _mt.load_mcp_servers()[0].args == []
 
-    def test_invalid_name_surfaces_as_a_cli_error(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["add", "not a valid name!", "--", "npx"])
-        err = capsys.readouterr().err
+    def test_invalid_name_surfaces_as_a_cli_error(self) -> None:
+        rc, _, err = _mcp_run(["add", "not a valid name!", "--", "npx"])
         assert rc == 1
         assert "letters, digits" in err
 
     def test_add_writes_an_audit_entry_naming_server_and_command(self) -> None:
-        _mcp.run_mcp("servers", ["add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"])
+        _mcp_run(["add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"])
         entries = _audit_details("mcp_servers.add")
         assert len(entries) == 1
         assert "playwright" in entries[0]
         assert "npx" in entries[0]
 
     def test_add_audit_entry_never_contains_an_env_secret_value(self) -> None:
-        _mcp.run_mcp(
-            "servers",
-            ["add", "search", "--env", "SEARCH_API_KEY=sk-super-secret", "--", "search-server"],
+        _mcp_run(
+            ["add", "search", "--env", "SEARCH_API_KEY=tok-super-secret", "--", "search-server"]
         )
         entries = _audit_details("mcp_servers.add")
         assert len(entries) == 1
-        assert "sk-super-secret" not in entries[0]
+        assert "tok-super-secret" not in entries[0]
 
     def test_a_failed_add_writes_no_audit_entry(self) -> None:
-        _mcp.run_mcp("servers", ["add", "s", "npx"])  # missing "--"
+        _mcp_run(["add", "s", "--kind", "bogus", "--", "npx"])
         assert _audit_actions() == []
 
 
@@ -224,71 +207,50 @@ class TestServersAdd:
 
 
 class TestServersRemove:
-    def test_removes_a_configured_server(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_removes_a_configured_server(self) -> None:
         _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
-        rc = _mcp.run_mcp("servers", ["remove", "weather"])
-        out = capsys.readouterr().out
+        rc, out, _ = _mcp_run(["remove", "weather"])
         assert rc == 0
         assert "removed" in out.lower()
         assert _mt.load_mcp_servers() == []
 
-    def test_unknown_server_is_a_non_zero_noop(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["remove", "ghost"])
+    def test_unknown_server_is_a_non_zero_noop(self) -> None:
+        rc, _, _ = _mcp_run(["remove", "ghost"])
         assert rc == 1
         assert _audit_actions() == []
 
-    def test_no_name_given_is_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _mcp.run_mcp("servers", ["remove"])
-        assert rc == 1
+    def test_no_name_given_is_rejected(self) -> None:
+        assert _mcp_run(["remove"])[0] != 0
 
     def test_remove_writes_an_audit_entry_naming_the_server(self) -> None:
         _mt.add_mcp_server(_mt.McpServerConfig(name="weather", command="npx"))
-        _mcp.run_mcp("servers", ["remove", "weather"])
+        _mcp_run(["remove", "weather"])
         entries = _audit_details("mcp_servers.remove")
         assert len(entries) == 1
         assert "weather" in entries[0]
 
 
-# ── run_mcp dispatch / usage ─────────────────────────────────────────────────
+# ── the group ────────────────────────────────────────────────────────────────
 
 
-class TestRunMcpServersDispatch:
-    def test_bare_servers_prints_usage_and_exits_zero(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp("servers", [])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket mcp servers" in out
+class TestGroup:
+    def test_bare_group_prints_help_and_names_its_verbs(self) -> None:
+        _, out, _ = _mcp_run([])
+        assert "add" in out and "remove" in out and "list" in out
 
-    def test_unknown_servers_subcommand_exits_nonzero(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _mcp.run_mcp("servers", ["bogus"])
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "docket mcp servers" in err
-
-    def test_top_level_usage_still_mentions_serve(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Pre-existing test_mcp_optional_dep.py::TestUsage asserts this
-        substring against run_mcp(None, []) -- pinned again here so a future
-        edit to the merged usage message cannot silently drop it."""
-        rc = _mcp.run_mcp(None, [])
-        err = capsys.readouterr().err
-        assert rc == 0
-        assert "docket mcp serve" in err
-        assert "docket mcp servers" in err
+    def test_the_removed_top_level_command_is_unknown(self) -> None:
+        assert _runner.invoke(app, ["mcp", "servers", "list"]).exit_code == 2
 
 
 # ── ownership-row guard: never reaches core/tools.py or a toolbox handler ────
 
 
 class TestServersCliNeverReachesTheToolboxOrCoreTools:
-    """The ownership row: `cli/_mcp.py`'s servers commands never build a Tool, so they must not
-    import `core.tools` or any toolbox handler function -- a stricter bar than the public
+    """The ownership row: `cli/_setup_mcp.py` never builds a Tool, so it must not import
+    `core.tools` or any toolbox handler function -- a stricter bar than the public
     Tool/ToolRegistry.register API the MCP client itself uses."""
 
-    FILE = "src/docket/cli/_mcp.py"
+    FILE = "src/docket/cli/_setup_mcp.py"
 
     def test_no_core_tools_import(self) -> None:
         path = REPO_ROOT / self.FILE
@@ -336,16 +298,15 @@ def _run_docket(args: list[str], env: dict[str, str]) -> subprocess.CompletedPro
 
 
 class TestServersAddThroughTheRealEntryPoint:
-    """`_mcp.run_mcp` already receives `--` pre-split in every test above, so none of them
-    cross the Click seam `cmd_mcp` sits behind. These drive the real `python -m docket`
-    process, where Click's own arg parser sees the literal `--` first."""
+    """These drive the real `python -m docket` process, where Click's own arg parser sees the
+    literal `--` first."""
 
     def test_add_with_separator_persists_the_command(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         (home / ".docket").mkdir(parents=True)
         env = _child_env(home)
         result = _run_docket(
-            ["mcp", "servers", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"],
+            ["setup", "mcp", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest"],
             env,
         )
         assert result.returncode == 0, result.stderr
@@ -361,8 +322,8 @@ class TestServersAddThroughTheRealEntryPoint:
         env = _child_env(home)
         result = _run_docket(
             [
+                "setup",
                 "mcp",
-                "servers",
                 "add",
                 "s",
                 "--env",
@@ -383,32 +344,9 @@ class TestServersAddThroughTheRealEntryPoint:
         assert stored[0]["command"] == "cmd"
         assert stored[0]["args"] == ["--env", "X=Y"]
 
-    def test_missing_separator_still_rejected(self, tmp_path: Path) -> None:
+    def test_a_missing_command_is_still_rejected(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         (home / ".docket").mkdir(parents=True)
-        env = _child_env(home)
-        result = _run_docket(["mcp", "servers", "add", "s", "npx", "-y", "pkg"], env)
-        assert result.returncode == 1
+        result = _run_docket(["setup", "mcp", "add", "s", "--"], _child_env(home))
+        assert result.returncode != 0
         assert not (home / ".docket" / "docket-mcp-servers.json").exists()
-
-    def test_empty_command_after_separator_still_rejected(self, tmp_path: Path) -> None:
-        home = tmp_path / "home"
-        (home / ".docket").mkdir(parents=True)
-        env = _child_env(home)
-        result = _run_docket(["mcp", "servers", "add", "s", "--"], env)
-        assert result.returncode == 1
-
-
-class TestArgvRecoveryIgnoresACoincidentalToken:
-    """`_argv_tail_after` must not trust the first `sys.argv` entry that happens to equal "mcp"
-    -- a `CliRunner` invocation never touches `sys.argv`, so a bystander "mcp" left over from the
-    *test runner's own* argv (e.g. `pytest -k mcp ...`) must not be mistaken for the command's."""
-
-    def test_cli_runner_survives_a_coincidental_mcp_in_the_real_argv(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(sys, "argv", ["pytest", "-k", "mcp", "tests/x"])
-        runner = CliRunner()
-        result = runner.invoke(app, ["mcp", "servers", "list"])
-        assert result.exit_code == 0, result.output
-        assert "No MCP servers configured" in result.output

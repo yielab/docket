@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.70.0
+**Version**: 1.72.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -578,21 +578,30 @@ run id is unknown or already terminal
 
 **Purpose**: Expose docket's control plane as an MCP (Model Context Protocol) stdio server
 (ROADMAP Phase 18 L-3) — full contract in `mcp-server.spec.md`
-**Syntax**: `docket mcp <serve | servers <list|add|remove> ...>`
+**Syntax**: `docket mcp serve`
 **Actions**:
 - `serve`: Start the stdio MCP server (blocks until the client disconnects). Requires the
   optional `mcp` extra (`pip install 'docket[mcp]'`); prints an actionable hint and exits 1 if
   it isn't installed, rather than a bare traceback
-- `servers list|add|remove`: Configure external stdio MCP tool servers whose tools reach a live
-  turn through the same `dispatch_tool` chokepoint — `add <name> [--env K=V ...] [--timeout S]
-  [--kind read|write] [--tools NAME,...] [--no-isolate] -- <command> [args]`; `--kind` declares the server's
-  trust level (default `write`) and `list` shows it alongside each server's `tools` allow-list
-  (empty = all); `--no-isolate` starts the server on the host instead of in the turn's jail (audited, shown by `list`); a bad `--kind` value exits 1 naming the field; full contract in
-  `mcp-client.spec.md`
 **Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
 startup naming the registered tools
 **Return**: `0` on clean shutdown or bare `docket mcp` (prints usage), `1` if the SDK is missing or
 an unrecognized subcommand was given
+
+#### docket setup mcp
+**Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
+tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client.spec.md`)
+**Syntax**: `docket setup mcp <list|add|remove>` (a real sub-app of `setup`)
+**Subcommands**:
+- `list`: Every configured server's name, launch command, `kind`, `tools` allow-list (empty =
+  all), timeout and whether it runs in the jail or on the host; `env` values are masked
+- `add <name> [--env K=V ...] [--timeout S] [--kind read|write] [--tools NAME,...] [--no-isolate]
+  -- <command> [args]`: Everything after `--` is the launch command, verbatim. `--kind` declares
+  the server's trust level (default `write`); `--no-isolate` starts the server on the host
+  instead of in the turn's jail (audited, shown by `list`). A bad `--kind`, a malformed `--env`,
+  a bad or duplicate name exits 1 writing nothing; a missing command exits 2
+- `remove <name>`: Remove a configured server; an unknown name exits 1
+**Return**: 0 on success, 1 on a refused value, 2 on a usage error
 
 #### docket harness
 **Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
@@ -678,7 +687,7 @@ visibility, not shared workspace or session state.
   than the console (`core.channel.Catalog.delivering()`). None, with at least one project
   agent registered, is a counted issue printed as `core.channel.unreached_warning`'s text
   (only `console` is on and it sends nothing; a parked task waits unseen until `docket inbox`;
-  fix with `docket channels enable desktop` or `ntfy --set topic=<topic>`); none with no
+  fix with `docket setup notify enable desktop` or `ntfy --set topic=<topic>`); none with no
   agents is informational. `--json` carries `checks.notifications {ok, delivering}`
 - MCP server isolation state: unjailed servers (isolate: false) from both global and per-pod
   registries while isolation is on (human output warns; `--json` lists with pod context)
@@ -873,13 +882,14 @@ scopes' recipe names
 **Return**: 0 on success, 1 on invalid subcommand or an unresolvable name, 2 on an unrecognized
 flag
 
-#### docket exporters
+#### docket setup export
 **Purpose**: List, inspect, and enable an observability export destination (`kind: exporter`
 document, `core.exporter`) by authenticating -- the requested experience is "the YAML exists,
 I only put the key" (observability-export.spec.md "Activation"); and show or change what an
 exporter shares beyond bare structure, as a confirmed command
 (observability-export.spec.md "Privacy commands and disclosure")
-**Syntax**: `docket exporters <subcommand> [args]`
+**Syntax**: `docket setup export <list|show|enable|disable|test|add|remove|export|privacy|preview>`
+(a real sub-app of `setup`; bare `docket setup export` prints its help)
 **Subcommands**:
 - `list [--json]`: Table (NAME, DIALECT, STATE, CREDENTIALS, SCOPE, SHARES) of every catalog
   exporter, state from `core.exporter.activation_state`, SHARES its `privacy_label`; `--json`
@@ -891,16 +901,14 @@ exporter shares beyond bare structure, as a confirmed command
   sent); `--json` adds `missingCredentials` and the raw `health` record
 - `enable <name> [--endpoint URL] [--privacy <level>|--share a,b] [--events ...] [--no-verify]
   [--yes]`: For each of *name*'s credentials that resolves to no value, prompts on a TTY and
-  stores it (`docket keys add`'s own storage path), or on a non-TTY names `docket keys add
-  <NAME>` per missing credential and exits 1 writing nothing. A `--privacy`/`--share` that
-  widens what the exporter shares (`core.exporter.is_widening`) follows the same
-  confirm-or-refuse rule as `docket exporters privacy`. Then probes the (possibly overridden)
-  endpoint and classifies it exactly like `docket models provider add`; a transport failure
-  exits 1 and writes nothing unless `--no-verify` is given. On success, writes only
-  `{kind, name, enabled: true, <overrides given>}` to the global catalog through
+  stores it in the 0600 secret store, or on a non-TTY names the missing credentials and exits 1
+  writing nothing. A `--privacy`/`--share` that widens what the exporter shares
+  (`core.exporter.is_widening`) follows the same confirm-or-refuse rule as `privacy`. Then probes
+  the (possibly overridden) endpoint and classifies it exactly like `docket setup provider add`;
+  a transport failure exits 1 and writes nothing unless `--no-verify` is given. On success,
+  writes only `{kind, name, enabled: true, <overrides given>}` to the global catalog through
   `core.exporter.enable_exporter` -- every other field is inherited from the built-in of the
-  same name at read time -- and prints `shares: <label> (<classes, or "structure only">)`. The
-  retired `--payload metadata|full` flag is no longer accepted
+  same name at read time -- and prints `shares: <label> (<classes, or "structure only">)`
 - `disable <name>`: Flip `enabled` to `false` in the global catalog; stored credentials are
   never touched
 - `test <name>`: Re-probe the endpoint and print the classified result; exit 0 on a clean
@@ -908,7 +916,8 @@ exporter shares beyond bare structure, as a confirmed command
 - `add <file.yaml> [--no-verify] [--yes]`: Register a full `kind: exporter` document, verified
   like `enable`; a document sharing beyond `minimal` follows the same widening rule, compared
   against any existing catalog entry of the same name
-- `remove <name>`: Remove a global override; a built-in with none refuses naming it as built-in
+- `remove <name> [--yes]`: Remove a global override after a confirmation; a built-in with none
+  refuses naming it as built-in before asking
 - `export <name> [<file>]`: Print (or write) the exporter as a `kind: exporter` document --
   never a credential value, only credential names
 - `privacy <name> [<level>|--share a,b] [--max-chars N] [--yes]`: With no level, `--share` or
@@ -985,45 +994,53 @@ stored cursor for this one call without touching it either. `--json` emits the i
 **Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
 **Return**: 0 always — an empty inbox is not an error
 
-#### docket channels
-**Purpose**: Manage `kind: channel` documents — notification/conversation/decision destinations
-(Phase 34, D-50, ADR 0016 §7; see operator-loop.spec.md "Notifications")
-**Syntax**: `docket channels <list|show|enable|disable|add|remove|export|content|test> [args]`
-**Actions**:
+#### docket setup notify
+**Purpose**: Manage `kind: channel` documents -- notification/conversation/decision
+destinations -- and connect Telegram in one step (Phase 34, D-50, ADR 0016 §7; see
+operator-loop.spec.md "Notifications" and telegram-integration.spec.md)
+**Syntax**: `docket setup notify <list|show|enable|disable|add|remove|export|privacy|test|bind|unbind|flush>`
+(a real sub-app of `setup`; bare `docket setup notify` prints its help)
+**Subcommands**:
 - `list [--json]`: Every catalog channel's dialect, enabled state, capabilities and content level
-- `show <name> [--json]`: One channel's effective document and scope
-- `enable <name> [--set k=v ...]`: Writes only the `enabled` flag plus the overrides given
-  (`--set actors=a,b` sets the actors list, `--set secret=NAME` sets the credential name,
-  anything else lands in `config`); refuses without writing while a required field the built-in
-  names is still empty (`ntfy` needs a non-empty `topic`, `telegram` needs a non-empty `actors`)
+- `show <name> [--json]`: One channel's effective document and scope; `show telegram` also lists
+  the bindings in `fleet.json` and the open Telegram conversations in the registry
+- `enable <name> [--set k=v ...] [--chat ID ...] [--token T] [--test]`: Writes only the `enabled`
+  flag plus the overrides given (`--set actors=a,b` sets the actors list, `--set secret=NAME`
+  sets the credential name, anything else lands in `config`); refuses without writing while a
+  required field the built-in names is still empty (`ntfy` needs a non-empty `topic`).
+  `enable telegram --chat <id>` is one operation: it stores the bot token (`--token`, then
+  `TELEGRAM_BOT_TOKEN` in the environment, then a hidden prompt on a TTY; a stored token is
+  kept when none is given), sets `actors`, binds every pod Lead to the first chat, and prints
+  what it wrote in each store. It sends nothing unless `--test` is given; with no chat id, or
+  no token off a TTY, nothing is written
 - `disable <name>`: Turns it back off
-- `add <file.yaml>` / `remove <name>`: Manage a full document
+- `add <file.yaml>` / `remove <name> [--yes]`: Manage a full document; a built-in with no global
+  override refuses naming it as built-in
 - `export <name> [<file>]`: Print or write one back out
-- `content <name> [<level>] [--yes]`: Show or change how much a delivery carries (`minimal <
+- `privacy <name> [<level>] [--yes]`: Show or change how much a delivery carries (`minimal <
   actions < conversation`); widening prints the change and asks for confirmation on a TTY, or
-  refuses off one without `--yes` — narrowing never asks
+  refuses off one without `--yes` -- narrowing never asks
 - `test <name>`: Sends one synthetic `dev.docket.channel.test` event through that one channel and
-  reports success or failure — useful to verify a webhook URL or a command binary before relying
-  on it. Every other subcommand here only edits the catalog; `test` and `docket notify` are the
-  only things in this command group that ever send anything
+  reports success or failure -- useful to verify a webhook URL or a command binary before relying
+  on it
+- `bind <member> [--channel telegram] [--chat ID]`: Bind one pod member to a chat (the per-pod
+  exception to `enable telegram`) and seed its conversation registry entry; without `--chat` a
+  TTY runs the one-time `/wire <code>` discovery with manual entry as the fallback, and off a TTY
+  the command refuses naming `--chat`. The binding is the entire authorization boundary
+- `unbind <member> [--channel telegram] [--yes]`: Remove that binding after a confirmation
+- `flush [--dry-run]`: `docket serve`'s sweep and `docket pod <p> dispatch` already flush after
+  every real state change; this forces one in between, or previews it. With no `--dry-run`, diffs
+  the inbox against the last flush's saved snapshot, delivers each new event
+  (`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
+  delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash
+  mid-flush never re-emits; a failed delivery is recorded in `~/.docket/channels-health.json` and
+  not retried on the next flush (at-most-once). `--dry-run` delivers nothing and leaves the
+  snapshot untouched
+Only `test`, `enable --test` and `flush` ever send anything; every other subcommand edits the
+catalog or `fleet.json`
 **Output**: A table/document, or a confirmation
-**Return**: 0 on success, 1 on an unknown channel, a missing required field on `enable`, or a
-refused content widening
-
-#### docket notify
-**Purpose**: Flush operator events to every enabled channel (Phase 34, D-50, ADR 0016 §6; see
-operator-loop.spec.md "Notifications")
-**Syntax**: `docket notify flush [--dry-run]`
-**Behavior**: `docket serve`'s sweep and `docket pod <p> dispatch` already flush after every real
-state change; this command forces one in between, or previews it. With no `--dry-run`, diffs the
-inbox against the last flush's saved snapshot, delivers each new event
-(`dev.docket.task.*`/`approval.*`) to every enabled channel whose `on` matches, and prints the
-delivered/failed/skipped counts. The snapshot is saved *before* delivering, so a crash mid-flush
-never re-emits; a failed delivery is recorded in `~/.docket/channels-health.json` and not
-retried on the next flush (at-most-once, never at-least-once). `--dry-run` prints what would be
-sent without delivering or advancing the snapshot
-**Output**: Delivered/failed/skipped counts, or (with `--dry-run`) the same counts as a preview
-**Return**: 0 always — nothing to deliver is not an error
+**Return**: 0 on success, 1 on an unknown channel or member, a missing required field on
+`enable`, a refused widening, or a failed delivery; 2 on a usage error
 
 ### Identity & Conversations
 
@@ -1036,48 +1053,6 @@ sent without delivering or advancing the snapshot
 - `clear`: Remove the persona (agent displays by role/id again)
 **Output**: Persona confirmation or display
 **Return**: 0 on success, 1 on error
-
-#### docket conversations
-**Purpose**: Inspect docket's durable conversation registry (pointers to channel threads; even
-before ROADMAP Phase 19 P19-7b deleted the daemon outright, it kept no durable transcript of its
-own — its per-agent sqlite was a rebuildable RAG index, not a transcript — so docket has always
-owned this, and now there is no daemon at all to contrast it with)
-**Syntax**: `docket conversations [list | show <id|agent-id> | resume <id|agent-id> | set <agent-id> <peer-id> [--topic] [--status] [--last] [--task]]`
-**Actions**:
-- `list` (default): Table of registered conversations (agent, channel, peer, status, topic)
-- `show <id|agent-id>`: Print one conversation's fields
-- `resume <id|agent-id>`: Mark in-progress and point at the agent's durable HEARTBEAT.md/memory
-- `set <agent-id> <peer-id> [--topic] [--status] [--last] [--task]`: Upsert registry fields
-**Output**: Registry table or confirmation
-**Return**: 0 on success, 1 on error
-
-### Telegram Commands
-
-The Telegram binding commands are `docket wire` and `docket unwire`. There is no `docket
-telegram` command or alias (it is an ordinary unknown-command error, exit 2).
-
-#### docket wire
-**Purpose**: Bind a channel group/peer to an agent (see telegram-integration.spec.md). With
-`TELEGRAM_BOT_TOKEN` stored, docket shows a one-time `/wire <code>` command to send in the group
-and discovers the group from it; manual numeric-ID entry is the fallback. (The daemon-era
-log-scanning discovery, `scan_telegram_groups`, was removed by ROADMAP Phase 19 P19-7b.)
-**Syntax**: `docket wire [agent-id] [--channel <name>]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Discovers (or prompts for) the group ID, records the binding in `fleet.json`, and
-registers the thread in the conversation registry. The binding is inbound-only: it authorizes the
-chat to use the four verbs `docket serve --telegram` answers; docket never messages it first.
-There is no gateway-restart step: it was deleted outright, not kept as a no-op (CL-C, ROADMAP
-Phase 19 wave 14).
-**Return**: 0 on success, 1 if not found
-
-#### docket unwire
-**Purpose**: Remove an agent's channel binding
-**Syntax**: `docket unwire [agent-id] [--channel <name>]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Unbind confirmation. No gateway-restart step (see `docket wire` above).
-**Return**: 0 on success, 1 if not found
 
 #### docket completions
 **Purpose**: Emit a shell completion script for bash or zsh
@@ -1321,6 +1296,16 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.72.0 (2026-10-07)
+
+- Phase 39 (P39-13): `channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters` and
+  `mcp servers` are removed; an undefined name exits 2. `docket setup notify` carries the channel
+  catalog, `enable telegram --chat <id>` (token, actors and every Lead's binding in one
+  operation; nothing is sent without `--test`), `bind`/`unbind`, `privacy` (was `content`) and
+  `flush`; `docket setup export` carries the exporter verbs; `docket setup mcp` carries
+  `list|add|remove`. `remove` confirms (`--yes` off a TTY). The conversation registry has no CLI:
+  `show telegram` lists it.
 
 ### Version 1.70.0 (2026-10-07)
 

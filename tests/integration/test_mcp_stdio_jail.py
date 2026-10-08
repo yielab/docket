@@ -9,10 +9,11 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 import docket.config as _cfg
 import docket.core.mcp_tools as _mt
-from docket.cli import _mcp
+from docket.cli import app
 from docket.core import audit as _audit
 from docket.edges.adapters import mcp_client as _client
 from docket.edges.adapters import system
@@ -183,19 +184,19 @@ def test_listing_works_through_the_jail(
     assert {t.name for t in listing.tools} == {"write", "dial"}
 
 
-def test_no_isolate_flag_is_stored_audited_and_shown(capsys: pytest.CaptureFixture[str]) -> None:
-    assert _mcp.run_mcp("servers", ["add", "free", "--no-isolate", "--", "srv", "x"]) == 0
-    assert _mcp.run_mcp("servers", ["add", "caged", "--", "srv"]) == 0
+def test_no_isolate_flag_is_stored_audited_and_shown() -> None:
+    runner = CliRunner()
+    free = runner.invoke(app, ["setup", "mcp", "add", "free", "--no-isolate", "--", "srv", "x"])
+    assert free.exit_code == 0
+    assert runner.invoke(app, ["setup", "mcp", "add", "caged", "--", "srv"]).exit_code == 0
     by_name = {s.name: s for s in _mt.load_mcp_servers()}
     assert by_name["free"].isolate is False
     assert by_name["caged"].isolate is True
     details = [e["detail"] for e in _audit.read_audit() if e["action"] == "mcp_servers.add"]
     assert any("name='free'" in d and "isolate=no" in d for d in details)
     assert any("name='caged'" in d and "isolate=yes" in d for d in details)
-    capsys.readouterr()
-    _mcp.run_mcp("servers", ["list"])
-    listed = capsys.readouterr().out
-    assert listed.count("isolate: no") == 1
+    listed = runner.invoke(app, ["setup", "mcp", "list"]).output
+    assert listed.count("host") == 1
 
 
 def test_a_config_written_before_the_field_existed_loads_as_isolated() -> None:

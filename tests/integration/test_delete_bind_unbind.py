@@ -1,4 +1,4 @@
-"""delete, wire, unwire — writer commands.
+"""delete, bind, unbind — writer commands.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic. fleet.json is
@@ -16,6 +16,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
+from docket.cli import _contract
 from docket.cli import app as _app
 
 SUBJECT = "docket.config"
@@ -79,6 +80,7 @@ def _run(
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
         repoint_docket_home(mp, home)
+        mp.setattr(_contract, "_is_tty", lambda: True)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
@@ -138,60 +140,60 @@ class TestCmdDelete:
 
 
 # ---------------------------------------------------------------------------
-# docket unwire
+# docket setup notify unbind
 # ---------------------------------------------------------------------------
 
 
-class TestCmdUnwire:
-    def test_unwire_no_binding_exits_0(self, tmp_path: Path) -> None:
+class TestCmdUnbind:
+    def test_unbind_no_binding_exits_0(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["unwire", "myshop"], home, "y\n")
+        rc, out, err = _run(["setup", "notify", "unbind", "myshop"], home, "y\n")
         assert rc == 0
         combined = out + err
         assert "no" in combined.lower() or "binding" in combined.lower()
 
-    def test_unwire_unknown_agent_exits_1(self, tmp_path: Path) -> None:
+    def test_unbind_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, _, err = _run(["unwire", "ghost"], home)
+        rc, _, err = _run(["setup", "notify", "unbind", "ghost"], home)
         assert rc == 1
         assert "not found" in err
 
-    def test_unwire_aborts_when_declined(self, tmp_path: Path) -> None:
+    def test_unbind_aborts_when_declined(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_binding=True)
-        rc, _, _ = _run(["unwire", "myshop"], home, "n\n")
+        rc, _, _ = _run(["setup", "notify", "unbind", "myshop"], home, "n\n")
         assert rc == 0
         # Binding must still be there
         fleet = json.loads((home / "fleet.json").read_text())
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert len(myshop_bindings) == 1
 
-    def test_unwire_removes_binding(self, tmp_path: Path) -> None:
+    def test_unbind_removes_binding(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_binding=True)
-        rc, _, err = _run(["unwire", "myshop"], home, "y\n")
+        rc, _, err = _run(["setup", "notify", "unbind", "myshop"], home, "y\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         fleet = json.loads((home / "fleet.json").read_text())
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
 
-    def test_unwire_custom_channel_no_binding(self, tmp_path: Path) -> None:
+    def test_unbind_custom_channel_no_binding(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["unwire", "myshop", "--channel", "slack"], home)
+        rc, out, err = _run(["setup", "notify", "unbind", "myshop", "--channel", "slack"], home)
         assert rc == 0
         combined = out + err
         assert "no" in combined.lower() or "binding" in combined.lower()
 
 
 # ---------------------------------------------------------------------------
-# docket wire
+# docket setup notify bind
 # ---------------------------------------------------------------------------
 
 
-class TestCmdWire:
-    """`docket wire` discovers Telegram groups through docket's bot, retaining manual entry as
+class TestCmdBind:
+    """`setup notify bind` discovers Telegram groups through docket's bot, retaining manual entry as
     a fallback. The binding it records is the entire authorization boundary (core/telegram.py),
     so the output states that plainly."""
 
-    def test_wire_discovers_group_without_numeric_id_entry(
+    def test_bind_discovers_group_without_numeric_id_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from typer.testing import CliRunner
@@ -201,6 +203,7 @@ class TestCmdWire:
 
         home = _setup_agent(tmp_path)
         repoint_docket_home(monkeypatch, home)
+        monkeypatch.setattr(_contract, "_is_tty", lambda: True)
         monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
         monkeypatch.setattr(
             telegram,
@@ -215,7 +218,7 @@ class TestCmdWire:
         )
         monkeypatch.setattr("secrets.token_hex", lambda size: "a1b2c3")
 
-        result = CliRunner().invoke(app, ["wire", "myshop"], input="\n")
+        result = CliRunner().invoke(app, ["setup", "notify", "bind", "myshop"], input="\n")
 
         assert result.exit_code == 0, result.output
         assert "/wire A1B2C3" in result.output
@@ -223,25 +226,25 @@ class TestCmdWire:
         fleet = json.loads((home / "fleet.json").read_text())
         assert fleet["bindings"][0]["peerId"] == "-100456"
 
-    def test_wire_unknown_agent_exits_1(self, tmp_path: Path) -> None:
+    def test_bind_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, _, err = _run(["wire", "ghost"], home)
+        rc, _, err = _run(["setup", "notify", "bind", "ghost"], home)
         assert rc == 1
         assert "not found" in err
 
-    def test_wire_empty_entry_aborts(self, tmp_path: Path) -> None:
+    def test_bind_empty_entry_aborts(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["wire", "myshop"], home, stdin_text="\n")
+        rc, out, err = _run(["setup", "notify", "bind", "myshop"], home, stdin_text="\n")
         assert rc == 0
         combined = out + err
         assert "aborted" in combined.lower()
         fleet = json.loads((home / "fleet.json").read_text())
         assert not fleet["bindings"]
 
-    def test_wire_manual_entry_records_binding(self, tmp_path: Path) -> None:
+    def test_bind_manual_entry_records_binding(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         rc, out, err = _run(
-            ["wire", "myshop"],
+            ["setup", "notify", "bind", "myshop"],
             home,
             stdin_text="-999888777\n",
         )
@@ -254,20 +257,20 @@ class TestCmdWire:
         combined = out + err
         assert "whole authorization story" in combined.lower()
 
-    def test_wire_shows_existing_binding_warning(self, tmp_path: Path) -> None:
+    def test_bind_shows_existing_binding_warning(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_binding=True)
         _, out, err = _run(
-            ["wire", "myshop"],
+            ["setup", "notify", "bind", "myshop"],
             home,
             stdin_text="\n",
         )
         combined = out + err
         assert "-123456789" in combined  # current binding shown
 
-    def test_wire_updates_existing_binding(self, tmp_path: Path) -> None:
+    def test_bind_updates_existing_binding(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_binding=True)
         rc, _, err = _run(
-            ["wire", "myshop"],
+            ["setup", "notify", "bind", "myshop"],
             home,
             stdin_text="-1001234567890\n",
         )
@@ -279,7 +282,7 @@ class TestCmdWire:
 
 
 # ---------------------------------------------------------------------------
-# stub list confirms delete/wire/unwire no longer exit 127
+# stub list confirms delete/bind/unbind no longer exit 127
 # ---------------------------------------------------------------------------
 
 
@@ -288,8 +291,8 @@ class TestM4Wave2CommandsPortedFromStubs:
         "cmd",
         [
             ["delete", "ghost"],  # exits 1 (not found) — not 127
-            ["wire", "ghost"],  # exits 1 (not found) — not 127
-            ["unwire", "ghost"],  # exits 1 (not found) — not 127
+            ["setup", "notify", "bind", "ghost"],  # exits 1 (not found) — not 127
+            ["setup", "notify", "unbind", "ghost"],  # exits 1 (not found) — not 127
         ],
     )
     def test_does_not_exit_127(self, cmd: list[str], tmp_path: Path) -> None:
