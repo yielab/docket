@@ -161,6 +161,20 @@ class TestTable:
         assert any("nosuch" in p for p in rcn.self_check())
 
 
+class TestLateEntries:
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [
+            ("docket trace expire --days 3", "docket task prune --traces --days 3"),
+            ("docket runs list --project x", "docket task list --pod x"),
+            ("docket mcp servers add s -- cmd", "docket setup mcp add s -- cmd"),
+            ("docket add --from spec.yaml", "docket init --from spec.yaml"),
+        ],
+    )
+    def test_rewrites_the_forms_a_doc_card_found_wrong(self, old: str, new: str) -> None:
+        assert rcn.rewrite_line(old) == new
+
+
 class TestRecord:
     def test_a_spec_changelog_is_neither_checked_nor_rewritten(self, tmp_path: Path) -> None:
         spec = rcn.ROOT / "specs" / "functional" / "_rcn_probe.spec.md"

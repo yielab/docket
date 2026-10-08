@@ -174,10 +174,12 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     (_c("deny"), "docket task deny"),
     (_c("chat"), "docket task answer"),
     (_c("runs[ \t]+show"), "docket task show"),
+    (_c("runs[ \t]+list", r"[ \t]+--project\b"), "docket task list --pod"),
     (_c("runs[ \t]+list"), "docket task list"),
     (_c("runs[ \t]+cancel"), "docket task cancel"),
     (re.compile(_LEAD + _RUNS), "docket task list"),
     (_c("trace[ \t]+tail", rf"(?:[ \t]+(?!-){_ANY})?"), "docket task trace --tail"),
+    (_c("trace[ \t]+expire"), "docket task prune --traces"),
     (_c("trace"), "docket task trace"),
     # status
     (_c("snapshot"), "docket status --all --json"),
