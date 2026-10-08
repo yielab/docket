@@ -53,7 +53,7 @@ def _default(
         ui.console.print("  docket init          initialize this project (Lead + Implementer)")
         ui.console.print("  docket status        show the current project's status")
         ui.console.print("  docket status --all  show global status by project")
-        ui.console.print("  docket add <role>    add an agent to the current pod")
+        ui.console.print("  docket pod add <role>  add an agent to the current pod")
         ui.console.print("  docket setup         set up this workstation (model endpoint first)")
 
 
@@ -67,20 +67,9 @@ _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
 app.command("status")(_status.cmd_status)
 app.command(
-    "add",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod.cmd_add)
-app.command(
     "init",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_agents.cmd_init)
-app.command("info")(_pod.cmd_info)
-app.command("delete")(_pod.cmd_delete)
-app.command(
-    "maintain",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod.cmd_maintain)
-app.command("profile")(_pod.cmd_profile)
 app.command(
     "pod",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -93,10 +82,6 @@ app.command(
     "roles",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_roles)
-app.command(
-    "config",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_config)
 app.command(
     "runs",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},

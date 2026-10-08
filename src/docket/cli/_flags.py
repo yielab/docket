@@ -1,6 +1,6 @@
 """Shared unknown-flag detection for hand-dispatched CLI commands.
 
-`roles`, `gates`, `keys`, `policies`, and `maintain` declare
+`roles`, `gates`, `keys` and `policies` declare
 `context_settings={"allow_extra_args": True, "ignore_unknown_options": True}` and parse their own
 trailing `ctx.args` instead of Click's option parser, so an undocumented `--flag` would otherwise
 land silently in a positional slot rather than raising a usage error. `find_unknown_flag` restores

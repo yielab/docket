@@ -32,7 +32,6 @@ META: dict[str, Any] = {
     "name": "Api Test Agent",
     "scope": "project",
     "model": "anthropic/claude-haiku-4-5-20251001",
-    "modelSource": "policy",
     "budgetUsd": "5.0",
 }
 

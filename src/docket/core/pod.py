@@ -1,5 +1,5 @@
 """Pod composition model: the set of project-scoped agents making up one project. Composition
-logic — the CLI (`docket add`/`docket pod`) turns a `PodPlan` into registered agents; this
+logic — the CLI (`docket init`/`docket pod`) turns a `PodPlan` into registered agents; this
 module only decides what a pod contains and how members are named. Default pod is
 **lean** (Lead + Implementer); Reviewer, Tester, or extra Implementers are added later, and a
 duplicated role gets an indexed member id (``<project>-implementer``, ``...-implementer-2``).
@@ -333,7 +333,7 @@ class PodSettings(BaseModel):
     allow_commands: tuple[str, ...] = Field((), alias="allowCommands")
     # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
     # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
-    # ``docket pod <project> config set pipeline <file>``, which validates the file and
+    # ``docket pod set pipeline <file>``, which validates the file and
     # writes the copy before this ever gets written (see core/dispatch.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
@@ -388,16 +388,16 @@ class PodSettings(BaseModel):
     # Where this pod's team came from (ADR 0012): the absolute directory `core.pod_apply.apply`
     # last applied, and a sha256 fingerprint of that directory's contents at that moment
     # (`core.pod_apply.directory_digest`). Written only by `apply`, right after a plan that
-    # wrote at least one item -- never by `docket pod <p> config set` (see `RECORDED_KEYS`) and
+    # wrote at least one item -- never by `docket pod set` (see `RECORDED_KEYS`) and
     # never carried in a `pod.yaml` `settings` mapping, since both are refused the same way any
-    # key outside `KEYS` already is. `docket config explain <agent>` recomputes the digest
+    # key outside `KEYS` already is. `docket pod show` recomputes the digest
     # against the still-present directory to report drift.
     config_source: str = Field("", alias="configSource")
     config_digest: str = Field("", alias="configDigest", pattern=r"^(|[0-9a-f]{64})$")
 
     # Which observability destinations (`core.exporter.load_catalog()` names) this pod's last
     # applied recipe named (ADR 0014 rule 7) -- recorded by `core.pod_apply.apply`, exactly like
-    # `configSource`/`configDigest` above, and never configurable directly (`config set
+    # `configSource`/`configDigest` above, and never configurable directly (`pod set
     # exporters` is refused the same way). Names are already validated against the live catalog
     # by `plan_apply` before this is ever stored, so no catalog dependency is added here.
     exporters: tuple[str, ...] = Field((), alias="exporters")
@@ -424,8 +424,8 @@ class PodSettings(BaseModel):
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
-    # settable-key path (`coerce`, `config set`'s fallthrough, a `pod.yaml` `settings` mapping)
-    # already refuses them as unknown; `config set` checks this tuple first only to give the
+    # settable-key path (`coerce`, `pod set`'s fallthrough, a `pod.yaml` `settings` mapping)
+    # already refuses them as unknown; `pod set` checks this tuple first only to give the
     # friendlier "written by apply" message instead of "unknown pod setting".
     RECORDED_KEYS: ClassVar[tuple[str, ...]] = ("configSource", "configDigest", "exporters")
 

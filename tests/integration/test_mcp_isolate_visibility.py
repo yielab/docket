@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
-from docket.cli import _config, _pod, _setup_check
+from docket.cli import _pod, _setup_check
 from docket.core import mcp_tools as _mcp_tools
 from docket.core import pod
 
@@ -92,10 +93,11 @@ class TestConfigExplainShowsIsolateBool:
             _mcp_tools.McpServerConfig(name="unjailed-tool", command="python3", isolate=False)
         )
 
-        capsys.readouterr()
-        _config.dispatch("explain", [pod.member_id("demo", "implementer"), "--json"])
-        output = capsys.readouterr().out
-        report = json.loads(output)
+        shown = CliRunner().invoke(
+            _pod.pod_app, ["show", pod.member_id("demo", "implementer"), "--pod", "demo", "--json"]
+        )
+        assert shown.exit_code == 0, shown.output
+        report = json.loads(shown.stdout)
 
         servers_by_name = {s["name"]: s for s in report["tools"]["mcpServers"]}
         assert servers_by_name["jailed-tool"]["isolate"] is True
@@ -109,9 +111,10 @@ class TestConfigExplainShowsIsolateBool:
             _mcp_tools.McpServerConfig(name="unjailed-tool", command="python3", isolate=False)
         )
 
-        capsys.readouterr()
-        _config.dispatch("explain", [pod.member_id("demo", "implementer")])
-        output = capsys.readouterr().out
+        shown = CliRunner().invoke(
+            _pod.pod_app, ["show", pod.member_id("demo", "implementer"), "--pod", "demo"]
+        )
+        output = shown.stdout
         # Should show unjailed server with some marker
         assert "unjailed-tool" in output
 

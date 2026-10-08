@@ -29,7 +29,6 @@ META: dict[str, Any] = {
     "kind": "project",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",

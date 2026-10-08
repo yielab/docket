@@ -118,7 +118,7 @@ TRACE_RETENTION_DAYS = int(os.environ.get("TRACE_RETENTION_DAYS", "30"))
 TRACE_RETENTION_S = TRACE_RETENTION_DAYS * 86400
 
 # These constants bound the *static* context re-sent every turn (SOUL/AGENTS/
-# TOOLS/HEARTBEAT/MEMORY.md) and power the token guards in `maintain check`.
+# TOOLS/HEARTBEAT/MEMORY.md) and power the prompt budget guards.
 # Token counts are a rough bytes/divisor estimate -- good enough to catch
 # runaway context, not a billing figure (see core/session.py's real measured
 # counts for the turn loop's own message history, a separate concern).
@@ -130,15 +130,15 @@ CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "
 # "never set" (see core/identity.py's window-aware static budget resolver).
 CONTEXT_TOKEN_BUDGET_DEFAULT = 6000
 # CONTEXT_TOKEN_BUDGET: soft cap on the static context re-sent every turn
-# (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md). `maintain check` warns past this.
+# (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it.
 # An explicit override here always wins over the window-aware default above.
 CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("CONTEXT_TOKEN_BUDGET", str(CONTEXT_TOKEN_BUDGET_DEFAULT))
 )
 
 
-# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: bound `docket maintain
-# distill`'s one driver-backed turn (docket's first self-originated LLM
+# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: bound the one driver-backed
+# distillation turn `docket pod reset` runs (docket's first self-originated LLM
 # call). DISTILL_MAX_INPUT_BYTES bounds how much daily-log content goes into
 # that turn's prompt, using the same bytes estimator as the rest of this
 # file's context guards; it is a safety cap on the prompt docket composes,
@@ -292,7 +292,7 @@ def pod_work_dir(project: str) -> Path:
 
     Auto-provisioned (mkdir -p, 0700) at pod creation the same way
     `pod_scratch_dir` is, unless the operator supplies an explicit path
-    (``docket add --codebase <path>`` doubles as "the working directory" for
+    (``docket init --codebase <path>`` doubles as "the working directory" for
     a `workdir` blueprint). Shared by the whole pod, mirroring how a
     `codebase` path is shared by every member of a `software` pod.
     """

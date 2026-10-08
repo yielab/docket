@@ -1,11 +1,10 @@
 # Rich markup literals outside ui.py; shrink-only, regenerate with --write
 cli/__init__.py 1
-cli/_agents.py 31
+cli/_agents.py 1
 cli/_channels.py 1
-cli/_config.py 21
 cli/_conversations.py 4
 cli/_pipeline.py 1
-cli/_pod.py 11
+cli/_pod.py 3
 cli/_roles.py 1
 cli/_runs.py 1
 cli/_setup_check.py 17

@@ -1,4 +1,4 @@
-"""info — a fully-ported read-only command.
+"""The bare `docket` guide.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic and never touch
@@ -30,7 +30,6 @@ META: dict[str, Any] = {
     "kind": "project",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",
@@ -115,99 +114,6 @@ def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
         repoint_docket_home(mp, oc_dir)
         result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
-
-
-# ---------------------------------------------------------------------------
-# docket info
-# ---------------------------------------------------------------------------
-
-
-class TestCmdInfo:
-    def test_info_json_structure(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        data = json.loads(out)
-        assert data["id"] == "myshop"
-        assert data["name"] == "My Shop"
-        assert data["registered"] is True
-        assert data["telegram"] is None
-        assert data["paused"] is False
-        assert data["sessionKey"] == "agent:myshop:default"
-        assert data["projectKey"] == "default"
-        assert data["stack"] == "Node.js"
-
-    def test_info_json_budget_null_when_absent(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["budgetUsd"] is None
-
-    def test_info_json_budget_is_number_when_present(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
-        budgeted_meta = {**META, "budgetUsd": "10.50"}
-        (ws / ".docket-meta.json").write_text(json.dumps(budgeted_meta))
-        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        budget = data["budgetUsd"]
-        assert isinstance(budget, (int, float)) and not isinstance(budget, bool)
-        assert budget == 10.5
-
-    def test_info_json_last_active_dash_when_no_logs(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["lastActive"] == "—"
-
-    def test_info_json_last_active_from_memory_log(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        mem = oc_dir / "workspaces" / "projects" / "myshop" / "memory"
-        (mem / "2024-03-15.md").write_text("log")
-        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["lastActive"] == "2024-03-15"
-
-    def test_info_json_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["info", "does-not-exist", "--json"], oc_dir)
-        assert rc == 1
-        assert "not found" in err
-
-    def test_info_human_exits_zero(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["info", "myshop"], oc_dir)
-        assert rc == 0
-        assert "myshop" in out
-        assert "My Shop" in out
-        assert "Node.js" in out
-
-    def test_info_human_shows_workspace_files(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["info", "myshop"], oc_dir)
-        assert rc == 0
-        assert "SOUL.md" in out
-        assert "MEMORY.md" in out
-
-    def test_info_json_paused_agent(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
-        paused_meta = {**META, "paused": "true", "pausedReason": "budget exceeded"}
-        (ws / ".docket-meta.json").write_text(json.dumps(paused_meta))
-        rc, out, _ = _run(["info", "myshop", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["paused"] is True
-
-    def test_info_json_no_id_errors(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["info", "--json"], oc_dir)
-        assert rc == 1
-        assert "required" in err.lower()
 
 
 # ---------------------------------------------------------------------------

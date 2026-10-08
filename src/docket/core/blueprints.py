@@ -18,7 +18,7 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   codebase. Its ``default_pipeline`` is exactly ``core.pipeline.default_pipeline()``
   (the same object dispatch.py's hardcoded order already matches) and it sets
   no default budget cap — provisioning through this blueprint is behaviorally
-  identical to the plain default `docket add`.
+  identical to the plain default `docket init`.
 - ``research`` — Lead, Researcher, Analyst, Writer, Critic (workdir): gathers
   and analyzes source material, drafts a deliverable, and gates it on the
   Critic's APPROVE/REJECT verdict (bounded rework back to the Writer).
@@ -267,7 +267,7 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
     ),
 }
 
-#: `docket add` with no `--blueprint` resolves to this — today's default pod.
+#: `docket init` with no `--blueprint` resolves to this — today's default pod.
 DEFAULT_BLUEPRINT = "software"
 
 

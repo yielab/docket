@@ -215,7 +215,6 @@ class TestReapplyRolePolicy:
                 "role": "security-vetter",
                 "pod": "demo",
                 "model": _cfg.DEFAULT_MODEL,
-                "modelSource": "policy",
             },
         )
 

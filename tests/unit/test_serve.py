@@ -29,7 +29,6 @@ META: dict[str, Any] = {
     "name": "My Shop",
     "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
 }
 
 # Agent registration + channel bindings live in fleet.json.

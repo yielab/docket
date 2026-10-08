@@ -82,7 +82,7 @@ atexit.register(_close_telemetry)
 # `turnTimeoutS`); only a bad `mcpServers` value itself is this function's concern.
 # Unlike `allowCommands`'s fail-open pattern, a bad value here *is* re-raised as
 # `DispatchError`, never swallowed: `coerce`'s validator checks every stored name
-# against the live MCP catalog on every read, not only at `config set` time, so a
+# against the live MCP catalog on every read, not only at `pod set` time, so a
 # selection valid when written but since renamed/removed surfaces here as this
 # pod's own stale configuration -- not an ordinary turn failure like an
 # unreachable/hung/malformed remote server (which `load_mcp_tools` already

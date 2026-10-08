@@ -294,7 +294,7 @@ def set_model_both(agent_id: str, model: str) -> None:
 
     Named (rather than inlining ``meta_set`` at every call site) because
     "update an agent's model" is a meaningful operation on its own — what
-    ``docket profile``/``docket setup model set`` call. This writes only
+    ``docket setup model set`` calls. This writes only
     ``.docket-meta.json`` today — the fleet registry never tracked an
     agent's model, so despite the name there is only one write to make.
     """

@@ -42,7 +42,6 @@ def _make_meta(workspace: Path, overrides: dict | None = None) -> Path:
         "codebase": "/home/user/myshop",
         "stack": "Docker,git",
         "model": "anthropic/claude-sonnet-4-6",
-        "modelSource": "policy",
         "sessionKey": "agent:myshop:default",
         "projectKey": "default",
         "templateVersion": "3",
@@ -73,12 +72,11 @@ class TestAgentMeta:
         }
         meta = AgentMeta.model_validate(raw)
         assert meta.kind == AgentKind.project
-        assert meta.model_source.value == "pinned"
+        assert "model_source" not in AgentMeta.model_fields
         assert meta.session_key == "agent:x:y"
         assert meta.budget_usd == 10.0
         # Round-trip: dump with aliases produces camelCase keys
         dumped = meta.model_dump(by_alias=True)
-        assert "modelSource" in dumped
         assert "sessionKey" in dumped
 
     def test_extra_fields_survive_round_trip(self) -> None:

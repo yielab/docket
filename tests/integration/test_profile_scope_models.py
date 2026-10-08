@@ -1,4 +1,4 @@
-"""profile, models — writer commands.
+"""setup model — writer commands.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic and never touch
@@ -31,7 +31,6 @@ META: dict[str, Any] = {
     "name": "My Shop",
     "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",
@@ -54,122 +53,6 @@ def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
         repoint_docket_home(mp, oc_dir)
         result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
-
-
-# ---------------------------------------------------------------------------
-# docket profile
-# ---------------------------------------------------------------------------
-
-
-class TestCmdProfile:
-    def test_profile_show_exits_zero(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["profile", "myshop"], oc_dir)
-        assert rc == 0
-        assert "myshop" in out
-        assert "claude-sonnet-4-6" in out
-
-    def test_profile_show_contains_role(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["profile", "myshop"], oc_dir)
-        assert rc == 0
-        assert "implementer" in out  # role for a bare project agent
-
-    def test_profile_show_contains_source(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["profile", "myshop"], oc_dir)
-        assert rc == 0
-        assert "policy" in out
-
-    def test_profile_pin_model(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        assert "pinned" in out.lower() or "pinned" in err.lower() or "claude-opus" in out
-
-        # Verify meta was updated
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["model"] == "anthropic/claude-opus-4-6"
-        assert meta["modelSource"] == "pinned"
-
-    def test_profile_pin_updates_meta_only(self, tmp_path: Path) -> None:
-        """Model lives in .docket-meta.json only -- the fleet registry never
-        tracks per-agent model (see core/fleet.py)."""
-        oc_dir = _setup_agent(tmp_path)
-        _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["model"] == "anthropic/claude-opus-4-6"
-
-    def test_profile_default_sets_policy(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # First pin it
-        _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        # Then reset to policy
-        rc, _out, _ = _run(["profile", "myshop", "default"], oc_dir)
-        assert rc == 0
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["modelSource"] == "policy"
-
-    def test_profile_noop_when_unchanged(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # Already on policy/sonnet — setting default again is a no-op
-        rc, out, err = _run(["profile", "myshop", "default"], oc_dir)
-        assert rc == 0
-        combined = out + err
-        assert "No change" in combined
-
-    def test_profile_invalid_model_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["profile", "myshop", "not-a-valid-model"], oc_dir)
-        assert rc == 1
-        assert "Invalid" in err
-
-    def test_profile_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["profile", "no-such-agent"], oc_dir)
-        assert rc == 1
-        assert "not found" in err
-
-    def test_profile_budget_set(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, _ = _run(["profile", "myshop", "--budget", "5.00"], oc_dir)
-        assert rc == 0
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        # Persisted as a real number, not the raw CLI string -- a hand-edited
-        # or older-install "5.00" string is still read back fine on its own.
-        assert meta["budgetUsd"] == 5.0
-
-    def test_profile_budget_zero_removes_cap(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        _run(["profile", "myshop", "--budget", "5.00"], oc_dir)
-        rc, out, _ = _run(["profile", "myshop", "--budget", "0"], oc_dir)
-        assert rc == 0
-        assert "removed" in out
-
-    def test_profile_budget_invalid_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["profile", "myshop", "--budget", "notanumber"], oc_dir)
-        assert rc == 1
-        assert "Invalid" in err
-
-    def test_profile_budget_negative_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, _err = _run(["profile", "myshop", "--budget", "-1"], oc_dir)
-        assert rc == 1
-
-    def test_profile_alias_resolves(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["profile", "myshop", "anthropic/claude-sonnet-4"], oc_dir)
-        # Should warn about alias, not hard-fail
-        assert rc == 0 or "alias" in err
 
 
 # ---------------------------------------------------------------------------
@@ -315,26 +198,14 @@ class TestCmdModels:
         rc, _, _err = _run(["setup", "model", "fly"], oc_dir)
         assert rc == 2
 
-    def test_models_set_pinned_agent_not_touched(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # Pin myshop first
-        _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        # Change the repo role policy
-        _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
-        # Pinned agent should NOT have changed
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["model"] == "anthropic/claude-opus-4-6"
-
 
 # ---------------------------------------------------------------------------
-# stub list confirms profile/models no longer exit 127
+# stub list confirms setup model no longer exits 127
 # ---------------------------------------------------------------------------
 
 
 class TestM4CommandsPortedFromStubs:
-    @pytest.mark.parametrize("cmd", [["profile", "ghost"], ["setup", "model"]])
+    @pytest.mark.parametrize("cmd", [["setup", "model"]])
     def test_does_not_exit_127(self, cmd: list[str], tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, _, _ = _run(cmd, oc_dir)

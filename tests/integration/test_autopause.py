@@ -5,8 +5,7 @@ display bug: a writer stores a real ``bool`` while old code compared it to the s
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
 Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
 (``_claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
-trace event, no wasted turn -- until resumed); ``docket profile <id> --resume`` (clears both
-fields, audits, and for a pod Lead unblocks budget-blocked tasks); and the token-based estimate
+trace event, no wasted turn -- until resumed); and the token-based estimate
 fallback (``core/utils.estimate_cost_usd``/``core/dispatch.pod_gating_cost``) that lets gating
 trip even when the driver reports no USD cost -- always labelled, never contaminating spend.
 """
@@ -15,7 +14,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import ClassVar
 
 import pytest
 from tests.conftest import repoint_docket_home
@@ -138,137 +136,6 @@ class TestCoercePaused:
         assert meta2.is_paused() is False
 
 
-# ── the display bug itself: docket info must show a real bool correctly ──────────
-
-
-class TestInfoDisplaysPausedCorrectly:
-    META: ClassVar[dict[str, object]] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "name": "My Shop",
-        "model": "anthropic/claude-sonnet-4-6",
-        "modelSource": "policy",
-        "sessionKey": "agent:myshop:default",
-        "projectKey": "default",
-    }
-
-    def _setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paused_value: object) -> Path:
-        home = tmp_path / ".docket"
-        ws = home / "workspaces" / "projects" / "myshop"
-        ws.mkdir(parents=True)
-        meta = {**self.META, "paused": paused_value, "pausedReason": "budget"}
-        (ws / ".docket-meta.json").write_text(json.dumps(meta))
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        return home
-
-    def test_real_bool_true_shows_paused_in_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # The exact bug: a writer stores a real JSON boolean `true`; a
-        # `raw.get("paused", "") == "true"` compare is never true for a bool,
-        # so it silently renders as not-paused unless bools are handled too.
-        self._setup(tmp_path, monkeypatch, True)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["info", "myshop", "--json"])
-        assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
-        assert data["paused"] is True
-
-    def test_legacy_string_true_shows_paused_in_json(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Regression for the type bug from the other direction: a genuinely
-        # old Bash-era record stored the string "true".
-        self._setup(tmp_path, monkeypatch, "true")
-        runner = CliRunner()
-        result = runner.invoke(_app, ["info", "myshop", "--json"])
-        assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
-        assert data["paused"] is True
-
-    def test_not_paused_shows_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._setup(tmp_path, monkeypatch, False)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["info", "myshop", "--json"])
-        assert result.exit_code == 0, result.output
-        assert json.loads(result.output)["paused"] is False
-
-    def test_human_readable_shows_paused_status_line(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._setup(tmp_path, monkeypatch, True)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["info", "myshop"])
-        assert result.exit_code == 0, result.output
-        assert "PAUSED" in result.output
-        assert "budget" in result.output
-
-
-# ── docket profile <id> --resume ──────────────────────────────────────────────────
-
-
-class TestProfileResume:
-    META: ClassVar[dict[str, object]] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "name": "My Shop",
-        "model": "anthropic/claude-sonnet-4-6",
-        "modelSource": "policy",
-        "sessionKey": "agent:myshop:default",
-        "projectKey": "default",
-        "paused": True,
-        "pausedReason": "budget",
-    }
-
-    def _setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        home = tmp_path / ".docket"
-        ws = home / "workspaces" / "projects" / "myshop"
-        ws.mkdir(parents=True)
-        (ws / ".docket-meta.json").write_text(json.dumps(self.META))
-        (home / "fleet.json").write_text(json.dumps({"agents": [{"id": "myshop"}], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        return home
-
-    def test_resume_clears_paused_fields(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = self._setup(tmp_path, monkeypatch)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["profile", "myshop", "--resume"])
-        assert result.exit_code == 0, result.output
-        raw = json.loads(
-            (home / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert AgentMeta.coerce_paused(raw.get("paused")) is False
-        assert raw.get("pausedReason", "") == ""
-
-    def test_resume_writes_audit_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = self._setup(tmp_path, monkeypatch)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["profile", "myshop", "--resume"])
-        assert result.exit_code == 0, result.output
-        audit_text = (home / "audit.log").read_text()
-        entries = [json.loads(line) for line in audit_text.splitlines() if line.strip()]
-        assert any(e["action"] == "profile.resume" and "myshop" in e["detail"] for e in entries)
-
-    def test_resume_on_unpaused_agent_is_a_harmless_noop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        home = tmp_path / ".docket"
-        ws = home / "workspaces" / "projects" / "myshop"
-        ws.mkdir(parents=True)
-        meta = {**self.META, "paused": False, "pausedReason": ""}
-        (ws / ".docket-meta.json").write_text(json.dumps(meta))
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        repoint_docket_home(monkeypatch, home)
-        runner = CliRunner()
-        result = runner.invoke(_app, ["profile", "myshop", "--resume"])
-        assert result.exit_code == 0, result.output
-
-
 # ── dispatch: pause on cap breach + claim-time refusal ────────────────────────────
 
 
@@ -312,31 +179,6 @@ class TestAutoPauseDispatch:
         trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
         events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
         assert any(e["event_type"] == "paused_refused" for e in events)
-
-    def test_resume_clears_pause_and_unblocks_pod_tasks(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Too expensive")
-        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
-        assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
-
-        runner = CliRunner()
-        result = runner.invoke(_app, ["profile", _podcore.member_id("demo", "lead"), "--resume"])
-        assert result.exit_code == 0, result.output
-
-        lead_id = _podcore.member_id("demo", "lead")
-        assert _fleet.meta_read(lead_id).is_paused() is False
-        assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
-
-        # Budget is still (mock-)exceeded, so a fresh dispatch blocks (and
-        # re-pauses) again rather than actually running — resume un-sticks
-        # the queue, it doesn't forgive the cap.
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
-        assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
-        assert _fleet.meta_read(lead_id).is_paused() is True
 
 
 # ── estimate fallback for gating ───────────────────────────────────────────────────

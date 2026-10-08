@@ -7,7 +7,6 @@ from dataclasses import dataclass
 import docket.config as cfg
 from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
-from docket.edges import store
 
 
 def project_ids() -> list[str]:
@@ -156,12 +155,3 @@ def cost_history(agent_id: str) -> list[DayRecord]:
         )
         for d in _dr.default_driver().usage(agent_id).by_day
     ]
-
-
-def model_source(agent_id: str) -> str:
-    """Return 'policy' or 'pinned' for an agent's model source.
-
-    Reads modelSource from .docket-meta.json; defaults to 'policy' if absent.
-    """
-    raw = store.read_json(cfg.meta_path(agent_id))
-    return str(raw.get("modelSource", "policy")) or "policy"

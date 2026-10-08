@@ -102,7 +102,6 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
         "name": member_id,
         "codebase": str(ws),
         "model": "anthropic/claude-haiku-4-5",
-        "modelSource": "policy",
         "sessionKey": f"agent:{member_id}:default",
         "projectKey": "default",
         "created": "2026-07-30T00:00:00+00:00",

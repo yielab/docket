@@ -39,7 +39,6 @@ def _lead(project: str) -> None:
         "name": member,
         "codebase": str(ws),
         "model": "anthropic/claude-haiku-4-5",
-        "modelSource": "policy",
         "sessionKey": f"agent:{member}:default",
         "projectKey": "default",
         "created": "2026-07-30T00:00:00+00:00",

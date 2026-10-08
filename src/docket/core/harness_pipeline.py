@@ -50,7 +50,6 @@ def _new_project_id() -> str:
 def _pin_members(project: str, model: str) -> None:
     for member_id in _pp.pod_member_ids(project):
         _fleet.set_model_both(member_id, model)
-        _fleet.meta_set(member_id, "modelSource", "pinned")
 
 
 def _task_record(project: str, task_id: str) -> dict[str, Any]:

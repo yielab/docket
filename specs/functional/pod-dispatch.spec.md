@@ -438,8 +438,8 @@ was seeded once at binding time.)*
    it back to `pending`:
    - `retry_task` (`docket pod <project> queue --retry <task-id>`) — a single named task, a
      no-op if that task is neither `blocked` nor `failed` (requirement 2).
-   - A pod-wide budget change on the Lead (`docket profile <lead-id> --budget <n>` with `n > 0`,
-     or `docket profile <lead-id> --resume`) — `unblock_pod` flips **every** `blocked` task in
+   - A pod-wide budget change on the Lead (`docket pod set budgetUsd <n>` with `n > 0`,
+     or `docket run --resume`) — `unblock_pod` flips **every** `blocked` task in
      that pod's queue back to `pending` (see `cost-tracking.spec.md`).
 2. A plain `failed` task (a real graded gate/hop outcome — not a `RESUMABLE_FAILURE_KINDS`-tagged
    settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by
@@ -501,7 +501,7 @@ was seeded once at binding time.)*
    **MUST** resolve that role against the pod's own overlay (`core.archetypes.load_registry
    (project)`) as well as the global one, so a pod-only custom role is a real roster member, not
    only visible to `docket roles --pod`.
-6. `docket pod <project> config set pipeline <file>` **MUST** validate *file*
+6. `docket pod set pipeline <file>` **MUST** validate *file*
    (`core.pipeline.load_pipeline`) and plan it against the pod's *current* roster
    (`core.orchestrator.resolve_plan`) before accepting it: a role-targeted step whose role the
    roster lacks, or an agent-targeted step naming a member outside this pod, **MUST** refuse at
@@ -544,11 +544,11 @@ was seeded once at binding time.)*
    emit a `cost_charged` event.
 5. A planned unit whose pipeline step declared its own `model` (`pipeline-format.spec.md`'s
    "Steps" Requirement 10) **MUST** run that hop on the resolved model instead of the target
-   agent's own policy/pin model — resolution (`cheap`/`strong` via the live rank anchors, else the
-   literal id as given) is `model-profiles.spec.md`'s "Model intent per agent". This resolution
+   agent's own role-policy model — resolution (`cheap`/`strong` via the live rank anchors, else the
+   literal id as given) is `model-profiles.spec.md`'s "Where a member's model comes from". This resolution
    **MUST** happen once per hop attempt (`core.dispatch._run_hop_turn`) and **MUST NOT** write
-   `.docket-meta.json`: the member's own persisted `model`/`modelSource` are unchanged before,
-   during and after the hop, so `docket profile`/`config explain` keep reporting the agent's real
+   `.docket-meta.json`: the member's own persisted `model` is unchanged before,
+   during and after the hop, so `docket pod show` keeps reporting the agent's real
    standing model, never the step's transient override. The override reaches only the production
    `RuntimeDriver.run_turn` call (`edges.adapters.docket_runtime.DocketDriver`, "Runtime driver
    resolution" below); an injected five-argument `Runner` test double is unaffected and continues
@@ -658,28 +658,28 @@ was seeded once at binding time.)*
    reason, and **MUST NOT** be silently replaced by the default. Every dispatch entry point that
    reads a pod setting (`pod_budget`, `pod_max_rework_cycles`, `pod_turn_timeout`,
    `pod_verify_timeout`) lets that refusal propagate rather than catching it.
-2. `docket pod <project> config [get|set <key> <value>|unset <key>] [--json]` is the dedicated
-   CLI surface for these four keys — see `cli-json-shapes.spec.md` for the `get --json` shape.
-   `set` validates before writing and persists through the same meta writer every other
+2. `docket pod show [--json]`, `docket pod set <key> <value>` and `docket pod unset <key>` are the
+   dedicated CLI surface for these keys — see `cli-json-shapes.spec.md` for the `show --json`
+   shape. `set` validates before writing and persists through the same meta writer every other
    pod-meta setter uses (`core.fleet.meta_set`); an invalid value exits 1 with the meta record
    untouched. `unset` clears an override by writing `null` (round-trips as absent through
    `AgentMeta`'s typed fields), falling back to the field's default. Every write is
-   audit-logged as `pod.config`. `docket profile <lead-id> --budget <usd>` persists `budgetUsd`
+   audit-logged as `pod.config`. `docket pod set budgetUsd <usd>` persists `budgetUsd`
    as this same validated number, not the raw CLI argument string.
 3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a fifth key on
-   the same model (`core.pod.PodSettings.approval_mode`), writable through the same `config
-   get`/`set`/`unset` surface. A present-but-invalid stored value (anything other than the three
+   the same model (`core.pod.PodSettings.approval_mode`), writable through the same `show`/`set`/`unset`
+   surface. A present-but-invalid stored value (anything other than the three
    literals) raises exactly like a malformed numeric setting — naming the key — and refuses
    dispatch rather than defaulting to `"wait"`. "Unset" (no `approvalMode` key at all in the
    Lead's stored meta) is a distinct state from a stored `"wait"` — see "Parked approvals" below
    for what it resolves to. `approvalExpiryHours` (int `>= 1`, default `24`) and
    `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
-   likewise writable through `config get`/`set`/`unset`; `inputExpiryHours` is read only by the
+   likewise writable through `pod show`/`set`/`unset`; `inputExpiryHours` is read only by the
    `input`-step execution this spec's "Parked approvals" section does not itself cover.
 4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256
    digest): the hash of this pod's bound pipeline copy (`core.pod.bound_pipeline_path`), or
    unset. Unlike the scalar keys, `set pipeline <value>` does not accept an arbitrary
-   string through the same `coerce`-then-`meta_set` path — `docket pod <project> config set
+   string through the same `coerce`-then-`meta_set` path — `docket pod set
    pipeline <file>` is a dedicated CLI code path (`cli/_pod.py::_pod_config_set_pipeline`) that
    reads *file*, validates and plans it, writes the docket-owned copy, and only then persists
    its digest through `coerce`/`meta_set` like any other key. See "Pipeline order and
@@ -1048,7 +1048,7 @@ was seeded once at binding time.)*
    store's `meta_set`). From that point on, **every** further claim
    attempt against this pod — for this task or any other in its queue — **MUST** be refused
    outright at claim time (see "Claiming", item 5), not merely re-blocked hop by hop, until an
-   operator clears the pause (`docket profile <lead-id> --resume`; see `cost-tracking.spec.md`).
+   operator clears the pause (`docket run --resume`; see `cost-tracking.spec.md`).
 
 ### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1 / Phase 16 W-2)
 
@@ -1618,8 +1618,8 @@ any CLI rendering of this evidence.*
 2. An in-place run **MUST** provision its pod through the same core provisioning function that
    `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
    `docket pod <project> apply` uses.
-3. Every member of an in-place pod **MUST** be pinned to the one model the run was given
-   (`modelSource: pinned`), including members a recipe adds.
+3. Every member of an in-place pod **MUST** run on the one model the run was given, including
+   members a recipe adds.
 4. The run's approval mode **MUST** be written through the typed pod-setting coercion, never as a
    raw metadata write, and a value outside `wait|park|refuse` **MUST** be refused before any pod
    is provisioned.

@@ -35,8 +35,8 @@ With no arguments, docket derives the project id, path, and stack from the
 current directory (non-interactive, deterministic). Member ids are
 predictable: `<project>-lead`, `<project>-implementer`, `<project>-reviewer`,
 `<project>-tester` (duplicated roles get `-2`, `-3` suffixes). A pod
-always has exactly one Lead. Resize a pod later with `docket pod`; tear
-the whole pod down with `docket delete`.
+always has exactly one Lead. Resize a pod later with `docket pod add|remove`; tear
+the whole pod down with `docket pod delete`.
 
 Flags (parsed from the extra CLI args, not fixed Typer options):
   --pod full            provision Lead, Implementer, Reviewer, and Tester.
@@ -92,7 +92,7 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          `description`, `projectKey`, `budgetUsd`,
                          `telegram`); an entry with no `blueprint`
                          provisions a single flat agent the same shape
-                         `docket add` always has (fields: `name`,
+                         `docket init` always has (fields: `name`,
                          `codebase`, `stack`, `model`, `description`,
                          `telegram`, `budgetUsd`, `projectKey`). Mutually
                          exclusive with every other flag/prompt. An entry
@@ -131,26 +131,6 @@ re-prompted); the project name is suggested from that directory's name.
 
 ---
 
-### add
-
-**Usage:** `docket add`
-
-Add role agents to an existing project pod. Never creates a project.
-
-Pod inferred from the current directory, or given explicitly with
-`--project <pod>` when running outside the project's configured
-`codebase`/`workDir`. Docket chooses the most-specific registered pod
-containing the cwd and fails clearly when there is no match or the result
-is ambiguous.
-
-Flags (parsed from the extra CLI args, not fixed Typer options):
-  --project <pod>     explicit pod, instead of directory inference
-  --count N           add N indexed copies of the role
-  --verify "<cmd>"    set the new Implementer's mechanical verify gate
-
-
----
-
 ### status
 
 **Usage:** `docket status`
@@ -176,90 +156,6 @@ crash loses at most the hop in flight. --dry-run prints the plan the executor wo
 follow and starts nothing; --resume reclaims stale claims and clears a budget pause.
 
 Example: docket run --dry-run
-
-
----
-
-### info
-
-**Usage:** `docket info`
-
-Detailed status of one agent.
-
-Shows identity, codebase/stack, model and its source, session/project
-keys, creation time, workspace path, and Telegram binding for one agent --
-pulled from `.docket-meta.json`. With no agent id given, shows a numbered
-picker.
-
-
----
-
-### delete
-
-**Usage:** `docket delete`
-
-Remove a project agent or a whole pod, and optionally its workspace.
-
-Given a pod id, lists every member and (in an interactive terminal)
-requires typing the exact pod id to confirm, then removes every member's
-registration, binding, conversation-registry entry, workspace/worktree,
-pod runtime directory, durable session history, and traces. The global
-audit record is preserved. Given a legacy flat agent id, separately asks
-whether to also remove its workspace.
-
-Cannot be undone -- back up first if unsure. A deleted
-member's git worktree is removed, but its dedicated branch remains in the
-source repository so committed code is not silently destroyed; remove
-that branch separately after reviewing it.
-
-
----
-
-### maintain
-
-**Usage:** `docket maintain`
-
-Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill).
-
-Subcommands:
-  check (default)  health check and auto-fix -- permissions (700/600),
-                    missing workspace files, session-key sync between
-                    `.docket-meta.json` and SOUL.md, memory directory,
-                    and a per-turn context-footprint estimate (warns if
-                    SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together exceed
-                    the configured token budget)
-  clean             clear memory logs only (`memory/*.md`) -- distills
-                    first by default (see below)
-  reset             clear memory + MEMORY.md + HEARTBEAT.md -- distills
-                    first by default
-  rebuild           deep rebuild -- regenerate SOUL.md, AGENTS.md,
-                    TOOLS.md from `.docket-meta.json`. Refuses a pod
-                    member outright (its files are pod-provisioning's,
-                    not this command's); never touches memory/
-  sessions          report per-session message counts, on-disk size,
-                    and last-active time for this agent -- sizes only,
-                    no trimming or archiving
-  distill           summarize `memory/*.md` into MEMORY.md via one
-                    driver-backed turn, then archive the originals under
-                    `memory/<archive-dir>/`
-
-`--no-distill-first` (clean/reset only) skips the automatic pre-delete
-distillation and deletes/clears memory undistilled.
-
-Memory is never bare-deleted: before clean deletes `memory/*.md`, or reset
-clears memory + HEARTBEAT.md, docket runs one driver-backed turn that
-summarizes pending logs into MEMORY.md and archives the originals -- the
-same work `distill` does standalone. A failed distillation aborts the
-delete outright; nothing is touched. `failure_kind` (`timeout`,
-`daemon_error`, `invalid_output`) tells you whether to just retry or
-whether the model's output needs a closer look (`daemon_error` means the
-turn didn't complete cleanly). When a reset runs a real distillation, MEMORY.md is
-left freshly distilled rather than immediately cleared again in the same
-breath.
-
-Preserves identity (`.docket-meta.json`, fleet registration). clean/
-reset/rebuild prompt for confirmation and require a TTY -- a
-non-interactive call is cancelled, not silently applied.
 
 
 ---
@@ -530,28 +426,6 @@ body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
 ---
 
 ## Utility Commands
-
-### profile
-
-**Usage:** `docket profile`
-
-Pin or unpin an agent's model; set a budget cap; resume from auto-pause.
-
-Every agent follows its role's policy model by default
-(`modelSource: policy`). Pinning (`modelSource: pinned`) detaches it --
-policy and preset changes will no longer touch it.
-
-With no model argument, shows the current model, role, source, and
-budget. A `provider/model` argument pins it; `default` re-attaches it to
-the role policy. `--budget <USD>` sets a per-agent spend cap (0 = none).
-`--resume` clears an auto-pause (e.g. a reached budget cap) -- when the
-target is a pod's Lead it also un-blocks that pod's blocked tasks so
-dispatch can claim them again, and writes a `profile.resume` audit entry.
-A model argument must be a full `provider/model` id; `docket models`
-shows and sets the role policy.
-
-
----
 
 ### setup
 
@@ -942,32 +816,6 @@ Example: docket setup mcp remove playwright
 
 ---
 
-### config
-
-**Usage:** `docket config`
-
-Read-only inspection of an agent's effective configuration.
-
-Subcommands:
-  explain <agent-id> \[--json\]  The configuration a real dispatch turn would
-                    actually use for this agent, with the source that set
-                    each value: resolved model + endpoint (policy/pinned);
-                    the composed system prompt's sections with their bytes
-                    and fit status (full/truncated/omitted); tools after
-                    role denial, plus configured MCP servers; the
-                    guardrail policies that apply to this role; the
-                    effective pipeline and its source (bound
-                    pipeline/blueprint/built-in default); and, for a pod
-                    member, the pod's dispatch settings (budgetUsd,
-                    maxReworkCycles, turnTimeoutS, verifyTimeoutS,
-                    approvalMode, allowCommands) with each key's
-                    set/default source. Composes existing resolvers only
-                    -- writes nothing, adds no new configuration surface.
-                    See specs/data/cli-json-shapes.spec.md.
-
-
----
-
 ### start
 
 **Usage:** `docket start`
@@ -1281,7 +1129,7 @@ No command emits any other exit code today.
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket pod <p> corrections`) | `$DOCKET_HOME/corrections` |
-| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
+| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
@@ -1306,9 +1154,9 @@ No command emits any other exit code today.
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
 | `EXPORT_FLUSH_TIMEOUT_S` | Per-flush wall-clock bound for the background exporter sender | `5.0` |
 | `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump | `4` |
-| `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards in `docket maintain check` | `4` |
-| `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this | `6000` |
-| `DISTILL_TIMEOUT_S` | Wall-clock bound on `docket maintain distill`'s one driver-backed turn | `120` |
+| `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards behind the prompt budget | `4` |
+| `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it | `6000` |
+| `DISTILL_TIMEOUT_S` | Wall-clock bound on the one driver-backed distillation turn `docket pod reset` runs | `120` |
 | `DISTILL_MAX_INPUT_BYTES` | How much daily-log content goes into a distillation turn's prompt | `49152` (48 KiB) |
 | `DISPATCH_RETRIES_DEFAULT` | Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override | `2` |
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER`, `DISPATCH_RETRIES_TESTER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
@@ -1355,25 +1203,16 @@ There is **no** environment kill switch for the audit log — a prior `DOCKET_NO
 
 ## Tips and Tricks
 
-### Interactive Pickers
-
-If you have fzf installed, omit the agent-id for fuzzy search:
-
-```bash
-docket info      # Opens fzf picker
-docket delete    # Opens fzf picker
-```
-
 ### Batch Operations
 
 Use bash loops for batch operations:
 
 ```bash
-# Clean one agent's memory
-docket maintain "$id" clean
+# Reset every member of a pod (each distills its memory first)
+for id in $(docket pod show --json | jq -r '.members[].id'); do docket pod reset "$id" --yes; done
 
 # Cheaper models fleet-wide: change the policy once — every
-# policy-following agent updates automatically (pins are untouched)
+# agent updates automatically
 docket setup model preset openrouter-free
 ```
 

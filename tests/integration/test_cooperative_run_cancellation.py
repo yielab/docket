@@ -209,7 +209,6 @@ def _write_agent_meta(agent_id: str, codebase: Path) -> None:
         "name": agent_id,
         "codebase": str(codebase),
         "model": "anthropic/claude-haiku-4-5",
-        "modelSource": "policy",
         "sessionKey": f"agent:{agent_id}:demo",
         "projectKey": "demo",
         "created": "2026-09-12T00:00:00+00:00",

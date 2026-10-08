@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -156,7 +157,7 @@ class TestPodAddStarterRole:
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _pod.dispatch("demo", "add", ["researcher"])
+        _pod.add_members("demo", "researcher")
 
         assert "demo-researcher" in _ids(oc_dir)
         ws = oc_dir / "workspaces" / "projects" / "demo-researcher"
@@ -171,27 +172,27 @@ class TestPodAddStarterRole:
         assert meta["pod"] == "demo"
         # researcher is modelClass=strong -> resolves via the 'standard' anchor,
         # same model an implementer (also strong-class) would get by default.
-        assert meta["model"] == _cfg.DEFAULT_MODEL or meta["modelSource"] == "policy"
+        assert meta["model"] == _cfg.DEFAULT_MODEL
 
-    def test_pod_list_shows_researcher_with_description(
+    def test_pod_show_lists_the_added_researcher(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _pod.dispatch("demo", "add", ["researcher"])
+        _pod.add_members("demo", "researcher")
         capsys.readouterr()
 
-        _pod.dispatch("demo", "list", [])
-        out = capsys.readouterr().out
-        assert "researcher" in out
-        assert "gathers and synthesizes source material" in out
+        result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", "demo", "--json"])
+        assert result.exit_code == 0, result.output
+        roles = [m["role"] for m in json.loads(result.stdout)["members"]]
+        assert "researcher" in roles
 
     def test_members_of_lists_researcher_after_legacy_roles(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
-        _pod.dispatch("demo", "add", ["researcher"])
+        _pod.add_members("demo", "researcher")
         all_ids = _ids(oc_dir)
         members = pod.members_of(all_ids, "demo")
         roles_in_order = [role for _mid, role, _idx in members]

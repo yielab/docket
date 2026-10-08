@@ -82,7 +82,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
         _seed(tmp_path, monkeypatch)
         _register_security_reviewer()
         _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
-        _pod.dispatch("proj", "add", ["security-reviewer"])
+        _pod.add_members("proj", "security-reviewer")
 
         # The provisioned member's own meta is what makes pod_of resolvable -- confirm the
         # fixture actually reproduces the trigger's precondition before dispatching.

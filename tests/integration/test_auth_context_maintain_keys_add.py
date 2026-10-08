@@ -1,4 +1,4 @@
-"""CLI tests: auth, maintain, keys, add.
+"""CLI tests: init, status and the removed top-level names.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory. Agent registration is seeded via
@@ -16,6 +16,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
+from docket.cli import _pod
 from docket.cli import app as _app
 
 SUBJECT = "docket.cli"
@@ -33,7 +34,6 @@ META: dict[str, Any] = {
     "kind": "project",
     "name": "Test Agent",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/tmp/testcodebase",
     "sessionKey": "agent:test-agent:default",
@@ -49,6 +49,7 @@ def _run(
     stdin_text: str = "",
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    target: Any = None,
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
         repoint_docket_home(mp, home)
@@ -56,7 +57,7 @@ def _run(
             mp.setenv(key, value)
         if cwd is not None:
             mp.chdir(cwd)
-        result = _runner.invoke(_app, args, input=stdin_text)
+        result = _runner.invoke(target or _app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 
 
@@ -108,108 +109,6 @@ def _setup_bare(tmp_path: Path) -> Path:
     home.mkdir(exist_ok=True)
     (home / "fleet.json").write_text(json.dumps(FLEET_EMPTY))
     return home
-
-
-# ---------------------------------------------------------------------------
-# TestCmdMaintain
-# ---------------------------------------------------------------------------
-
-
-class TestCmdMaintain:
-    def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["maintain", "nonexistent-agent"], home)
-        assert rc == 1
-        combined = out + err
-        assert "not found" in combined.lower() or "nonexistent-agent" in combined
-
-    def test_check_on_healthy_workspace(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "check"], home)
-        assert rc == 0
-        combined = out + err
-        assert "healthy" in combined.lower() or "ok" in combined.lower()
-
-    def test_check_preserves_repository_modes_inside_task_worktrees(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        executable = home / "workspaces" / "projects" / "test-agent" / "tasks" / "t1" / "tool.sh"
-        executable.parent.mkdir(parents=True)
-        executable.write_text("#!/bin/sh\n")
-        executable.chmod(0o755)
-
-        rc, _out, _err = _run(["maintain", "test-agent", "check"], home)
-
-        assert rc == 0
-        assert executable.stat().st_mode & 0o777 == 0o755
-
-    def test_clean_non_tty_cancelled(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["maintain", "test-agent", "clean"], home)
-        assert rc == 0
-        combined = out + err
-        assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
-
-    def test_reset_non_tty_cancelled(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["maintain", "test-agent", "reset"], home)
-        assert rc == 0
-        combined = out + err
-        assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
-
-    def test_sessions_no_sessions_dir(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "sessions"], home)
-        assert rc == 0
-        combined = out + err
-        assert "no session storage found" in combined.lower()
-
-    def test_rebuild_non_tty_aborts(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        _rc, out, err = _run(["maintain", "test-agent", "rebuild"], home)
-        # Should either exit 0 (with cancel message) or 1
-        combined = out + err
-        assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
-
-    def test_distill_hermetic_no_daemon_fails_closed(self, tmp_path: Path) -> None:
-        """No provider credentials -> the driver call fails -> nothing is deleted (fail-closed),
-        exercised against the real production driver, not a `FakeDriver`, proving the guarantee
-        holds under a real failure (fake-driven matrix lives in test_memory_distillation.py)."""
-        import datetime
-
-        home = _setup_agent(tmp_path, with_memory=True)
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        ws = home / "workspaces" / "projects" / "test-agent"
-        log_path = ws / "memory" / f"{today}.md"
-        assert log_path.is_file()
-
-        rc, out, err = _run(
-            ["maintain", "test-agent", "distill"], home, env={"PATH": "/nonexistent"}
-        )
-
-        assert rc == 1
-        combined = (out + err).lower()
-        assert "fail" in combined
-        # Fail closed: the log is neither deleted nor archived, and
-        # MEMORY.md was never touched.
-        assert log_path.is_file()
-        assert not (ws / "memory" / ".distilled").exists()
-        assert "distilled" not in (ws / "MEMORY.md").read_text(encoding="utf-8").lower()
-
-    def test_distill_subcommand_listed_in_unknown_mode_message(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "bogus"], home)
-        assert rc == 1
-        combined = out + err
-        assert "distill" in combined.lower()
-
-    def test_check_rejects_unknown_flag(self, tmp_path: Path) -> None:
-        """Only `--no-distill-first`/`--distill-first` are documented, so an unrelated flag must
-        be a usage error rather than a silently ignored token that still runs the check."""
-        home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "check", "--bogus"], home)
-        assert rc == 2
-        combined = out + err
-        assert "--bogus" in combined
 
 
 # ---------------------------------------------------------------------------
@@ -312,12 +211,14 @@ class TestCmdAdd:
         rc, out, err = _run(["init"], home, cwd=repo)
         assert rc == 0, out + err
 
-        rc, out, err = _run(["add", "reviewer"], home, cwd=repo)
+        rc, out, err = _run(["add", "reviewer"], home, cwd=repo, target=_pod.pod_app)
 
         assert rc == 0, out + err
         assert (home / "workspaces" / "projects" / "current-project-reviewer").is_dir()
 
-    @pytest.mark.parametrize("command", ["install"])
+    @pytest.mark.parametrize(
+        "command", ["install", "add", "info", "delete", "maintain", "profile", "config"]
+    )
     def test_redundant_bootstrap_commands_do_not_exist(self, tmp_path: Path, command: str) -> None:
         home = tmp_path / ".docket"
 

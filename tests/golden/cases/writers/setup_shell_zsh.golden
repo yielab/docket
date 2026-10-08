@@ -5,16 +5,10 @@ _docket() {
   local -a commands
   commands=(
     'status:Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all'
-    'add:Add role agents to an existing project pod'
     'init:Initialize the current project with its minimum isolated pod'
-    'info:Detailed status of one agent'
-    'delete:Remove a project agent or a whole pod, and optionally its workspace'
-    'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)'
-    'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'pod:Manage a project'\''s pod: list members, add/remove a role, set an implementer'\''s verify command, and run its dispatch pipeline'
     'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
     'roles:Manage declarative role archetypes: list/show/add/validate'
-    'config:Read-only inspection of an agent'\''s effective configuration'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'exec:Run one agent for one task in a workspace you own, for programs'
     'start:Start the background service: the local HTTP API, sweeps, and what you turn on'
@@ -49,8 +43,7 @@ _docket() {
 
   case "${words[2]}" in
     status)          compadd --all --json ;;
-    maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue config apply export ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd delegate queue apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
     pipeline)        compadd validate plan ;;
     runs)            compadd list show cancel prune ;;
@@ -59,8 +52,6 @@ _docket() {
     policies)        compadd list show init test validate ;;
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
-    info|delete|profile)
-                     (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }
 _docket "$@"

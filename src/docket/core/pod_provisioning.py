@@ -2,7 +2,7 @@
 
 Split out of ``cli/_pod.py``/``cli/_agents.py``: ``core/`` must never import
 ``ui.py`` or print, and ``POST /pods`` (``serve.py``) needs the same effectful
-path ``docket add`` uses, so both callers of ``provision_pod`` share this file.
+path ``docket init`` uses, so both callers of ``provision_pod`` share this file.
 Kept separate from ``core/provisioning.py``, whose docstring promises pure,
 I/O-free UX helpers -- nearly everything here writes files and shells to git.
 
@@ -92,7 +92,7 @@ def validate_verify_cmd(cmd: str) -> str:
 
     Trust boundary: ``run_verify_cmd`` keeps ``shell=True`` (a real verify
     pipeline needs ``&&``/pipes) because this string is operator-owned -- it
-    only reaches docket via an interactive `set-verify`/`--verify` call (or the
+    only reaches docket via an interactive `pod set verify`/`--verify` call (or the
     equivalent `POST /pods` field) and runs as the operator, never as agent or
     network-untrusted input. This only rejects control-character injection and
     bounds length; it does not sandbox, parse, or interpret the command (that's
@@ -323,7 +323,6 @@ def _write_member_workspace(
         "codebase": codebase,
         "stack": stack,
         "model": member.model,
-        "modelSource": "policy",
         "description": description,
         "created": datetime.now(UTC).isoformat(),
         "sessionKey": member.session_key,
@@ -807,7 +806,7 @@ def provision_pod(
 ) -> PodProvisionResult:
     """Provision a fresh pod from a blueprint.
 
-    The one code path `docket add` and `POST /pods` both call. See
+    The one code path `docket init` and `POST /pods` both call. See
     specs/data/serve-read-api.spec.md (POST /pods) for the full
     ``location``/``roles``/``budget_usd``/``verify_cmd``/``source`` contract.
 

@@ -18,9 +18,10 @@ import pytest
 import typer
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _config, _pod
+from docket.cli import _pod
 from docket.core import archetypes as _arch
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -465,26 +466,29 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
 
 
 def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
-    capsys.readouterr()
-    _config.dispatch("explain", [agent_id, "--json"])
-    return json.loads(capsys.readouterr().out)  # type: ignore[no-any-return]
+    shown = CliRunner().invoke(
+        _pod.pod_app, ["show", agent_id, "--pod", _pod.pod.pod_of(agent_id) or "", "--json"]
+    )
+    assert shown.exit_code == 0, shown.output
+    return json.loads(shown.stdout)  # type: ignore[no-any-return]
 
 
 def _normalized(report: dict[str, object], project: str) -> dict[str, object]:
     """Drop *project*'s own name plus each pod's own `configSource`/`configDigest` (a
-    different applied directory per pod, asserted separately by the caller) -- an
-    equal-length pod's report should then match exactly."""
+    different applied directory per pod, asserted separately by the caller) and its
+    `workspace` path -- an equal-length pod's report should then match exactly."""
     text = json.dumps(report).replace(project, "PROJECT")
     normalized: dict[str, object] = json.loads(text)
+    normalized.pop("workspace", None)
     normalized.pop("configSource", None)
     normalized.pop("configDigest", None)
     return normalized
 
 
-def test_export_then_apply_round_trip_matches_config_explain(
+def test_export_then_apply_round_trip_matches_pod_show(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Export -> apply into a fresh pod -> `config explain --json` agrees once normalized;
+    """Export -> apply into a fresh pod -> `pod show <member> --json` agrees once normalized;
     also covers the CLI's non-empty-directory refusal and its `--force` override."""
     source_project = "podsrc"
     target_project = "poddst"  # same length as source_project -- see `_normalized`
@@ -492,7 +496,7 @@ def test_export_then_apply_round_trip_matches_config_explain(
 
     recipe_dir = RECIPES_DIR / "secure-build"
     _pod_apply.apply(_pod_apply.plan_apply(source_project, recipe_dir))
-    _pod.dispatch(source_project, "config", ["set", "approvalMode", "refuse"])
+    _pod.set_setting(source_project, "approvalMode", "refuse")
 
     export_dir = tmp_path / "exported"
     _pod.dispatch(source_project, "export", [str(export_dir)])
@@ -579,7 +583,7 @@ def test_export_writes_only_this_pods_own_scope_never_global(
     (pod_policies_dir / "require-approval-secret-writes.yaml").write_text(
         policy_text, encoding="utf-8"
     )
-    _pod.dispatch(project, "config", ["set", "approvalMode", "refuse"])
+    _pod.set_setting(project, "approvalMode", "refuse")
 
     export_dir = tmp_path / "export-out"
     _pod_apply.export_pod(project, export_dir)
@@ -645,7 +649,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
     # writer (not the generic "unknown pod setting" message every other unknown key gets).
     capsys.readouterr()
     with pytest.raises(typer.Exit) as exc:
-        _pod.dispatch(project, "config", ["set", "configSource", "/tmp/whatever"])
+        _pod.set_setting(project, "configSource", "/tmp/whatever")
     assert exc.value.exit_code == 1
     assert "written by apply" in capsys.readouterr().err
 
