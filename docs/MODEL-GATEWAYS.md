@@ -4,7 +4,7 @@ Docket separates three things that are easy to conflate:
 
 - **Coding harness:** Codex, Claude Code, or OpenCode reads this repository's instructions and
   performs development work.
-- **Docket model policy:** role-to-model ids chosen by `docket models`.
+- **Docket model policy:** role-to-model ids chosen by `docket setup model`.
 - **Model gateway:** the HTTP endpoint Docket's own turn loop calls.
 
 Changing the coding harness does not change Docket's model policy. OpenRouter and Vercel AI Gateway
@@ -20,19 +20,19 @@ The gateway setup below is specifically for Docket's runtime.
 OpenRouter has a built-in endpoint mapping:
 
 ```bash
-docket keys add OPENROUTER_API_KEY
-docket models preset openrouter
+docket setup provider add OPENROUTER_API_KEY --credential
+docket setup model preset openrouter
 ```
 
-For zero-cost experiments, `docket models preset openrouter-free` sends the stable
+For zero-cost experiments, `docket setup model preset openrouter-free` sends the stable
 `openrouter/free` router id. The selected underlying model and availability can change between
 calls, so this preset is not a deterministic production baseline.
 
 Vercel AI Gateway also has a built-in mapping:
 
 ```bash
-docket keys add AI_GATEWAY_API_KEY
-docket models preset ai-gateway
+docket setup provider add AI_GATEWAY_API_KEY --credential
+docket setup model preset ai-gateway
 ```
 
 Docket model ids add one routing prefix. For example,
@@ -45,15 +45,14 @@ gateway API key is the straightforward local setup.
 To mix gateways by policy role, apply one baseline preset and then override named policy roles:
 
 ```bash
-docket keys add OPENROUTER_API_KEY
-docket keys add AI_GATEWAY_API_KEY
-docket models preset openrouter
-docket models set programmer ai-gateway/anthropic/claude-sonnet-4.6
+docket setup provider add OPENROUTER_API_KEY --credential
+docket setup provider add AI_GATEWAY_API_KEY --credential
+docket setup model preset openrouter
+docket setup model set programmer ai-gateway/anthropic/claude-sonnet-4.6
 ```
 
 Use policy names such as `manager` and `programmer`, not pod labels such as Lead and Implementer.
-Applying another preset later replaces all seven policy-role selections; explicitly pinned agents
-remain pinned until `docket profile <id> default`.
+Applying another preset later replaces all seven policy-role selections.
 
 Stored keys are read directly by Docket's model client. Provider environment variables override
 the central store for one process, and `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` override every
@@ -71,14 +70,14 @@ static header a gateway requires, and `models[]` with each id's exact `contextWi
 `maxTokens`. Register a local or other compatible endpoint with the document, or the shortcut:
 
 ```bash
-docket models provider add my-provider https://example.invalid/v1 \
+docket setup provider add my-provider https://example.invalid/v1 \
   --model creator/model-id --ctx 200000 --max-tokens 8192
-docket models set programmer my-provider/creator/model-id
+docket setup model set programmer my-provider/creator/model-id
 ```
 
 The exact registered model receives those context/output limits in the loop's preflight. A second
 `provider add` for the same name replaces its document (an unset field inherits from a built-in of
-the same name). `docket models provider export <name> [<file>]` prints (or writes) any provider —
+the same name). `docket setup provider export <name> [<file>]` prints (or writes) any provider —
 built-in or your own — back out as that same document, which doubles as a starting point for a
 gateway close to an existing one, or as a way to version-control your own catalog.
 

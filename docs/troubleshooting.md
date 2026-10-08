@@ -12,8 +12,8 @@ docket's inbound Telegram bot is inbound-only and understands exactly five verbs
 `/deny`, `/status`, `/delegate <task>`, and `/answer <task-id> <text>` (for a parked question).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
 answer with a task id or a confirmation, never the pipeline's output. Use `docket pod <p>
-queue`/`docket trace tail <p>` to see results. A *push* notification into the chat is a separate,
-opt-in mechanism — the `telegram` channel (`docket channels enable telegram --set
+queue`/`docket task trace --tail` to see results. A *push* notification into the chat is a separate,
+opt-in mechanism — the `telegram` channel (`docket setup notify enable telegram --set
 actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
 never replaces the five verbs above.
 
@@ -29,57 +29,49 @@ catalog).
 
 **How to diagnose:**
 ```bash
-docket info <agent-id>      # the agent's resolved model
-docket models               # the role-to-model mapping
+docket pod show <agent-id>      # the agent's resolved model
+docket setup model               # the role-to-model mapping
 ```
 
 **How to fix:**
 ```bash
-# Update one agent's model
-docket profile <agent-id> anthropic/claude-haiku-4-5
-
 # Re-resolve all policy-following agents at once
-docket models preset anthropic
+docket setup model preset anthropic
+
+# Or change one role's model across all its members
+docket setup model set reviewer anthropic/claude-opus-4-6
 ```
 
-> **Never edit an agent's `.docket-meta.json` model field directly** — go through `docket profile`
-> or `docket models` so the change is validated, applied consistently, and audit-logged.
+> **Never edit an agent's `.docket-meta.json` model field directly** — use `docket setup model`
+> so the change is validated, applied consistently, and audit-logged.
 
 **Valid model names (Anthropic defaults):**
 - `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge)
 - `anthropic/claude-sonnet-4-6` (strong class — programmer, security, repo)
-- `anthropic/claude-opus-4-6` (pin-only via `docket profile <id> <model>`)
+- `anthropic/claude-opus-4-6` (strong class, premium)
 
-Check the live mapping anytime with `docket models`.
+Check the live mapping anytime with `docket setup model`.
 
 #### 2. **Missing Telegram Bindings**
-**How to diagnose:**
-```bash
-docket conversations
-# Check the agent has a telegram binding
-```
-
 **How to fix:**
 ```bash
-docket wire <agent-id>
+docket setup notify bind <agent-id>
 ```
 
 #### 3. **Unbound / unauthorized chat**
-Since docket owns the Telegram bot itself, the `docket wire` binding **is** the entire
+Since docket owns the Telegram bot itself, the `docket setup notify bind` binding **is** the entire
 authorization boundary — there is no separate daemon-side allowlist to also configure. A message
 from a chat that isn't bound to an agent gets a plain refusal, and the attempt is audit-logged
 (`telegram.unauthorized`) rather than silently dropped.
 
 **How to diagnose:**
 ```bash
-docket audit | grep telegram.unauthorized
-docket conversations
-# Look for the agent's telegram binding
+docket log | grep telegram.unauthorized
 ```
 
 **How to fix:**
 ```bash
-docket wire <agent-id>
+docket setup notify bind <agent-id>
 ```
 
 #### 4. **The Telegram poller isn't running, or no bot token is stored**
@@ -88,14 +80,14 @@ be "down." Two things have to both be true for a wired chat to get an answer:
 
 **How to diagnose:**
 ```bash
-docket keys list                    # is TELEGRAM_BOT_TOKEN stored?
-# and: is a `docket serve --telegram` process actually running?
+docket setup provider list                    # is TELEGRAM_BOT_TOKEN stored?
+# and: is a `docket start --telegram` process actually running?
 ```
 
 **How to fix:**
 ```bash
-docket keys add TELEGRAM_BOT_TOKEN  # if not already stored
-docket serve --telegram             # or: docket serve --dispatch --telegram
+docket setup provider add TELEGRAM_BOT_TOKEN --credential  # if not already stored
+docket start --telegram             # or: docket start --dispatch --telegram
 ```
 
 ## High Costs / Context Bloat
@@ -111,45 +103,36 @@ cached/re-sent context grows — the same shape of problem any long-lived chat s
 
 #### 1. **Reset Agent Sessions**
 ```bash
-# Level 1: Clear memory logs only (distills them into MEMORY.md first by default)
-docket maintain <agent-id> clean
-
-# Level 2: Clear memory + MEMORY.md + HEARTBEAT.md (also distills first)
-docket maintain <agent-id> reset
-
-# Level 3: regenerate SOUL/AGENTS/TOOLS from metadata (not for pod members: docket pod apply)
-docket maintain <agent-id> rebuild
+# Reset a pod member's session: distills memory, clears context, rebuilds workspace
+docket pod reset <agent-id>
 ```
 
 #### 2. **Switch to a cheaper model policy**
 
-Set the whole fleet to a lower-cost provider preset, or pin a specific agent:
+Set the whole fleet to a lower-cost provider preset:
 
 ```bash
-# Switch the role policy for all agents at once (pins are untouched)
-docket models preset openrouter-free
-
-# Or pin just one agent to a cheaper model
-docket profile <agent-id> anthropic/claude-haiku-4-5
+# Switch the role policy for all agents at once
+docket setup model preset openrouter-free
 ```
 
-See `docket models` for the current role→model table and all available presets.
+See `docket setup model` for the current role→model table and all available presets.
 
 #### 3. **Monitor token usage**
 ```bash
-docket cost <agent-id>
-docket cost  # All agents
+docket status
+docket status  # All agents
 ```
 Token counts here are real and measured; the dollar column is not — docket's own turn loop
 reports no billed spend today. See
 [Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
 #### 4. **Check the per-turn context footprint**
-`docket maintain <agent-id> check` estimates the tokens re-sent every turn from the files that
+`docket setup --fix` estimates the tokens re-sent every turn from the files that
 actually get re-injected (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, MEMORY.md) and warns when
 they exceed the configured budget:
 ```bash
-docket maintain <agent-id> check
+docket setup --fix
 # ⚠ Context footprint: ~7,400 tok re-sent each turn (budget 6,000 via default) — trim MEMORY.md/HEARTBEAT.md
 ```
 The budget itself scales with the model's registered context window (`via window`), not a flat
@@ -157,7 +140,7 @@ number — `via default` is the 6,000-token floor used when no larger window is 
 If it's over budget, summarize the daily logs into MEMORY.md and archive them instead of letting
 `memory/` grow unbounded:
 ```bash
-docket maintain <agent-id> distill
+docket pod reset <agent-id>
 ```
 
 #### 5. **A single turn is running away**
@@ -175,14 +158,14 @@ rather than assuming something is broken.
 ### "no endpoint configured for this model"
 **Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
 provider — no `DOCKET_LLM_BASE_URL`, no registered global document, and the provider isn't one of
-the built-in catalog documents (`docket models provider list`). Every built-in document has a
+the built-in catalog documents (`docket setup provider list`). Every built-in document has a
 mapping now — not only OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`), but
 also `anthropic`, `openai`, `google`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
 `ollama`, `lmstudio` and `local` — so this now means an arbitrary hosted prefix outside that set.
 
-**Fix:** for a built-in provider, apply the matching preset (`docket models preset <name>`) and
+**Fix:** for a built-in provider, apply the matching preset (`docket setup model preset <name>`) and
 store its credential — no separate registration needed. For any other hosted or local server,
-register it first (`docket models provider add <file.yaml>`, or the shortcut `docket models
+register it first (`docket setup provider add <file.yaml>`, or the shortcut `docket setup model
 provider add <name> <base-url>`). A credential authenticates a known endpoint; it cannot supply a
 missing URL.
 
@@ -193,17 +176,17 @@ warning naming the missing or rejected credential (model-profiles.spec.md, "Prov
 3). For example:
 
 ```
-$ docket models provider add mygw https://api.example.com/v1 --model gpt-4 --credential MYGW_API_KEY
+$ docket setup provider add mygw https://api.example.com/v1 --model gpt-4 --credential MYGW_API_KEY
 → Checking the endpoint is alive: https://api.example.com/v1/models
 → Registering provider 'mygw'
 ✓ Provider wired: mygw  ->  https://api.example.com/v1
 ⚠ MYGW_API_KEY is missing (HTTP 401)
-  Store it: docket keys add MYGW_API_KEY
+  Store it: docket setup provider add MYGW_API_KEY --credential
 ```
 
-**Fix:** `docket keys add <CREDENTIAL>`, then confirm with `docket models provider show <name>`
+**Fix:** `docket setup provider add <CREDENTIAL> --credential`, then confirm with `docket setup provider show <name>`
 (or `--json`) — it names the resolved scope, dialect, base URL and which credential name the
-provider expects. `docket config explain <agent-id> --json`'s `provider.credential.source` shows
+provider expects. `docket pod show <agent-id> --json`'s `provider.credential.source` shows
 whether a given agent actually resolved that credential (`env`/`store`) or not (`none`).
 
 ### "cannot reach `<url>`: ..." / "timed out after Ns calling `<url>`"
@@ -211,15 +194,15 @@ whether a given agent actually resolved that credential (`env`/`store`) or not (
 server isn't running, or a network/firewall issue.
 
 **Fix:** confirm the endpoint is up (`curl <base-url>/models`), check for typos from
-`docket models provider add`, and re-run.
+`docket setup provider add`, and re-run.
 
 ### "HTTP 4xx/5xx from `<url>`: ..."
 **Cause:** the provider itself rejected the request — most commonly an invalid model id, an
 invalid/expired API key, or a context-length overflow. The detail text in the error is the
 provider's own response body, truncated to 500 characters.
 
-**Fix:** see "Invalid Model Name" above for a bad model id; `docket keys rotate <KEY>` for a bad
-credential; `docket maintain <agent-id> distill` (or `clean`/`reset`) if the context has grown
+**Fix:** see "Invalid Model Name" above for a bad model id; `docket setup provider rotate <KEY>` for a bad
+credential; `docket pod reset <agent-id>` if the context has grown
 past what the model accepts. On a small-context endpoint the usual overflow is tool output: lower
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` (default 30,000 characters per tool result; about 2,500 suits a
 16k-token window).
@@ -235,38 +218,38 @@ lost field.
 **Fix:** decide what that destination may receive, then widen it deliberately:
 
 ```bash
-docket exporters privacy langfuse               # what leaves today
-docket exporters preview langfuse --level conversation   # what would leave, without sending it
-docket exporters privacy langfuse conversation  # lists the new classes and asks
+docket setup export privacy langfuse               # what leaves today
+docket setup export preview langfuse --level conversation   # what would leave, without sending it
+docket setup export privacy langfuse conversation  # lists the new classes and asks
 ```
 
 `actions` adds tool arguments and error text; `conversation` adds prompts, replies and tool
 results, and gives the trace itself the task as its Input and the last answer as its Output;
-`full` adds the system prompt, when the turn has one (a `docket harness run` workspace composes
+`full` adds the system prompt, when the turn has one (a `docket exec` workspace composes
 none). The next session shows the content. An earlier one
 cannot: content is captured only while an exporter grants it.
 
 ### A level change has no effect
-**Cause:** export pipelines start once per process. A running `docket serve --dispatch` keeps
+**Cause:** export pipelines start once per process. A running `docket start --dispatch` keeps
 the exporters and levels it started with, narrowing included.
 
-**Fix:** restart `docket serve` after `docket exporters enable`, `disable` or `privacy`. A
-one-shot `docket pod <p> dispatch` or `docket harness run` picks the change up at once.
+**Fix:** restart `docket start` after `docket setup export enable`, `disable` or `privacy`. A
+one-shot `docket run` or `docket exec` picks the change up at once.
 
 ### Nothing arrives at the destination
 **Cause:** the exporter is disabled, its credential no longer resolves (then it is skipped
 silently at the start of a turn), or deliveries are failing.
 
-**Fix:** `docket exporters list` shows whether it is enabled; `docket exporters show <name>`
-shows its `exported`/`dropped`/`failed` counters and last error; `docket exporters test <name>`
-re-probes the endpoint without changing anything; `docket doctor` warns about an enabled
+**Fix:** `docket setup export list` shows whether it is enabled; `docket setup export show <name>`
+shows its `exported`/`dropped`/`failed` counters and last error; `docket setup export test <name>`
+re-probes the endpoint without changing anything; `docket setup` warns about an enabled
 exporter with a failure since its last success. Check that `DOCKET_NO_EXPORT` and
 `DOCKET_NO_TRACE` are unset.
 
 ## Permission Denied Errors
 **Fix:**
 ```bash
-docket maintain <agent-id> check
+docket setup --fix
 ```
 
 This fixes:
@@ -281,25 +264,25 @@ This fixes:
 ```bash
 # Is the bot actually in the group?
 # Is TELEGRAM_BOT_TOKEN stored?
-docket keys list
+docket setup provider list
 
-# Is a docket serve --telegram process actually running?
+# Is a docket start --telegram process actually running?
 # (docket has no separate gateway process or log to check instead)
 ```
 
 ### Messages Not Being Sent
 Since docket owns the Telegram integration directly, a send failure surfaces in whatever terminal
-is running `docket serve --telegram` (or in `docket audit`/`docket trace` for the triggering
+is running `docket start --telegram` (or in `docket log`/`docket task trace` for the triggering
 action), not in a separate daemon log.
 
 **Fix:**
 ```bash
 # Confirm the poller is actually running
-docket serve --telegram
+docket start --telegram
 
 # Re-wire agent
-docket unwire <agent-id>
-docket wire <agent-id>
+docket setup notify unbind <agent-id>
+docket setup notify bind <agent-id>
 ```
 
 ## Session/Scope Issues
@@ -311,16 +294,16 @@ docket wire <agent-id>
 
 **Fix:**
 ```bash
-docket info <agent-id>      # check the codebase path and session key
+docket pod show <agent-id>      # check the codebase path and session key
 ```
 
 ## Pods & Dispatch
 
-### `docket pod <p> dispatch` does nothing / "No pending tasks"
+### `docket run` does nothing / "No pending tasks"
 There's nothing queued for the pod to run.
 ```bash
-docket pod <p> delegate <task>     # quote only when shell metacharacters require it
-docket pod <p> queue               # check what's pending
+docket task add <task>     # quote only when shell metacharacters require it
+docket task list               # check what's pending
 ```
 
 ### A dispatched task stays "blocked" (budget cap reached)
@@ -333,7 +316,7 @@ against this pod is refused outright (`paused_refused`) until the pause is expli
 not just re-blocked hop by hop:
 
 ```bash
-$ docket pod myapp dispatch
+$ docket run
   [task-c410e91a-...] blocked — pod budget reached ($5.12 ≥ $5.00) before implementer
 ```
 
@@ -341,34 +324,33 @@ Check the estimated spend, then either raise the cap or resume from the pause. R
 Lead also un-blocks every `blocked` task in that pod at once:
 
 ```bash
-docket cost myapp-lead                    # see measured token usage
-docket profile myapp-lead --budget <N>    # raise the cap (USD), if the spend is expected
-docket profile myapp-lead --resume        # clear the auto-pause + unblock the pod's queue
+docket status                    # see measured token usage
+docket pod set budgetUsd <N>    # raise the cap (USD), if the spend is expected
+docket run --resume        # clear the auto-pause + unblock the pod's queue
 # → Unblocked 1 budget-blocked task(s) in pod 'myapp'.
 # ✓ Resumed 'myapp-lead' — auto-pause cleared.
 ```
 
-To retry a single blocked task without touching the pod-wide pause, use `docket pod myapp queue
+To retry a single blocked task without touching the pod-wide pause, use `docket task list
 --retry <task-id>` instead — it moves just that task back to `pending`.
 
 ### A dispatched task stays "waiting_approval" and nobody seems to have noticed
 
 **Cause:** a gated tool call parked. Under `serve --dispatch`'s sweep or a non-interactive
-`docket pod <p> dispatch` (an unattended caller resolves an unset `approvalMode` to `park`), an
+`docket run` (an unattended caller resolves an unset `approvalMode` to `park`), an
 in-turn `ask` no longer blocks the hop — it records the exact call and parks the task
 immediately, so it never shows up as a long-running turn. Nothing pushes this at you unless a
 delivering notification channel is enabled. `console` is on by default but sends nothing, so with
-nothing else enabled a parked task waits unseen until `docket inbox`; `docket doctor` warns about
+nothing else enabled a parked task waits unseen until `docket inbox`; `docket setup` warns about
 exactly this.
 
 **Fix:**
 
 ```bash
 docket inbox                              # everything across every pod that needs you, right now
-docket approve <token>                    # grant it -- the exact same hop re-runs, once
-docket deny <token>                       # deny it -- the task fails with approval_denied
-docket pod <p> explain interruptions      # see what could park BEFORE you delegate the next task
-docket channels enable desktop            # this machine; or webhook/ntfy/telegram/email
+docket task approve <token>                    # grant it -- the exact same hop re-runs, once
+docket task deny <token>                       # deny it -- the task fails with approval_denied
+docket setup notify enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 
 Left unanswered, a parked approval expires after the pod's `approvalExpiryHours` (24h by
@@ -385,29 +367,29 @@ though both read as `INPUT_REQUIRED` over the MCP/A2A surfaces.
 **Fix:**
 
 ```bash
-docket chat <task-id>                     # see the question (and any brief/earlier answers); on a
+docket task answer <task-id>                     # see the question (and any brief/earlier answers); on a
                                            # TTY, prompts and answers it in one step
-docket pod <p> answer <task-id> "<answer>"                    # non-interactive, single-property question
-docket pod <p> answer <task-id> --field name=value ...        # non-interactive, multi-property question
+docket task answer <task-id> "<answer>"                    # non-interactive, single-property question
+docket task answer <task-id> --field name=value ...        # non-interactive, multi-property question
 ```
 
 An unanswered question past its own deadline moves the task to `blocked`
-(`blockedReason: "input_expired"`), never `failed` — `docket pod <p> queue --retry <task-id>`
+(`blockedReason: "input_expired"`), never `failed` — `docket task retry <task-id>`
 re-queues it once you're ready to answer.
 
 ### A dispatched task fails with "verification_failed" / the verify command failed
 
-The Implementer's hop is gated on its `verifyCmd` (if one is set — see `docket pod <p> add
---verify`/`set-verify`). A non-zero exit from that command moves the task to `failed` with a
+The Implementer's hop is gated on its `verifyCmd` (if one is set — see `docket pod add
+--verify`/`docket pod set verify`). A non-zero exit from that command moves the task to `failed` with a
 `verification_failed` trace event; it is **not** retried automatically (only a
 timeout or an endpoint hiccup on the *agent turn* itself is retried — a real, deterministic
 non-zero exit or a bad verdict never is). Inspect the recorded output and either fix the
 underlying failure or clear/adjust the gate:
 
 ```bash
-docket trace tail <p>                       # see the verify command's (redacted) output
-docket pod <p> set-verify <p>-implementer "npm test"   # change the gate command
-docket pod <p> delegate <task>              # re-queue once you believe it will pass
+docket task trace --tail                       # see the verify command's (redacted) output
+docket pod set verify "npm test" --member <p>-implementer   # change the gate command
+docket task add <task>              # re-queue once you believe it will pass
 ```
 
 The command runs in the Implementer's git worktree when one exists, otherwise the pod's shared
@@ -422,35 +404,29 @@ the start of a non-blank line of its reply. `FAIL`, no marker, or both markers
 there is no rework cycle for a Tester verdict (only a Reviewer's `REQUEST-CHANGES` gets one):
 
 ```bash
-$ docket pod myapp dispatch
+$ docket run
   [task-91a2c410-...] failed — tester reported FAIL
 ```
 
-Read the Tester's full reply via `docket trace tail <p>`, fix the underlying issue, then queue it
+Read the Tester's full reply via `docket task trace --tail`, fix the underlying issue, then queue it
 again (`queue --retry` only moves a `blocked` task back to `pending`, not a `failed` one):
 
 ```bash
-docket pod myapp delegate <task>
+docket task add <task>
 ```
 
 ### "pod has no lead — cannot dispatch"
 The pod is missing its Lead. A pod must have exactly one Lead, which orchestrates dispatch.
 Add one back (only a *second* Lead is refused):
 ```bash
-docket pod <p> add lead
-```
-
-### The Portfolio Manager didn't appear
-The org Portfolio Manager is opt-in — it isn't created by a plain `docket init`.
-```bash
-docket init --portfolio
+docket pod add lead
 ```
 
 ### A pod member wasn't created
 Inspect the pod and run diagnostics to find and fix the gap:
 ```bash
-docket pod <p>     # list the pod's members
-docket doctor      # system-wide diagnostics (add --fix to repair drift)
+docket pod show     # list the pod's members and status
+docket setup      # system-wide diagnostics (add --fix to repair drift)
 ```
 
 ### Implementer touching the wrong project?
@@ -473,24 +449,24 @@ turn composes its own startup contract instead), `HEARTBEAT.md` (the durable tas
 1. **Get the real per-turn footprint estimate and distill if it's over budget:**
 
    ```bash
-   docket maintain <agent-id> check     # look for the "Context footprint" line
-   docket maintain <agent-id> distill   # summarize memory/*.md into MEMORY.md, archive originals
+   docket setup --fix     # look for the "Context footprint" line
+   docket pod reset <agent-id>   # summarize memory/*.md into MEMORY.md, archive originals, rebuild
    ```
 
 2. **Verify the fleet is healthy:**
 
    ```bash
    docket status --all
-   docket doctor
+   docket setup
    ```
 
 ### Startup contract stale, or HEARTBEAT.md wrong on resume?
 
-`docket doctor` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the contract-version marker is
+`docket setup` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the contract-version marker is
 checked; a docket turn does not replay the file, but a human or tool reading the workspace does):
 
 ```bash
-docket doctor
+docket setup
 # Runtime startup contract:
 # ✓ myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /home/user/code/myproject)
 ```
@@ -499,13 +475,12 @@ If HEARTBEAT.md itself looks wrong (not just the startup file), reset it; memory
 into MEMORY.md first:
 
 ```bash
-docket maintain <agent-id> reset
+docket pod reset <agent-id>
 ```
 
-For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod apply`;
-`maintain rebuild` regenerates them only for an agent outside a pod and refuses pod members.
+For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod apply`.
 
-## Harness Mode (`docket harness run`)
+## Harness Mode (`docket exec`)
 
 Harness mode is a machine-facing entry point for an external caller that owns its own workspace
 and `DOCKET_HOME` — not the interactive CLI most of this guide covers. Its failures show up as an
@@ -514,7 +489,7 @@ rather than trying to interpret the exit code alone.
 
 ### Exit code 2 — refused before any turn started
 
-**Symptom:** `docket harness run` exits `2` and prints exactly one JSON line with
+**Symptom:** `docket exec` exits `2` and prints exactly one JSON line with
 `"status":"refused"`, and no agent turn ran at all.
 
 **Cause:** `core.harness.preflight` rejected the environment before starting. The common cases:
@@ -522,7 +497,7 @@ rather than trying to interpret the exit code alone.
 touch a real install's approvals/audit log), `DOCKET_LLM_BASE_URL` is unset, `DOCKET_NO_TRACE=1`
 is set (harness mode refuses to run unobserved), or `--workspace` is not a real directory. A
 missing `--model` or a missing/duplicated `--task`/`--task-file` is refused the same way, before
-`preflight` even runs. (`docket harness status` with no `TOKEN` is different: it prints a usage
+`preflight` even runs. (`docket task show` with no `TOKEN` is different: it prints a usage
 line on stderr and exits `1`, with no JSON.)
 
 **Fix:** the caller must supply its own `DOCKET_HOME` (never the operator's `~/.docket`) and a
@@ -549,7 +524,7 @@ is no flag to make harness mode wait for a human — see
 ### Distinguishing `failed`/`cancelled` from `blocked`/`refused`
 
 `"status":"failed"` and `"status":"cancelled"` (also exit `1`) mean a turn actually ran — check
-`docket harness status TOKEN` and the NDJSON event stream on stdout for what happened during the
+`docket task show TOKEN` and the NDJSON event stream on stdout for what happened during the
 run. `"status":"blocked"` and `"status":"refused"` both mean **no completed turn produced the
 outcome** — one stopped on a specific denied tool call, the other never started. See
 [`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md) for the full result shape.
@@ -558,32 +533,31 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 
 1. **Run diagnostics:**
    ```bash
-   docket doctor
+   docket setup
    ```
 
 2. **Check logs:**
    ```bash
    ls ~/.docket/workspaces/projects/<agent-id>/memory   # daily memory logs
-   docket trace tail <project>  # live dispatch trace, if it's pod-related
-   docket audit                 # recent docket-initiated changes
+   docket task trace --tail  # live dispatch trace, if it's pod-related
+   docket log                 # recent docket-initiated changes
    ```
 
 3. **Verify configuration:**
    ```bash
-   docket info <agent-id>
+   docket pod show <agent-id>
    docket status --all
    ```
 
 4. **Test agent:**
    ```bash
    # Send a test message in Telegram (if wired), or:
-   docket pod <project> delegate "test task"
-   docket pod <project> dispatch
+   docket task add "test task"
+   docket run
    ```
 
 5. **Emergency reset:**
    ```bash
-   # If all else fails: re-render a pod's member files, or rebuild an agent outside a pod
+   # If all else fails: re-render a pod's member files
    docket pod apply
-   docket maintain <agent-id> rebuild
    ```

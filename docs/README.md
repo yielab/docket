@@ -2,7 +2,7 @@
 
 **docket — agent teams as configuration. Your rules, in YAML.** A repository's `.docket/`
 directory names the roles, the order they work in, the gates between them and the rules they
-cannot cross; `docket init` turns it into a team of agents, each in its own workspace, `docket pod <p> dispatch`
+cannot cross; `docket init` turns it into a team of agents, each in its own workspace, `docket run`
 runs it one real model turn per hop, and every gate decision lands in a hash-chained audit log.
 docket is a Python CLI that owns the agent turn loop itself. It has no daemon and talks to any
 OpenAI-compatible chat-completions endpoint, hosted or local.
@@ -43,7 +43,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
 | [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. Not `docket harness run`, which is the CLI's single-agent mode for an external caller |
+| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. Not `docket exec`, which is the CLI's single-agent mode for an external caller |
 | [Decision records (ADRs)](adr/) | One reasoned architectural decision per file |
 | [Cycles ended](cycles-ended/README.md) | The archive of closed waves and phases; verbatim, hash-verified, never a source of work |
 
@@ -60,41 +60,41 @@ docket init                                   # this directory -> a Lead + Imple
 docket pod recipes                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
 docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
 docket pod validate                               # check every document under ./.docket/
-docket pod myapp apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
-docket pod myapp export                       # write the pod's own scope back to ./.docket/
+docket pod apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
+docket pod export                       # write the pod's own scope back to ./.docket/
 docket pod roles                             # every role: built-in, starter, yours
 
 # Work
-docket pod myapp delegate "<task>"            # queue a task
+docket task add "<task>"            # queue a task
 docket pod plan                         # what would run, without running it
-docket pod myapp dispatch                     # run the pipeline once, now
-docket serve --dispatch                       # drain every pod's queue in the background
+docket run                     # run the pipeline once, now
+docket start --dispatch                       # drain every pod's queue in the background
 
 # What needs you
 docket inbox                                  # every pod's waiting/blocked tasks and pending approvals
-docket chat <task-id>                         # see and answer one task's parked question
-docket channels enable desktop                # be told the moment something does (console alone tells nobody)
-docket channels enable ntfy --set topic=t     # the same, on your phone
-docket notify                                 # force one delivery sweep now
+docket task answer <task-id>                         # see and answer one task's parked question
+docket setup notify enable desktop                # be told the moment something does (console alone tells nobody)
+docket setup notify enable ntfy --set topic=t     # the same, on your phone
+docket setup notify flush                           # force one delivery sweep now
 
 # The record
-docket runs list                              # one row per dispatch
-docket trace tail myapp                       # the latest session, step by step
-docket audit && docket audit verify           # gate decisions, and the chain verifies
-docket config explain myapp-implementer       # effective configuration with provenance
-docket cost myapp-lead                        # measured tokens; no dollar figure it did not record
-docket exporters list                         # trace destinations (OpenTelemetry, Langfuse): on/off, SHARES
-docket exporters preview langfuse             # what one would receive, before anything is sent
+docket task list                              # one row per dispatch
+docket task trace <task-id> --tail             # one task's session, step by step
+docket log && docket log verify           # gate decisions, and the chain verifies
+docket pod show myapp-implementer       # effective configuration with provenance
+docket status                        # measured tokens; no dollar figure it did not record
+docket setup export list                         # trace destinations (OpenTelemetry, Langfuse): on/off, SHARES
+docket setup export preview langfuse             # what one would receive, before anything is sent
 
 # Models and keys
-docket models provider add local http://127.0.0.1:8081/v1 --model m --ctx 16384 --max-tokens 4096
-docket models preset local                    # or anthropic | openai | google | openrouter | ai-gateway
-docket models set programmer <provider/model> # one role; `docket profile <id> <model>` pins one agent
-docket keys add OPENROUTER_API_KEY            # stored once by name, never written into a workspace
+docket setup provider add local http://127.0.0.1:8081/v1 --model m --ctx 16384 --max-tokens 4096
+docket setup model preset local                    # or anthropic | openai | google | openrouter | ai-gateway
+docket setup model set implementer <provider/model> # one role
+docket setup provider add openrouter --credential <key>   # stored once, never written into a workspace
 
 # Health
 docket status --all                           # every project at a glance
-docket doctor [--fix]                         # workstation diagnostics and repairs
+docket setup [--fix]                         # workstation diagnostics and repairs
 ```
 
 The full surface is in the [command reference](commands.md).
@@ -128,9 +128,9 @@ in your repository:
 ├── docket-mcp-servers.json           # external MCP tool servers
 ├── docket-exporters.json             # your changes to the kind: exporter documents; five ship built in, all off
 ├── docket-channels.json              # your changes to the kind: channel documents; console is the only one on by default
-├── notify-state.json                 # the last delivery sweep's dedupe snapshot (docket notify)
+├── notify-state.json                 # the last delivery sweep's dedupe snapshot (docket setup notify)
 ├── docket-runs.json  docket-schedules.json  docket-conversations.json
-├── audit.log                         # hash-chained audit log (docket audit verify)
+├── audit.log                         # hash-chained audit log (docket log verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
 └── workspaces/
     ├── manager/ knowledge/ security/ # the shared org specialists
