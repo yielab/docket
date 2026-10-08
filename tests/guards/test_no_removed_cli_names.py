@@ -30,6 +30,9 @@ ROOTS: tuple[str, ...] = (
     "tests/guards",
     "examples",
     "benchmarks",
+    "docs/AGENT-TEAMS.md",
+    "docs/DOCKET.md",
+    "docs/WORKFLOW-GUIDE.md",
 )
 # Files inside ROOTS whose owners have not swept them yet.
 PENDING: tuple[str, ...] = ("src/docket/templates",)

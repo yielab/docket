@@ -160,7 +160,7 @@ never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` �
 
 ### Harness mode: one agent, one turn, for an external caller
 
-`docket harness run` (decision D-35) is a second, narrower entry point beside pod dispatch: it runs **one agent,
+`docket exec` (decision D-35) is a second, narrower entry point beside pod dispatch: it runs **one agent,
 one turn loop, to completion**, in a workspace and `DOCKET_HOME` the *caller* supplies, then exits.
 It is not a pod and not a team — no Lead, no Implementer/Reviewer/Tester rotation — and it
 provisions nothing: the caller has already prepared an isolated checkout at a known revision and
@@ -220,8 +220,7 @@ its fixtures validates against that committed file. It adds, all under the one `
   carrying `{"optionId": ...}`. `approval_requested` carries a `rationale` and three `options`
   (`approve_once`, `approve_task`, `deny`); a `content.reason` on the answer is screened and audited.
   A blocked consultation under the default `refuse` mode puts the question on the result.
-- **Evidence.** A recipe result's `task.evidence` is the evidence-v1 document for the task, identical
-  to `docket pod <p> evidence <task> --json`
+- **Evidence.** A recipe result's `task.evidence` is the evidence-v1 document for the task
   ([schema](contracts/evidence-v1/schema.json)).
 
 > This is unrelated to [DEVELOPMENT-HARNESS.md](DEVELOPMENT-HARNESS.md), which documents the
@@ -234,7 +233,7 @@ Every agent's state lives in two docket-owned files, split by who reads them and
 by docket, through `edges/store.py`:
 
 - **`.docket-meta.json`**, in each workspace — per-agent facts: kind, role, name, codebase, stack,
-  model, `modelSource`, description, `sessionKey`, `projectKey`, budget, and platform-era
+  model, description, `sessionKey`, `projectKey`, budget, and platform-era
   additions like `blueprint`/`workspaceKind`/`workDir` and a pod's allocated
   `portRangeStart`/`portRangeCount`/`scratchDir`
 - **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
@@ -250,7 +249,7 @@ second store was owned by an external daemon that could mutate it independently 
 hand-edited, or touched by its own CLI) — which is exactly what
 `core/sync.py`'s drift check used to exist to catch. With both files now written only by docket
 through one code path, "a different program touched this file" is no longer possible, and that
-drift-detection machinery (the ACL, `core/sync.py`, `docket doctor`'s session-key-sync check) is
+drift-detection machinery (the ACL, `core/sync.py`, `docket setup`'s session-key-sync check) is
 retired along with the daemon rather than kept around for a problem that no longer exists.
 
 ### Durable state docket owns
@@ -266,17 +265,16 @@ stores, all under `~/.docket/`:
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
   docket-owned region inside its `## Active Tasks` list that `core/dispatch.py` upserts
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
-  to keep current by convention. `docket doctor` flags a task the queue marks `running` with no
+  to keep current by convention. `docket setup` flags a task the queue marks `running` with no
   matching ledger entry, or a ledger entry for a task that no longer is, and `--fix` re-syncs the
   ledger to exactly what the queue says. See [Dispatch Internals](#dispatch-internals).
 - **The conversation registry** (`core/conversations.py`, `docket-conversations.json`) — one
   record per channel thread docket is tracking (agent, peer, topic, status, a resume pointer),
-  seeded on `docket wire` and cleaned up on delete. Dispatch and `serve` keep `last_message`/
-  `task_ref` current automatically as a task moves, rather than that being a manual
-  `docket conversations set` chore.
+  seeded on `docket setup notify bind` and cleaned up on delete. Dispatch and `serve` keep `last_message`/
+  `task_ref` current automatically as a task moves, tracked by the notification system.
 - **The audit log** (`core/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
-  `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket audit verify` can
+  `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket log verify` can
   walk the chain and report the first broken link; a missing file is an honest chain start, not
   tampering, and a line without `seq`/`prev_hash` is reported as a break. Rotation does **not** restart the chain: the first entry
   after a size-triggered rotation names the generation it continues, checked against the single
@@ -287,7 +285,7 @@ stores, all under `~/.docket/`:
   be silently disabled.
 - **Traces** (`core/trace.py`, `$TRACES_DIR/<project>/<session_id>.jsonl`) — one append-only file
   per session, one line per observable event (hop starts, tool calls, gate outcomes, retries,
-  guardrail trips, budget warnings). `docket trace`/`docket metrics` read this store;
+  guardrail trips, budget warnings). `docket task trace`/`docket status` read this store;
   `DOCKET_NO_TRACE=1` disables writes. The same records, as they are written, are also the only
   input to trace export (`core/telemetry.py`): an enabled `kind: exporter` receives them as
   OpenTelemetry spans, filtered by its privacy level, so a destination such as Langfuse shows a
@@ -353,27 +351,27 @@ one real agent turn per hop. Only the roles a pod has take part (a lean pod runs
 Lead → Implementer):
 
 ```bash
-docket pod <project> delegate "Fix the null-token login crash"  # queue a task
-docket pod <project> queue                                      # see the queue + per-task status/cost
-docket pod <project> dispatch                                   # run the pipeline once, now
-docket serve --dispatch                                         # background: drive every pod's queue
+docket task add "Fix the null-token login crash"  # queue a task
+docket task list                                      # see the queue + per-task status/cost
+docket run                                   # run the pipeline once, now
+docket start --dispatch                                         # background: drive every pod's queue
 ```
 
 Three guarantees hold on every hop:
 
 - **Budget-gated.** Before each hop docket checks the pod's token-based dollar estimate against
-  the Lead's budget cap (`docket profile <project>-lead --budget N`). The first hop that would
+  the Lead's budget cap (`docket pod set budgetUsd N`). The first hop that would
   exceed it
-  pauses the pod's Lead (`docket profile <id> --resume` clears it) and leaves the task
+  pauses the pod's Lead (`docket run --resume` clears it) and leaves the task
   **blocked**, not run — every further claim against that pod is refused outright until it's
   resumed.
-- **Traced.** Each hop emits a trace event (`docket trace`) on a per-task session
+- **Traced.** Each hop emits a trace event (`docket task trace`) on a per-task session
   `agent:<project>:<task_id>` — every run is auditable, no manual Telegram relay.
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
   cross-pod dispatch path** — one pod can never run another pod's agents.
 
 Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`docket pod …
-dispatch`) or **opt-in** (`docket serve --dispatch`) — never silent. Plain `docket serve` is a
+dispatch`) or **opt-in** (`docket start --dispatch`) — never silent. Plain `docket start` is a
 read-only monitor and does not dispatch. Stopping `serve` takes two signals when work is in flight:
 the first (Ctrl-C or SIGTERM) stops new work and waits for the pod sweeps already running; a second
 requests cancellation of each sweep run, so its task ends `cancelled`, and exits 130 or 143.
@@ -412,8 +410,8 @@ Tester ONLY reads:
 The lever docket actually controls is **per-pod context isolation** (see the
 [Before/After](#the-problem-before-docket) diagram above) — token reduction is what isolation
 controls and what you can measure, not a fixed percentage. Read your measured token counts with
-`docket cost` (it records no dollar spend; the budget gate uses a labelled token-based estimate,
-and `docket models` shows comparative pricing); see
+`docket status` (it records no dollar spend; the budget gate uses a labelled token-based estimate,
+and `docket setup model` shows comparative pricing); see
 [Cost Optimization](#cost-optimization) below for the model-selection half of the story.
 
 ### Response Time
@@ -448,10 +446,10 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Owns this pod's context, memory, and human (Telegram) comms
 - Reads this pod's workspace contract — `WORKFLOW_AUTO.md`, `MEMORY.md`, `HEARTBEAT.md` — not
   a full cross-project history
-- Decomposes work and dispatches to the pod's workers — `docket pod <project> dispatch`
-  (or `docket serve --dispatch`) really runs the next hop, one costed agent turn at a time
+- Decomposes work and dispatches to the pod's workers — `docket run`
+  (or `docket start --dispatch`) really runs the next hop, one costed agent turn at a time
 - Holds the per-pod budget cap that gates every dispatch hop
-  (`docket profile <project>-lead --budget N`)
+  (`docket pod set budgetUsd N`)
 
 **Tools:** `read`, `glob`, `grep`, `fetch`, `skill`, `consult` — `write`/`edit`/`bash` are
 structurally absent from its tool registry (`core/archetypes.py`'s `lead` archetype declares `denied_tools=("write",
@@ -548,7 +546,7 @@ acceptance-criteria files.
 
 **Model:** cheap class (role policy) (validation is mechanical)
 
-**MCP tools.** Tools from configured external MCP servers (`docket mcp servers`) reach a live turn
+**MCP tools.** Tools from configured external MCP servers (`docket setup mcp`) reach a live turn
 through the same chokepoint, namespaced `mcp__<server>__<tool>`. Denials apply by capability, not
 by name. Every MCP server is write-capable unless the operator declares it `--kind read` (an
 operator assertion, not something docket verifies). A role that denies `write` (Lead, Reviewer,
@@ -583,8 +581,8 @@ Context stays scoped to one project's pod
 There is no generated `SNAPSHOT.md`. There is no separate semantic memory index —
 docket's own turn loop has no `memory_search` tool of its own; an agent searches its memory files
 the same way it reads any other file, with `read`/`grep`. What actually scopes a pod's context is
-the **workspace startup contract** docket provisions on `docket add`/`docket init` and
-`docket doctor` re-seeds if a workspace is missing one or has a stale version:
+the **workspace startup contract** docket provisions on `docket pod add`/`docket init` and
+`docket setup` re-seeds if a workspace is missing one or has a stale version:
 
 - **`WORKFLOW_AUTO.md`** — the startup protocol. docket's own turn loop forces every agent to
   re-read this file after each context reset (its system-prompt composition re-injects it every
@@ -624,28 +622,28 @@ and `MEMORY.md`'s section headers. docket generates no separate summary artifact
 ### Memory Commands
 
 ```bash
-# Summarize pending daily logs into MEMORY.md (see Memory Distillation below)
-docket maintain <id> distill
+# Reset a member's workspace (distils memory, clears, and rebuilds)
+docket pod reset <member-id>
 
 # Re-seed a missing or stale WORKFLOW_AUTO.md / MEMORY.md / HEARTBEAT.md
-docket doctor --fix
+docket setup --fix
 ```
 
 ### Memory Distillation
 
-`docket maintain <id> distill` summarizes an agent's pending daily logs into `MEMORY.md` and
-archives the originals into `memory/.distilled/<day>/` rather than deleting anything outright.
+`docket pod reset <member-id>` summarizes an agent's pending daily logs into `MEMORY.md`,
+archives the originals into `memory/.distilled/<day>/` rather than deleting anything outright,
+then clears and rebuilds the member's workspace.
 This is docket's first *self-originated* LLM call (decision D-18): docket runs one turn as the
 agent whose memory is being distilled to write the summary, through the same
 `RuntimeDriver.run_turn` every dispatch hop uses — no new SDK dependency, no direct provider call.
 
-`docket maintain <id> clean` and `reset` run distillation **first by default** before their own
-memory-clearing step (`--no-distill-first` opts out and deletes without distilling) — so
+The reset command runs distillation **first** before the clearing and rebuilding step — so
 routine maintenance never quietly throws away undistilled history. The contract fails **closed**:
 a driver failure or an empty reply leaves the daily logs exactly where they were, and the
-subsequent delete is aborted rather than proceeding over lost content. "Nothing to distill" (no
+subsequent reset is aborted rather than proceeding over lost content. "Nothing to distill" (no
 pending daily logs) is a different, harmless case — there's nothing undistilled to lose, so the
-delete proceeds normally.
+reset proceeds normally.
 
 ---
 
@@ -657,10 +655,10 @@ SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-o
 final human `git diff` review. The enforced tool-call gate (policy engine plus argument-aware
 high-risk command classifier) is always active and cannot be turned off, and an `ask` verdict can
 be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). bwrap/Docker workspace
-isolation is **opt-in** (`docket gates isolate on`, which needs bubblewrap or Docker on the host;
-`docket gates network none` then cuts the jail's network). Since Phase 34 (D-50), an unattended pod's
+isolation is **opt-in** (`docket setup sandbox on`, which needs bubblewrap or Docker on the host;
+`docket setup sandbox network none` then cuts the jail's network). Since Phase 34 (D-50), an unattended pod's
 in-turn `ask` **parks** the task (`waiting_approval`) rather than blocking the turn, and a
-separate, opt-in notification layer (`docket channels`, off by default except `console`) is what
+separate, opt-in notification layer (`docket setup notify`, off by default except `console`) is what
 tells a human one is waiting — the approval mechanism and its four channels are unchanged. Full
 detail, including the exact reviewer checklist, gate/approval-channel mechanics and the operator
 loop, lives in
@@ -694,13 +692,13 @@ reasoning-density) or the **strong class** (reasoning-dense):
 | Cheap  | Lead, Manager, Reviewer, Tester, Knowledge, Portfolio Manager | High-volume or mechanical work |
 | Strong | Implementer, Security, repo agents                       | Code writing / security reasoning|
 
-Change the policy for a role with `docket models set <role> <provider/model>`, or switch all
-roles at once with a provider preset (`docket models preset openai`). Pins set via
-`docket profile <id> <model>` are never touched by policy changes.
+Change the policy for a role with `docket setup model set <role> <provider/model>`, or switch all
+roles at once with a provider preset (`docket setup model preset openai`). Override per-pod with a role overlay
+or per-step with `model:` in the pipeline.
 
 **Result:** routine orchestration and review runs on the cheap model class with
 project-scoped context — fewer tokens at a lower per-token price. (docket records measured
-tokens, not dollar spend; dollar figures are estimates — `docket models` for comparative pricing,
+tokens, not dollar spend; dollar figures are estimates — `docket setup model` for comparative pricing,
 the budget gate for the per-pod estimate.)
 
 ### Context Isolation Rules
@@ -736,10 +734,10 @@ Tester:      ✓ Behavior-only validation
 
 ### Features Implemented ✅
 
-- [x] Memory management system (`docket maintain`)
-- [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`)
+- [x] Memory management system and distillation (`docket pod reset`)
+- [x] Pod delegation + dispatch (`docket task add`, `docket task list`, `docket run`)
 - [x] Workspace startup contract generation (`WORKFLOW_AUTO.md`/`MEMORY.md`/`HEARTBEAT.md`) +
-  `docket doctor` re-seeding of a missing or stale one
+  `docket setup` re-seeding of a missing or stale one
 - [x] Per-pod context isolation (workspace + session key)
 - [x] Security checklist (6 points)
 - [x] Behavior-only validation
@@ -749,40 +747,40 @@ Tester:      ✓ Behavior-only validation
 - [x] Docket-native pipeline format + executor (`docket pod validate`, `docket pod plan`, `docket run`), generalized
   mechanical/verdict/approval gates and bounded rework
 - [x] Typed handoff artifacts between hops + a per-role token-budgeted context compiler
-- [x] Run registry and cancellation (`docket runs`)
+- [x] Run registry and cancellation (`docket task list`)
 - [x] Declarative policy engine on the live dispatch path (`docket pod policies`)
 - [x] RuntimeDriver port — one typed protocol, one shipped driver (`core/runtime_driver.py`,
   `edges/adapters/docket_runtime.py`'s `DocketDriver`)
-- [x] docket as an MCP server (`docket mcp serve`, optional `[mcp]` extra)
-- [x] Memory distillation (`docket maintain distill`; `clean`/`reset` distill first by default)
+- [x] docket as an MCP server (`docket start --mcp`, optional `[mcp]` extra)
+- [x] Memory distillation (`docket pod reset` distills first by default)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
-- [x] Hash-chained, tamper-evident audit log (`docket audit verify`)
-- [x] Harness mode (`docket harness run`/`docket harness status`) — a versioned, non-interactive
+- [x] Hash-chained, tamper-evident audit log (`docket log verify`)
+- [x] Harness mode (`docket exec`/`docket task show`) — a versioned, non-interactive
   single-agent entry point for an external caller-owned workspace and `DOCKET_HOME` (see
   [Harness mode](#harness-mode-one-agent-one-turn-for-an-external-caller) above)
-- [x] The configuration contract: `docket config explain` names each effective value and the
-  scope it came from (built-in, global, pod), and `docket doctor` names every entry a loader
+- [x] The configuration contract: `docket pod show` names each effective value and the
+  scope it came from (built-in, global, pod), and `docket setup` names every entry a loader
   skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
 - [x] Configuration format v1: every YAML document declares `kind:`, `docket pod validate` checks it,
   short forms normalize to the canonical one, pipelines route with `on:` and skip with `when`
 - [x] The provider catalog: model endpoints are `kind: provider` documents, fourteen built in
-  (`docket models provider add|list|show|remove|export`)
+  (`docket setup provider add|list|show|remove|export`)
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
   (`docket pod apply|export`, `docket init` applies it), with drift reported by
   `config explain`
 - [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket pod recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
 - [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
-  (`docket exporters`), five destinations built in, all off
+  (`docket setup export`), five destinations built in, all off
 - [x] Export privacy levels (`minimal`/`actions`/`conversation`/`full`, or an exact `share:`
-  list), shown before sharing (`docket exporters show|preview`) and widened only by a confirmed,
-  audited command (`docket exporters privacy`)
+  list), shown before sharing (`docket setup export show|preview`) and widened only by a confirmed,
+  audited command (`docket setup export privacy`)
 - [x] The operator loop: an unattended `ask` parks (`waiting_approval`) instead of blocking a
   sweep, a typed Lead intake brief with a deterministic resource pre-check, an `input` pipeline
   step for a question rather than a permission (`waiting_input`), one derived inbox
   (`docket inbox`) every surface renders from, `kind: channel` notifications delivered as
-  CloudEvents (`docket channels`, `docket notify`, seven dialects, only `console` on by
-  default, and it sends nothing, so `docket doctor` warns until a delivering one is on), and answer surfaces (`docket chat`, `docket pod <p> answer`, HTTP, MCP) that all
+  CloudEvents (`docket setup notify`, `docket setup notify`, seven dialects, only `console` on by
+  default, and it sends nothing, so `docket setup` warns until a delivering one is on), and answer surfaces (`docket task answer`, `docket task answer`, HTTP, MCP) that all
   resolve through one `answer_task` function
 
 ### Documentation ✅
@@ -802,7 +800,7 @@ Tester:      ✓ Behavior-only validation
 
 ## Dispatch Internals
 
-`docket pod <project> dispatch` (and the opt-in `docket serve --dispatch` loop) drives a pod's
+`docket run` (and the opt-in `docket start --dispatch` loop) drives a pod's
 queued tasks through its pipeline, one real, costed agent turn per hop. Earlier drafts of this
 document sketched a memory-file signaling protocol (`TASK.md`/`DONE.md`/`APPROVED.md`/
 `VALIDATED.md`) with Telegram polling and a fixed 3-retry escalation — that was never what
@@ -835,7 +833,7 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   resolved, not fixed: `approvalMode: wait` blocks the call as before (the default for an
   interactive TTY dispatch); `park` — the resolved default for `serve --dispatch`'s sweep and a
   non-interactive `dispatch` — records the exact call and ends the turn instead of blocking it,
-  so one stuck hop can no longer stall an entire sweep. `docket approve`/`docket deny` (CLI, HTTP
+  so one stuck hop can no longer stall an entire sweep. `docket task approve`/`docket task deny` (CLI, HTTP
   `POST /approvals/<token>`, MCP, or Telegram) resolve either trigger identically. A grant on a
   pre-hop gate hands the position back to the *next* claim as a single-use gate override; a grant
   on a parked call instead re-runs that *same* hop, carrying a single-use pre-grant matched by a
@@ -845,8 +843,8 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   the same fail-closed sweep a pre-hop gate's pending approval already used.
 - **`waiting_input`** is for a question, not a permission: a pipeline `input` step
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
-  brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket chat
-  <task-id>`, `docket pod <p> answer`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
+  brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
+  <task-id>`, `docket task answer`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
   all resolve it through one `core.answers.answer_task` function, which routes the step's own
   `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
@@ -859,13 +857,13 @@ tool, and Telegram's `/status`, each scoped to the caller's own pod) is read-onl
 from the task list and the approval store rather than stored anywhere: every provisioned pod is
 enumerated and each task sorted into `needsYou` (any `waiting_*` status, plus `blocked`),
 `failed`, `doneSince` or `running`, with a pending approval added to `needsYou` unless its task
-already carries it. A separate `kind: channel` document (`docket channels`) is what turns a
+already carries it. A separate `kind: channel` document (`docket setup notify`) is what turns a
 transition in that inbox into an actual push: seven dialects ship (`console`, `desktop`,
-`webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default (and it sends nothing: `docket doctor` warns until a
+`webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default (and it sends nothing: `docket setup` warns until a
 delivering channel is on), each
 declaring what it may do (`notify`/`converse`/`decide`, capped per dialect — only `console` and
 `telegram` may ever `decide`) and how much of an event it carries (`minimal` by default, widened
-the same confirmed, audited way `docket exporters privacy` widens a trace). `docket notify flush`
+the same confirmed, audited way `docket setup export privacy` widens a trace). `docket setup notify flush`
 computes the diff against the last flush and delivers it — deduplicated, at-most-once, retried
 twice per destination — and both `serve`'s sweep and a foreground `dispatch` call it after their
 own work. `core/telegram.py`'s inbound bot is unchanged by any of this: it still only ever
@@ -880,9 +878,9 @@ An agent that needs a human decision has two ways to ask. A gated tool call beco
 whose pack carries the model's own preceding sentence as a `rationale` (screened, truncated to 500
 characters, and a claim by the model rather than a fact) and three options: `approve_once`,
 `approve_task` (the identical call for the rest of the task: within the turn, and in a pod for every
-later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket approve
+later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task approve
 <token> --option approve_task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
-MCP `approvals_grant` `option`. `docket approve|deny <token> --reason TEXT`, the HTTP approval POST's
+MCP `approvals_grant` `option`. `docket task approve|deny <token> --reason TEXT`, the HTTP approval POST's
 `reason` and the harness answer's `content.reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
 recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
@@ -891,13 +889,13 @@ question is persisted (0600, `consult-parked/`) until dispatch stores it on the 
 can answer it. A channel at the `conversation` level lists the options and the recommended id, and
 Telegram `/answer <task> <option id>` picks one.
 
-`docket pod <p> evidence <task-id> [--json]` (also `GET /tasks/<p>/<id>/evidence`) prints the
-evidence-v1 document for a task: per-hop measured token usage (null when the endpoint reports zero)
+`docket task show <task-id> [--json]` (also `GET /tasks/<p>/<id>/evidence`) includes the
+evidence-v1 document: per-hop measured token usage (null when the endpoint reports zero)
 and a trace link made of the session key and a one-second window. A corrections ledger at
 `<DOCKET_HOME>/corrections/<project>.jsonl` collects deny reasons, Reviewer `REQUEST-CHANGES` texts
-and declined answers, read with `docket pod <p> corrections [--json]`.
-`docket metrics --escalation` and `/metrics` add `docket_tasks_started_total`,
-`docket_questions_total{kind,outcome}` and `docket_decision_latency_seconds`. Like the other
+and declined answers.
+Metrics expose `docket_tasks_started_total`,
+`docket_questions_total{kind,outcome}` and `docket_decision_latency_seconds` on `/metrics`. Like the other
 counters they are lifetime-of-current-storage counts and must not be alerted on as monotonic.
 
 ### Pipeline resolution and generalized gates
@@ -915,7 +913,7 @@ Each resolved step's gate is one of three kinds, read from the step's own declar
 step doesn't declare one — its role archetype's `gateContract`:
 
 - **`mechanical`** — run a command; nonzero exit fails the step. This is the Implementer's
-  `verifyCmd` today (`docket pod <project> add --verify "<cmd>"` / `set-verify`), resolved
+  `verifyCmd` today (`docket pod add --verify "<cmd>"` / `set-verify`), resolved
   against the member's real working tree (worktree → shared codebase → the member's own
   workspace dir).
 - **`verdict`** — match the configured regex at the start of every non-blank line of a hop's
@@ -927,7 +925,7 @@ step doesn't declare one — its role archetype's `gateContract`:
   Implementer) up to a configured cycle budget (`maxReworkCycles`, default `1`) before a second
   rejection fails the task terminally. There is no fixed "3 retries then escalate to a human
   Engineer" — the bound is one small integer, and the terminal state is simply `failed`, visible
-  via `docket pod <project> queue` / `docket runs`.
+  via `docket task list` / `docket task list`.
 - **`approval`** — the step must not proceed until an operator grants it through docket's
   headless approval channels; this is what produces a `waiting_approval` task.
 
@@ -943,7 +941,7 @@ place, up to a per-role retry budget, with linear backoff; the attempt count is 
 hop. Every retry refreshes the task's claim timestamp, so a legitimately long retry loop can't be
 mistaken for a stale claim by a different concurrent dispatcher. The agent-turn timeout and the
 `verifyCmd` timeout are independent, each resolved as: an explicit CLI override
-(`docket pod <p> dispatch --timeout`), then the pod Lead's own meta fields, then a built-in
+(`docket run --timeout`), then the pod Lead's own meta fields, then a built-in
 default.
 
 ### Structured handoff artifacts and the context compiler
@@ -973,11 +971,11 @@ to bill against, only to bound a prompt deterministically.
 Every dispatch invocation — from the CLI, the `serve` webhook, a due schedule, the periodic sweep
 loop, or an MCP `dispatch` tool call — creates a record in the run registry (`core/runs.py`)
 *before* the work starts, and folds it to a terminal state (`succeeded`, `failed`, or `cancelled`)
-when it finishes. `docket runs` queries it; this closed a real gap where background dispatch paths
+when it finishes. `docket task list` queries it; this closed a real gap where background dispatch paths
 used to swallow every exception and return before anything ran, leaving no run id and no way to
 tell "done" from "failed" from "never ran."
 
-`docket runs cancel <id>` persists one cancellation request and kills every pid recorded against
+`docket task cancel <id>` persists one cancellation request and kills every pid recorded against
 that run's process *group* (each hop subprocess starts its own session, so its pid doubles as its
 group id). Queued work becomes `cancelled` atomically. Running work remains nonterminal and visibly
 requested until the executor observes the signal and fully stops; then both the task and run become
@@ -993,7 +991,7 @@ same task text doesn't re-trip a wildcard-scoped policy at every hop), and `pre_
 hop's real output, before it is embedded in the carried-forward artifact. A `block` verdict on
 `pre_input` rejects the task before it is ever queued; a `require_approval` verdict enqueues it
 straight into `waiting_approval`. A `block` on `pre_output` fails the hop the same way a failed
-agent turn does; `redact` scrubs the text in place; `warn` only logs and feeds `docket metrics`.
+agent turn does; `redact` scrubs the text in place; `warn` only logs and feeds `docket status`.
 In-turn tool calls have their own separate hook — `pre_tool_call`, evaluated by `core/tools.py`'s
 `dispatch_tool` on every call docket's own turn loop makes (Phase 19 P19-3) — which this
 dispatch-level engine does not duplicate; `docket pod check "<text>" --role <role>`
@@ -1028,11 +1026,11 @@ that project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
-**A:** No. Templates are generated per-pod by `docket init` (and per member by `docket add`) and
+**A:** No. Templates are generated per-pod by `docket init` (and per member by `docket pod add`) and
 refreshed by
-`docket maintain <id> rebuild`:
+A member's isolation:
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
-- Project agents are never touched by another project's setup
+- Project agents are never touched by another project's setup (use `docket pod reset <member-id>` to rebuild a workspace)
 
 ### Q: How much will I save?
 
@@ -1074,9 +1072,9 @@ Inspect the boundary or copy the lazy constructors from
 
 1. **First project:** `docket init` in the project directory (the pod is a lead + implementer)
 2. **Add another project pod:** `docket init <project> [path]`
-3. **Inspect an agent:** `docket info <project>-lead` (quick per-agent view)
+3. **Inspect an agent:** `docket pod show` (view members and roles)
 4. **Test workflow:** Assign bug fix, observe token usage
-5. **Monitor spend:** `docket cost` (measured tokens; no recorded dollar spend)
+5. **Monitor spend:** `docket status` (measured tokens; no recorded dollar spend)
 
 ---
 
