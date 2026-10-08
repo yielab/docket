@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.2.1
+**Version**: 3.2.2
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -164,7 +164,7 @@ feasibility spike remains in ROADMAP and Git history.
 3. **Scope note (closed CL-J):** the eval harness's `docket eval --tier
    <economy|standard|premium>` flag was the one deliberately surviving user-facing use of the
    tier words (a live-eval matrix selector for spot-checks, not a model value or role key). CL-J
-   removed `docket eval` (dead code wired to the retired runtime; no successor command)
+   removed the `eval` command (dead code wired to the retired runtime; no successor command)
    along with `tests/evals/` and eval.spec.md, so that carve-out no longer exists — tier names
    now have **zero** surviving user-facing use anywhere, closing rule 1 without exception.
 
@@ -477,6 +477,10 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.2.2 (2026-10-08)
+
+- Invocations checked against the live tree.
 
 ### Version 3.2.1 (2026-10-08)
 

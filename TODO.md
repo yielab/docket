@@ -374,6 +374,8 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 
 **Wave 94 closed 2026-10-08** (stage one: P39-17 `cc81c003` and P39-18 `254fba94` with the integrator fixes `55b77647` and `a5f04351`; the integrator pass `70fbec81`, `4aeedf8c` (`cli-interface` 2.0.0), `7ea2d5c3`; stage two: P39-21 `22861f7b`, P39-20 `305e05ed`, P39-22 `7a1a85ce`, P39-19 `d362eb5f`, with `c6b4cc53` and `dbc3b49d`; then the rollup): grouped help under one tagline, `-h` everywhere, the bare three-part guide, completions from the tree, the three CLI guards, the rename script and its guard over the whole tree, and every doc, template and spec on the eleven-command surface. P39-23's remaining items (Tack's one line, the live asset capture, the board archive) are listed on the card; the workers' returns are under "Wave 94 returns" in the packets file. Wave 95 (P39-24, the measurement) is next and bases on the Wave 94 rollup commit.
 
+**Wave 95 closed 2026-10-08** (P39-24 `833e2366`, P39-25 merged, the rollup): the six journeys of the audit's live run were re-run against the Wave 94 rollup; none of the sixteen defects reproduces, the newcomer path types no pod name, a fresh machine reaches Ready through `docket setup` alone, every help level has an example, and the checklist scores 18/20 with the two exceptions named in ADR 0022 "Live run" (bare-name library readers; no hint switch). `scripts/maint/lint_cli_invocations.py` and its guard check every documented invocation against the live tree. The transcript's eighteen locators are the triage list for whatever follows; the returns are under "Wave 95 returns" in the packets file. Phase 39 is complete except P39-23's two user-owned items (Tack's `exec` line and the live asset capture) and the board archive.
+
 ### P39-1 — one pod resolver: `--pod`, `DOCKET_POD`, then the directory you stand in
 
 **Status:** DONE (merged to `develop` 2026-10-07, `847c637c`) · **Size:** S · **Wave:** 91 · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (new section "Pod targeting" under "Global Command Structure")
@@ -1069,7 +1071,7 @@ saved under `internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`.
 
 ### P39-25 — every documented invocation is true against the live tree
 
-**Status:** IN PROGRESS (Wave 95 claimed 2026-10-08, branch `p39-25-invocation-guard` based on the claim commit) · **Size:** S · **Wave:** 95 · **Model:** Sonnet · **Spec:** none (a guard; lane per `specs/test-framework.md` §"Lanes and placement", beside `tests/guards/test_no_removed_cli_names.py`)
+**Status:** DONE (merged to `develop` 2026-10-08, see the Wave 95 close) · **Size:** S · **Wave:** 95 · **Model:** Sonnet · **Spec:** none (a guard; lane per `specs/test-framework.md` §"Lanes and placement", beside `tests/guards/test_no_removed_cli_names.py`)
 
 **Trigger (deterministic reproduction, 2026-10-08, "Wave 94 returns" in the packets file):** the
 removed-name guard proves an old name is gone and nothing proves a new line is true. P39-21's

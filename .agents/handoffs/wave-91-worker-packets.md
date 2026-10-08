@@ -985,3 +985,31 @@ judgement) based on the claim `6ac5e765`; merged in return order rather than car
   missing named credential, but `--credential` takes the key value: the hint should name the
   provider verb for that credential's owner (`setup notify enable telegram`, `setup export
   enable <name>`), P39-23.
+
+## Wave 95 returns (integrator, 2026-10-08)
+
+**P39-24 (integrator, the live run).** Six journeys under a throwaway `DOCKET_HOME` against the
+local endpoint, transcript in the gitignored `internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`,
+score in ADR 0022 "Live run": 16/16 defects gone, checklist 18/20 (rule 5: `pod recipes|roles|
+policies` take a bare NAME where the tree says `show`; rule 16: no hint switch, `task approve
+<token>` prints no Next line). Eighteen locators for triage in the transcript's last section; the
+ones worth a card: `cli/_run.py` progress names the first step for every hop; `core/runs.py` a
+denied run record stays `waiting_approval` and `cli/_task.py` show carries no deny reason;
+`cli/_status.py` has no waiting-input bucket; `cli/_pod.py` check requires `--role`;
+`cli/_setup_provider.py` add records `local-model` for a custom endpoint without `--model`; the
+`Example:` lines of `task approve|deny|answer` pass a timestamp as the ref. Driving lessons:
+bash scripts with a `run` helper per journey, `setsid` for a run you will kill (a `pkill -f` on
+the verb killed the driver script), the local model consults before delegating a push.
+
+**P39-25 (Sonnet, the invocation guard).** `scripts/maint/lint_cli_invocations.py` (`FILE...`,
+`--self-check`, `lint()`, `lint_text()`, `lint_examples()`) and `tests/guards/
+test_cli_invocations_true.py` over README, CONTRIBUTING, `docs/`, `specs/` minus changelogs,
+the templates and all 75 leaves' `Example:` lines; 0.07 s. The first run found 50 lines: 26
+were prose lines starting with `docket` (now a bare line counts only with a `$ ` prefix),
+output lines in fences (cut at two spaces) and syntax lines (`<a|b>` alternatives checked as
+verbs); 8 were false and fixed by rewording (CONTRIBUTING's commit example, `init`'s help,
+docket-meta, user-stories, model-profiles, pod-blueprints; patch bumps). `specs/README.md`'s
+retirement paragraph is excluded as a record (`RECORD_FILES`); at merge its "now print a
+removed-command notice" sentence, false since 2026-10-03, was rewritten. Follow-ups: `_placeholder`
+treats any UPPER word as a placeholder (`docket status FOO` passes); positional counts are not
+checked after a `<a|b>` verb.

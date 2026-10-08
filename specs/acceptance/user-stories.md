@@ -1,6 +1,6 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.5.1
+**Version**: 1.5.2
 **Status**: Active
 **Last Updated**: 2026-10-08
 
@@ -125,19 +125,19 @@ The numbered reset levels were retired. The surface is `docket pod reset <member
 
 ## Epic: Team Coordination (Retired, D-11 / CH-4)
 
-`docket team` — the org-wide manual task queue this epic originally described — was retired in
+The `team` command — the org-wide manual task queue this epic originally described — was retired in
 0.2.0. It was never dispatched (no code ever executed a queued task), and several of its
 original acceptance criteria (load balancing, a monitoring dashboard, 100+ concurrent tasks)
 were never implemented either — they were aspirational when written. Real, working delegation
 with actual execution lives in **Epic: Pod Lifecycle (Phase 10)** below, specifically
 **Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes this epic entirely.
-`team` is no longer a registered command (`docket team` is an ordinary unknown-command error,
+`team` is no longer a registered command (`team` is an ordinary unknown-command error,
 exit 2); use the `docket task` and `docket pod` verbs. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
 retains them; the durable retirement record is ROADMAP decision D-11.
 
 ## Epic: Workflow Automation (Retired, D-16 / W-3)
 
-`docket workflow` — the Lobster YAML surface this epic originally described — was retired in
+The `workflow` command — the Lobster YAML surface this epic originally described — was retired in
 Phase 16 (D-16). Its acceptance criteria were largely aspirational when written: docket's
 Lobster validator/planner authored, linted, and dry-ran a `.lobster.yml` template, but never
 executed one (conditional branching, calling other workflows, retries, and progress/token
@@ -403,6 +403,10 @@ card that will make it true — none exists for these).
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.5.2 (2026-10-08)
+
+- Invocations checked against the live tree.
 
 ### Version 1.5.1 (2026-10-08)
 

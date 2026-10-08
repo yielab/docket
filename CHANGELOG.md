@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scripts from the live command tree (every group's verbs and long options, pod names after
   `--pod`, task ids after `task <verb>`). Three guards keep it: every leaf prints an `Example:`,
   every reader emits one JSON document under `--json`, and no verb prompts off a terminal.
+- **Every documented invocation is checked against the live tree.** `scripts/maint/
+  lint_cli_invocations.py` parses every `docket ...` line in a code span or fenced block of the
+  README, CONTRIBUTING, `docs/`, the specs (not their changelogs), the templates and every leaf's
+  `Example:` line, and refuses a verb, option or positional count the Click tree does not have;
+  `tests/guards/test_cli_invocations_true.py` runs it in process.
 - **`scripts/maint/rewrite_cli_names.py`** rewrites invocations of removed command names across
   docs, templates, scripts, specs and tests from one table (`--dry-run`, `--write`, `--check`,
   `--unmappable`, `--self-check`); `tests/guards/test_no_removed_cli_names.py` fails on any
