@@ -12,8 +12,8 @@
 #   KEEP_TMP     — set to 1 to leave the fake home dir after the run
 #
 # Each case is identified by the command + args joined with underscores.
-# e.g.  "list" → cases/readonly/list.golden
-#       "info myshop" → cases/readonly/info_myshop.golden
+# e.g.  "log verify" → cases/readonly/log_verify.golden
+#       "task show x" → cases/readonly/task_show_x.golden
 #
 # Exit codes: 0 = match, 1 = mismatch/error, 2 = golden missing (verify mode)
 
@@ -38,11 +38,16 @@ case_id() {
   echo "$*" | tr ' /' '__' | tr -s '_' | tr '[:upper:]' '[:lower:]'
 }
 
-# Locate the right cases/ subdir for a command
+# Locate the right cases/ subdir for a command: the words that name the verb
+# decide, so a group with both readers and writers splits by its second/third word.
 cases_dir() {
-  local cmd="${1:-list}"
-  case "$cmd" in
-    list|info|cost|doctor|scope|context|auth|help|models|keys|config|exporters)
+  local key="${1:-} ${2:-} ${3:-}"
+  case "$key" in
+    "status"*|"log"*|"inbox"*|\
+    "pod show"*|"pod recipes"*|"pod roles"*|"pod policies"*|"pod plan"*|"pod validate"*|"pod check"*|\
+    "task list"*|"task show"*|"task diff"*|"task trace"*|\
+    "setup shell"*|"setup model list"*|"setup sandbox status"*|"setup export list"*|\
+    "setup provider list"*|"setup notify list"*|"setup mcp list"*)
       echo "$GOLDEN_DIR/cases/readonly"
       ;;
     *)
@@ -110,7 +115,7 @@ run_docket() {
 cmd_capture() {
   [[ $# -ge 1 ]] || die "capture requires at least one argument (the docket command)"
   local id; id="$(case_id "$@")"
-  local dir; dir="$(cases_dir "$1")"
+  local dir; dir="$(cases_dir "$@")"
   local golden="$dir/$id.golden"
 
   local fake_home
@@ -126,7 +131,7 @@ cmd_capture() {
 cmd_verify() {
   [[ $# -ge 1 ]] || die "verify requires at least one argument"
   local id; id="$(case_id "$@")"
-  local dir; dir="$(cases_dir "$1")"
+  local dir; dir="$(cases_dir "$@")"
   local golden="$dir/$id.golden"
 
   [[ -f "$golden" ]] || { echo "MISSING golden: $golden" >&2; exit 2; }

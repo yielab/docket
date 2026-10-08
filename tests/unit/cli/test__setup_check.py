@@ -45,7 +45,7 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 
 def _isolation_on() -> None:
-    """Record `docket gates isolate on` in the seeded home."""
+    """Record `docket setup sandbox on` in the seeded home."""
     from docket.core import fleet as _fleet
 
     _fleet.set_sandbox_isolation()
@@ -462,7 +462,7 @@ class TestChecks:
         out = capsys.readouterr().out
         assert issues == 0
         assert "Workspace isolation: off (default)" in out
-        assert "docket gates isolate on" in out
+        assert "docket setup sandbox on" in out
         assert "turns will be refused" not in out
         assert _setup_check._check_json_security()["isolation"] == "off (default)"
 
@@ -492,7 +492,7 @@ class TestChecks:
         _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert "turns will be refused" in out
-        assert "bubblewrap" in out and "isolate off" in out
+        assert "bubblewrap" in out and "setup sandbox off" in out
 
     def test_docker_backend_without_git_in_the_image_warns_with_the_fix(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

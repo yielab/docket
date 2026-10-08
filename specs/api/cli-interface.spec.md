@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.79.0
+**Version**: 1.80.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -79,7 +79,7 @@ Registry. Conventions:
 
 - Boolean flags default to `false` and take no value (e.g. `--force`, `--json`).
 - Value options take exactly one argument (e.g. `--model <provider/model>`, `--days <N>`).
-- `--help` MUST be honored before any other parsing and exit 0 (there is no `-h` short form).
+- `--help` MUST be honored before any other parsing and exit 0 (`-h` is the same option at every level).
 - Unknown options MUST produce a clear error and exit non-zero (Typer's usage error, exit 2 —
   see Return Code Convention).
 
@@ -95,11 +95,12 @@ docket [global-options] <command> [command-options] [arguments]
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| --help | - | Show help message | - |
+| --help | -h | Show help message | - |
 | --version | -V | Show version info | - |
 
-These two are the whole global surface (`docket --help`). There is no `-h`, `-v`, `-d`,
-`--debug`, `--quiet`, `--config` or `--no-color` (any of them is an unknown option, exit 2);
+These two are the whole global surface (`docket --help`); `-h` is declared once on the root
+and every child command inherits it, so `docket task show -h` equals `docket task show --help`.
+There is no `-v`, `-d`, `--debug`, `--quiet`, `--config` or `--no-color` (any of them is an unknown option, exit 2);
 state location is chosen with `DOCKET_HOME`, not a config file flag.
 
 ### Pod targeting
@@ -120,8 +121,11 @@ No pod for <cwd> (looked for a registered codebase containing it). Run 'docket i
 
 ### Core Commands
 
-Invoking `docket` with no command **MUST** print only a compact command guide. It **MUST NOT**
-read or render the fleet, project agents, costs, bindings, or health checks.
+Invoking `docket` with no command **MUST** print only a compact guide of three parts, in this
+order: the tagline (`ui.TAGLINE`), the five daily commands with one-line meanings (`docket init`,
+`docket task add "..."`, `docket run`, `docket status`, `docket inbox`), and the line
+`Not set up yet? docket setup`. It is rendered by `ui.guide` and **MUST NOT** read or render the
+fleet, project agents, costs, bindings, or health checks.
 
 #### docket init
 **Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
@@ -733,6 +737,17 @@ catalog or `fleet.json`
 
 ### Help
 
+`docket --help` shows the tagline and the eleven commands in three panels, in this order: **Daily**
+(`init`, `status`, `inbox`, `task`, `run`), **The pod** (`pod`, `log`) and **Machine** (`setup`,
+`start`, `stop`, `exec`). The panels are declared on the registrations in `cli/__init__.py`;
+`cli/_help.py` orders them. The project description in `pyproject.toml` is the same tagline.
+
+An unknown top-level word is a usage error (exit 2, `No such command`). Its message offers, from
+the live command tree only, the top-level commands the word resembles and every group that has a
+verb of that name (`docket add x` names `docket task add` and `docket pod add`; `docket approve`
+names `docket task approve`). A word that resembles nothing and is no verb gets no suggestion.
+No table of retired names exists.
+
 ## Output Formats
 
 ### The console voice
@@ -950,6 +965,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.80.0 (2026-10-08)
+
+- Help is grouped: `docket --help` shows three panels (Daily, The pod, Machine) under the tagline;
+  `-h` works at every level; an unknown word suggests the live commands and group verbs it could
+  mean. The bare `docket` greeting is the tagline, the five daily commands and the setup pointer.
+  `docket setup shell` renders both scripts from the live command tree (every group's verbs and
+  long options, pod names after `--pod`, task ids after `task <verb>`).
 
 ### Version 1.79.0 (2026-10-08)
 

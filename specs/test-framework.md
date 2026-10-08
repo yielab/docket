@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.19.0
+**Version**: 2.20.0
 **Status**: Active
 **Last Updated**: 2026-10-07
 
@@ -156,6 +156,13 @@ becomes a required gate for changes under `README.md`, `docs/`, `specs/`, `examp
 150-line span ceiling, nested closures included, measured by `scripts/maint/measure_function_spans.py`
 against `tests/guards/function_span_baseline.txt`; a listed function may not grow, an unlisted one may
 not appear, and only the integrator's `--write` after a split lands lowers the file.
+Three guards walk the live Typer tree: `tests/guards/test_cli_help_examples.py` (every leaf's
+`--help` exits 0 and carries an `Example:` line; every group's help renders),
+`tests/guards/test_cli_json_surface.py` (every `list`/`show`/`status`/`inbox` leaf and the bare
+`log`/`setup`/`setup model`/`setup sandbox` reads print one parseable JSON document under
+`--json`; a reader missing from its argument table fails by name) and
+`tests/guards/test_cli_prompt_sites.py` (only `cli/_contract.py` and the listed TTY-checked flows
+call `input(`/`getpass(`; every confirming verb refuses off a TTY, exits 1 and names its flag).
 
 ### Full-workflow smoke
 
@@ -423,6 +430,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.20.0 (2026-10-08)
+
+- Enforcement status lists the three CLI-surface guards (help examples, JSON surface, prompt
+  sites); the completions drift guard re-derives every group's verbs and long options from the
+  registry. The golden runner keys read-only cases on the first words of the verb.
 
 ### Version 2.19.0 (2026-10-07)
 
