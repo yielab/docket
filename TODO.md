@@ -607,7 +607,7 @@ than ten lines"; it fails on the base with forty-six.
 
 ### P39-8 — the `task` group: add, list, show, diff, trace, prune
 
-**Status:** TODO · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (task views, worktree prune, the queue), `trace-store.spec.md` (`task trace`), `cli-json-shapes.spec.md` (`task list|show --json` with `worktree`), `cli-interface.spec.md` (`delegate`, `pod delegate|queue|evidence|corrections|explain|worktrees`, `runs list|show|prune`, `trace` removed)
+**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-8-task-group` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (task views, worktree prune, the queue), `trace-store.spec.md` (`task trace`), `cli-json-shapes.spec.md` (`task list|show --json` with `worktree`), `cli-interface.spec.md` (`delegate`, `pod delegate|queue|evidence|corrections|explain|worktrees`, `runs list|show|prune`, `trace` removed)
 
 **Trigger (ADR 0022 evidence, live run B3, C6, P7):** a task reported `done` changes nothing the
 operator can see; the fix sits uncommitted in the task worktree and no surface prints the path,
@@ -640,7 +640,7 @@ the base (no command).
 
 ### P39-9 — `task approve|deny|answer|retry|cancel`
 
-**Status:** TODO · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (answer surfaces: `task answer` absorbs `chat`; pre-grant through `task approve --for`; the "approved, ready" state and the `run` hint), `pod-dispatch.spec.md` (`task retry` uses the core retry; `task cancel`), `cli-interface.spec.md` (`approve`, `deny`, `chat`, `pod answer|pregrant`, `runs cancel` removed)
+**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-9-task-answers` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (answer surfaces: `task answer` absorbs `chat`; pre-grant through `task approve --for`; the "approved, ready" state and the `run` hint), `pod-dispatch.spec.md` (`task retry` uses the core retry; `task cancel`), `cli-interface.spec.md` (`approve`, `deny`, `chat`, `pod answer|pregrant`, `runs cancel` removed)
 
 **Trigger (ADR 0022 evidence, live run C5, C6, C11, C12):** `approve` says "may now proceed"
 while nothing proceeds and `inbox` says "Nothing needs you"; `chat` rejects the short id; a failed
@@ -670,7 +670,7 @@ the base.
 
 ### P39-10 — the `pod` group, roster half: show, add, remove, reset, set, unset, delete
 
-**Status:** TODO · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md` -> 2.0.0 (member lifecycle; Lead removal refused; `reset` distills first, fails closed; pod deletion by typed name, never a picker), `model-profiles.spec.md` (per-agent pin removed), `docket-meta.spec.md` (`modelSource` removed), `pod-blueprints.spec.md` (`pod set|unset` over every `PodSettings` key), `cli-interface.spec.md` (`add`, `info`, `delete`, `maintain`, `profile`, `pod <p> list|add|remove|set-verify|config`, `config explain` removed)
+**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-10-pod-roster` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md` -> 2.0.0 (member lifecycle; Lead removal refused; `reset` distills first, fails closed; pod deletion by typed name, never a picker), `model-profiles.spec.md` (per-agent pin removed), `docket-meta.spec.md` (`modelSource` removed), `pod-blueprints.spec.md` (`pod set|unset` over every `PodSettings` key), `cli-interface.spec.md` (`add`, `info`, `delete`, `maintain`, `profile`, `pod <p> list|add|remove|set-verify|config`, `config explain` removed)
 
 **Trigger (ADR 0022 evidence, live run B2, B5, C9, C13, F6, F7):** `set-verify <m> --clear`
 stores the literal `--clear`; `pod add wizard` prints a traceback; `pod remove <lead>` has no
@@ -705,7 +705,7 @@ refused; both fail on the base.
 
 ### P39-11 — the `pod` group, configuration half: apply, export, validate, plan, check, recipes, roles, policies
 
-**Status:** TODO · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `config-format.spec.md` (one validator: `pod validate [PATH]` for any `kind:` document or directory), `pod-blueprints.spec.md` (`pod apply|export`; `apply` with no argument re-syncs instructions; `apply <file>` installs one document), `pipeline-format.spec.md` (`pod plan`), `security-gates.spec.md` (`pod check`), `role-archetypes.spec.md` (`pod roles`), `cli-interface.spec.md` (`validate`, `roles`, `policies`, `recipes`, `plugins`, `pipeline validate|plan`, `pod <p> apply|export|sync` removed)
+**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-11-pod-config` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `config-format.spec.md` (one validator: `pod validate [PATH]` for any `kind:` document or directory), `pod-blueprints.spec.md` (`pod apply|export`; `apply` with no argument re-syncs instructions; `apply <file>` installs one document), `pipeline-format.spec.md` (`pod plan`), `security-gates.spec.md` (`pod check`), `role-archetypes.spec.md` (`pod roles`), `cli-interface.spec.md` (`validate`, `roles`, `policies`, `recipes`, `plugins`, `pipeline validate|plan`, `pod <p> apply|export|sync` removed)
 
 **Trigger (ADR 0022 evidence, inventory C6):** four validators and a fifth check; two installers;
 `roles`/`policies` unknown actions exit 0; `plugins` is a one-verb command; `policies test` is
