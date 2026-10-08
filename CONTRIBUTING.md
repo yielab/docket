@@ -286,13 +286,13 @@ Use a type-colon prefix followed by a short description, then an optional body w
 
 Examples:
 ```
-Fix: resolve session key parsing for project names with dashes
+Fix: resolve the pod for a project name with dashes
 
-docket scope set <id> now correctly slugifies names that contain
-uppercase letters or underscores before building the session key.
+docket pod set now slugifies a name that contains uppercase letters or
+underscores before looking the pod up, so --pod My_App finds my-app.
 
-Add: pipeline validate subcommand
-Docs: update command reference with trace and metrics entries
+Add: pod check verb
+Docs: update command reference with task trace and status entries
 ```
 
 ## Questions?
