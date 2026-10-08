@@ -6,18 +6,16 @@ Complete reference for all docket commands, rendered from each command's own `--
 
 ## Table of Contents
 
-- [Lifecycle Commands](#lifecycle-commands)
-- [Pod Coordination](#pod-coordination)
-- [Utility Commands](#utility-commands)
-- [Security and Audit](#security-and-audit)
-- [Observability Commands](#observability-commands)
+- [Daily](#daily)
+- [The pod](#the-pod)
+- [Machine](#machine)
 - [Global Options](#global-options)
 - [Exit Codes](#exit-codes)
 - [Environment Variables](#environment-variables)
 - [Tips and Tricks](#tips-and-tricks)
 - [Next Steps](#next-steps)
 
-## Lifecycle Commands
+## Daily
 
 ### init
 
@@ -128,6 +126,8 @@ Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
 (or the `path` argument / `--codebase`, in which case you are not
 re-prompted); the project name is suggested from that directory's name.
 
+Example: docket init
+
 
 ---
 
@@ -141,6 +141,129 @@ Tokens are measured; the dollar figure is a labelled estimate, never billed spen
 --all --json also carries the fleet inventory (agents, channels, total cost).
 
 Example: docket status --all
+
+
+---
+
+### inbox
+
+**Usage:** `docket inbox`
+
+List what needs you across every pod: approvals, questions, failures, finished work.
+
+Every item carries the exact docket command that moves it forward. A plain call advances
+a cursor so a repeat call shows only newly finished tasks; --peek and --since do not.
+
+Example: docket inbox --peek
+
+
+---
+
+### task
+
+**Usage:** `docket task`
+
+Queue, inspect and answer a pod's tasks.
+
+### task add
+
+**Usage:** `docket task add`
+
+Queue a task for the pod; `docket run` works the queue.
+
+Example: docket task add "fix the login redirect"
+
+### task list
+
+**Usage:** `docket task list`
+
+The pod's task queue with status, cost and the worktree path when one exists.
+
+Example: docket task list --json
+
+### task show
+
+**Usage:** `docket task show`
+
+One task's whole story: hops, evidence, runs, corrections and its worktree.
+
+Example: docket task show task-04ff
+
+### task diff
+
+**Usage:** `docket task diff`
+
+Print what the task changed in its worktree, against the commit it started from.
+
+Example: docket task diff task-04ff
+
+### task trace
+
+**Usage:** `docket task trace`
+
+The task's trace: every tool call, model call, cost and approval, in order.
+
+Example: docket task trace task-04ff --tail
+
+### task prune
+
+**Usage:** `docket task prune`
+
+Remove finished tasks' worktrees; with --traces, also expire old traces and run records.
+
+A dirty worktree or unmerged branch is kept unless --force.
+
+Example: docket task prune --dry-run
+
+### task approve
+
+**Usage:** `docket task approve`
+
+Approve what a task is waiting on, or pre-grant one command before it asks.
+
+Resolves the task's pending approval and grants it; with --task the same call is also
+allowed for the rest of the task. --for records a single-use pre-grant for one exact
+command instead.
+
+Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
+
+### task deny
+
+**Usage:** `docket task deny`
+
+Deny what a task is waiting on; the task fails and nothing runs.
+
+Example: docket task deny 2026-10-08T10-00 --reason "touches production"
+
+### task answer
+
+**Usage:** `docket task answer`
+
+Answer the question a task is parked on and let it continue.
+
+On a terminal with no text or option it shows the question and prompts. Off a terminal
+pass text, --field name=value or --option <id>; a question with options needs --option.
+
+Example: docket task answer 2026-10-08T10-00 --option opt2
+
+### task retry
+
+**Usage:** `docket task retry`
+
+Put a failed or blocked task back on the queue, keeping the hops it finished.
+
+Example: docket task retry 2026-10-08T10-00
+
+### task cancel
+
+**Usage:** `docket task cancel`
+
+Stop the run a task is in and settle a claim left behind by a dead dispatch.
+
+A live run is asked to stop and its processes are signalled. A task still marked running
+whose dispatcher is gone is settled as failed, ready for `docket task retry`.
+
+Example: docket task cancel 2026-10-08T10-00
 
 
 ---
@@ -160,7 +283,7 @@ Example: docket run --dry-run
 
 ---
 
-## Pod Coordination
+## The pod
 
 ### pod
 
@@ -321,7 +444,24 @@ Example: docket pod policies block-destructive
 
 ---
 
-## Utility Commands
+### log
+
+**Usage:** `docket log`
+
+The hash-chained record of what was authorized and done.
+
+### log verify
+
+**Usage:** `docket log verify`
+
+Check the chain; exit 1 and name the first broken line if it was altered.
+
+Example: docket log verify
+
+
+---
+
+## Machine
 
 ### setup
 
@@ -742,150 +882,6 @@ Example: docket stop
 
 ---
 
-## Security and Audit
-
-### log
-
-**Usage:** `docket log`
-
-The hash-chained record of what was authorized and done.
-
-### log verify
-
-**Usage:** `docket log verify`
-
-Check the chain; exit 1 and name the first broken line if it was altered.
-
-Example: docket log verify
-
-
----
-
-### inbox
-
-**Usage:** `docket inbox`
-
-List what needs you across every pod: approvals, questions, failures, finished work.
-
-Every item carries the exact docket command that moves it forward. A plain call advances
-a cursor so a repeat call shows only newly finished tasks; --peek and --since do not.
-
-Example: docket inbox --peek
-
-
----
-
-### task
-
-**Usage:** `docket task`
-
-Queue, inspect and answer a pod's tasks.
-
-### task add
-
-**Usage:** `docket task add`
-
-Queue a task for the pod; `docket run` works the queue.
-
-Example: docket task add "fix the login redirect"
-
-### task list
-
-**Usage:** `docket task list`
-
-The pod's task queue with status, cost and the worktree path when one exists.
-
-Example: docket task list --json
-
-### task show
-
-**Usage:** `docket task show`
-
-One task's whole story: hops, evidence, runs, corrections and its worktree.
-
-Example: docket task show task-04ff
-
-### task diff
-
-**Usage:** `docket task diff`
-
-Print what the task changed in its worktree, against the commit it started from.
-
-Example: docket task diff task-04ff
-
-### task trace
-
-**Usage:** `docket task trace`
-
-The task's trace: every tool call, model call, cost and approval, in order.
-
-Example: docket task trace task-04ff --tail
-
-### task prune
-
-**Usage:** `docket task prune`
-
-Remove finished tasks' worktrees; with --traces, also expire old traces and run records.
-
-A dirty worktree or unmerged branch is kept unless --force.
-
-Example: docket task prune --dry-run
-
-### task approve
-
-**Usage:** `docket task approve`
-
-Approve what a task is waiting on, or pre-grant one command before it asks.
-
-Resolves the task's pending approval and grants it; with --task the same call is also
-allowed for the rest of the task. --for records a single-use pre-grant for one exact
-command instead.
-
-Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
-
-### task deny
-
-**Usage:** `docket task deny`
-
-Deny what a task is waiting on; the task fails and nothing runs.
-
-Example: docket task deny 2026-10-08T10-00 --reason "touches production"
-
-### task answer
-
-**Usage:** `docket task answer`
-
-Answer the question a task is parked on and let it continue.
-
-On a terminal with no text or option it shows the question and prompts. Off a terminal
-pass text, --field name=value or --option <id>; a question with options needs --option.
-
-Example: docket task answer 2026-10-08T10-00 --option opt2
-
-### task retry
-
-**Usage:** `docket task retry`
-
-Put a failed or blocked task back on the queue, keeping the hops it finished.
-
-Example: docket task retry 2026-10-08T10-00
-
-### task cancel
-
-**Usage:** `docket task cancel`
-
-Stop the run a task is in and settle a claim left behind by a dead dispatch.
-
-A live run is asked to stop and its processes are signalled. A task still marked running
-whose dispatcher is gone is settled as failed, ready for `docket task retry`.
-
-Example: docket task cancel 2026-10-08T10-00
-
-
----
-
-## Observability Commands
-
 ### exec
 
 **Usage:** `docket exec`
@@ -935,7 +931,7 @@ docket -V
 |------|---------|
 | 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
 

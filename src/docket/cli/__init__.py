@@ -30,15 +30,29 @@ from docket.cli import (
     _status,
     _task,
 )
+from docket.cli._help import DAILY as _DAILY
+from docket.cli._help import MACHINE as _MACHINE
+from docket.cli._help import POD as _POD
+from docket.cli._help import DocketGroup
 from docket.cli._setup import _version_callback
 
 app = typer.Typer(
     name="docket",
-    help="docket project agent manager",
+    cls=DocketGroup,
+    help=ui.TAGLINE,
     add_completion=False,
     no_args_is_help=False,
     invoke_without_command=True,
+    context_settings={"help_option_names": ["--help", "-h"]},
 )
+
+_GUIDE = [
+    ("docket init", "create the team for this repository"),
+    ('docket task add "..."', "queue a task"),
+    ("docket run", "run the queued tasks"),
+    ("docket status", "see what is happening"),
+    ("docket inbox", "answer what is waiting for you"),
+]
 
 
 @app.callback(invoke_without_command=True)
@@ -49,15 +63,24 @@ def _default(
     ),
 ) -> None:
     if ctx.invoked_subcommand is None:
-        ui.console.print("[bold]docket[/bold] — project agent manager")
-        ui.console.print("  docket init          initialize this project (Lead + Implementer)")
-        ui.console.print("  docket status        show the current project's status")
-        ui.console.print("  docket status --all  show global status by project")
-        ui.console.print("  docket pod add <role>  add an agent to the current pod")
-        ui.console.print("  docket setup         set up this workstation (model endpoint first)")
+        ui.guide(_GUIDE)
 
 
-app.add_typer(_setup.setup_app)
+app.command(
+    "init",
+    rich_help_panel=_DAILY,
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)(_agents.cmd_init)
+app.command("status", rich_help_panel=_DAILY)(_status.cmd_status)
+app.command("inbox", rich_help_panel=_DAILY)(_inbox.cmd_inbox)
+app.add_typer(_task.task_app, rich_help_panel=_DAILY)
+app.command("run", rich_help_panel=_DAILY)(_run.cmd_run)
+app.add_typer(_pod.pod_app, rich_help_panel=_POD)
+app.add_typer(_log.log_app, rich_help_panel=_POD)
+app.add_typer(_setup.setup_app, rich_help_panel=_MACHINE)
+app.command("start", rich_help_panel=_MACHINE)(_service.cmd_start)
+app.command("stop", rich_help_panel=_MACHINE)(_service.cmd_stop)
+app.command("exec", rich_help_panel=_MACHINE)(_exec.cmd_exec)
 _setup.setup_app.add_typer(_setup_model.provider_app)
 _setup.setup_app.add_typer(_setup_model.model_app)
 _setup.setup_app.add_typer(_setup_sandbox.sandbox_app)
@@ -65,19 +88,6 @@ _setup.setup_app.command("shell")(_setup_shell.cmd_shell)
 _setup.setup_app.add_typer(_setup_notify.notify_app)
 _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
-app.command("status")(_status.cmd_status)
-app.command(
-    "init",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_agents.cmd_init)
-app.add_typer(_pod.pod_app)
-app.command("exec")(_exec.cmd_exec)
-app.add_typer(_log.log_app)
-app.command("start")(_service.cmd_start)
-app.command("stop")(_service.cmd_stop)
-app.command("inbox")(_inbox.cmd_inbox)
-app.add_typer(_task.task_app)
-app.command("run")(_run.cmd_run)
 _pod.pod_app.command("apply")(_pod_config.cmd_apply)
 _pod.pod_app.command("export")(_pod_config.cmd_export)
 _pod.pod_app.command("validate")(_pod_config.cmd_validate)

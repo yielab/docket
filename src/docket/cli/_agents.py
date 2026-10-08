@@ -728,7 +728,9 @@ def cmd_init(ctx: typer.Context) -> None:
 
     Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
     (or the `path` argument / `--codebase`, in which case you are not
-    re-prompted); the project name is suggested from that directory's name."""
+    re-prompted); the project name is suggested from that directory's name.
+
+    Example: docket init"""
     from docket.cli._agents import run_init
 
     raise typer.Exit(run_init(list(ctx.args)))

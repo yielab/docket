@@ -1,0 +1,157 @@
+EXIT:0
+# docket(1) bash completion -- eval "$(docket setup shell bash)"
+
+_docket_verbs() {
+  case "$1" in
+    "") echo "init status inbox run start stop exec task pod log setup" ;;
+    "task") echo "add list show diff trace prune approve deny answer retry cancel" ;;
+    "pod") echo "show add remove reset delete set unset apply export validate plan check recipes roles policies" ;;
+    "log") echo "verify" ;;
+    "setup") echo "shell provider model sandbox notify export mcp" ;;
+    "setup provider") echo "add list show remove export rotate" ;;
+    "setup model") echo "list set preset reset" ;;
+    "setup sandbox") echo "status on off network classes" ;;
+    "setup notify") echo "list show enable disable add remove export privacy test bind unbind flush" ;;
+    "setup export") echo "list show enable disable test add remove export privacy preview" ;;
+    "setup mcp") echo "list add remove" ;;
+  esac
+}
+
+_docket_options() {
+  case "$1" in
+    "") echo "--version --help" ;;
+    "init") echo "--help" ;;
+    "status") echo "--all --json --history --days --pod --help" ;;
+    "inbox") echo "--json --since --peek --help" ;;
+    "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;
+    "start") echo "--port --interval --dispatch --telegram --mcp --token-file --help" ;;
+    "stop") echo "--wait --help" ;;
+    "exec") echo "--workspace --task --task-file --model --role --timeout --agent-id --contract --answers --answer-timeout --token-file --max-tokens --policy --recipe --verify --help" ;;
+    "task") echo "--help" ;;
+    "task add") echo "--priority --brief --pod --help" ;;
+    "task list") echo "--json --pod --help" ;;
+    "task show") echo "--json --pod --help" ;;
+    "task diff") echo "--pod --help" ;;
+    "task trace") echo "--tail --export --json --pod --help" ;;
+    "task prune") echo "--dry-run --force --yes --traces --days --pod --help" ;;
+    "task approve") echo "--reason --once --task --for --tool --pod --help" ;;
+    "task deny") echo "--reason --pod --help" ;;
+    "task answer") echo "--option --field --decline --pod --help" ;;
+    "task retry") echo "--pod --help" ;;
+    "task cancel") echo "--pod --help" ;;
+    "pod") echo "--help" ;;
+    "pod show") echo "--json --pod --help" ;;
+    "pod add") echo "--count --verify --pod --help" ;;
+    "pod remove") echo "--yes --pod --help" ;;
+    "pod reset") echo "--yes --pod --help" ;;
+    "pod delete") echo "--confirm --pod --help" ;;
+    "pod set") echo "--member --pod --help" ;;
+    "pod unset") echo "--member --pod --help" ;;
+    "pod apply") echo "--pod --dry-run --json --help" ;;
+    "pod export") echo "--pod --force --help" ;;
+    "pod validate") echo "--help" ;;
+    "pod plan") echo "--pod --pipeline --help" ;;
+    "pod check") echo "--role --hook --tool --arg --pod --help" ;;
+    "pod recipes") echo "--json --help" ;;
+    "pod roles") echo "--pod --json --help" ;;
+    "pod policies") echo "--pod --json --plugins --help" ;;
+    "log") echo "--json --help" ;;
+    "log verify") echo "--help" ;;
+    "setup") echo "--json --fix --help" ;;
+    "setup shell") echo "--help" ;;
+    "setup provider") echo "--help" ;;
+    "setup provider add") echo "--credential --model --ctx --max-tokens --no-preset --help" ;;
+    "setup provider list") echo "--json --help" ;;
+    "setup provider show") echo "--json --help" ;;
+    "setup provider remove") echo "--yes --help" ;;
+    "setup provider export") echo "--help" ;;
+    "setup provider rotate") echo "--credential --help" ;;
+    "setup model") echo "--json --help" ;;
+    "setup model list") echo "--json --help" ;;
+    "setup model set") echo "--help" ;;
+    "setup model preset") echo "--help" ;;
+    "setup model reset") echo "--yes --help" ;;
+    "setup sandbox") echo "--json --help" ;;
+    "setup sandbox status") echo "--json --help" ;;
+    "setup sandbox on") echo "--help" ;;
+    "setup sandbox off") echo "--help" ;;
+    "setup sandbox network") echo "--help" ;;
+    "setup sandbox classes") echo "--help" ;;
+    "setup notify") echo "--help" ;;
+    "setup notify list") echo "--json --help" ;;
+    "setup notify show") echo "--json --help" ;;
+    "setup notify enable") echo "--set --chat --token --test --help" ;;
+    "setup notify disable") echo "--help" ;;
+    "setup notify add") echo "--help" ;;
+    "setup notify remove") echo "--yes --help" ;;
+    "setup notify export") echo "--help" ;;
+    "setup notify privacy") echo "--yes --help" ;;
+    "setup notify test") echo "--help" ;;
+    "setup notify bind") echo "--channel --chat --help" ;;
+    "setup notify unbind") echo "--channel --yes --help" ;;
+    "setup notify flush") echo "--dry-run --help" ;;
+    "setup export") echo "--help" ;;
+    "setup export list") echo "--json --help" ;;
+    "setup export show") echo "--json --help" ;;
+    "setup export enable") echo "--endpoint --privacy --share --events --no-verify --yes --help" ;;
+    "setup export disable") echo "--help" ;;
+    "setup export test") echo "--help" ;;
+    "setup export add") echo "--no-verify --yes --help" ;;
+    "setup export remove") echo "--yes --help" ;;
+    "setup export export") echo "--help" ;;
+    "setup export privacy") echo "--share --max-chars --yes --help" ;;
+    "setup export preview") echo "--session --level --share --json --help" ;;
+    "setup mcp") echo "--help" ;;
+    "setup mcp list") echo "--help" ;;
+    "setup mcp add") echo "--env --timeout --kind --tools --no-isolate --help" ;;
+    "setup mcp remove") echo "--help" ;;
+  esac
+}
+
+_docket_takes_pod() {
+  case "$1" in
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod apply"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies") echo yes ;;
+  esac
+}
+
+_docket_takes_task_id() {
+  case "$1" in
+    "task show"|"task diff"|"task trace"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel") echo yes ;;
+  esac
+}
+
+_docket_pods() {
+  local dh="${DOCKET_HOME:-$HOME/.docket}" d b
+  for d in "$dh"/workspaces/projects/*-lead/; do
+    [[ -d "$d" ]] || continue
+    b="${d%/}"; b="${b##*/}"; echo "${b%-lead}"
+  done
+}
+
+_docket_task_ids() {
+  local dh="${DOCKET_HOME:-$HOME/.docket}" f
+  for f in "$dh"/workspaces/projects/*-lead/TASK_LIST.json; do
+    [[ -f "$f" ]] && grep -o '"id": *"[^"]*"' "$f" | sed 's/.*: *"\(.*\)"/\1/'
+  done
+}
+
+_docket_complete() {
+  local cur="${COMP_WORDS[COMP_CWORD]}" prev="" node="" w i skip=0 words
+  (( COMP_CWORD > 0 )) && prev="${COMP_WORDS[COMP_CWORD-1]}"
+  for (( i=1; i<COMP_CWORD; i++ )); do
+    w="${COMP_WORDS[i]}"
+    if (( skip )); then skip=0; continue; fi
+    if [[ "$w" == --pod || "$w" == -p ]]; then skip=1; continue; fi
+    [[ "$w" == -* ]] && continue
+    [[ " $(_docket_verbs "$node") " == *" $w "* ]] || break
+    node="${node:+$node }$w"
+  done
+  if [[ "$prev" == --pod || "$prev" == -p ]] && [[ -n "$(_docket_takes_pod "$node")" ]]; then
+    mapfile -t COMPREPLY < <(compgen -W "$(_docket_pods)" -- "$cur")
+    return
+  fi
+  words="$(_docket_verbs "$node") $(_docket_options "$node")"
+  [[ -n "$(_docket_takes_task_id "$node")" ]] && words+=" $(_docket_task_ids)"
+  mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
+}
+complete -F _docket_complete docket

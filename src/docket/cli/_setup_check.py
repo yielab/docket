@@ -128,10 +128,10 @@ def _check_project_agents(ids: list[str]) -> int:
 
         if proj_issues:
             ui.console.print(f"[red]✗[/red]   {aid}: {' '.join(proj_issues)}")
-            ui.console.print("    Fix with: docket setup check --fix")
+            ui.console.print("    Fix with: docket setup --fix")
             issues += 1
         elif not tg:
-            ui.warn(f"  {aid}: OK, no channel binding  →  docket wire {aid}")
+            ui.warn(f"  {aid}: OK, no channel binding  →  docket setup notify bind {aid}")
         else:
             ui.success(f"  {aid}: OK  →  group {tg}")
     return issues
@@ -294,7 +294,7 @@ def _check_key_hygiene() -> int:
     stale = 0
     for state, name, detail in report:
         if state == "STALE":
-            ui.warn(f"  {name}: {detail} — consider: docket keys rotate {name}")
+            ui.warn(f"  {name}: {detail} — consider: docket setup provider rotate {name}")
             stale += 1
         elif state == "UNKNOWN":
             ui.dim(f"  {name}: {detail}")
@@ -322,7 +322,9 @@ def _check_provider_coverage(ids: list[str]) -> int:
     ui.section("Provider key coverage:")
     for aid, model, expected in missing:
         ui.console.print(f"[red]✗[/red]   Missing key: {aid} ({model}) — needs {expected}")
-        ui.console.print(f"    Add with: docket keys add {expected}")
+        ui.console.print(
+            f"    Add with: docket setup provider add <name> <url> --credential {expected}"
+        )
     return len(missing)
 
 
@@ -387,7 +389,7 @@ def _check_exporters() -> int:
             record = health.get(name, {})
             failed = int(record.get("failed") or 0)
             if failed > 0:
-                ui.warn(f"  {name}: {failed} failed export(s) — docket exporters test {name}")
+                ui.warn(f"  {name}: {failed} failed export(s) — docket setup export test {name}")
                 issues += 1
             else:
                 ui.success(f"  {name}: healthy")
@@ -455,14 +457,14 @@ def _check_security_gates() -> int:
     if not enabled:
         ui.dim(
             f"  Workspace isolation: {'off (explicit)' if state == 'off' else state} -- "
-            "docket gates isolate on (needs bubblewrap or docker)"
+            "docket setup sandbox on (needs bubblewrap or docker)"
         )
     else:
         backend = _sys.sandbox_availability().backend
         if backend == "none":
             ui.warn(
                 f"  Workspace isolation: {state}, but no backend is usable -- turns will be "
-                "refused. Install bubblewrap or start docker, or docket gates isolate off"
+                "refused. Install bubblewrap or start docker, or docket setup sandbox off"
             )
         else:
             ui.success(f"  Workspace isolation: {state}, backend {backend}")
@@ -477,13 +479,13 @@ def _check_security_gates() -> int:
         if not enabled:
             ui.warn(
                 "  Network: none (global), but isolation is off -- turns will be refused. "
-                "docket gates isolate on, or docket gates network open"
+                "docket setup sandbox on, or docket setup sandbox network open"
             )
         else:
             ui.success("  Network: none (global) -- jailed tool calls have no network")
     else:
         ui.dim(
-            "  Network: open (default) -- docket gates network none to cut the sandbox's network"
+            "  Network: open (default) -- docket setup sandbox network none to cut the sandbox's network"
         )
 
     unjailed = [

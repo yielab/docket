@@ -105,6 +105,18 @@ def hint(command: str) -> None:
     _line(_err, "next", "accent", f"Next: {command}")
 
 
+def guide(lines: list[tuple[str, str]]) -> None:
+    """The bare-command guide: the tagline, one line per command, then the setup pointer."""
+    console.no_color = is_plain()
+    console.print(TAGLINE)
+    console.print()
+    width = max(len(command) for command, _ in lines)
+    for command, meaning in lines:
+        console.print(f"  [{ROLES['accent']}]{command.ljust(width)}[/{ROLES['accent']}]  {meaning}")
+    console.print()
+    console.print("Not set up yet? [" + ROLES["accent"] + "]docket setup[/" + ROLES["accent"] + "]")
+
+
 def dim(text: str) -> None:
     console.no_color = is_plain()
     console.print(f"[dim]{text}[/dim]")

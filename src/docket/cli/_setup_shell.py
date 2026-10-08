@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 import typer
@@ -14,115 +15,203 @@ class Shell(StrEnum):
     zsh = "zsh"
 
 
-def _top_level_commands() -> list[tuple[str, str]]:
-    """(name, one-line help) for every visible top-level command, read live from the app."""
+@dataclass
+class _Node:
+    """One command in the live tree: its verbs, long options and what it completes after."""
+
+    path: str
+    help: str = ""
+    verbs: list[str] = field(default_factory=list)
+    options: list[str] = field(default_factory=list)
+    pod_option: bool = False
+    takes_task_id: bool = False
+
+
+def _long_options(cmd: object) -> list[str]:
+    found: list[str] = []
+    for param in getattr(cmd, "params", []):
+        for opt in getattr(param, "opts", []):
+            if opt.startswith("--") and opt not in found:
+                found.append(opt)
+    return found
+
+
+def _short_help(cmd: object) -> str:
+    get = getattr(cmd, "get_short_help_str", None)
+    return (get(limit=200) if get else "").rstrip(".")
+
+
+def _walk(cmd: object, path: str, out: list[_Node]) -> None:
+    opts = [o for o in _long_options(cmd) if o != "--help"]
+    node = _Node(path=path, help=_short_help(cmd), options=[*opts, "--help"])
+    node.pod_option = any(o in ("--pod",) for o in opts)
+    children = getattr(cmd, "commands", None)
+    out.append(node)
+    if children is None:
+        node.takes_task_id = path.startswith("task ") and any(
+            getattr(p, "name", "") == "ref" for p in getattr(cmd, "params", [])
+        )
+        return
+    for name, sub in children.items():
+        if getattr(sub, "hidden", False):
+            continue
+        node.verbs.append(name)
+        _walk(sub, f"{path} {name}".strip(), out)
+
+
+def _tree() -> list[_Node]:
     from docket.cli import app
 
-    click_group = get_command(app)
-    assert isinstance(click_group, TyperGroup)
-    pairs: list[tuple[str, str]] = []
-    for name, cmd in click_group.commands.items():
-        if getattr(cmd, "hidden", False):
-            continue
-        help_text = (cmd.get_short_help_str(limit=200) or "").rstrip(".")
-        pairs.append((name, help_text))
-    return pairs
+    root = get_command(app)
+    assert isinstance(root, TyperGroup)
+    nodes: list[_Node] = []
+    _walk(root, "", nodes)
+    nodes[0].options = ["--version", "--help"]
+    return nodes
+
+
+def _case_arms(nodes: list[_Node], pick: str) -> str:
+    arms = []
+    for node in nodes:
+        value = " ".join(getattr(node, pick))
+        if value:
+            arms.append(f'    "{node.path}") echo "{value}" ;;')
+    return "\n".join(arms)
+
+
+def _flag_arms(nodes: list[_Node], pick: str) -> str:
+    paths = [f'"{n.path}"' for n in nodes if getattr(n, pick)]
+    return f"    {'|'.join(paths)}) echo yes ;;" if paths else ""
+
+
+def _helpers(nodes: list[_Node]) -> str:
+    return f"""\
+_docket_verbs() {{
+  case "$1" in
+{_case_arms(nodes, "verbs")}
+  esac
+}}
+
+_docket_options() {{
+  case "$1" in
+{_case_arms(nodes, "options")}
+  esac
+}}
+
+_docket_takes_pod() {{
+  case "$1" in
+{_flag_arms(nodes, "pod_option")}
+  esac
+}}
+
+_docket_takes_task_id() {{
+  case "$1" in
+{_flag_arms(nodes, "takes_task_id")}
+  esac
+}}
+
+_docket_pods() {{
+  local dh="${{DOCKET_HOME:-$HOME/.docket}}" d b
+  for d in "$dh"/workspaces/projects/*-lead/; do
+    [[ -d "$d" ]] || continue
+    b="${{d%/}}"; b="${{b##*/}}"; echo "${{b%-lead}}"
+  done
+}}
+
+_docket_task_ids() {{
+  local dh="${{DOCKET_HOME:-$HOME/.docket}}" f
+  for f in "$dh"/workspaces/projects/*-lead/TASK_LIST.json; do
+    [[ -f "$f" ]] && grep -o '"id": *"[^"]*"' "$f" | sed 's/.*: *"\\(.*\\)"/\\1/'
+  done
+}}
+"""
+
+
+_NODE_WALK = """\
+  for (( i=%(first)s; i<%(stop)s; i++ )); do
+    w="${%(words)s[i]}"
+    if (( skip )); then skip=0; continue; fi
+    if [[ "$w" == --pod || "$w" == -p ]]; then skip=1; continue; fi
+    [[ "$w" == -* ]] && continue
+    [[ " $(_docket_verbs "$node") " == *" $w "* ]] || break
+    node="${node:+$node }$w"
+  done"""
+
+_BASH_MAIN = (
+    """\
+_docket_complete() {
+  local cur="${COMP_WORDS[COMP_CWORD]}" prev="" node="" w i skip=0 words
+  (( COMP_CWORD > 0 )) && prev="${COMP_WORDS[COMP_CWORD-1]}"
+"""
+    + _NODE_WALK % {"first": "1", "stop": "COMP_CWORD", "words": "COMP_WORDS"}
+    + """
+  if [[ "$prev" == --pod || "$prev" == -p ]] && [[ -n "$(_docket_takes_pod "$node")" ]]; then
+    mapfile -t COMPREPLY < <(compgen -W "$(_docket_pods)" -- "$cur")
+    return
+  fi
+  words="$(_docket_verbs "$node") $(_docket_options "$node")"
+  [[ -n "$(_docket_takes_task_id "$node")" ]] && words+=" $(_docket_task_ids)"
+  mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
+}
+complete -F _docket_complete docket
+"""
+)
+
+_ZSH_MAIN = (
+    """\
+_docket() {
+  local node="" w i skip=0 prev="${words[CURRENT-1]}"
+  local -a cand commands
+  _docket_commands
+"""
+    + _NODE_WALK % {"first": "2", "stop": "CURRENT", "words": "words"}
+    + """
+  if [[ "$prev" == --pod || "$prev" == -p ]] && [[ -n "$(_docket_takes_pod "$node")" ]]; then
+    cand=(${(f)"$(_docket_pods)"})
+    compadd -a cand
+    return
+  fi
+  if [[ -z "$node" ]]; then
+    _describe 'docket command' commands
+  else
+    cand=(${=$(_docket_verbs "$node")})
+    compadd -a cand
+  fi
+  cand=(${=$(_docket_options "$node")})
+  [[ -n "$(_docket_takes_task_id "$node")" ]] && cand+=(${(f)"$(_docket_task_ids)"})
+  compadd -a cand
+}
+if [[ "${funcstack[1]}" == _docket ]]; then
+  _docket "$@"
+else
+  compdef _docket docket
+fi
+"""
+)
 
 
 def _zsh_escape(text: str) -> str:
     return text.replace("'", "'\\''")
 
 
-# bash completion script template; __COMMANDS__ is substituted at runtime
-# with the space-joined live command names (see _top_level_commands).
-_BASH_TEMPLATE = """\
-# docket(1) bash completion — eval "$(docket setup shell bash)"
-_docket_complete() {
-  local cur prev cword
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  cword=$COMP_CWORD
-
-  local commands="__COMMANDS__"
-
-  # Live agent ids (pod members) from the workspace tree, basenames only.
-  local _dh="${DOCKET_HOME:-$HOME/.docket}"
-  local _ids="" _d _b
-  if [[ -d "$_dh/workspaces/projects" ]]; then
-    for _d in "$_dh/workspaces/projects"/*/; do
-      [[ -d "$_d" ]] || continue; _b="${_d%/}"; _ids+=" ${_b##*/}"
-    done
-  fi
-  if [[ -d "$_dh/workspaces" ]]; then
-    for _d in "$_dh/workspaces"/*/; do
-      [[ -d "$_d" ]] || continue; _b="${_d%/}"; _b="${_b##*/}"
-      [[ "$_b" == "projects" ]] && continue; _ids+=" $_b"
-    done
-  fi
-
-  if [[ $cword -eq 1 ]]; then
-    mapfile -t COMPREPLY < <(compgen -W "$commands" -- "$cur")
-    return
-  fi
-
-  local cmd="${COMP_WORDS[1]}"
-  local words=""
-  case "$cmd" in
-    status)          words="--all --json" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="show add remove reset set unset delete apply export" ;;
-    setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
-    task)            words="add list show diff trace prune" ;;
-    audit)           words="verify --json" ;;
-    *)               words="" ;;
-  esac
-  mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
-}
-complete -F _docket_complete docket
-"""
-
-# zsh completion script template; __ZSH_COMMANDS__ is substituted at runtime
-# with 'name:help' entries (one per line, see _top_level_commands).
-_ZSH_TEMPLATE = """\
-#compdef docket
-# docket(1) zsh completion — eval "$(docket setup shell zsh)"
-_docket() {
-  local -a commands
-  commands=(
-__ZSH_COMMANDS__
-  )
-
-  _docket_ids() {
-    local dh="${DOCKET_HOME:-$HOME/.docket}"
-    local -a ids
-    ids=(${dh}/workspaces/projects/*(/N:t) ${dh}/workspaces/*(/N:t))
-    ids=(${ids:#projects})
-    compadd -a ids
-  }
-
-  if (( CURRENT == 2 )); then
-    _describe 'docket command' commands
-    return
-  fi
-
-  case "${words[2]}" in
-    status)          compadd --all --json ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd show add remove reset set unset delete apply export ;;
-    setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
-    task)            compadd add list show diff trace prune ;;
-    audit)           compadd verify --json ;;
-  esac
-}
-_docket "$@"
-"""
-
-
 def render_bash() -> str:
-    names = [name for name, _help in _top_level_commands()]
-    return _BASH_TEMPLATE.replace("__COMMANDS__", " ".join(names))
+    header = '# docket(1) bash completion -- eval "$(docket setup shell bash)"\n\n'
+    return header + _helpers(_tree()) + "\n" + _BASH_MAIN
 
 
 def render_zsh() -> str:
-    lines = [f"    '{name}:{_zsh_escape(help_text)}'" for name, help_text in _top_level_commands()]
-    return _ZSH_TEMPLATE.replace("__ZSH_COMMANDS__", "\n".join(lines))
+    nodes = _tree()
+    entries = "\n".join(
+        f"    '{node.path}:{_zsh_escape(node.help)}'"
+        for node in nodes
+        if node.path in nodes[0].verbs
+    )
+    return (
+        '#compdef docket\n# docket(1) zsh completion -- eval "$(docket setup shell zsh)"\n\n'
+        + _helpers(nodes)
+        + f"\n_docket_commands() {{\n  commands=(\n{entries}\n  )\n}}\n\n"
+        + _ZSH_MAIN
+    )
 
 
 def cmd_shell(shell: Shell = typer.Argument(..., help="bash or zsh")) -> None:
