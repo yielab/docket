@@ -280,13 +280,28 @@ def read_text(path: Path) -> str | None:
         return None
 
 
+_RECORD_HEADING = "## Changelog"
+
+
+def split_record(path: Path, text: str) -> tuple[str, str]:
+    """A spec's changelog is the record: (editable text, record text) for ``path``."""
+    if not _rel(path).startswith("specs/"):
+        return text, ""
+    for n, line in enumerate(text.splitlines(keepends=True)):
+        if line.rstrip("\n") == _RECORD_HEADING:
+            head = "".join(text.splitlines(keepends=True)[:n])
+            return head, text[len(head) :]
+    return text, ""
+
+
 def scan(paths: Iterable[str | Path], pred=survivors, skip: Iterable[str] = ()) -> list[str]:
     hits: list[str] = []
     for path in iter_files(paths, skip):
         text = read_text(path)
         if text is None:
             continue
-        for n, line in enumerate(text.splitlines(), 1):
+        editable, _record = split_record(path, text)
+        for n, line in enumerate(editable.splitlines(), 1):
             if pred(line):
                 hits.append(f"{_rel(path)}:{n}: {line.strip()}")
     return hits
@@ -305,7 +320,8 @@ def diffs(paths: Iterable[str | Path], skip: Iterable[str] = ()) -> Iterator[tup
         old = read_text(path)
         if old is None:
             continue
-        new = rewrite_text(old)
+        editable, record = split_record(path, old)
+        new = rewrite_text(editable) + record
         if new != old:
             yield path, old, new
 

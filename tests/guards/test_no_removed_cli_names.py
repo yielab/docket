@@ -148,3 +148,15 @@ class TestTable:
     ) -> None:
         monkeypatch.setattr(rcn, "TABLE", [*rcn.TABLE, (re.compile("x"), "docket nosuch verb")])
         assert any("nosuch" in p for p in rcn.self_check())
+
+
+class TestRecord:
+    def test_a_spec_changelog_is_neither_checked_nor_rewritten(self, tmp_path: Path) -> None:
+        spec = rcn.ROOT / "specs" / "functional" / "_rcn_probe.spec.md"
+        text = "# X\n\nUse `docket task add`.\n\n## Changelog\n\n- Added `docket delegate`.\n"
+        spec.write_text(text, encoding="utf-8")
+        try:
+            assert rcn.check([spec]) == []
+            assert list(rcn.diffs([spec])) == []
+        finally:
+            spec.unlink()
