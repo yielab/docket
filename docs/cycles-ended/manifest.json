@@ -646,5 +646,13 @@
     "heading": "☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)",
     "bytes": 65803,
     "sha256": "b0968dc1c9a9000b220322a3f5caedaf240526f31f6b17eaeba96bff7deeecaf"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08)",
+    "bytes": 3272,
+    "sha256": "6b11cb747e4f494cf397bb506705be9490d05832b4a2308a7e63886f2f0ad7e5"
   }
 ]

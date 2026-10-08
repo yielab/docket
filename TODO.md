@@ -317,17 +317,18 @@ Carried out of Phase 39 (ADR 0022 "Closed with, and carried"), maintainer-owned 
 - Tack's one string: `"harness", "run"` becomes `"exec"` in
   `objetivosMios/crates/tack-runner/src/harness/docket.rs`, in `docket/probe.rs` (the argv and two
   doc comments) and in the three argv arrays of `docket/tests.rs`, then that crate's harness
-  tests. Refused twice by the integrating session's permission classifier; the maintainer applies it.
+  tests. Refused three times by the session's permission classifier; the maintainer applies it.
 - The live asset re-capture: `scripts/maint/capture-doc-journey.sh` on the local endpoint, then
   `scripts/render-doc-assets.py` re-transcribed from the new transcripts. The committed assets
   show the eleven-command names, but their output lines were rewritten by name, not re-captured.
-  Refused by the same classifier.
+  Refused by the same classifier, three times.
 - The YieLab landing page (`~/Sites/newPortaflio/content/docket-landing.ts`) after the release
   that ships the names.
 - The eighteen locators of the live run (`internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`,
   last section; the six worth a card are in ADR 0022 "Live run"): a triage list, not cards.
-- Two gaps P39-25 returned in `scripts/maint/lint_cli_invocations.py`: any upper-case word passes
-  as a placeholder, and positional counts go unchecked after an `<a|b>` verb.
+- The triage's cards B–E (`status` waiting-input bucket and sandbox line; help and message
+  truth; `--progress` naming the hop, after a rendering decision; `setup provider add` recording
+  the advertised model): proposed, not scheduled. Card A closed in Wave 96 (`50da5d59`).
 
 Deferred to named triggers: `kind: autonomy` (a verifier that emits one) and per-task credential
 minting (an issuer a pod needs).

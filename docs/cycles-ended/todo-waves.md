@@ -12521,3 +12521,52 @@ whose body (not its changelog) holds `docket status <agent>` each produce one fi
 guard lists the live findings over the roots (fixed in the card, one line each); GREEN: zero
 findings over the roots in under 2 s, `--self-check` returns its planted lines, every gate green.
 Oracle: the guard, and `lint_cli_invocations.py FILE` by hand on a doc with one false line.
+## ☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08)
+
+**Trigger:** the operator asked on 2026-10-08 ("continue") after the triage of the eighteen
+locators of the Phase 39 live run (gitignored `internal-docs/cli-ux-audit-2026-10-07/
+triage-2026-10-08.md`; the six worth a card are in ADR 0022 "Live run"). The triage proposed five
+cards A–E; A is the one where a spec MUST is false today, so it goes first. B–E are not scheduled.
+
+### W96-A — the operator's decision reaches the record
+
+**Status:** DONE `50da5d59` (default lanes, agent lane and every fast gate green; `comment_lint` findings in `approval.py`/`dispatch.py`/`serve.py` are HEAD's own, same counts) · **Size:** S · **Wave:** 96 · **Spec:** `operator-loop.spec.md` (2a, corrections
+"Writers"), `pod-dispatch.spec.md` ("On a deny"), `cli-interface.spec.md` (`task approve | deny`)
+
+**Today:** `docket task approve <apr-token>` (the form the progress view prints) ends without the
+run hint operator-loop 2a requires: `cli/_task.py::_pending_token` returns no pod for a token
+ref, so `_resume_hint` is skipped. A deny's `--reason` never reaches its task:
+`core/approval.py::approval_deny` keys the `deny_reason` correction by a top-level `taskId` the
+record stores under `context` (`core/dispatch.py` approval_create sites), so `task show`'s filter
+never matches, and the failed task's `reason` is the fixed `approval denied`. The reason survives
+only in trace and audit. Measured in the Phase 39 live run (Journey 3), 2026-10-08.
+
+**Goal:** `task approve <apr-token>` ends with the run hint (pod from the approval record);
+`task deny --reason` puts `approval denied: <reason>` on the task (`resolve_waiting_approval`
+takes `reason=`; the HTTP route passes it too) and the correction carries the task's id.
+
+**Non-goals:** a hint after `deny` (the task is failed; `inbox` names `task retry`); a task id for
+a parked in-turn call's record (`core/tools.py::_park_call` has none; the correction stays keyed
+empty and the spec says so); any change to the approval store's states.
+
+**Files:** `cli/_task.py::_pending_token`, `_task_approve`, `_task_deny`;
+`core/approval.py::approval_deny`; `core/dispatch.py::resolve_waiting_approval[_detail]`;
+`serve.py` approval route.
+
+**Acceptance:**
+- A real pod with a task parked by the pre-hop gate (unit fixture `_park_on_approval`): `docket
+  task approve <apr-token>` exits 0, the task is `pending`, stderr ends with `Next: docket run
+  --pod demo` when nothing is serving.
+- Same fixture: `docket task deny <id> --reason "too risky"` exits 0; the task record's `reason`
+  is `approval denied: too risky`; `task show --json` lists one correction `(deny_reason, "too
+  risky")`; `inbox --json`'s Failed entry carries that reason.
+- Store level: `approval_deny` on a record created with `context={"taskId": "task-1"}` writes a
+  correction with `taskId == "task-1"`.
+- Oracle: the three RED tests above (`tests/unit/cli/test__task.py`, `tests/unit/core/
+  test_approval.py`) fail on `4c847223`'s behaviour for exactly those reasons.
+
+**Gates:** ruff, mypy, default lanes, goldens, `validate-specs.sh`, `gen_cli_docs.py --check`,
+`metrics.py --check`, `comment_lint.py --check` on touched files, span check.
+
+---
+
