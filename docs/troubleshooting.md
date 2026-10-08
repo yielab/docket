@@ -11,8 +11,8 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 docket's inbound Telegram bot is inbound-only and understands exactly five verbs: `/approve`,
 `/deny`, `/status`, `/delegate <task>`, and `/answer <task-id> <text>` (for a parked question).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
-answer with a task id or a confirmation, never the pipeline's output. Use `docket pod <p>
-queue`/`docket task trace --tail` to see results. A *push* notification into the chat is a separate,
+answer with a task id or a confirmation, never the pipeline's output. Use `docket task list`/`docket task trace <task-id>`
+to see results. A *push* notification into the chat is a separate,
 opt-in mechanism — the `telegram` channel (`docket setup notify enable telegram --set
 actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
 never replaces the five verbs above.
@@ -46,8 +46,8 @@ docket setup model set reviewer anthropic/claude-opus-4-6
 > so the change is validated, applied consistently, and audit-logged.
 
 **Valid model names (Anthropic defaults):**
-- `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge)
-- `anthropic/claude-sonnet-4-6` (strong class — programmer, security, repo)
+- `anthropic/claude-haiku-4-5` (cheap class — lead, reviewer, tester)
+- `anthropic/claude-sonnet-4-6` (strong class — implementer)
 - `anthropic/claude-opus-4-6` (strong class, premium)
 
 Check the live mapping anytime with `docket setup model`.
@@ -121,7 +121,7 @@ See `docket setup model` for the current role→model table and all available pr
 #### 3. **Monitor token usage**
 ```bash
 docket status
-docket status  # All agents
+docket status --all  # Every pod
 ```
 Token counts here are real and measured; the dollar column is not — docket's own turn loop
 reports no billed spend today. See
@@ -331,12 +331,12 @@ docket run --resume        # clear the auto-pause + unblock the pod's queue
 # ✓ Resumed 'myapp-lead' — auto-pause cleared.
 ```
 
-To retry a single blocked task without touching the pod-wide pause, use `docket task list
---retry <task-id>` instead — it moves just that task back to `pending`.
+To retry a single blocked task without touching the pod-wide pause, use `docket task retry
+<task-id>` instead — it moves just that task back to `pending`.
 
 ### A dispatched task stays "waiting_approval" and nobody seems to have noticed
 
-**Cause:** a gated tool call parked. Under `serve --dispatch`'s sweep or a non-interactive
+**Cause:** a gated tool call parked. Under `start --dispatch`'s sweep or a non-interactive
 `docket run` (an unattended caller resolves an unset `approvalMode` to `park`), an
 in-turn `ask` no longer blocks the hop — it records the exact call and parks the task
 immediately, so it never shows up as a long-running turn. Nothing pushes this at you unless a
@@ -348,8 +348,8 @@ exactly this.
 
 ```bash
 docket inbox                              # everything across every pod that needs you, right now
-docket task approve <token>                    # grant it -- the exact same hop re-runs, once
-docket task deny <token>                       # deny it -- the task fails with approval_denied
+docket task approve <task-id>                  # grant it -- the exact same hop re-runs, once
+docket task deny <task-id>                     # deny it -- the task fails with approval_denied
 docket setup notify enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 
@@ -409,7 +409,7 @@ $ docket run
 ```
 
 Read the Tester's full reply via `docket task trace --tail`, fix the underlying issue, then queue it
-again (`queue --retry` only moves a `blocked` task back to `pending`, not a `failed` one):
+again (`docket task retry` is for a task that is blocked or failed and keeps the hops it finished; a new `task add` starts clean):
 
 ```bash
 docket task add <task>
@@ -480,9 +480,9 @@ docket pod reset <agent-id>
 
 For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod apply`.
 
-## Harness Mode (`docket exec`)
+## Non-interactive runs (`docket exec`)
 
-Harness mode is a machine-facing entry point for an external caller that owns its own workspace
+`docket exec` is a machine-facing entry point for an external caller that owns its own workspace
 and `DOCKET_HOME` — not the interactive CLI most of this guide covers. Its failures show up as an
 exit code and a printed `HarnessResult`, not a human-readable message, so read the result object
 rather than trying to interpret the exit code alone.
@@ -493,12 +493,11 @@ rather than trying to interpret the exit code alone.
 `"status":"refused"`, and no agent turn ran at all.
 
 **Cause:** `core.harness.preflight` rejected the environment before starting. The common cases:
-`DOCKET_HOME` is unset or resolves to the operator's own default home (harness mode refuses to
+`DOCKET_HOME` is unset or resolves to the operator's own default home (`docket exec` refuses to
 touch a real install's approvals/audit log), `DOCKET_LLM_BASE_URL` is unset, `DOCKET_NO_TRACE=1`
-is set (harness mode refuses to run unobserved), or `--workspace` is not a real directory. A
+is set (`docket exec` refuses to run unobserved), or `--workspace` is not a real directory. A
 missing `--model` or a missing/duplicated `--task`/`--task-file` is refused the same way, before
-`preflight` even runs. (`docket task show` with no `TOKEN` is different: it prints a usage
-line on stderr and exits `1`, with no JSON.)
+`preflight` even runs.
 
 **Fix:** the caller must supply its own `DOCKET_HOME` (never the operator's `~/.docket`) and a
 `DOCKET_LLM_BASE_URL`, unset `DOCKET_NO_TRACE`, and pass an existing `--workspace` directory. The
@@ -510,7 +509,7 @@ line on stderr and exits `1`, with no JSON.)
 a non-null `blocked` object naming a `tool`, `call_id`, `denial_kind` (`approval_unavailable`),
 `policy_id`, and `reason`.
 
-**Cause:** harness mode always runs with approvals forced to non-interactive refusal — there is no
+**Cause:** `docket exec` always runs with approvals forced to non-interactive refusal — there is no
 human on the other end of a caller-owned subprocess
 to approve a gated tool call, so a verdict of `ask` ends the run immediately instead of waiting.
 This is expected behavior, not a bug: it is the one thing an interactive dispatch would instead
@@ -518,13 +517,13 @@ block on for up to two minutes.
 
 **Fix:** adjust the policy so the task's tool calls don't need approval (see
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action. There
-is no flag to make harness mode wait for a human — see
+is no flag to make `docket exec` wait for a human — see
 [ADR 0001](adr/0001-harness-mode.md) for why that is a separate, unbuilt decision.
 
 ### Distinguishing `failed`/`cancelled` from `blocked`/`refused`
 
 `"status":"failed"` and `"status":"cancelled"` (also exit `1`) mean a turn actually ran — check
-`docket task show TOKEN` and the NDJSON event stream on stdout for what happened during the
+the NDJSON event stream on stdout (and the logs on stderr) for what happened during the
 run. `"status":"blocked"` and `"status":"refused"` both mean **no completed turn produced the
 outcome** — one stopped on a specific denied tool call, the other never started. See
 [`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md) for the full result shape.

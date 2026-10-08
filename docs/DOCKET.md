@@ -158,9 +158,9 @@ that would be scope creep, not follow-through. One consequence worth stating pla
 never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
 [Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#the-gate-and-the-record).
 
-### Harness mode: one agent, one turn, for an external caller
+### docket exec: one agent, one turn, for an external caller
 
-`docket exec` (decision D-35) is a second, narrower entry point beside pod dispatch: it runs **one agent,
+`docket exec` (decision D-35) is a second, narrower entry point beside `docket run`: it runs **one agent,
 one turn loop, to completion**, in a workspace and `DOCKET_HOME` the *caller* supplies, then exits.
 It is not a pod and not a team — no Lead, no Implementer/Reviewer/Tester rotation — and it
 provisions nothing: the caller has already prepared an isolated checkout at a known revision and
@@ -180,7 +180,7 @@ below). Exit codes are the one
 place this CLI departs from its flat 0/1 convention (`specs/api/cli-interface.spec.md`): `0` the
 result is `ok`; `1` it ended `failed`, `blocked`, or `cancelled`; `2` refused before any turn
 began — for example a missing `DOCKET_LLM_BASE_URL`, a `DOCKET_HOME` that resolves to the
-operator's own default home, or `DOCKET_NO_TRACE=1` (harness mode refuses to run unobserved rather
+operator's own default home, or `DOCKET_NO_TRACE=1` (`docket exec` refuses to run unobserved rather
 than run silently).
 
 The contract is versioned (every line carries a `v` field) and published. `--contract 1.0` is the
@@ -195,7 +195,7 @@ is in [ADR 0001](adr/0001-harness-mode.md); the wire-level requirements are in
 **Contract 1.1** (`--contract 1.1`, `v` `1.1.0`, ADR 0017, Phase 35) is opt-in and is the contract an
 external supervisor integrates against. Its schema is
 [`docs/contracts/harness-v1.1/schema.json`](contracts/harness-v1.1/schema.json), and every line of
-its fixtures validates against that committed file. It adds, all under the one `run` command:
+its fixtures validates against that committed file. It adds, all under the one `exec` command:
 
 - **Process lifecycle.** A `bash` call emits `process_started` and `process_exited` events
   (`pgid`, and either `exitCode` or `signal`), so a caller can see a live process group and signal it.
@@ -270,7 +270,7 @@ stores, all under `~/.docket/`:
   ledger to exactly what the queue says. See [Dispatch Internals](#dispatch-internals).
 - **The conversation registry** (`core/conversations.py`, `docket-conversations.json`) — one
   record per channel thread docket is tracking (agent, peer, topic, status, a resume pointer),
-  seeded on `docket setup notify bind` and cleaned up on delete. Dispatch and `serve` keep `last_message`/
+  seeded on `docket setup notify bind` and cleaned up on `docket pod delete`. Dispatch and `docket start` keep `last_message`/
   `task_ref` current automatically as a task moves, tracked by the notification system.
 - **The audit log** (`core/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
@@ -319,7 +319,7 @@ backing the ledger do use `store.py`.
 
 **Don't add workers you don't need.**
 
-`docket init <project>` provisions a lean **Lead + Implementer** pod:
+`docket init` provisions a lean **Lead + Implementer** pod:
 ```
 Pod size            Members                    When
 ─────────────────────────────────────────────────────
@@ -370,9 +370,8 @@ Three guarantees hold on every hop:
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
   cross-pod dispatch path** — one pod can never run another pod's agents.
 
-Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`docket pod …
-dispatch`) or **opt-in** (`docket start --dispatch`) — never silent. Plain `docket start` is a
-read-only monitor and does not dispatch. Stopping `serve` takes two signals when work is in flight:
+Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`docket run`) or **opt-in** (`docket start --dispatch`) — never silent. Plain `docket start` is a
+read-only monitor and does not dispatch. Stopping `docket start` (or `docket stop`) takes two signals when work is in flight:
 the first (Ctrl-C or SIGTERM) stops new work and waits for the pod sweeps already running; a second
 requests cancellation of each sweep run, so its task ends `cancelled`, and exits 130 or 143.
 
@@ -430,7 +429,7 @@ work. Measure actuals for your own workload rather than relying on fixed figures
 > deep-dive: routing, context isolation, dispatch internals, and per-role wiring.
 
 Every agent is a **pod role**: project-scoped and created per project by
-`docket init <project>` (managed with `docket pod <project>`).
+`docket init` (managed with `docket pod`).
 
 ## Pod Roles
 
@@ -689,8 +688,8 @@ reasoning-density) or the **strong class** (reasoning-dense):
 
 | Class  | Roles                                                    | Why                              |
 |--------|----------------------------------------------------------|----------------------------------|
-| Cheap  | Lead, Manager, Reviewer, Tester, Knowledge, Portfolio Manager | High-volume or mechanical work |
-| Strong | Implementer, Security, repo agents                       | Code writing / security reasoning|
+| Cheap  | Lead, Reviewer, Tester                                   | High-volume or mechanical work |
+| Strong | Implementer                                              | Code writing                     |
 
 Change the policy for a role with `docket setup model set <role> <provider/model>`, or switch all
 roles at once with a provider preset (`docket setup model preset openai`). Override per-pod with a role overlay
@@ -743,7 +742,7 @@ Tester:      ✓ Behavior-only validation
 - [x] Behavior-only validation
 - [x] HITL gate protocols
 - [x] Cost tracking & optimization
-- [x] Declarative role archetypes (`docket pod roles`) and pod blueprints (`docket init --blueprint`)
+- [x] Declarative role archetypes (`docket pod roles`) and pod blueprints (`docket init --blueprint <name>`)
 - [x] Docket-native pipeline format + executor (`docket pod validate`, `docket pod plan`, `docket run`), generalized
   mechanical/verdict/approval gates and bounded rework
 - [x] Typed handoff artifacts between hops + a per-role token-budgeted context compiler
@@ -755,9 +754,9 @@ Tester:      ✓ Behavior-only validation
 - [x] Memory distillation (`docket pod reset` distills first by default)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket log verify`)
-- [x] Harness mode (`docket exec`/`docket task show`) — a versioned, non-interactive
+- [x] `docket exec` — a versioned, non-interactive
   single-agent entry point for an external caller-owned workspace and `DOCKET_HOME` (see
-  [Harness mode](#harness-mode-one-agent-one-turn-for-an-external-caller) above)
+  [docket exec](#docket-exec-one-agent-one-turn-for-an-external-caller) above)
 - [x] The configuration contract: `docket pod show` names each effective value and the
   scope it came from (built-in, global, pod), and `docket setup` names every entry a loader
   skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
@@ -767,7 +766,7 @@ Tester:      ✓ Behavior-only validation
   (`docket setup provider add|list|show|remove|export`)
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
   (`docket pod apply|export`, `docket init` applies it), with drift reported by
-  `config explain`
+  `docket pod show`
 - [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket pod recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
 - [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
@@ -779,8 +778,8 @@ Tester:      ✓ Behavior-only validation
   sweep, a typed Lead intake brief with a deterministic resource pre-check, an `input` pipeline
   step for a question rather than a permission (`waiting_input`), one derived inbox
   (`docket inbox`) every surface renders from, `kind: channel` notifications delivered as
-  CloudEvents (`docket setup notify`, `docket setup notify`, seven dialects, only `console` on by
-  default, and it sends nothing, so `docket setup` warns until a delivering one is on), and answer surfaces (`docket task answer`, `docket task answer`, HTTP, MCP) that all
+  CloudEvents (`docket setup notify`, seven dialects, only `console` on by
+  default, and it sends nothing, so `docket setup` warns until a delivering one is on), and answer surfaces (`docket task answer`, HTTP, MCP) that all
   resolve through one `answer_task` function
 
 ### Documentation ✅
@@ -831,8 +830,8 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   pre-hop `approval` gate (unchanged), or — since Phase 34 (D-50, ADR 0016) — an in-turn tool-call
   `ask` that would otherwise block the running hop. Which posture an unattended pod gets is
   resolved, not fixed: `approvalMode: wait` blocks the call as before (the default for an
-  interactive TTY dispatch); `park` — the resolved default for `serve --dispatch`'s sweep and a
-  non-interactive `dispatch` — records the exact call and ends the turn instead of blocking it,
+  interactive TTY dispatch); `park` — the resolved default for `docket start --dispatch`'s sweep and a
+  non-interactive `docket run` — records the exact call and ends the turn instead of blocking it,
   so one stuck hop can no longer stall an entire sweep. `docket task approve`/`docket task deny` (CLI, HTTP
   `POST /approvals/<token>`, MCP, or Telegram) resolve either trigger identically. A grant on a
   pre-hop gate hands the position back to the *next* claim as a single-use gate override; a grant
@@ -844,7 +843,7 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
 - **`waiting_input`** is for a question, not a permission: a pipeline `input` step
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
-  <task-id>`, `docket task answer`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
+  <task-id>`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
   all resolve it through one `core.answers.answer_task` function, which routes the step's own
   `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
@@ -865,7 +864,7 @@ declaring what it may do (`notify`/`converse`/`decide`, capped per dialect — o
 `telegram` may ever `decide`) and how much of an event it carries (`minimal` by default, widened
 the same confirmed, audited way `docket setup export privacy` widens a trace). `docket setup notify flush`
 computes the diff against the last flush and delivers it — deduplicated, at-most-once, retried
-twice per destination — and both `serve`'s sweep and a foreground `dispatch` call it after their
+twice per destination — and both the `docket start` sweep and a foreground `docket run` call it after their
 own work. `core/telegram.py`'s inbound bot is unchanged by any of this: it still only ever
 replies to a message it received; a bound chat's push notification, when the `telegram` channel
 is enabled and that chat id is explicitly listed in its `actors`, is this separate, opt-in
@@ -879,9 +878,9 @@ whose pack carries the model's own preceding sentence as a `rationale` (screened
 characters, and a claim by the model rather than a fact) and three options: `approve_once`,
 `approve_task` (the identical call for the rest of the task: within the turn, and in a pod for every
 later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task approve
-<token> --option approve_task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
-MCP `approvals_grant` `option`. `docket task approve|deny <token> --reason TEXT`, the HTTP approval POST's
-`reason` and the harness answer's `content.reason` record why, with an `actor`, in the audit entry.
+<task-id> --task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
+MCP `approvals_grant` `option`. `docket task approve|deny <task-id> --reason TEXT`, the HTTP approval POST's
+`reason` and the `exec` answer's `content.reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
 recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
 role with the answer in its message, bounded per task by `maxConsultationsPerTask`. The parked
@@ -913,7 +912,7 @@ Each resolved step's gate is one of three kinds, read from the step's own declar
 step doesn't declare one — its role archetype's `gateContract`:
 
 - **`mechanical`** — run a command; nonzero exit fails the step. This is the Implementer's
-  `verifyCmd` today (`docket pod add --verify "<cmd>"` / `set-verify`), resolved
+  `verifyCmd` today (`docket pod add implementer --verify "<cmd>"` / `docket pod set verify "<cmd>" --member <id>`), resolved
   against the member's real working tree (worktree → shared codebase → the member's own
   workspace dir).
 - **`verdict`** — match the configured regex at the start of every non-blank line of a hop's
@@ -925,7 +924,7 @@ step doesn't declare one — its role archetype's `gateContract`:
   Implementer) up to a configured cycle budget (`maxReworkCycles`, default `1`) before a second
   rejection fails the task terminally. There is no fixed "3 retries then escalate to a human
   Engineer" — the bound is one small integer, and the terminal state is simply `failed`, visible
-  via `docket task list` / `docket task list`.
+  via `docket task list`.
 - **`approval`** — the step must not proceed until an operator grants it through docket's
   headless approval channels; this is what produces a `waiting_approval` task.
 
@@ -968,7 +967,7 @@ to bill against, only to bound a prompt deterministically.
 
 ### The run registry and cancellation
 
-Every dispatch invocation — from the CLI, the `serve` webhook, a due schedule, the periodic sweep
+Every dispatch invocation — from the CLI, the `POST /dispatch/<project>` route, a due schedule, the periodic sweep
 loop, or an MCP `dispatch` tool call — creates a record in the run registry (`core/runs.py`)
 *before* the work starts, and folds it to a terminal state (`succeeded`, `failed`, or `cancelled`)
 when it finishes. `docket task list` queries it; this closed a real gap where background dispatch paths
@@ -1021,14 +1020,13 @@ See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full role model details.
 
 ### Q: Do I need to change how I use docket?
 
-**A:** No. Every `docket init` (run in a project directory, or `docket init <project> [path]`) provisions
+**A:** No. Every `docket init` (run in the project directory) provisions
 that project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
 **A:** No. Templates are generated per-pod by `docket init` (and per member by `docket pod add`) and
-refreshed by
-A member's isolation:
+refreshed by `docket setup --fix`. A member's isolation:
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
 - Project agents are never touched by another project's setup (use `docket pod reset <member-id>` to rebuild a workspace)
 
@@ -1071,7 +1069,7 @@ Inspect the boundary or copy the lazy constructors from
 ## Next Steps
 
 1. **First project:** `docket init` in the project directory (the pod is a lead + implementer)
-2. **Add another project pod:** `docket init <project> [path]`
+2. **Add another project pod:** `docket init` in that project's directory
 3. **Inspect an agent:** `docket pod show` (view members and roles)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket status` (measured tokens; no recorded dollar spend)
@@ -1085,7 +1083,7 @@ Inspect the boundary or copy the lazy constructors from
 - [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands
 - [Agent Teams (Pods)](AGENT-TEAMS.md) - The canonical team model reference
-- [Decision records](adr/) - One reasoned architectural decision per file, including harness mode
+- [Decision records](adr/) - One reasoned architectural decision per file, including `docket exec`
   (ADR 0001)
 - [specs/](../specs/) - RFC 2119 functional/API/data specifications; the exact, CI-validated
   behavioral contract for anything summarized in this document

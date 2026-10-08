@@ -29,7 +29,7 @@ look like settings and are not.
 ## 1. What an install creates
 
 `docket init` in a project directory does two things. The first time it runs on a machine, it
-creates the **workstation foundation** (global state, shared org agents, baseline policies). Every
+creates the **workstation foundation** (global state, baseline policies). Every
 time it runs, it creates one **pod** for the current project. There is no separate setup step.
 
 `docket init` stops before creating the pod unless a model endpoint is ready. On a fresh machine,
@@ -48,29 +48,28 @@ noted.
 ```text
 ~/.docket/                              DOCKET_HOME: every piece of docket state lives here
 ├── fleet.json                          init         agent registry, bindings, flags
-├── docket-providers.json               provider add your kind: provider documents (built-ins ship in the wheel)
-├── docket-models.json                  init/preset  role -> model policy
+├── docket-providers.json               setup provider your kind: provider documents (built-ins ship in the wheel)
+├── docket-models.json                  init/setup model  role -> model policy
 ├── port-allocations.json               first pod    per-pod port range bases
 ├── audit.log                           first change hash-chained record of every mutation
 ├── policies/*.yaml                     init         6 baseline guardrail policies (JSON also loads)
 ├── docket-roles.json                   you          your custom role archetypes (global scope)
-├── docket-mcp-servers.json             mcp servers  external MCP tool servers
-├── docket-exporters.json               exporters    your kind: exporter overrides (built-ins ship in the wheel, all off)
+├── docket-mcp-servers.json             setup mcp   external MCP tool servers
+├── docket-exporters.json               setup export your kind: exporter overrides (built-ins ship in the wheel, all off)
 ├── exporters-health.json               first export delivery counters per enabled exporter
-├── docket-channels.json                channels     your kind: channel overrides (built-ins ship in the wheel, only console on)
+├── docket-channels.json                setup notify your kind: channel overrides (built-ins ship in the wheel, only console on)
 ├── channels-health.json                first notify delivery counters per enabled channel
 ├── notify-state.json                   first notify the dedupe snapshot `docket setup notify flush` diffs against
 ├── inbox-cursor.json                   inbox        the last `docket inbox` call's cursor (skipped by --peek/--since)
-├── docket-schedules.json               pod config   dispatch schedules (`pod config set schedule`)
-├── secrets.json, secrets.meta.json     keys add     stored API keys + timestamps
+├── docket-schedules.json               pod set      dispatch schedules (`docket pod set schedule`)
+├── secrets.json, secrets.meta.json     setup provider stored API keys + timestamps
 ├── docket-runs.json                    dispatch     one record per dispatch invocation
-├── docket-conversations.json           wire         Telegram conversation registry
+├── docket-conversations.json           setup notify Telegram conversation registry
 ├── sessions/<session-key>/session.json dispatch     durable per-session turn history
 ├── traces/<pod>/<session>.jsonl        dispatch     observable events per session
-├── approvals/<apr-id>.json             gated call   pending/granted/denied approvals
+├── approvals/<id>.json                 gated call   pending/granted/denied approvals
 ├── consult-parked/<q-id>.json         consult      a parked question, until dispatch reads it
 └── workspaces/
-    ├── manager/  knowledge/  security/ init         shared org specialists
     ├── projects/<pod>-<role>/          init/pod add one private workspace per pod member
     │   ├── .docket-meta.json           the agent's facts and per-pod settings
     │   ├── SOUL.md                     identity and role instructions
@@ -80,7 +79,7 @@ noted.
     │   ├── MEMORY.md                   durable project facts
     │   ├── WORKFLOW_AUTO.md            startup contract (versioned, regenerated)
     │   ├── memory/YYYY-MM-DD.md        daily logs
-    │   ├── TASK_LIST.json              Lead only, after the first `delegate`: the pod's queue
+    │   ├── TASK_LIST.json              Lead only, after the first `task add`: the pod's queue
     │   └── tasks/<taskId>/             implementers in a git repo: one git worktree per task
     └── pods/<pod>/.scratch/            first pod   the pod's isolated scratch directory
 ```
@@ -144,7 +143,7 @@ context passes the budget.
 |---|---|
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
 | `memory/YYYY-MM-DD.md` | Daily logs. Not in the prompt. `docket pod reset <member>` distills and moves its content into `MEMORY.md`, which is. |
-| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--pipeline` or bound with `pod config set pipeline` (see §3.5). |
+| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--pipeline` or bound with `docket pod set pipeline` (see §3.5). |
 
 ### Who decides what: the ownership map
 
@@ -152,7 +151,7 @@ Six layers make up the orchestration, and each answers exactly one question. Whe
 where a change belongs, find the question first. **Scope** is which of the three provenance
 levels a resolved value can come from — `built-in` (shipped, unwritable), `global`
 (`~/.docket/`, every pod), or `pod` (this pod's own `config/` directory, nearest-wins above
-global) — the same three `docket pod show <agent> --json` labels per value.
+global) — the same three `docket pod show <member> --json` labels per value.
 
 | Question | Layer | Scope | Lives in | Change it with |
 |---|---|---|---|---|
@@ -160,9 +159,9 @@ global) — the same three `docket pod show <agent> --json` labels per value.
 | Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pod validate`, `docket pod plan`, `docket run`, `docket pod set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket pod roles [--pod <p>]`, `docket pod add <role>` |
-| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions CONTRIBUTING.md` |
+| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `docket pod set projectInstructions CONTRIBUTING.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket pod policies [--pod <p>]` |
-| What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
+| What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show`, `pod set`, `pod unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `pod set verify "<cmd>" --member <id>` |
 
 **A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed entry in either file, naming the pod.
 
@@ -175,7 +174,7 @@ Two boundaries worth stating because they are easy to get backwards:
   no setup. For a *custom* route: `docket pod validate` checks a file, `docket pod plan --pipeline` shows it
   against the real roster without spending tokens, `docket run --pipeline` executes it once by hand, and
   `docket pod set pipeline <file>` **binds it as the pod's default for every trigger**
-  (dispatch, serve sweep, schedules, webhooks, MCP). Binding validates and plans the file first,
+  (dispatch, the `docket start` sweep, schedules, webhooks, MCP). Binding validates and plans the file first,
   stores a docket-owned copy with its hash, and a later hash mismatch refuses dispatch loudly.
   `docket pod plan` prints a `Source:` line naming which route would run.
 
@@ -225,7 +224,7 @@ suits a large hosted model, and two full tool results overflow a 16k window).
 Credential lookup order, per name in the provider document's `auth.credentials`:
 `DOCKET_LLM_API_KEY`, then that name as an environment variable, then the same name in
 `secrets.json`. A document never holds a credential value — only names. `DOCKET_LLM_BASE_URL`
-overrides every endpoint at once, which is handy for tests. `docket pod show <agent>
+overrides every endpoint at once, which is handy for tests. `docket pod show <member>
 --json` reports which provider, scope and credential source an agent actually resolved to
 (`model-profiles.spec.md`, "Provider catalog").
 
@@ -267,14 +266,14 @@ member it gates.
 | Verify gate | `verifyCmd` in the Implementer's meta | `docket pod set verify "pytest -q" --member <p>-implementer`, or `--verify` on `docket init`/`pod add` | Runs after every Implementer hop in its worktree. A non-zero exit **fails** the task (`verification_failed`). |
 | Budget cap (USD, estimated) | `budgetUsd` in the Lead's meta | `docket pod set budgetUsd 5` (`0` = none) | Checked before each hop. Over the cap, the task is blocked and the Lead paused until `docket run --resume`. The figure is an estimate, not your bill. |
 | Rework cycles | `maxReworkCycles` in the Lead's meta | `docket pod set maxReworkCycles 2` | How many times a Reviewer `REQUEST-CHANGES` sends work back (default `1`, `0` = none). Ignored when you run a pipeline file, which carries its own `maxCycles`. |
-| Hop timeout | `turnTimeoutS` in the Lead's meta | `docket pod set turnTimeoutS 900` | Per-hop wall clock (default 300 s). `--timeout` on `dispatch` overrides it for one run. Under `docket start`, `DISPATCH_TURN_TIMEOUT_S` overrides it. |
-| Verify timeout | `verifyTimeoutS` in the Lead's meta | `docket pod set verifyTimeoutS 300` | Same precedence, `DISPATCH_VERIFY_TIMEOUT_S` under serve. |
+| Hop timeout | `turnTimeoutS` in the Lead's meta | `docket pod set turnTimeoutS 900` | Per-hop wall clock (default 300 s). `--timeout` on `docket run` overrides it for one run. Under `docket start`, `DISPATCH_TURN_TIMEOUT_S` overrides it. |
+| Verify timeout | `verifyTimeoutS` in the Lead's meta | `docket pod set verifyTimeoutS 300` | Same precedence, `DISPATCH_VERIFY_TIMEOUT_S` under `docket start`. |
 | Retries | environment only | `DISPATCH_RETRIES_DEFAULT`, `DISPATCH_RETRIES_<ROLE>`, `DISPATCH_RETRY_BACKOFF_S` | Timeouts and transport errors only. A failed verify or a bad verdict is never retried. |
 | Pod roster | members' workspaces | `docket pod add <role> [--count N]` / `docket pod remove <id>` | Dispatch only runs the roles the pod has. |
 
 `docket pod set <key> <value>` validates before writing and is audited as
-`pod.config`; `config unset` restores the default. A hand-edited value that fails validation is
-not ignored: `config get` and `dispatch` both refuse, naming the key. Confirm with
+`pod.config`; `docket pod unset <key>` restores the default. A hand-edited value that fails validation is
+not ignored: `pod show` and `docket run` both refuse, naming the key. Confirm with
 `docket pod plan`, which prints the resolved rework budget and steps.
 
 ```json
@@ -399,7 +398,7 @@ form):
   (`- lint: {run: "ruff check ."}`) runs no agent turn at all, its exit code and last stdout
   line becoming its outcome.
 
-One rule to plan around: a **bound** pipeline (`pod config set pipeline`) is treated like a
+One rule to plan around: a **bound** pipeline (`docket pod set pipeline`) is treated like a
 caller-supplied `--pipeline` — the pod's `maxReworkCycles` setting never patches it, so the file's own
 rework edges are what run. Only the blueprint/built-in default is patched by that setting.
 
@@ -440,7 +439,7 @@ matches. Anything else asks a human.
   metacharacters, opaque names (`eval`, `source`, …) and high-risk-class bins (`git`, `npm`) are
   rejected at write time; a redirected call still asks. Policies remain stricter-only: an `allow`
   policy cannot loosen the classifier.
-- **In an unattended run today,** an ask does not block at all by default: `serve --dispatch`'s
+- **In an unattended run today,** an ask does not block at all by default: `docket start --dispatch`'s
   sweep and a non-interactive `docket run` both resolve an unset `approvalMode` to
   `park` (§3.15) — the first ask records the call and parks the task `waiting_approval`
   immediately, ending the turn rather than eating a 120-second wait. An explicit `approvalMode:
@@ -461,7 +460,7 @@ Three ways to avoid it:
 - **Allowlist the bins for that pod.** `docket pod set allowCommands pytest,uv`
   (see above) is the direct fix for exactly this failure.
 
-- **Run checks through the verify gate.** Put them in the mechanical gate (`set-verify`, or a
+- **Run checks through the verify gate.** Put them in the mechanical gate (`pod set verify`, or a
   pipeline `mechanical` gate). That command runs outside the tool classifier; only high-risk
   commands are refused there.
 - **Use allowlisted forms.** Add this to `SOUL.md`: use `python3 -m pytest` rather than `pytest`
@@ -518,12 +517,12 @@ built around.
 **Approvals.** A `require_approval` hit, or a high-risk command such as `git push origin main`,
 creates `approvals/<id>.json`.
 
-- **Answering.** Answer it with `docket task approve <token>`/`docket task deny <token>`,
+- **Answering.** Answer it with `docket task approve <task-id>`/`docket task deny <task-id>`,
   `POST /approvals/<token>` under `docket start`, MCP, or Telegram `/approve`. Every channel is
   audited.
 - **Expiry.** Unanswered requests are denied: after `TOOL_APPROVAL_TIMEOUT` (120 s) when a live
   tool call is waiting, after `APPROVAL_TIMEOUT` (900 s) at a pipeline approval gate.
-- **Harness mode.** `docket exec` never waits. It returns `approval_unavailable` instead.
+- **Non-interactive runs.** `docket exec` never waits. It returns `approval_unavailable` instead.
 
 **Network.** `fetch` refuses every host until you allow it:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com`. That makes `fetch` the *inspectable*
@@ -567,20 +566,20 @@ The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
   resolves to `approvalMode: park` by default (an explicit stored value always wins) and moves on
   — see §3.15 for parking, the derived inbox, and how a human answers.
 - **Schedules.** `docket pod set schedule "<spec>"` validates and writes one
-  (`unset schedule` removes it); an invalid spec is refused at `set`, and the serve sweep logs a
+  (`unset schedule` removes it); an invalid spec is refused at `set`, and the `docket start` sweep logs a
   line for any hand-edited spec it has to skip. Schedules fire
-  only while `serve --dispatch` runs:
+  only while `docket start --dispatch` runs:
 
   ```json
   {"schedules": {"myapp": "@every 30m", "otherapp": "09:00", "third": "*/15 9-17 * * 1-5"}}
   ```
 
   - **Formats.** `@every Ns|m|h`, a daily `HH:MM` in **UTC**, or a numeric 5-field cron in UTC.
-  - **Skips are named.** An entry docket cannot parse never fires; the `serve` sweep logs a line
+  - **Skips are named.** An entry docket cannot parse never fires; the `docket start` sweep logs a line
     for it and `docket setup` reports it.
-  - **Don't add other keys.** `serve` rewrites the file with `lastRun` and drops any other
+  - **Don't add other keys.** `docket start` rewrites the file with `lastRun` and drops any other
     top-level key.
-- **Webhooks.** Use `POST /dispatch/<project>` with the serve bearer token. Set
+- **Webhooks.** Use `POST /dispatch/<project>` with the `docket start` bearer token. Set
   `DOCKET_SERVE_TOKEN` to make that token stable.
 - **Telegram.** `docket setup notify bind <p>-lead` binds a chat. It writes `fleet.json` `bindings` and
   `docket-conversations.json`.
@@ -662,7 +661,7 @@ resolved against the `config-v1` JSON Schemas it copies into `<dir>/.schemas/` (
 
 ### 3.11 Keep the team in the repo
 
-A team is a directory named `.docket/` next to the code, in the same shape `docket pod <p>
+A team is a directory named `.docket/` next to the code, in the same shape `docket pod
 export` writes and every shipped recipe ships:
 
 ```text
@@ -729,9 +728,9 @@ Three commands read it, and nothing else does:
 
 Rules worth knowing:
 
-- **Nothing is applied without an operator command.** Dispatch, `serve`, schedules and the
-  harness never read `.docket/`: an Implementer editing it in its worktree changes nothing until
-  you apply it. `docket pod show <agent>` prints `configSource`, `configDigest` and
+- **Nothing is applied without an operator command.** Dispatch, `docket start`, schedules and
+  `docket exec` never read `.docket/`: an Implementer editing it in its worktree changes nothing until
+  you apply it. `docket pod show` prints `configSource`, `configDigest` and
   `drift: yes|no`, so you can see that the directory moved on since it was applied.
 - **A repository cannot loosen your rules.** Its policies land in the pod scope and accumulate
   with the global ones under the most-restrictive rule; a global `block` stays a block.
@@ -808,7 +807,7 @@ document, the same shape as a `kind: provider` (§3.1). Five ship in the wheel, 
 and then from `docket setup provider add`. Nothing is sent until you run `docket setup export enable`, and a
 present credential never turns an exporter on by itself.
 
-Every turn docket runs (a dispatch hop, a `serve --dispatch` sweep, `docket exec`) hands
+Every turn docket runs (a dispatch hop, a `docket start --dispatch` sweep, `docket exec`) hands
 the records it writes to the local trace, already redacted, to `core/telemetry.py`, which turns
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
 their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
@@ -818,7 +817,7 @@ pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the stan
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
 queue, counts what it drops, and never raises into a turn. The pipelines start with the first
 turn of a process and keep that set of exporters and levels for its life, so a change made with
-the commands below reaches the next `dispatch` or `harness run` at once and a running
+the commands below reaches the next `docket run` or `docket exec` at once and a running
 `docket start` only after a restart. `DOCKET_NO_EXPORT=1` turns export off for one process;
 `DOCKET_NO_TRACE=1` stops the local write and, with it, the export.
 
@@ -974,7 +973,7 @@ An unattended pod's gated tool call used to have two choices: block the hop for 
 `TOOL_APPROVAL_TIMEOUT` (120s) with nobody watching, or `approvalMode: refuse` and lose the call
 outright. A third posture, `park` (ADR 0016, D-50), records the exact call and moves the task to
 `waiting_approval` without blocking anything — the sweep moves on to the next pod in the same
-pass. `approvalMode` resolves per caller when a pod hasn't set one explicitly: `serve
+pass. `approvalMode` resolves per caller when a pod hasn't set one explicitly: `docket start
 --dispatch`'s sweep and a non-interactive `docket run` both resolve to `park`; an
 interactive foreground dispatch (a real TTY) resolves to `wait`. A pod's own stored
 `approvalMode` (`docket pod set approvalMode wait|park|refuse`) always wins over the
@@ -1025,7 +1024,7 @@ explicit `--since` don't.
 inbox): `desktop`, `webhook`, `command`, `ntfy`, `email` and `telegram` notify only; `console` and
 `telegram` may also `decide` (act on an approval from inside the channel). Console sends
 nothing, so with nothing else enabled a parked task waits unseen until `docket inbox`: `docket
-doctor` counts that as an issue once a pod exists (`checks.notifications` in `--json`), and
+setup` counts that as an issue once a pod exists (`checks.notifications` in `--json`), and
 `docket init`, `docket start --dispatch` and a foreground dispatch that found events print the
 same warning; `docket setup notify enable desktop` is the zero-configuration fix. A channel declares
 `content: minimal|actions|conversation` (default `minimal`) the same way an exporter declares
@@ -1035,7 +1034,7 @@ same warning; `docket setup notify enable desktop` is the zero-configuration fix
 docket setup notify enable webhook --set url=https://example.com/hook --set secret=WEBHOOK_SECRET
 docket setup notify privacy webhook actions --yes
 docket setup notify test webhook          # one synthetic event, to check the URL/binary/topic works
-docket setup notify flush [--dry-run]       # push what's pending now; serve's sweep and dispatch already do this
+docket setup notify flush [--dry-run]       # push what's pending now; the `docket start` sweep and `docket run` already do this
 ```
 
 `webhook` signs its POST per Standard Webhooks (`webhook-signature: v1,<hmac-sha256>`); `command`
@@ -1044,8 +1043,8 @@ one more stdlib-only transport. Unlike `exporters:` (§3.14), a channel is a glo
 entry, not something a `pod.yaml` names or scopes — every enabled channel watches every pod's
 inbox.
 
-**Answering.** A parked approval: `docket task approve <token>` / `docket task deny <token>`. A parked
-question: `docket task answer <task-id> [--pod <project>]` (interactive — shows the brief and any prior
+**Answering.** A parked approval: `docket task approve <task-id>` / `docket task deny <task-id>`. A parked
+question: `docket task answer <task-id> [--pod <name>]` (interactive — shows the brief and any prior
 answers, prompts once per schema property on a TTY, then answers) or non-interactively `docket
 task answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
 single-property question, `--field` names each property of a richer one. Both, plus `POST
@@ -1058,34 +1057,34 @@ regardless of which surface sent it.
 **Hand-editing.** Docket writes its JSON atomically: a file lock, a `.bak` of the previous
 version, and a `0600` replace. If a file is later unreadable, docket restores it from `.bak` and
 keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand-edit only while no
-`docket` process (dispatch, serve) is running.** For files marked *no*, use the command instead.
+`docket` process (`docket run`, `docket start`) is running.** For files marked *no*, use the command instead.
 
 ### Global (`~/.docket/`)
 
 | File | Format and key fields | Written by | Read on the live path by | Hand-edit |
 |---|---|---|---|---|
 | `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode}` | init, `setup sandbox` | isolation and network mode (`isolationMode`, `networkMode`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
-| `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `models provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `models provider add/remove/export`. Malformed entries are named by `docket setup`. |
-| `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
+| `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `setup provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `setup provider add/remove/export`. Malformed entries are named by `docket setup`. |
+| `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `setup model set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `setup model set`. Malformed entries are ignored silently. |
 | `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod apply <file>` writes the pod's own overlay |
 | `policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout,kind,tools,isolate}]` | `setup mcp add/remove` | every turn | via command |
-| `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `exporters enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
-| `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `exporters show`, `doctor` | no |
-| `docket-channels.json` | `channels{<name>: kind: channel override}` — only the keys you changed (`enabled`, `capabilities`, `on`, `content`, `actors`, `config`, `secret`) over the built-in | `channels enable/disable/content/add/remove` | `docket setup notify flush`, `serve`'s sweep and a foreground `dispatch`, each after their own work: which channels run, and how much they carry (§3.15) | via command. A hand edit that widens `content` skips the confirmation and audit entry. |
+| `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `setup export enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
+| `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `setup export show`, `setup` | no |
+| `docket-channels.json` | `channels{<name>: kind: channel override}` — only the keys you changed (`enabled`, `capabilities`, `on`, `content`, `actors`, `config`, `secret`) over the built-in | `setup notify enable/disable/privacy/add/remove` | `docket setup notify flush`, `docket start`'s sweep and a foreground `docket run`, each after their own work: which channels run, and how much they carry (§3.15) | via command. A hand edit that widens `content` skips the confirmation and audit entry. |
 | `channels-health.json` | `{<name>: {delivered,failed,lastOk,lastError,…}}` | `core.notify.flush`, after every delivery attempt | nothing yet — no CLI surface reads it back | no |
 | `notify-state.json` | `{<dedupe-key>: version}` plus an `expiring` list | `core.notify.flush`, saved before delivering | `core.notify.diff_events` on the next flush, to avoid re-sending an unchanged item | no |
 | `inbox-cursor.json` | `{"next": "<iso timestamp>"}` | a plain `docket inbox` call | the next plain `docket inbox` call's `doneSince` filter | no |
-| `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | `pod config set/unset schedule`, serve (`lastRun`) | `serve --dispatch` sweep | via command; `docket setup` names a bad hand edit |
-| `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `keys add/rotate/remove` | endpoint key lookup (after env) | no |
+| `docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | `pod set/unset schedule`, `docket start` (`lastRun`) | `docket start --dispatch` sweep | via command; `docket setup` names a bad hand edit |
+| `secrets.json` / `secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `setup provider add/rotate/remove` | endpoint key lookup (after env) | no |
 | `port-allocations.json` | `allocations{pod: base}`, 100 ports each from 3000 | pod create/delete | implementer env `DOCKET_PORT_BASE` | no |
 | `docket-runs.json` | `runs[{id,source,project,state,taskIds,…}]` | every dispatch | `docket task list`, `/runs` | no (never pruned) |
 | `docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram | Telegram channel | no |
 | `sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no |
-| `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket task trace`, `metrics`, `/traces`; each record also reaches the enabled exporters as it is written | no. `trace expire` prunes after `TRACE_RETENTION_DAYS`. |
-| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `approve`/`deny`. |
+| `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket task trace`, `docket status`, `/traces`; each record also reaches the enabled exporters as it is written | no. `docket task prune` prunes after `TRACE_RETENTION_DAYS`. |
+| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task approve`/`deny`. |
 | `consult-parked/<q-id>.json` | one operator-v1.1 `QuestionV11` | a pod hop's `consult` | dispatch, once, when it parks the task | no. Dispatch removes it; the task keeps the question. |
-| `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket log`, `audit verify` | **never.** It breaks the hash chain. |
+| `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket log`, `docket log verify` | **never.** It breaks the hash chain. |
 
 **Built-in provider documents** ship in the wheel at `templates/providers/NN-<name>.yaml`
 (`anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`,
@@ -1114,9 +1113,9 @@ what you changed on top of one.
 | `codebase`, `workDir` | the directories tools may touch; verify cwd (a dispatched task uses its own worktree) | provisioning |
 | `verifyCmd` | the mechanical gate after this member's hop | `pod set verify`, `--verify` |
 | `budgetUsd`, `paused`, `pausedReason` | pod budget and auto-pause, **Lead only** | `pod set budgetUsd`, `run --resume` |
-| `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` | pod dispatch, **Lead only** | `pod config set` (§3.3) |
-| `approvalMode`, `approvalExpiryHours` | unattended posture for a gated call (`wait`/`park`/`refuse`); how long a parked approval stays open before it expires and denies, **Lead only** | `pod config set approvalMode/approvalExpiryHours` (§3.15) |
-| `inputExpiryHours` | how long a parked *question* (`waiting_input`) stays open before it expires to `blocked`, **Lead only** — a separate knob from `approvalExpiryHours`, default 72 | `pod config set inputExpiryHours` (§3.15) |
+| `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` | pod dispatch, **Lead only** | `pod set` (§3.3) |
+| `approvalMode`, `approvalExpiryHours` | unattended posture for a gated call (`wait`/`park`/`refuse`); how long a parked approval stays open before it expires and denies, **Lead only** | `pod set approvalMode/approvalExpiryHours` (§3.15) |
+| `inputExpiryHours` | how long a parked *question* (`waiting_input`) stays open before it expires to `blocked`, **Lead only** — a separate knob from `approvalExpiryHours`, default 72 | `pod set inputExpiryHours` (§3.15) |
 | `portRangeStart`, `portRangeCount`, `scratchDir` | Implementer environment `DOCKET_PORT_BASE/COUNT`, `DOCKET_SCRATCH_DIR` | provisioning |
 | `sessionKey`, `projectKey` | the base session key; dispatch builds its own per-task session key | provisioning |
 | `templateVersion`, `kind`, `scope`, `stack`, `name`, `description`, `created` | informational. `stack` and `name` fill templates at provisioning | provisioning |
@@ -1124,12 +1123,7 @@ what you changed on top of one.
 The Markdown files are covered in [§2](#2-how-the-files-reach-a-running-agent) (what reaches the
 model) and [§3.2](#32-change-what-an-agent-is-told) (what to edit, and what overwrites it). Only
 the Lead has `TASK_LIST.json`, the pod queue. Change it with `docket task add` and
-`queue --retry`, never by hand while a dispatch holds a claim.
-
-### Org specialists (`~/.docket/workspaces/{manager,knowledge,security}/`)
-
-These have the same files, minus `TOOLS.md`, `tasks/` and the pod keys. They are shared by
-every project. Pod dispatch never uses them. Customize them the same way (§3.2).
+`docket task retry`, never by hand while a dispatch holds a claim.
 
 ---
 
@@ -1144,16 +1138,16 @@ rest of the original list; what remains below is the honest boundary, not a back
   it), composes right after `SOUL.md`, and survives `pod set verify` and `pod apply`; generated files
   are re-rendered wholesale by `docket pod apply` when a template or archetype changes
   (`--dry-run` shows the diff, `docket setup` flags stale members).
-- **A skipped file is silent on the live path, but doctor names it.** An invalid schedule spec,
+- **A skipped file is silent on the live path, but `docket setup` names it.** An invalid schedule spec,
   model-policy entry or overlay role — global or pod-scoped — never crashes a fleet — the loader
   skips it — and `docket setup` reports each one with pod (when applicable), file, key and reason
-  (a broken *policy* file instead fails closed at evaluation, §3.6). Run doctor after hand-editing
+  (a broken *policy* file instead fails closed at evaluation, §3.6). Run `docket setup` after hand-editing
   any registry.
 - **A live `warn`/`redact` policy hit is recorded in the audit log** (`docket log`, action
-  `tool.warn`), not in traces — so `docket task trace`/`metrics` won't show it.
+  `tool.warn`), not in traces — so `docket task trace`/`docket status` won't show it.
 - **A running `docket start` keeps the exporters it started with.** Export pipelines start once
   per process (§3.14), so `docket setup export enable`, `disable` and `privacy` reach a
-  long-running `serve --dispatch` only after it restarts, and that includes **narrowing**: until
+  long-running `docket start --dispatch` only after it restarts, and that includes **narrowing**: until
   the restart, it keeps sending at the old level. Restart it after any change to what leaves.
 - **A destination gets only what was captured while it was allowed to.** Prompts, replies and
   tool output are recorded only while an enabled exporter grants them (§3.14), so a wider level

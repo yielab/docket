@@ -1,4 +1,4 @@
-# Complete Workflow Guide: Pods, Dispatch, and the Org Team
+# Complete Workflow Guide: Pods and Dispatch
 
 **Status:** Production Guide
 
@@ -9,7 +9,7 @@
 
 ---
 
-## The Three Actors
+## The Two Actors
 
 ### 1. Engineer (You)
 The human who:
@@ -73,7 +73,7 @@ docket init myapp ~/code/myapp     # or: cd ~/code/myapp && docket init
 #   myapp-implementer   (writes code inside ~/code/myapp)
 
 docket pod show             # inspect the pod and its roles
-docket status --all         # every pod member shows up like any other agent
+docket status --all         # every pod, its tasks and measured tokens
 ```
 
 A lean pod is the right default for prototyping and low-risk changes: one owner of completion
@@ -109,18 +109,18 @@ docket pod show                   # now: lead, implementer, reviewer, tester
 ```
 
 > You could have provisioned this up front with `docket init myapp ~/code/myapp --pod full` or
-> `--with reviewer,tester`. From inside `~/code/myapp`, `docket pod add reviewer` does the same as
-> `docket pod add reviewer`. The pod also scales doers: `docket pod add implementer` adds
+> `--with reviewer,tester`. From outside the repository, `docket pod add reviewer --pod myapp` does the same as
+> `docket pod add reviewer` run inside it. The pod also scales doers: `docket pod add implementer` adds
 > `myapp-implementer-2` for parallel work. A pod always has **exactly one Lead.**
 
-### Step 4 — Delegate a task to the pod
+### Step 4 — Queue a task on the pod
 
 ```bash
 docket task add "Fix the null-token login crash"
 docket task add --priority high "Patch the open-redirect on /auth/callback"
 ```
 
-The task lands on the pod's own queue (owned by the Lead). Nothing runs yet — delegation only
+The task lands on the pod's own queue (owned by the Lead). Nothing runs yet — `task add` only
 queues. Each task gets an id (`task-<uuid>`) and its own per-task trace session
 (`agent:myapp:<task_id>`) so tasks never bleed into each other.
 
@@ -166,7 +166,7 @@ The per-task dollar figure is *recorded* cost, and docket's own driver never rec
 reads `$0.0000`; the budget gate uses the labelled token estimate instead (Step 2). The command
 exits `1` when a task's run ends `failed`, so `docket run && …` stops there;
 `blocked`, `waiting_approval` and `waiting_input` are expected pauses and exit `0`. An unattended
-`ask` — under this same `dispatch` off a TTY, or under `serve --dispatch`'s sweep — resolves to
+`ask` — under this same `docket run` off a TTY, or under `docket start --dispatch`'s sweep — resolves to
 `waiting_approval` without blocking the turn at all (`approvalMode: park`, the default for an
 unattended caller); see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s operator-loop section and
 [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) for
@@ -204,8 +204,8 @@ Every hop emits a trace event on the per-task session, so a run is fully auditab
 manual Telegram relay:
 
 ```bash
-docket task trace --tail                                          # follow the latest session live
-docket task trace agent:myapp:task-9c745f95-984d-497b-abdd-1bed9ec9b0b0   # just this task's pipeline
+docket task trace task-9c745f95-984d --tail      # follow one task's session live
+docket task trace task-9c745f95-984d              # just this task's pipeline, in order
 ```
 
 Each line is `timestamp  event_type  (role)` plus any status and cost/duration fields, for
@@ -236,7 +236,7 @@ docket status                # measured token usage across every agent
 
 Token counts are real and measured. Dollar figures are **not** — docket's own turn loop reports
 no billed spend, so `docket status` reports "none recorded" for dollars rather than inventing a number.
-(The bundled pricing table only powers the budget gate's labelled estimate and `docket setup model`'
+(The bundled pricing table only powers the budget gate's labelled estimate and `docket setup model`'s
 comparative display — docket never projects dollar *savings*.) See
 [Cost reporting and its limits](../README.md#the-gate-and-the-record).
 
@@ -278,12 +278,12 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 > (`docket pod set budgetUsd N`) or run `docket run --resume`, either of
 > which unpauses the Lead and unblocks the pod's budget-blocked tasks, or requeue one with
 > `docket task retry <task-id>`.
-> Leaving them blocked is deliberate — rewriting them straight back to `pending` was the bug that
-> let a budget-capped task retry forever on every sweep.
+> Leaving them blocked is deliberate — rewriting them straight back to `pending` would let a
+> budget-capped task retry forever on every sweep.
 
 ---
 
-## Pipelines: the one dialect docket task list
+## Pipelines: the one dialect
 
 Everything in Step 6 above — Lead → Implementer → Reviewer → Tester, one hop per role — is
 docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed pipeline document
@@ -298,8 +298,8 @@ always has: Lead (no gate) → Implementer (mechanical check against its own `ve
 Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → Tester
 (PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches
 those steps — same skip-absent-roles behavior `docket run` always had.
-Installing this feature changes nothing about an existing pod until you write a file and pass
-`--pipeline`.
+A pod runs its own pipeline only once you write a file and bind it (`docket pod set pipeline
+<file>`) or pass `--pipeline`.
 
 ### `docket pod validate` — check a file before you point a pod at it
 
@@ -394,8 +394,8 @@ Pipeline: release
 $ docket run --pipeline workflows/release.yml
 ```
 
-`run` dispatches through `cli._pod._pod_dispatch` — the exact same rendering, run-registry
-recording, budget/approval gating, retries, and crash resume `docket run` uses.
+`docket run --pipeline` uses the exact same rendering, run-registry
+recording, budget/approval gating, retries, and crash resume as a plain `docket run`.
 `--pipeline` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes,
 including the exit status: `1` when a task's run ends `failed`.
 
@@ -407,7 +407,7 @@ it asks a question before one runs — and what each does to the task:
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
 | `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
-| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <task-id>` or `docket task answer`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
+| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <task-id>`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
 ### Declared variables — interpolated into step instructions
 
@@ -436,23 +436,16 @@ what a dispatch saw.
 
 ---
 
-## The run registry, `--follow`, and cancellation
+## The run registry, `--progress`, and cancellation
 
-Every dispatch invocation — CLI, the serve webhook, a due schedule, the `--dispatch` sweep loop,
+Every dispatch invocation — CLI, the `docket start` webhook, a due schedule, the `--dispatch` sweep loop,
 or an MCP client — writes one record to a persisted run registry, so "is it done, did it fail, or
 did it never run" has an answer instead of vanishing behind a fire-and-forget thread:
 
 ```bash
-$ docket task list
-Dispatch runs
-┌──────────────────────┬─────────┬─────────┬───────────┬───────┬─────────────────────┬───────┐
-│ ID                    │ SOURCE  │ PROJECT │ STATE     │ TASKS │ CREATED             │ ERROR │
-├──────────────────────┼─────────┼─────────┼───────────┼───────┼─────────────────────┼───────┤
-│ run-3f2a1c9e-...      │ cli     │ myapp   │ succeeded │ 1     │ 2026-07-29T10:02:00 │       │
-└──────────────────────┴─────────┴─────────┴───────────┴───────┴─────────────────────┴───────┘
-
-$ docket task show run-3f2a1c9e-... --json
-$ docket task list --pod myapp --json     # for scripting/dashboards
+$ docket task show task-9c745f95-984d     # the task's hops, evidence and every run that carried it
+$ docket task show run-3f2a1c9e-... --json # a non-interactive exec run, by its run id
+$ docket task list --pod myapp --json      # for scripting/dashboards
 ```
 
 `--progress` on `docket run` shows hop-by-hop progress live instead of only the final summary:
@@ -472,7 +465,7 @@ exactly like closing a `tail -f` window doesn't kill the process being tailed.
 A run stuck mid-hop can be asked to stop:
 
 ```bash
-$ docket task cancel run-3f2a1c9e-...
+$ docket task cancel task-9c745f95-984d
 ✓ requested cancellation for run run-3f2a1c9e-... (1 process group(s) killed)
 ```
 
@@ -481,25 +474,26 @@ just the immediate child (it may have shelled out further). Queued work is cance
 Running work remains visibly `running (cancel requested)` until its executor observes the request
 and fully returns; only then are the task and run terminal `cancelled`. An in-process model/backend
 call already executing is not forcibly aborted, but its late response is discarded at the next
-safe checkpoint and no later tool or pipeline hop starts. `runs show` and its JSON form expose the
-request, observation, and stop timestamps. A genuine cancellation writes one `runs.cancel` audit
-entry naming the run, its project, its pre-cancel state, and how many process groups were killed.
-Cancelling an already-terminal (or unknown) run changes
+safe checkpoint and no later tool or pipeline hop starts. `docket task show` and its JSON form
+expose the request, observation, and stop timestamps. A genuine cancellation writes one
+`runs.cancel` audit entry naming the run, its project, its pre-cancel state, and how many process
+groups were killed. A task still marked `running` whose dispatcher is gone is settled as `failed`,
+ready for `docket task retry`. Cancelling a task with nothing in flight changes
 nothing and writes no audit entry — but it still exits `1`, printed as an error
-(`run <id> is already <state>`), not a silent success; "no-op" describes its side effects, not
+(`Task <id> is <status>`), not a silent success; "no-op" describes its side effects, not
 its exit code.
 
 ---
 
 ## Scheduling and webhooks (unattended dispatch)
 
-Two ways to trigger a pod's pipeline without a human typing `dispatch`:
+Two ways to trigger a pod's pipeline without a human typing `docket run`:
 
 ### Schedules — cron, a daily time, or a fixed interval
 
 Schedules live in `~/.docket/docket-schedules.json`. Set one with `docket pod set
-schedule "<spec>"` — it validates the spec and writes the file for you; `docket pod <project>
-config unset schedule` removes the entry. The file's shape:
+schedule "<spec>"` — it validates the spec and writes the file for you; `docket pod unset
+schedule` removes the entry. The file's shape:
 
 ```json
 {
@@ -518,7 +512,7 @@ checked at most once per matching minute and **only while `docket start --dispat
 gets its own run record (`source: "schedule"`), so a scheduled dispatch is exactly as inspectable
 via `docket task list` as a manual one. An invalid spec (however it got into the file) is never treated
 as silently never-due: the sweep logs `schedule '<project>' skipped — <reason>` once per sweep
-instead of dropping it quietly; `docket setup` reports the same problem outside of `serve`.
+instead of dropping it quietly; `docket setup` reports the same problem outside of `docket start`.
 
 ### Webhooks — trigger from CI or any external system
 
@@ -546,7 +540,7 @@ pipeline; it has no way to supply a `--pipeline` of its own, only variable *valu
 
 ---
 
-## There is now one queue: per-pod dispatch
+## One queue: per-pod dispatch
 
 There is no org-level task queue. **Per-pod dispatch is the only queue:**
 
@@ -564,26 +558,20 @@ docket task add "Add a contact form to the homepage"
 docket run
 ```
 
-For genuinely cross-cutting *planning* (not code) — "what should the fleet focus on this
-week" — there is no queue at all, only the advisory Portfolio Manager described next: it reads
-fleet metadata and recommends in words; you act on its advice by delegating into the pods it
-names.
+### Looking across pods
 
-### Cross-pod planning, the honest way
-
-There is **no command that runs one pod's work from another pod.** To plan across pods (where to focus, what to rebalance or pause), use:
+There is **no command that runs one pod's work from another pod.** To see across pods (where to focus, what to rebalance or pause), use:
 
 ```bash
-docket status --all              # every pod member and queue status
-docket task list                 # every task across all pods
+docket status --all              # every pod: tasks, tokens, outcomes
 docket inbox                     # every pod that needs you, in one place
 ```
 
-Then queue tasks and dispatch individually:
+Then queue tasks and run each pod individually:
 
 ```bash
-docket task add "..."
-docket run
+docket task add "..." --pod myapp
+docket run --pod myapp
 ```
 
 ---
@@ -626,10 +614,10 @@ docket pod unset budgetUsd
 Every write is validated before it's stored (bad type, out-of-range, or an unknown key refuses
 the write) and audited as `pod.config`; a value that somehow ends up malformed in storage refuses
 dispatch rather than being silently coerced, naming the key. `pipeline` and `schedule` are
-validate-then-store: `config set pipeline <file>` checks the file and writes a hashed copy into
-the pod's own workspace before recording it, and `config set schedule "<spec>"` validates the cron/
-interval spec the same way (see "Schedules" below). Binding a pipeline this way makes it the
-**default for every trigger** — CLI dispatch, the serve webhook, a due schedule — whereas `docket
+validate-then-store: `pod set pipeline <file>` checks the file and writes a hashed copy into
+the pod's own workspace before recording it, and `pod set schedule "<spec>"` validates the cron/
+interval spec the same way (see "Schedules" above). Binding a pipeline this way makes it the
+**default for every trigger** — CLI dispatch, the `docket start` webhook, a due schedule — whereas `docket
 run --pipeline <f>` only swaps the spec for that one invocation. See
 [CONFIGURATION.md](CONFIGURATION.md) for the full reference on every key.
 
@@ -640,7 +628,7 @@ which pod settings are in play, and where each came from).
 ### What makes a pod member
 
 Each member is an ordinary registered agent with its **own** permission-locked workspace, so
-`docket status --all` / `info` / `cost` / `doctor` see every member for free.
+`docket status --all` and `docket setup` cover every member for free.
 
 ```
 ~/.docket/workspaces/projects/myapp-implementer/
@@ -669,16 +657,16 @@ conversation; separate workspaces isolate files, memory, and identity.
 Each role maps to the **cheapest model adequate for its workload**. Change a role once and every
 policy-following agent re-resolves; override per-pod with a role overlay or per-step with `model:` in the pipeline.
 
-| Role | Policy key | Default class |
-|------|-----------|---------------|
-| Lead | manager | cheap (coordination) |
-| Implementer | programmer | strong (reasoning-dense) |
-| Reviewer | reviewer | cheap |
-| Tester | tester | cheap |
+| Role | Default class |
+|------|---------------|
+| Lead | cheap (coordination) |
+| Implementer | strong (reasoning-dense) |
+| Reviewer | cheap |
+| Tester | cheap |
 
 ```bash
 docket setup model                                   # show the role→model policy
-docket setup model set programmer anthropic/claude-… # re-resolves every policy-following Implementer
+docket setup model set implementer anthropic/claude-… # re-resolves every policy-following Implementer
 ```
 
 Models come from the role policy, a pod role overlay, or a step's `model:` in the pipeline.
@@ -707,7 +695,7 @@ docket run
 docket start --dispatch
 ```
 
-You can also queue work from Telegram: wire the Lead once with `docket setup notify bind myapp-lead`, run
+You can also queue work from Telegram: bind the Lead once with `docket setup notify bind myapp-lead`, run
 `docket start --telegram`, and send `/delegate <task>` in that group. The task lands on the same
 pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
 the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <task-id> <text>` (for
@@ -720,8 +708,7 @@ the chat ids you explicitly list, never every wired binding.
 
 ```bash
 docket task list          # this pod's queue + per-task status/cost
-docket task trace --tail         # follow the pod's latest trace session
-docket task trace --tail         # the pod's activity
+docket task trace <task-id> --tail   # follow one task's trace session
 ```
 
 ### Review and commit
@@ -781,8 +768,8 @@ reason (`docket task list`). The cap is enforced between hops on every dispatch.
 
 ## Troubleshooting
 
-Pod/dispatch, scope, and Telegram issues (including "pod not running a delegated task,"
-"pipeline stops after the Implementer," and leftover pre-pods global roles) are all covered in
+Pod/dispatch and Telegram issues (including "pod not running a queued task" and
+"pipeline stops after the Implementer") are all covered in
 **[troubleshooting.md](troubleshooting.md)**'s "Pods & Dispatch" and "Agents Not Responding in
 Telegram" sections — kept in one place rather than duplicated here.
 
@@ -806,7 +793,7 @@ task add → run → Lead → Implementer → (Reviewer) → (Tester) → you re
 
 **Pipelines** (`docket pod validate`, `docket pod plan`, `docket run`):
 - The docket-native pipeline is the dialect the system executes; a pod with no pipeline file runs the built-in one unchanged.
-- Every dispatch — CLI, `--follow`, a schedule, a webhook, or the sweep loop — lands one record
+- Every dispatch — CLI, `--progress`, a schedule, a webhook, or the sweep loop — lands one record
   in the run registry; `docket task cancel` kills an in-flight hop's process group for real.
 
 **Key guarantees:**

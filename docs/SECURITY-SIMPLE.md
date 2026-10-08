@@ -23,8 +23,8 @@
 > "ask" that actually blocks a live tool call (an interactive foreground dispatch, which resolves
 > to `approvalMode: wait`) denies itself after 120 seconds with nobody watching; a pre-hop
 > `approval` gate (the async, pre-dispatch-level kind) denies after 15 minutes. **An unattended
-> pod never blocks on that 120-second wait at all** — `serve --dispatch`'s sweep and a
-> non-interactive `dispatch` both resolve an unset pod to `approvalMode: park` (Phase 34, D-50):
+> pod never blocks on that 120-second wait at all** — `docket start --dispatch`'s sweep and a
+> non-interactive `docket run` both resolve an unset pod to `approvalMode: park` (Phase 34, D-50):
 > the in-turn `ask` is recorded and the task is parked `waiting_approval` immediately, with no
 > live wait and no risk of one stuck hop stalling every other pod in the same sweep. A parked
 > approval is answered exactly the same way (any of the four channels above), re-runs the same
@@ -75,7 +75,7 @@ see the status note above for who can answer, and for the `git`/`npm` carve-out.
 ### 2. A Reviewer Can Veto (when the pod has one)
 
 The default pod from `docket init` is lean — Lead + Implementer, **no Reviewer**. Add one with
-`docket init --pod full`, `--with reviewer`, or later `docket pod add reviewer`. When present:
+`docket init --pod full`, `docket init --with reviewer`, or later `docket pod add reviewer`. When present:
 
 - Its role prompt tells it to review diffs "for correctness, security, and requirement fit". There
   is **no fixed checklist** — what it catches is the model's judgment, not a scanner.
@@ -138,8 +138,8 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 ### Layer 4: Guardrail Policies (Automatic, on real dispatch tasks)
 - A small set of installed policies (`docket pod policies`) scan text at two points in docket's own
   pod-dispatch pipeline — not a raw Telegram chat, only work that goes through
-  `docket task add`/`dispatch`:
-  - **Once**, when a task is delegated — before it's even added to the queue.
+  `docket task add`/`docket run`:
+  - **Once**, when a task is added — before it's even added to the queue.
   - **On every hop's real reply**, as the pipeline runs.
 - A match can `allow`/`warn` (just logged), `redact` (scrub it before it's stored), `block`
   (reject the task, or stop the pipeline where it tripped), or — enqueue-time only —
@@ -179,8 +179,8 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
   `pytest > /etc/passwd` still asks. **`approvalMode`** is how a pod chooses what an unattended
-  `ask` does: unset, it resolves per caller — `park` under `serve --dispatch`'s sweep or a
-  non-interactive `dispatch`, `wait` under an interactive TTY. An explicit `wait` blocks the
+  `ask` does: unset, it resolves per caller — `park` under `docket start --dispatch`'s sweep or a
+  non-interactive `docket run`, `wait` under an interactive TTY. An explicit `wait` blocks the
   call for the usual 120-second in-turn timeout regardless of caller; `park` records the call and
   parks the task instead of blocking (see "The operator loop" below); `refuse` fails the call
   fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
@@ -257,8 +257,8 @@ stripped from their environment.
   entry (`from`, `to`, `host`). Each exported session also carries `docket.privacy`, so the
   destination shows what it was allowed to receive.
 - **A running `docket start` keeps the level it started with.** Export starts once per process,
-  so a change — narrowing included — reaches a long-running `serve --dispatch` only after it
-  restarts. A one-shot `dispatch` or `harness run` picks it up at once. `DOCKET_NO_EXPORT=1`
+  so a change — narrowing included — reaches a long-running `docket start --dispatch` only after it
+  restarts. A one-shot `docket run` or `docket exec` picks it up at once. `DOCKET_NO_EXPORT=1`
   turns export off for one process.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
   stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
@@ -269,7 +269,7 @@ stripped from their environment.
   exporter's health counters (`docket setup export show <name>`), it never raises into the agent
   loop.
 - **A pod only documents intent, never activates.** `pod.yaml`'s `exporters:` list is validated
-  against the live catalog and reported by `config explain`, but naming a destination there does
+  against the live catalog and reported by `docket pod show`, but naming a destination there does
   not turn it on — `docket setup export enable` is still the one command that flips `enabled: true`.
 
 ### The operator loop: how you find out, and how you answer (Phase 34, D-50)
@@ -283,7 +283,7 @@ stripped from their environment.
   document (`docket setup notify`): seven dialects ship (`console`, `desktop`, `webhook`, `command`,
   `ntfy`, `email`, `telegram`), and only `console` — your own terminal, already the inbox — ships
   enabled. Enabled is not the same as reaching you: console sends nothing, so `docket setup`
-  flags a home with pods and nothing else on, and `init`/`serve --dispatch` warn too; the fix
+  flags a home with pods and nothing else on, and `docket init`/`docket start --dispatch` warn too; the fix
   is one command, never automatic. Nothing leaves this host to notify you of anything until
   you run `docket setup notify enable <name>`. Each dialect has a closed maximum of what it may do: every dialect can
   `notify`; only `console` and `telegram` may ever `decide` (act on an approval from inside the
@@ -371,10 +371,10 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 ## The Audit Log (`docket log`)
 
-Every gate flip, approval grant/deny, key/model/profile/pod change, and every exporter added,
+Every sandbox change, approval grant/deny, credential/model/pod change, and every exporter added,
 removed, enabled, disabled or given a new privacy level, writes one line to
 `~/.docket/audit.log` — who, what, when. Secret **values** are never written, only names (a
-key's NAME, a model id, an agent id).
+credential's NAME, a model id, an agent id).
 
 ```bash
 docket log          # last 20 changes

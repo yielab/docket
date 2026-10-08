@@ -114,9 +114,9 @@ All contributions must include appropriate tests:
   is budgeted, never the default suite, and runs in its own CI job
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **4,195 tests** in the default suite
+For scale, so you know what you're getting into: **4,190 tests** in the default suite
 (`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~44,995 lines** of Python in the shipped package, **32 specifications**
+runs separately), **~44,877 lines** of Python in the shipped package, **32 specifications**
 validated in CI, and **11 commands** in the [command reference](docs/commands.md).
 `scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
 cannot silently go stale.
@@ -138,7 +138,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 4,195-test Python suite
+uv run pytest   # 4,190-test Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent
@@ -243,7 +243,7 @@ Seven rules, each written down because breaking it cost real work here.
    a reader in `cli/` and no consumer on the live path; they were purged on 2026-10-03 and the
    rule became a decision on 2026-10-07 (ROADMAP D-57, ADR 0022). It stands until docket has an
    installed base, which is a fact about the world and not a release number. Two things are not
-   legacy: a published contract with a real external consumer (`harness run` v1.0 beside v1.1,
+   legacy: a published contract with a real external consumer (`docket exec` v1.0 beside v1.1,
    while Tack still reads v1.0) and a current format that happens to be older than another
    (canonical policy JSON without `kind:`).
 

@@ -33,14 +33,14 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | Doc | What it covers |
 |-----|----------------|
 | [Quick start](QUICK-START-DOCKET.md) | Ten minutes from install to a governed run, then the customization loop |
-| [Agent teams (pods)](AGENT-TEAMS.md) | The core model: org specialists vs project pods, the roles, blueprints, recipes and real pipeline dispatch |
+| [Agent teams (pods)](AGENT-TEAMS.md) | The core model: project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
 | [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
 | [Recipe library](recipes.md) | The eighteen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
-| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
+| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state, [`docket exec`](DOCKET.md#docket-exec-one-agent-one-turn-for-an-external-caller) |
 | [Adoption evidence](ADOPTION-EVIDENCE.md) | Reproducible governance and recovery results, with their limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 | [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. Not `docket exec`, which is the CLI's single-agent mode for an external caller |
@@ -133,7 +133,6 @@ in your repository:
 ├── audit.log                         # hash-chained audit log (docket log verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
 └── workspaces/
-    ├── manager/ knowledge/ security/ # the shared org specialists
     ├── pods/<project>/config/        # this pod's own overlay: roles.json, policies/, plugins/, skills/
     └── projects/<project>-<role>/    # one isolated workspace per pod member
         ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
@@ -143,9 +142,7 @@ in your repository:
         └── memory/                   # daily logs
 ```
 
-Org specialists (`manager`, `knowledge`, `security`, and the opt-in `portfolio-manager`) have one
-shared workspace each. Pod members each get an isolated one; no role is ever shared between
-projects. Which of these files reach a model, and which only look like settings, is the subject
+Pod members each get an isolated workspace; no role is ever shared between projects. Which of these files reach a model, and which only look like settings, is the subject
 of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 
 ---

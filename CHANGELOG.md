@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket init` is a real Typer command.** Its two arguments (`[PROJECT] [LOCATION]`) and
+  eight options (`--blueprint`, `--pod full`, `--with`, `--codebase`, `--name`, `--from`,
+  `--recipe`, `--no-apply`) are declared on the command: `init --help` is one screen that lists
+  each with its meaning (the blueprint rosters and the `--from` file format stay in
+  `specs/functional/pod-blueprints.spec.md`), `setup shell` completes them, and a `--pod`
+  value other than `full`, `--from` beside any other option, or a third positional is a usage
+  error (exit 2) like an undefined option. `cmd_init` builds one `InitRequest`; `run_init`
+  provisions from it; the hand parsers (`_parse_add_args`, `parse_pod_roles`) are gone.
+  `setup shell` offers pod names after `--pod` only on commands that carry the shared
+  `--pod/-p` option, so `init --pod` completes nothing.
+- **The invocation linter checks two more things.** A bare `FOO` or `$X` where a verb goes is
+  a finding (`docket task FOO`), not a placeholder, and the rest of a `<a|b>` line must fit at
+  least one of the named verbs (`docket pod <apply|export> a b c` is a finding). `init` is no
+  longer exempt: its options are on the live tree.
+
+### Changed
+
+- **Documentation describes the eleven-command surface in prose, not only in code spans.**
+  `docs/AGENT-TEAMS.md`, `WORKFLOW-GUIDE.md`, `CONFIGURATION.md`, `DOCKET.md`,
+  `SECURITY-SIMPLE.md`, `troubleshooting.md`, the docs index and one CONTRIBUTING line no
+  longer speak of `serve`, `doctor`, `harness run`, `config explain`, `models provider`,
+  `audit verify`, `exporters`, `set-verify`, a positional pod id, `apr-` tokens on the operator
+  surface or the org specialists; `DOCKET.md`'s exec section is headed `docket exec`.
+
 - **Help is grouped and spoken once.** `docket --help` shows the tagline and the eleven commands
   in three panels (Daily, The pod, Machine); `-h` works at every level; the bare `docket` prints
   the tagline, the five daily commands and `Not set up yet? docket setup`; an unknown command

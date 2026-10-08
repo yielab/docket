@@ -49,7 +49,7 @@ Implementers when the work warrants it.
 
 Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-implementer-2`,
 `myapp-reviewer`, `myapp-tester`. Because each is an ordinary registered agent,
-`docket status --all`/`info`/`cost`/`doctor` see every pod member for free.
+`docket status --all` and `docket setup` cover every pod member for free.
 
 ```bash
 docket init myapp ~/code/myapp       # lean pod: myapp-lead + myapp-implementer
@@ -72,9 +72,8 @@ A pod has **exactly one Lead** (its single orchestrator); every other role may b
 
 ## Role archetypes — roles are data, not hardcoded branches
 
-Before this was declarative, a pod role was a closed 4-tuple wired into `core/pod.py`, and each
-role's identity prose was hand-written string-building in the CLI. Adding a fifth role meant
-editing code. Now every role — including the four legacy ones — is a **role archetype**
+A pod role is not a closed set wired into code, and adding a fifth role needs no code change.
+Every role — including the four built-in ones — is a **role archetype**
 (`core/archetypes.py`): a versioned, declarative record of its scope, model class, identity
 templates, gate contract, denied tools, and tool profile.
 
@@ -85,7 +84,7 @@ docket pod apply ./producer.yaml  # register a custom archetype from a YAML file
 docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
-Four **built-in** archetypes reproduce the legacy roles byte-identically. A **starter library**
+Four **built-in** archetypes cover the everyday roster. A **starter library**
 ships six more you can drop into any pod without writing a line of YAML:
 
 | Name | Class | Gate | Denied tools |
@@ -111,7 +110,7 @@ included.
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
 exact `APPROVE`/`REJECT`-style marker convention). Either way, a pipeline step's own `instructions`
-(when set) overrides it for that one hop — see [Pipelines](WORKFLOW-GUIDE.md#pipelines-the-one-dialect-docket-runs)
+(when set) overrides it for that one hop — see [Pipelines](WORKFLOW-GUIDE.md#pipelines-the-one-dialect)
 in the Workflow Guide.
 
 Composing several starter roles into one pod shape, in a single command, is a **pod blueprint** —
@@ -121,7 +120,7 @@ next section.
 
 ## Pod blueprints — named pod shapes
 
-`docket pod add` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
+`docket init` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
 (`core/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
@@ -170,18 +169,17 @@ is committed next to the code — see [the recipe library](recipes.md),
 
 ## Why this structure matters — three defects it fixes
 
-The pod model is not decoration. It exists to fix three concrete failures of the naive
-"one agent per project + a few shared workers" setup docket used before Phase 10:
+The pod model is not decoration. It rules out three concrete failures of a naive
+"one agent per project + a few shared workers" setup:
 
-1. **Two doers (no clear owner of completion).** Before Phase 10, a project agent *and* a shared
-   `programmer` specialist could both implement, so neither reliably finished a task. In a pod, the
+1. **Two doers (no clear owner of completion).** If a project agent *and* a shared programmer
+   could both implement, neither would reliably finish a task. In a pod, the
    **Implementer is the single doer** and the **Lead never edits code** — one writer, one owner.
-2. **Broken isolation.** That pre-Phase-10 shared `programmer` specialist served every project from
-   *one* workspace and *one* memory — so projects leaked into each other. In a pod, **every member
-   has its own workspace**; the load-bearing guarantee is *no worker agent ever serves two
-   projects.*
-3. **Delegation that wasn't real.** Previously a Lead's instructions *said* "hand off to the
-   Implementer," but nothing actually ran the next agent. docket now **really runs the pipeline**
+2. **Broken isolation.** A shared worker serving every project from *one* workspace and *one*
+   memory lets projects leak into each other. In a pod, **every member has its own workspace**;
+   the load-bearing guarantee is *no worker agent ever serves two projects.*
+3. **Delegation that isn't real.** A Lead's instructions can *say* "hand off to the
+   Implementer" while nothing runs the next agent. docket **really runs the pipeline**
    (see below) — the hand-off executes.
 
 ---
@@ -243,8 +241,8 @@ Three guarantees hold on every dispatch:
 
 **A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
 `requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all
-move the task to `waiting_approval` rather than failing it. Under `serve --dispatch`'s sweep or a
-non-interactive `dispatch`, that `ask` **parks** — it records the exact call and moves on to the
+move the task to `waiting_approval` rather than failing it. Under `docket start --dispatch`'s sweep or a
+non-interactive `docket run`, that `ask` **parks** — it records the exact call and moves on to the
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
 needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
 enable (`docket setup notify enable desktop`, `ntfy` or `telegram`; the default `console` sends
@@ -253,7 +251,7 @@ nothing, and `docket setup` says so) can push it to you instead of waiting for y
 single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
 can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
 the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
-<task-id>` or `docket task answer`'s job, not `docket task approve`'s. See
+<task-id>`'s job, not `docket task approve`'s. See
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
 
 ---
@@ -281,9 +279,8 @@ inherit-the-parent-env behavior.
 ## The durable task ledger
 
 A pod Lead's `HEARTBEAT.md` carries the same resume/durability contract every agent workspace
-has: in-flight work is written down before it starts, so a context reset can resume it. That
-ledger used to be only as honest as the agent's own compliance. Dispatch now maintains it
-**mechanically**: a delimited, docket-owned region inside `## Active Tasks`
+has: in-flight work is written down before it starts, so a context reset can resume it. Dispatch
+maintains that ledger **mechanically**, so it is not only as honest as the agent's own compliance: a delimited, docket-owned region inside `## Active Tasks`
 (`core/memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
 every claim, every hop completion, and every retry — the entry for a task exists before its first
 hop ever runs, whether or not the agent would have written it down itself. Everything outside that
@@ -305,7 +302,7 @@ self-authored `IDENTITY.md`. Identity in a docket-managed workspace is docket-ow
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
 templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod apply` when
 they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
-`SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and a
+`SOUL.md` (docket never writes it, so it survives `docket pod apply` and `docket pod reset`), and a
 `projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
 named with `docket pod set projectInstructions <path,...>`, screened through the same
 `pre_input` policy hook as any other input and restricted to relative paths that can't escape the
@@ -352,12 +349,12 @@ starter or custom archetype with no dedicated policy-table row falls back to res
 own `modelClass` (`cheap`/`strong`) instead of the global default — see `docket pod roles <name>`
 for what class a given role carries.
 
-| Role | Policy key | Default class |
-|------|-----------|---------------|
-| Lead | manager | cheap |
-| Implementer | programmer | strong |
-| Reviewer | reviewer | cheap |
-| Tester | tester | cheap |
+| Role | Default class |
+|------|---------------|
+| Lead | cheap |
+| Implementer | strong |
+| Reviewer | cheap |
+| Tester | cheap |
 
 See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 [Command Reference](commands.md) for every flag.
@@ -411,5 +408,5 @@ docket setup notify flush                               # push pending notificat
 
 ```
 
-> Every project's pod owns its own delegate/queue/dispatch (see above). There is no org-wide
+> Every project's pod owns its own task queue and runs (see above). There is no org-wide
 > queue.
