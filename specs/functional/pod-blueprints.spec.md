@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.26.1
+**Version**: 1.26.2
 **Status**: Implemented
 **Last Updated**: 2026-10-08
 
@@ -46,7 +46,7 @@ This specification does NOT cover:
   "Pipeline order and participation", for the exact resolution order. A `research`, `content`, or
   `ops` pod dispatched that way now runs its full roster and gates, not only its Lead step.
 - User-authored blueprint definitions. Unlike `docket pod apply` for archetypes, there is no
-  `docket blueprints add <file.yaml>` yet — the five built-ins are the whole registry today (see
+  a command to add a blueprint from a file yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)
 - Per-role org-vs-pod scope as a blueprint-level concept — scope is a property of the *archetype*
   a role name resolves to (`role-archetypes.spec.md`), inherited by a blueprint's roster, not
@@ -168,7 +168,7 @@ This specification does NOT cover:
 ### User-authored blueprints
 
 1. Unlike role archetypes (`docket pod apply <file.yaml>`), there is currently no
-   `docket blueprints add` — the five built-ins in `core/blueprints.py` are Python literals and
+   a command to add a blueprint — the five built-ins in `core/blueprints.py` are Python literals and
    are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
    custom pod shape means adding roles to an existing pod with `docket pod add <role>`
@@ -570,6 +570,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.26.2 (2026-10-08)
+
+- Invocations checked against the live tree.
 
 ### Version 1.26.1 (2026-10-08)
 

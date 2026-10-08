@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.6.1
+**Version**: 3.6.2
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -89,7 +89,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
 `docket init` (including `docket init --from`); `docket pod add`
 writes the same member fields when a role joins an existing pod. `install` means the internal
-workstation bootstrap the first `docket init` runs; there is no `docket install` command.
+workstation bootstrap the first `docket init` runs; there is no `install` command.
 
 ## Single-source contract
 
@@ -237,6 +237,10 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.6.2 (2026-10-08)
+
+- Invocations checked against the live tree.
 
 ### Version 3.6.1 (2026-10-08)
 

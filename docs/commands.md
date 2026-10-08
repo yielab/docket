@@ -70,8 +70,8 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          blueprints: software, research, content, ops,
                          agentic-product" and exits 1 before any prompt.
                          Only the five built-ins exist today -- there is
-                         no `docket blueprints add <file>` to register a
-                         custom one. See
+                         no command to register a custom one.
+                         See
                          specs/functional/pod-blueprints.spec.md.
   --codebase <path>     the codebase path (or, for a workdir-kind
                          blueprint, the pod's shared working directory) --

@@ -288,7 +288,7 @@ Examples:
 ```
 Fix: resolve the pod for a project name with dashes
 
-docket pod set now slugifies a name that contains uppercase letters or
+The pod set verb now slugifies a name that contains uppercase letters or
 underscores before looking the pod up, so --pod My_App finds my-app.
 
 Add: pod check verb
