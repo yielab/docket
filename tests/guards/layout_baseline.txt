@@ -3,7 +3,6 @@
 # of these removes its line here; a module gaining coverage some other way still needs its own
 # unit file before it can be dropped, since test_layout.py checks presence, not the golden/
 # integration suites. New entries require the module to already exist and already lack coverage.
-docket.cli._agents
 docket.cli._conversations
 docket.cli._help
 docket.cli._mcp

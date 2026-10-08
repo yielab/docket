@@ -1,6 +1,7 @@
 """docket init: create a project pod, or provision agents declaratively.
 
-``run_init`` returns the process exit code and ``cmd_init`` wraps it in the Typer command.
+``cmd_init`` is the Typer command; it builds an ``InitRequest`` and ``run_init`` returns the
+process exit code.
 ``_create_workspace``/``_provision_agent`` are the single-agent template + registration path
 (pods use ``cli/_pod.py`` instead).
 """
@@ -11,6 +12,7 @@ import contextlib
 import json as _json
 import re as _re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,83 +33,19 @@ from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.edges import store
 
-# Flags that consume the following token as their value (skipped when scanning
-# for bare positionals). --with/--pod are handled by parse_pod_roles.
-_ADD_VALUE_FLAGS = frozenset(
-    {
-        "--from",
-        "--codebase",
-        "--name",
-        "--with",
-        "--pod",
-        "--model",
-        "--count",
-        "--blueprint",
-    }
-)
 
+@dataclass(frozen=True)
+class InitRequest:
+    """What `docket init` was asked for, as Typer parsed it."""
 
-def _parse_add_args(
-    all_args: list[str],
-) -> tuple[str | None, str | None, str | None, str | None, str | None, bool]:
-    """Extract (from_file, codebase, name, blueprint, recipe, no_apply) from `docket init`
-    args: flags or bare positionals, trusted and skipping their interactive prompt.
-    ``--recipe`` names a directory to apply after provisioning; ``--no-apply`` skips it."""
-    from_file: str | None = None
-    codebase: str | None = None
     name: str | None = None
+    location: str | None = None
     blueprint: str | None = None
     recipe: str | None = None
-    no_apply = "--no-apply" in all_args
-    positionals: list[str] = []
-
-    i = 0
-    while i < len(all_args):
-        arg = all_args[i]
-        if arg == "--no-apply":
-            i += 1
-            continue
-        for flag, setter in (
-            ("--from", "from"),
-            ("--codebase", "cb"),
-            ("--name", "nm"),
-            ("--blueprint", "bp"),
-            ("--recipe", "rc"),
-        ):
-            if arg == flag and i + 1 < len(all_args):
-                val = all_args[i + 1]
-                i += 2
-                break
-            if arg.startswith(flag + "="):
-                val, setter = arg[len(flag) + 1 :], setter
-                i += 1
-                break
-        else:
-            # Not one of our value flags. Skip other flags (and their value if
-            # they take one) so pod flags don't leak into positionals.
-            if arg.startswith("-"):
-                i += 2 if arg in _ADD_VALUE_FLAGS else 1
-                continue
-            positionals.append(arg)
-            i += 1
-            continue
-        if setter == "from":
-            from_file = val
-        elif setter == "cb":
-            codebase = val
-        elif setter == "nm":
-            name = val
-        elif setter == "bp":
-            blueprint = val
-        elif setter == "rc":
-            recipe = val
-
-    if positionals:
-        if name is None:
-            name = positionals[0]
-        if codebase is None and len(positionals) > 1:
-            codebase = positionals[1]
-    return from_file, codebase, name, blueprint, recipe, no_apply
+    no_apply: bool = False
+    from_file: str | None = None
+    full: bool = False
+    with_roles: str = ""
 
 
 def _resolve_repo_apply_source(loc_path: Path, cli_recipe: str | None) -> tuple[Path | None, int]:
@@ -168,29 +106,18 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     return 0
 
 
-def run_init(all_args: list[str]) -> int:
-    """Initialize a project pod, deriving ordinary defaults from the cwd (intentionally
-    non-interactive with zero args: cwd is the location, its basename the pod id).
-    Explicit args/options override; ``--from`` retains the declarative path."""
-    project_args = all_args
-    known_flags = _ADD_VALUE_FLAGS | {"--recipe", "--no-apply"}
-    for arg in project_args:
-        if arg.startswith("--") and arg.split("=", 1)[0] not in known_flags:
-            ui.error(f"No such option: {arg.split('=', 1)[0]}")
-            return 2
-
+def run_init(req: InitRequest) -> int:
+    """Provision a project pod from the request, deriving ordinary defaults from the cwd
+    (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
+    the declarative path instead."""
     _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    from_file, cli_codebase, cli_name, cli_blueprint, cli_recipe, no_apply = _parse_add_args(
-        project_args
-    )
-
-    if from_file is not None:
-        return _cmd_add_declarative(from_file)
+    if req.from_file is not None:
+        return _cmd_add_declarative(req.from_file)
 
     from docket.core import blueprints as _bp
 
-    blueprint_name = cli_blueprint or _bp.DEFAULT_BLUEPRINT
+    blueprint_name = req.blueprint or _bp.DEFAULT_BLUEPRINT
     try:
         blueprint = _bp.get_blueprint(blueprint_name)
     except _bp.BlueprintError as exc:
@@ -200,14 +127,14 @@ def run_init(all_args: list[str]) -> int:
     # Location and identity are deterministic defaults, not a prompt sequence.
     # This makes `docket init` behave like a conventional project initializer.
     is_workdir = blueprint.workspace_kind == "workdir"
-    if cli_codebase is not None:
-        location = str(Path(cli_codebase).expanduser())
+    if req.location is not None:
+        location = str(Path(req.location).expanduser())
     else:
         location = str(_prov.default_codebase())
     loc_path = Path(location)
 
-    suggested_name = cli_name or _prov.suggest_project_name(loc_path)
-    name = cli_name or suggested_name
+    suggested_name = req.name or _prov.suggest_project_name(loc_path)
+    name = req.name or suggested_name
     if not name:
         ui.error("Name is required.")
         return 1
@@ -222,7 +149,7 @@ def run_init(all_args: list[str]) -> int:
     # A repository's own `.docket/` is its configuration of record (ADR 0012): discovered,
     # validated, and (unless `--no-apply`) applied after provisioning; `--recipe` starts from
     # a shipped or local recipe the same way, mutually exclusive with a present `.docket/`.
-    apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, cli_recipe)
+    apply_source, resolve_rc = _resolve_repo_apply_source(loc_path, req.recipe)
     if resolve_rc:
         return resolve_rc
 
@@ -237,9 +164,9 @@ def run_init(all_args: list[str]) -> int:
     # --pod full / --with only make sense against the `software` roster —
     # any other blueprint provisions its own fixed roster as-is.
     if blueprint.name == "software":
-        roles = _pod.parse_pod_roles(project_args)
+        roles = _pod.pod_roles(req.full, req.with_roles)
     else:
-        if any(a in ("--pod", "--with") or a.startswith("--with=") for a in project_args):
+        if req.full or req.with_roles:
             ui.warn(
                 f"--pod/--with only apply to the 'software' blueprint — ignoring for '{blueprint.name}'."
             )
@@ -261,7 +188,7 @@ def run_init(all_args: list[str]) -> int:
         return 1
 
     if apply_source is not None:
-        apply_rc = _apply_repo_config(aid, apply_source, no_apply)
+        apply_rc = _apply_repo_config(aid, apply_source, req.no_apply)
         if apply_rc:
             return apply_rc
 
@@ -308,11 +235,9 @@ def _offer_desktop_channel() -> None:
 def _provision_pod_from_spec(
     aid: str, blueprint_name: str, spec: dict[str, Any]
 ) -> list[str] | None:
-    """Provision one pod from a `blueprint`-bearing `--from spec.yaml` entry. Returns
-    the created member ids, or ``None`` (already warned) if the pod exists or the
-    blueprint is unknown — the caller counts that as a skip, matching the single-agent
-    path's idempotence contract. Goes through `cli._pod.build_pod_from_blueprint`,
-    the same path `docket init` and `POST /pods` use."""
+    """Provision one pod from a `blueprint`-bearing `--from` entry through
+    `cli._pod.build_pod_from_blueprint`, the path `docket init` and `POST /pods` share.
+    ``None`` (already warned) means the pod exists or the blueprint is unknown: a skip."""
     from docket.cli import _pod
 
     try:
@@ -624,116 +549,78 @@ def _provision_agent(
         )
 
 
-def cmd_init(ctx: typer.Context) -> None:
-    """Initialize the current project with its minimum isolated pod.
+def cmd_init(
+    project: str | None = typer.Argument(
+        None, help="The pod's name; defaults to the current directory's name."
+    ),
+    location: str | None = typer.Argument(
+        None,
+        help="The codebase (or a workdir blueprint's working directory); defaults to the cwd.",
+    ),
+    blueprint: str | None = typer.Option(
+        None,
+        "--blueprint",
+        help="software (the default), research, content, ops or agentic-product.",
+    ),
+    pod: str | None = typer.Option(
+        None,
+        "--pod",
+        help="'full': Lead, Implementer, Reviewer and Tester (software blueprint only).",
+    ),
+    with_roles: str | None = typer.Option(
+        None,
+        "--with",
+        help="Roles to add to the lean pod, comma-separated: reviewer, tester, implementer.",
+    ),
+    codebase: str | None = typer.Option(
+        None, "--codebase", help="The location, as an option instead of the argument."
+    ),
+    name: str | None = typer.Option(
+        None, "--name", help="The pod's name, as an option instead of the argument."
+    ),
+    from_file: str | None = typer.Option(
+        None,
+        "--from",
+        help="Provision pods and agents from one JSON or YAML file; excludes every other option.",
+    ),
+    recipe: str | None = typer.Option(
+        None,
+        "--recipe",
+        help="Apply a shipped recipe (docket pod recipes) or a recipe directory afterwards.",
+    ),
+    no_apply: bool = typer.Option(
+        False,
+        "--no-apply",
+        help="Provision only; print the docket pod apply command for .docket/ or the recipe.",
+    ),
+) -> None:
+    """Create the team for this repository: a pod of agents that owns this codebase.
 
-    Creates a new project pod -- an isolated team of project-scoped agents
-    that owns one codebase. The default pod is lean: a Lead + an Implementer.
-    The first invocation also creates docket's shared workstation foundation
-    (fleet registry, policies, default gates) -- there is no
-    separate setup step. See docs/AGENT-TEAMS.md.
+    With no arguments the pod is named after the current directory and holds
+    a Lead and an Implementer (ids `<pod>-lead`, `<pod>-implementer`).
+    A `.docket/` directory next to the code, what `docket pod export` writes,
+    is validated first and applied after provisioning, so the repository's
+    own team definition is what you get; `--recipe` starts from a shipped
+    team instead. Blueprints, `--from` entries and the apply step:
+    specs/functional/pod-blueprints.spec.md.
 
-    With no arguments, docket derives the project id, path, and stack from the
-    current directory (non-interactive, deterministic). Member ids are
-    predictable: `<project>-lead`, `<project>-implementer`, `<project>-reviewer`,
-    `<project>-tester` (duplicated roles get `-2`, `-3` suffixes). A pod
-    always has exactly one Lead. Resize a pod later with `docket pod add|remove`; tear
-    the whole pod down with `docket pod delete`.
-
-    Flags (parsed from the extra CLI args, not fixed Typer options):
-      --pod full            provision Lead, Implementer, Reviewer, and Tester.
-                             Only applies to the default `software` blueprint;
-                             ignored (with a warning) for any other blueprint,
-                             which provisions its own fixed roster.
-      --with <roles>        start from the lean pod and add named roles
-                             (comma-separated: reviewer, tester, implementer).
-                             Same `software`-only restriction as `--pod full`.
-      --blueprint <name>    (default `software`) provision a named pod
-                             blueprint instead of the plain lean/full pod --
-                             `software` (codebase, lead+implementer), `research`
-                             (workdir, lead/researcher/analyst/writer/critic,
-                             $20 default budget, Critic gates the final step
-                             with one rework cycle), `content` (workdir,
-                             lead/writer/critic, $15), `ops` (workdir,
-                             lead/operator/monitor, $30, Operator gated on its
-                             own verifyCmd, Monitor is a human-approval gate),
-                             `agentic-product` (codebase, full software
-                             roster). A codebase blueprint treats the location
-                             argument as an existing, never-auto-created
-                             codebase path and auto-detects its stack; a
-                             workdir blueprint treats it as the pod's one
-                             shared working directory instead -- no stack is
-                             auto-detected. `docket init` always passes the
-                             cwd (or an explicit `--codebase`/`path`) as the
-                             location, so it never hits the auto-provisioned
-                             `~/.docket/workspaces/pods/<project>/` default;
-                             that path is only reached via `--from` entries
-                             that omit `workDir` or `POST /pods` calls that
-                             omit `path`. Unknown
-                             name errors with "unknown blueprint 'X'; valid
-                             blueprints: software, research, content, ops,
-                             agentic-product" and exits 1 before any prompt.
-                             Only the five built-ins exist today -- there is
-                             no command to register a custom one.
-                             See
-                             specs/functional/pod-blueprints.spec.md.
-      --codebase <path>     the codebase path (or, for a workdir-kind
-                             blueprint, the pod's shared working directory) --
-                             same value as the `path` positional; supplying it
-                             up front skips its interactive prompt.
-      --name <name>         display name -- same value as the 1st positional;
-                             skips its prompt.
-      --from <spec-file>    non-interactive, declarative provisioning -- one
-                             or many agents/pods from a single JSON or YAML
-                             file (`.yaml`/`.yml` needs PyYAML), the same
-                             mechanism a CI job or fleet-bootstrap script would
-                             use. The file is a bare list, `{"agents": [...]}`,
-                             or one entry object. Each entry needs an `id`; an
-                             entry with a `blueprint` field provisions a pod
-                             (fields: `codebase`/`workDir`, `stack`,
-                             `description`, `projectKey`, `budgetUsd`,
-                             `telegram`); an entry with no `blueprint`
-                             provisions a single flat agent the same shape
-                             `docket init` always has (fields: `name`,
-                             `codebase`, `stack`, `model`, `description`,
-                             `telegram`, `budgetUsd`, `projectKey`). Mutually
-                             exclusive with every other flag/prompt. An entry
-                             whose id already exists, or names an unknown
-                             blueprint, is skipped with a warning rather than
-                             failing the rest of the file -- the command
-                             always exits 0, so check the printed summary
-                             rather than only the exit code in a script.
-      --recipe <name|dir>   apply a shipped or local recipe directory after
-                             provisioning -- a directory path as given, else a
-                             shipped recipe by name (`docket pod recipes`
-                             shows all of them). An unresolvable
-                             name errors naming the shipped recipe names and
-                             exits 1 before any provisioning. Mutually
-                             exclusive with a present `<location>/.docket/` --
-                             giving both errors naming both sources and exits
-                             1 before any provisioning.
-      --no-apply             provision the pod only, skipping the apply step
-                             for a present `.docket/` or a resolved `--recipe`;
-                             prints the `docket pod apply <dir>` command
-                             that would apply it.
-
-    A repository's own `<location>/.docket/` -- the same directory shape
-    `docket pod apply` reads (roles/*.yaml, policies/*.json,
-    pipeline.yaml, pod.yaml) -- is discovered automatically: every document
-    under it is validated before anything is provisioned, and applied after
-    (unless `--no-apply`) through that same command's plan/apply path. A
-    validation error exits 1 naming the file and field, with nothing
-    provisioned. See specs/functional/pod-blueprints.spec.md, "Pod manifests:
-    apply".
-
-    Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
-    (or the `path` argument / `--codebase`, in which case you are not
-    re-prompted); the project name is suggested from that directory's name.
-
-    Example: docket init"""
-    from docket.cli._agents import run_init
-
-    raise typer.Exit(run_init(list(ctx.args)))
+    Example: docket init --recipe secure-build"""
+    if pod not in (None, "full"):
+        raise typer.BadParameter("only 'full' is accepted", param_hint="--pod")
+    others = (project, location, blueprint, pod, with_roles, codebase, name, recipe)
+    if from_file is not None and (no_apply or any(o is not None for o in others)):
+        raise typer.BadParameter("--from takes no other argument or option", param_hint="--from")
+    req = InitRequest(
+        name=name or project,
+        location=codebase or location,
+        blueprint=blueprint,
+        recipe=recipe,
+        no_apply=no_apply,
+        from_file=from_file,
+        full=pod == "full",
+        with_roles=with_roles or "",
+    )
+    raise typer.Exit(run_init(req))
 
 
 def _test_cmd_for_stack(stack: str) -> str:

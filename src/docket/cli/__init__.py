@@ -66,11 +66,7 @@ def _default(
         ui.guide(_GUIDE)
 
 
-app.command(
-    "init",
-    rich_help_panel=_DAILY,
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_agents.cmd_init)
+app.command("init", rich_help_panel=_DAILY)(_agents.cmd_init)
 app.command("status", rich_help_panel=_DAILY)(_status.cmd_status)
 app.command("inbox", rich_help_panel=_DAILY)(_inbox.cmd_inbox)
 app.add_typer(_task.task_app, rich_help_panel=_DAILY)

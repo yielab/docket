@@ -172,23 +172,23 @@ class TestPodCommand:
         assert _pod.pod_member_ids("demo")[0] == "demo-lead"
 
 
-class TestParsePodRoles:
+class TestPodRoles:
     def test_default_is_lean(self) -> None:
-        assert _pod.parse_pod_roles([]) == ("lead", "implementer")
+        assert _pod.pod_roles(False, "") == ("lead", "implementer")
 
     def test_pod_full(self) -> None:
-        assert _pod.parse_pod_roles(["--pod", "full"]) == _pod.pod.FULL_POD_ROLES
+        assert _pod.pod_roles(True, "") == _pod.pod.FULL_POD_ROLES
 
     def test_with_adds_roles(self) -> None:
-        assert _pod.parse_pod_roles(["--with", "reviewer,tester"]) == (
+        assert _pod.pod_roles(False, "reviewer,tester") == (
             "lead",
             "implementer",
             "reviewer",
             "tester",
         )
 
-    def test_with_equals_form_and_unknown_ignored(self) -> None:
-        assert _pod.parse_pod_roles(["--with=reviewer,wizard"]) == (
+    def test_unknown_and_lean_roles_are_ignored(self) -> None:
+        assert _pod.pod_roles(False, "reviewer,wizard, lead") == (
             "lead",
             "implementer",
             "reviewer",
@@ -607,7 +607,7 @@ class TestInitReadsRepoConfig:
         docket_dir.mkdir(parents=True)
         (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
 
-        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
         assert rc == 0
         assert "reviewer" in _dispatch.pod_full_roster("demo")
@@ -622,7 +622,7 @@ class TestInitReadsRepoConfig:
         roles_dir.mkdir(parents=True)
         (roles_dir / "bad.yaml").write_text("kind: role\nname: bad\nmodel: bogus\n")
 
-        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
         assert rc == 1
         assert not _pp.pod_member_ids("demo")
@@ -635,7 +635,7 @@ class TestInitReadsRepoConfig:
         codebase = tmp_path / "codebase"
 
         rc = _agents.run_init(
-            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+            _agents.InitRequest(location=str(codebase), name="demo", recipe="secure-build")
         )
 
         assert rc == 0
@@ -648,7 +648,7 @@ class TestInitReadsRepoConfig:
         codebase = tmp_path / "codebase"
 
         rc = _agents.run_init(
-            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+            _agents.InitRequest(location=str(codebase), name="demo", recipe="secure-build")
         )
 
         out = capsys.readouterr().out
@@ -662,7 +662,7 @@ class TestInitReadsRepoConfig:
         _seed(tmp_path, monkeypatch)
         codebase = tmp_path / "codebase"
 
-        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
         out = capsys.readouterr().out
         assert rc == 0
@@ -684,7 +684,7 @@ class TestInitReadsRepoConfig:
         sent: list[str] = []
         monkeypatch.setattr(_setup_notify, "send_test", lambda name: sent.append(name) or 0)
 
-        rc = _agents.run_init(["--codebase", str(tmp_path / "codebase"), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(tmp_path / "codebase"), name="demo"))
 
         out = capsys.readouterr().out
         assert rc == 0
@@ -705,7 +705,7 @@ class TestInitReadsRepoConfig:
         monkeypatch.setattr(_sys, "desktop_notifications_available", lambda: True)
         monkeypatch.setattr(builtins, "input", lambda _prompt="": "n")
 
-        rc = _agents.run_init(["--codebase", str(tmp_path / "codebase"), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(tmp_path / "codebase"), name="demo"))
 
         assert rc == 0
         assert _channel.load_catalog().delivering() == []
@@ -719,7 +719,7 @@ class TestInitReadsRepoConfig:
         _channel.enable_channel("desktop")
         codebase = tmp_path / "codebase"
 
-        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo"])
+        rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
         out = capsys.readouterr().out
         assert rc == 0
@@ -735,7 +735,7 @@ class TestInitReadsRepoConfig:
         (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
 
         rc = _agents.run_init(
-            ["--codebase", str(codebase), "--name", "demo", "--recipe", "secure-build"]
+            _agents.InitRequest(location=str(codebase), name="demo", recipe="secure-build")
         )
 
         assert rc == 1
@@ -750,7 +750,9 @@ class TestInitReadsRepoConfig:
         docket_dir.mkdir(parents=True)
         (docket_dir / "pod.yaml").write_text("kind: pod\nname: demo\nmembers: [reviewer]\n")
 
-        rc = _agents.run_init(["--codebase", str(codebase), "--name", "demo", "--no-apply"])
+        rc = _agents.run_init(
+            _agents.InitRequest(location=str(codebase), name="demo", no_apply=True)
+        )
 
         assert rc == 0
         assert "reviewer" not in _dispatch.pod_full_roster("demo")

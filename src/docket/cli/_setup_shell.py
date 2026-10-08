@@ -41,10 +41,14 @@ def _short_help(cmd: object) -> str:
     return (get(limit=200) if get else "").rstrip(".")
 
 
+def _names(param: object) -> set[str]:
+    return set(getattr(param, "opts", []) or [])
+
+
 def _walk(cmd: object, path: str, out: list[_Node]) -> None:
     opts = [o for o in _long_options(cmd) if o != "--help"]
     node = _Node(path=path, help=_short_help(cmd), options=[*opts, "--help"])
-    node.pod_option = any(o in ("--pod",) for o in opts)
+    node.pod_option = any(_names(p) >= {"--pod", "-p"} for p in getattr(cmd, "params", []))
     children = getattr(cmd, "commands", None)
     out.append(node)
     if children is None:

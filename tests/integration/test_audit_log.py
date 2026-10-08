@@ -26,7 +26,7 @@ import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.cli import _pod
 from docket.cli import _setup_model as keys_cli
-from docket.cli._agents import run_init
+from docket.cli._agents import InitRequest, run_init
 from docket.core import audit as _audit
 
 SUBJECT = "docket.cli"
@@ -763,7 +763,7 @@ class TestAgentAddDeleteAudit:
             )
         )
 
-        rc = run_init(["--from", str(spec_file)])
+        rc = run_init(InitRequest(from_file=str(spec_file)))
         assert rc == 0
 
         entries = _entries("agent.add")

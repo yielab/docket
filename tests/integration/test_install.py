@@ -130,10 +130,10 @@ def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
 # ── init ────────────────────────────────────────────────────────────────────────────
 
 
-def _init_args(tmp_path: Path) -> list[str]:
+def _init_args(tmp_path: Path) -> _agents.InitRequest:
     repo = tmp_path / "repo"
     repo.mkdir()
-    return ["--codebase", str(repo), "--name", "demo"]
+    return _agents.InitRequest(location=str(repo), name="demo")
 
 
 def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(

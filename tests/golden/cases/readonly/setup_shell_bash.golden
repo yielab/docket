@@ -20,7 +20,7 @@ _docket_verbs() {
 _docket_options() {
   case "$1" in
     "") echo "--version --help" ;;
-    "init") echo "--help" ;;
+    "init") echo "--blueprint --pod --with --codebase --name --from --recipe --no-apply --help" ;;
     "status") echo "--all --json --history --days --pod --help" ;;
     "inbox") echo "--json --since --peek --help" ;;
     "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;

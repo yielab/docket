@@ -106,7 +106,7 @@ def test_root_artifacts_install_as_canonical_docket_without_source_tree(
     assert lines[5] == "LICENSE"
     assert Path(lines[6]).is_relative_to(environment)
     assert "Usage:" in help_output.stdout
-    assert "initialize" in init_help.stdout.lower()
+    assert "example: docket init" in init_help.stdout.lower()
 
     _run("uv", "pip", "uninstall", "--python", str(python), "docket", cwd=clean_cwd, env=env)
     assert not docket.exists()

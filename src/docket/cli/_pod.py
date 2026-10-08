@@ -98,29 +98,22 @@ def provision_member(
     return ok, msg
 
 
-def parse_pod_roles(args: list[str]) -> tuple[str, ...]:
-    """Pod composition from `docket init` flags. Default = lean pod (lead + implementer);
-    ``--pod full`` = the four-role pod; ``--with reviewer,tester`` = lean plus the named
-    roles. Unknown role names are ignored (the lean default still applies)."""
-    if "--pod" in args:
-        i = args.index("--pod")
-        if i + 1 < len(args) and args[i + 1].lower() == "full":
-            return pod.FULL_POD_ROLES
+def pod_roles(full: bool, with_roles: str) -> tuple[str, ...]:
+    """The software pod's roster from `docket init`'s flags: lean (lead + implementer) by
+    default, the four-role pod for ``--pod full``, lean plus the named ``--with`` roles
+    otherwise. Unknown role names are ignored."""
+    if full:
+        return pod.FULL_POD_ROLES
     extras: list[str] = []
-    for i, tok in enumerate(args):
-        spec = ""
-        if tok.startswith("--with="):
-            spec = tok[len("--with=") :]
-        elif tok == "--with" and i + 1 < len(args):
-            spec = args[i + 1]
-        if spec:
-            for raw in spec.split(","):
-                try:
-                    role = pod.normalize_role(raw)
-                except pod.PodError:
-                    continue
-                if role not in ("lead", "implementer") and role not in extras:
-                    extras.append(role)
+    for raw in with_roles.split(","):
+        if not raw.strip():
+            continue
+        try:
+            role = pod.normalize_role(raw)
+        except pod.PodError:
+            continue
+        if role not in ("lead", "implementer") and role not in extras:
+            extras.append(role)
     return (*pod.DEFAULT_POD_ROLES, *extras)
 
 

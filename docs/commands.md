@@ -21,112 +21,17 @@ Complete reference for all docket commands, rendered from each command's own `--
 
 **Usage:** `docket init`
 
-Initialize the current project with its minimum isolated pod.
+Create the team for this repository: a pod of agents that owns this codebase.
 
-Creates a new project pod -- an isolated team of project-scoped agents
-that owns one codebase. The default pod is lean: a Lead + an Implementer.
-The first invocation also creates docket's shared workstation foundation
-(fleet registry, policies, default gates) -- there is no
-separate setup step. See docs/AGENT-TEAMS.md.
+With no arguments the pod is named after the current directory and holds
+a Lead and an Implementer (ids `<pod>-lead`, `<pod>-implementer`).
+A `.docket/` directory next to the code, what `docket pod export` writes,
+is validated first and applied after provisioning, so the repository's
+own team definition is what you get; `--recipe` starts from a shipped
+team instead. Blueprints, `--from` entries and the apply step:
+specs/functional/pod-blueprints.spec.md.
 
-With no arguments, docket derives the project id, path, and stack from the
-current directory (non-interactive, deterministic). Member ids are
-predictable: `<project>-lead`, `<project>-implementer`, `<project>-reviewer`,
-`<project>-tester` (duplicated roles get `-2`, `-3` suffixes). A pod
-always has exactly one Lead. Resize a pod later with `docket pod add|remove`; tear
-the whole pod down with `docket pod delete`.
-
-Flags (parsed from the extra CLI args, not fixed Typer options):
-  --pod full            provision Lead, Implementer, Reviewer, and Tester.
-                         Only applies to the default `software` blueprint;
-                         ignored (with a warning) for any other blueprint,
-                         which provisions its own fixed roster.
-  --with <roles>        start from the lean pod and add named roles
-                         (comma-separated: reviewer, tester, implementer).
-                         Same `software`-only restriction as `--pod full`.
-  --blueprint <name>    (default `software`) provision a named pod
-                         blueprint instead of the plain lean/full pod --
-                         `software` (codebase, lead+implementer), `research`
-                         (workdir, lead/researcher/analyst/writer/critic,
-                         $20 default budget, Critic gates the final step
-                         with one rework cycle), `content` (workdir,
-                         lead/writer/critic, $15), `ops` (workdir,
-                         lead/operator/monitor, $30, Operator gated on its
-                         own verifyCmd, Monitor is a human-approval gate),
-                         `agentic-product` (codebase, full software
-                         roster). A codebase blueprint treats the location
-                         argument as an existing, never-auto-created
-                         codebase path and auto-detects its stack; a
-                         workdir blueprint treats it as the pod's one
-                         shared working directory instead -- no stack is
-                         auto-detected. `docket init` always passes the
-                         cwd (or an explicit `--codebase`/`path`) as the
-                         location, so it never hits the auto-provisioned
-                         `~/.docket/workspaces/pods/<project>/` default;
-                         that path is only reached via `--from` entries
-                         that omit `workDir` or `POST /pods` calls that
-                         omit `path`. Unknown
-                         name errors with "unknown blueprint 'X'; valid
-                         blueprints: software, research, content, ops,
-                         agentic-product" and exits 1 before any prompt.
-                         Only the five built-ins exist today -- there is
-                         no command to register a custom one.
-                         See
-                         specs/functional/pod-blueprints.spec.md.
-  --codebase <path>     the codebase path (or, for a workdir-kind
-                         blueprint, the pod's shared working directory) --
-                         same value as the `path` positional; supplying it
-                         up front skips its interactive prompt.
-  --name <name>         display name -- same value as the 1st positional;
-                         skips its prompt.
-  --from <spec-file>    non-interactive, declarative provisioning -- one
-                         or many agents/pods from a single JSON or YAML
-                         file (`.yaml`/`.yml` needs PyYAML), the same
-                         mechanism a CI job or fleet-bootstrap script would
-                         use. The file is a bare list, `{"agents": \[...\]}`,
-                         or one entry object. Each entry needs an `id`; an
-                         entry with a `blueprint` field provisions a pod
-                         (fields: `codebase`/`workDir`, `stack`,
-                         `description`, `projectKey`, `budgetUsd`,
-                         `telegram`); an entry with no `blueprint`
-                         provisions a single flat agent the same shape
-                         `docket init` always has (fields: `name`,
-                         `codebase`, `stack`, `model`, `description`,
-                         `telegram`, `budgetUsd`, `projectKey`). Mutually
-                         exclusive with every other flag/prompt. An entry
-                         whose id already exists, or names an unknown
-                         blueprint, is skipped with a warning rather than
-                         failing the rest of the file -- the command
-                         always exits 0, so check the printed summary
-                         rather than only the exit code in a script.
-  --recipe <name|dir>   apply a shipped or local recipe directory after
-                         provisioning -- a directory path as given, else a
-                         shipped recipe by name (`docket pod recipes`
-                         shows all of them). An unresolvable
-                         name errors naming the shipped recipe names and
-                         exits 1 before any provisioning. Mutually
-                         exclusive with a present `<location>/.docket/` --
-                         giving both errors naming both sources and exits
-                         1 before any provisioning.
-  --no-apply             provision the pod only, skipping the apply step
-                         for a present `.docket/` or a resolved `--recipe`;
-                         prints the `docket pod apply <dir>` command
-                         that would apply it.
-
-A repository's own `<location>/.docket/` -- the same directory shape
-`docket pod apply` reads (roles/*.yaml, policies/*.json,
-pipeline.yaml, pod.yaml) -- is discovered automatically: every document
-under it is validated before anything is provisioned, and applied after
-(unless `--no-apply`) through that same command's plan/apply path. A
-validation error exits 1 naming the file and field, with nothing
-provisioned. See specs/functional/pod-blueprints.spec.md, "Pod manifests:
-apply".
-
-Every project is a repo -- a pod tied to a codebase, defaulting to the cwd
-(or the `path` argument / `--codebase`, in which case you are not
-re-prompted); the project name is suggested from that directory's name.
-
-Example: docket init
+Example: docket init --recipe secure-build
 
 
 ---

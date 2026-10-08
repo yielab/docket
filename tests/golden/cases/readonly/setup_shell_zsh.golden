@@ -21,7 +21,7 @@ _docket_verbs() {
 _docket_options() {
   case "$1" in
     "") echo "--version --help" ;;
-    "init") echo "--help" ;;
+    "init") echo "--blueprint --pod --with --codebase --name --from --recipe --no-apply --help" ;;
     "status") echo "--all --json --history --days --pod --help" ;;
     "inbox") echo "--json --since --peek --help" ;;
     "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;
@@ -138,7 +138,7 @@ _docket_task_ids() {
 
 _docket_commands() {
   commands=(
-    'init:Initialize the current project with its minimum isolated pod'
+    'init:Create the team for this repository: a pod of agents that owns this codebase'
     'status:Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all'
     'inbox:List what needs you across every pod: approvals, questions, failures, finished work'
     'run:Run the pod'\''s pending tasks through its pipeline, one real agent turn per hop'

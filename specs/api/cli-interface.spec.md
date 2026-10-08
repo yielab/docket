@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -137,10 +137,16 @@ fleet, project agents, costs, bindings, or health checks.
 default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). It **MUST NOT** bootstrap the
 workstation-wide home beyond creating the directories it needs; the endpoint, the baseline
 policies and the security posture belong to `docket setup`.
-**Syntax**: `docket init [project] [location] [--blueprint <name>] [--recipe <name|dir>] [--no-apply] [options]`
+**Syntax**: `docket init [project] [location] [--blueprint <name>] [--pod full] [--with <roles>] [--codebase <path>] [--name <text>] [--from <file>] [--recipe <name|dir>] [--no-apply]`
 
-`init` provisions the pod's own members and no shared agent. An option it does not define is a
-usage error: it prints one line and exits `2` before anything is provisioned.
+`init` provisions the pod's own members and no shared agent. Its arguments and options are
+declared on the command (`cli/_agents.py::cmd_init`), so `docket init --help` lists each with
+its meaning and `setup shell` completes them; the command builds one `InitRequest` and
+`run_init` provisions from it. An option it does not define, a `--pod` value other than `full`,
+`--from` combined with any other argument or option, or a third positional is a usage error:
+it prints one line and exits `2` before anything is provisioned. The help is one screen: the
+default team, the `.docket/` discovery and `--recipe`, one `Example:`; the blueprint rosters
+and the `--from` file format live in pod-blueprints.spec.md, not in the help.
 
 When `docket setup`'s readiness report (`cli/_setup.py::readiness()`) shows no model endpoint
 (the selected role models do not resolve to a callable OpenAI-compatible endpoint; an API key
@@ -154,11 +160,12 @@ passes without a key.
   path for `software` (the default), or a working directory for `research`/`content`/`ops`
   (auto-provisioned if omitted)
 **Options**:
-- `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops`);
-  omitted defaults to `software`. An unknown name fails
+- `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops` |
+  `agentic-product`); omitted defaults to `software`. An unknown name fails
   cleanly (exit 1) before any prompt is shown
-- `--codebase <path>`: Explicit location, skipping its interactive prompt
-- `--name <text>`: Explicit display name, skipping its interactive prompt
+- `--codebase <path>`: The location, as an option instead of the second argument
+- `--name <text>`: The pod's name, as an option instead of the first argument; an option wins
+  over its positional
 - `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester. Applies only to
   the `software` blueprint
 - `--with <roles>`: Start from the lean pod and add named roles (comma-separated: `reviewer`,
@@ -925,6 +932,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.1.0 (2026-10-08)
+
+- `docket init` declares its two arguments and eight options on the command instead of parsing
+  `ctx.args` by hand: `--help` is one screen listing each option with its meaning (the blueprint
+  rosters and the `--from` format stay in pod-blueprints.spec.md), `setup shell` completes them,
+  and a `--pod` value other than `full`, `--from` beside any other option, or a third positional
+  exits 2 as a usage error, as an undefined option already did. `agentic-product` is listed with
+  the other blueprints. The syntax line names every option, so the invocation guard checks it.
 
 ### Version 2.0.0 (2026-10-08)
 
