@@ -893,6 +893,15 @@ haven't backed up.
 
 ---
 
+### setup
+
+**Usage:** `docket setup`
+
+Set up this workstation: model endpoint, notifications, sandbox, shell.
+
+
+---
+
 ### config
 
 **Usage:** `docket config`

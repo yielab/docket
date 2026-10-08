@@ -56,6 +56,7 @@ GROUPS: list[tuple[str, list[str]]] = [
             "models",
             "cost",
             "doctor",
+            "setup",
             "config",
             "serve",
             "completions",

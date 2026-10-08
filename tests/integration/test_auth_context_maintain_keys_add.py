@@ -435,7 +435,7 @@ class TestCmdAdd:
         assert rc == 0, out + err
         assert (home / "workspaces" / "projects" / "current-project-reviewer").is_dir()
 
-    @pytest.mark.parametrize("command", ["install", "setup"])
+    @pytest.mark.parametrize("command", ["install"])
     def test_redundant_bootstrap_commands_do_not_exist(self, tmp_path: Path, command: str) -> None:
         home = tmp_path / ".docket"
 

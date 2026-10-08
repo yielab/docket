@@ -50,6 +50,7 @@ _docket() {
     'chat:See and answer one task'\''s parked question'
     'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
     'help:Show help'
+    'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
   )
 
   _docket_ids() {

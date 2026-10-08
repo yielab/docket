@@ -1,11 +1,56 @@
-"""The setup commands.
-Holds doctor and completions."""
+"""The setup group: the first-run report as data, doctor and completions."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
+
+setup_app = typer.Typer(
+    name="setup",
+    help="Set up this workstation: model endpoint, notifications, sandbox, shell.",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
+
+_PROVIDER_COMMAND = "docket setup provider add <name>"
+
+
+@dataclass(frozen=True)
+class Piece:
+    """One line of the first-run report: ready or not, why, and the command that fixes it."""
+
+    name: str
+    ok: bool
+    reason: str
+    command: str
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """The first-run report as data; ``endpoint`` is the one required piece."""
+
+    endpoint: Piece
+
+
+def readiness() -> Readiness:
+    """Compute the report without printing or writing; ``init`` and ``run`` read it."""
+    from docket.core import models_policy as _mp
+    from docket.core import provider as _provider
+
+    resolved: list[str] = []
+    for role in ("lead", "implementer"):
+        try:
+            model = _mp.resolve_role_model(role)
+            state = _provider.model_readiness(model)
+        except Exception as exc:
+            return Readiness(Piece("model endpoint", False, f"{role}: {exc}", _PROVIDER_COMMAND))
+        if not state.ready:
+            reason = f"{role} -> {model}: {state.issue}"
+            return Readiness(Piece("model endpoint", False, reason, _PROVIDER_COMMAND))
+        resolved.append(f"{role} -> {model}")
+    return Readiness(Piece("model endpoint", True, ", ".join(resolved), ""))
 
 
 def _resolve_version() -> str:

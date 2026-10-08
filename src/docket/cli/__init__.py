@@ -57,6 +57,7 @@ def _default(
         ui.console.print("  docket help          show the full command reference")
 
 
+app.add_typer(_setup.setup_app)
 app.command("list")(_remove.cmd_list)
 app.command("status")(_status.cmd_status)
 app.command(
