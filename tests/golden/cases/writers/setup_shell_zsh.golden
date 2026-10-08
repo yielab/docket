@@ -31,6 +31,7 @@ _docket() {
     'run:Run the pod'\''s pending tasks through its pipeline, one real agent turn per hop'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
     'log:The hash-chained record of what was authorized and done'
+    'task:Queue, inspect and answer a pod'\''s tasks'
   )
 
   _docket_ids() {

@@ -56,7 +56,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Security and Audit",
-        ["log", "policies", "plugins", "approve", "deny", "inbox", "chat"],
+        ["log", "policies", "plugins", "approve", "deny", "inbox", "chat", "task"],
     ),
     (
         "Observability Commands",

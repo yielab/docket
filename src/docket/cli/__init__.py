@@ -129,4 +129,5 @@ app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_chat)
 app.command("inbox")(_inbox.cmd_inbox)
+app.add_typer(_task.task_app)
 app.command("run")(_run.cmd_run)

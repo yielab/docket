@@ -63,6 +63,12 @@ free_pod_resources = _pp.free_pod_resources
 purge_pod_history = _pp.purge_pod_history
 pod_member_ids = _pp.pod_member_ids
 
+pod_app = typer.Typer(
+    name="pod",
+    help="Manage this project's pod: members, settings and configuration.",
+    no_args_is_help=True,
+)
+
 
 def _actor() -> str:
     """The OS user running this CLI invocation, falling back to '?' (mirrors

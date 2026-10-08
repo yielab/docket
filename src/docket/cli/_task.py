@@ -5,6 +5,12 @@ from __future__ import annotations
 
 import typer
 
+task_app = typer.Typer(
+    name="task",
+    help="Queue, inspect and answer a pod's tasks.",
+    no_args_is_help=True,
+)
+
 
 def cmd_runs(ctx: typer.Context) -> None:
     """Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation.

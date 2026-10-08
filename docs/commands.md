@@ -1147,6 +1147,15 @@ ever displays -- use `docket pod <p> answer` to answer non-interactively.
 
 ---
 
+### task
+
+**Usage:** `docket task`
+
+Queue, inspect and answer a pod's tasks.
+
+
+---
+
 ## Observability Commands
 
 ### runs
