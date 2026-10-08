@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Help is grouped and spoken once.** `docket --help` shows the tagline and the eleven commands
+  in three panels (Daily, The pod, Machine); `-h` works at every level; the bare `docket` prints
+  the tagline, the five daily commands and `Not set up yet? docket setup`; an unknown command
+  word suggests the live commands and group verbs it could mean (`docket add x` names
+  `docket task add` and `docket pod add`); `setup shell bash|zsh` renders the completion
+  scripts from the live command tree (every group's verbs and long options, pod names after
+  `--pod`, task ids after `task <verb>`). Three guards keep it: every leaf prints an `Example:`,
+  every reader emits one JSON document under `--json`, and no verb prompts off a terminal.
+- **`scripts/maint/rewrite_cli_names.py`** rewrites invocations of removed command names across
+  docs, templates, scripts, specs and tests from one table (`--dry-run`, `--write`, `--check`,
+  `--unmappable`, `--self-check`); `tests/guards/test_no_removed_cli_names.py` fails on any
+  surviving invocation under the swept roots.
 - **`docket task` is the task group.** `task add "<text>" [--priority] [--brief]` queues (what
   `delegate` did) and ends with the `docket run` hint; `task list [--json]` is the queue with
   status, cost and each task's worktree path; `task show <ref> [--json]` is one task's whole
@@ -107,21 +119,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Seventeen more top-level commands, each now an ordinary unknown command (exit 2): `delegate`,
-  `approve`, `deny`, `chat`, `runs`, `trace`, `add`, `info`, `delete`, `maintain`, `profile`,
-  `config`, `pipeline`, `roles`, `policies`, `recipes`, `plugins`, `validate`; with them the pod
-  actions `list|add|remove|set-verify|config|delegate|answer|explain|pregrant|queue|sync|apply|
-  export|corrections|evidence|worktrees`, `maintain check|sessions|distill|clean|rebuild` (no
-  replacement for the context-footprint warning), `runs list|show|cancel|prune`, `trace
-  tail|export|ingest|expire`, and the `apr-` token on the surface (`inbox` and the channels
-  still print it, and `task approve` still accepts it for an approval no task carries).
-- **Twenty top-level commands.** `doctor`, `models`, `keys`, `gates`, `completions`,
-  `channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters`, `mcp`, `audit`, `serve`,
-  `harness`, `cost`, `metrics`, `snapshot`, `pod <p> dispatch`, `pipeline run`, and the seven
-  read views `list`, `context`, `logs`, `edit`, `scope`, `persona`, `help`. Each is an ordinary
-  unknown command (exit 2). With them: the operator-set session scope (the derived key stands),
-  the `SOUL.md` persona block and `AgentMeta.persona`, `EDITOR`/`VISUAL` from the environment
-  table, and the `docket init` home bootstrap (`init` builds the team and points at `setup`).
+Every name below is an ordinary unknown command now (exit 2); nothing answers to it, suggests
+it or remembers it (ADR 0022 decision 4). One line per old name, with what replaced it:
+
+- `delegate`, `pod <p> delegate` -> `task add`
+- `dispatch`, `pod <p> dispatch`, `pipeline run` -> `run` (`--pipeline FILE` for a one-off pipeline)
+- `approve`, `deny`, `chat`, `pod <p> answer`, `pod <p> pregrant` -> `task approve|deny|answer <id>` (`task approve <id> --for "<cmd>"` is the pre-grant; the `apr-` token left the surface)
+- `runs list|show|cancel|prune`, `trace tail|export|ingest|expire`, `pod <p> queue|evidence|corrections|explain|worktrees` -> `task list|show|diff|retry|cancel|trace|prune`
+- `cost`, `metrics`, `snapshot` -> `status` (the labelled estimate and the outcome counts; `status --all --json` carries the inventory)
+- `audit`, `audit verify` -> `log`, `log verify`
+- `add`, `info`, `delete <agent>`, `maintain`, `profile`, `pod <p> list|add|remove|set-verify` -> `pod show|add|remove|reset|set|unset` (`maintain check|sessions` and the context-footprint warning have no replacement)
+- `pod <p> config`, `config explain`, `profile --budget` -> `pod show`, `pod set|unset`
+- `pod <p> apply|export|sync`, `validate`, `roles validate`, `policies validate`, `pipeline validate|plan` -> `pod apply|export|validate|plan`
+- `policies test` -> `pod check`
+- `recipes`, `roles`, `policies` (list, show, add), `plugins` -> `pod recipes|roles|policies [name]` (`add <file>` is `pod apply <file>`; `--plugins` on `policies`; `policies init` has no replacement)
+- `delete <pod>`, `profile --resume` -> `pod delete`, `run --resume`
+- `models`, `models provider`, `keys` -> `setup model`, `setup provider` (`add --credential`, `rotate`)
+- `channels`, `wire`, `unwire`, `notify`, `conversations` -> `setup notify` (`bind|unbind`, `flush`, `show telegram`)
+- `exporters` -> `setup export`
+- `gates` -> `setup sandbox status|on|off|network|classes`
+- `mcp servers`, `mcp serve` -> `setup mcp list|add|remove`, `start --mcp`
+- `completions` -> `setup shell bash|zsh`
+- `doctor` -> `setup` (`setup --fix`)
+- `serve` -> `start [--dispatch] [--telegram] [--mcp]`, `stop`
+- `harness run`, `harness status` -> `exec` (same contract 1.0/1.1, events and exit codes; a run id resolves through `task show`)
+- `list`, `info` (the read views), `context`, `logs`, `edit` -> nothing; `pod show <member>` prints the workspace path
+- `scope` -> nothing; the session key is derived
+- `persona` -> nothing; the persona layer went with it
+- `profile <id> <model>` (the per-agent pin, `modelSource`) -> nothing; a model comes from the role policy, a pod role overlay or a step's `model:`
+- `help` -> `--help` / `-h` at every level
+- `init --portfolio`, the org specialists and the portfolio manager -> nothing
+- With them: the positional pod id (`docket pod <project> <action>`) and `--project`; the operator-set session scope; the `SOUL.md` persona block and `AgentMeta.persona`; `EDITOR`/`VISUAL` from the environment table; the `docket init` home bootstrap (`init` builds the team and points at `setup`); `kind: specialist` and `scope: org`.
 - **The org specialists (`manager`, `knowledge`, `security`) and the opt-in portfolio manager.**
   No reader on the live path ever ran one. `docket init` provisions the pod only,
   `init --portfolio` is a usage error, `list`/`snapshot`/`doctor` and `/status.json` show pod
