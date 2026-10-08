@@ -3,7 +3,7 @@
 `core/archetypes.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
 called once per turn by `core/agent_loop.py`) make a Reviewer structurally *unable* to edit code,
 not just told not to via SOUL.md prose. `core/identity.py`'s `compose_agent_prompt` reads
-SOUL.md, the live persona, resolved project roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state
+SOUL.md, resolved project roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
 The load-bearing test is `TestReviewerCannotDispatchAWrite`'s dispatch-level-denial test: it
@@ -34,7 +34,6 @@ from docket.core.llm import (
     ToolSpec,
     assistant,
 )
-from docket.core.models import AgentMeta, Persona
 from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry, dispatch_tool
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
@@ -349,36 +348,13 @@ class TestComposeSystemPrompt:
     """Pure composition -- `core.identity.compose_system_prompt`."""
 
     def test_empty_everything_composes_to_empty(self) -> None:
-        assert _identity.compose_system_prompt("", "", None) == ""
+        assert _identity.compose_system_prompt("", "") == ""
 
     def test_soul_and_workflow_are_both_present(self) -> None:
-        prompt = _identity.compose_system_prompt(
-            "# SOUL\nbody", "# WORKFLOW_AUTO\nresume rules", None
-        )
+        prompt = _identity.compose_system_prompt("# SOUL\nbody", "# WORKFLOW_AUTO\nresume rules")
         assert "# SOUL" in prompt
         assert "# WORKFLOW_AUTO" in prompt
         assert prompt.index("# SOUL") < prompt.index("# WORKFLOW_AUTO")
-
-    def test_persona_is_folded_into_the_soul_text_even_without_a_block_yet(self) -> None:
-        prompt = _identity.compose_system_prompt(
-            "# SOUL\nbody", "", Persona(name="Orion", emoji="🔭")
-        )
-        assert "Orion" in prompt
-        assert "🔭" in prompt
-
-    def test_persona_overrides_a_stale_block_already_on_disk(self) -> None:
-        stale_soul = (
-            "# SOUL\nbody\n\n"
-            f"{_identity.PERSONA_BEGIN}\n## Persona\nYou may present yourself as **Old Name**.\n"
-            f"{_identity.PERSONA_END}\n"
-        )
-        prompt = _identity.compose_system_prompt(stale_soul, "", Persona(name="New Name"))
-        assert "New Name" in prompt
-        assert "Old Name" not in prompt
-
-    def test_no_persona_set_renders_no_persona_section(self) -> None:
-        prompt = _identity.compose_system_prompt("# SOUL\nbody", "# WORKFLOW_AUTO\nrules", None)
-        assert "## Persona" not in prompt
 
 
 class TestSystemPromptForAgent:
@@ -509,27 +485,14 @@ class TestSystemPromptForAgent:
         ):
             assert marker in prompt
 
-    def test_persona_reaches_the_prompt(self) -> None:
-        ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "🔭"})
+    def test_a_persona_in_meta_never_reaches_the_prompt(self) -> None:
+        ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "x"})
         (ws / "SOUL.md").write_text("# SOUL.md\nbody\n")
 
         prompt = _identity.compose_agent_prompt("persona-agent").text
 
-        assert "Orion" in prompt and "🔭" in prompt
-
-    def test_persona_reflects_the_live_meta_even_if_soul_never_had_it_upserted(self) -> None:
-        """AgentMeta.display_name() is the one source of truth for a display
-        name -- the prompt must not depend on SOUL.md having been re-rendered
-        after a `docket persona set`."""
-        ws = _write_meta("lagging-agent")
-        (ws / "SOUL.md").write_text("# SOUL.md\nbody, no persona block\n")
-        meta = AgentMeta.model_validate(_store.read_json(_cfg.meta_path("lagging-agent")))
-        meta.persona = Persona(name="Freshly Set")
-        _store.write_json(_cfg.meta_path("lagging-agent"), meta)
-
-        prompt = _identity.compose_agent_prompt("lagging-agent").text
-
-        assert "Freshly Set" in prompt
+        assert "body" in prompt
+        assert "Orion" not in prompt
 
     def test_unprovisioned_agent_composes_to_empty(self) -> None:
         assert _identity.compose_agent_prompt("nobody-here").text == ""

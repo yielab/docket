@@ -120,7 +120,7 @@ Nothing is cached, so an edit takes effect on the next turn with nothing to rest
 
 The system prompt is, in this order:
 
-1. **`SOUL.md`**, with the persona block re-rendered from `.docket-meta.json`. An oversized
+1. **`SOUL.md`**. An oversized
    `SOUL.md` is visibly middle-truncated rather than starving the sections below.
 2. **A fixed runtime contract** written by docket (not a file). It lists the directories the
    agent's tools may touch and tells it that its private workspace files are read-only.
@@ -164,7 +164,7 @@ global) — the same three `docket config explain <agent> --json` labels per val
 | Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket roles [--pod <p>]`, `docket pod <p> add <role>` |
-| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | `docket edit`; edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions CONTRIBUTING.md` |
+| What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions CONTRIBUTING.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
 
@@ -236,7 +236,7 @@ overrides every endpoint at once, which is handy for tests. `docket config expla
 
 ### 3.2 Change what an agent is told
 
-Edit the agent's workspace files directly. `docket edit <agent-id>` opens them in `$EDITOR`.
+Edit the agent's workspace files directly, under `~/.docket/workspaces/projects/<agent-id>/`.
 
 | To change… | Edit | Notes |
 |---|---|---|
@@ -245,7 +245,6 @@ Edit the agent's workspace files directly. `docket edit <agent-id>` opens them i
 | Durable facts about the product | `MEMORY.md` | Sent last, so it is the first thing dropped when the budget is tight. |
 | Red lines shared by a role | `AGENTS.md` | Everything except `## Session Startup` is sent. |
 | What the repository tells every coding agent | `AGENTS.md` at the codebase root | Read by default when `projectInstructions` is unset, screened as untrusted (§3.12). |
-| Display name | `docket persona <id> set "Rita"` | Written to meta and rendered between `<!-- docket-persona:begin/end -->` in `SOUL.md`. Never edit that block by hand. |
 
 **What overwrites your edits:**
 
@@ -1136,8 +1135,7 @@ what you changed on top of one.
 | `approvalMode`, `approvalExpiryHours` | unattended posture for a gated call (`wait`/`park`/`refuse`); how long a parked approval stays open before it expires and denies, **Lead only** | `pod config set approvalMode/approvalExpiryHours` (§3.15) |
 | `inputExpiryHours` | how long a parked *question* (`waiting_input`) stays open before it expires to `blocked`, **Lead only** — a separate knob from `approvalExpiryHours`, default 72 | `pod config set inputExpiryHours` (§3.15) |
 | `portRangeStart`, `portRangeCount`, `scratchDir` | Implementer environment `DOCKET_PORT_BASE/COUNT`, `DOCKET_SCRATCH_DIR` | provisioning |
-| `persona` | the persona block in the system prompt | `persona set/clear` |
-| `sessionKey`, `projectKey` | shown by `docket scope`; dispatch builds its own per-task session key | `scope` |
+| `sessionKey`, `projectKey` | the base session key; dispatch builds its own per-task session key | provisioning |
 | `templateVersion`, `kind`, `scope`, `stack`, `name`, `description`, `created` | informational. `stack` and `name` fill templates at provisioning | provisioning |
 
 The Markdown files are covered in [§2](#2-how-the-files-reach-a-running-agent) (what reaches the

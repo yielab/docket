@@ -82,61 +82,11 @@ def _run(
 
 
 # ---------------------------------------------------------------------------
-# docket edit
+# docket snapshot
 # ---------------------------------------------------------------------------
 
 
-class TestCmdEdit:
-    def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["edit", "ghost"], oc_dir)
-        assert rc == 1
-        assert "ghost" in err
-
-    def test_no_files_exits_0(self, tmp_path: Path) -> None:
-        # Workspace exists but has no SOUL/AGENTS/etc.
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["edit", "myshop"], oc_dir)
-        assert rc == 0
-        assert "no workspace files" in (out + err).lower()
-
-    def test_opens_files_with_editor(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md", "AGENTS.md"])
-        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"EDITOR": "true"})
-        assert rc == 0
-        assert "Edits saved" in out
-
-    def test_lists_files_before_opening(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md", "HEARTBEAT.md"])
-        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"EDITOR": "true"})
-        assert rc == 0
-        assert "SOUL.md" in out
-        assert "HEARTBEAT.md" in out
-
-    def test_uses_visual_when_no_editor(self, tmp_path: Path) -> None:
-        # VISUAL is the fallback when EDITOR is unset
-        oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md"])
-        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"VISUAL": "true"}, unset=["EDITOR"])
-        assert rc == 0
-        assert "Edits saved" in out
-
-    def test_missing_editor_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md"])
-        rc, _, err = _run(
-            ["edit", "myshop"],
-            oc_dir,
-            env={"EDITOR": "nonexistent_editor_xyz_99"},
-            unset=["VISUAL"],
-        )
-        assert rc == 1
-        assert "not found" in err.lower()
-
-    def test_non_tty_without_agent_id_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["edit"], oc_dir)
-        assert rc == 1
-        assert "required" in err.lower()
-
+class TestCmdSnapshot:
     def test_json_output_has_required_keys(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
@@ -237,13 +187,13 @@ class TestCmdEdit:
 
 
 # ---------------------------------------------------------------------------
-# Confirm edit + status are no longer in the 127-exit list
+# Confirm status is no longer in the 127-exit list
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cmd", [["edit", "x"], ["status", "--all"]])
+@pytest.mark.parametrize("cmd", [["status", "--all"]])
 def test_wave3a_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
-    """edit and status must NOT fall through to Bash (exit 127)."""
+    """status must NOT fall through to Bash (exit 127)."""
     oc_dir = _setup_agent(tmp_path)
-    rc, _, _ = _run(cmd, oc_dir, env={"EDITOR": "true"})
+    rc, _, _ = _run(cmd, oc_dir)
     assert rc != 127

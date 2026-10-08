@@ -55,8 +55,8 @@ Check the live mapping anytime with `docket models`.
 #### 2. **Missing Telegram Bindings**
 **How to diagnose:**
 ```bash
-docket list
-# Check if agent shows "● telegram" with group ID
+docket conversations
+# Check the agent has a telegram binding
 ```
 
 **How to fix:**
@@ -73,8 +73,8 @@ from a chat that isn't bound to an agent gets a plain refusal, and the attempt i
 **How to diagnose:**
 ```bash
 docket audit | grep telegram.unauthorized
-docket list
-# Look for agents with "● telegram (<group-id>)" rather than "○ no telegram"
+docket conversations
+# Look for the agent's telegram binding
 ```
 
 **How to fix:**
@@ -307,18 +307,11 @@ docket wire <agent-id>
 ### Agent Accessing Wrong Project
 **Symptom:** Agent mentions files from other projects
 
-**Cause:** Session key collision or incorrect scoping
+**Cause:** The agent's workspace points at the wrong codebase.
 
 **Fix:**
 ```bash
-# Check current scope
-docket scope <agent-id> show
-
-# Set unique project scope
-docket scope <agent-id> set my-project-name
-
-# Or reset to default
-docket scope <agent-id> reset
+docket info <agent-id>      # check the codebase path and session key
 ```
 
 ## Pods & Dispatch
@@ -461,17 +454,14 @@ docket doctor      # system-wide diagnostics (add --fix to repair drift)
 ```
 
 ### Implementer touching the wrong project?
-Check its session key / scope, and reset if needed:
+Check its session key:
 ```bash
-docket scope <p>-implementer show
-docket scope <p>-implementer reset
 grep "Session Key" ~/.docket/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
 ```
 
 ## Memory & Context
 
-There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context` has only `show`
-and `project` (any other action exits 2). There is no separate semantic memory
+There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and there is no separate semantic memory
 index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
 its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
 memory contract is: `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand; a docket
@@ -490,7 +480,7 @@ turn composes its own startup contract instead), `HEARTBEAT.md` (the durable tas
 2. **Verify the fleet is healthy:**
 
    ```bash
-   docket list
+   docket status --all
    docket doctor
    ```
 
@@ -573,7 +563,7 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 
 2. **Check logs:**
    ```bash
-   docket logs <agent-id>       # latest memory log
+   ls ~/.docket/workspaces/projects/<agent-id>/memory   # daily memory logs
    docket trace tail <project>  # live dispatch trace, if it's pod-related
    docket audit                 # recent docket-initiated changes
    ```
@@ -581,7 +571,7 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 3. **Verify configuration:**
    ```bash
    docket info <agent-id>
-   docket list
+   docket status --all
    ```
 
 4. **Test agent:**

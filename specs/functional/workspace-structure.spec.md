@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.18.0
+**Version**: 1.19.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`. There are no shared agents: no workspace is provisioned outside a pod. P26-9 gave
 `WORKFLOW_AUTO.md` a manual-path header (contract v4) — see the "Project-agent workspace"
@@ -47,7 +47,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
 
 1. Each project agent **MUST** have a workspace at
    `~/.docket/workspaces/projects/<agent-id>/` (`docket.config.PROJECTS_DIR`) containing:
-   - `SOUL.md` — agent identity, scope, session key, and (optional) docket-owned persona block
+   - `SOUL.md` — agent identity, scope, and session key
    - `AGENTS.md` — session protocol and delegation rules
    - `TOOLS.md` — project-specific commands. For a standalone (non-pod) project agent this is
      always present; for a **pod member**, only an Implementer with allocated runtime resources
@@ -94,7 +94,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
    workspace under `projects/`; the pod **Lead's** workspace additionally holds
    `TASK_LIST.json`, the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md).
 5. *Removed (2026-10-03):* the `IDENTITY.md`/`BOOTSTRAP.md` quarantine to `.docket-archive/`.
-   docket never reads either file (identity is docket-owned — role + optional persona from
+   docket never reads either file (identity is docket-owned — the role, from
    metadata, rendered into `SOUL.md`), so neither provisioning, `docket init` nor `docket
    doctor` moves or deletes one; a file of that name in a workspace is inert.
 6. `INSTRUCTIONS.md` **MAY** exist in any project-agent workspace, pod member or not.
@@ -240,8 +240,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 - After `docket init` (or `docket add` for a new pod member), all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
 - After the first `docket init` in a fresh home, `workspaces/` holds only the pod's members.
-- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata (persona
-  reapplied from `.docket-meta.json`).
+- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata.
 
 ### Invariants
 
@@ -256,6 +255,12 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   existing `INSTRUCTIONS.md` byte-for-byte untouched.
 
 ## Changelog
+
+### Version 1.19.0 (2026-10-07)
+
+Phase 39 (P39-16): `SOUL.md` carries no persona block. The persona layer (the block, its markers,
+`docket persona`, `AgentMeta.persona`) is removed; a `persona` key in an old `.docket-meta.json`
+is inert and `maintain rebuild` regenerates `SOUL.md` from the role alone.
 
 ### Version 1.18.0 (2026-10-07)
 
@@ -426,7 +431,7 @@ Phase 37 close (P37-8): the entries below were Unreleased and are now this versi
   `docket doctor`'s runtime-contract healer now enumerates specialist workspaces too (previously
   project-agent-only), so a missing/stale `WORKFLOW_AUTO.md` is healed for a specialist exactly
   as it is for a project agent. Provisioning and healing are both idempotent/backfill-safe: a
-  file is written only when absent, so a real `HEARTBEAT.md`/`MEMORY.md` or a persona-decorated
+  file is written only when absent, so a real `HEARTBEAT.md`/`MEMORY.md` or an existing
   `SOUL.md` is never clobbered by a second `docket install` or `docket doctor --fix`. Replaced
   the "known gap" framing in the org-specialists section with the shipped contract. Also closed
   a latent gap this surfaced: `seed_contract`'s own files (`WORKFLOW_AUTO.md`/`MEMORY.md`/daily

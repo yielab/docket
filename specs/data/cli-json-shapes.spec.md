@@ -31,35 +31,6 @@ structural rules hold everywhere:
 
 ## Schema
 
-### `docket list --json`
-
-```json
-{
-  "agents": [
-    {
-      "id":          "string",
-      "kind":        "project | specialist",
-      "scope":       "org | project",
-      "role":        "string (pod role / specialist role; may be empty)",
-      "pod":         "string (project this member belongs to; empty for non-pod agents)",
-      "name":        "string",
-      "model":       "string (provider/model-id)",
-      "modelSource": "policy | pinned",
-      "stack":       "string (comma-separated, may be empty)",
-      "codebase":    "string (absolute path, may be empty)",
-      "budgetUsd":   "number | null",
-      "telegram":    "string (peer id) | null",
-      "registered":  true
-    }
-  ]
-}
-```
-
-Note: there is no `type` field — every project agent has been a `repo` agent since the
-task-agent type was retired; the CLI does not emit a `type` key at all (previously documented
-here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's removal from
-`AgentMeta`).
-
 ### `docket info <id> --json`
 
 ```json
@@ -416,34 +387,15 @@ reflected in code fails CI.
 
 ## Examples
 
-`docket list --json` for a project pod (lean Lead + Implementer):
-
-```json
-{
-  "agents": [
-    {
-      "id": "myapp-lead", "kind": "project", "scope": "project", "role": "lead",
-      "pod": "myapp", "name": "myapp-lead",
-      "model": "anthropic/claude-haiku-4-5", "modelSource": "policy",
-      "stack": "", "codebase": "/code/myapp", "budgetUsd": null,
-      "telegram": null, "registered": true
-    },
-    {
-      "id": "myapp-implementer", "kind": "project", "scope": "project", "role": "implementer",
-      "pod": "myapp", "name": "myapp-implementer",
-      "model": "anthropic/claude-sonnet-4-6", "modelSource": "policy",
-      "stack": "", "codebase": "/code/myapp", "budgetUsd": null,
-      "telegram": null, "registered": true
-    }
-  ]
-}
-```
+Every schema block above is a complete example of its command's output.
 
 ## Changelog
 
 ### Version 1.23.0 (2026-10-07)
 
 - `status --all --json` carries the inventory `snapshot` printed (`timestamp`, `channels`, `agents`, `totalCostUsd`); pod objects gain `usage`, `outcomes`, `lastRun`, `running` and `tasks.approvedReady`; `status --history --json` replaces `cost --history --json`; `inbox --json` items carry `state` and `command`. `cost --json`, `cost --history --json` and `snapshot` are removed.
+- Removed the `docket list --json` shape and its example with the command; the member inventory
+  is read from `status --all --json`. `docket info <id> --json` is unchanged.
 
 ### Version 1.22.2 (2026-10-07)
 

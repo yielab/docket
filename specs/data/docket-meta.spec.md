@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -34,7 +34,7 @@ docket's single source of truth for that value.
   (pod members use the compound id `<project>-<role>`, e.g. `myapp-implementer`).
 
 Every value is a JSON scalar (string, number, or boolean) — there are no nested objects or
-arrays (`persona` is the one structured exception; see its row). The documented field set below
+arrays. The documented field set below
 is the one every writer in `src/docket/` targets, backed by the `AgentMeta` Pydantic model in
 `src/docket/core/models.py` — but the model is **not closed**: it declares
 `extra="allow"` (deliberately, for forward-compat round-tripping — see "Validation" below), so
@@ -60,7 +60,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `kind` | enum | `project` | local | Yes | `add` | Always `project` |
 | `scope` | enum | `project` | local | No (defaults to `project`) | pod provisioning | Whose data the agent may see: `project` = pod-scoped, never shared across projects. Absent → `project` (the `AgentMeta` field default); nothing derives it from `kind`/`role` on read |
 | `role` | string | — | local | pod members | `add`, `pod add` | Pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
-| `pod` | string | pod id | local | No (pod members) | `add`, `pod add` | The pod (project id) this member belongs to; read by `docket list`/`docket status`, which fall back to the `<project>-<role>` id convention when absent. **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
+| `pod` | string | pod id | local | No (pod members) | `add`, `pod add` | The pod (project id) this member belongs to; read by `docket status`, which fall back to the `<project>-<role>` id convention when absent. **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
 | `codebase` | string | absolute path | local | `codebase`-kind project agents | `add` | Absolute path to the project (`workdir`-kind pod members have none) |
 | `workspaceKind` | enum | `codebase` or `workdir` | local | No (defaulted) | `add` (pod blueprints only, ROADMAP Phase 16 W-7) | Whether this agent's workspace is anchored to a codebase or a plain working directory. Absent on every record written before W-7 (and every `codebase`-kind pod member since — see pod-blueprints.spec.md) → implicitly `codebase`, which is what it already is; only ever written as the literal `workdir` |
@@ -73,7 +73,7 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `created` | string | ISO-8601 | local | Yes | `add` | Creation timestamp |
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
-| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget`, `pod config set/unset` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket list --json` / `docket info --json` emit it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
+| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget`, `pod config set/unset` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket info --json` emits it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
 | `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a stringified `"true"`/`"false"`) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
 | `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS`. A stored value that fails validation (non-integer, ≤ 0) refuses dispatch naming the key, rather than falling back |
@@ -86,7 +86,6 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 | `inPlace` | bool | `true` | local | No (in-place pod Implementers) | in-place provisioning | Marks an Implementer that works in the codebase itself: dispatch makes no task worktree for it — see pod-dispatch.spec.md "Task worktrees". **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
-| `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
 
 In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
 `docket init` (including `docket init --from`); `docket add` and `docket pod <project> add`
@@ -100,7 +99,7 @@ second, external registry:
 
 - `model` — written to a second `agents.list[id].model` by `set_agent_model()`.
 - `sessionKey` — written to `agents.list[id].metadata.sessionKey` by `sync_session_key()` (via
-  `docket scope`); `projectKey` was written alongside it to `metadata.projectKey`.
+  a scope command); `projectKey` was written alongside it to `metadata.projectKey`.
 - `docket doctor` compared every `synced` field between the two registries
   and reported drift; `--fix` re-synced from `.docket-meta.json`.
 
@@ -149,8 +148,8 @@ before it's written):
 On read, a missing file is treated as "agent not found" (exit code 1, docket's flat CLI
 convention — see agent-lifecycle.spec.md's Return Codes), not an empty object.
 
-`sessionKey` and `projectKey` MUST stay consistent; `docket scope` updates both atomically in
-this one file (P19-6: there is no longer a second file to mirror either into).
+`sessionKey` and `projectKey` MUST stay consistent; provisioning writes both in this one file
+(there is no second file to mirror either into).
 
 ## Field rules
 
@@ -244,6 +243,12 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.5.0 (2026-10-07)
+
+- Phase 39 (P39-16): the `persona` field is removed from `AgentMeta` and from the field table; a
+  `persona` key already in a file round-trips through `extra="allow"` and nothing reads it.
+  `sessionKey`/`projectKey` are written by provisioning only.
 
 ### Version 3.4.0 (2026-10-07)
 

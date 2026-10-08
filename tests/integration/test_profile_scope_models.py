@@ -1,4 +1,4 @@
-"""profile, scope, models — writer commands.
+"""profile, models — writer commands.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic and never touch
@@ -173,65 +173,6 @@ class TestCmdProfile:
 
 
 # ---------------------------------------------------------------------------
-# docket scope
-# ---------------------------------------------------------------------------
-
-
-class TestCmdScope:
-    def test_scope_show_exits_zero(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["scope", "myshop"], oc_dir)
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        assert "default" in out
-        assert "agent:myshop:default" in out
-
-    def test_scope_show_explicit_subcommand(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["scope", "myshop", "show"], oc_dir)
-        assert rc == 0
-        assert "agent:myshop:default" in out
-
-    def test_scope_set_updates_meta(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["scope", "myshop", "set", "billing"], oc_dir)
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["projectKey"] == "billing"
-        assert meta["sessionKey"] == "agent:myshop:billing"
-
-    def test_scope_set_without_key_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["scope", "myshop", "set"], oc_dir)
-        assert rc == 1
-        assert "required" in err.lower() or "key" in err.lower()
-
-    def test_scope_reset_restores_default(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        _run(["scope", "myshop", "set", "billing"], oc_dir)
-        rc, _, _ = _run(["scope", "myshop", "reset"], oc_dir)
-        assert rc == 0
-        meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
-        )
-        assert meta["projectKey"] == "default"
-        assert meta["sessionKey"] == "agent:myshop:default"
-
-    def test_scope_unknown_action_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["scope", "myshop", "fly"], oc_dir)
-        assert rc == 1
-        assert "Unknown" in err
-
-    def test_scope_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["scope", "ghost", "show"], oc_dir)
-        assert rc == 1
-        assert "not found" in err
-
-
-# ---------------------------------------------------------------------------
 # docket models
 # ---------------------------------------------------------------------------
 
@@ -388,12 +329,12 @@ class TestCmdModels:
 
 
 # ---------------------------------------------------------------------------
-# stub list confirms profile/scope/models no longer exit 127
+# stub list confirms profile/models no longer exit 127
 # ---------------------------------------------------------------------------
 
 
 class TestM4CommandsPortedFromStubs:
-    @pytest.mark.parametrize("cmd", [["profile", "ghost"], ["scope", "ghost"], ["setup", "model"]])
+    @pytest.mark.parametrize("cmd", [["profile", "ghost"], ["setup", "model"]])
     def test_does_not_exit_127(self, cmd: list[str], tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, _, _ = _run(cmd, oc_dir)

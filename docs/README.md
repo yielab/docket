@@ -158,4 +158,4 @@ of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 3. **One owner per fact.** Adapter versions live in [COMPATIBILITY.md](../COMPATIBILITY.md),
    requirements in `specs/`, decisions in `adr/`.
 
-Questions: `docket help`, or the [Quick start](QUICK-START-DOCKET.md).
+Questions: `docket --help`, or the [Quick start](QUICK-START-DOCKET.md).

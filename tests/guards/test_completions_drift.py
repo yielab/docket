@@ -76,7 +76,6 @@ class TestCommandsPresent:
         "approve",
         "deny",
         "setup",
-        "context",
         "log",
         "trace",
     )

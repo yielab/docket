@@ -1,11 +1,11 @@
 # Agent Loop Specification
 
-**Version**: 1.31.0
+**Version**: 1.32.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
-agent's SOUL.md/persona and one runtime-safe projection of its startup contract
+agent's SOUL.md and one runtime-safe projection of its startup contract
 (`core.identity.compose_agent_prompt`) — see the
 "Per-role tool narrowing" and "System prompt composition" requirements below. **Wave 17** gave
 `DocketDriver` an `mcp_loader` seam, called before this loop's registry-narrowing step, so a
@@ -73,8 +73,7 @@ This specification does NOT cover:
 - The archetype schema, `deniedTools` data, and `registry_for_role`'s own contract — see
   `role-archetypes.spec.md`'s "Per-role tool sets"; this spec only covers that `run_agent_turn`
   calls it and what that does to a turn
-- The persona rendering/upsert primitives (`render_persona_block`, `upsert_persona_block`) or
-  the identity file layout itself (`SOUL.md`, `WORKFLOW_AUTO.md`) — see `workspace-structure.spec.md`
+- The identity file layout itself (`SOUL.md`, `WORKFLOW_AUTO.md`) — see `workspace-structure.spec.md`
   and `core/identity.py`'s own docstring; this spec only covers that `run_agent_turn` composes
   and injects the result
 - Durable session storage and compaction planning internals (`core/session.py`, ROADMAP Phase 19
@@ -169,8 +168,7 @@ This specification does NOT cover:
     `read_new_turns`/`usage` **MUST** read `core/session.py`'s durable storage, never a daemon
     session log.
 25. `list_sessions` **MUST** scope its results to sessions whose key belongs to the requested
-    agent id, even when that agent has been re-scoped to more than one project over its
-    lifetime (`docket scope ... set`).
+    agent id.
 
 ### Per-role tool narrowing (ROADMAP Phase 19 P19-12)
 
@@ -200,10 +198,8 @@ This specification does NOT cover:
     prepend it as a `system`-role message ahead of the turn's history and incoming user message.
     An empty result (no workspace, no identity files, no `agent_id`) **MUST NOT** add an empty
     `system` message.
-30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), its
-    live persona (read fresh from `.docket-meta.json`, not trusted from whatever `SOUL.md` has
-    on disk), an optional operator-owned `INSTRUCTIONS.md` composed immediately after `SOUL.md`
-    and ahead of everything else, and one authoritative runtime projection of Docket's generated
+30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), an optional
+    operator-owned `INSTRUCTIONS.md` composed immediately after `SOUL.md` and ahead of everything else, and one authoritative runtime projection of Docket's generated
     startup contract. `INSTRUCTIONS.md` **MUST NOT** be written, regenerated, or quarantined by
     Docket at any point (provisioning, `sync`, `set-verify`, `doctor --fix`) — it is the durable
     home for operator instructions precisely because nothing on this path ever overwrites it.
@@ -315,7 +311,7 @@ This specification does NOT cover:
     reused to bound `AGENT_LOOP_TOKEN_BUDGET`'s separate, measured-usage cumulative turn budget.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
-    so a persona change or refreshed private workspace state (requirement 30) is reflected on the
+    so refreshed private workspace state (requirement 30) is reflected on the
     very next turn rather than frozen into a stored message.
 
 ### Live session compaction (Wave 20 W20-C2)
@@ -763,10 +759,10 @@ result = agent_loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:rev-
 ### The system prompt reaches the model
 
 ```python
-# ws/SOUL.md exists, ws/WORKFLOW_AUTO.md exists, agent has a persona set
+# ws/SOUL.md exists, ws/WORKFLOW_AUTO.md exists, 
 result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 # backend.complete's first call's messages[0].role == "system"
-# that message's content folds in SOUL.md, the live persona, and the runtime projection of the
+# that message's content folds in SOUL.md and the runtime projection of the
 # startup contract -- never WORKFLOW_AUTO.md's raw prose (requirement 30)
 # core.session.load_messages(session_key) contains no "system"-role message afterward
 ```
@@ -810,6 +806,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.32.0 (2026-10-07)
+
+- Phase 39 (P39-16): the composed system prompt carries no persona (requirement 30), and
+  `list_sessions` (requirement 25) no longer mentions re-scoping.
 
 ### Version 1.31.0 (2026-10-04)
 
@@ -1116,7 +1117,7 @@ Phase 37 close (P37-8): the entries below were Unreleased and are now this versi
 - **ROADMAP Phase 19, card P19-12 (per-role tool sets + identity composition).** Closed two
   omissions this spec's own Version 1.0.0 recorded as out of scope for P19-5: `run_agent_turn`
   now narrows its tool registry by role once per turn (`core.archetypes.registry_for_role`,
-  new requirements 26–28) and composes a system prompt from `SOUL.md`/the live persona/
+  new requirements 26–28) and composes a system prompt from `SOUL.md`/
   `WORKFLOW_AUTO.md` (`core.identity.system_prompt_for_agent`, new requirements 29–31). Both are
   resolved once per turn, not per iteration; the system prompt is never persisted to session
   history. No change to `run_agent_turn`'s or `DocketDriver`'s public signatures — this is a

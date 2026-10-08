@@ -1,6 +1,6 @@
 # Input Validation Specification
 
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
 project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
 forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
@@ -30,8 +30,7 @@ snippets and module pointers show how that contract is enforced today.
 > W36-C11).** `rg` over `src/docket/` finds no `validate_path`, `_FORBIDDEN_DIRS`,
 > `validate_number`, `validate_session_key` or `confine_to_base` — nothing enforces the
 > forbidden system directories (§2), the numeric range/leading-zero rule (§4) or the
-> session-key grammar (§5), and `docket scope <id> set <project-key>` stores the project key
-> unvalidated. The Python blocks in §2, §4 and §5 are therefore reference sketches of the MUST
+> session-key grammar (§5). The Python blocks in §2, §4 and §5 are therefore reference sketches of the MUST
 > rules, not the shipped code. Each is deferred rather than open because a specific measured-need
 > check comes back negative today (the reason is repeated under each section): §2's codebase path
 > is only ever chosen by the same local operator who already has unrestricted shell access to
@@ -256,7 +255,7 @@ filesystem unsafely, and nothing in `src/` parses a session key back into its co
 malformed grammar cannot be misread downstream either.
 
 **Field**: session-key, project-key
-**Used By**: scope
+**Used By**: provisioning
 
 **Rules**:
 - **MUST** follow format: `agent:<id>:<project>`
@@ -265,11 +264,9 @@ malformed grammar cannot be misread downstream either.
 - Project **MUST** be alphanumeric + dash (same grammar as an agent id)
 - **MUST NOT** exceed 100 characters total
 
-**Reference**: the session key is composed, never free-typed — `docket scope <id> set
-<project-key>` builds `session_key = f"agent:{aid}:{project_key}"`
-(`src/docket/cli/__init__.py`, the `scope` command) and persists it via `core/fleet.py`'s
-`meta_set` (both `projectKey` and `sessionKey`). The project key is **not** validated today and
-no parse-back validator exists (see the implementation note above); the intended check is:
+**Reference**: the session key is composed, never free-typed — provisioning writes
+`session_key = f"agent:{aid}:default"` (both `projectKey` and `sessionKey`) and no command changes
+it afterwards. No parse-back validator exists (see the implementation note above); the intended check is:
 
 ```python
 import re
@@ -294,7 +291,7 @@ def validate_session_key(key: str) -> tuple[str, str]:
 ### 6. Command Action Validation
 
 **Field**: action / sub-command
-**Used By**: scope, keys, pod, gates, runs, pipeline, roles, conversations
+**Used By**: keys, pod, gates, runs, pipeline, roles, conversations
 
 **Rules**:
 - **MUST** be from the allowed action list for that command
@@ -302,7 +299,6 @@ def validate_session_key(key: str) -> tuple[str, str]:
 - **MUST** have the required arguments
 
 **Actions by Command**:
-- scope: show (default), set, reset
 - keys: list (default), add, remove, rotate, validate, export, setup
 - pod: list (default), add, remove, set-verify, delegate, queue, dispatch
 
@@ -312,18 +308,12 @@ removed-command notice instead of validating actions.)
 **Reference**: sub-commands and their required arguments are modelled directly in the Typer
 command signatures (`src/docket/cli/__init__.py` and the split groups under
 `src/docket/cli/_*.py`). The action is matched in the command body and a missing required
-argument aborts via `ui.error` + `typer.Exit(1)` — e.g. the `scope` command:
+argument aborts via `ui.error` + `typer.Exit(1)` — e.g. the `keys` command:
 
 ```python
-# inside the `scope` command (cli/__init__.py)
-action = sub or "show"
-if action == "set":
-    if not project_key:
-        ui.error(f"Project key required. Usage: docket scope {aid} set <project-key>")
-        raise typer.Exit(1)
-    ...
-else:  # anything other than show/set/reset
-    ui.error(f"Unknown action '{action}'. Use: show, set, or reset")
+# inside the `keys` command (cli/_keys.py)
+if not name:
+    ui.error("Usage: docket keys add <KEY_NAME>")
     raise typer.Exit(1)
 ```
 
@@ -519,6 +509,10 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.6.1 (2026-10-07)
+
+- Phase 39 (P39-16): the `scope` command is gone; the session key is written by provisioning only.
 
 ### Version 1.6.0 (2026-09-21)
 

@@ -4,7 +4,7 @@ re-derive paths or dates. See specs/functional/workspace-structure.spec.md for t
 layout and specs/functional/pod-dispatch.spec.md for the HEARTBEAT.md dispatch-ledger
 reconciliation (``write_dispatch_tasks``/``sync_dispatch_tasks``,
 ``DISPATCH_BLOCK_BEGIN``/``_END``), and specs/functional/agent-loop.spec.md for how the turn
-loop composes SOUL.md, persona, and a runtime-safe ``WORKFLOW_AUTO.md`` projection into the
+loop composes SOUL.md and a runtime-safe ``WORKFLOW_AUTO.md`` projection into the
 system message every turn. ``distill_memory`` is docket's first self-originated LLM call,
 made through the injected ``RuntimeDriver`` port (never a hand-rolled client) so this module
 stays unit-testable with ``tests/fakes.py``'s ``FakeDriver``; it fails **closed** — any driver

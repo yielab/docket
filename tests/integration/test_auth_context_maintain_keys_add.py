@@ -1,4 +1,4 @@
-"""CLI tests: auth, context, maintain, keys, add.
+"""CLI tests: auth, maintain, keys, add.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory. Agent registration is seeded via
@@ -108,37 +108,6 @@ def _setup_bare(tmp_path: Path) -> Path:
     home.mkdir(exist_ok=True)
     (home / "fleet.json").write_text(json.dumps(FLEET_EMPTY))
     return home
-
-
-# ---------------------------------------------------------------------------
-# TestCmdContext
-# ---------------------------------------------------------------------------
-
-
-class TestCmdContext:
-    def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["context", "nonexistent-agent"], home)
-        assert rc == 1
-        combined = out + err
-        assert "not found" in combined.lower() or "nonexistent-agent" in combined
-
-    def test_show_exits_0_and_shows_recent_activity(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, _err = _run(["context", "test-agent", "show"], home)
-        assert rc == 0
-        assert "Recent Activity" in out
-
-    def test_project_shows_metadata(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "project"], home)
-        assert rc == 0
-        combined = out + err
-        assert (
-            "codebase" in combined.lower()
-            or "model" in combined.lower()
-            or "project" in combined.lower()
-        )
 
 
 # ---------------------------------------------------------------------------

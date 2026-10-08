@@ -39,17 +39,13 @@ def _load_click_group():
 # --- grouping (structural, script-owned) -----------------------------------------
 
 # (heading, [command names in display order]) — every visible command must
-# appear in exactly one group; `help` is folded into Global Options instead
-# of its own heading, matching the previous hand-written structure.
+# appear in exactly one group.
 GROUPS: list[tuple[str, list[str]]] = [
-    ("Lifecycle Commands", ["list", "init", "add", "status", "run", "info", "delete", "maintain"]),
-    ("Session and Context Management", ["scope", "context", "persona"]),
+    ("Lifecycle Commands", ["init", "add", "status", "run", "info", "delete", "maintain"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     (
         "Utility Commands",
         [
-            "logs",
-            "edit",
             "profile",
             "setup",
             "config",
@@ -155,17 +151,6 @@ docket --help
 docket -h
 docket <command> --help
 ```
-
-### help
-
-{help_body}
-
-**Syntax:**
-```bash
-docket help
-```
-
-**Aliases:** None
 
 ### --version / -V
 
@@ -650,8 +635,6 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "Login shell name; `docket setup` uses it to name the completion command it offers",
         "unset (bash assumed)",
     ),
-    (("EDITOR",), "Text editor for `docket edit`, checked before `VISUAL`", "`nano`"),
-    (("VISUAL",), "Fallback text editor for `docket edit` when `EDITOR` is unset", "`nano`"),
     (
         ("DOCKET_SERVE_TOKEN",),
         "Fix `docket start`'s bearer token instead of generating one per run",
@@ -745,7 +728,6 @@ If you have fzf installed, omit the agent-id for fuzzy search:
 ```bash
 docket info      # Opens fzf picker
 docket delete    # Opens fzf picker
-docket logs      # Opens fzf picker
 ```
 
 ### Batch Operations
@@ -753,10 +735,8 @@ docket logs      # Opens fzf picker
 Use bash loops for batch operations:
 
 ```bash
-# Reset all agents
-for id in $(docket list | awk '{print $1}' | tail -n +2); do
-  docket maintain "$id" clean
-done
+# Clean one agent's memory
+docket maintain "$id" clean
 
 # Cheaper models fleet-wide: change the policy once — every
 # policy-following agent updates automatically (pins are untouched)
@@ -802,7 +782,7 @@ def render(check_only: bool = False) -> str:
     }
 
     grouped_names = {name for _heading, names in GROUPS for name in names}
-    remaining = sorted(set(commands) - grouped_names - {"help"})
+    remaining = sorted(set(commands) - grouped_names)
     if remaining:
         raise SystemExit(
             f"gen_cli_docs: command(s) not assigned to a GROUPS section: {remaining} "
@@ -847,9 +827,7 @@ def render(check_only: bool = False) -> str:
             lines.append("\n---\n")
 
     lines.append("## Global Options\n")
-    help_cmd = commands["help"]
-    help_body = _render_help_body(help_cmd.help or "")
-    lines.append(_GLOBAL_OPTIONS.format(help_body=help_body))
+    lines.append(_GLOBAL_OPTIONS)
     lines.append("\n---\n")
 
     lines.append("## Exit Codes\n")

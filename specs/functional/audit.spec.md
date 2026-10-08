@@ -62,7 +62,6 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    - `pod.set-verify` (`cli/_pod.py`'s `_pod_set_verify`, and `_pod_add` when `--verify` is
      passed) — ROADMAP Phase 14 R-6; names the member and the (validated) command being set,
      never the raw command's stdout
-   - `persona.set` / `persona.clear` (`cli/__init__.py`'s `persona` command)
    - `models.set` / `models.preset` / `models.reset` (`cli/__init__.py`'s `models` command,
      ROADMAP Phase 15 G-4b) — role→model policy changes. Each entry's `detail` names the role
      (or `default`) affected and the before/after model, so the log alone answers "which role
@@ -421,6 +420,8 @@ $ docket log verify   # audit.log.1 was deleted after that same rotation
 ### Version 2.12.0 (2026-10-07)
 
 - The viewer is `docket log [N] [--json]` and the chain check is `docket log verify`; `log` is a Typer group, so an unknown verb is a usage error (exit 2). The recorded families, chain and rotation rules are unchanged.
+- Phase 39 (P39-16): `persona.set`/`persona.clear` leave the recorded actions with the `persona`
+  command.
 
 ### Version 2.11.0 (2026-10-03)
 

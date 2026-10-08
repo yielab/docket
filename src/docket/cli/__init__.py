@@ -18,7 +18,6 @@ from docket.cli import (
     _log,
     _pod,
     _pod_config,
-    _remove,
     _run,
     _service,
     _setup,
@@ -56,7 +55,6 @@ def _default(
         ui.console.print("  docket status --all  show global status by project")
         ui.console.print("  docket add <role>    add an agent to the current pod")
         ui.console.print("  docket setup         set up this workstation (model endpoint first)")
-        ui.console.print("  docket help          show the full command reference")
 
 
 app.add_typer(_setup.setup_app)
@@ -67,7 +65,6 @@ _setup.setup_app.command("shell")(_setup_shell.cmd_shell)
 _setup.setup_app.add_typer(_setup_notify.notify_app)
 _setup.setup_app.add_typer(_setup_export.export_app)
 _setup.setup_app.add_typer(_setup_mcp.mcp_app)
-app.command("list")(_remove.cmd_list)
 app.command("status")(_status.cmd_status)
 app.command(
     "add",
@@ -83,13 +80,7 @@ app.command(
     "maintain",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod.cmd_maintain)
-app.command(
-    "context",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_remove.cmd_context)
-app.command("scope")(_remove.cmd_scope)
 app.command("profile")(_pod.cmd_profile)
-app.command("persona")(_remove.cmd_persona)
 app.command(
     "pod",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -102,8 +93,6 @@ app.command(
     "roles",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_roles)
-app.command("logs")(_remove.cmd_logs)
-app.command("edit")(_remove.cmd_edit)
 app.command(
     "config",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -141,4 +130,3 @@ app.command(
 )(_task.cmd_chat)
 app.command("inbox")(_inbox.cmd_inbox)
 app.command("run")(_run.cmd_run)
-app.command("help")(_remove.cmd_help)

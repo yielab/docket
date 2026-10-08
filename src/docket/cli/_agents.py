@@ -524,23 +524,6 @@ def _cmd_add_declarative(from_file: str) -> int:
     return 1 if had_invalid_id else 0
 
 
-def _apply_persona_from_meta(ws: Path, soul_text: str) -> str:
-    """Upsert the persona block into *soul_text* from ``ws``'s existing meta. A no-op
-    for a brand-new or persona-less agent; on ``maintain rebuild`` it re-renders the
-    docket-owned persona so identity stays a pure function of metadata."""
-    from docket.core import identity as _identity
-    from docket.core.models import AgentMeta
-
-    meta_file = ws / _cfg.META_FILE
-    if not meta_file.exists():
-        return soul_text
-    try:
-        meta = AgentMeta.model_validate(store.read_json(meta_file))
-    except Exception:
-        return soul_text
-    return _identity.upsert_persona_block(soul_text, meta.persona)
-
-
 def _create_workspace(
     agent_id: str,
     name: str,
@@ -631,10 +614,6 @@ def _create_workspace(
     )
 
     heartbeat = _mem.heartbeat_seed(name)
-
-    # Re-apply the docket-owned persona from metadata (if any) so a `maintain
-    # rebuild` regenerates identity from meta rather than dropping the persona.
-    soul = _apply_persona_from_meta(ws, soul)
 
     for fname, text in [
         ("SOUL.md", soul),
