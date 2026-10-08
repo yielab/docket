@@ -936,3 +936,20 @@ def git_diff_stat(cwd: str, base: str) -> dict[str, int] | None:
         "insertions": int(insertions_match.group(1)) if insertions_match else 0,
         "deletions": int(deletions_match.group(1)) if deletions_match else 0,
     }
+
+
+def git_diff(path: str, base: str) -> str | None:
+    """Return ``git diff <base>`` for the tree at `path`, or ``None`` if git is unavailable,
+    `path` is not a repo or `base` is unknown; an unchanged tree returns an empty string."""
+    if not git_available():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "diff", base],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    return result.stdout if result.returncode == 0 else None

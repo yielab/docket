@@ -77,7 +77,7 @@ class TestCommandsPresent:
         "deny",
         "setup",
         "log",
-        "trace",
+        "task",
     )
 
     @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -98,7 +98,7 @@ class TestSubcommandListsMatchTheImplementation:
 
     # Only modules whose file name maps 1:1 onto a command; `__init__.py` hosts
     # several commands at once, so its `sub ==` literals cannot be attributed.
-    MODULES = ("_pipeline", "_runs", "_trace")
+    MODULES = ("_pipeline",)
 
     @staticmethod
     def _implemented_subcommands(module_stem: str) -> set[str]:

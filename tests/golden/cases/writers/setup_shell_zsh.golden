@@ -15,14 +15,12 @@ _docket() {
     'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
     'roles:Manage declarative role archetypes: list/show/add/validate'
     'config:Read-only inspection of an agent'\''s effective configuration'
-    'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'exec:Run one agent for one task in a workspace you own, for programs'
     'start:Start the background service: the local HTTP API, sweeps, and what you turn on'
     'stop:Stop the background service: let sweeps finish, then abandon them if they hang'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
     'recipes:List and inspect the recipe library'
-    'trace:View agent execution traces'
     'policies:Manage tool-approval policies'
     'approve:Approve a pending tool-action'
     'deny:Deny a pending tool-action'
@@ -50,12 +48,11 @@ _docket() {
   case "${words[2]}" in
     status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue config apply export ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove config apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
     pipeline)        compadd validate plan ;;
-    runs)            compadd list show cancel prune ;;
+    task)            compadd add list show diff trace prune ;;
     audit)           compadd verify --json ;;
-    trace)           compadd tail export ingest expire ;;
     policies)        compadd list show init test validate ;;
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;

@@ -1,4 +1,4 @@
-"""`docket pod <p> worktrees prune`: finished task worktrees removed, real git repos."""
+"""`docket task prune`: finished task worktrees removed, real git repos."""
 
 from __future__ import annotations
 
@@ -8,11 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import typer
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _pod
 from docket.core import pod_provisioning as pp
 
 SUBJECT = "docket.core.pod_provisioning"
@@ -173,13 +171,17 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
     assert "prunedAt" not in _task(env, "t-evil")["worktree"]
 
 
-def test_cli_verb_prints_and_rejects_bad_usage(
-    env: dict[str, Any], capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_verb_prints_and_rejects_bad_usage(env: dict[str, Any]) -> None:
+    from typer.testing import CliRunner
+
+    from docket.cli import app
+
     rec = _add_task(env, "t-merged", "done")
-    _pod.dispatch(PROJECT, "worktrees", ["prune", "--dry-run"])
+    runner = CliRunner()
+    dry = runner.invoke(app, ["task", "prune", "--dry-run", "--pod", PROJECT])
+    assert dry.exit_code == 0, dry.output
     assert Path(rec["dir"]).is_dir()
-    _pod.dispatch(PROJECT, "worktrees", ["prune"])
+    real = runner.invoke(app, ["task", "prune", "--pod", PROJECT])
+    assert real.exit_code == 0, real.output
     assert not Path(rec["dir"]).exists()
-    with pytest.raises(typer.Exit):
-        _pod.dispatch(PROJECT, "worktrees", ["frobnicate"])
+    assert runner.invoke(app, ["task", "prune", "--frobnicate", "--pod", PROJECT]).exit_code == 2

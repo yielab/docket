@@ -1,4 +1,4 @@
-"""core.trace's age-based retention sweep (expire_old_traces) + `docket trace expire`.
+"""core.trace's age-based retention sweep (expire_old_traces) + `docket task prune --traces`.
 
 Mirrors the fixture pattern in test_trace_audit.py: trace.py reads paths from
 docket.config at call time, so config attributes are repointed at a temp seed
@@ -14,7 +14,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _trace as trace_cli
+from docket.cli import app
 from docket.core import trace as trace_core
 
 SUBJECT = "docket.config"
@@ -196,40 +196,42 @@ class TestExpireOldTraces:
         assert report.expired_count == 1
 
 
-class TestRunTraceExpireCommand:
-    def test_expire_subcommand_dry_run(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+def _prune(*extra: str) -> int:
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(app, ["task", "prune", "--traces", "--pod", "myshop", *extra])
+    print(result.output)
+    return result.exit_code
+
+
+class TestTaskPruneTraces:
+    def test_prune_dry_run(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         pdir = oc_dir / "traces" / "myshop"
         _write_trace(
             pdir,
             "old",
             [{"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}],
         )
-        rc = trace_cli.run_trace("expire", None, None, True, None)
+        rc = _prune("--dry-run")
         out = capsys.readouterr().out
         assert rc == 0
         assert "Would delete" in out
         assert (pdir / "old.jsonl").exists()
 
-    def test_expire_subcommand_deletes(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prune_deletes(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         pdir = oc_dir / "traces" / "myshop"
         _write_trace(
             pdir,
             "old",
             [{"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}],
         )
-        rc = trace_cli.run_trace("expire", None, None, False, None)
+        rc = _prune()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "deleted" in out
+        assert "Deleted" in out
         assert not (pdir / "old.jsonl").exists()
 
-    def test_expire_subcommand_days_override(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prune_days_override(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         pdir = oc_dir / "traces" / "myshop"
         recent = trace_core._now_iso()
         _write_trace(
@@ -240,8 +242,8 @@ class TestRunTraceExpireCommand:
                 {"ts": recent, "event_type": "session_end"},
             ],
         )
-        rc = trace_cli.run_trace("expire", None, None, False, -1)
+        rc = _prune("--days", "0")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "deleted" in out
+        assert "Deleted" in out
         assert not (pdir / "recent.jsonl").exists()

@@ -12,7 +12,6 @@ docket.cli._pod
 docket.cli._policies
 docket.cli._roles
 docket.cli._runs
-docket.cli._trace
 docket.config
 docket.core.archetypes
 docket.core.audit

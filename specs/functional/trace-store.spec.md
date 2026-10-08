@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -15,7 +15,7 @@ subscriber/retention machinery; this specification is that owner.
 Docket traces every agent action it can observe to `$TRACES_DIR/<project>/<session_id>.jsonl`,
 one append-only file per session. This specification defines that store: the record shape written
 per line, the full `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
-the `subscribe` seam a live consumer (`docket trace tail`, `docket harness run`) reads from
+the `subscribe` seam a live consumer (`docket task trace --tail`, `docket harness run`) reads from
 without touching disk, `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that projects
 a driver's own session log into this store, and the retention functions (`sweep_all`,
 `expire_old_traces`) that keep it bounded.
@@ -43,7 +43,7 @@ This specification does NOT cover:
   `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation event family;
   `security-gates.spec.md` owns `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md`
   owns `cost_charged`/`budget_warning`/`budget_exceeded`
-- The read API surface over this store (`docket trace`, `GET` routes) — see
+- The read API surface over this store (`docket task trace`, `GET` routes) — see
   `serve-read-api.spec.md`
 - The harness-mode NDJSON wire pass-through of these same records — see `harness-mode.spec.md`,
   whose `event` field is defined as exactly what `trace_event` produced, unmodified
@@ -326,6 +326,14 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.6.0 (2026-10-08)
+
+- The CLI reads a task's trace by task ref: `docket task trace <ref>` resolves the ref
+  (`core/task_ref.py`) and reads `agent:<project>:<task-id>.jsonl`; `--tail` ends at the
+  `session_end` event, `--export` prints the raw JSONL, `tool_call` lines name the tool. The
+  retention sweep is `docket task prune --traces [--days N]`. `trace`, `trace tail|export|ingest|
+  expire` are removed.
 
 ### Version 1.5.0 (2026-10-05)
 

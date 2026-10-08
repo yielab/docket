@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.23.0
+**Version**: 1.24.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -14,7 +14,7 @@ against that code.
 ## Scope
 
 Covers every command that supports `--json` output: `list`, `status` (and
-`status --history`), `info`, `doctor`, `inbox`, `runs list`/`runs show <id>` (R-3),
+`status --history`), `info`, `doctor`, `inbox`, `task list`/`task show <ref>`/`task trace <ref>`,
 `pod <p> config get`, `config explain <agent>`, and the `serve` HTTP endpoints. `docket
 audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover
 human-readable (Rich) output or third-party protocol payloads.
@@ -150,33 +150,42 @@ The `InboxView` shape `GET /inbox` returns (`needsYou`, `failed`, `doneSince`, `
 was granted is listed in `needsYou` with `state: "approved_ready"` and `command: "docket run
 --pod <pod>"`. The output is plain JSON with no escape codes.
 
-### `docket runs list --json` (R-3)
+### `docket task list --json`
 
 ```json
 {
-  "runs": [
+  "pod": "string",
+  "tasks": [
     {
-      "id":         "string (run-<uuid4>)",
-      "source":     "cli | webhook | schedule | sweep | mcp",
-      "project":    "string",
-      "state":      "queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled",
-      "taskIds":    "array of strings",
-      "error":      "string (empty unless state is failed)",
-      "created":    "string (ISO-8601, local offset)",
-      "startedAt":  "string (ISO-8601) | null",
-      "finishedAt": "string (ISO-8601) | null",
-      "variables":  "object",
-      "cancellation": "{ requestedAt, observedAt, stoppedAt, reason, source } | null"
+      "id":          "string (task id)",
+      "priority":    "high | normal | low",
+      "status":      "string (pending | in_progress | waiting_input | waiting_approval | blocked | failed | done | cancelled)",
+      "costUsd":     "number | null",
+      "description": "string",
+      "worktree":    "string (absolute path) | null"
     }
   ]
 }
 ```
 
-`docket runs list --project <p> --json` filters the array to one pod; newest-first ordering.
+`worktree` is the recorded task worktree directory, or `null` for a task that has none (ran in
+place, not yet claimed, or pruned). Queue order.
 
-### `docket runs show <id> --json` (R-3)
+### `docket task show <ref> --json`
 
-Same shape as one element of `runs list`'s array, unwrapped (a bare object, not `{"runs": [...]}`):
+```json
+{
+  "pod":      "string",
+  "task":     "one task list item, with worktree replaced by the object below or null",
+  "evidence": "the evidence-v1 document of docs/contracts/evidence-v1/schema.json",
+  "runs":     "array of run records (below)",
+  "corrections": "array of corrections-ledger records for this task",
+  "interruptions": [{ "kind": "string", "description": "string", "detail": "object" }]
+}
+```
+
+`task.worktree` is `{ "path", "branch", "baseCommit", "diff", "merge" }` (`diff` and `merge` are
+the exact shell commands) or `null`. Each run record carries the run registry fields:
 
 ```json
 {
@@ -193,6 +202,11 @@ Same shape as one element of `runs list`'s array, unwrapped (a bare object, not 
   "cancellation": "{ requestedAt, observedAt, stoppedAt, reason, source } | null"
 }
 ```
+
+### `docket task trace <ref> --json`
+
+`{ "pod": "string", "events": [ <trace record>, ... ] }` in file order; the records are the
+trace-store records (`trace-store.spec.md`).
 
 ### `docket pod <p> config get --json`
 
@@ -346,8 +360,8 @@ when a source is recorded, one `Config source:` line carrying the digest prefix 
 | `/status.json` | `application/json` | the `status --all --json` inventory shape plus a top-level `apiVersion` and per-agent `scope`/`budgetUsd` (full schema: `specs/data/serve-read-api.spec.md`) |
 | `/health` | `application/json` | `{"status":"ok"}` |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
-| `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
-| `/runs/<id>` | `application/json` | Same as `docket runs show <id> --json` (auth required) |
+| `/runs` | `application/json` | One run record per entry, as in `task show --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
+| `/runs/<id>` | `application/json` | One run record, as in `task show --json` (auth required) |
 
 Prometheus metrics emitted by `/metrics`:
 
@@ -390,6 +404,12 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.24.0 (2026-10-08)
+
+- `docket task list --json` and `docket task show <ref> --json` replace `runs list --json` and
+  `runs show <id> --json`; each task carries `worktree` (a path or `null` in the list, an object
+  with the diff and merge commands in `show`). `task trace --json` is `{pod, events}`.
 
 ### Version 1.23.0 (2026-10-07)
 

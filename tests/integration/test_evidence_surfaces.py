@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import typer
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _harness_recipe, _pod
+from docket.cli import _harness_recipe, _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import evidence as _ev
 from docket.core import harness_pipeline as _hp
@@ -90,17 +90,15 @@ class TestSurfacesAgree:
     ) -> None:
         task_id = _seed(tmp_path, monkeypatch)
         capsys.readouterr()
-        _pod._pod_evidence("demo", [task_id, "--json"])
-        cli_out = capsys.readouterr().out.strip()
+        shown = CliRunner().invoke(app, ["task", "show", task_id, "--json", "--pod", "demo"])
+        assert shown.exit_code == 0, shown.output
+        cli_doc = json.loads(shown.output)["evidence"]
         status, http_body = _get(f"{server}/tasks/demo/{task_id}/evidence", _TOKEN)
         assert status == 200
-        assert cli_out.encode() == http_body.strip()
         run = _hp.RecipeRun(project="demo", task={"id": task_id}, hops=[])
         harness_doc = _harness_recipe._task_evidence(run)
-        assert json.loads(cli_out) == json.loads(http_body) == harness_doc
-        assert json.loads(cli_out) == _ev.task_evidence("demo", task_id).model_dump(
-            by_alias=True, mode="json"
-        )
+        assert cli_doc == json.loads(http_body) == harness_doc
+        assert cli_doc == _ev.task_evidence("demo", task_id).model_dump(by_alias=True, mode="json")
 
     def test_harness_block_is_none_without_a_run(self) -> None:
         assert _harness_recipe._task_evidence(None) is None
@@ -125,13 +123,10 @@ class TestErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit) as exc:
-            _pod._pod_evidence("demo", ["nope"])
-        assert exc.value.exit_code == 1
+        result = CliRunner().invoke(app, ["task", "show", "nope", "--pod", "demo"])
+        assert result.exit_code == 1
 
-    def test_cli_table_lists_the_hop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_cli_table_lists_the_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         task_id = _seed(tmp_path, monkeypatch)
-        _pod._pod_evidence("demo", [task_id])
-        assert "implementer" in capsys.readouterr().out
+        result = CliRunner().invoke(app, ["task", "show", task_id, "--pod", "demo"])
+        assert "implementer" in result.output

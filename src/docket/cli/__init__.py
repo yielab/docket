@@ -97,10 +97,6 @@ app.command(
     "config",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_config)
-app.command(
-    "runs",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_task.cmd_runs)
 app.command("exec")(_exec.cmd_exec)
 app.add_typer(_log.log_app)
 app.command("start")(_service.cmd_start)
@@ -114,10 +110,6 @@ app.command(
     "recipes",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_recipes)
-app.command(
-    "trace",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_task.cmd_trace)
 app.command(
     "policies",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},

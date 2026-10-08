@@ -66,7 +66,7 @@ The behavioral matrix uses temporary registries created by two real `write_json`
 | --- | --- | --- | --- |
 | Valid primary; stale or malformed backup | `read_json` | Current object | Every existing data-file byte is identical |
 | Malformed primary; valid backup | `read_json` | Previous complete object | Primary is valid `0600` JSON; one quarantine holds the exact malformed bytes; no `.tmp` |
-| Malformed runs primary; valid backup | `docket runs list --json` | Prior complete run list | The real CLI-to-core-to-store path performs the same recovery |
+| Malformed runs primary; valid backup | `docket task prune --traces --dry-run` | Prior complete run list | The real CLI-to-core-to-store path performs the same recovery |
 | Malformed primary; missing or malformed backup | `read_json` | Typed actionable failure | All input bytes and file presence are unchanged; no quarantine or `.tmp` is invented |
 | Two readers released at one barrier | concurrent `read_json` | Both receive the prior object | Exactly one bounded quarantine and one complete primary remain |
 | Reader and locked mutation released at one barrier | `read_json` plus `read_modify_write` | Mutation completes without deadlock | Final primary is the complete mutated object; backup is never malformed; no `.tmp` |

@@ -77,7 +77,7 @@ def _delegate_smoke_task(run_cli: Callable[..., object], scenario: str) -> None:
         description = _basic_task_description()
     else:
         raise SmokeFailure(f"unsupported smoke scenario: {scenario}")
-    run_cli("pod", "smoke", "delegate", description)
+    run_cli("task", "add", description, "--pod", "smoke")
 
 
 def _require(condition: bool, message: str) -> None:
@@ -975,21 +975,8 @@ def _tool_verdict_diagnostic(
 
 
 def _cancel_active_smoke_run(repo: Path, env: dict[str, str]) -> str:
-    result = _run_cli(
-        repo,
-        env,
-        "runs",
-        "list",
-        "--project",
-        "smoke",
-        "--json",
-        process_timeout=30,
-    )
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise SmokeFailure("active smoke run lookup returned malformed JSON") from exc
-    runs = payload.get("runs") if isinstance(payload, dict) else None
+    payload = _load_json(Path(env["DOCKET_HOME"]) / "docket-runs.json")
+    runs = [r for r in payload.get("runs") or [] if r.get("project") == "smoke"]
     active = next(
         (
             record
@@ -1827,9 +1814,7 @@ def _run(
             )
         print("[check] waiting_approval -> granted -> resumed at release-check -> done")
 
-        run_cli("pod", "smoke", "queue")
-        run_cli("runs", "list", "--project", "smoke", "--json")
-        run_cli("trace", "export", "smoke")
+        run_cli("task", "list", "--pod", "smoke", "--json")
         run_cli("status", "--pod", "smoke", "--json")
         run_cli("log", "verify")
 
@@ -2292,7 +2277,7 @@ def _run_operator_loop_scenario(
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
 
         for label, pod_name, description in _operator_loop_tasks():
-            run_cli("pod", pod_name, "delegate", description)
+            run_cli("task", "add", description, "--pod", pod_name)
             print(f"[check] queued {label} on {pod_name}")
 
         port = _free_port()

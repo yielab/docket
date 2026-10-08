@@ -76,8 +76,8 @@ def _seed_pod(
 # ── public delegation boundary ──────────────────────────────────────────────────
 
 
-class TestDelegateCliBoundary:
-    def test_quoted_and_split_task_text_reach_the_queue_losslessly(
+class TestTaskAddCliBoundary:
+    def test_quoted_task_text_reaches_the_queue_losslessly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from typer.testing import CliRunner
@@ -85,30 +85,24 @@ class TestDelegateCliBoundary:
         from docket.cli import app
 
         _seed_pod(tmp_path, monkeypatch)
-        runner = CliRunner()
         description = "create a file called test.md"
 
-        quoted = runner.invoke(app, ["pod", "demo", "delegate", description])
-        split = runner.invoke(app, ["pod", "demo", "delegate", *description.split()])
+        result = CliRunner().invoke(app, ["task", "add", description, "--pod", "demo"])
 
-        assert quoted.exit_code == 0, quoted.output
-        assert split.exit_code == 0, split.output
-        assert [task["description"] for task in _dispatch.read_tasks("demo")] == [
-            description,
-            description,
-        ]
+        assert result.exit_code == 0, result.output
+        assert [task["description"] for task in _dispatch.read_tasks("demo")] == [description]
 
     @pytest.mark.parametrize(
-        "args",
+        ("args", "code"),
         [
-            ["pod", "demo", "delegate"],
-            ["pod", "demo", "delegate", ""],
-            ["pod", "demo", "delegate", "task", "--priority"],
-            ["pod", "demo", "delegate", "task", "--priority", "urgent"],
+            (["task", "add", "--pod", "demo"], 2),
+            (["task", "add", "", "--pod", "demo"], 1),
+            (["task", "add", "task", "--priority", "--pod", "demo"], 2),
+            (["task", "add", "task", "--priority", "urgent", "--pod", "demo"], 2),
         ],
     )
     def test_invalid_input_does_not_enqueue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str], code: int
     ) -> None:
         from typer.testing import CliRunner
 
@@ -118,10 +112,10 @@ class TestDelegateCliBoundary:
 
         result = CliRunner().invoke(app, args)
 
-        assert result.exit_code == 1
+        assert result.exit_code == code
         assert _dispatch.read_tasks("demo") == []
 
-    def test_length_limit_applies_to_reconstructed_text(
+    def test_length_limit_applies_to_the_text(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from typer.testing import CliRunner
@@ -130,10 +124,7 @@ class TestDelegateCliBoundary:
 
         _seed_pod(tmp_path, monkeypatch)
 
-        result = CliRunner().invoke(
-            app,
-            ["pod", "demo", "delegate", "a" * 250, "b" * 250],
-        )
+        result = CliRunner().invoke(app, ["task", "add", "a" * 501, "--pod", "demo"])
 
         assert result.exit_code == 1
         assert "501 chars" in result.output
