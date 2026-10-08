@@ -733,7 +733,7 @@ command).
 
 ### P39-12 — `setup` is the first-run flow: the report, then only what is missing; `provider`, `model`, `sandbox`, `shell`
 
-**Status:** TODO · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (the `setup` group; `doctor`, `models`, `models provider`, `keys`, `gates`, `completions` removed), `model-profiles.spec.md` (`setup model`; `provider add` applies the preset), `api-keys.spec.md` (credentials under `setup provider`; `remove` confirmation), `security-gates.spec.md` (`setup sandbox`; bare is a read), `agent-lifecycle.spec.md` (first run: `init` no longer bootstraps silently; it points at `setup`)
+**Status:** IN PROGRESS (Wave 93a claimed 2026-10-07, branch `p39-12-setup-flow` based on `f768584c`) · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `cli-interface.spec.md` (the `setup` group; `doctor`, `models`, `models provider`, `keys`, `gates`, `completions` removed), `model-profiles.spec.md` (`setup model`; `provider add` applies the preset), `api-keys.spec.md` (credentials under `setup provider`; `remove` confirmation), `security-gates.spec.md` (`setup sandbox`; bare is a read), `agent-lifecycle.spec.md` (first run: `init` no longer bootstraps silently; it points at `setup`)
 
 **Trigger (ADR 0022 evidence and decision 10):** the first run is four fragments of a wizard
 and no wizard: `init` bootstraps the home without saying so and offers desktop notifications on
@@ -788,7 +788,7 @@ provider command and writes nothing; fails on the base (no command).
 
 ### P39-13 — `setup notify` (Telegram in one step), `setup export`, `setup mcp`
 
-**Status:** TODO · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `telegram-integration.spec.md` (connecting Telegram is one operation writing the secret, the actors and every Lead's binding; the inbound-only AST pins on `core/telegram.py` are untouched), `operator-loop.spec.md` (`setup notify flush`), `observability-export.spec.md` (`setup export` verbs), `mcp-client.spec.md` (`setup mcp` verbs), `cli-interface.spec.md` (`channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters`, `mcp servers` removed)
+**Status:** IN PROGRESS (Wave 93a claimed 2026-10-07, branch `p39-13-setup-notify` based on `f768584c`) · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `telegram-integration.spec.md` (connecting Telegram is one operation writing the secret, the actors and every Lead's binding; the inbound-only AST pins on `core/telegram.py` are untouched), `operator-loop.spec.md` (`setup notify flush`), `observability-export.spec.md` (`setup export` verbs), `mcp-client.spec.md` (`setup mcp` verbs), `cli-interface.spec.md` (`channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters`, `mcp servers` removed)
 
 **Trigger (ADR 0022 evidence, inventory C3):** connecting Telegram is three commands over two
 stores (`keys add TELEGRAM_BOT_TOKEN`, `channels enable telegram --set actors=<chat>`, which
@@ -826,7 +826,7 @@ stores; fails on the base (no command).
 
 ### P39-14 — `log`, `start`, `stop`, `exec`
 
-**Status:** TODO · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `audit.spec.md` (`log`, `log verify`), `serve-read-api.spec.md` (`start|stop`; routes unchanged), `harness-mode.spec.md` (the command is `exec`; contract 1.0/1.1 unchanged; `harness status` replaced by `task show <run-id>`), `mcp-server.spec.md` (`start --mcp`), `cli-interface.spec.md` (`audit`, `serve`, `harness`, `mcp serve` removed)
+**Status:** IN PROGRESS (Wave 93a claimed 2026-10-07, branch `p39-14-log-service-exec` based on `f768584c`) · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `audit.spec.md` (`log`, `log verify`), `serve-read-api.spec.md` (`start|stop`; routes unchanged), `harness-mode.spec.md` (the command is `exec`; contract 1.0/1.1 unchanged; `harness status` replaced by `task show <run-id>`), `mcp-server.spec.md` (`start --mcp`), `cli-interface.spec.md` (`audit`, `serve`, `harness`, `mcp serve` removed)
 
 **Trigger (ADR 0022 decisions 1 and 5):** "audit" names the mechanism, "serve" does not say what
 is served, "harness run" is two words describing an architecture, and Tack calls it by name.
@@ -855,7 +855,7 @@ fixture files and the existing tests.
 
 ### P39-15 — `run`, `status`, `inbox`
 
-**Status:** TODO · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (`run`: `--dry-run` starts nothing; the banner lists the effective pipeline after roster filtering; `--resume` reclaims stale claims and budget pauses), `pipeline-format.spec.md` (`run --pipeline FILE`), `cost-tracking.spec.md` (cost and counts in `status`), `cli-json-shapes.spec.md` (`status --all --json` carries what `snapshot` carried; `inbox` items carry `state`), `operator-loop.spec.md` (`inbox` prints `docket task approve <id>` lines; "approved, ready"), `cli-interface.spec.md` (`dispatch`, `pod dispatch`, `pipeline run`, `cost`, `metrics`, `snapshot` removed)
+**Status:** IN PROGRESS (Wave 93a claimed 2026-10-07, branch `p39-15-run-status-inbox` based on `f768584c`) · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (`run`: `--dry-run` starts nothing; the banner lists the effective pipeline after roster filtering; `--resume` reclaims stale claims and budget pauses), `pipeline-format.spec.md` (`run --pipeline FILE`), `cost-tracking.spec.md` (cost and counts in `status`), `cli-json-shapes.spec.md` (`status --all --json` carries what `snapshot` carried; `inbox` items carry `state`), `operator-loop.spec.md` (`inbox` prints `docket task approve <id>` lines; "approved, ready"), `cli-interface.spec.md` (`dispatch`, `pod dispatch`, `pipeline run`, `cost`, `metrics`, `snapshot` removed)
 
 **Trigger (ADR 0022 evidence, live run B1, C5, C7, C8, C9, P1):** `pod dispatch --dry-run`
 runs; the banner names reviewer and tester for a two-member pod; `inbox --bogus` exits 0 and
@@ -891,7 +891,7 @@ fails on the base (no command).
 
 ### P39-16 — remove: `list`, `context`, `logs`, `edit`, `scope`, `persona`, `help`
 
-**Status:** TODO · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `session-scoping.spec.md` -> 3.0.0 (operator-set scope removed; the derived key stands), `workspace-structure.spec.md` (persona block removed from `SOUL.md`), `cli-json-shapes.spec.md` (`list`, `info` shapes removed), `cli-interface.spec.md` (the seven removed)
+**Status:** IN PROGRESS (Wave 93a claimed 2026-10-07, branch `p39-16-remove-seven` based on `f768584c`) · **Size:** M · **Wave:** 93a · **Model:** Sonnet · **Spec:** `session-scoping.spec.md` -> 3.0.0 (operator-set scope removed; the derived key stands), `workspace-structure.spec.md` (persona block removed from `SOUL.md`), `cli-json-shapes.spec.md` (`list`, `info` shapes removed), `cli-interface.spec.md` (the seven removed)
 
 **Trigger (ADR 0022 decision 5):** read views over files the operator can open, an operator-set
 session key with no reader on the live path, a cosmetic persona with one writer, and a `help`
