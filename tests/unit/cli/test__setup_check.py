@@ -1,6 +1,6 @@
-"""`docket doctor` — system-wide health checks + JSON health probe.
+"""`docket setup --fix` — system-wide health checks + JSON health probe.
 
-Calls `run_doctor()` in-process with `DOCKET_HOME`/`FLEET_FILE`
+Calls `run_check()` in-process with `DOCKET_HOME`/`FLEET_FILE`
 monkeypatched to a temp seed. stdout is captured to assert on the human
 report; the return value is the process exit code.
 """
@@ -15,11 +15,11 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _doctor
+from docket.cli import _setup_check
 from docket.core import channel as _channel
 from docket.edges import store as _store
 
-SUBJECT = "docket.cli._doctor"
+SUBJECT = "docket.cli._setup_check"
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ _FULL_META: dict[str, Any] = {
     "codebase": "/tmp/myshop",
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
-    "templateVersion": str(_doctor.TEMPLATE_VERSION),
+    "templateVersion": str(_setup_check.TEMPLATE_VERSION),
 }
 
 _FLEET_CONFIG: dict[str, Any] = {
@@ -135,7 +135,7 @@ class TestJsonProbe:
     ) -> None:
         # Full workspace, registered, key present, in sync.
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        rc = _doctor.run_doctor(json_out=True)
+        rc = _setup_check.run_check(json_out=True)
         out = capsys.readouterr().out
         data = json.loads(out)
         assert data["healthy"] is True
@@ -147,7 +147,7 @@ class TestJsonProbe:
     ) -> None:
         # Missing workspace files + missing provider key → issues.
         _seed(tmp_path, monkeypatch, full_workspace=False)
-        rc = _doctor.run_doctor(json_out=True)
+        rc = _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert data["healthy"] is False
         assert data["issues"] > 0
@@ -157,7 +157,7 @@ class TestJsonProbe:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         checks = json.loads(capsys.readouterr().out)["checks"]
         for key in (
             "python3",
@@ -181,7 +181,7 @@ class TestJsonProbe:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert data["checks"]["fleet"]["ok"] is True
         assert data["checks"]["fleet"]["agents"] == 1
@@ -192,7 +192,7 @@ class TestNotifications:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, notify=False)
-        issues = _doctor._check_notifications(["myshop"])
+        issues = _setup_check._check_notifications(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
         assert "docket channels enable desktop" in out
@@ -202,7 +202,7 @@ class TestNotifications:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, notify=False, register=False)
-        issues = _doctor._check_notifications([])
+        issues = _setup_check._check_notifications([])
         out = capsys.readouterr().out
         assert issues == 0
         assert "docket channels enable desktop" in out
@@ -211,7 +211,7 @@ class TestNotifications:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        issues = _doctor._check_notifications(["myshop"])
+        issues = _setup_check._check_notifications(["myshop"])
         out = capsys.readouterr().out
         assert issues == 0
         assert "desktop" in out
@@ -221,7 +221,7 @@ class TestNotifications:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert data["checks"]["notifications"] == {"ok": True, "delivering": ["desktop"]}
         assert data["healthy"] is True
@@ -230,7 +230,7 @@ class TestNotifications:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}, notify=False)
-        rc = _doctor.run_doctor(json_out=True)
+        rc = _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert data["checks"]["notifications"] == {"ok": False, "delivering": []}
         assert data["healthy"] is False
@@ -245,7 +245,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, full_workspace=False)
-        issues = _doctor._check_project_agents(["myshop"])
+        issues = _setup_check._check_project_agents(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
         assert "missing AGENTS.md" in out
@@ -254,7 +254,7 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, register=False)
-        issues = _doctor._check_project_agents(["myshop"])
+        issues = _setup_check._check_project_agents(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
         assert "not registered in fleet" in out
@@ -269,7 +269,7 @@ class TestChecks:
             {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
         ]
         (home / "fleet.json").write_text(json.dumps(fleet))
-        assert _doctor._check_project_agents(["myshop"]) == 0
+        assert _setup_check._check_project_agents(["myshop"]) == 0
         out = capsys.readouterr().out
         assert "global fleet" in out
         assert "OK  →  group -100" in out
@@ -277,7 +277,7 @@ class TestChecks:
     def test_pod_lead_missing_tools_md_not_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for an Implementer) — `docket doctor` must not flag that as broken."""
+        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for an Implementer) — `docket setup --fix` must not flag that as broken."""
         home = _seed(tmp_path, monkeypatch, full_workspace=False)
         ws = home / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
@@ -294,7 +294,7 @@ class TestChecks:
         fleet["agents"][0]["id"] = "demo-lead"
         (home / "fleet.json").write_text(json.dumps(fleet))
 
-        issues = _doctor._check_project_agents(["demo-lead"])
+        issues = _setup_check._check_project_agents(["demo-lead"])
         out = capsys.readouterr().out
         assert issues == 0
         assert "missing TOOLS.md" not in out
@@ -317,7 +317,7 @@ class TestChecks:
         fleet["agents"][0]["id"] = "demo-implementer"
         (home / "fleet.json").write_text(json.dumps(fleet))
 
-        issues = _doctor._check_project_agents(["demo-implementer"])
+        issues = _setup_check._check_project_agents(["demo-implementer"])
         out = capsys.readouterr().out
         assert issues == 1
         assert "missing TOOLS.md" in out
@@ -327,7 +327,7 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         cost = {"myshop": ("", 0.0, False)}
-        assert _doctor._check_budget(["myshop"], cost) == 0
+        assert _setup_check._check_budget(["myshop"], cost) == 0
         assert "no cap" in capsys.readouterr().out
 
     def test_budget_over_cap_flagged(
@@ -337,7 +337,7 @@ class TestChecks:
         estimate label."""
         _seed(tmp_path, monkeypatch)
         cost = {"myshop": ("10", 12.0, False)}
-        issues = _doctor._check_budget(["myshop"], cost)
+        issues = _setup_check._check_budget(["myshop"], cost)
         out = capsys.readouterr().out
         assert issues == 1
         assert "over budget" in out
@@ -348,12 +348,12 @@ class TestChecks:
     ) -> None:
         """Unit coverage of `_check_budget` reading an already-computed gating tuple -- see
         `test_doctor_run_flags_over_budget_from_estimate` below for the behavioural case that
-        drives this through the real `run_doctor()` entry point."""
+        drives this through the real `run_check()` entry point."""
         home = _seed(tmp_path, monkeypatch, budget="0.01")
         _write_session(home, "agent:myshop:default", input_tokens=4000)
 
-        gating = _doctor._batch_gating_cost(["myshop"])
-        issues = _doctor._check_budget(["myshop"], gating)
+        gating = _setup_check._batch_gating_cost(["myshop"])
+        issues = _setup_check._check_budget(["myshop"], gating)
         out = capsys.readouterr().out
 
         assert issues == 1
@@ -368,8 +368,8 @@ class TestChecks:
         home = _seed(tmp_path, monkeypatch, budget="0.01")
         _write_session(home, "agent:myshop:default", input_tokens=2833)
 
-        gating = _doctor._batch_gating_cost(["myshop"])
-        issues = _doctor._check_budget(["myshop"], gating)
+        gating = _setup_check._batch_gating_cost(["myshop"])
+        issues = _setup_check._check_budget(["myshop"], gating)
         out = capsys.readouterr().out
 
         assert issues == 0
@@ -379,7 +379,7 @@ class TestChecks:
     def test_doctor_run_flags_over_budget_from_estimate(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Behavioural, through the real `run_doctor()` entry point: `DocketDriver` always
+        """Behavioural, through the real `run_check()` entry point: `DocketDriver` always
         records `cost_usd = 0.0`, so 4000 input tokens (~$0.012 at $3.00/1M) against a
         $0.01 cap must still be flagged, via the estimate, not raw recorded spend."""
         home = _seed(
@@ -387,7 +387,7 @@ class TestChecks:
         )
         _write_session(home, "agent:myshop:default", input_tokens=4000)
 
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
 
         assert "over budget" in out
@@ -397,14 +397,14 @@ class TestChecks:
     def test_doctor_run_warns_at_80_percent_from_estimate(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Behavioural mirror at the >=80% warning threshold, through `run_doctor()`: 2833
+        """Behavioural mirror at the >=80% warning threshold, through `run_check()`: 2833
         input tokens estimate to ~$0.0085, 84% of a $0.01 cap."""
         home = _seed(
             tmp_path, monkeypatch, budget="0.01", secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
         )
         _write_session(home, "agent:myshop:default", input_tokens=2833)
 
-        _doctor.run_doctor(json_out=False)
+        _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
 
         assert "84%" in out
@@ -416,7 +416,7 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         cost = {"myshop": ("", 0.0, 500)}
-        issues = _doctor._check_runaway(["myshop"], cost)
+        issues = _setup_check._check_runaway(["myshop"], cost)
         out = capsys.readouterr().out
         assert issues == 1
         assert "runaway" in out
@@ -426,14 +426,14 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         cost = {"myshop": ("", 1.0, 10)}
-        assert _doctor._check_runaway(["myshop"], cost) == 0
+        assert _setup_check._check_runaway(["myshop"], cost) == 0
         assert "ok" in capsys.readouterr().out
 
     def test_provider_coverage_missing_key(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)  # no secrets.json
-        issues = _doctor._check_provider_coverage(["myshop"])
+        issues = _setup_check._check_provider_coverage(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
         assert "ANTHROPIC_API_KEY" in out
@@ -442,14 +442,14 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        assert _doctor._check_provider_coverage(["myshop"]) == 0
+        assert _setup_check._check_provider_coverage(["myshop"]) == 0
 
     def test_security_gates_always_on_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """There is no daemon exec-approval config/audit to check -- the tool-call gate is unconditionally active, and that is what this check reports."""
         _seed(tmp_path, monkeypatch)
-        issues = _doctor._check_security_gates()
+        issues = _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert issues == 0
         assert "Tool-call gate: always active" in out
@@ -459,13 +459,13 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        issues = _doctor._check_security_gates()
+        issues = _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert issues == 0
         assert "Workspace isolation: off (default)" in out
         assert "docket gates isolate on" in out
         assert "turns will be refused" not in out
-        assert _doctor._doctor_json_security()["isolation"] == "off (default)"
+        assert _setup_check._check_json_security()["isolation"] == "off (default)"
 
     def test_security_gates_names_the_backend_a_turn_would_use(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -473,9 +473,9 @@ class TestChecks:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        _doctor._check_security_gates()
+        _setup_check._check_security_gates()
         assert "Workspace isolation: on, backend bwrap" in capsys.readouterr().out
-        assert _doctor._doctor_json_security() == {
+        assert _setup_check._check_json_security() == {
             "toolCallGate": "always-on",
             "isolation": "on",
             "sandboxBackend": "bwrap",
@@ -490,7 +490,7 @@ class TestChecks:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        _doctor._check_security_gates()
+        _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert "turns will be refused" in out
         assert "bubblewrap" in out and "isolate off" in out
@@ -501,11 +501,11 @@ class TestChecks:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: False)
-        _doctor._check_security_gates()
+        monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", lambda: False)
+        _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert "has no git" in out and "DOCKET_SANDBOX_IMAGE=<an image with git>" in out
-        assert _doctor._doctor_json_security()["dockerImageHasGit"] is False
+        assert _setup_check._check_json_security()["dockerImageHasGit"] is False
 
     def test_docker_backend_with_git_in_the_image_is_quiet(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -513,10 +513,10 @@ class TestChecks:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", lambda: True)
-        _doctor._check_security_gates()
+        monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", lambda: True)
+        _setup_check._check_security_gates()
         assert "has no git" not in capsys.readouterr().out
-        assert _doctor._doctor_json_security()["dockerImageHasGit"] is True
+        assert _setup_check._check_json_security()["dockerImageHasGit"] is True
 
     def test_the_image_is_not_probed_when_docker_is_not_the_backend(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -528,16 +528,16 @@ class TestChecks:
         def boom() -> bool:
             raise AssertionError("probed")
 
-        monkeypatch.setattr(_doctor._sys, "docker_image_has_git", boom)
-        _doctor._check_security_gates()
-        assert _doctor._doctor_json_security()["dockerImageHasGit"] is None
+        monkeypatch.setattr(_setup_check._sys, "docker_image_has_git", boom)
+        _setup_check._check_security_gates()
+        assert _setup_check._check_json_security()["dockerImageHasGit"] is None
 
     def test_template_version_current(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        assert _doctor._check_template_version(["myshop"]) == 0
-        assert f"v{_doctor.TEMPLATE_VERSION} (current)" in capsys.readouterr().out
+        assert _setup_check._check_template_version(["myshop"]) == 0
+        assert f"v{_setup_check.TEMPLATE_VERSION} (current)" in capsys.readouterr().out
 
 
 # ── a leftover shared-agent directory is not the doctor's business ─────────────
@@ -550,7 +550,7 @@ def test_leftover_manager_directory_is_ignored(
     (home / "workspaces" / "manager").mkdir(parents=True)
     (home / "workspaces" / "manager" / ".docket-meta.json").write_text("{}")
 
-    rc = _doctor.run_doctor(json_out=False, do_fix=True)
+    rc = _setup_check.run_check(json_out=False, do_fix=True)
 
     assert rc == 0
     assert "workspaces/manager" not in capsys.readouterr().out
@@ -565,7 +565,7 @@ class TestFullRun:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert "All checks passed" in out
         assert rc == 0
@@ -574,7 +574,7 @@ class TestFullRun:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, full_workspace=False)
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert "critical issue(s) found" in out
         assert rc == 1
@@ -587,7 +587,7 @@ class TestFullRun:
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
         (home / "fleet.json").chmod(0o600)
         _point_config_at(home, monkeypatch)
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         captured = capsys.readouterr()
         # The "no agents" notice is a warn() → stdout (mirrors Bash).
         assert "No project agents found" in captured.out
@@ -604,7 +604,7 @@ class TestGuardrailPolicies:
         pol = _cfg.POLICIES_DIR
         pol.mkdir(parents=True, exist_ok=True)
         (pol / "zz-broken.json").write_text('{"id": "zz", not json')
-        rc = _doctor.run_doctor()
+        rc = _setup_check.run_check()
         out = capsys.readouterr().out
         assert rc == 1
         assert "zz-broken.json" in out
@@ -613,7 +613,7 @@ class TestGuardrailPolicies:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        rc = _doctor.run_doctor()
+        rc = _setup_check.run_check()
         out = capsys.readouterr().out
         assert rc == 0
         assert "polic" in out.lower()
@@ -627,7 +627,7 @@ class TestScheduleConfig:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _doctor._check_schedule_config() == 0
+        assert _setup_check._check_schedule_config() == 0
 
     def test_bad_spec_is_flagged_by_project_and_reason(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -636,7 +636,7 @@ class TestScheduleConfig:
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
-        issues = _doctor._check_schedule_config()
+        issues = _setup_check._check_schedule_config()
         out = capsys.readouterr().out
         assert issues == 1
         assert "shop" in out
@@ -649,7 +649,7 @@ class TestScheduleConfig:
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 30m"}}))
-        assert _doctor._check_schedule_config() == 0
+        assert _setup_check._check_schedule_config() == 0
 
 
 class TestModelRegistryEntries:
@@ -659,7 +659,7 @@ class TestModelRegistryEntries:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _doctor._check_model_registry_entries() == 0
+        assert _setup_check._check_model_registry_entries() == 0
 
     def test_hand_broken_entry_is_named(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -668,7 +668,7 @@ class TestModelRegistryEntries:
         _point_config_at(home, monkeypatch)
         home.mkdir(parents=True, exist_ok=True)
         _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
-        issues = _doctor._check_model_registry_entries()
+        issues = _setup_check._check_model_registry_entries()
         out = capsys.readouterr().out
         assert issues == 1
         assert "default" in out
@@ -682,7 +682,7 @@ class TestArchetypeOverlay:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _doctor._check_archetype_overlay() == 0
+        assert _setup_check._check_archetype_overlay() == 0
 
     def test_broken_role_is_named(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -693,7 +693,7 @@ class TestArchetypeOverlay:
         _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
             json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
         )
-        issues = _doctor._check_archetype_overlay()
+        issues = _setup_check._check_archetype_overlay()
         out = capsys.readouterr().out
         assert issues == 1
         assert "broken-role" in out
@@ -707,7 +707,7 @@ class TestProviderCatalog:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _doctor._check_provider_catalog() == 0
+        assert _setup_check._check_provider_catalog() == 0
 
     def test_broken_auth_type_is_named(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -727,13 +727,13 @@ class TestProviderCatalog:
                 }
             },
         )
-        issues = _doctor._check_provider_catalog()
+        issues = _setup_check._check_provider_catalog()
         out = capsys.readouterr().out
         assert issues == 1
         assert str(_cfg.PROVIDERS_FILE) in out
         assert "auth.type" in out
 
-        json_issues, problems = _doctor._doctor_json_provider_catalog()
+        json_issues, problems = _setup_check._check_json_provider_catalog()
         assert json_issues == 1
         assert problems == [{"name": "broken", "reason": problems[0]["reason"]}]
         assert "auth.type" in problems[0]["reason"]
@@ -758,13 +758,13 @@ class TestPodConfigOverlays:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _point_config_at(tmp_path / ".docket", monkeypatch)
-        assert _doctor._check_pod_config_overlays() == 0
+        assert _setup_check._check_pod_config_overlays() == 0
 
     def test_pod_with_no_overlay_is_healthy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._build_pod(tmp_path, monkeypatch)
-        assert _doctor._check_pod_config_overlays() == 0
+        assert _setup_check._check_pod_config_overlays() == 0
 
     def test_broken_pod_role_overlay_is_named_by_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -773,7 +773,7 @@ class TestPodConfigOverlays:
         pod_roles = _cfg.pod_config_dir("demo") / "roles.json"
         pod_roles.parent.mkdir(parents=True, exist_ok=True)
         pod_roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
-        issues = _doctor._check_pod_config_overlays()
+        issues = _setup_check._check_pod_config_overlays()
         out = capsys.readouterr().out
         assert issues == 1
         assert "demo" in out
@@ -786,7 +786,7 @@ class TestPodConfigOverlays:
         pod_policies = _cfg.pod_config_dir("demo") / "policies"
         pod_policies.mkdir(parents=True, exist_ok=True)
         (pod_policies / "zz-broken.json").write_text('{"id": "zz", not json')
-        issues = _doctor._check_pod_config_overlays()
+        issues = _setup_check._check_pod_config_overlays()
         out = capsys.readouterr().out
         assert issues == 1
         assert "demo" in out
@@ -801,12 +801,12 @@ class TestPodConfigOverlays:
         _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
             json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
         )
-        issues = _doctor._check_pod_config_overlays()
+        issues = _setup_check._check_pod_config_overlays()
         assert issues == 0
 
 
 class TestDoctorSilentOnThreeFixtures:
-    """`run_doctor()` flags all three fixtures below: a bad schedule, a bad models
+    """`run_check()` flags all three fixtures below: a bad schedule, a bad models
     entry, and a bad archetype overlay."""
 
     def test_full_run_flags_all_three(
@@ -818,7 +818,7 @@ class TestDoctorSilentOnThreeFixtures:
         _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
             json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
         )
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert rc == 1
         assert "shop" in out and "3x" in out
@@ -844,7 +844,7 @@ class TestPodSyncCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._build_pod(tmp_path, monkeypatch)
-        issues = _doctor._check_pod_sync(["demo-lead", "demo-implementer"])
+        issues = _setup_check._check_pod_sync(["demo-lead", "demo-implementer"])
         out = capsys.readouterr().out
         assert issues == 0
         assert "✗" not in out
@@ -857,7 +857,7 @@ class TestPodSyncCheck:
         (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(
             "STALE-HAND-EDITED-SOUL\n"
         )
-        issues = _doctor._check_pod_sync(["demo-lead", "demo-implementer"])
+        issues = _setup_check._check_pod_sync(["demo-lead", "demo-implementer"])
         out = capsys.readouterr().out
         assert "✗" in out
         assert "demo-lead" in out
@@ -866,7 +866,7 @@ class TestPodSyncCheck:
         assert issues == 0
 
     def test_non_pod_agents_are_skipped(self) -> None:
-        assert _doctor._check_pod_sync([]) == 0
+        assert _setup_check._check_pod_sync([]) == 0
 
 
 class TestSummaryCountsOnlyCrosses:
@@ -874,17 +874,17 @@ class TestSummaryCountsOnlyCrosses:
 
     def _warn_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _check(*_a: Any, **_k: Any) -> int:
-            _doctor.ui.warn("  something advisory")
+            _setup_check.ui.warn("  something advisory")
             return 1
 
-        monkeypatch.setattr(_doctor, "_check_exporters", _check)
+        monkeypatch.setattr(_setup_check, "_check_exporters", _check)
 
     def test_a_warning_alone_is_not_critical(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
         self._warn_only(monkeypatch)
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert "critical" not in out
         assert rc == 0
@@ -894,10 +894,10 @@ class TestSummaryCountsOnlyCrosses:
     ) -> None:
         _seed(tmp_path, monkeypatch, full_workspace=False)
         self._warn_only(monkeypatch)
-        rc = _doctor.run_doctor(json_out=False)
+        rc = _setup_check.run_check(json_out=False)
         out = capsys.readouterr().out
         assert rc == 1
         crosses = sum(1 for ln in out.splitlines() if "✗" in ln)
         assert f"{crosses} critical issue(s) found" in out
-        assert "docket doctor --fix" in out
+        assert "docket setup --fix" in out
         assert "docket maintain" not in out.split("critical issue(s) found")[1]

@@ -181,12 +181,12 @@ def test_implementer_without_a_git_repo_is_unchanged(tmp_path: Path) -> None:
     assert f"## Codebase\n{codebase}\n" in (ws / "SOUL.md").read_text()
 
 
-# ── the second writer of that path: `docket doctor`'s contract heal ────────────
+# ── the second writer of that path: `docket setup --fix`'s contract heal ────────────
 
 
 def test_doctor_contract_heal_keeps_the_member_inside_its_roots(repo: Path) -> None:
     """Healing a stale contract must keep the member inside its roots."""
-    from docket.cli._doctor import _check_runtime_contract
+    from docket.cli._setup_check import _check_runtime_contract
 
     member = _make_member("implementer")
     _provision(member, repo)

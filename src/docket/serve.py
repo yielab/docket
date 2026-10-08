@@ -469,7 +469,7 @@ def _check_schedules(now_ts: float) -> None:
         if reason:
             # `is_schedule_due` would otherwise treat this as silently never-due, forever
             # -- print once per sweep so an operator running `docket serve` sees the drop
-            # instead of a schedule that quietly never fires (see `docket doctor` for the
+            # instead of a schedule that quietly never fires (see `docket setup --fix` for the
             # equivalent standing report).
             print(f"[serve] sweep: schedule '{project}' skipped — {reason}")
             continue
@@ -743,7 +743,7 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
             if not printed_unconfigured:
                 print(
                     "[serve] telegram: no TELEGRAM_BOT_TOKEN configured "
-                    "(docket keys add TELEGRAM_BOT_TOKEN) -- channel idle"
+                    "(docket setup provider add TELEGRAM_BOT_TOKEN) -- channel idle"
                 )
                 printed_unconfigured = True
             if stop.wait(_TELEGRAM_UNCONFIGURED_BACKOFF_S):

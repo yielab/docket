@@ -20,7 +20,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _approve, _deny, _gates, _policies
+from docket.cli import _approve, _deny, _policies, _setup_sandbox
 from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
@@ -113,10 +113,10 @@ class TestGatesStatus:
     def test_status_unset(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rc = _gates.run_gates("status")
+        rc = _setup_sandbox.status()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Workspace isolation: off (default)" in out
+        assert "Isolation: off (default)" in out
 
     def test_status_always_reports_the_gate_active(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -124,7 +124,7 @@ class TestGatesStatus:
         # There is no daemon gate report to query -- docket's own tool-call
         # gate (pre_tool_call + classify_command) is unconditionally active,
         # and `docket gates status` says so regardless of isolation configuration.
-        rc = _gates.run_gates("status")
+        rc = _setup_sandbox.status()
         out = capsys.readouterr().out
         assert rc == 0
         assert "always active" in out.lower()
@@ -134,22 +134,19 @@ class TestGatesClasses:
     def test_classes_lists_all_patterns(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rc = _gates.run_gates("classes")
+        rc = _setup_sandbox.classes()
         out = capsys.readouterr().out
         assert rc == 0
         for cls in _sec.HIGH_RISK_PATTERNS:
             assert cls.name in out
-            assert cls.description in out
-        assert "not yet user-configurable" in out
 
     def test_classes_shows_overlapping_bins(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rc = _gates.run_gates("classes")
+        rc = _setup_sandbox.classes()
         out = capsys.readouterr().out
         assert rc == 0
         assert "git" in out
-        assert "stay allowlisted" in out or "classify_command reads the" in out
         assert "npm" in out
 
 
@@ -157,61 +154,38 @@ class TestGatesIsolate:
     def test_isolate_on_needs_a_backend(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rc = _gates.run_gates("isolate", want="on")
-        out = capsys.readouterr().out
+        rc = _setup_sandbox.isolate("on")
+        err = capsys.readouterr().err
         assert rc == 1
-        assert "No sandbox backend usable" in out
-        assert "bubblewrap" in out
+        assert "No sandbox backend is usable" in err
+        assert "bubblewrap" in err
 
     def test_isolate_on_applies_when_a_backend_is_usable(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        rc = _gates.run_gates("isolate", want="on")
+        rc = _setup_sandbox.isolate("on")
         out = capsys.readouterr().out
         assert rc == 0
         # Isolation mode lives in fleet.json.
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
-        assert "Sandbox isolation on" in out
+        assert "Isolation on" in out
 
     def test_isolate_off(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        _gates.run_gates("isolate", want="on")
+        _setup_sandbox.isolate("on")
         capsys.readouterr()
-        rc = _gates.run_gates("isolate", want="off")
+        rc = _setup_sandbox.isolate("off")
         out = capsys.readouterr().out
         assert rc == 0
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "off"
-        assert "disabled (mode=off)" in out
-        _gates.run_gates("status")
-        assert "Workspace isolation: off (explicit)" in capsys.readouterr().out
-
-    def test_unknown_subcommand_shows_usage(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _gates.run_gates("bogus")
-        out = capsys.readouterr().out
-        assert rc == 2
-        assert "unknown subcommand 'bogus'" in out
-        assert "Usage: docket gates" in out
-
-
-class TestGatesCliFlagParsing:
-    """Flags are checked against raw `ctx.args` in `cmd_gates` before `run_gates` ever sees them,
-    so an unrecognized flag can only be caught at the real CLI boundary, not through run_gates."""
-
-    def test_status_rejects_unknown_flag(self, oc_dir: Path) -> None:
-        from typer.testing import CliRunner
-
-        from docket.cli import app as _app
-
-        result = CliRunner().invoke(_app, ["gates", "status", "--bogus"])
-        assert result.exit_code == 2
-        assert "--bogus" in (result.stdout + result.stderr)
+        assert "Isolation off" in out
+        _setup_sandbox.status()
+        assert "Isolation: off (explicit)" in capsys.readouterr().out
 
 
 # ── policies ──────────────────────────────────────────────────────────────────

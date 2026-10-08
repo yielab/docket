@@ -969,7 +969,7 @@ class TestPostureRefusal:
         result = json.loads(proc.stdout.strip().splitlines()[-1])
         assert result["status"] == "failed"
         assert result["run_state"] == "failed"
-        assert "docket gates isolate off" in result["error"]
+        assert "docket setup sandbox off" in result["error"]
         assert result["usage"]["turns"] == 0
 
 

@@ -1683,15 +1683,14 @@ def _verify_final_state(
 
 def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> None:
     provider_args = [
-        "models",
+        "setup",
         "provider",
         "add",
         "smoke-local",
         live.endpoint,
         "--model",
         live.model_id,
-        "--name",
-        "Live smoke model",
+        "--no-preset",
     ]
     if live.context_tokens is not None:
         provider_args.extend(["--ctx", str(live.context_tokens)])
@@ -1699,8 +1698,8 @@ def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> 
 
     model_ref = f"smoke-local/{live.model_id}"
     for role in ("lead", "implementer", "reviewer", "tester"):
-        _run_cli(repo, env, "models", "set", role, model_ref, process_timeout=None)
-    _run_cli(repo, env, "models", "set", "default", model_ref, process_timeout=None)
+        _run_cli(repo, env, "setup", "model", "set", role, model_ref, process_timeout=None)
+    _run_cli(repo, env, "setup", "model", "set", "default", model_ref, process_timeout=None)
 
 
 def _run(
@@ -1777,7 +1776,7 @@ def _run(
             print("[check] realistic checkout fixture committed before worktree provisioning")
 
         run_cli("init", "--from", str(pod_spec))
-        run_cli("gates", "isolate", "off")
+        run_cli("setup", "sandbox", "off")
         fleet = _load_json(home / "fleet.json")
         project_agents = [
             agent
@@ -2301,7 +2300,7 @@ def _run_operator_loop_scenario(
             _configure_live_model(repo, env, live)
         run_cli("init", "--from", str(alpha_spec))
         run_cli("init", "--from", str(beta_spec))
-        run_cli("gates", "isolate", "off")
+        run_cli("setup", "sandbox", "off")
         run_cli("pod", "alpha", "apply", "prod-approval")
         run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")

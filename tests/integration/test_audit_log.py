@@ -23,8 +23,8 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _audit as audit_cli
-from docket.cli import _keys as keys_cli
 from docket.cli import _pod, _remove
+from docket.cli import _setup_model as keys_cli
 from docket.cli._agents import run_delete, run_init
 from docket.core import audit as _audit
 
@@ -688,7 +688,7 @@ class TestKeysAudit:
         return d
 
     def test_keys_add_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        rc = keys_cli._keys_add("ANTHROPIC_API_KEY")
+        rc = keys_cli.credential_add("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.add")
         assert len(entries) == 1
@@ -696,8 +696,8 @@ class TestKeysAudit:
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
     def test_keys_rotate_writes_one_entry_no_secret_value(self, keys_home: Path) -> None:
-        keys_cli._keys_add("ANTHROPIC_API_KEY")
-        rc = keys_cli._keys_rotate("ANTHROPIC_API_KEY")
+        keys_cli.credential_add("ANTHROPIC_API_KEY")
+        rc = keys_cli.credential_rotate("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.rotate")
         assert len(entries) == 1
@@ -705,8 +705,8 @@ class TestKeysAudit:
         assert "sk-ant-testvalue" not in json.dumps(entries)
 
     def test_keys_remove_writes_one_entry(self, keys_home: Path) -> None:
-        keys_cli._keys_add("ANTHROPIC_API_KEY")
-        rc = keys_cli._keys_remove("ANTHROPIC_API_KEY")
+        keys_cli.credential_add("ANTHROPIC_API_KEY")
+        rc = keys_cli.credential_remove("ANTHROPIC_API_KEY")
         assert rc == 0
         entries = _entries("keys.remove")
         assert len(entries) == 1

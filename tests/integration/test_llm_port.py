@@ -554,17 +554,17 @@ class TestEndpointResolution:
         monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
         monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
 
-        from docket.cli import _keys
+        from docket.cli import _setup_model
         from docket.core import secrets as _secrets
 
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
-        monkeypatch.setattr(_keys, "audit_log", lambda *args: None)
+        monkeypatch.setattr(_setup_model, "audit_log", lambda *args: None)
         entered = iter(("sk-or-stored", "vercel-stored"))
-        monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: next(entered))
+        monkeypatch.setattr(_setup_model._getpass, "getpass", lambda prompt: next(entered))
 
-        assert _keys.run_keys("add", ["OPENROUTER_API_KEY"]) == 0
-        assert _keys.run_keys("add", ["AI_GATEWAY_API_KEY"]) == 0
+        assert _setup_model.credential_add("OPENROUTER_API_KEY") == 0
+        assert _setup_model.credential_add("AI_GATEWAY_API_KEY") == 0
 
         openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
         gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")

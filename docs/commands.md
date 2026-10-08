@@ -10,7 +10,6 @@ Complete reference for all docket commands, rendered from each command's own `--
 - [Session and Context Management](#session-and-context-management)
 - [Pod Coordination](#pod-coordination)
 - [Telegram Integration](#telegram-integration)
-- [Keys and Authentication](#keys-and-authentication)
 - [Utility Commands](#utility-commands)
 - [Security and Audit](#security-and-audit)
 - [Observability Commands](#observability-commands)
@@ -674,52 +673,6 @@ registry tracks state only.
 
 ---
 
-## Keys and Authentication
-
-### keys
-
-**Usage:** `docket keys`
-
-API key management (add/list/remove/rotate/validate/export/setup).
-
-Docket's model client reads keys centrally.
-
-Subcommands:
-  list (default)     masked table of stored keys with a format badge and
-                      the date added
-  add <KEY_NAME>      name must be UPPERCASE_WITH_UNDERSCORES (e.g.
-                       ANTHROPIC_API_KEY); prompts for the hidden value
-                       via getpass; errors (exit 1) if the name already
-                       exists -- use rotate instead
-  remove <KEY_NAME>    deletes a stored key, confirming interactively if
-                        stdin is a TTY
-  rotate <KEY_NAME>    replaces the value of an existing key (errors,
-                        exit 1, if it doesn't already exist)
-  validate \[KEY_NAME\]  checks stored key(s) against known provider
-                        prefix/length rules (e.g. ANTHROPIC_API_KEY must
-                        start `sk-ant-` and be >= 40 chars); no name
-                        validates everything; exit 1 on any failure
-  export               prints `export NAME='value'` lines (unmasked,
-                        shell-quoted) for every stored key, for
-                        `eval "$(docket keys export)"`
-  setup                interactive wizard (requires a TTY) through
-                        every credential the provider catalog declares,
-                        in catalog order, one at a time
-
-Stored in `~/.docket/secrets.json` (values, 0600) and
-`secrets.meta.json` (added/rotated timestamps) -- docket-owned JSON,
-written through `edges/store.py`. Recognized provider keys:
-ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY, OPENROUTER_API_KEY,
-AI_GATEWAY_API_KEY, VERCEL_OIDC_TOKEN, GROQ_API_KEY, MISTRAL_API_KEY,
-XAI_API_KEY, CEREBRAS_API_KEY, HUGGINGFACE_TOKEN. The runtime reads a
-selected provider's stored credential directly -- exporting is optional.
-Under DOCKET_SECRETS_BACKEND=keyring, add/rotate store the value in the
-OS keyring (secret-tool) instead of secrets.json, which then keeps only
-a name index; remove clears the keyring entry too.
-
-
----
-
 ## Utility Commands
 
 ### logs
@@ -776,56 +729,6 @@ shows and sets the role policy.
 
 ---
 
-### models
-
-**Usage:** `docket models`
-
-View and edit the role->model policy -- the single place that decides
-which model each kind of agent runs on.
-
-Roles are the archetype names. Built-in defaults put high-volume/low-reasoning
-roles (lead, reviewer, tester, monitor, analyst, writer) on the cheap model
-class and reasoning-dense roles (implementer, critic, operator, researcher)
-on the strong class.
-
-Subcommands: (bare) show the role->model policy with pricing and why;
-`set <role> <provider/model>` change one role's model, or
-`set default <provider/model>` the fallback; `preset \[name\]` list or
-apply a provider preset from the catalog (anthropic (default), openai,
-google, openrouter-free (experimental zero-cost router), openrouter,
-ai-gateway (Vercel), local (no API key, priced at $0 (local)) among
-others) -- a built-in hosted preset needs only its credential, never a
-separate registration; `reset` restore built-in defaults (asks for
-confirmation); `provider <action>` manage the provider catalog: `add
-<file.yaml>` a `kind: provider` document, or the shortcut `add <name>
-<base-url> \[--model ID\] \[--ctx N\] \[--max-tokens N\] \[--credential NAME\]`
-(registration verifies `<base-url>/models` with the resolved credential
-and classifies the result -- only a transport failure refuses; every
-HTTP status registers, with a warning when it is not a clean 200);
-`list` every provider (name, scope, dialect, base URL, credential);
-`show <name> \[--json\]` one entry; `remove <name>` a global override
-(a built-in with none refuses); `export <name> \[<file>\]` its document.
-
-Policy changes are live: every policy-following agent is re-resolved
-immediately; pinned agents (`docket profile <id> <model>`) are never
-touched. Overrides persist in `~/.docket/docket-models.json` (`roles:`
-map); delete it or run `reset` to restore built-ins -- `reset` prompts
-`Continue? \[y/N\]` and a non-interactive call that can't answer aborts
-rather than silently resetting the fleet. Applying a preset also writes
-its own economy/standard/premium anchors, re-resolves every
-policy-following agent, and prints a readiness line naming the preset's
-credential as present or missing. Unknown models are accepted if
-well-formed (`provider/model`) -- an id absent from the catalog only
-surfaces the first time an agent actually calls the endpoint; pricing
-shows n/a (or "n/a (bring your own)" for an OpenRouter/AI Gateway route
-other than the explicit free router, and "$0 (local)" for a
-local/ollama/lmstudio provider -- never a fabricated dollar figure).
-An invalid model prints the current role policy table alongside the
-error.
-
-
----
-
 ### cost
 
 **Usage:** `docket cost`
@@ -863,41 +766,169 @@ pod-dispatch gate itself computes, not this command's dollar column.
 
 ---
 
-### doctor
-
-**Usage:** `docket doctor`
-
-System-wide health check and diagnostics, with an optional auto-fix
-pass.
-
-`--json` emits a machine-readable health probe instead of the Rich
-report; `--fix` applies auto-fixes for detected drift (permission
-repairs, missing workspace files, session-key resync) -- this mutates
-state.
-
-Runs (in order): required dependencies (python3); per-project agent
-workspace/registration/binding checks; model validity across every
-registered agent; the dispatch task ledger (`TASK_LIST.json` vs. the pod Lead's
-HEARTBEAT.md dispatch ledger must agree -- a mismatch prints exactly
-which task ids are missing/stale, and `--fix` re-syncs the ledger, always
-safe since TASK_LIST.json is dispatch's own source of truth); budget-cap
-sanity and runaway-session detection; key hygiene and provider coverage;
-security-gate configuration; template/runtime-contract version (reseeds
-a missing or stale WORKFLOW_AUTO.md).
-
-`doctor` is diagnostic-only by default; `--fix` is not read-only -- it
-mutates workspace files and permissions to correct detected drift.
-Review its findings before running with `--fix` on a workspace you
-haven't backed up.
-
-
----
-
 ### setup
 
 **Usage:** `docket setup`
 
 Set up this workstation: model endpoint, notifications, sandbox, shell.
+
+Bare, this is the first run: the report, then only what is missing. On a terminal it asks for what is missing, required first, and prints every
+command it runs. Off a terminal it prints the report and exits 1 when the
+model endpoint is missing. --fix repairs detected drift.
+
+Example: docket setup
+
+### setup shell
+
+**Usage:** `docket setup shell`
+
+Print the completion script for bash or zsh.
+
+Enable it for the current shell with: eval "$(docket setup shell bash)"
+
+Example: docket setup shell zsh
+
+### setup provider
+
+**Usage:** `docket setup provider`
+
+Model endpoints and their credentials.
+
+### setup provider add
+
+**Usage:** `docket setup provider add`
+
+Add a provider: store its credential, probe /models, apply its preset.
+
+Example: docket setup provider add anthropic --credential <key>
+
+### setup provider list
+
+**Usage:** `docket setup provider list`
+
+List every provider with its scope, dialect, URL and credential.
+
+Example: docket setup provider list
+
+### setup provider show
+
+**Usage:** `docket setup provider show`
+
+Show one provider's document.
+
+Example: docket setup provider show local
+
+### setup provider remove
+
+**Usage:** `docket setup provider remove`
+
+Remove a provider's global document and its stored credential.
+
+Example: docket setup provider remove local --yes
+
+### setup provider export
+
+**Usage:** `docket setup provider export`
+
+Print a provider as a kind: provider document.
+
+Example: docket setup provider export local provider.yaml
+
+### setup provider rotate
+
+**Usage:** `docket setup provider rotate`
+
+Replace a provider's stored credential.
+
+Example: docket setup provider rotate anthropic
+
+### setup model
+
+**Usage:** `docket setup model`
+
+Which model each role runs on (bare: show the policy).
+
+Example: docket setup model
+
+### setup model list
+
+**Usage:** `docket setup model list`
+
+Show the role to model policy with pricing and source.
+
+Example: docket setup model list --json
+
+### setup model set
+
+**Usage:** `docket setup model set`
+
+Pin one role (or the default) to a model.
+
+Example: docket setup model set implementer anthropic/claude-sonnet-4-5
+
+### setup model preset
+
+**Usage:** `docket setup model preset`
+
+List the provider presets, or apply one to every role.
+
+Example: docket setup model preset local
+
+### setup model reset
+
+**Usage:** `docket setup model reset`
+
+Remove every override and restore the built-in role policy.
+
+Example: docket setup model reset --yes
+
+### setup sandbox
+
+**Usage:** `docket setup sandbox`
+
+Workspace isolation and sandbox network (bare: show the state).
+
+Example: docket setup sandbox
+
+### setup sandbox status
+
+**Usage:** `docket setup sandbox status`
+
+Show the gate, isolation and network posture.
+
+Example: docket setup sandbox status --json
+
+### setup sandbox on
+
+**Usage:** `docket setup sandbox on`
+
+Run tools inside a sandbox (bwrap, else docker).
+
+Example: docket setup sandbox on
+
+### setup sandbox off
+
+**Usage:** `docket setup sandbox off`
+
+Run tools on the host.
+
+Example: docket setup sandbox off
+
+### setup sandbox network
+
+**Usage:** `docket setup sandbox network`
+
+Cut the sandbox's network (none) or leave it open.
+
+Example: docket setup sandbox network none
+
+### setup sandbox classes
+
+**Usage:** `docket setup sandbox classes`
+
+List the high-risk action classes that always ask.
+
+Example: docket setup sandbox classes
 
 
 ---
@@ -966,29 +997,6 @@ opt-in. Read-only by default, so it's safe to leave running for
 monitoring. --dispatch spends real budget; over-budget tasks are left
 blocked, not run. Per-task dispatch is traced (`docket trace`) for
 auditability.
-
-
----
-
-### completions
-
-**Usage:** `docket completions`
-
-Shell completion helpers.
-
-Prints a shell-completion script for bash or zsh. With no argument,
-prints usage/install instructions. Only bash and zsh are supported (no
-fish) -- an unknown shell name errors with exit 1.
-
-The top-level command-name list is generated live from the real Typer
-command registry, so it can never drift from `docket --help`.
-Second-level subcommand words (e.g. `gates status isolate
-classes`) are hand-maintained in the completion templates, since those
-subcommands are parsed manually rather than being Click subgroups --
-only the top-level command list is regression-tested against drift, so
-hand-maintained subcommand words for `pipeline`, `conversations`,
-`runs`, and `persona` can and have drifted out of sync with their real
-subcommands.
 
 
 ---
@@ -1092,65 +1100,6 @@ See specs/functional/mcp-client.spec.md and specs/api/mcp-server.spec.md.
 ---
 
 ## Security and Audit
-
-### gates
-
-**Usage:** `docket gates`
-
-Show docket's tool-call gate and manage workspace isolation.
-
-The tool-call gate itself -- the policy engine plus the argument-aware
-high-risk command classifier, both evaluated in `core/tools.py`'s
-`dispatch_tool` chokepoint on every call docket's turn loop makes -- is
-always active and cannot be turned off. An "ask" verdict sits in
-docket's own approval store, answerable identically by the CLI, HTTP,
-MCP, and Telegram channels.
-
-Subcommands:
-  status (default)  reports that the tool-call gate is always active,
-                      plus the workspace-isolation mode
-  isolate on|off    records whether tool execution runs inside a
-                      sandbox (opt-in, off by default). `on` needs
-                      bubblewrap (Linux) or a running docker; it probes
-                      bwrap, then docker -- errors, exit 1, if neither is
-                      usable. Enforced on the live
-                      turn: with isolation on, DocketDriver runs tools
-                      sandboxed (bwrap or docker), and refuses the whole
-                      turn -- audited as `isolation.refused` -- when no
-                      backend is usable, rather than running it
-                      unsandboxed.
-  network none|open records whether jailed tool calls may reach the
-                      network (default open). `none` drops bwrap's
-                      --share-net / adds docker's --network none, and
-                      refuses any turn that would run with isolation
-                      off -- audited as `network.refused`. A pod's
-                      `network` setting can only narrow it. `fetch`
-                      is untouched (its domain allowlist stays).
-  classes           lists the built-in high-risk action classes
-                      (`HIGH_RISK_PATTERNS` in `core/security.py`) --
-                      money-movement, prod-deploy, and secret-access --
-                      wired onto every bash call docket's turn loop
-                      dispatches: the whole command line, including
-                      every segment behind a `;`/`&&`/`||`/pipe, is
-                      classified before a call is allowed to run, so
-                      `git push origin production` asks even though
-                      `git` itself stays on the curated allowlist
-                      (`git status` does not). A pod's verifyCmd
-                      separately refuses a matching command outright
-                      before the shell starts; a hop's real output is
-                      scanned for a match on the way through the
-                      pipeline (flagged, not blocked, by itself).
-                      Read-only; the pattern list is not yet
-                      user-configurable.
-
-Any other subcommand prints usage and exits 2. Approvals are answerable
-headlessly via `docket approve`/`docket deny` or `POST
-/approvals/<token>` (`docket serve`), or MCP, in addition to Telegram --
-all four channels are audit-logged. See
-specs/functional/security-gates.spec.md.
-
-
----
 
 ### audit
 
@@ -1531,7 +1480,7 @@ docket -V
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
 
@@ -1544,7 +1493,7 @@ No command emits any other exit code today.
 |----------|-------------|---------|
 | `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
 | `TRACES_DIR` | Root of per-session trace JSONL files (`docket trace`) | `$DOCKET_HOME/traces` |
-| `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket gates`) | `$DOCKET_HOME/policies` |
+| `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
@@ -1553,7 +1502,7 @@ No command emits any other exit code today.
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
-| `PROVIDERS_FILE` | Global provider catalog scope (`docket models provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
+| `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
 | `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
 | `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
 | `CHANNELS_FILE` | Global channel catalog scope (`core/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
@@ -1567,13 +1516,13 @@ No command emits any other exit code today.
 | `TOOL_APPROVAL_POLL_INTERVAL_S` | How often the in-turn approval wait re-checks the record while blocked | `2` |
 | `CLAIM_STALE_TIMEOUT` | A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep | `1800` |
 | `METRICS_WINDOW` | Rolling terminal-session count for `docket metrics` | `50` |
-| `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket doctor`/`docket cost` flag a session as runaway | `200` |
-| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway | `20` |
-| `DOCKET_KEY_MAX_AGE_DAYS` | `docket doctor`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
+| `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket cost` flags a session as runaway | `200` |
+| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket cost` flags a session as runaway | `20` |
+| `DOCKET_KEY_MAX_AGE_DAYS` | `docket setup --fix`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
 | `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket trace expire` deletes it | `30` |
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
 | `EXPORT_FLUSH_TIMEOUT_S` | Per-flush wall-clock bound for the background exporter sender | `5.0` |
-| `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket doctor` flags older agents for rebuild past a bump | `4` |
+| `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump | `4` |
 | `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards in `docket maintain check` | `4` |
 | `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this | `6000` |
 | `DISTILL_TIMEOUT_S` | Wall-clock bound on `docket maintain distill`'s one driver-backed turn | `120` |
@@ -1606,14 +1555,15 @@ No command emits any other exit code today.
 | `NO_COLOR` | Any value switches output to plain mode (no colour, ASCII symbols) | unset |
 | `DOCKET_NO_HINTS` | Set to `1` to silence the closing `Next:` line | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
-| `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
+| `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket setup sandbox on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
+| `SHELL` | Login shell name; `docket setup` uses it to name the completion command it offers | unset (bash assumed) |
 | `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |
 | `VISUAL` | Fallback text editor for `docket edit` when `EDITOR` is unset | `nano` |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
 | `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket keys add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket setup provider add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |
 | `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher to select which project to `uv run` against | package/launcher location |
 | `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
 
@@ -1646,7 +1596,7 @@ done
 
 # Cheaper models fleet-wide: change the policy once — every
 # policy-following agent updates automatically (pins are untouched)
-docket models preset openrouter-free
+docket setup model preset openrouter-free
 ```
 
 ### Cost Monitoring

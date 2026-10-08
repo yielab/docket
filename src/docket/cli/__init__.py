@@ -26,6 +26,7 @@ from docket.cli import (
     _setup_model,
     _setup_notify,
     _setup_sandbox,
+    _setup_shell,
     _status,
     _task,
 )
@@ -53,11 +54,15 @@ def _default(
         ui.console.print("  docket status        show the current project's status")
         ui.console.print("  docket status --all  show global status by project")
         ui.console.print("  docket add <role>    add an agent to the current pod")
-        ui.console.print("  docket doctor        check workstation-wide health")
+        ui.console.print("  docket setup         set up this workstation (model endpoint first)")
         ui.console.print("  docket help          show the full command reference")
 
 
 app.add_typer(_setup.setup_app)
+_setup.setup_app.add_typer(_setup_model.provider_app)
+_setup.setup_app.add_typer(_setup_model.model_app)
+_setup.setup_app.add_typer(_setup_sandbox.sandbox_app)
+_setup.setup_app.command("shell")(_setup_shell.cmd_shell)
 app.command("list")(_remove.cmd_list)
 app.command("status")(_status.cmd_status)
 app.command(
@@ -84,14 +89,6 @@ app.command("scope")(_remove.cmd_scope)
 app.command("profile")(_pod.cmd_profile)
 app.command("persona")(_remove.cmd_persona)
 app.command(
-    "keys",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_model.cmd_keys)
-app.command(
-    "models",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_model.cmd_models)
-app.command(
     "pod",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod.cmd_pod)
@@ -110,11 +107,6 @@ app.command(
     "config",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_config)
-app.command("doctor")(_setup.cmd_doctor)
-app.command(
-    "gates",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_sandbox.cmd_gates)
 app.command(
     "conversations",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -134,7 +126,6 @@ app.command(
 app.command("audit")(_log.cmd_audit)
 app.command("snapshot")(_status.cmd_snapshot)
 app.command("serve")(_service.cmd_serve)
-app.command("completions")(_setup.cmd_completions)
 app.command("validate")(_pod_config.cmd_validate)
 app.command(
     "plugins",

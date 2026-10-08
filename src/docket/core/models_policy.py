@@ -44,7 +44,7 @@ _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
 
 def rank_anchors() -> dict[str, str]:
-    """Seed values for each rank (what `docket models` shows as "rank anchors"), read from the
+    """Seed values for each rank (what `docket setup model` shows as "rank anchors"), read from the
     built-in `anthropic` provider's own preset -- NOT a runtime fallback chain; nothing in
     docket degrades a request to a cheaper model on failure."""
     spec = _provider.load_catalog().get("anthropic")
@@ -136,7 +136,7 @@ def preset_table() -> dict[str, dict[str, str]]:
 
 def known_presets() -> tuple[str, ...]:
     """Every preset name the catalog carries, in catalog order -- the menu
-    ``docket models preset`` validates against."""
+    ``docket setup model preset`` validates against."""
     return tuple(preset.name for _provider_name, preset in presets())
 
 
@@ -188,7 +188,7 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
 
 def find_registry_problems() -> list[tuple[str, str]]:
     """Return ``(key, reason)`` pairs for a malformed ``docket-models.json`` entry that
-    ``load_registry`` silently ignores -- for ``docket doctor``. *key* is the file path
+    ``load_registry`` silently ignores -- for ``docket setup --fix``. *key* is the file path
     itself for an unreadable file, else a dotted ``rankAnchors.<x>``/``roles.<x>``/``default``."""
     path = cfg.MODEL_REGISTRY_FILE
     if not path.exists():
@@ -337,7 +337,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
         f"Invalid model: '{model}'\n"
         "Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).\n"
         f"Current role policy:\n{lines}\n"
-        "Change a role's model: docket models set <role> <provider/model>"
+        "Change a role's model: docket setup model set <role> <provider/model>"
     )
 
 

@@ -1,74 +1,168 @@
-"""The sandbox setup commands.
-Holds gates."""
+"""The sandbox setup commands: isolation and network posture; the tool-call gate is always on."""
 
 from __future__ import annotations
+
+from enum import StrEnum
 
 import typer
 
 from docket import ui
+from docket.cli import _contract
+from docket.core import fleet as _fleet
+from docket.core import security as _sec
+from docket.core.audit import audit_log
+from docket.edges.adapters import system as _sys
+
+sandbox_app = typer.Typer(
+    name="sandbox",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
 
 
-def cmd_gates(ctx: typer.Context) -> None:
-    """Show docket's tool-call gate and manage workspace isolation.
+class NetworkMode(StrEnum):
+    none = "none"
+    open = "open"
 
-    The tool-call gate itself -- the policy engine plus the argument-aware
-    high-risk command classifier, both evaluated in `core/tools.py`'s
-    `dispatch_tool` chokepoint on every call docket's turn loop makes -- is
-    always active and cannot be turned off. An "ask" verdict sits in
-    docket's own approval store, answerable identically by the CLI, HTTP,
-    MCP, and Telegram channels.
 
-    Subcommands:
-      status (default)  reports that the tool-call gate is always active,
-                          plus the workspace-isolation mode
-      isolate on|off    records whether tool execution runs inside a
-                          sandbox (opt-in, off by default). `on` needs
-                          bubblewrap (Linux) or a running docker; it probes
-                          bwrap, then docker -- errors, exit 1, if neither is
-                          usable. Enforced on the live
-                          turn: with isolation on, DocketDriver runs tools
-                          sandboxed (bwrap or docker), and refuses the whole
-                          turn -- audited as `isolation.refused` -- when no
-                          backend is usable, rather than running it
-                          unsandboxed.
-      network none|open records whether jailed tool calls may reach the
-                          network (default open). `none` drops bwrap's
-                          --share-net / adds docker's --network none, and
-                          refuses any turn that would run with isolation
-                          off -- audited as `network.refused`. A pod's
-                          `network` setting can only narrow it. `fetch`
-                          is untouched (its domain allowlist stays).
-      classes           lists the built-in high-risk action classes
-                          (`HIGH_RISK_PATTERNS` in `core/security.py`) --
-                          money-movement, prod-deploy, and secret-access --
-                          wired onto every bash call docket's turn loop
-                          dispatches: the whole command line, including
-                          every segment behind a `;`/`&&`/`||`/pipe, is
-                          classified before a call is allowed to run, so
-                          `git push origin production` asks even though
-                          `git` itself stays on the curated allowlist
-                          (`git status` does not). A pod's verifyCmd
-                          separately refuses a matching command outright
-                          before the shell starts; a hop's real output is
-                          scanned for a match on the way through the
-                          pipeline (flagged, not blocked, by itself).
-                          Read-only; the pattern list is not yet
-                          user-configurable.
+def _off_label(state: str) -> str:
+    return "off (explicit)" if state == "off" else state
 
-    Any other subcommand prints usage and exits 2. Approvals are answerable
-    headlessly via `docket approve`/`docket deny` or `POST
-    /approvals/<token>` (`docket serve`), or MCP, in addition to Telegram --
-    all four channels are audit-logged. See
-    specs/functional/security-gates.spec.md."""
-    from docket.cli._flags import find_unknown_flag
-    from docket.cli._gates import run_gates
 
-    args = list(ctx.args)
-    sub = args[0] if args else None
-    rest = args[1:]
-    bad = find_unknown_flag(rest, frozenset())
-    if bad is not None:
-        ui.error(f"docket gates: unrecognized flag '{bad}'")
-        raise typer.Exit(2)
-    want = rest[0] if rest else None
-    raise typer.Exit(run_gates(sub, want=want))
+def sandbox_state() -> dict[str, object]:
+    """Isolation state, network mode and the backend found, without writing anything."""
+    return {
+        "gate": "always active",
+        "isolation": _fleet.get_isolation_state(),
+        "isolationEnabled": _fleet.get_isolation_enabled(),
+        "network": _fleet.get_network_mode(),
+        "backend": _sys.sandbox_availability().backend,
+    }
+
+
+def status(json_out: bool = False) -> int:
+    """Print the gate, isolation and network posture; a read."""
+    state = sandbox_state()
+    if json_out:
+        _contract.emit_json(state)
+        return 0
+    ui.header("Sandbox")
+    ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
+    backend = state["backend"]
+    if state["isolationEnabled"]:
+        ui.success(
+            f"Isolation: {state['isolation']} (backend {backend}); a turn refuses to run "
+            "rather than fall back unsandboxed"
+        )
+    else:
+        ui.warn(f"Isolation: {_off_label(str(state['isolation']))}; tools run on the host")
+        ui.dim("Turn it on: docket setup sandbox on (needs bubblewrap or docker)")
+    if state["network"] == "none":
+        ui.success("Network: none; jailed tool calls have no network")
+    else:
+        ui.dim("Network: open (a pod's network none still narrows it)")
+    return 0
+
+
+def isolate(want: str) -> int:
+    """Turn workspace isolation on or off; ``on`` needs bwrap or docker."""
+    if want == "off":
+        _sec.disable_workspace_isolation()
+        audit_log("gates.isolate", "off")
+        ui.success("Isolation off; tools run on the host")
+        return 0
+    avail = _sys.sandbox_availability()
+    if avail.backend == "none":
+        ui.error("No sandbox backend is usable", "Install bubblewrap (bwrap) or start docker")
+        return 1
+    _sec.apply_workspace_isolation()
+    audit_log("gates.isolate", "on")
+    ui.success(f"Isolation on (backend {avail.backend})")
+    ui.dim("A turn with no usable backend is refused and audited, never run unsandboxed.")
+    return 0
+
+
+def network(want: str) -> int:
+    """Record whether jailed tool calls may reach the network."""
+    _fleet.set_network_mode(want)
+    audit_log("gates.network", want)
+    if want == "open":
+        ui.success("Sandbox network open; a pod's network none still narrows it")
+        return 0
+    ui.success("Sandbox network none; jailed tool calls have no network")
+    ui.dim("fetch runs in docket's own process and keeps its domain allowlist.")
+    if not _fleet.get_isolation_enabled():
+        ui.warn("Isolation is off: turns are refused until docket setup sandbox on")
+    return 0
+
+
+def classes() -> int:
+    """List the built-in high-risk action classes."""
+    ui.header("High-risk action classes")
+    rows = []
+    for cls in _sec.HIGH_RISK_PATTERNS:
+        bins = ", ".join(cls.bins) if cls.bins else "none allowlisted; always asks"
+        rows.append([cls.name, cls.description, cls.pattern, bins])
+    ui.table(rows, ["CLASS", "DESCRIPTION", "PATTERN", "ALLOWLISTED BINS"])
+    ui.dim("Every shell command is classified before it runs; a match asks for approval.")
+    return 0
+
+
+@sandbox_app.callback(invoke_without_command=True)
+def sandbox_callback(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+) -> None:
+    """Workspace isolation and sandbox network (bare: show the state).
+
+    Example: docket setup sandbox"""
+    if ctx.invoked_subcommand is None:
+        raise typer.Exit(status(json_out))
+
+
+@sandbox_app.command("status")
+def sandbox_status(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -> None:
+    """Show the gate, isolation and network posture.
+
+    Example: docket setup sandbox status --json"""
+    raise typer.Exit(status(json_out))
+
+
+@sandbox_app.command("on")
+def sandbox_on() -> None:
+    """Run tools inside a sandbox (bwrap, else docker).
+
+    Example: docket setup sandbox on"""
+    rc = isolate("on")
+    if rc == 0:
+        _contract.next_step("docket setup")
+    raise typer.Exit(rc)
+
+
+@sandbox_app.command("off")
+def sandbox_off() -> None:
+    """Run tools on the host.
+
+    Example: docket setup sandbox off"""
+    rc = isolate("off")
+    if rc == 0:
+        _contract.next_step("docket setup")
+    raise typer.Exit(rc)
+
+
+@sandbox_app.command("network")
+def sandbox_network(mode: NetworkMode = typer.Argument(..., help="none or open")) -> None:
+    """Cut the sandbox's network (none) or leave it open.
+
+    Example: docket setup sandbox network none"""
+    rc = network(mode.value)
+    _contract.next_step("docket setup sandbox")
+    raise typer.Exit(rc)
+
+
+@sandbox_app.command("classes")
+def sandbox_classes() -> None:
+    """List the high-risk action classes that always ask.
+
+    Example: docket setup sandbox classes"""
+    raise typer.Exit(classes())

@@ -41,7 +41,7 @@ MEMORY_FILE = "MEMORY.md"
 HEARTBEAT_FILE = "HEARTBEAT.md"
 
 #: Bumped when the generated WORKFLOW_AUTO.md body changes. Embedded as a marker
-#: so ``docket doctor`` can detect and re-seed *stale* content, not just absence.
+#: so ``docket setup --fix`` can detect and re-seed *stale* content, not just absence.
 #: v3 adds the resume/durability contract (write in-flight tasks to HEARTBEAT.md
 #: before starting; resume unchecked tasks on reset instead of greeting idle).
 #: v4 adds a manual-path header: this file's `cd`/write-HEARTBEAT instructions
@@ -322,7 +322,7 @@ def _daily_seed(
 
 def contract_ok(ws: Path) -> bool:
     """True if *ws* satisfies the current runtime contract: ``WORKFLOW_AUTO.md`` must exist
-    **and** carry the current contract marker, so ``docket doctor`` re-seeds a workspace whose
+    **and** carry the current contract marker, so ``docket setup --fix`` re-seeds a workspace whose
     file is missing *or* stale, not just missing."""
     wf = ws / REQUIRED_STARTUP_FILE
     if not wf.is_file():
@@ -691,7 +691,7 @@ def write_dispatch_tasks(ws: Path, tasks: Sequence[DispatchHeartbeatTask]) -> No
 
 def read_dispatch_task_ids(ws: Path) -> list[str]:
     """Task ids currently recorded in *ws*'s HEARTBEAT.md dispatch region. ``[]`` when the file
-    is absent, unreadable, or has no dispatch region yet; ``docket doctor`` diffs this against
+    is absent, unreadable, or has no dispatch region yet; ``docket setup --fix`` diffs this against
     ``TASK_LIST.json``'s ``running`` ids to detect ledger drift (``_check_dispatch_ledger``)."""
     path = ws / HEARTBEAT_FILE
     if not path.is_file():
@@ -720,7 +720,7 @@ def sync_dispatch_tasks(ws: Path, task_records: Iterable[Mapping[str, Any]]) -> 
     """Regenerate *ws*'s dispatch ledger from a pod's TASK_LIST.json task dicts. Filters to
     ``status == "running"``, the only state where a hop is genuinely in flight; every other
     status means nothing to hold open. Called by both ``core/dispatch.py`` (at each
-    task-state-persistence point) and ``docket doctor --fix`` to re-sync a drifted ledger —
+    task-state-persistence point) and ``docket setup --fix`` to re-sync a drifted ledger —
     always safe since ``TASK_LIST.json`` is dispatch's source of truth and the ledger's
     dispatch region is entirely docket-owned."""
     tasks = sorted(

@@ -35,7 +35,6 @@ from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
-from docket.core import provider as _provider_catalog
 from docket.core import provisioning as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
@@ -193,26 +192,7 @@ def run_init(all_args: list[str]) -> int:
             ui.error(f"No such option: {arg.split('=', 1)[0]}")
             return 2
 
-    foundation_missing = not _cfg.FLEET_FILE.is_file()
-    if not foundation_missing:
-        fleet = _fleet.load_fleet()
-        catalog = _provider_catalog.load_catalog()
-        has_registered_provider = any(scope == "global" for scope in catalog.scopes.values())
-        # Provider registration is a supported recovery step before the first
-        # project. A registered provider must not masquerade as a completed shared
-        # foundation, while legacy/project-populated fleets keep their
-        # established `init` behavior.
-        foundation_missing = has_registered_provider and not fleet.agents
-    if foundation_missing:
-        from docket.cli import _install
-
-        ui.info("First project: preparing Docket's shared workstation foundation...")
-        bootstrap_rc = _install.bootstrap_workstation(
-            assume_yes=True,
-            continuing_to_project=True,
-        )
-        if bootstrap_rc != 0:
-            return bootstrap_rc
+    _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
     from_file, cli_codebase, cli_name, cli_blueprint, cli_recipe, no_apply = _parse_add_args(
         project_args
@@ -309,6 +289,11 @@ def run_init(all_args: list[str]) -> int:
     ui.console.print(f"  docket pod {aid} add reviewer # add a role")
     ui.console.print(f"  docket wire {lead_id}   # optional Telegram binding")
     _offer_desktop_channel()
+    from docket.cli import _contract, _setup
+
+    if not _setup.readiness().endpoint.ok:
+        ui.warn("No model endpoint yet")
+        _contract.next_step("docket setup")
     return 0
 
 
@@ -722,7 +707,9 @@ def _provision_agent(
     audit_log("agent.add", f"{agent_id} model={model} source={source}")
 
     if not _secrets.secrets_keys():
-        ui.warn("No model-provider credential stored. Run: docket keys add <PROVIDER>_API_KEY")
+        ui.warn(
+            "No model-provider credential stored. Run: docket setup provider add <provider> --credential"
+        )
 
 
 def run_info(agent_id: str | None, json_out: bool) -> int:

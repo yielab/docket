@@ -39,11 +39,10 @@ printf 'VERSION = "1.0"\n' >"$ROOT/code/svc/app.py"
 seed_repo "$ROOT/code/svc"
 
 cd "$ROOT/code/myapp" || exit 1
-docket models provider add local "$ENDPOINT" --model local-model --ctx 16384 --max-tokens 4096 \
+docket setup provider add local "$ENDPOINT" --model local-model --ctx 16384 --max-tokens 4096 \
     >/dev/null 2>&1
-docket models preset local >/dev/null 2>&1
 # Isolation is opt-in; the visuals show the jailed path, so this host needs bwrap or docker.
-docket gates isolate on >/dev/null 2>&1 || exit 1
+docket setup sandbox on >/dev/null 2>&1 || exit 1
 
 # 1-team: the team comes from a shipped recipe, is written back to .docket/, validated, planned.
 run 1-team.txt docket init --recipe secure-build
@@ -62,7 +61,7 @@ run 2-dispatch.txt "docket trace $session"
 worktree="$(ls -d "$HOME"/.docket/workspaces/projects/myapp-implementer/tasks/*/ | head -1)"
 worktree="${worktree%/}"
 run 3-isolation.txt docket info myapp-implementer
-run 3-isolation.txt docket gates status
+run 3-isolation.txt docket setup sandbox
 run 3-isolation.txt git worktree list
 run 3-isolation.txt git status --short
 run 3-isolation.txt "git -C $worktree diff main"

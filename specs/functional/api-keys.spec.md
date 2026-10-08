@@ -1,6 +1,6 @@
 # API Key Management Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -13,7 +13,7 @@ where Docket's model client resolves them, with no secondary copy anywhere else.
 
 This specification covers:
 
-- Listing, adding, validating, removing, and exporting keys (`docket keys`)
+- Storing, rotating and removing a provider's credential (`docket setup provider`)
 - The supported key names
 - The storage backends (file and OS keyring)
 
@@ -26,25 +26,26 @@ This specification does NOT cover provider key *format* rules (see input-validat
 1. Keys **MUST** be stored centrally and **MUST** support at least:
    `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`,
    `AI_GATEWAY_API_KEY`.
-2. Listing keys **MUST** mask their values.
+2. A credential value **MUST NOT** be echoed, printed or written to the audit log.
 3. Additional `UPPERCASE_WITH_UNDERSCORES` names **MAY** be stored for tools or future providers;
    syntactically invalid names **MUST** fail clearly.
 
-### Operations (docket keys)
+### Operations (docket setup provider)
 
-1. `list` (default) **MUST** show all stored keys with masked values.
-2. `setup` **MUST** run an interactive wizard to set keys. It **MUST** prompt for every
-   credential name that a provider catalog document (`core/provider.py::load_catalog`, built-in
-   then the operator's own) declares under `auth.credentials`, in catalog order, using the
-   document's credential-format hint where one is declared. `docket auth` is retired (Phase 29,
-   D-45; see ../api/cli-interface.spec.md), so `setup` is the only interactive path onto these
-   credentials.
-3. `add <KEY_NAME>` **MUST** add a new key and refuse to overwrite an existing one.
-4. `rotate <KEY_NAME>` **MUST** replace an existing value.
-5. `validate [KEY_NAME]` **MUST** check local format rules only; it **MUST NOT** claim a live
-   provider/network validation.
-6. `remove <KEY_NAME>` **MUST** remove a key.
-7. `export` **MUST** print keys as shell environment variable assignments.
+Credentials belong to a provider; there is no separate key command.
+
+1. `provider add <name> [url] [--credential KEY]` **MUST** store the provider's credential (the
+   first name its catalog document declares under `auth.credentials`) from the flag, else from the
+   process environment variable of that name, else from a hidden prompt on a terminal. Off a
+   terminal with none of the three it **MUST** exit 1 naming `--credential` and write nothing.
+   A name already stored is replaced (audited as `keys.rotate`), a new one is audited as
+   `keys.add`; a value that fails the document's credential-format hint **MUST** warn, not refuse.
+2. `provider rotate <name> [--credential KEY]` **MUST** replace the stored value and refuse (exit
+   1) when no credential is stored for that provider.
+3. `provider remove <name> [--yes]` **MUST** confirm on a terminal and, off one, exit 1 naming
+   `--yes`. It removes the provider's global document and each of its stored credentials that no
+   other catalog document declares.
+4. The first-run flow (`docket setup`) **MUST** reach credentials only through these functions.
 
 ### Propagation
 
@@ -52,7 +53,7 @@ This specification does NOT cover provider key *format* rules (see input-validat
    equivalent) sync path — nothing on the live turn path ever read one.
 2. Docket's model endpoint resolver **MUST** read the selected provider credential directly from
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
-   need to export the key after `docket keys add`.
+   need to export the key after `docket setup provider add`.
 3. Credential presence **MUST NOT** be reported as provider readiness when the selected model has
    no callable endpoint. A built-in hosted provider's base URL comes from its shipped
    `kind: provider` document (`core.provider`'s catalog), so a stored Anthropic/OpenAI/Google
@@ -64,72 +65,66 @@ This specification does NOT cover provider key *format* rules (see input-validat
    `secrets.json`.
 2. `DOCKET_SECRETS_BACKEND=keyring` **MUST** store the value itself in the OS keyring
    (`secret-tool store`) when `secret-tool` is on `PATH`; `secrets.json` then holds only a name
-   index (an empty placeholder), never the secret. `add`/`rotate` **MUST** fail (exit 1) rather
-   than silently fall back to plaintext storage when `secret-tool store` fails. `remove` **MUST**
+   index (an empty placeholder), never the secret. Storing **MUST** fail (exit 1) rather
+   than silently fall back to plaintext storage when `secret-tool store` fails. Removing **MUST**
    also clear the keyring entry (best-effort — a missing entry is not an error).
-3. `list`, `validate`, and `export` of a keyring-backed key **MUST** resolve the real value
-   through the same lookup the runtime uses (`secret-tool lookup`), never the raw index value.
+3. Resolving a keyring-backed credential **MUST** use the same lookup the runtime uses
+   (`secret-tool lookup`), never the raw index value.
 
 ## Interface Contracts
 
 ### CLI Command Signatures
 
 ```bash
-docket keys                       # List (masked) — default
-docket keys setup                 # Interactive wizard
-docket keys add <KEY_NAME>        # Add one new key
-docket keys rotate <KEY_NAME>     # Replace an existing key's value
-docket keys validate [KEY_NAME]   # Check known local format rules
-docket keys remove <KEY_NAME>     # Remove a key
-docket keys export                # Print as env vars
+docket setup provider add <name> [url] [--credential KEY]   # Store, probe, register, apply preset
+docket setup provider rotate <name> [--credential KEY]      # Replace the stored value
+docket setup provider remove <name> [--yes]                 # Remove the provider and its credential
 ```
 
 ### Return Codes
 
 - `0`: Success
-- `1`: Any error (missing/invalid arguments or invalid key-name syntax — CLI-wide convention,
-  see ../api/cli-interface.spec.md)
+- `1`: Any error (missing credential or confirmation, unreachable endpoint, unknown provider —
+  CLI-wide convention, see ../api/cli-interface.spec.md)
 
 ## Examples
 
-### Adding and listing keys
+### Adding a provider with its credential
 
 ```bash
-$ docket keys add ANTHROPIC_API_KEY
+$ docket setup provider add anthropic
 Enter value for ANTHROPIC_API_KEY (hidden):
-✓ Key 'ANTHROPIC_API_KEY' stored.
-
-$ docket keys list
-Stored API Keys
-
-  ✓ ANTHROPIC_API_KEY                 sk-a****wxyz  added 2026-09-19
+✓ Provider anthropic: https://api.anthropic.com/v1
+✓ lead -> anthropic/claude-haiku-4-5, implementer -> anthropic/claude-sonnet-4-6
+→ Next: docket setup
 ```
-
-`list` shows only stored keys (an unset provider key has no row). A value longer than 12
-characters is masked to its first and last four characters; anything shorter prints `****`. The
-leading badge is `✓` when the value passes the local format rule for that name and `⚠` when it
-does not.
 
 ## Validation
 
 ### Pre-conditions
 
-- For `add`/`remove`, a syntactically valid `KEY_NAME` **MUST** be supplied. `add` requires an
-  absent name; `rotate`/`remove` require an existing name.
+- For `rotate`, a credential **MUST** already be stored; `remove` requires a known provider.
 
 ### Post-conditions
 
-- After `add`, the key **MUST** be stored, immediately resolvable by the selected model provider,
+- After `provider add`, the credential **MUST** be stored, immediately resolvable by the selected model provider,
   and copied nowhere else (see Backends above for where "stored" means under `keyring`).
-- After `remove`, the key **MUST NOT** remain in the central store.
+- After `provider remove`, the credential **MUST NOT** remain in the central store.
 
 ### Invariants
 
-- Listed key values **MUST** always be masked.
+- A credential value **MUST** never be printed.
 - The central store **MUST** be the durable source of truth for provider keys. A process environment
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-07)
+
+- `docket keys` is removed; credentials belong to a provider. Operations are now
+  `setup provider add|rotate|remove` (`cli/_setup_model.py`); `list`, `validate`, `export` and
+  the `keys setup` wizard are gone, and the first-run flow reaches credentials only through
+  these functions. Removal asks for confirmation (`--yes` off a terminal).
 
 ### Version 1.7.0 (2026-10-03)
 

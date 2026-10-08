@@ -2,7 +2,7 @@
 
 Covers: every built-in blueprint provisions a real pod; `software` provisions
 byte-for-byte identically to the underlying `_pod.build_pod` primitive (a
-hard parity requirement); a `workdir` blueprint's pod passes `docket doctor`
+hard parity requirement); a `workdir` blueprint's pod passes `docket setup --fix`
 clean; `docket add --from spec.yaml` provisions a pod via a `blueprint` field
 without disturbing the existing single-agent declarative path; an unknown
 blueprint fails cleanly in both the interactive and declarative surfaces.
@@ -21,7 +21,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _agents, _doctor, _pod
+from docket.cli import _agents, _pod, _setup_check
 from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
@@ -265,7 +265,7 @@ class TestSoftwareParity:
         assert "budgetUsd" not in _meta(oc_b, "demo-lead")
 
 
-# ── docket doctor accepts a workdir blueprint pod ───────────────────────────
+# ── docket setup accepts a workdir blueprint pod ───────────────────────────
 
 
 class TestDoctorAcceptsWorkdirBlueprint:
@@ -277,7 +277,7 @@ class TestDoctorAcceptsWorkdirBlueprint:
         created = _pod.build_pod_from_blueprint(
             "myproj", blueprint_name, stack="", description="objective"
         )
-        issues = _doctor._check_project_agents(sorted(created))
+        issues = _setup_check._check_project_agents(sorted(created))
         assert issues == 0
         del oc_dir  # only used to keep _seed's return value referenced
 
@@ -286,7 +286,7 @@ class TestDoctorAcceptsWorkdirBlueprint:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         created = _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
-        assert _doctor._check_project_agents(sorted(created)) == 0
+        assert _setup_check._check_project_agents(sorted(created)) == 0
 
     def test_agentic_product_pod_passes_doctor_clean(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -304,7 +304,7 @@ class TestDoctorAcceptsWorkdirBlueprint:
             "reviewer",
             "tester",
         ]
-        assert _doctor._check_project_agents(sorted(created)) == 0
+        assert _setup_check._check_project_agents(sorted(created)) == 0
 
 
 # ── unknown blueprint fails cleanly ─────────────────────────────────────────

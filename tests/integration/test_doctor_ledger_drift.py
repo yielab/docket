@@ -1,5 +1,5 @@
-"""``docket doctor``'s TASK_LIST.json <-> HEARTBEAT.md dispatch-ledger
-divergence check (``cli/_doctor.py``'s ``_check_dispatch_ledger``).
+"""``docket setup --fix``'s TASK_LIST.json <-> HEARTBEAT.md dispatch-ledger
+divergence check (``cli/_setup_check.py``'s ``_check_dispatch_ledger``).
 
 Dispatch itself keeps the two in sync mechanically (see
 ``test_dispatch_heartbeat_and_conversation_sync.py``); this file proves the *doctor* side: it
@@ -17,7 +17,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _doctor, _pod
+from docket.cli import _pod, _setup_check
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 
@@ -62,7 +62,7 @@ class TestNoPods:
         home.mkdir()
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
         repoint_docket_home(monkeypatch, home)
-        assert _doctor._check_dispatch_ledger(do_fix=False) == 0
+        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
         assert "Dispatch task ledger" not in capsys.readouterr().out
 
 
@@ -72,7 +72,7 @@ class TestInSync:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _claim_a_task()
-        assert _doctor._check_dispatch_ledger(do_fix=False) == 0
+        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
         out = capsys.readouterr().out
         assert "demo: in sync (1 running)" in out
 
@@ -80,7 +80,7 @@ class TestInSync:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        assert _doctor._check_dispatch_ledger(do_fix=False) == 0
+        assert _setup_check._check_dispatch_ledger(do_fix=False) == 0
         assert "demo: in sync (0 running)" in capsys.readouterr().out
 
 
@@ -99,11 +99,11 @@ class TestMissingFromLedger:
         _seed_pod(tmp_path, monkeypatch)
         task_id = _claim_a_task()
         self._corrupt()
-        issues = _doctor._check_dispatch_ledger(do_fix=False)
+        issues = _setup_check._check_dispatch_ledger(do_fix=False)
         out = capsys.readouterr().out
         assert issues == 1
         assert f"missing from ledger: {task_id}" in out
-        assert "Fix with: docket doctor --fix" in out
+        assert "Fix with: docket setup --fix" in out
 
     def test_fix_resyncs_and_clears_the_issue(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -111,7 +111,7 @@ class TestMissingFromLedger:
         _seed_pod(tmp_path, monkeypatch)
         task_id = _claim_a_task()
         self._corrupt()
-        issues = _doctor._check_dispatch_ledger(do_fix=True)
+        issues = _setup_check._check_dispatch_ledger(do_fix=True)
         assert issues == 0
         assert "ledger re-synced" in capsys.readouterr().out
         assert _mem.read_dispatch_task_ids(_lead_ws()) == [task_id]
@@ -131,7 +131,7 @@ class TestStaleInLedger:
         )
         _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-        issues = _doctor._check_dispatch_ledger(do_fix=False)
+        issues = _setup_check._check_dispatch_ledger(do_fix=False)
         out = capsys.readouterr().out
         assert issues == 1
         assert "stale in ledger: task-ghost" in out
@@ -145,7 +145,7 @@ class TestStaleInLedger:
         )
         _mem.write_dispatch_tasks(_lead_ws(), [stale])
 
-        issues = _doctor._check_dispatch_ledger(do_fix=True)
+        issues = _setup_check._check_dispatch_ledger(do_fix=True)
         assert issues == 0
         assert _mem.read_dispatch_task_ids(_lead_ws()) == []
 
@@ -161,7 +161,7 @@ class TestStaleInLedger:
         stale = _mem.DispatchHeartbeatTask(task_id="task-ghost", description="x", claimed_at="t")
         _mem.write_dispatch_tasks(ws, [stale])
 
-        _doctor._check_dispatch_ledger(do_fix=True)
+        _setup_check._check_dispatch_ledger(do_fix=True)
 
         final = hb.read_text(encoding="utf-8")
         assert "Don't touch prod on Fridays." in final
@@ -177,7 +177,7 @@ class TestDoctorJson:
         _mem.write_dispatch_tasks(_lead_ws(), [])  # corrupt: drop the ledger entry
 
         capsys.readouterr()  # discard pod-provisioning output from setup above
-        rc = _doctor.run_doctor(json_out=True)
+        rc = _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert rc == 1
         assert data["healthy"] is False
@@ -198,7 +198,7 @@ class TestDoctorJson:
         _claim_a_task()
 
         capsys.readouterr()  # discard pod-provisioning output from setup above
-        _doctor.run_doctor(json_out=True)
+        _setup_check.run_check(json_out=True)
         data = json.loads(capsys.readouterr().out)
         ledger = data["checks"]["dispatchLedger"]
         assert ledger == [

@@ -244,93 +244,6 @@ class TestCmdMaintain:
 
 
 # ---------------------------------------------------------------------------
-# TestCmdKeys
-# ---------------------------------------------------------------------------
-
-
-class TestCmdKeys:
-    def _write_secrets(self, oc_dir: Path, data: dict[str, str]) -> None:
-        path = oc_dir / "secrets.json"
-        path.write_text(json.dumps(data, indent=2))
-        path.chmod(0o600)
-
-    def test_list_with_no_secrets(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["keys", "list"], home)
-        assert rc == 0
-        combined = out + err
-        assert (
-            "no api keys" in combined.lower()
-            or "no keys" in combined.lower()
-            or "stored" in combined.lower()
-        )
-
-    def test_list_with_secrets_shows_masked(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        self._write_secrets(
-            home, {"ANTHROPIC_API_KEY": "sk-ant-api03-ABC123456789abcdefghijklmnopqrstuvwxyz"}
-        )
-        rc, out, _err = _run(["keys", "list"], home)
-        assert rc == 0
-        assert "ANTHROPIC_API_KEY" in out
-        # Should show masked value (not the full key)
-        assert "sk-ant-api03-ABC123456789" not in out  # shouldn't show full
-        assert "****" in out or "sk-a" in out  # should show masked or prefix
-
-    def test_add_requires_name(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        rc, out, err = _run(["keys", "add"], home)
-        assert rc == 1
-        combined = out + err
-        assert (
-            "usage" in combined.lower()
-            or "key_name" in combined.lower()
-            or "required" in combined.lower()
-        )
-
-    def test_validate_with_valid_key(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        # Write a valid-format key
-        self._write_secrets(
-            home, {"ANTHROPIC_API_KEY": "sk-ant-valid-key-abcdefghijklmnopqrstuvwxyz0123456"}
-        )
-        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], home)
-        assert rc == 0
-        combined = out + err
-        assert "✓" in combined or "valid" in combined.lower() or "ok" in combined.lower()
-
-    def test_validate_with_invalid_key_format(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        # Write an invalid key (wrong prefix)
-        self._write_secrets(home, {"ANTHROPIC_API_KEY": "wrong-prefix-key"})
-        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], home)
-        assert rc == 1
-        combined = out + err
-        assert (
-            "⚠" in combined
-            or "should start" in combined
-            or "invalid" in combined.lower()
-            or "prefix" in combined.lower()
-        )
-
-    def test_export_prints_export_statements(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        self._write_secrets(home, {"MY_CUSTOM_KEY": "abc123"})
-        rc, out, _err = _run(["keys", "export"], home)
-        assert rc == 0
-        assert "export MY_CUSTOM_KEY=" in out
-        assert "abc123" in out
-
-    def test_list_rejects_unknown_flag(self, tmp_path: Path) -> None:
-        """`keys` documents no flags at all, so `--json` must be a usage error rather than a
-        silently ignored token that still prints the table and exits 0."""
-        home = _setup_bare(tmp_path)
-        rc, _out, err = _run(["keys", "list", "--json"], home)
-        assert rc == 2
-        assert "--json" in err
-
-
-# ---------------------------------------------------------------------------
 # TestCmdAdd
 # ---------------------------------------------------------------------------
 
@@ -453,7 +366,7 @@ class TestCmdAdd:
         assert rc == 0, err
         assert "docket init" in out
         assert "docket status" in out
-        assert "docket doctor" in out
+        assert "docket setup" in out
         assert "PROJECT AGENTS" not in out
         assert "ORG SPECIALISTS" not in out
 
@@ -542,6 +455,6 @@ class TestCmdAdd:
 def test_auth_context_maintain_keys_add_not_exit_127(tmp_path: Path) -> None:
     """These commands must not fall through to an unported stub (exit 127)."""
     home = _setup_bare(tmp_path)
-    for cmd in [["keys", "list"]]:
+    for cmd in [["setup", "model"]]:
         rc, _, _ = _run(cmd, home)
         assert rc != 127, f"docket {' '.join(cmd)} still exits 127"

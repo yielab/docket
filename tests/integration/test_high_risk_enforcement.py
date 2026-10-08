@@ -44,7 +44,7 @@ class TestRunVerifyCmdHighRisk:
         passed, output = _sys.run_verify_cmd("stripe charge customer --amount 500", str(tmp_path))
         assert passed is False
         assert "money-movement" in output
-        assert "docket gates classes" in output
+        assert "docket setup sandbox classes" in output
 
     def test_prod_deploy_command_never_runs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

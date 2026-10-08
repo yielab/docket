@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.0.1
+**Version**: 3.1.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above both policy and pin, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -22,9 +22,9 @@ This specification covers:
 - The user registry overlay (`~/.docket/docket-models.json`), including the registry-
   overridable rank-anchor seed table (`rankAnchors`)
 - Model intent per agent (`modelSource: policy | pinned`) and its inference on read
-- Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
+- Viewing/changing the policy (`docket setup model`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
-- The built-in provider presets (`docket models preset`), including the free/local path
+- The built-in provider presets (`docket setup model preset`), including the free/local path
 - The provider catalog (`core/provider.py`): `kind: provider` documents, the built-in/global
   scopes, and `docket-providers.json`
 - Hosted OpenAI-compatible gateway endpoint and credential resolution
@@ -38,7 +38,7 @@ Phase 16 W-6) — see role-archetypes.spec.md. This spec covers only the one int
 between the two: how a role with no named row in this policy's table resolves via its
 archetype's `modelClass` instead (see "Roles and built-in policy", requirement 5).
 
-Provider endpoints are Docket-owned first-party configuration: `docket models provider add`
+Provider endpoints are Docket-owned first-party configuration: `docket setup provider add`
 writes `core/provider.py`'s catalog (`~/.docket/docket-providers.json`), and
 `edges/adapters/llm.py` resolves that catalog entry directly — see "Provider catalog" below.
 Compatibility with a retired external runtime is not part of this contract; the dated
@@ -60,7 +60,7 @@ feasibility spike remains in ROADMAP and Git history.
      standard rank anchor (default `anthropic/claude-sonnet-4-6`)
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only as a per-agent pin.
-4. Each role **MUST** carry a short human-readable WHY string shown by `docket models`: the
+4. Each role **MUST** carry a short human-readable WHY string shown by `docket setup model`: the
    archetype's own `description`.
 5. Resolving a role not in this table **MUST NOT** collapse to the compiled-in `DEFAULT_MODEL`:
    if the role is a registered pod archetype (ROADMAP Phase 16 W-6; e.g. a starter-library role
@@ -92,12 +92,12 @@ feasibility spike remains in ROADMAP and Git history.
 4. The registry **MAY** contain a `rankAnchors` map (`{"economy"|"standard"|"premium":
    "provider/model"}`) that overrides the private rank-anchor seed table (see Tier names
    below) *before* role defaults are derived from it (Phase 18 L-2). This is how a fleet on
-   a non-Anthropic preset stops showing Claude ids in the anchor value `docket models`
+   a non-Anthropic preset stops showing Claude ids in the anchor value `docket setup model`
    displays. Unknown anchor names or malformed model ids **MUST** be ignored (same tolerance
    as `roles`/`default`).
 5. Requirements 1, 3, and 4 above describe `load_registry` itself, which **MUST** keep
    resolving silently and without warning — a malformed entry must never crash a live fleet
-   or a routine model resolution. Read-only and separate from that path, `docket doctor`
+   or a routine model resolution. Read-only and separate from that path, `docket setup`
    **MUST** run `core.models_policy.find_registry_problems` and report every entry
    `load_registry` ignored — an unknown `rankAnchors`/`roles` name, a value failing the model
    id pattern, or an unreadable/malformed registry file — naming the file and a dotted key
@@ -127,14 +127,14 @@ feasibility spike remains in ROADMAP and Git history.
    unknown provider, so `docket pipeline validate`/`plan` can refuse the step before any hop runs
    (`pod-dispatch.spec.md`'s "Per-hop execution" requirement 5) instead of failing mid-dispatch.
 
-### Changing the policy (docket models)
+### Changing the policy (docket setup model)
 
-1. `docket models` **MUST** list ROLE, MODEL, PRICE, SOURCE (builtin/user), and WHY for all
+1. `docket setup model` **MUST** list ROLE, MODEL, PRICE, SOURCE (builtin/user), and WHY for all
    seven roles, plus the default model and the rank anchors (labeled "rank anchors", not
    "fallback" — see Tier names below for why that label was corrected).
-2. `docket models set <role> <provider/model>` **MUST** validate the model, persist the
+2. `docket setup model set <role> <provider/model>` **MUST** validate the model, persist the
    override to the registry, and apply it live.
-3. `docket models preset <name>` **MUST** map the preset's cheap/strong classes onto all
+3. `docket setup model preset <name>` **MUST** map the preset's cheap/strong classes onto all
    ten roles and persist them, plus the rank anchors and default.
 4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
    and project, registered or not) **MUST** be re-resolved to its role's new model in
@@ -165,16 +165,16 @@ feasibility spike remains in ROADMAP and Git history.
 ### Tier names (removed, 0.2.0)
 
 1. The tier names `economy`, `standard`, `premium` **MUST NOT** be accepted anywhere a model
-   or role value is expected — `docket profile <id> premium` and `docket models set premium
+   or role value is expected — `docket profile <id> premium` and `docket setup model set premium
    <model>` both **MUST** fail with an error naming a full `provider/model` id, not resolve.
    Removed in 0.2.0 per the D-2 deprecation-window exit; see ROADMAP.md D-2.
 2. The three rank values survive as a private internal seed table (`_RANK_ANCHORS` in
    `core/models_policy.py`, defaulting to Anthropic ids) used to pick each role's default
    model — `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles.
    "Private" means **not accepted as a CLI argument
-   under the tier names** — `docket models set economy <model>` still fails per rule 1 above.
+   under the tier names** — `docket setup model set economy <model>` still fails per rule 1 above.
    It is, however, **registry-overridable** (see User registry overlay's `rankAnchors`, Phase
-   18 L-2) and **is displayed** (read-only) by `docket models`, labeled "rank anchors" — a
+   18 L-2) and **is displayed** (read-only) by `docket setup model`, labeled "rank anchors" — a
    correction from the prior "fallback" label, which was a false claim: nothing in docket
    degrades a request to a cheaper model on failure. It is a role-default seed table, not a
    live runtime fallback chain, and the display now says so.
@@ -190,22 +190,22 @@ feasibility spike remains in ROADMAP and Git history.
 1. Removed (2026-10-03): there is no `profiles:` → `roles:` migration. A `profiles:` key is
    ignored (User registry overlay requirement 2).
 2. Removed (2026-10-03): with no migration there is no residual key to preserve.
-3. Removed (2026-10-03): `docket doctor` has no residual-`profiles:` advisory, and `docket models`
+3. Removed (2026-10-03): `docket setup` has no residual-`profiles:` advisory, and `docket setup model`
    prints no migration warning.
 
-### Presets (docket models preset)
+### Presets (docket setup model preset)
 
 1. The built-in presets **MUST** be exactly those the built-in `templates/providers/*.yaml`
    documents declare (`core.models_policy.known_presets`), and that set **MUST** continue to
    include `anthropic` (default), `openai`, `google`, `openrouter-free`, `openrouter`,
-   `ai-gateway`, and `local`. A preset menu entry **MUST NOT** require a separate `docket models
+   `ai-gateway`, and `local`. A preset menu entry **MUST NOT** require a separate `docket setup model
    provider add` first — the document that declares it is its own registration.
 2. The `local` preset **MUST** require no API key (a local OpenAI-compatible endpoint —
-   llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket models provider`) and
+   llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket setup provider`) and
    **MUST** price its models at `$0 (local)`.
 3. Applying a preset **MUST** persist the preset's own economy/standard/premium values as the
    registry's `rankAnchors` (see User registry overlay), not just the per-role overrides — so
-   the anchor value `docket models` displays never lags behind the fleet's actual preset after
+   the anchor value `docket setup model` displays never lags behind the fleet's actual preset after
    a non-Anthropic preset is applied.
 4. `openrouter-free` **MUST** route every rank through Docket model id
    `openrouter/openrouter/free`, which transports `openrouter/free` to OpenRouter. It **MUST**
@@ -274,7 +274,7 @@ feasibility spike remains in ROADMAP and Git history.
    else is consulted — `fleet.json` has no default-model field (`FleetDefaults` is deleted), and
    a `defaults.model` left in an old file is ignored.
 2. Removed (2026-10-03): there is no `fleet.json` `defaults.model` → registry migration.
-3. `docket init`'s default-model step and `docket models set default` / `preset` / `reset`
+3. `docket init`'s default-model step and `docket setup model set default` / `preset` / `reset`
    **MUST** write only to the registry — never to `fleet.json`.
 
 ### Provider catalog
@@ -284,8 +284,8 @@ feasibility spike remains in ROADMAP and Git history.
    bearer|header|none` plus `credentials`, a list of names — never values, and `header`, the
    request header name a `type: header` credential rides on — required exactly when `type` is
    `header`), `headers` (a map of additional static header names to values sent verbatim on
-   every request), `local`, `marketplace`, `credentialPrefix` (a `docket keys validate` format
-   hint, optional), `pricesAsOf` (`YYYY-MM-DD`, required when any model row carries a `price`),
+   every request), `local`, `marketplace`, `credentialPrefix` (a credential-format hint `setup provider add`
+   warns against, optional), `pricesAsOf` (`YYYY-MM-DD`, required when any model row carries a `price`),
    `models[]` (`id`, `contextWindow`, `maxTokens`, optional `price: {input, output, cacheRead,
    cacheWrite}` USD per million tokens), `presets[]` (`name`, `ranks: {economy, standard,
    premium}` as bare model ids, `note`), and `note`. `core.provider.load_provider_document`
@@ -301,15 +301,19 @@ feasibility spike remains in ROADMAP and Git history.
    `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`, `xai`, `cerebras`, `together`,
    `ollama`, `lmstudio`, `local`) and **global** (`config.PROVIDERS_FILE` =
    `~/.docket/docket-providers.json`, `{"providers": {name: spec}}`, the operator's own
-   registrations and overrides via `docket models provider add`). `core.provider.load_catalog()`
+   registrations and overrides via `docket setup provider add`). `core.provider.load_catalog()`
    **MUST** return the merged result; `Catalog.get(name)` and `Catalog.source_of(name)`
    (`"built-in"` / `"global"` / `""`) **MUST** read it. A global write that leaves
    `presets`/`marketplace`/`credentialPrefix`/`pricesAsOf` unset **MUST** inherit each from a
    built-in of the same name (`core.provider.save_provider`), so registering a local endpoint
    under a built-in's name does not erase presets or pricing the built-in still means.
-3. `docket models provider add` **MUST** write a `ProviderSpec` to the global scope through
+3. `docket setup provider add` **MUST** write a `ProviderSpec` to the global scope through
    `core.provider.save_provider`, never to `fleet.json`. Re-running with identical arguments
-   **MUST** write nothing (idempotent).
+   **MUST** write nothing (idempotent). It also stores the provider's credential (flag, else its
+   environment variable, else a hidden prompt on a terminal; api-keys.spec.md), probes
+   `<baseUrl>/models` with it, and — unless `--no-preset` — applies the provider's preset (or, for
+   a provider with none, points every role at its first model) and prints which role resolves to
+   what. `--no-preset` writes no role row.
 4. Removed (2026-10-03): there is no `fleet.json` `providers` → catalog migration
    (`migrate_fleet_providers` and `FleetConfig.providers` are deleted); `load_catalog()` reads
    only the built-in and global scopes, and a `providers` block left in `fleet.json` is ignored.
@@ -334,7 +338,7 @@ feasibility spike remains in ROADMAP and Git history.
    exact model row's `id`/`contextWindow`/`maxTokens` with a `source` of `"row"` when an exact
    row matched or `"none"` when it did not — never a credential value. The human-readable render
    **MUST** show the same provider name, scope and credential source under the model line.
-   `docket doctor` **MUST** report each global provider document (`config.PROVIDERS_FILE`) that
+   `docket setup` **MUST** report each global provider document (`config.PROVIDERS_FILE`) that
    fails the validation `core.provider.load_provider_document` applies to a file on disk — naming
    the file, the provider's name and the failing field — the same way a malformed
    `docket-roles.json` overlay entry is named, and carry the same list under `--json`.
@@ -363,11 +367,11 @@ feasibility spike remains in ROADMAP and Git history.
 ### CLI Command Signatures
 
 ```bash
-docket models                              # Show the role→model policy
-docket models set <role|default> <provider/model>
-docket models preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
-docket models reset                        # Restore built-in defaults (asks to confirm)
-docket models provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
+docket setup model                              # Show the role→model policy
+docket setup model set <role|default> <provider/model>
+docket setup model preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
+docket setup model reset                        # Restore built-in defaults (asks to confirm)
+docket setup provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
 docket profile <agent-id>                  # Show model, role, source, budget
 docket profile <agent-id> <provider/model> # Pin
 docket profile <agent-id> default          # Follow the role policy
@@ -391,7 +395,7 @@ docket profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
 
 The role set above is `ALL_ROLES` (`core/models_policy.py`), keyed identically to `ROLE_CLASS`.
 A `docket-models.json` `roles:` key that is not one of these names is ignored at read time and
-reported by `docket doctor`; nothing rewrites the file. A pod-scoped archetype with no row
+reported by `docket setup`; nothing rewrites the file. A pod-scoped archetype with no row
 resolves per requirement 5.
 
 ### Pricing Table (USD per MTok, Anthropic defaults)
@@ -438,13 +442,13 @@ found, invalid model, unknown role). There is no distinct exit code per error ki
 ### Viewing and changing the policy
 
 ```bash
-$ docket models
+$ docket setup model
   ROLE          MODEL                        PRICE          SOURCE    WHY
   lead          anthropic/claude-haiku-4-5   $0.80/$4.00    builtin   orchestrates the pod; never edits code
   implementer    anthropic/claude-sonnet-4-6  $3.00/$15.00   builtin   writes code in the project workspace
   ...
 
-$ docket models set implementer openai/gpt-4.1
+$ docket setup model set implementer openai/gpt-4.1
 ✓ implementer → openai/gpt-4.1
 
 → Re-resolving policy-following agents...
@@ -467,7 +471,7 @@ $ docket profile mywebsite default
 ### Switching the whole fleet to a free/local preset
 
 ```bash
-$ docket models preset local
+$ docket setup model preset local
 ✓ Preset 'local' applied.
 
 → Re-resolving policy-following agents...
@@ -475,7 +479,7 @@ $ docket models preset local
 ✓ Registered local endpoint selected; no API key needed.
   ...
 
-$ docket models
+$ docket setup model
   ROLE          MODEL                    PRICE        SOURCE    WHY
   lead          local/qwen3-30b-a3b      $0 (local)   user      orchestrates the pod; never edits code
   implementer   local/qwen3-30b-a3b      $0 (local)   user      writes code in the project workspace
@@ -506,6 +510,13 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.1.0 (2026-10-07)
+
+- Phase 39 (P39-12): the policy surface is `docket setup model` (`list`, `set`, `preset`, `reset`) and
+  endpoints are `docket setup provider`; `provider add` is the whole intent (credential, probe,
+  registration, preset) and takes `--no-preset`. `docket models` and `docket models provider` are
+  unknown commands.
 
 ### Version 3.0.1 (2026-10-07)
 

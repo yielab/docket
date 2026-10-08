@@ -24,7 +24,7 @@ import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _gates, _keys
+from docket.cli import _setup_model, _setup_sandbox
 from docket.core import approval as _approval
 from docket.core import fleet as _fleet
 from docket.core import memory as _memory
@@ -175,7 +175,7 @@ class TestRunTurn:
         registered = runner.invoke(
             app,
             [
-                "models",
+                "setup",
                 "provider",
                 "add",
                 "local",
@@ -189,7 +189,7 @@ class TestRunTurn:
             ],
         )
         assert registered.exit_code == 0, registered.output
-        selected = runner.invoke(app, ["models", "preset", "local"])
+        selected = runner.invoke(app, ["setup", "model", "preset", "local"])
         assert selected.exit_code == 0, selected.output
 
         ws = _write_meta("local-agent", model="local/qwen-live-id", modelSource="policy")
@@ -302,9 +302,9 @@ class TestRunTurn:
         monkeypatch.delenv(provider_key, raising=False)
         monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
         monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
-        monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: secret)
+        monkeypatch.setattr(_setup_model._getpass, "getpass", lambda prompt: secret)
 
-        assert _keys.run_keys("add", [provider_key]) == 0
+        assert _setup_model.credential_add(provider_key) == 0
         _write_meta("gateway-agent", model=model)
 
         captured: dict[str, object] = {}
@@ -1629,12 +1629,12 @@ def _probe_call_response() -> ChatResponse:
 
 
 class TestIsolationWiring:
-    """`docket gates isolate on` writes `security.isolationMode` to fleet.json;
+    """`docket setup sandbox on` writes `security.isolationMode` to fleet.json;
     `DocketDriver.run_turn` resolves it via `_resolve_sandbox`, so isolation ON is no longer
     silently indistinguishable from OFF on the live turn path."""
 
     def test_explicit_isolation_off_leaves_ctx_sandbox_off(self) -> None:
-        # The recorded opt-out (`docket gates isolate off`) is the only way a turn runs with
+        # The recorded opt-out (`docket setup sandbox off`) is the only way a turn runs with
         # `sandbox="off"`; the `ToolContext` a real turn builds then carries it unchanged.
         _write_meta("solo-agent")
         _fleet.disable_sandbox_isolation()
@@ -1685,7 +1685,7 @@ class TestIsolationWiring:
             driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
         assert "bubblewrap" in str(excinfo.value)
-        assert "docket gates isolate off" in str(excinfo.value)
+        assert "docket setup sandbox off" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "isolation.refused"]
 
     def test_isolation_on_with_backend_available_sets_sandbox_auto(
@@ -1759,7 +1759,7 @@ class TestIsolationWiring:
     def test_the_flag_docket_gates_isolate_on_writes_is_the_one_the_turn_reads(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # End-to-end through fleet: drive the real `docket gates isolate on`
+        # End-to-end through fleet: drive the real `docket setup sandbox on`
         # CLI path (not `set_sandbox_isolation` directly, and not a
         # hand-built `ToolContext`), then confirm a real turn observes
         # exactly the flag it wrote.
@@ -1769,7 +1769,7 @@ class TestIsolationWiring:
             "sandbox_availability",
             lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
         )
-        rc = _gates.run_gates("isolate", want="on")
+        rc = _setup_sandbox.isolate("on")
         capsys.readouterr()
         assert rc == 0
 

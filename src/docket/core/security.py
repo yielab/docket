@@ -4,8 +4,8 @@
 ``classify_command`` below unconditionally live -- no "enable the gate"
 step, no daemon-side exec-approval mechanism (there is no daemon). Only
 docket's own workspace-isolation and network state is configurable
-(``core/fleet.py``'s ``FleetSecurity``, ``docket gates isolate``,
-``docket gates network``) -- not whether calls are gated, only whether
+(``core/fleet.py``'s ``FleetSecurity``, ``docket setup sandbox``,
+``docket setup sandbox network``) -- not whether calls are gated, only whether
 execution is sandboxed and what network the sandbox has. Also owns
 ``match_high_risk``, the argument-aware allow/ask/deny classifier used by
 the live gate and ``edges/adapters/system.py``'s ``run_verify_cmd``.
@@ -24,7 +24,7 @@ from docket.core import fleet as _fleet
 # unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
 # shell interpreters are deliberately OMITTED so they fall through to `ask`.
 # NOTE: a bin listed here (e.g. git, npm) can still have a HIGH_RISK_PATTERNS
-# class attached for documentation/visibility (`docket gates classes`) — see
+# class attached for documentation/visibility (`docket setup sandbox classes`) — see
 # `HighRiskClass`'s docstring for why that does not exclude it from this list.
 #
 # `cd`/`pwd`/`true`/`false`/`test`/`[` are shell builtins with no filesystem
@@ -64,7 +64,7 @@ class HighRiskClass:
 
     ``pattern`` is matched case-insensitively against the full command
     string, not just a binary name. ``bins`` names overlapping SAFE_BINS
-    members for visibility only (``docket gates classes``) -- it does
+    members for visibility only (``docket setup sandbox classes``) -- it does
     **not** exclude them: excluding e.g. ``git``/``npm`` wholesale would
     force every benign invocation to ask too, so ``classify_command`` below
     enforces per-argument instead (``git push origin production`` asks;
@@ -286,7 +286,7 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
 def apply_workspace_isolation() -> None:
     """Record that per-agent Docker sandbox isolation is desired.
 
-    The Docker capability check at ``docket gates isolate on`` time is the
+    The Docker capability check at ``docket setup sandbox on`` time is the
     caller's responsibility. Writes fleet.json's isolation mode, read by
     ``DocketDriver`` on every turn to decide real docker/bwrap containment
     when a backend is usable, or an audited refusal instead of an
