@@ -32,13 +32,7 @@ ROOTS: tuple[str, ...] = (
     "benchmarks",
 )
 # Files inside ROOTS whose owners have not swept them yet.
-PENDING: tuple[str, ...] = (
-    "src/docket/templates",
-    "src/docket/cli/_setup_check.py",
-    "src/docket/core/agent_loop.py",
-    "src/docket/serve.py",
-    "tests/unit/cli/test__setup_check.py",
-)
+PENDING: tuple[str, ...] = ("src/docket/templates",)
 
 
 class TestRoots:

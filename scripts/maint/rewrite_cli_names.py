@@ -187,6 +187,7 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     (_c("audit[ \t]+verify"), "docket log verify"),
     (_c("audit"), "docket log"),
     # roster
+    (_c("add[ \t]+--from"), "docket init --from"),
     (_c("add"), "docket pod add"),
     (_c("delete", rf"[ \t]+{_ARG}"), r"docket pod delete --pod \1"),
     (_c("delete"), "docket pod delete"),

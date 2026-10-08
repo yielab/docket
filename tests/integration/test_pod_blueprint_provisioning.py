@@ -3,7 +3,7 @@
 Covers: every built-in blueprint provisions a real pod; `software` provisions
 byte-for-byte identically to the underlying `_pod.build_pod` primitive (a
 hard parity requirement); a `workdir` blueprint's pod passes `docket setup --fix`
-clean; `docket pod add --from spec.yaml` provisions a pod via a `blueprint` field
+clean; `docket init --from spec.yaml` provisions a pod via a `blueprint` field
 without disturbing the existing single-agent declarative path; an unknown
 blueprint fails cleanly in both the interactive and declarative surfaces.
 
@@ -349,7 +349,7 @@ class TestUnknownBlueprintFailsCleanly:
         assert not any(i.startswith("bad-pod") for i in ids)
 
 
-# ── `docket pod add --from spec.yaml` handles blueprints ────────────────────────
+# ── `docket init --from spec.yaml` handles blueprints ────────────────────────
 
 
 class TestFromSpecBlueprint:

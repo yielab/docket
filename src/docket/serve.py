@@ -145,10 +145,10 @@ def _esc(s: Any) -> str:
 #
 # Denial rate, approvals granted/denied/timed-out by channel, policy-hit
 # counts by policy id, tool-call rate and turn latency — the numbers an
-# operator opens after an incident. `docket serve` is not a long-lived
+# operator opens after an incident. `docket start` is not a long-lived
 # process holding counters in memory (a restart would silently zero them),
 # so every number here is recomputed fresh, on every scrape, from the same
-# durable records `docket trace`/`docket audit` already show an operator —
+# durable records `docket task trace`/`docket log` already show an operator —
 # no second counter store, nothing that can drift from what's on disk, and
 # nothing that is lost on restart.
 #
@@ -468,7 +468,7 @@ def _check_schedules(now_ts: float) -> None:
         reason = _sched.describe_spec_error(spec)
         if reason:
             # `is_schedule_due` would otherwise treat this as silently never-due, forever
-            # -- print once per sweep so an operator running `docket serve` sees the drop
+            # -- print once per sweep so an operator running `docket start` sees the drop
             # instead of a schedule that quietly never fires (see `docket setup --fix` for the
             # equivalent standing report).
             print(f"[serve] sweep: schedule '{project}' skipped — {reason}")
@@ -722,7 +722,7 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
 
     Paced by Telegram's own blocking `getUpdates` wait when a bot token is configured and the
     previous call succeeded, so no extra sleep is needed on the happy path. Backs off on an
-    unconfigured bot (re-checked periodically, in case a token is added while `docket serve` is
+    unconfigured bot (re-checked periodically, in case a token is added while `docket start` is
     up) or a transport failure, so neither case busy-loops. A resolved-timeout misconfiguration
     warning prints once, not every poll -- the underlying env var cannot change without a
     restart."""
@@ -1633,7 +1633,7 @@ def run_serve(
     server_ready.set()
     disp = "  dispatch=on" if dispatch else ""
     tg = "  telegram=on" if telegram else ""
-    print(f"docket serve  port={actual_port}  refresh={interval}s{disp}{tg}  (Ctrl-C to stop)")
+    print(f"docket start  port={actual_port}  refresh={interval}s{disp}{tg}  (Ctrl-C to stop)")
     print(
         f"Endpoints: /status.json  /metrics  /health  /approvals  /runs  /dispatch"
         f"  ->  http://localhost:{actual_port}/"

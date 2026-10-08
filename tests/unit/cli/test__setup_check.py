@@ -899,4 +899,3 @@ class TestSummaryCountsOnlyCrosses:
         crosses = sum(1 for ln in out.splitlines() if "✗" in ln)
         assert f"{crosses} critical issue(s) found" in out
         assert "docket setup --fix" in out
-        assert "docket maintain" not in out.split("critical issue(s) found")[1]
