@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import typer
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 from docket.cli import _agents, _pod
 from docket.core import audit as _audit
@@ -33,6 +34,11 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _ids(home: Path) -> list[str]:
     return [a.id for a in _fleet.list_agents()]
+
+
+def _pod_cli(*args: str, project: str = "demo") -> tuple[int, str]:
+    result = CliRunner().invoke(_pod.pod_app, [*args, "--pod", project])
+    return result.exit_code, result.output
 
 
 def _meta(home: Path, member_id: str) -> dict:
@@ -61,7 +67,7 @@ class TestBuildPod:
             assert m["role"] == role
             assert m["pod"] == "demo"
             assert m["sessionKey"] == "agent:demo:default"
-            assert m["modelSource"] == "policy"
+            assert "modelSource" not in m
             assert (home / "workspaces" / "projects" / mid / "SOUL.md").is_file()
             # Pod-member meta must round-trip through the AgentMeta model — a
             # regression for templateVersion being written as an int (which made
@@ -115,13 +121,13 @@ class TestPodCommand:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["implementer"])
+        _pod.add_members("demo", "implementer")
         assert "demo-implementer-2" in _ids(home)
 
     def test_add_reviewer(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["reviewer"])
+        _pod.add_members("demo", "reviewer")
         assert "demo-reviewer" in _ids(home)
 
     def test_add_count_two_makes_two_implementers(
@@ -129,7 +135,7 @@ class TestPodCommand:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["implementer", "--count", "2"])
+        _pod.add_members("demo", "implementer", count=2)
         ids = _ids(home)
         assert "demo-implementer-2" in ids
         assert "demo-implementer-3" in ids
@@ -140,13 +146,13 @@ class TestPodCommand:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "add", ["lead"])
+            _pod.add_members("demo", "lead")
 
     def test_remove_member(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["reviewer"])
-        _pod.dispatch("demo", "remove", ["demo-reviewer"])
+        _pod.add_members("demo", "reviewer")
+        _pod.remove_member("demo", "demo-reviewer", yes=True)
         assert "demo-reviewer" not in _ids(home)
         assert not (home / "workspaces" / "projects" / "demo-reviewer").exists()
 
@@ -156,7 +162,7 @@ class TestPodCommand:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "remove", ["other-lead"])
+            _pod.remove_member("demo", "other-lead", yes=True)
 
     def test_member_ids_lists_lead_first(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -196,9 +202,8 @@ class TestDeletePod:
 
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
-        # Non-TTY → _delete_pod skips the interactive confirm.
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        _pod._delete_pod("demo", _pod.pod_member_ids("demo"))
+        code, _out = _pod_cli("delete", "--confirm", "demo")
+        assert code == 0
         assert _ids(home) == []
         assert not (home / "workspaces" / "projects" / "demo-lead").exists()
 
@@ -232,8 +237,8 @@ class TestDeletePod:
         unrelated_trace = home / "traces" / "other"
         unrelated_trace.mkdir(parents=True)
 
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        _pod._delete_pod("demo", members)
+        code, output = _pod_cli("delete", "--confirm", "demo")
+        assert code == 0, output
 
         assert not (home / "workspaces" / "pods" / "demo").exists()
         assert not any("demo" in entry.name for entry in (home / "sessions").iterdir())
@@ -241,59 +246,24 @@ class TestDeletePod:
         assert unrelated_session.exists()
         assert unrelated_trace.exists()
         assert (home / "audit.log").is_file()
-        output = capsys.readouterr().out
-        assert "demo-lead  (lead)" in output
-        assert "demo-implementer  (implementer)" in output
+        assert "demo-lead (lead)" in output
+        assert "demo-implementer (implementer)" in output
 
-    def test_delete_pod_writes_one_agent_delete_audit_entry(
+    def test_delete_pod_writes_one_pod_delete_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Pod teardown (docket delete <pod>) writes a single agent.delete line."""
+        """Pod teardown writes a single pod.delete line."""
 
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        _pod._delete_pod("demo", _pod.pod_member_ids("demo"))
+        code, _out = _pod_cli("delete", "--confirm", "demo")
+        assert code == 0
 
-        entries = [e for e in _audit.read_audit() if e["action"] == "agent.delete"]
+        entries = [e for e in _audit.read_audit() if e["action"] == "pod.delete"]
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo pod (2 members)"
         for e in entries:
             assert "ANTHROPIC" not in e["detail"] and "sk-" not in e["detail"]
-
-
-class TestParseAddArgs:
-    """`--verify` parsing in `_parse_add_args`."""
-
-    def test_role_only(self) -> None:
-        assert _pod._parse_add_args(["implementer"]) == ("implementer", 1, "")
-
-    def test_count_only(self) -> None:
-        assert _pod._parse_add_args(["implementer", "--count", "2"]) == ("implementer", 2, "")
-
-    def test_verify_space_form(self) -> None:
-        assert _pod._parse_add_args(["implementer", "--verify", "npm test"]) == (
-            "implementer",
-            1,
-            "npm test",
-        )
-
-    def test_verify_equals_form(self) -> None:
-        assert _pod._parse_add_args(["implementer", "--verify=npm test"]) == (
-            "implementer",
-            1,
-            "npm test",
-        )
-
-    def test_verify_and_count_combined(self) -> None:
-        assert _pod._parse_add_args(["implementer", "--count", "2", "--verify", "make check"]) == (
-            "implementer",
-            2,
-            "make check",
-        )
-
-    def test_no_verify_defaults_empty(self) -> None:
-        assert _pod._parse_add_args(["reviewer"]) == ("reviewer", 1, "")
 
 
 class TestPodAddVerify:
@@ -304,7 +274,7 @@ class TestPodAddVerify:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["implementer", "--verify", "npm test"])
+        _pod.add_members("demo", "implementer", verify_cmd="npm test")
         m = _meta(home, "demo-implementer-2")
         assert m["verifyCmd"] == "npm test"
 
@@ -313,7 +283,7 @@ class TestPodAddVerify:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["implementer", "--verify", "npm test"])
+        _pod.add_members("demo", "implementer", verify_cmd="npm test")
         tools = (home / "workspaces" / "projects" / "demo-implementer-2" / "TOOLS.md").read_text()
         assert "Verification Gate" in tools
         assert "npm test" in tools
@@ -331,18 +301,18 @@ class TestPodAddVerify:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["reviewer", "--verify", "npm test"])
+        _pod.add_members("demo", "reviewer", verify_cmd="npm test")
         m = _meta(home, "demo-reviewer")
         assert "verifyCmd" not in m
 
 
 class TestPodSetVerify:
-    """`docket pod <project> set-verify <member-id> "<cmd>"`."""
+    """`docket pod set verify "<cmd>" --member <id>`."""
 
     def test_set_verify_updates_meta(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+        _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
         m = _meta(home, "demo-implementer")
         assert m["verifyCmd"] == "npm test"
 
@@ -351,7 +321,7 @@ class TestPodSetVerify:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "set-verify", ["demo-implementer", "make", "check"])
+        _pod.set_setting("demo", "verify", "make check", member="demo-implementer")
         tools = (home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
         assert "make check" in tools
 
@@ -361,7 +331,7 @@ class TestPodSetVerify:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
         with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "set-verify", ["demo-reviewer", "npm", "test"])
+            _pod.set_setting("demo", "verify", "npm test", member="demo-reviewer")
 
     def test_set_verify_rejects_foreign_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -369,23 +339,24 @@ class TestPodSetVerify:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "set-verify", ["other-implementer", "npm", "test"])
+            _pod.set_setting("demo", "verify", "npm test", member="other-implementer")
 
     def test_set_verify_missing_cmd_errors(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "set-verify", ["demo-implementer"])
+        code, _out = _pod_cli("set", "verify", "--member", "demo-implementer")
+        assert code == 2
 
-    def test_set_verify_missing_member_id_errors(
+    def test_set_verify_without_a_member_names_the_flag(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        with pytest.raises(typer.Exit):
-            _pod.dispatch("demo", "set-verify", [])
+        code, out = _pod_cli("set", "verify", "npm test")
+        assert code == 1
+        assert "--member" in out
 
 
 class TestPodAddRemoveAudit:
@@ -396,7 +367,7 @@ class TestPodAddRemoveAudit:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["reviewer"])
+        _pod.add_members("demo", "reviewer")
 
         entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
         assert len(entries) == 1
@@ -407,7 +378,7 @@ class TestPodAddRemoveAudit:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["implementer", "--count", "2"])
+        _pod.add_members("demo", "implementer", count=2)
 
         entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
         assert len(entries) == 1
@@ -419,7 +390,7 @@ class TestPodAddRemoveAudit:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
-        _pod.dispatch("demo", "remove", ["demo-reviewer"])
+        _pod.remove_member("demo", "demo-reviewer", yes=True)
 
         entries = [e for e in _audit.read_audit() if e["action"] == "pod.remove"]
         assert len(entries) == 1
@@ -430,8 +401,8 @@ class TestPodAddRemoveAudit:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-        _pod.dispatch("demo", "add", ["reviewer"])
-        _pod.dispatch("demo", "remove", ["demo-reviewer"])
+        _pod.add_members("demo", "reviewer")
+        _pod.remove_member("demo", "demo-reviewer", yes=True)
 
         for e in _audit.read_audit():
             assert "sk-" not in str(e.get("detail", ""))
@@ -598,7 +569,7 @@ class TestSetVerifyPreservesOperatorInstructions:
         tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
         tools_path.write_text(tools_path.read_text() + "\nHAND-WRITTEN-NOTE\n")
 
-        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+        _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
 
         assert "HAND-WRITTEN-NOTE" not in tools_path.read_text()
 
@@ -610,7 +581,7 @@ class TestSetVerifyPreservesOperatorInstructions:
         ws = home / "workspaces" / "projects" / "demo-implementer"
         (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
 
-        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+        _pod.set_setting("demo", "verify", "npm test", member="demo-implementer")
 
         assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
 

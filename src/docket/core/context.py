@@ -26,8 +26,8 @@ empty section. ``brief`` (a Lead's typed intake, ADR 0016 §4) is excluded from
 for this. ``estimate_tokens`` reuses the project's existing,
 already-documented chars-per-token approximation
 (``config.CONTEXT_BYTES_PER_TOKEN``, default 4 bytes/token — the same ratio
-``cli/_agents.py``'s ``maintain check``/``maintain sessions`` already use for
-their own context-size guards) rather than inventing a second,
+``core/identity.py``'s prompt budget already uses for
+its own context-size guards) rather than inventing a second,
 independently-tunable ratio that could quietly drift from the first. This is
 an honest approximation good enough to bound a prompt deterministically —
 never claimed as an exact count, and never a basis for billing.
@@ -73,8 +73,8 @@ from docket.core.handoff import HandoffArtifact, render_brief
 DEFAULT_TOKEN_BUDGET = 6000
 
 #: Where a resolved budget's value came from — named consistently wherever a
-#: budget is reported (the ``prompt_composed`` trace event, ``maintain
-#: check``): an explicit ``CONTEXT_TOKEN_BUDGET`` env override, an archetype's
+#: budget is reported (the ``prompt_composed`` trace event, ``docket pod
+#: show``): an explicit ``CONTEXT_TOKEN_BUDGET`` env override, an archetype's
 #: own declared ``tokenBudget``, a computed share of the resolved model
 #: window, or today's plain constant (no override, no usable window).
 BudgetSource = Literal["env", "archetype", "window", "default"]
@@ -127,9 +127,8 @@ def estimate_tokens(text: str) -> int:
     """Approximate *text*'s token count.
 
     ``len(text.encode("utf-8")) // config.CONTEXT_BYTES_PER_TOKEN`` — the
-    same bytes-per-token approximation (default 4) ``cli/_agents.py``'s
-    ``maintain check``/``maintain sessions`` already use for their own
-    context-size guards. This is honestly an approximation, not a real count
+    same bytes-per-token approximation (default 4) ``core/identity.py``'s
+    prompt budget already uses for its own context-size guards. This is honestly an approximation, not a real count
     from the model's own tokenizer — good enough to bound a prompt
     deterministically, never a basis for billing.
     """

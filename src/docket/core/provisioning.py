@@ -1,4 +1,4 @@
-"""Provisioning UX helpers for ``docket add``.
+"""Provisioning UX helpers for ``docket init``.
 
 Small, pure helpers the interactive/declarative add flow uses to pick sensible
 defaults: the codebase path, the suggested project name, the id slug, and the
@@ -43,7 +43,7 @@ def validate_project_id(project: str) -> str:
 
 
 def default_codebase() -> Path:
-    """The codebase path to offer by default: the directory ``docket add`` ran in.
+    """The codebase path to offer by default: the directory ``docket init`` ran in.
 
     Agents are almost always provisioned from inside the repo they will own, so
     the current working directory is the right first guess.

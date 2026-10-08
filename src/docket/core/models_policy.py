@@ -292,20 +292,6 @@ def agent_role(agent_id: str) -> str:
     return _fleet.meta_get(agent_id, "role", "") or REPO_AGENT_ROLE
 
 
-def agent_model_source(agent_id: str) -> str:
-    """Return 'policy' or 'pinned' for this agent."""
-    from docket.core import fleet as _fleet
-
-    src = _fleet.meta_get(agent_id, "modelSource", "")
-    if src:
-        return src
-    role = agent_role(agent_id)
-    model = _fleet.meta_get(agent_id, "model", "")
-    if not model or model == resolve_role_model(role):
-        return "policy"
-    return "pinned"
-
-
 def validate_model(model: str) -> tuple[str, list[str]]:
     """Validate and canonicalise a model name. Returns (canonical_model,
     warnings); raises ValueError on hard failure."""
@@ -364,17 +350,13 @@ def policy_agent_ids() -> list[str]:
 
 
 def reapply_role_policy() -> int:
-    """Re-resolve every policy-following agent against the live role policy.
-    Pinned agents are never touched. Returns count of agents updated."""
+    """Re-resolve every agent against the live role policy. Returns count of agents updated."""
     from docket.core import fleet as _fleet
     from docket.core import pod as _pod
 
     role_models, _, _ = load_registry()
     changed = 0
     for aid in policy_agent_ids():
-        src = agent_model_source(aid)
-        if src != "policy":
-            continue
         role = agent_role(aid)
         target = resolve_role_model(role, role_models, project=_pod.pod_of(aid) or "")
         current = _fleet.meta_get(aid, "model", "")
@@ -384,7 +366,6 @@ def reapply_role_policy() -> int:
             _fleet.set_model_both(aid, target)
         except KeyError:
             _fleet.meta_set(aid, "model", target)
-        _fleet.meta_set(aid, "modelSource", "policy")
         changed += 1
     return changed
 

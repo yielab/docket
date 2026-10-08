@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.77.0
+**Version**: 1.78.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -108,7 +108,7 @@ Every pod-scoped command resolves its pod through `cli/_target.py::resolve_pod`,
 sources in this order: the `--pod`/`-p` option (declared by `pod_option()`), then the `DOCKET_POD`
 environment variable, then the registered pod whose codebase contains the current directory.
 When several registered codebases contain it, the deepest wins; two pods matching at the same
-depth are both named in the error. `docket status` and `docket add` use it.
+depth are both named in the error. `docket status` and every `docket pod` verb use it.
 
 When no pod matches, the command prints one error line and exits 1:
 
@@ -146,7 +146,7 @@ passes without a key.
   (auto-provisioned if omitted)
 **Options**:
 - `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops`);
-  omitted defaults to `software` — unchanged from pre-W-7 `docket add`. An unknown name fails
+  omitted defaults to `software`. An unknown name fails
   cleanly (exit 1) before any prompt is shown
 - `--codebase <path>`: Explicit location, skipping its interactive prompt
 - `--name <text>`: Explicit display name, skipping its interactive prompt
@@ -186,21 +186,6 @@ directory without an interactive questionnaire. The intended first-run flow is p
 installation followed directly by `docket init` once per project. Declarative `--from`
 provisioning belongs to `init`, including multi-project automation.
 
-#### docket add
-**Purpose**: Add one or more role agents to an existing pod. It **MUST NOT** create a project.
-**Syntax**: `docket add <role> [--project <pod>] [--count N] [--verify "<cmd>"]`
-**Arguments**:
-- `role` (required): A built-in or installed archetype role; duplicate non-singleton roles are
-  indexed using the existing pod-member rules.
-**Options**:
-- `--project <pod>`: Target pod explicitly. When omitted, Docket resolves the pod whose configured
-  `codebase`/`workDir` contains the current working directory; zero or ambiguous matches fail with
-  an actionable error.
-- `--count N`: Add N members of that role.
-- `--verify "<cmd>"`: Set the mechanical verification command for a new Implementer.
-**Output**: Confirmation with the created member ID(s).
-**Return**: 0 on success, 1 when the pod/role is missing or invalid.
-
 #### docket status
 **Purpose**: Show where a pod stands — tasks, tokens, outcomes, the last run — or every pod.
 **Syntax**: `docket status [--all] [--json] [--history] [--days N] [--pod <name>]`
@@ -232,75 +217,7 @@ FILE` runs a pipeline file instead of the pod's own (pipeline-format.spec.md); r
 **Return**: `0` on success or an expected pause, `1` when a task ended `failed`, the run record
 ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknown flag.
 
-#### docket info
-**Purpose**: Display detailed agent information
-**Syntax**: `docket info [agent-id] [--json]`
-**Arguments**:
-- `agent-id` (optional): Agent identifier; interactive picker if omitted
-**Options**:
-- `--json`: Emit the agent record as JSON
-**Output**: Agent details in requested format
-**Return**: 0 on success, 1 if not found
-
-#### docket delete
-**Purpose**: Remove agent completely
-**Syntax**: `docket delete [agent-id]`
-**Arguments**:
-- `agent-id` (optional): A pod id (removes every member) or a legacy flat agent id; interactive
-  picker if omitted
-**Options**: None. A pod deletion requires typing the exact pod id to confirm in an interactive
-terminal; there is no `--force` or `--keep-logs`
-**Output**: Deletion confirmation
-**Return**: 0 on success, 1 if not found
-
-#### docket maintain
-**Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
-**Syntax**: `docket maintain [agent-id] [mode] [--no-distill-first]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-- `mode` (optional): Maintenance level (default: `check`)
-**Modes**:
-- `check`: Health check and auto-fix (was `docket repair`)
-- `clean`: Distill pending `memory/*.md` day-logs into MEMORY.md and archive the originals, then
-  delete anything left in `memory/*.md` (was `docket reset 1`)
-- `reset`: Clean + clear MEMORY.md (unless a distillation just refreshed it) and HEARTBEAT.md
-  (was `docket reset 2`)
-- `rebuild`: Deep rebuild — regenerate all files from metadata (was `docket reset 3`)
-- `sessions`: Report per-session storage size (ROADMAP Phase 19 P19-4: session compaction is
-  automatic now, so there is nothing left to trim or archive manually; was `docket cleanup safe`)
-- `distill` (ROADMAP Phase 17 C-2): summarize pending `memory/*.md` day-logs into a dated
-  `MEMORY.md` section via one driver-backed agent turn (decision D-18 — no provider SDK, routed
-  through the same `RuntimeDriver` port every pod dispatch hop uses), then archive the originals
-  to `memory/.distilled/<day>/`. Runs without a confirmation prompt (non-destructive to the logs
-  it processes); a driver failure or an empty reply leaves every file untouched and exits 1
-**Options** (`clean`/`reset` only):
-- By default `clean`/`reset` run `distill`'s summarize-then-archive step before the command's
-  own destructive step; a failed distillation aborts the whole command before anything is deleted
-- `--no-distill-first`: skip distillation and delete/clear immediately
-Any other flag (including `--distill-first`, which there is no need to pass) is an unrecognized
-flag: an error naming it, exit 2.
-**Output**: Maintenance progress and confirmation
-**Return**: 0 on success (including a cancelled confirmation); 1 if the agent is not found, the
-mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails; 2 on an unrecognized
-flag
-
 ### Configuration Commands
-
-#### docket profile
-**Purpose**: Pin an agent's model, set a budget cap, or resume from an auto-pause
-**Syntax**: `docket profile <agent-id> [<provider/model> | default] [--budget <USD>] [--resume]`
-**Arguments**:
-- `agent-id` (required): Target agent
-- `provider/model` (optional): Pin to a specific model (e.g. `anthropic/claude-sonnet-4-6`); shows current if omitted
-- `default` (optional): Re-attach to the role policy model (unpin)
-**Options**:
-- `--budget <USD>`: Set per-agent spend cap; `0` or `--budget 0` removes it and clears any
-  auto-pause; when *agent-id* is a pod's Lead, also unblocks that pod's budget-blocked tasks
-- `--resume` (ROADMAP Phase 14 R-5): Clear an auto-pause (`paused`/`pausedReason`) reached via a
-  budget cap; writes a `profile.resume` audit entry; when *agent-id* is a pod's Lead, also
-  unblocks that pod's budget-blocked tasks so dispatch can claim them again
-**Output**: Profile change confirmation or current profile
-**Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket setup
 **Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
@@ -406,17 +323,38 @@ ordinary unknown-command error (exit 2); use `docket task add|list` and `docket 
 (see "docket task"). (The former team-coordination.spec.md
 was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 
-#### docket pod
-**Purpose**: Manage a project's pod (list/add/remove members)
+#### docket pod show | add | remove | reset | set | unset | delete
+
+A real Typer sub-app (`cli/_pod.py::pod_app`): every verb declares its arguments and options, a
+bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
+help ends with an `Example:` line. Each verb resolves its pod through `--pod`/`-p`,
+`DOCKET_POD`, then the current directory (Pod targeting above); there is no positional pod id.
+Each state-changing verb ends with one `Next:` line on stderr.
+
+- `show [MEMBER] [--json]`: the pod, or one member's whole effective configuration
+  (agent-lifecycle.spec.md "Pod Information"; the JSON shapes are `docket pod show --json` and
+  `docket pod show <member> --json` in cli-json-shapes.spec.md). Read-only, no `Next:` line.
+- `add ROLE [--count N] [--verify "<cmd>"]`: add members to the existing pod; never creates a
+  project. `--verify` is implementer-only (warned and ignored otherwise). An unknown role prints
+  one line and exits 1; a second Lead is refused.
+- `remove MEMBER [--yes]`: remove one member. Confirms on a terminal; off one it exits 1 naming
+  `--yes`. The Lead is refused ("delete the pod instead").
+- `reset MEMBER [--yes]`: distill the member's memory, clear it and rebuild its workspace files
+  from metadata; a failed distillation exits 1 with nothing deleted (agent-lifecycle.spec.md
+  "Member Reset").
+- `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
+  `PodSettings` key (`budgetUsd` included); `verify` with `--member` writes or clears an
+  implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
+- `delete [--confirm NAME]`: destroy the pod. The name is typed on a terminal; off one,
+  `--confirm NAME` is required. A member id is refused; there is no picker.
+
+**Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
+removal; missing confirmation; failed distillation), `2` on a usage error.
+
+#### docket pod (configuration actions)
+**Purpose**: Apply, export and re-sync a project's pod configuration
 **Syntax**: `docket pod <project> <action> [args]`
 **Actions**:
-- `list`: Show the pod's members (Lead, Implementer, optional Reviewer/Tester)
-- `add <role> [--count N] [--verify "<cmd>"]`: Add a member (role may be duplicated, e.g. a
-  second implementer). `--verify` is Implementer-only — it writes the new member's `verifyCmd`
-  (FD-1); passing it for a non-implementer role warns and is ignored
-- `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
-  (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
-  length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `apply [<name|dir>] [--dry-run] [--json]`: Apply a recipe/manifest directory (`roles/*.yaml`,
   `pipeline.yaml`, a small `pod.yaml` naming
   `members`/`settings`/`pipeline`/`description`/`exporters`) to this pod in one command,
@@ -446,7 +384,6 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   own role overlay, fleet-wide policies, other pods) is never exported. Refuses a non-empty
   `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
-- `remove <member-id>`: Remove a pod member
 **Output**: Pod roster. Every bracketed identifier (`[<role>]`, `[<member-id>]`) is printed
 literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
@@ -1050,6 +987,14 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
+### Version 1.78.0 (2026-10-08)
+
+- Phase 39 (P39-10): `docket add`, `info`, `delete`, `maintain`, `profile` and `config` are
+  removed and are ordinary unknown commands (exit 2), as are the pod actions `list`, `add`,
+  `remove`, `set-verify` and `config`. The roster is `docket pod show|add|remove|reset|set|unset|
+  delete`, a real Typer group resolving its pod from `--pod`, `DOCKET_POD` or the directory.
+  `docket config explain` becomes `docket pod show <member>`; `docket profile --budget` becomes
+  `docket pod set budgetUsd`.
 ### Version 1.77.0 (2026-10-08)
 
 - Phase 39 (P39-9): `docket task approve|deny|answer|retry|cancel` are added; `docket approve`, `deny`, `chat`, `docket pod <p> answer|pregrant` and `docket runs cancel` are removed and are ordinary unknown commands (exit 2). The trace progress line names `docket task approve <token>`.

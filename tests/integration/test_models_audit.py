@@ -29,7 +29,6 @@ META: dict[str, Any] = {
     "name": "My Shop",
     "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",
@@ -234,12 +233,11 @@ class TestModelsAuditChainIntegrity:
         oc_dir = _setup_agent(tmp_path)
         _register_openai(oc_dir)
         _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
-        _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
+        _run(["setup", "model", "set", "reviewer", "anthropic/claude-opus-4-6"], oc_dir)
         _run(["setup", "model", "preset", "openai"], oc_dir)
 
         rc, out, err = _run(["log", "verify"], oc_dir)
         assert rc == 0, f"stdout: {out}\nstderr: {err}"
         assert "verified clean" in out
         assert _audit_entries(oc_dir, "models.set")
-        assert _audit_entries(oc_dir, "profile.model")
         assert _audit_entries(oc_dir, "models.preset")

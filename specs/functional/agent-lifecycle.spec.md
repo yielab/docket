@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.17.0
+**Version**: 2.0.0
 **Status**: Complete
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -11,11 +11,11 @@ This specification defines the complete lifecycle of docket agents from creation
 ## Scope
 
 This specification covers:
-- Agent creation (`docket init` creates a project pod; `docket add` / `docket pod <p> add` add
-  role agents to an existing pod and never create a project)
-- Agent information display (`docket info`)
-- Agent deletion (`docket delete`)
-- Agent maintenance operations (`docket maintain`)
+- Agent creation (`docket init` creates a project pod; `docket pod add` adds role agents to an
+  existing pod and never creates a project)
+- Pod display (`docket pod show`)
+- Member removal and reset (`docket pod remove`, `docket pod reset`)
+- Pod deletion (`docket pod delete`)
 
 This specification does NOT cover:
 - Agent communication (see telegram-integration.spec.md)
@@ -25,7 +25,7 @@ This specification does NOT cover:
 - Pod delegation and dispatch (see pod-dispatch.spec.md)
 - Blueprint selection/composition (which roster, workspace kind, default pipeline, and default
   budget a pod is provisioned with) — see the new pod-blueprints.spec.md (ROADMAP Phase 16 W-7).
-  This spec covers the creation/listing/info/deletion/maintenance lifecycle common to every pod
+  This spec covers the creation/display/removal/reset/deletion lifecycle common to every pod
   member regardless of which blueprint provisioned it.
 
 ## Requirements
@@ -78,131 +78,77 @@ An agent is either **registered** (workspace + `.docket-meta.json` + a `fleet.js
 present) or **deleted**. There is no separate stopped state; the docket-local `paused` flag
 (cost-tracking.spec.md) marks an agent that dispatch must refuse, without unregistering it.
 
-### Agent Information (docket info)
+### Pod Information (docket pod show)
 
-**MUST** display:
-1. Agent identifier
-2. Kind/scope (and pod role where applicable)
-3. Workspace path
-4. Codebase path (if set)
-5. Detected stack (if set)
-6. Current model and profile
-7. Session key
-8. Project key
-9. Memory usage (log count and size)
-10. Telegram binding status
-11. Cost metrics (tokens and dollars)
-12. Creation timestamp
-13. Last activity timestamp
+`docket pod show [member] [--json]` **MUST** display, for the pod:
+1. The pod name and, per member, its id, role and model with where the model comes from (`policy`,
+   or `pod overlay` when the pod's own role overlay defines the role)
+2. Each implementer's `verifyCmd`
+3. Every pod setting with its value and source (`set` or `default`), the approval mode the
+   dispatcher will resolve for this caller (`core.dispatch.pod_approval_mode`), the pipeline
+   source and the network mode and scope
+4. `configSource`, `configDigest` and `drift` when the pod was applied from a directory
 
-### Agent Deletion (docket delete)
+`docket pod show <member>` **MUST** display that member's whole effective configuration: workspace
+path, role, model, endpoint readiness, provider, composed prompt sections, allowed and denied
+tools, MCP servers, applicable policies, skills, project instructions and exporters. A name that
+is not a member of the pod **MUST** exit 1. A pod whose stored settings are invalid **MUST**
+refuse (exit 1, the key named) and never show a default in its place. The command **MUST NOT**
+write anything.
 
-1. **MUST** prompt for confirmation by typing the exact id (there is no `--force` bypass flag).
-   For a pod, the typed-id prompt is shown only when stdin is a terminal; a non-interactive pod
-   delete proceeds without it (the `docket delete` help text documents this)
-2. **MUST** remove the workspace directory completely for every pod member; for a legacy flat
-   agent id the workspace removal is asked separately
+### Member Removal (docket pod remove)
+
+1. **MUST** confirm: on a terminal a `y/N` prompt; off a terminal it **MUST** exit 1 naming
+   `--yes` and change nothing
+2. **MUST** refuse the pod's Lead (exit 1, "delete the pod instead"), leaving the pod unchanged
+3. **MUST** refuse an id that is not a member of the pod
+4. **MUST** deregister the member from `fleet.json`, remove its workspace and its task
+   worktrees (requirement 9 of Pod Deletion applies to its branch), write one `pod.remove` audit
+   entry, and free the pod's runtime resources when it was the last implementer
+
+### Member Reset (docket pod reset)
+
+1. **MUST** confirm exactly as `pod remove` does
+2. **MUST** distill pending `memory/*.md` day-logs into MEMORY.md and archive the originals under
+   `memory/.distilled/<day>/` (one driver-backed turn through the `RuntimeDriver` port) **before**
+   any file is deleted. There is no flag that skips it
+3. **MUST** fail closed: a distillation failure (driver or model error, timeout, an empty reply)
+   exits 1 naming its `failure_kind`, and every file is left as it was
+4. **MUST** then delete `memory/*.md`, clear MEMORY.md (unless a distillation just refreshed it
+   this invocation) and reset HEARTBEAT.md. For a pod Lead the reset also clears the docket-owned
+   dispatch ledger region, so the ledger and `TASK_LIST.json` disagree until the next dispatch
+   event or `docket setup check --fix` re-syncs it
+5. **MUST** rebuild SOUL.md, AGENTS.md and (for an implementer with resources or a verify command)
+   TOOLS.md from the member's metadata, and stamp the template version. It **MUST NOT** touch
+   `INSTRUCTIONS.md`, `.docket-meta.json`, the fleet registration or the session keys
+6. **MUST** write one `pod.reset` audit entry
+
+### Pod Deletion (docket pod delete)
+
+1. **MUST** require the pod's name: typed at a prompt on a terminal, or `--confirm <name>` off one.
+   Off a terminal without `--confirm`, or with a `--confirm` that is not the pod's name, it **MUST**
+   exit 1 naming `--confirm <name>` and delete nothing. There is no picker, and an agent or member
+   id is refused as "not a pod"
+2. **MUST** remove the workspace directory completely for every pod member
 3. **MUST** unregister from docket's fleet registry (`fleet.json`)
 4. **MUST** remove any Telegram bindings and conversation-registry entries
-5. **SHOULD** display deletion summary
-6. Deleting a pod project **MUST** tear down every pod member and free the pod's
+5. **SHOULD** display a deletion summary before asking
+6. Deleting a pod **MUST** tear down every pod member and free the pod's
    allocated resources (port range, scratch dir)
 7. Deleting a pod **MUST** remove its Docket-owned runtime directory, durable session histories,
    and JSONL trace directories for both the project id and its member ids. It **MUST NOT** delete
    or rewrite the global audit log; the deletion record remains as durable evidence.
-8. The pre-deletion summary **MUST** render each member's role literally, without markup syntax
-   hiding the value.
+8. The pre-deletion summary **MUST** list each member with its role.
 9. An Implementer's git-worktree branch **MUST** be deleted at member teardown only when it is
    fully merged into the codebase's current branch (`edges/adapters/system.py`'s
    `git_branch_merged` against `git_current_branch(codebase)`, deleted with `git_branch_delete`'s
    `-d`, never `-D`). An unmerged branch, or a missing/failing git, **MUST** be left in place; the
    caller prints a one-line manual `git branch -D <branch>` note naming it rather than losing the
    work silently. A worktree-remove failure **MUST NOT** block workspace/fleet cleanup either way.
-10. Pod-level provisioning state **MUST NOT** outlive the pod: `free_pod_resources` (whole-pod
+10. Deleting a pod **MUST** write one `pod.delete` audit entry.
+11. Pod-level provisioning state **MUST NOT** outlive the pod: `free_pod_resources` (whole-pod
     teardown) **MUST** remove that project's `.pod-provision-locks/<hex>/` directory, once its own
     lock is released (never while held).
-
-### Agent Maintenance (docket maintain)
-
-`docket maintain [agent-id] [mode]` consolidates the retired `reset`, `repair`, and `cleanup`
-commands. Six modes **MUST** be supported.
-
-#### check (Default) - Health and Auto-fix
-- Verify and fix missing workspace directory → recreate
-- Regenerate missing core files from templates
-- Reset invalid permissions to 700/600
-- Re-register a missing fleet registration
-- Clean up orphaned Telegram bindings
-
-#### clean - Memory Logs
-- Distill pending `memory/*.md` daily logs into MEMORY.md and archive the originals under
-  `memory/.distilled/<day>/` **before** deleting anything (ROADMAP Phase 17 C-2) — **MUST** be the
-  default behaviour; `--no-distill-first` is the explicit opt-out that restores the pre-C-2
-  behaviour of deleting `memory/*.md` outright with no distillation step
-- A failed distillation (driver/model error, timeout, or an empty reply) **MUST** abort the whole
-  `clean` operation before any file is deleted — never partially apply
-- Preserve SOUL.md, AGENTS.md, TOOLS.md
-- Preserve session and project keys
-- Preserve .docket-meta.json
-
-#### reset - Deep Memory
-- Everything from `clean`, including the same distill-first default, `--no-distill-first`
-  opt-out and fail-closed abort behaviour
-- Clear MEMORY.md summary — **unless** a distillation actually ran this invocation (there were
-  pending logs and it succeeded), in which case MEMORY.md was *just* refreshed with the distilled
-  summary and this step is skipped, so the default distillation never immediately erases the
-  summary it exists to preserve
-- Clear HEARTBEAT.md tasks — for a pod **Lead**, this also clears the docket-owned dispatch
-  ledger region dispatch mechanically maintains (ROADMAP Phase 17 C-3; see
-  pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"). If a task is genuinely `running` in
-  `TASK_LIST.json` at reset time, the ledger and the queue now disagree until the next dispatch
-  lifecycle event (claim/hop/retry/finalize) or `docket setup --fix` re-syncs it — `reset` is an
-  operator action on a workspace file, not a dispatch-aware operation, so it does not special-case
-  a Lead mid-task
-- Reset conversation context
-
-#### rebuild - Complete Rebuild (legacy flat agents only)
-- **MUST** refuse a pod member outright: an agent whose `.docket-meta.json` carries a non-empty
-  `pod` key or `role` (written by `core/pod_provisioning.py`) is not a legacy flat agent — print
-  an error naming the pod/role and return exit 1, **before** the confirmation prompt and before
-  any write. A pod member's files are owned by pod provisioning, not this command; a role-aware
-  re-render for pod members is a follow-up, not this behaviour.
-- Back up SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md and MEMORY.md to `.backup-<timestamp>/`
-- Regenerate SOUL.md, AGENTS.md, TOOLS.md and HEARTBEAT.md via the legacy flat-agent workspace
-  creator, from the agent's stored metadata
-- **MUST NOT** touch `memory/*.md` — rebuild only regenerates the template files above; it never
-  deletes daily logs, distilled or not (the same rule `clean`/`reset` enforce: memory is never
-  bare-deleted). MEMORY.md is backed up, not regenerated, and is left as-is.
-
-#### sessions - Session Hygiene
-- Report this agent's durable session storage (message count, size, last update per session key)
-- **MUST NOT** trim or archive session data: compaction happens only on the turn path, through
-  `compact_session`'s fail-closed summarisation (see session-history.spec.md)
-- Preserve all configuration and identity files
-
-#### distill - Memory Distillation (ROADMAP Phase 17 C-2)
-- Summarize pending `memory/*.md` daily logs into a dated `MEMORY.md` section via **one
-  driver-backed agent turn** (decision D-18 — docket's first self-originated LLM call; see
-  ../../ROADMAP.md §6). No provider SDK or HTTP client is used; the call goes through the same
-  `RuntimeDriver` port every pod dispatch hop already uses
-- Archive the original daily logs to `memory/.distilled/<day>/` (moved, not deleted) once the
-  summary is durably written
-- **MUST** fail closed: a driver failure (timeout, model error, non-zero exit) or an empty reply
-  leaves every file on disk untouched and returns a non-zero exit code — no partial archive, no
-  partial MEMORY.md write
-- A sparse operator-authored line beginning `- [exact] ` **MUST** retain its decision identifier
-  and every backtick-delimited literal byte-for-byte in the model summary. Docket **MUST** validate
-  those fields before writing or archiving, fail closed on omission/corruption, and append the
-  marked records verbatim under `## Exact durable records`. Ordinary unmarked narration remains
-  model-summarized; this mechanism **MUST NOT** copy whole logs into long-term context.
-- No pending logs is a no-op success (there is nothing undistilled to lose)
-- **MUST NOT** require interactive confirmation — it is additive/non-destructive to the daily logs
-  (they are archived, not deleted), unlike `reset`/`rebuild`
-
-`clean`, `reset` and `rebuild` are destructive and **MUST** prompt for confirmation (`rebuild` by
-typed agent id); there is no force flag, and a non-interactive call is cancelled rather than
-applied. `distill` is not destructive to the daily logs it processes (they are archived, not deleted) and runs without
-a confirmation prompt.
 
 ## Interface Contracts
 
@@ -213,21 +159,16 @@ a confirmation prompt.
 # from the cwd. --blueprint defaults to `software`. --pod full/--with apply only to it.
 docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
 
-# Add role agents to an existing pod (pod inferred from the cwd, or --project <pod>)
-docket add <role> [--project <pod>] [--count N] [--verify "<cmd>"]
-
 # Create one or more agents (or, with a `blueprint` field, pods) declaratively
 # from a spec file (JSON, or YAML when PyYAML is present)
 docket init --from <agents.yaml|agents.json>
 
-# Show agent info
-docket info <agent-id> [--json]
-
-# Delete agent (or a whole pod, by project name)
-docket delete <agent-id>
-
-# Maintain agent (replaces reset/repair/cleanup)
-docket maintain <agent-id> [check|clean|reset|rebuild|sessions|distill] [--no-distill-first]
+# The roster. The pod comes from --pod, DOCKET_POD, then the current directory.
+docket pod show [<member-id>] [--json]
+docket pod add <role> [--count N] [--verify "<cmd>"]
+docket pod remove <member-id> [--yes]
+docket pod reset <member-id> [--yes]
+docket pod delete [--confirm <pod>]
 ```
 
 ### Return Codes
@@ -235,8 +176,7 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions|distill] [--no-di
 - `0`: Success
 - `1`: Any error (unknown agent, invalid arguments, permission problems, driver failures —
   docket's CLI-wide convention; see ../api/cli-interface.spec.md)
-- `2`: A usage error — an unknown option or command (Click), or an unrecognized `maintain` flag;
-  `--no-distill-first` is the only flag `maintain` accepts
+- `2`: A usage error — an unknown option, command or verb (Click)
 
 ## Examples
 
@@ -251,16 +191,14 @@ $ docket init mywebsite ~/projects/website
 ✓ Pod 'mywebsite' created with 2 members!
 ```
 
-### Maintaining an Agent
+### Resetting a Member
 
 ```bash
-$ docket maintain mywebsite reset
-[WARN] 'reset' will clear memory and tasks
-Continue? (y/N): y
-[INFO] Clearing memory logs...
-[INFO] Resetting MEMORY.md...
-[INFO] Clearing HEARTBEAT.md...
-[SUCCESS] Agent 'mywebsite' maintained (reset)
+$ docket pod reset mywebsite-implementer --yes
+→ Distilling memory before proceeding (one driver-backed turn)...
+✓ Distilled 2 log(s) into MEMORY.md; original(s) archived under memory/.distilled/.
+✓ Reset mywebsite-implementer: 2 memory log(s) cleared, workspace files rebuilt
+→ Next: docket pod show
 ```
 
 ## Validation
@@ -293,22 +231,27 @@ After successful creation:
 | Agent already exists | Duplicate ID | Use different ID or delete existing |
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.docket permissions |
-| Workspace corrupted | Missing files | Run `docket maintain check` |
-| Distillation turn failed (model error, timeout, no credential) | `docket maintain distill`, or `clean`/`reset` (distillation is their default) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
+| Workspace corrupted | Missing files | Run `docket setup check --fix`, or `docket pod reset <member>` to rebuild its files |
+| Distillation turn failed (model error, timeout, no credential) | `docket pod reset` (distillation is not optional) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable |
 
 ## Performance Criteria
 
 - Agent creation: < 2 seconds
 - Agent listing: < 500ms for 100 agents
-- Agent deletion: < 1 second
-- Maintain (clean, `--no-distill-first`): < 500ms
-- Maintain (rebuild): < 3 seconds
-- Maintain (check): < 5 seconds
-- Maintain (distill, or clean/reset with the default distillation): bounded by one driver turn
-  (`config.DISTILL_TIMEOUT_S`, default 120s) rather than a fixed local-operation budget — it is a
-  real, costed LLM call, not a file operation
+- Pod deletion: < 1 second
+- Member reset: bounded by one driver turn (`config.DISTILL_TIMEOUT_S`, default 120s) rather than a
+  fixed local-operation budget — it is a real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 2.0.0 (2026-10-08)
+
+- Phase 39 (P39-10): the roster is `docket pod show|add|remove|reset|delete`. `docket info`,
+  `docket delete`, `docket maintain` (every mode) and `docket add` are removed with their
+  requirements. `pod remove` refuses the Lead and needs `--yes` off a terminal; `pod reset`
+  distills first, fails closed and rebuilds the member's files from metadata; `pod delete`
+  needs the pod's name typed or `--confirm <name>` and refuses a member id. New audit actions
+  `pod.reset`, `pod.delete` (replacing `agent.delete`) and `pod.unset-verify`.
 
 ### Version 1.17.0 (2026-10-07)
 

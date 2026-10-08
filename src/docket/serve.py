@@ -1489,7 +1489,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send_json_error("path must be a string", 400)
             return
 
-        # `pod` mirrors `docket add --pod full` — the CLI's only roster
+        # `pod` mirrors `docket init --pod full` — the CLI's only roster
         # override, itself restricted to the `software` blueprint (a
         # non-`software` blueprint provisions its own fixed roster; the CLI
         # warns and ignores rather than erroring, and there is no HTTP

@@ -41,14 +41,12 @@ def _load_click_group():
 # (heading, [command names in display order]) — every visible command must
 # appear in exactly one group.
 GROUPS: list[tuple[str, list[str]]] = [
-    ("Lifecycle Commands", ["init", "add", "status", "run", "info", "delete", "maintain"]),
+    ("Lifecycle Commands", ["init", "status", "run"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
     (
         "Utility Commands",
         [
-            "profile",
             "setup",
-            "config",
             "start",
             "stop",
             "validate",
@@ -359,7 +357,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SCHEDULE_FILE",),
-        "The persisted pod schedules (`docket pod <p> config set schedule`)",
+        "The persisted pod schedules (`docket pod set schedule`)",
         "`$DOCKET_HOME/docket-schedules.json`",
     ),
     (
@@ -477,17 +475,17 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("CONTEXT_BYTES_PER_TOKEN",),
-        "Bytes-per-token estimator behind the static-context guards in `docket maintain check`",
+        "Bytes-per-token estimator behind the static-context guards behind the prompt budget",
         "`4`",
     ),
     (
         ("CONTEXT_TOKEN_BUDGET",),
-        "Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this",
+        "Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it",
         "`6000`",
     ),
     (
         ("DISTILL_TIMEOUT_S",),
-        "Wall-clock bound on `docket maintain distill`'s one driver-backed turn",
+        "Wall-clock bound on the one driver-backed distillation turn `docket pod reset` runs",
         "`120`",
     ),
     (
@@ -731,25 +729,16 @@ def _render_env_vars_table() -> str:
 
 
 _TIPS = """\
-### Interactive Pickers
-
-If you have fzf installed, omit the agent-id for fuzzy search:
-
-```bash
-docket info      # Opens fzf picker
-docket delete    # Opens fzf picker
-```
-
 ### Batch Operations
 
 Use bash loops for batch operations:
 
 ```bash
-# Clean one agent's memory
-docket maintain "$id" clean
+# Reset every member of a pod (each distills its memory first)
+for id in $(docket pod show --json | jq -r '.members[].id'); do docket pod reset "$id" --yes; done
 
 # Cheaper models fleet-wide: change the policy once — every
-# policy-following agent updates automatically (pins are untouched)
+# agent updates automatically
 docket setup model preset openrouter-free
 ```
 

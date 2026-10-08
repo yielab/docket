@@ -111,33 +111,6 @@ def cmd_roles(ctx: typer.Context) -> None:
     raise typer.Exit(run_roles(sub, args=args[1:]))
 
 
-def cmd_config(
-    ctx: typer.Context,
-    sub: str = typer.Argument(..., help="explain <agent-id> [--json]"),
-) -> None:
-    """Read-only inspection of an agent's effective configuration.
-
-    Subcommands:
-      explain <agent-id> [--json]  The configuration a real dispatch turn would
-                        actually use for this agent, with the source that set
-                        each value: resolved model + endpoint (policy/pinned);
-                        the composed system prompt's sections with their bytes
-                        and fit status (full/truncated/omitted); tools after
-                        role denial, plus configured MCP servers; the
-                        guardrail policies that apply to this role; the
-                        effective pipeline and its source (bound
-                        pipeline/blueprint/built-in default); and, for a pod
-                        member, the pod's dispatch settings (budgetUsd,
-                        maxReworkCycles, turnTimeoutS, verifyTimeoutS,
-                        approvalMode, allowCommands) with each key's
-                        set/default source. Composes existing resolvers only
-                        -- writes nothing, adds no new configuration surface.
-                        See specs/data/cli-json-shapes.spec.md."""
-    from docket.cli import _config
-
-    _config.dispatch(sub, list(ctx.args))
-
-
 def cmd_validate(target: str | None = typer.Argument(None)) -> None:
     """Validate role, pipeline, policy, and pod configuration documents.
 

@@ -1,21 +1,15 @@
-"""docket init / add / info / delete / maintain — agent/pod workspace CRUD.
+"""docket init: create a project pod, or provision agents declaratively.
 
-Each ``run_*`` function returns the process exit code; the coordinator
-(``cli/__init__.py``) wraps it in a Typer command and raises
-``typer.Exit(code)``. ``_create_workspace``/``_provision_agent`` are the
-single-agent template + registration path (pods use ``cli/_pod.py`` instead,
-which this module reaches into for pod-aware add/delete).
+``run_init`` returns the process exit code and ``cmd_init`` wraps it in the Typer command.
+``_create_workspace``/``_provision_agent`` are the single-agent template + registration path
+(pods use ``cli/_pod.py`` instead).
 """
 
 from __future__ import annotations
 
 import contextlib
-import datetime as _dt
 import json as _json
-import os
 import re as _re
-import shutil as _shutil
-import stat as _stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,12 +19,9 @@ from rich.markup import escape
 
 import docket.config as _cfg
 from docket import ui
-from docket.cli._flags import find_unknown_flag
-from docket.cli._target import TargetError, resolve_pod
 from docket.core import blueprints as _bp
 from docket.core import config_docs as _config_docs
 from docket.core import fleet as _fleet
-from docket.core import identity as _identity
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod_apply as _pod_apply
@@ -38,11 +29,7 @@ from docket.core import pod_provisioning as _pp
 from docket.core import provisioning as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
-from docket.core.models import AgentMeta
-from docket.core.utils import last_activity, project_ids
 from docket.edges import store
-from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters import llm as _llm
 
 # Flags that consume the following token as their value (skipped when scanning
 # for bare positionals). --with/--pod are handled by parse_pod_roles.
@@ -63,7 +50,7 @@ _ADD_VALUE_FLAGS = frozenset(
 def _parse_add_args(
     all_args: list[str],
 ) -> tuple[str | None, str | None, str | None, str | None, str | None, bool]:
-    """Extract (from_file, codebase, name, blueprint, recipe, no_apply) from `docket add`
+    """Extract (from_file, codebase, name, blueprint, recipe, no_apply) from `docket init`
     args: flags or bare positionals, trusted and skipping their interactive prompt.
     ``--recipe`` names a directory to apply after provisioning; ``--no-apply`` skips it."""
     from_file: str | None = None
@@ -158,7 +145,7 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     do it. Called only after provisioning succeeds (ADR 0012)."""
     if no_apply:
         ui.console.print()
-        ui.info(f"Skipping apply — run: docket pod {aid} apply {apply_source}")
+        ui.info(f"Skipping apply — run: docket pod apply {apply_source}")
         return 0
 
     try:
@@ -284,8 +271,8 @@ def run_init(all_args: list[str]) -> int:
     for mid in members:
         ui.console.print(f"  - {mid}")
     ui.console.print()
-    ui.console.print(f"  docket pod {aid}              # inspect the pod")
-    ui.console.print(f"  docket pod {aid} add reviewer # add a role")
+    ui.console.print("  docket pod show        # inspect the pod")
+    ui.console.print("  docket pod add reviewer # add a role")
     _offer_desktop_channel()
     from docket.cli import _contract, _setup
 
@@ -318,54 +305,6 @@ def _offer_desktop_channel() -> None:
     send_test("desktop")
 
 
-def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[str]]:
-    """Return an explicit ``--project`` and the args forwarded to ``pod add``."""
-    project: str | None = None
-    forwarded: list[str] = []
-    i = 0
-    while i < len(all_args):
-        arg = all_args[i]
-        if arg == "--project":
-            if i + 1 >= len(all_args):
-                ui.error("--project requires a pod id")
-                return "", []
-            project = all_args[i + 1]
-            i += 2
-            continue
-        if arg.startswith("--project="):
-            project = arg.split("=", 1)[1]
-            i += 1
-            continue
-        forwarded.append(arg)
-        i += 1
-    return project, forwarded
-
-
-def run_add(all_args: list[str]) -> int:
-    """Add role agents to an existing pod; never provisions a new project."""
-    explicit_project, forwarded = _parse_existing_pod_add_args(all_args)
-    if explicit_project == "":
-        return 1
-
-    try:
-        project = resolve_pod(explicit_project or None, env=os.environ, cwd=Path.cwd())
-    except TargetError as exc:
-        ui.error(str(exc))
-        return 1
-
-    if not forwarded or forwarded[0].startswith("-"):
-        ui.error(
-            "A role is required. Use: docket add <role> "
-            '[--project <pod>] [--count N] [--verify "<cmd>"]'
-        )
-        return 1
-
-    from docket.cli import _pod
-
-    _pod.dispatch(project, "add", forwarded)
-    return 0
-
-
 def _provision_pod_from_spec(
     aid: str, blueprint_name: str, spec: dict[str, Any]
 ) -> list[str] | None:
@@ -373,7 +312,7 @@ def _provision_pod_from_spec(
     the created member ids, or ``None`` (already warned) if the pod exists or the
     blueprint is unknown — the caller counts that as a skip, matching the single-agent
     path's idempotence contract. Goes through `cli._pod.build_pod_from_blueprint`,
-    the same path `docket add` and `POST /pods` use."""
+    the same path `docket init` and `POST /pods` use."""
     from docket.cli import _pod
 
     try:
@@ -646,12 +585,9 @@ def _provision_agent(
     """Create workspace, write metadata, register in the fleet registry."""
     if not model:
         model = _mp.resolve_role_model(_mp.REPO_AGENT_ROLE)
-        model_source_val = "policy"
     else:
         with contextlib.suppress(Exception):
             model = _mp.validate_model(model)[0]
-        policy_model = _mp.resolve_role_model(_mp.REPO_AGENT_ROLE)
-        model_source_val = "policy" if model == policy_model else "pinned"
 
     session_key = f"agent:{agent_id}:{project_key}"
 
@@ -663,7 +599,6 @@ def _provision_agent(
         "codebase": codebase,
         "stack": stack,
         "model": model,
-        "modelSource": model_source_val,
         "description": description,
         "sessionKey": session_key,
         "projectKey": project_key,
@@ -689,651 +624,6 @@ def _provision_agent(
         )
 
 
-def run_info(agent_id: str | None, json_out: bool) -> int:
-    """Dispatch `docket info`. Returns the process exit code."""
-    if agent_id is None:
-        if json_out:
-            ui.error("An agent id is required with --json (e.g. docket info <id> --json).")
-            return 1
-        if not sys.stdin.isatty():
-            ui.error("An agent id is required (e.g. docket info <id>).")
-            return 1
-        ids = project_ids()
-        if not ids:
-            ui.warn("No project agents found.")
-            return 0
-        ui.console.print("Available agents:")
-        for i, pick in enumerate(ids, 1):
-            ui.console.print(f"  {i}) {pick}")
-        raw_choice = input("Enter number: ").strip()
-        try:
-            idx = int(raw_choice) - 1
-            if 0 <= idx < len(ids):
-                agent_id = ids[idx]
-            else:
-                ui.error("Invalid selection.")
-                return 1
-        except ValueError:
-            ui.error("Invalid selection.")
-            return 1
-
-    aid: str = agent_id
-    ws = _cfg.workspace_dir(aid)
-    if not ws.is_dir():
-        ui.error(f"Project '{aid}' not found.")
-        return 1
-
-    if json_out:
-        _cmd_info_json(aid)
-    else:
-        _cmd_info_human(aid)
-    return 0
-
-
-def _cmd_info_json(agent_id: str) -> None:
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    registered = _fleet.agent_registered(agent_id)
-    tg = _fleet.get_binding(agent_id)
-    activity = last_activity(agent_id)
-
-    print(
-        _json.dumps(
-            {
-                "id": agent_id,
-                "name": raw.get("name", agent_id),
-                "codebase": raw.get("codebase", ""),
-                "stack": raw.get("stack", ""),
-                "model": raw.get("model", _cfg.DEFAULT_MODEL),
-                "budgetUsd": _pp.parse_budget_usd(raw.get("budgetUsd")),
-                "paused": AgentMeta.coerce_paused(raw.get("paused", False)),
-                "sessionKey": raw.get("sessionKey", f"agent:{agent_id}:default"),
-                "projectKey": raw.get("projectKey", "default"),
-                "registered": registered,
-                "telegram": tg or None,
-                "lastActive": activity,
-            },
-            indent=2,
-        )
-    )
-
-
-def _cmd_info_human(agent_id: str) -> None:
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    ws = _cfg.workspace_dir(agent_id)
-
-    name = str(raw.get("name", agent_id))
-    codebase = str(raw.get("codebase", "—"))
-    stack = str(raw.get("stack", "—"))
-    model = str(raw.get("model", _cfg.DEFAULT_MODEL))
-    budget = raw.get("budgetUsd")
-    paused = AgentMeta.coerce_paused(raw.get("paused", False))
-    paused_reason = str(raw.get("pausedReason", ""))
-    session_key = str(raw.get("sessionKey", f"agent:{agent_id}:default"))
-    project_key = str(raw.get("projectKey", "default"))
-
-    registered = _fleet.agent_registered(agent_id)
-    tg = _fleet.get_binding(agent_id)
-    activity = last_activity(agent_id)
-
-    mem_count = sum(1 for _ in (ws / "memory").glob("*.md")) if (ws / "memory").is_dir() else 0
-    has_memory = "yes" if (ws / "MEMORY.md").is_file() else "no"
-    has_reqs = "yes" if (ws / "REQUIREMENTS.md").is_file() else "no"
-
-    ui.header(f"Project: {name} ({agent_id})")
-    ui.console.print()
-    ui.console.print(f"  [bold]{'Workspace:':<18}[/bold] {ws}")
-    ui.console.print(f"  [bold]{'Codebase:':<18}[/bold] {codebase}")
-    ui.console.print(f"  [bold]{'Stack:':<18}[/bold] {stack}")
-    ui.console.print(f"  [bold]{'Model:':<18}[/bold] {model}")
-    if budget and str(budget) not in ("", "0"):
-        ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] ${float(budget):.2f}")
-    if paused:
-        reason_str = f" ({paused_reason})" if paused_reason else ""
-        ui.console.print(f"  [bold]{'Status:':<18}[/bold] [red]PAUSED[/red]{reason_str}")
-    ui.console.print(f"  [bold]{'Session Key:':<18}[/bold] {session_key}")
-    ui.console.print(f"  [bold]{'Project Scope:':<18}[/bold] {project_key}")
-    ui.console.print()
-
-    reg_str = "[green]yes[/green]" if registered else "[red]no[/red]"
-    ui.console.print(f"  [bold]{'Registered:':<18}[/bold] {reg_str}")
-
-    if tg:
-        ui.console.print(f"  [bold]{'Telegram:':<18}[/bold] [green]{tg}[/green]")
-    else:
-        ui.console.print(f"  [bold]{'Telegram:':<18}[/bold] [yellow]not wired[/yellow]")
-
-    ui.console.print(f"  [bold]{'Last active:':<18}[/bold] {activity}")
-    ui.console.print(f"  [bold]{'Memory days:':<18}[/bold] {mem_count}")
-    ui.console.print(f"  [bold]{'MEMORY.md:':<18}[/bold] {has_memory}")
-    ui.console.print(f"  [bold]{'REQUIREMENTS:':<18}[/bold] {has_reqs}")
-
-    ui.console.print()
-    ui.header("Workspace files")
-    for f in sorted(ws.iterdir()):
-        if not f.is_file():
-            continue
-        try:
-            lines = f.read_text(encoding="utf-8", errors="replace").count("\n")
-        except OSError:
-            lines = 0
-        ui.console.print(f"  {f.name:<30} {lines} lines")
-
-    if tg and codebase not in ("", "—"):
-        ui.console.print()
-        ui.header("First-run prompt (send in Telegram group if MEMORY.md is missing)")
-        ui.console.print()
-        ui.console.print(
-            f"  Read the codebase at {codebase} and update your\n"
-            "  SOUL.md and MEMORY.md with: tech stack, entry points,\n"
-            "  architecture, current state, recent git activity."
-        )
-        ui.console.print()
-
-
-def run_delete(agent_id: str | None) -> int:
-    """Dispatch `docket delete`. Returns the process exit code."""
-    if agent_id is None:
-        if not sys.stdin.isatty():
-            ui.error("An agent id is required.")
-            return 1
-
-        agent_id = _pick_agent("Delete project")
-
-    aid: str = agent_id
-
-    from docket.cli import _pod
-
-    members = _pod.pod_member_ids(aid)
-    if members:
-        return _pod._delete_pod(aid, members)
-
-    ws = _cfg.workspace_dir(aid)
-    if not ws.is_dir():
-        ui.error(f"Project '{aid}' not found.")
-        return 1
-
-    name = _fleet.meta_get(aid, "name", aid)
-    tg = _fleet.get_binding(aid)
-    registered = _fleet.agent_registered(aid)
-
-    ui.header(f"Delete: {name} ({aid})")
-    ui.console.print()
-    ui.console.print(f"  Workspace:    {ws}")
-    ui.console.print(f"  Registered:   {'yes' if registered else 'no'}")
-    ui.console.print(f"  Telegram:     {tg or 'none'}")
-    ui.console.print()
-    ui.warn("This will:")
-    ui.console.print("  - Remove agent registration from the fleet registry")
-    ui.console.print("  - Remove Telegram binding (if any)")
-    ui.console.print()
-
-    del_ws = input("Also delete workspace directory? [y/N]: ").strip()
-    ui.console.print()
-    confirm = input(f"Type the agent ID to confirm deletion [{aid}]: ").strip()
-
-    if confirm != aid:
-        ui.warn("Aborted.")
-        return 0
-
-    _fleet.remove_agent(aid)
-    audit_log("agent.delete", aid)
-    ui.success("Removed from agent registry")
-
-    if tg:
-        _fleet.remove_binding(aid)
-        ui.success("Telegram binding removed")
-
-    from docket.core import conversations as _conv
-
-    _conv.remove_agent_durable(aid)
-
-    if del_ws.lower() == "y":
-        _shutil.rmtree(ws, ignore_errors=True)
-        ui.success(f"Workspace deleted: {ws}")
-    else:
-        ui.warn(f"Workspace kept at: {ws}")
-
-    ui.success(f"Done. Project '{aid}' deleted.")
-    return 0
-
-
-def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None = None) -> int:
-    """Dispatch `docket maintain`; returns the exit code. ``extra`` carries flags
-    following ``mode`` (``--no-distill-first``) — Typer allows/ignores unknown options so
-    they land here, the pattern every ``ctx.args`` subcommand uses."""
-    bad = find_unknown_flag(extra or [], frozenset({"--no-distill-first"}))
-    if bad is not None:
-        ui.error(f"docket maintain: unrecognized flag '{bad}'")
-        return 2
-    if agent_id is None:
-        if not sys.stdin.isatty():
-            ui.error("An agent id is required.")
-            return 1
-
-        agent_id = _pick_agent("Maintain workspace for")
-
-    aid: str = agent_id
-    ws = _cfg.workspace_dir(aid)
-    if not ws.is_dir():
-        ui.error(f"Project '{aid}' not found.")
-        return 1
-
-    action = mode or "check"
-    args = extra or []
-    # Distillation defaults ON: `clean`/`reset` must not bare-delete
-    # undistilled memory without an explicit opt-out.
-    distill_first = "--no-distill-first" not in args
-
-    if action == "check":
-        _maintain_check(aid, ws)
-    elif action == "clean":
-        return _maintain_clean(aid, ws, distill_first=distill_first)
-    elif action == "reset":
-        return _maintain_reset(aid, ws, distill_first=distill_first)
-    elif action == "rebuild":
-        return _maintain_rebuild(aid, ws)
-    elif action == "sessions":
-        _maintain_sessions(aid)
-    elif action == "distill":
-        return _maintain_distill(aid, ws)
-    else:
-        ui.error(
-            f"Unknown maintain subcommand '{action}'. "
-            "Use: check, clean, reset, rebuild, sessions, distill"
-        )
-        return 1
-    return 0
-
-
-def _maintain_check(agent_id: str, ws: Path) -> None:
-    """check: verify permissions, missing files, session key sync, memory dir."""
-    ui.header(f"Health Check: {agent_id}")
-    ui.console.print()
-
-    issues: list[str] = []
-
-    perm_ok = True
-    managed_paths = [ws]
-    for top_level in ws.iterdir():
-        # A pod Implementer's Git worktrees are repository content. Recursing through it
-        # turns executables into 0600 files and directories into 0700, corrupting the
-        # checkout while claiming to heal Docket's workspace. Only Docket-owned
-        # prompt/meta/memory paths belong here.
-        if top_level.name == "tasks" or top_level.is_symlink():
-            continue
-        managed_paths.append(top_level)
-        if top_level.is_dir():
-            managed_paths.extend(path for path in top_level.rglob("*") if not path.is_symlink())
-    for dirpath in managed_paths:
-        try:
-            mode = dirpath.stat().st_mode
-            if dirpath.is_dir():
-                if _stat.S_IMODE(mode) != 0o700:
-                    dirpath.chmod(0o700)
-            elif dirpath.is_file() and _stat.S_IMODE(mode) != 0o600:
-                dirpath.chmod(0o600)
-        except OSError:
-            perm_ok = False
-    if perm_ok:
-        ui.console.print("  [green]✓[/green] Permissions: ok (dirs 700, files 600)")
-    else:
-        ui.console.print("  [yellow]⚠[/yellow] Permissions: some could not be set")
-
-    required = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, ".docket-meta.json"]
-    missing_files = [f for f in required if not (ws / f).is_file()]
-    if missing_files:
-        issues.extend(missing_files)
-        for mf in missing_files:
-            ui.console.print(f"  [red]✗[/red] Missing file: {mf}")
-        if sys.stdin.isatty():
-            ans = input("  Regenerate missing workspace files? [y/N]: ").strip().lower()
-            if ans == "y":
-                raw = store.read_json(_cfg.meta_path(agent_id))
-                _create_workspace(
-                    agent_id,
-                    str(raw.get("name", agent_id)),
-                    str(raw.get("codebase", "")),
-                    str(raw.get("stack", "")),
-                    str(raw.get("description", "")),
-                    str(raw.get("model", _cfg.DEFAULT_MODEL)),
-                )
-                ui.success("Workspace files regenerated.")
-                missing_files = []
-    else:
-        ui.console.print("  [green]✓[/green] Required files: all present")
-
-    meta_session = _fleet.meta_get(agent_id, "sessionKey", "")
-    soul_path = ws / "SOUL.md"
-    soul_session = ""
-    if soul_path.is_file():
-        for ln in soul_path.read_text(encoding="utf-8").splitlines():
-            if "Session Key:" in ln or "session_key" in ln.lower():
-                m = _re.search(r"`([^`]+)`", ln)
-                if m:
-                    soul_session = m.group(1)
-                    break
-
-    if meta_session and soul_session and meta_session != soul_session:
-        ui.console.print(
-            f"  [yellow]⚠[/yellow] Session key mismatch:\n"
-            f"     meta:   {meta_session}\n"
-            f"     SOUL.md: {soul_session}"
-        )
-        issues.append("session key mismatch")
-    else:
-        ui.console.print("  [green]✓[/green] Session key: in sync")
-
-    mem_dir = ws / "memory"
-    if mem_dir.is_dir():
-        mem_count = sum(1 for _ in mem_dir.glob("*.md"))
-        ui.console.print(f"  [green]✓[/green] Memory directory: {mem_count} log(s)")
-    else:
-        ui.console.print("  [yellow]⚠[/yellow] Memory directory: missing")
-        mem_dir.mkdir(exist_ok=True)
-        mem_dir.chmod(0o700)
-        ui.console.print("       → created memory/")
-
-    # Per-turn context footprint: the artifacts the turn loop re-feeds every turn.
-    # docket can't trim the live prompt, but oversized SOUL/AGENTS/MEMORY here
-    # means every turn pays for it — flag it so the user can prune/rebuild.
-    per_turn_files = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "MEMORY.md"]
-    ctx_bytes = 0
-    for fname in per_turn_files:
-        fp = ws / fname
-        if fp.is_file():
-            with contextlib.suppress(OSError):
-                ctx_bytes += fp.stat().st_size
-    est_tokens = ctx_bytes // _cfg.CONTEXT_BYTES_PER_TOKEN
-    # The budget this agent's turn actually resolves to: an explicit override,
-    # else a documented share of its registered model window (see
-    # core/identity.py's resolve_static_context_budget), else today's plain
-    # constant when the model has no registered window at all.
-    model = str(store.read_json(_cfg.meta_path(agent_id)).get("model", _cfg.DEFAULT_MODEL))
-    endpoint = _llm.resolve_endpoint(model)
-    budget_tokens, budget_source = _identity.resolve_static_context_budget(
-        endpoint.context_window_tokens if endpoint else None,
-        endpoint.max_output_tokens if endpoint else None,
-    )
-    budget_note = f"budget {budget_tokens:,} via {budget_source}"
-    if est_tokens > budget_tokens:
-        ui.console.print(
-            f"  [yellow]⚠[/yellow] Context footprint: ~{est_tokens:,} tok re-sent each turn"
-            f" ({budget_note}) — trim MEMORY.md/{_mem.HEARTBEAT_FILE}"
-        )
-        issues.append("oversized per-turn context")
-    else:
-        ui.console.print(
-            f"  [green]✓[/green] Context footprint: ~{est_tokens:,} tok/turn ({budget_note})"
-        )
-
-    ui.console.print()
-    if not issues:
-        ui.success(f"HEALTHY — {agent_id} workspace looks good")
-    else:
-        ui.warn(f"ISSUES FOUND: {len(issues)} problem(s) detected")
-        ui.console.print("  Run 'docket maintain <id> rebuild' to fully regenerate.")
-
-
-def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
-    """Run `distill_memory` for *agent_id*, rendering progress/errors via ui. The one
-    call site every distillation-driven `maintain` action shares. Callers gate their
-    own destructive step on ``.ok`` (fail-closed) — see
-    specs/functional/agent-lifecycle.spec.md. Runs through docket's own gated turn
-    loop via ``edges.adapters.docket_runtime.default_driver()``, like any agent's turn."""
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    name = str(raw.get("name", agent_id))
-    session_key = str(raw.get("sessionKey", ""))
-    ui.info("Distilling memory before proceeding (one driver-backed turn)...")
-    result = _mem.distill_memory(
-        ws,
-        label=name,
-        agent_id=agent_id,
-        session_key=session_key,
-        driver=_dr.default_driver().run_turn,
-    )
-    if not result.ok:
-        # `failure_kind` is what makes this actionable rather than just alarming:
-        # the fail-closed contract turns a failed distillation into a *blocked
-        # delete*, so the operator's next move depends entirely on why it failed
-        # -- `timeout`/`daemon_error` say retry, `invalid_output` says the model
-        # returned something unusable and retrying will likely repeat it.
-        # Parentheses, not brackets: `ui.error` renders through Rich, which
-        # parses `[timeout]` as a style tag and silently swallows it -- the
-        # message came out as "Distillation failed : ..." until this was caught
-        # by the test below.
-        kind = f" ({result.failure_kind})" if result.failure_kind else ""
-        ui.error(
-            f"Distillation failed{kind}: {result.error or 'unknown error'} -- nothing deleted."
-        )
-    elif result.skipped:
-        ui.info("No memory logs to distill.")
-    else:
-        ui.success(
-            f"Distilled {result.logs_distilled} log(s) into MEMORY.md; "
-            f"original(s) archived under memory/{_mem.DISTILLED_ARCHIVE_DIRNAME}/."
-        )
-    return result
-
-
-def _maintain_distill(agent_id: str, ws: Path) -> int:
-    """distill: summarize memory/*.md into MEMORY.md via one driver turn; archive originals."""
-    result = _run_distillation(agent_id, ws)
-    return 0 if result.ok else 1
-
-
-def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
-    """clean: delete memory/*.md log files. By default it distills
-    pending logs into MEMORY.md and archives the originals before any deletion; a
-    failed distillation aborts here untouched — see `_run_distillation`'s contract."""
-    if not sys.stdin.isatty():
-        ui.console.print("Cancelled (non-interactive).")
-        return 0
-
-    mem_dir = ws / "memory"
-    if not mem_dir.is_dir():
-        ui.warn("No memory directory found.")
-        return 0
-
-    logs = _mem.pending_daily_logs(ws)
-    if not logs:
-        ui.info("No memory logs to clean.")
-        return 0
-
-    ui.warn(f"This will delete {len(logs)} memory log file(s).")
-    ans = input("Continue? [y/N]: ").strip().lower()
-    if ans != "y":
-        ui.warn("Cancelled.")
-        return 0
-
-    if distill_first:
-        result = _run_distillation(agent_id, ws)
-        if not result.ok:
-            return 1
-    else:
-        ui.warn("Skipping distillation (--no-distill-first) -- logs will be deleted undistilled.")
-
-    # Re-glob: a successful distillation already archived pending logs out of
-    # memory/*.md, so this only ever finds something left to unlink when
-    # distillation was skipped entirely (disabled, or found nothing pending).
-    remaining = sorted(mem_dir.glob("*.md"))
-    for f in remaining:
-        f.unlink()
-    if remaining:
-        ui.success(f"Deleted {len(remaining)} memory log file(s).")
-    else:
-        ui.success("No memory log files left to delete (already archived).")
-    return 0
-
-
-def _maintain_reset(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
-    """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md.
-    `--distill-first` (default on) distills pending logs into MEMORY.md first; a
-    failed distillation aborts before any deletion (fail closed). When a real
-    distillation just ran, the "clear MEMORY.md" step below is skipped — it was
-    *just* refreshed, so wiping it would throw away what `--distill-first` preserves."""
-    if not sys.stdin.isatty():
-        ui.console.print("Cancelled (non-interactive).")
-        return 0
-
-    ui.warn("This will:")
-    ui.console.print("  - Delete all memory/*.md log files")
-    ui.console.print("  - Clear MEMORY.md")
-    ui.console.print(f"  - Reset {_mem.HEARTBEAT_FILE} to empty template")
-    ans = input("Continue? [y/N]: ").strip().lower()
-    if ans != "y":
-        ui.warn("Cancelled.")
-        return 0
-
-    logs_distilled = 0
-    memory_preserved = False
-    if distill_first:
-        result = _run_distillation(agent_id, ws)
-        if not result.ok:
-            return 1
-        logs_distilled = result.logs_distilled
-        memory_preserved = not result.skipped
-    else:
-        ui.warn("Skipping distillation (--no-distill-first) -- memory will be cleared undistilled.")
-
-    mem_dir = ws / "memory"
-    removed = 0
-    if mem_dir.is_dir():
-        for f in mem_dir.glob("*.md"):
-            f.unlink()
-            removed += 1
-
-    memory_md = ws / "MEMORY.md"
-    if memory_preserved:
-        ui.info("MEMORY.md left as-is (just refreshed by distillation).")
-    elif memory_md.is_file():
-        memory_md.write_text(
-            "# MEMORY.md\n\n_Cleared by docket maintain reset._\n", encoding="utf-8"
-        )
-        memory_md.chmod(0o600)
-
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    name = str(raw.get("name", agent_id))
-    hb = ws / _mem.HEARTBEAT_FILE
-    hb.write_text(_mem.heartbeat_seed(name), encoding="utf-8")
-    hb.chmod(0o600)
-
-    distilled_note = f", {logs_distilled} distilled+archived first" if logs_distilled else ""
-    ui.success(
-        f"Reset complete: {removed} memory log(s) deleted{distilled_note}, MEMORY.md "
-        f"{'preserved (freshly distilled)' if memory_preserved else 'cleared'}, "
-        f"{_mem.HEARTBEAT_FILE} reset."
-    )
-    return 0
-
-
-def _maintain_rebuild(agent_id: str, ws: Path) -> int:
-    """rebuild: backup+regenerate a legacy flat agent's templates. Refuses a pod
-    member outright (its files are owned by pod provisioning) and never touches
-    memory/ -- rebuild has no reason to remove logs."""
-    raw = store.read_json(_cfg.meta_path(agent_id))
-    pod_id = str(raw.get("pod", ""))
-    role = str(raw.get("role", ""))
-    if pod_id or role:
-        ui.error(
-            f"'{agent_id}' is a pod member (pod '{pod_id or '?'}', role '{role or '?'}'). "
-            "rebuild supports only legacy flat agents -- a pod member's files are owned "
-            "by pod provisioning, not this command."
-        )
-        return 1
-
-    if not sys.stdin.isatty():
-        ui.console.print("Confirmation failed. Aborted.")
-        return 0
-
-    ui.warn("This will backup and regenerate all workspace files from metadata.")
-    confirm = input(f"Type agent ID to confirm [{agent_id}]: ").strip()
-    if confirm != agent_id:
-        ui.warn("Aborted.")
-        return 0
-
-    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = ws / f".backup-{stamp}"
-    backup_dir.mkdir(exist_ok=True)
-
-    for fname in ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "MEMORY.md"]:
-        src = ws / fname
-        if src.is_file():
-            _shutil.copy2(src, backup_dir / fname)
-
-    ui.success(f"Backup saved to: {backup_dir}")
-
-    _create_workspace(
-        agent_id,
-        str(raw.get("name", agent_id)),
-        str(raw.get("codebase", "")),
-        str(raw.get("stack", "")),
-        str(raw.get("description", "")),
-        str(raw.get("model", _cfg.DEFAULT_MODEL)),
-    )
-
-    ui.success(f"Workspace rebuilt for '{agent_id}'.")
-    return 0
-
-
-def _maintain_sessions(agent_id: str) -> None:
-    """sessions: report on this agent's durable session storage. Reports sizes only
-    — no manual trim, since a truncation outside ``compact_session``'s fail-closed
-    summarisation is exactly the durability loss that module prevents."""
-    from urllib.parse import unquote as _url_unquote
-
-    from docket.core import session as _session
-
-    ui.header(f"Sessions: {agent_id}")
-    ui.console.print()
-    ui.dim(
-        "  Sessions compact on the turn path once history exceeds the role budget; sizes are on disk."
-    )
-    ui.console.print()
-
-    if not _cfg.SESSIONS_DIR.is_dir():
-        ui.info("No session storage found yet.")
-        return
-
-    prefix = f"agent:{agent_id}:"
-    found = False
-    for entry in sorted(_cfg.SESSIONS_DIR.iterdir()):
-        if not entry.is_dir():
-            continue
-        key = _url_unquote(entry.name)
-        if not key.startswith(prefix):
-            continue
-        found = True
-        record = _session.load_session(key)
-        session_file = entry / "session.json"
-        size_kb = session_file.stat().st_size // 1024 if session_file.is_file() else 0
-        ui.console.print(
-            f"  {key}: {len(record.messages)} message(s), {size_kb}KB, "
-            f"last active {record.updated or 'never'}"
-        )
-    if not found:
-        ui.info(f"No session storage found for '{agent_id}'.")
-
-
-def _pick_agent(prompt: str) -> str:
-    """Interactive numbered picker for agent IDs (TTY only)."""
-    ids = project_ids()
-    if not ids:
-        ui.warn("No project agents found.")
-        raise typer.Exit(0)
-    ui.console.print(f"{prompt}:")
-    for i, pick in enumerate(ids, 1):
-        ui.console.print(f"  {i}) {pick}")
-    raw = input("Enter number: ").strip()
-    try:
-        idx = int(raw) - 1
-        if 0 <= idx < len(ids):
-            return ids[idx]
-    except ValueError:
-        pass
-    ui.error("Invalid selection.")
-    raise typer.Exit(1)
-
-
 def cmd_init(ctx: typer.Context) -> None:
     """Initialize the current project with its minimum isolated pod.
 
@@ -1347,8 +637,8 @@ def cmd_init(ctx: typer.Context) -> None:
     current directory (non-interactive, deterministic). Member ids are
     predictable: `<project>-lead`, `<project>-implementer`, `<project>-reviewer`,
     `<project>-tester` (duplicated roles get `-2`, `-3` suffixes). A pod
-    always has exactly one Lead. Resize a pod later with `docket pod`; tear
-    the whole pod down with `docket delete`.
+    always has exactly one Lead. Resize a pod later with `docket pod add|remove`; tear
+    the whole pod down with `docket pod delete`.
 
     Flags (parsed from the extra CLI args, not fixed Typer options):
       --pod full            provision Lead, Implementer, Reviewer, and Tester.
@@ -1404,7 +694,7 @@ def cmd_init(ctx: typer.Context) -> None:
                              `description`, `projectKey`, `budgetUsd`,
                              `telegram`); an entry with no `blueprint`
                              provisions a single flat agent the same shape
-                             `docket add` always has (fields: `name`,
+                             `docket init` always has (fields: `name`,
                              `codebase`, `stack`, `model`, `description`,
                              `telegram`, `budgetUsd`, `projectKey`). Mutually
                              exclusive with every other flag/prompt. An entry

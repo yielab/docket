@@ -128,7 +128,7 @@ def _check_project_agents(ids: list[str]) -> int:
 
         if proj_issues:
             ui.console.print(f"[red]✗[/red]   {aid}: {' '.join(proj_issues)}")
-            ui.console.print(f"    Fix with: docket maintain {aid} check")
+            ui.console.print("    Fix with: docket setup check --fix")
             issues += 1
         elif not tg:
             ui.warn(f"  {aid}: OK, no channel binding  →  docket wire {aid}")
@@ -172,7 +172,7 @@ def _check_archetype_overlay() -> int:
 def _check_schedule_config() -> int:
     """Flag every ``docket-schedules.json`` entry ``is_schedule_due`` would silently treat
     as never-due -- naming the file, project key, and reason. Read-only:
-    never edits the schedules file (use ``docket pod <p> config set/unset schedule``)."""
+    never edits the schedules file (use ``docket pod set|unset schedule``)."""
     from docket.core import schedule as _sched
 
     ui.section("Schedules (docket-schedules.json):")
@@ -569,23 +569,19 @@ def _check_template_version(ids: list[str]) -> int:
     drift = 0
     for aid in ids:
         # Pod members use their own template scheme (POD_TEMPLATE_VERSION) and are
-        # NOT rebuilt via `maintain rebuild` (that regenerates single-agent
-        # templates and would clobber the pod-role SOULs). Skip them here.
+        # NOT checked against the single-agent template version (that would
+        # clobber the pod-role SOULs). Skip them here.
         if _pod.pod_of(aid) is not None:
             continue
         tv = _fleet.meta_get(aid, "templateVersion", "")
         if not tv:
-            ui.warn(f"  {aid}: unstamped (pre-versioning) — docket maintain {aid} rebuild")
+            ui.warn(f"  {aid}: unstamped (pre-versioning)")
             drift += 1
         elif tv != str(TEMPLATE_VERSION):
-            ui.warn(
-                f"  {aid}: on v{tv}, current v{TEMPLATE_VERSION} — docket maintain {aid} rebuild"
-            )
+            ui.warn(f"  {aid}: on v{tv}, current v{TEMPLATE_VERSION}")
             drift += 1
         else:
             ui.success(f"  {aid}: v{tv} (current)")
-    if drift:
-        ui.dim("  Rebuild regenerates prompts from metadata; edit metadata first if needed.")
     return 0
 
 

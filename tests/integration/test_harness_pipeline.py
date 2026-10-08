@@ -124,7 +124,7 @@ class TestInPlaceRun:
         assert _fleet.meta_get(impl, "worktreeDir", "") == ""
         assert _fleet.meta_get(impl, "codebase", "") == str(workspace)
 
-    def test_every_member_is_pinned_to_the_given_model(
+    def test_every_member_runs_on_the_given_model(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         backend = _ScriptedBackend([_final("lead plan"), _final("implementer done")])
@@ -134,7 +134,6 @@ class TestInPlaceRun:
         assert members
         for member_id, _role, _idx in members:
             assert _fleet.meta_get(member_id, "model", "") == "pinned-model"
-            assert _fleet.meta_get(member_id, "modelSource", "") == "pinned"
 
     def test_approval_mode_is_set_through_the_typed_pod_setting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -1,4 +1,4 @@
-"""delete, bind, unbind — writer commands.
+"""bind, unbind — writer commands.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic. fleet.json is
@@ -33,7 +33,6 @@ META: dict[str, Any] = {
     "name": "My Shop",
     "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",
@@ -83,60 +82,6 @@ def _run(
         mp.setattr(_contract, "_is_tty", lambda: True)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
-
-
-# ---------------------------------------------------------------------------
-# docket delete
-# ---------------------------------------------------------------------------
-
-
-class TestCmdDelete:
-    def test_delete_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, _, err = _run(["delete", "ghost"], home, "n\nghost\n")
-        assert rc == 1
-        assert "not found" in err
-
-    def test_delete_aborts_on_wrong_confirm(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, _ = _run(["delete", "myshop"], home, "n\nwrong-id\n")
-        assert rc == 0
-        assert "Aborted" in out or "Aborted" in _
-
-    def test_delete_removes_registration(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, _, err = _run(["delete", "myshop"], home, "n\nmyshop\n")
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        fleet = json.loads((home / "fleet.json").read_text())
-        registered_ids = [a["id"] for a in fleet["agents"]]
-        assert "myshop" not in registered_ids
-
-    def test_delete_keeps_workspace_when_n(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        ws = home / "workspaces" / "projects" / "myshop"
-        _run(["delete", "myshop"], home, "n\nmyshop\n")
-        assert ws.is_dir()
-
-    def test_delete_removes_workspace_when_y(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        ws = home / "workspaces" / "projects" / "myshop"
-        rc, _, _ = _run(["delete", "myshop"], home, "y\nmyshop\n")
-        assert rc == 0
-        assert not ws.exists()
-
-    def test_delete_removes_telegram_binding(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_binding=True)
-        rc, _, err = _run(["delete", "myshop"], home, "n\nmyshop\n")
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        fleet = json.loads((home / "fleet.json").read_text())
-        myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
-        assert not myshop_bindings
-
-    def test_delete_shows_summary_before_confirm(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        _, out, _ = _run(["delete", "myshop"], home, "n\nmyshop\n")
-        assert "myshop" in out
-        assert "Workspace" in out or "workspace" in out
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +227,7 @@ class TestCmdBind:
 
 
 # ---------------------------------------------------------------------------
-# stub list confirms delete/bind/unbind no longer exit 127
+# stub list confirms bind/unbind no longer exit 127
 # ---------------------------------------------------------------------------
 
 
@@ -290,7 +235,6 @@ class TestM4Wave2CommandsPortedFromStubs:
     @pytest.mark.parametrize(
         "cmd",
         [
-            ["delete", "ghost"],  # exits 1 (not found) — not 127
             ["setup", "notify", "bind", "ghost"],  # exits 1 (not found) — not 127
             ["setup", "notify", "unbind", "ghost"],  # exits 1 (not found) — not 127
         ],

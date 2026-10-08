@@ -20,12 +20,13 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _log as audit_cli
 from docket.cli import _pod
 from docket.cli import _setup_model as keys_cli
-from docket.cli._agents import run_delete, run_init
+from docket.cli._agents import run_init
 from docket.core import audit as _audit
 
 SUBJECT = "docket.cli"
@@ -35,6 +36,15 @@ SUBJECT = "docket.cli"
 
 def _entries(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
+
+
+def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    repoint_docket_home(monkeypatch, home)
+    _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
+    return home
 
 
 def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "demo") -> Path:
@@ -47,7 +57,6 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
         "name": "Demo",
         "role": "repo",
         "model": "anthropic/claude-sonnet-4-6",
-        "modelSource": "policy",
         "sessionKey": f"agent:{aid}:default",
         "projectKey": "default",
     }
@@ -713,24 +722,23 @@ class TestKeysAudit:
         assert entries[0]["detail"] == "ANTHROPIC_API_KEY"
 
 
-class TestProfileAudit:
-    def test_profile_budget_writes_one_entry(
+class TestPodSettingsAudit:
+    def test_budget_set_writes_one_config_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _pod.cmd_profile("demo", None, budget="5")
-        entries = _entries("profile.budget")
+        _seed_pod(tmp_path, monkeypatch)
+        _pod.set_setting("demo", "budgetUsd", "5")
+        entries = _entries("pod.config")
         assert len(entries) == 1
-        assert entries[0]["detail"] == "demo=$5"
+        assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
 
-    def test_profile_model_writes_one_entry(
+    def test_unset_writes_one_config_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _pod.cmd_profile("demo", "anthropic/claude-haiku-4-5", budget=None)
-        entries = _entries("profile.model")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo=anthropic/claude-haiku-4-5 (pinned)"
+        _seed_pod(tmp_path, monkeypatch)
+        _pod.unset_setting("demo", "budgetUsd")
+        entries = _entries("pod.config")
+        assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
 
 
 class TestAgentAddDeleteAudit:
@@ -763,16 +771,13 @@ class TestAgentAddDeleteAudit:
         assert entries[0]["detail"].startswith("declaredagent model=")
         assert entries[0]["detail"].endswith("source=declarative")
 
-    def test_agent_delete_writes_one_entry(
+    def test_pod_delete_writes_one_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        responses = iter(["n", "demo"])  # keep workspace, confirm id
-        monkeypatch.setattr("builtins.input", lambda *a, **k: next(responses))
+        _seed_pod(tmp_path, monkeypatch)
+        result = CliRunner().invoke(_pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"])
+        assert result.exit_code == 0, result.output
 
-        rc = run_delete("demo")
-        assert rc == 0
-
-        entries = _entries("agent.delete")
+        entries = _entries("pod.delete")
         assert len(entries) == 1
-        assert entries[0]["detail"] == "demo"
+        assert entries[0]["detail"] == "demo pod (2 members)"

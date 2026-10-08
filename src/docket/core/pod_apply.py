@@ -184,7 +184,7 @@ def _schema_header(directory: Path, dest_path: Path, kind: str) -> str:
 
 def unresolvable_pipeline_steps(plan: _orch.ExecutionPlan, project: str) -> list[str]:
     """Every unit step this pod's roster cannot run against *plan* -- shared by
-    ``docket pod <p> config set pipeline`` and this module so the two can never disagree."""
+    ``docket pod set pipeline`` and this module so the two can never disagree."""
     problems: list[str] = []
     for node in plan.nodes:
         units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
@@ -929,7 +929,7 @@ def apply(plan: ApplyPlan) -> ApplyResult:
 
     # The configuration-of-record (ADR 0012 §2 rule 5): recorded after every plan
     # `plan_apply` validated, an all-`skip` plan included, so composing a second, identical
-    # directory at another path still moves the record -- never by `docket pod <p> config set`
+    # directory at another path still moves the record -- never by `docket pod set`
     # (see `pod.PodSettings.RECORDED_KEYS`). The audit entry above keeps its own,
     # narrower "only when something changed" rule.
     _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))

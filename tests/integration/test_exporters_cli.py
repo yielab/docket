@@ -174,11 +174,10 @@ class TestRemoveBuiltin:
         assert "jaeger" in result.stderr
 
 
-class TestConfigExplainExporters:
-    def test_config_explain_json_reports_enabled_state(
+class TestPodShowExporters:
+    def test_pod_show_json_reports_enabled_state(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.cli import _config
         from docket.cli import _pod as _pod_cli
 
         _seed(tmp_path, monkeypatch)
@@ -192,9 +191,9 @@ class TestConfigExplainExporters:
             )
         assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
-        capsys.readouterr()
-        _config.dispatch("explain", ["demo-lead", "--json"])
-        report = json.loads(capsys.readouterr().out)
+        shown = _runner.invoke(_pod_cli.pod_app, ["show", "demo-lead", "--pod", "demo", "--json"])
+        assert shown.exit_code == 0, shown.output
+        report = json.loads(shown.stdout)
         by_name = {e["name"]: e for e in report["exporters"]}
         assert by_name["langfuse"]["state"] == "enabled"
 

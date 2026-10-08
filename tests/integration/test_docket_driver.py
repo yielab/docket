@@ -192,7 +192,7 @@ class TestRunTurn:
         selected = runner.invoke(app, ["setup", "model", "preset", "local"])
         assert selected.exit_code == 0, selected.output
 
-        ws = _write_meta("local-agent", model="local/qwen-live-id", modelSource="policy")
+        ws = _write_meta("local-agent", model="local/qwen-live-id")
         (ws / "marker.txt").write_text("LOCAL_PROVIDER_MARKER\n", encoding="utf-8")
 
         responses = [

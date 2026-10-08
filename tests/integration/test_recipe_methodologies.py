@@ -148,8 +148,8 @@ def test_dual_review_plan_has_one_planned_group(
 ) -> None:
     project = "dualcheck"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
-    _cli_pod.dispatch(project, "add", ["reviewer"])
-    _cli_pod.dispatch(project, "add", ["critic"])
+    _cli_pod.add_members(project, "reviewer")
+    _cli_pod.add_members(project, "critic")
 
     text = (_recipe_dir("dual-review") / "pipeline.yaml").read_text(encoding="utf-8")
     result = _pipeline.load_pipeline(text)
@@ -231,8 +231,8 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(
 
     # Add this recipe's extra roster members through the ordinary `docket pod <p> add <role>`
     # path; the recipe's own `pipeline.yaml` is exercised unmodified.
-    _cli_pod.dispatch(project, "add", ["critic"])
-    _cli_pod.dispatch(project, "add", ["tester"])
+    _cli_pod.add_members(project, "critic")
+    _cli_pod.add_members(project, "tester")
 
     result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
     assert result.spec is not None, result.errors

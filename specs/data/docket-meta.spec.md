@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Complete
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -67,29 +67,28 @@ schema continuity, but every value is `local` and there is no cross-file drift c
 | `workDir` | string | absolute path | local | `workdir`-kind pod members | `add` (pod blueprints only) | The pod's shared working directory (ROADMAP Phase 16 W-7). Mutually exclusive with `codebase` — present only when `workspaceKind: workdir` |
 | `blueprint` | string | — | local | No | `add` (pod blueprints only) | Name of the pod blueprint that provisioned this agent (`software`, `research`, `content`, `ops`, …) — see pod-blueprints.spec.md. Absent for any agent not provisioned through a blueprint |
 | `stack` | string | — | local | No | `add` | Comma-separated detected stack (e.g. `Docker,git`); not auto-detected for a `workdir`-kind agent (no codebase to inspect) |
-| `model` | string | `provider/model-id` | local | Yes | `add`, `profile` | Provider-qualified model id. Not mirrored anywhere (P19-6) — this is its one home |
-| `modelSource` | enum | `policy` or `pinned` | local | Yes | `add`, `profile` | Whether the model follows the role policy or is pinned |
+| `model` | string | `provider/model-id` | local | Yes | `add`, `setup model` | Provider-qualified model id. Not mirrored anywhere (P19-6) — this is its one home |
 | `description` | string | — | local | No | `add` | Free-text purpose |
 | `created` | string | ISO-8601 | local | Yes | `add` | Creation timestamp |
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
-| `budgetUsd` | number | ≥ 0 | local | No | `profile --budget`, `pod config set/unset` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket info --json` emits it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
-| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a stringified `"true"`/`"false"`) — never a raw string compare |
-| `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
-| `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS`. A stored value that fails validation (non-integer, ≤ 0) refuses dispatch naming the key, rather than falling back |
-| `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention, fallback chain, and invalid-value refusal as `turnTimeoutS` |
-| `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `pod config set/unset`, `meta_set` (`core.pod.PodSettings`) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. Still not a field on the `AgentMeta` Pydantic model — it round-trips because `AgentMeta` allows extra keys (see "Validation" below) — but `core.pod.PodSettings` now validates it on every read and write regardless, and `docket pod <project> config` is its dedicated CLI setter |
+| `budgetUsd` | number | ≥ 0 | local | No | `pod set/unset budgetUsd` (Lead only, via `core.pod.PodSettings`) | Per-agent spend cap in USD, persisted on disk as a real JSON number (a numeric string from an older install still reads back fine — `PodSettings` accepts either). `docket info --json` emits it as a JSON number, or `null` when unset — see cli-json-shapes.spec.md |
+| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `pod set budgetUsd`, `run --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a stringified `"true"`/`"false"`) — never a raw string compare |
+| `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `pod set budgetUsd`, `run --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
+| `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS`. A stored value that fails validation (non-integer, ≤ 0) refuses dispatch naming the key, rather than falling back |
+| `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `pod set/unset`, `meta_set` (`core.pod.PodSettings`) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention, fallback chain, and invalid-value refusal as `turnTimeoutS` |
+| `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `pod set/unset`, `meta_set` (`core.pod.PodSettings`) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. Still not a field on the `AgentMeta` Pydantic model — it round-trips because `AgentMeta` allows extra keys (see "Validation" below) — but `core.pod.PodSettings` now validates it on every read and write regardless, and `docket pod <project> config` is its dedicated CLI setter |
 | `requireApprovalRoles` | string | comma-separated pod role list | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | ROADMAP Phase 15 G-1: pod-level require_approval gate source — a comma-separated, case-insensitive list of pod roles (e.g. `"implementer,reviewer"`) whose hop must wait for a granted approval before it runs (`core/dispatch.py`'s `_pod_requires_approval`, read the same Lead-only way as `maxReworkCycles`/`budgetUsd`). Blank or missing = no pod-level gate for any role. **Not yet a field on the `AgentMeta` Pydantic model** — same `extra="allow"` round-trip as `maxReworkCycles`; no dedicated CLI setter yet, only the internal `meta-set` debug path. See `pod-dispatch.spec.md` for the full gate/`waiting_approval` state-machine contract this field feeds, including the two other (currently inert seam) gate sources |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. A shared locked allocation transition gives concurrently successful pods distinct ranges; a failed attempt may remove this field's range only when it created that ownership. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the same attempt-owned allocation as `portRangeStart`. Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Its lifecycle is coupled to attempt-owned provisioning: rollback removes a scratch/workdir path only when that attempt created it, preserving pre-existing runtime contents and a successful same-project pod's directory. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
-| `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
+| `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set verify --member`, `pod unset verify --member` (removes the key), `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 | `inPlace` | bool | `true` | local | No (in-place pod Implementers) | in-place provisioning | Marks an Implementer that works in the codebase itself: dispatch makes no task worktree for it — see pod-dispatch.spec.md "Task worktrees". **Not a field on the `AgentMeta` Pydantic model** — round-trips through `extra="allow"` |
 
 In the **Written by** column, `add` means project/pod provisioning, which since 21abc85 is
-`docket init` (including `docket init --from`); `docket add` and `docket pod <project> add`
-write the same member fields when a role joins an existing pod. `install` means the internal
+`docket init` (including `docket init --from`); `docket pod add`
+writes the same member fields when a role joins an existing pod. `install` means the internal
 workstation bootstrap the first `docket init` runs; there is no `docket install` command.
 
 ## Single-source contract
@@ -142,7 +141,7 @@ before it's written):
   stricter behavior.)
 - **Type mismatch on a declared field**: e.g. `budgetUsd` given a non-numeric string, or
   `paused` given a non-boolean — → `error` for fields whose Pydantic type can't coerce the value.
-- **Enum violation**: `kind`, `modelSource` not in their enum → `error`.
+- **Enum violation**: `kind` not in its enum → `error`.
 - Valid writes pass through unchanged to the existing atomic-write/lock path.
 
 On read, a missing file is treated as "agent not found" (exit code 1, docket's flat CLI
@@ -161,7 +160,6 @@ convention — see agent-lifecycle.spec.md's Return Codes), not an empty object.
   `workdir`-kind agent (its location lives in `workDir` instead).
 - `workDir`, when present, MUST be an absolute path and implies `workspaceKind: workdir`.
 - `model` MUST be a provider-qualified id (e.g. `anthropic/claude-sonnet-4-6`).
-- `modelSource` MUST be `policy` (follows the role→model table) or `pinned` (explicit choice).
 - `sessionKey` MUST match the pattern `agent:<id>:<project>` and its `<project>` component MUST
   equal `projectKey`.
 - `budgetUsd`, when present, MUST be a non-negative number.
@@ -181,7 +179,6 @@ blueprint, the default — `codebase`-kind, so `workspaceKind`/`workDir` are abs
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
   "model": "anthropic/claude-sonnet-4-6",
-  "modelSource": "policy",
   "description": "work",
   "created": "2026-03-05T12:08:17-03:00",
   "sessionKey": "agent:myshop:default",
@@ -191,8 +188,7 @@ blueprint, the default — `codebase`-kind, so `workspaceKind`/`workDir` are abs
 }
 ```
 
-The same agent after `docket profile myshop-lead anthropic/claude-haiku-4-5 --budget 5` and being
-paused:
+The same agent after `docket pod set budgetUsd 5` and being paused:
 
 ```json
 {
@@ -203,8 +199,7 @@ paused:
   "name": "myshop lead",
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
-  "model": "anthropic/claude-haiku-4-5",
-  "modelSource": "pinned",
+  "model": "anthropic/claude-sonnet-4-6",
   "description": "work",
   "created": "2026-03-05T12:08:17-03:00",
   "sessionKey": "agent:myshop:default",
@@ -232,7 +227,6 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
   "workDir": "/home/user/.docket/workspaces/pods/my-market-scan/workdir",
   "stack": "",
   "model": "anthropic/claude-sonnet-4-6",
-  "modelSource": "policy",
   "description": "quarterly competitive landscape scan",
   "created": "2026-07-30T12:08:17-03:00",
   "sessionKey": "agent:my-market-scan:default",
@@ -243,6 +237,14 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 3.6.0 (2026-10-08)
+
+- Phase 39 (P39-10): `modelSource` is removed from the field table, the field rules, the enum
+  check and the examples; provisioning no longer writes it and `AgentMeta` no longer declares it
+  (a key already in a file round-trips through `extra="allow"` and nothing reads it). `verifyCmd`
+  is written by `pod set verify --member` and cleared (the key removed) by `pod unset verify
+  --member`; `budgetUsd` by `pod set|unset budgetUsd`.
 
 ### Version 3.5.0 (2026-10-07)
 

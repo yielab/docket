@@ -1,11 +1,11 @@
-"""`docket config explain <agent>` -- effective configuration, with provenance.
+"""`docket pod show` -- the pod and a member's effective configuration, with provenance.
 
 Composes existing resolvers only (model policy, `core.identity`'s prompt composer,
 role/tool denial, the guardrail policy engine, `core.pod.PodSettings`, and
 `core.dispatch.effective_pipeline_source`); writes nothing and adds no new core
-surface. See specs/data/cli-json-shapes.spec.md, "`docket config explain <agent>
---json`". The oracle case (`TestConfigExplainMatchesRealDispatch`) cross-checks the
-report against what a real pod dispatch (FakeDriver) actually used for the hop.
+surface. See specs/data/cli-json-shapes.spec.md, "`docket pod show --json`". The oracle
+case (`TestPodShowMatchesRealDispatch`) cross-checks the reports against what a real pod
+dispatch (FakeDriver) actually used for the hop.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ import json
 from pathlib import Path
 
 import pytest
-import typer
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _config, _pod
+from docket.cli import _pod, _pod_show
 from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -28,7 +28,9 @@ from docket.core import pod
 from docket.core import policy as _policy
 from docket.edges import store as _store
 
-SUBJECT = "docket.cli._config"
+SUBJECT = "docket.cli._pod_show"
+
+_runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
@@ -50,39 +52,41 @@ def _seed(
     return home
 
 
+def _show(*args: str, project: str = "demo") -> tuple[int, str]:
+    result = _runner.invoke(_pod.pod_app, ["show", *args, "--pod", project])
+    return result.exit_code, result.output
+
+
 def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict:
-    capsys.readouterr()
-    _config.dispatch("explain", [agent_id, "--json"])
-    return json.loads(capsys.readouterr().out)
+    project = pod.pod_of(agent_id)
+    if not project:
+        return _pod_show.member_report(agent_id)
+    code, out = _show(agent_id, "--json", project=project)
+    assert code == 0, out
+    return json.loads(out)
 
 
 def _explain_text(agent_id: str, capsys: pytest.CaptureFixture[str]) -> str:
-    capsys.readouterr()
-    _config.dispatch("explain", [agent_id])
-    return capsys.readouterr().out
+    code, out = _show(agent_id)
+    assert code == 0, out
+    return out
 
 
-class TestConfigExplainUnknownAgent:
-    def test_unknown_agent_refuses_before_anything_else(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+class TestPodShowRefusals:
+    def test_a_name_that_is_not_a_member_refuses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit) as exc:
-            _config.dispatch("explain", ["nope"])
-        assert exc.value.exit_code == 1
-        assert "not found" in capsys.readouterr().err
+        code, _out = _show("nope")
+        assert code == 1
 
-    def test_unknown_config_action_refuses(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_pod_refuses(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed(tmp_path, monkeypatch)
-        with pytest.raises(typer.Exit) as exc:
-            _config.dispatch("bogus", ["demo-lead"])
-        assert exc.value.exit_code == 1
-        assert "Unknown config action" in capsys.readouterr().err
+        code, _out = _show(project="ghost")
+        assert code == 1
 
 
-class TestConfigExplainMatchesRealDispatch:
+class TestPodShowMatchesRealDispatch:
     """The card's oracle: every reported value matches what a real dispatch hop
     (through FakeDriver) actually used."""
 
@@ -92,7 +96,6 @@ class TestConfigExplainMatchesRealDispatch:
         _seed(tmp_path, monkeypatch)
         implementer = pod.member_id("demo", "implementer")
         _fleet.set_model_both(implementer, "anthropic/claude-opus-4-6")
-        _fleet.meta_set(implementer, "modelSource", "pinned")
 
         lead = pod.member_id("demo", "lead")
         _fleet.meta_set(lead, "budgetUsd", 5.0)
@@ -120,7 +123,7 @@ class TestConfigExplainMatchesRealDispatch:
         assert report["id"] == implementer
         assert report["role"] == "implementer"
         assert report["pod"] == "demo"
-        assert report["model"] == {"value": "anthropic/claude-opus-4-6", "source": "pinned"}
+        assert report["model"] == {"value": "anthropic/claude-opus-4-6", "source": "policy"}
         assert report["podSettings"]["budgetUsd"] == {"value": 5.0, "source": "set"}
         assert report["podSettings"]["maxReworkCycles"] == {"value": 2, "source": "set"}
         assert report["podSettings"]["turnTimeoutS"] == {"value": 111, "source": "set"}
@@ -142,7 +145,7 @@ class TestConfigExplainMatchesRealDispatch:
         assert report["model"]["value"] == _fleet.meta_get(lead, "model", _cfg.DEFAULT_MODEL)
 
 
-class TestConfigExplainToolDenial:
+class TestPodShowToolDenial:
     def test_reviewer_denied_tools_match_its_archetype(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -156,7 +159,7 @@ class TestConfigExplainToolDenial:
         assert report["roleScope"] == "built-in"
 
 
-class TestConfigExplainTextUnchangedWithNoPodScope:
+class TestPodShowTextUnchangedWithNoPodScope:
     """The byte-identity oracle: human-readable `config explain` output is unchanged
     when nothing has pod scope, pinning the exact lines `_render_human` touches."""
 
@@ -180,7 +183,7 @@ class TestConfigExplainTextUnchangedWithNoPodScope:
         assert "  Tools denied:  bash, edit, write\n" in text
 
 
-class TestConfigExplainScopeLabels:
+class TestPodShowScopeLabels:
     """Every resolved value in `--json` names which scope -- built-in, global (the
     operator's `~/.docket` overlay), or pod (this pod's own `config/`) -- produced it."""
 
@@ -233,6 +236,7 @@ class TestConfigExplainScopeLabels:
         report = _explain_json(reviewer, capsys)
 
         assert report["roleScope"] == "pod"
+        assert report["model"]["source"] == "pod overlay"
 
         scopes_by_id = {p["id"]: p["scope"] for p in report["policies"]}
         assert scopes_by_id["pod-only"] == "pod"
@@ -262,7 +266,7 @@ class TestConfigExplainScopeLabels:
         assert report["tools"]["denied"] == [{"name": "bash", "scope": "pod"}]
 
 
-class TestConfigExplainNonPodAgent:
+class TestPodShowNonPodAgent:
     def test_agent_with_no_pod_reports_null_pipeline_and_pod_settings(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -279,7 +283,7 @@ class TestConfigExplainNonPodAgent:
         assert report["podSettings"] is None
 
 
-class TestConfigExplainPolicies:
+class TestPodShowPolicies:
     def test_baseline_policies_apply_to_every_role(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -324,8 +328,8 @@ class TestConfigExplainPolicies:
         assert "implementer-only" not in {p["id"] for p in lead_report["policies"]}
 
 
-class TestConfigExplainInvalidPodSettingsRefuses:
-    def test_bad_stored_value_refuses_like_pod_config_get(
+class TestPodShowInvalidPodSettingsRefuses:
+    def test_bad_stored_value_refuses(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
@@ -336,13 +340,15 @@ class TestConfigExplainInvalidPodSettingsRefuses:
         meta_path.write_text(json.dumps(meta))
 
         implementer = pod.member_id("demo", "implementer")
-        with pytest.raises(typer.Exit) as exc:
-            _config.dispatch("explain", [implementer])
-        assert exc.value.exit_code == 1
-        assert "turnTimeoutS" in capsys.readouterr().err
+        code, out = _show(implementer)
+        assert code == 1
+        assert "turnTimeoutS" in out
+        code, out = _show()
+        assert code == 1
+        assert "turnTimeoutS" in out
 
 
-class TestConfigExplainProvider:
+class TestPodShowProvider:
     """`report["provider"]` names the resolved provider's scope, dialect, base URL,
     credential source and exact model row -- model-profiles.spec.md, "Provider
     catalog" requirement 7."""
@@ -378,3 +384,43 @@ class TestConfigExplainProvider:
             "maxTokens": 4096,
             "source": "row",
         }
+
+
+class TestPodShowPod:
+    """The pod view names each member's verify command and the approval mode the dispatcher
+    resolves, pinned to ``core.dispatch.pod_approval_mode`` itself."""
+
+    def test_pod_view_names_the_verify_command_and_the_dispatchers_approval_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        implementer = pod.member_id("demo", "implementer")
+        _fleet.meta_set(implementer, "verifyCmd", "make check")
+        code, out = _show("--json")
+        assert code == 0, out
+        report = json.loads(out)
+        by_id = {m["id"]: m for m in report["members"]}
+        assert by_id[implementer]["verifyCmd"] == "make check"
+        assert report["approvalMode"]["effective"] == _dispatch.pod_approval_mode(
+            "demo", caller_default="park"
+        )
+        assert report["approvalMode"]["source"] == "unset"
+
+    @pytest.mark.parametrize("mode", ["wait", "park", "refuse"])
+    def test_an_explicit_approval_mode_is_what_the_dispatcher_uses(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _fleet.meta_set(pod.member_id("demo", "lead"), "approvalMode", mode)
+        report = json.loads(_show("--json")[1])
+        assert report["approvalMode"] == {"effective": mode, "source": "set"}
+        assert _dispatch.pod_approval_mode("demo") == mode
+
+    def test_settings_carry_their_source(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _fleet.meta_set(pod.member_id("demo", "lead"), "budgetUsd", 7.0)
+        report = json.loads(_show("--json")[1])
+        assert report["settings"]["budgetUsd"] == {"value": 7.0, "source": "set"}
+        assert report["settings"]["maxReworkCycles"]["source"] == "default"

@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.24.0
+**Version**: 1.25.0
 **Status**: Implemented
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -70,7 +70,7 @@ This specification does NOT cover:
    material — this schema does not re-validate role names itself; `core/pod.py`'s
    `plan_pod`/`normalize_role` do, the first time a blueprint's roster is actually provisioned.
 4. `defaultBudgetUsd`, when present, **MUST** be a non-negative number. It is applied to the pod's
-   **Lead only** at provisioning time (the same `budgetUsd` meta field `docket profile --budget`
+   **Lead only** at provisioning time (the same `budgetUsd` meta field `docket pod set budgetUsd`
    sets) — never to any other member.
 5. `name` **MUST** match `^[a-z][a-z0-9-]*$`. `version` **MUST** be a positive integer. An
    invalid definition **MUST** be rejected with a clear error naming the offending field
@@ -121,7 +121,7 @@ This specification does NOT cover:
 
 ### Workspace kind and the working directory
 
-1. A `codebase`-kind blueprint's location argument **MUST** be treated exactly as `docket add`
+1. A `codebase`-kind blueprint's location argument **MUST** be treated exactly as `docket init`
    treated its codebase-path argument before this spec existed — an operator-supplied (or empty)
    absolute path, never created by docket.
 2. A `workdir`-kind blueprint's location argument **MUST** be treated as the pod's **shared**
@@ -136,7 +136,7 @@ This specification does NOT cover:
    codebase — no "cd into the codebase" language, no `## Your codebase` heading. A `codebase`-kind
    member's contract files **MUST** be byte-for-byte unaffected by this distinction (verified by
    `tests/integration/test_provisioning_contract.py`'s `TestSeedContractWorkdir`).
-4. A pod member added later to an existing pod (`docket pod <project> add <role>`) **MUST**
+4. A pod member added later to an existing pod (`docket pod add <role>`) **MUST**
    inherit the pod's `workspaceKind`/working-directory (or codebase) from an existing member,
    never defaulting to `codebase`-kind for a pod that was provisioned `workdir`-kind.
 5. `docket doctor` **MUST NOT** flag a `workdir`-kind pod member as broken for lacking a `TOOLS.md`
@@ -171,15 +171,35 @@ This specification does NOT cover:
    `docket blueprints add` — the five built-ins in `core/blueprints.py` are Python literals and
    are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
-   custom pod shape means adding roles to an existing pod with `docket pod <project> add <role>`
+   custom pod shape means adding roles to an existing pod with `docket pod add <role>`
    after provisioning from the closest built-in blueprint.
+
+### Pod settings: set and unset
+
+1. `docket pod set <key> <value>` and `docket pod unset <key>` **MUST** be the one writer for every
+   `core.pod.PodSettings.KEYS` key, validated through `PodSettings.coerce` before anything is
+   written, audited as `pod.config`. `pipeline` and `schedule` keep their dedicated writers
+   (a validated bound pipeline copy; the `docket-schedules.json` entry); the keys in
+   `RECORDED_KEYS` are refused, naming `apply` as their writer; an unknown key exits 1 listing
+   the valid ones.
+2. `budgetUsd` is a setting like the rest: setting a cap (non-zero) clears the Lead's
+   `paused`/`pausedReason` and re-queues the pod's budget-blocked tasks; `0`, or `unset`, removes
+   the cap and re-queues them.
+3. `verify` is the one key that belongs to a member, not the pod: `docket pod set verify "<cmd>"
+   --member <id>` writes that implementer's `verifyCmd` (validated: no NUL or newline,
+   length-capped; audited `pod.set-verify`; TOOLS.md re-rendered) and `docket pod unset verify
+   --member <id>` removes the key (audited `pod.unset-verify`). Without `--member`, or with
+   `--member` on any other key, the command exits 1 naming the flag; a non-implementer or a
+   non-member exits 1.
+4. `docket pod add <role> [--count N] [--verify "<cmd>"]` adds members to an existing pod; an
+   unknown role exits 1 with one line, never a traceback.
 
 ### Pod manifests: apply
 
 A blueprint shapes a pod at `docket init` time; this section covers the complementary case — a
 team shape applied to a pod that already exists (ADR 0009). Before this section, applying a
 shipped recipe to an existing pod meant a per-recipe sequence of `docket roles add`/`docket pod
-<p> add <role>`/`docket pod <p> config set pipeline <file>` commands; `docket pod <p> apply
+add <role>`/`docket pod set pipeline <file>` commands; `docket pod <p> apply
 <dir>` composes the same writers into one command, once a directory shape becomes common enough
 (a pod reproduced on a second machine) to be worth automating.
 
@@ -193,7 +213,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `core.policy.validate_policy` enforces), an optional `pipeline.yaml` (or the file named by
    `pod.yaml`'s `pipeline` key), and an optional `pod.yaml` manifest carrying exactly five
    top-level keys — `members` (a list of role names to add if absent), `settings` (a mapping of
-   any `docket pod <p> config set <key> <value>` key), `pipeline` (a filename inside *dir*,
+   any `docket pod set <key> <value>` key), `pipeline` (a filename inside *dir*,
    default `pipeline.yaml` when that file exists), `description` (a string; read only for
    display — requirement 9 — and never applied to the pod), and `exporters` (a list of
    observability-destination names — requirement 11 — reported, never activated). An
@@ -227,7 +247,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    be after* the recipe's own `roles/*.yaml` are added, the resolved `pipeline.yaml` against the
    roster *as it would be after* `members` join (no skipped step,
    `core.orchestrator.resolve_plan`), and every `settings` entry through the same
-   `core.pod.PodSettings` validators `config set` uses. A validation failure **MUST** exit 1
+   `core.pod.PodSettings` validators `pod set` uses. A validation failure **MUST** exit 1
    naming the offending item and **MUST NOT** write any role, policy, member, pipeline binding, or
    setting — including one that validated cleanly earlier in the same run.
 5. `apply` **MUST** be additive and idempotent: an item whose target state already matches disk
@@ -245,15 +265,15 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    under `skills/**`, excluding the generated `.schemas/`), so composing a second recipe onto an
    already-configured pod — even one
    whose every item plans `skip` — still moves the record to name the directory just applied.
-   Both **MUST NEVER** be written by `docket pod <p> config set`, which **MUST** refuse both keys
+   Both **MUST NEVER** be written by `docket pod set`, which **MUST** refuse both keys
    naming `apply` as their writer; a `pod.yaml` `settings` mapping carrying either key is refused
-   the same way any key outside the settable set already is (requirement 1). `docket config
-   explain <agent>` reports `configSource`, `configDigest`, and `drift` — `"yes"` when recomputing
+   the same way any key outside the settable set already is (requirement 1). `docket pod
+   show` reports `configSource`, `configDigest`, and `drift` — `"yes"` when recomputing
    `directory_digest` against the still-present `configSource` disagrees with the recorded
    `configDigest`, `"no"` when it agrees, `""` when there is no recorded source or its directory
    is gone (drift is then unknown, never asserted either way).
 7. Removing a role, policy, member, pipeline binding, or setting stays out of this command's
-   scope — `docket pod <p> remove <member-id>`, `config unset <key>`, and manual file deletion
+   scope — `docket pod remove <member-id>`, `docket pod unset <key>`, and manual file deletion
    remain the explicit way to undo what a recipe added.
 8. `docket init` **MUST** discover a present `<location>/.docket/` (the same directory shape and
    default this section reads) and, before provisioning anything, validate every document under
@@ -312,7 +332,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
     recorded key exactly like `configSource`/`configDigest` (requirement 6): written only by
     `apply`, on every successful `plan_apply`-validated run (an all-`skip` plan included, and
     overwriting rather than merging with what a prior apply recorded), and refused by `docket pod
-    <p> config set exporters` naming `apply` as its writer. `apply` **MUST NOT** write to
+    set exporters` naming `apply` as its writer. `apply` **MUST NOT** write to
     `docket-exporters.json` or otherwise change any exporter's `enabled` state — activation stays
     global, one operator's command (D-22), never a side effect of applying a team's configuration.
     `apply` (and therefore `init --recipe`/a discovered `.docket/`) **MUST** print, after the
@@ -381,7 +401,7 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    same-named file already there. A successful export **MUST** write one `pod.export` audit entry
    naming *project* and *dir*, matching every other pod-scope writer in this module.
 4. Round trip is this pair's own proof, not a separate contract: exporting a pod, applying the
-   result to a second pod in a fresh `DOCKET_HOME`, and comparing `docket config explain --json`
+   result to a second pod in a fresh `DOCKET_HOME`, and comparing `docket pod show <member> --json`
    for the matching members **MUST** agree once ids and paths specific to each pod are normalized
    away — the same guarantee `apply`'s validation (requirement 3 above) already gives a directory
    `export` produced. Because a role or policy is regenerated (never byte-copied), `plan_apply`
@@ -516,7 +536,7 @@ $ docket init myproj --blueprint wizard-pod
 
 ### Pre-conditions
 
-- `~/.docket` **MUST** be writable (pod provisioning, same as any `docket add`).
+- `~/.docket` **MUST** be writable (pod provisioning, same as any `docket init`).
 - For a `workdir` blueprint with an explicit location, that path (or its parent) **MUST** be
   creatable — docket creates it (`mkdir -p`, mode `700`) if absent.
 
@@ -539,6 +559,13 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.25.0 (2026-10-08)
+
+- Phase 39 (P39-10): "Pod settings: set and unset" is new. `docket pod set|unset <key>` replaces
+  `pod <p> config set|unset` and `docket profile --budget` for every `PodSettings` key; `verify`
+  takes `--member` and replaces `pod <p> set-verify`; `docket pod add` replaces `docket add` and
+  `pod <p> add`. `docket config explain` becomes `docket pod show <member>`.
 
 ### Version 1.24.0 (2026-10-05)
 
@@ -666,7 +693,7 @@ Phase 37 close (P37-8): the entries below were Unreleased and are now this versi
 - **P30-2: the pod records its configuration of record; `export` defaults to it (ADR 0012).**
   "Pod manifests: apply" requirement 6 now also records `configSource`/`configDigest` in the
   pod's settings after a successful `apply` (`core.pod_apply.directory_digest`, `PodSettings.
-  RECORDED_KEYS`); neither field is ever written by `docket pod <p> config set` or carried in a
+  RECORDED_KEYS`); neither field is ever written by `docket pod set` or carried in a
   `pod.yaml` `settings` mapping. "Pod manifests: export" requirements 1 and 3 now default *dir*
   to `<codebase>/.docket/`, matching `apply`; the non-empty refusal applies to that default too.
   `docket config explain <agent>` reports `configSource`, `configDigest`, and a recomputed

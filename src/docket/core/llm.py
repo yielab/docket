@@ -124,7 +124,7 @@ def tool_result(call: ToolCall, content: str) -> ChatMessage:
 class TokenUsage:
     """Token counts **as reported by the endpoint** for one exchange — real counts off the
     response body, unlike the ``config.CONTEXT_BYTES_PER_TOKEN`` estimates used elsewhere
-    (``core/context.py``'s budgets, ``maintain check``'s guards). Keep this distinction in any
+    (``core/context.py``'s budgets). Keep this distinction in any
     user-facing wording: never call an estimate a measurement. ``cached_tokens`` is a subset of
     ``input_tokens`` where the endpoint reports one, and 0 where it does not — meaning "not
     reported", never "definitely no cache hit"."""

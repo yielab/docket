@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.24.0
+**Version**: 1.25.0
 **Status**: Complete
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -14,8 +14,8 @@ against that code.
 ## Scope
 
 Covers every command that supports `--json` output: `list`, `status` (and
-`status --history`), `info`, `doctor`, `inbox`, `task list`/`task show <ref>`/`task trace <ref>`,
-`pod <p> config get`, `config explain <agent>`, and the `serve` HTTP endpoints. `docket
+`status --history`), `doctor`, `inbox`, `task list`/`task show <ref>`/`task trace <ref>`,
+`pod show`, `pod show <member>`, and the `serve` HTTP endpoints. `docket
 audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover
 human-readable (Rich) output or third-party protocol payloads.
 
@@ -30,25 +30,6 @@ structural rules hold everywhere:
 - **camelCase keys.** Every key is camelCase (`costUsd`, not `cost_usd`) — see Validation.
 
 ## Schema
-
-### `docket info <id> --json`
-
-```json
-{
-  "id":          "string",
-  "name":        "string",
-  "codebase":    "string (may be empty)",
-  "stack":       "string (may be empty)",
-  "model":       "string (provider/model-id)",
-  "budgetUsd":   "number | null",
-  "paused":      "boolean",
-  "sessionKey":  "string (agent:<id>:<project>)",
-  "projectKey":  "string",
-  "registered":  "boolean",
-  "telegram":    "string (peer id) | null",
-  "lastActive":  "string (YYYY-MM-DD of the newest memory log) | \"—\" (no log yet)"
-}
-```
 
 ### `docket doctor --json`
 
@@ -208,23 +189,41 @@ the exact shell commands) or `null`. Each run record carries the run registry fi
 `{ "pod": "string", "events": [ <trace record>, ... ] }` in file order; the records are the
 trace-store records (`trace-store.spec.md`).
 
-### `docket pod <p> config get --json`
+### `docket pod show --json`
 
-A bare object keyed by setting name (`core.pod.PodSettings.KEYS`), each with its effective value
-and whether that value came from the Lead's stored meta or the field's own default:
+A bare object: the pod as it will run. Composes existing resolvers only and writes nothing.
 
 ```json
 {
-  "budgetUsd":        { "value": "number",       "source": "\"set\" | \"default\"" },
-  "maxReworkCycles":  { "value": "number",        "source": "\"set\" | \"default\"" },
-  "turnTimeoutS":     { "value": "number | null", "source": "\"set\" | \"default\"" },
-  "verifyTimeoutS":   { "value": "number | null", "source": "\"set\" | \"default\"" }
+  "pod":     "string",
+  "members": [
+    {
+      "id":        "string",
+      "role":      "string",
+      "model":     { "value": "string (provider/model-id)", "source": "policy | pod overlay" },
+      "workspace": "string (absolute path)",
+      "verifyCmd": "string (empty when none; only an implementer has one)"
+    }
+  ],
+  "settings": {
+    "<key in core.pod.PodSettings.KEYS>": { "value": "the effective value", "source": "\"set\" | \"default\"" }
+  },
+  "approvalMode": {
+    "effective": "wait | park | refuse (core.dispatch.pod_approval_mode for this caller)",
+    "source":    "set | unset"
+  },
+  "pipeline":     { "source": "string" },
+  "network":      { "mode": "open | none", "scope": "default | global | pod" },
+  "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
+  "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
+  "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
 }
 ```
 
-A stored value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to
-stderr naming the offending key and exits 1, with nothing on stdout, instead of showing that
-key's default.
+An unset `approvalMode` resolves per caller: `wait` on a terminal, `park` without one. A stored
+value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to stderr
+naming the offending key and exits 1, with nothing on stdout, instead of showing that key's
+default. A pod that does not exist exits 1.
 
 ### `docket exporters list --json`
 
@@ -245,10 +244,10 @@ must also be `true`.
 ]
 ```
 
-### `docket config explain <agent> --json`
+### `docket pod show <member> --json`
 
 A bare object: the effective configuration a real dispatch turn would use for
-*agent*, with the source that set each value. Composes existing resolvers only
+*member*, with the source that set each value. Composes existing resolvers only
 (model policy, the prompt composer, role/tool denial, the guardrail policy engine,
 `PodSettings`, and the pipeline resolver) — it writes nothing and adds no new
 configuration surface.
@@ -270,10 +269,11 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
 ```json
 {
   "id":        "string",
-  "role":      "string (pod role or specialist role; may be empty)",
+  "workspace": "string (absolute path of the member's workspace)",
+  "role":      "string (pod role; may be empty)",
   "roleScope": "built-in | global | pod | \"\" (role not found in the live registry)",
   "pod":       "string (project this agent belongs to; empty for a non-pod agent)",
-  "model":     { "value": "string (provider/model-id)", "source": "policy | pinned" },
+  "model":     { "value": "string (provider/model-id)", "source": "policy | pod overlay" },
   "endpoint": {
     "baseUrl":            "string (may be empty if unresolved)",
     "ready":              "boolean",
@@ -311,7 +311,7 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
     }
   ],
   "pipeline":    "{ source: string } | null (null for a non-pod agent)",
-  "podSettings": "same shape as `docket pod <p> config get --json`'s bare object | null (null for a non-pod agent)",
+  "podSettings": "same shape as `docket pod show --json`'s `settings` object | null (null for a non-pod agent)",
   "projectInstructions": {
     "files":  "array of relative paths (empty when there is nothing to compose)",
     "source": "set | default | \"\" (default: the codebase root's own AGENTS.md, unset and present; set: an explicit PodSettings.projectInstructions list, which replaces the default entirely; \"\": neither)"
@@ -340,9 +340,9 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
 }
 ```
 
-An unknown agent id prints an error to stderr and exits 1, with nothing on stdout.
+A name that is not a member of the pod prints an error to stderr and exits 1, with nothing on stdout.
 A pod member with an invalid stored `PodSettings` value (e.g. a hand-edited
-`.docket-meta.json`) refuses the same way `docket pod <p> config get` does — an
+`.docket-meta.json`) refuses the same way `docket pod show` does — an
 error naming the offending key, exit 1, nothing on stdout — rather than reporting a
 guessed default.
 
@@ -405,6 +405,14 @@ Every schema block above is a complete example of its command's output.
 
 ## Changelog
 
+### Version 1.25.0 (2026-10-08)
+
+- Phase 39 (P39-10): `docket info --json` and `docket pod <p> config get --json` are removed.
+  `docket pod show --json` is new (members with model source and `verifyCmd`, every setting with
+  its source, the resolved `approvalMode`, `pipeline`, `network` and the config-of-record
+  fields). `docket config explain <agent> --json` becomes `docket pod show <member> --json`:
+  same object, plus `workspace`, with `model.source` now `policy | pod overlay` (the per-agent
+  pin is gone).
 ### Version 1.24.0 (2026-10-08)
 
 - `docket task list --json` and `docket task show <ref> --json` replace `runs list --json` and

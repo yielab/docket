@@ -201,7 +201,6 @@ META: dict[str, Any] = {
     "name": "My Shop",
     "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
     "sessionKey": "agent:myshop:default",

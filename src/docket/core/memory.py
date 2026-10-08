@@ -390,8 +390,8 @@ def seed_contract(
 
 #: Subdirectory (under ``memory/``) that archived, already-distilled daily
 #: logs are moved into. A dated subdirectory per ``distill_memory`` call. A
-#: plain non-recursive ``memory/*.md`` glob (what ``maintain clean``/``reset``
-#: delete outright) never descends into it, so an already-distilled log can
+#: plain non-recursive ``memory/*.md`` glob (what ``docket pod reset``
+#: deletes) never descends into it, so an already-distilled log can
 #: never be "found" and re-distilled or re-deleted by mistake.
 DISTILLED_ARCHIVE_DIRNAME = ".distilled"
 
@@ -415,7 +415,7 @@ DistillRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult
 @dataclass
 class DistillResult:
     """Outcome of one ``distill_memory`` call. ``ok=False`` means memory was left completely
-    untouched (fail-closed) — the contract ``maintain clean``/``reset --distill-first`` depends
+    untouched (fail-closed) — the contract ``docket pod reset`` depends
     on: a caller MUST NOT proceed to its destructive step unless ``ok`` is True. ``skipped``
     (only ever True with ``ok=True``) means there was nothing to distill, also a green light."""
 

@@ -1,14 +1,10 @@
-"""docket pod — provision and manage project pods.
+"""docket pod: the pod group, its roster and its settings.
 
-A *pod* is the set of project-scoped agents for one project: a Lead plus one or more
-workers (Implementer, Reviewer, Tester), each with its own workspace (no worker serves
-two projects); member ids are ``<project>-<role>`` (``-N`` for duplicates). Composition
-logic lives in `core/pod.py`; provisioning I/O (workspace + templates + meta + fleet
-registration, with rollback on partial failure) lives in `core/pod_provisioning.py` so
-it is reachable from `serve.py`'s `POST /pods` without that module importing
-`docket.cli`. This module renders around that core module's typed results — `docket
-add`'s pod path and `POST /pods` both call `core.pod_provisioning.provision_pod`, so
-the two surfaces cannot drift apart.
+A *pod* is the set of project-scoped agents for one project: a Lead plus workers, each
+with its own workspace; member ids are ``<project>-<role>`` (``-N`` for duplicates).
+Composition lives in `core/pod.py`; provisioning I/O lives in `core/pod_provisioning.py`
+so `serve.py`'s `POST /pods` reaches it without importing `docket.cli`. This module
+renders around those typed results, so `docket init` and `POST /pods` cannot drift apart.
 """
 
 from __future__ import annotations
@@ -16,33 +12,36 @@ from __future__ import annotations
 import contextlib
 import hashlib as _hashlib
 import json as _json
-import sys
+import os
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.markup import escape
-from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
-from docket.cli._agents import _pick_agent
+from docket.cli import _contract
+from docket.cli import _pod_show as _show
+from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod
-from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
 from docket.core import schedule as _sched
 from docket.core.audit import audit_log
+from docket.edges import store
+from docket.edges.adapters import docket_runtime as _dr
 
-# Re-exports: this module's public surface (and several tests) reference
-# these names on `docket.cli._pod` directly — see core/pod_provisioning.py
-# for the real implementation and docstrings.
+# Names this module's callers and tests reach on `docket.cli._pod`; the implementations
+# live in core/pod_provisioning.py.
 POD_TEMPLATE_VERSION = _pp.POD_TEMPLATE_VERSION
 _MAX_VERIFY_CMD_LEN = _pp._MAX_VERIFY_CMD_LEN
 VerifyCmdError = _pp.VerifyCmdError
@@ -62,14 +61,6 @@ pod_app = typer.Typer(
     help="Manage this project's pod: members, settings and configuration.",
     no_args_is_help=True,
 )
-
-
-def _role_purpose(role: str) -> str:
-    """One-line purpose for a pod role (shown in `docket pod <project>`). Sourced from
-    the role's archetype (`RoleArchetype.description`) rather than a second hardcoded
-    map that would drift from `core/archetypes.py`'s own descriptions."""
-    arch = _arch.load_registry().get(role)
-    return arch.description if arch is not None else ""
 
 
 def provision_member(
@@ -110,7 +101,7 @@ def provision_member(
 
 
 def parse_pod_roles(args: list[str]) -> tuple[str, ...]:
-    """Pod composition from `docket add` flags. Default = lean pod (lead + implementer);
+    """Pod composition from `docket init` flags. Default = lean pod (lead + implementer);
     ``--pod full`` = the four-role pod; ``--with reviewer,tester`` = lean plus the named
     roles. Unknown role names are ignored (the lean default still applies)."""
     if "--pod" in args:
@@ -154,11 +145,8 @@ def build_pod(
     blueprint_name: str = "",
     budget_usd: float | None = None,
 ) -> list[str]:
-    """Provision a fresh pod's members; returns the created member ids. Allocates
-    pod-level runtime resources (port range + scratch dir) once, injected into each
-    Implementer's workspace (skipped with no Implementer). A partial failure rolls
-    back every member and any pod-level resources created — the same all-or-nothing
-    contract `POST /pods` needs, since both surfaces share this one code path."""
+    """Provision a fresh pod's members and return their ids, all-or-nothing: a partial
+    failure rolls back every member and any pod resources, the contract `POST /pods` shares."""
     try:
         created = _pp.provision_members(
             project,
@@ -190,17 +178,8 @@ def build_pod_from_blueprint(
     verify_cmd: str = "",
     source: str = "declarative",
 ) -> list[str]:
-    """Provision a fresh pod from a named blueprint; returns the created member ids.
-    Thin rendering wrapper over `core.pod_provisioning.provision_pod` — the one path
-    `docket add` and `POST /pods` both share. ``location`` is interpreted per the
-    blueprint's `workspaceKind` (codebase path vs. shared working directory);
-    ``roles`` overrides the blueprint's roster (a starting point, not a ceiling) while
-    still applying its workspace kind/budget/name stamp. See
-    specs/functional/pod-blueprints.spec.md. ``BlueprintError``/``VerifyCmdError``
-    render as a clean CLI error, not a traceback; an already-existing pod or a
-    mid-provisioning failure both warn and return ``[]`` rather than raising, since
-    every caller already treats an empty return as the failure signal.
-    """
+    """Provision a fresh pod from a named blueprint and return its member ids; a refusal or a
+    failure warns and returns ``[]``. The path `docket init` and `POST /pods` share."""
     try:
         result = _pp.provision_pod(
             project,
@@ -224,75 +203,92 @@ def build_pod_from_blueprint(
 
 
 def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
-    """Entry point for the `docket pod` command (wired in cli/__init__.py)."""
-    action = sub or "list"
-    if action == "list":
-        _pod_list(project)
-    elif action == "add":
-        _pod_add(project, extra)
-    elif action == "remove":
-        _pod_remove(project, extra)
-    elif action == "set-verify":
-        _pod_set_verify(project, extra)
-    elif action == "config":
-        _pod_config(project, extra)
-    elif action == "sync":
+    """The last legacy pod actions, reached by tests until their verbs land on ``pod_app``."""
+    action = sub or "sync"
+    if action == "sync":
         _pod_sync(project, extra)
     elif action == "apply":
         _pod_apply_cmd(project, extra)
     elif action == "export":
         _pod_export_cmd(project, extra)
     else:
+        ui.error(f"Unknown pod action {action!r}. Use: sync | apply | export.")
+        raise typer.Exit(1)
+
+
+def _pod_name(name: str | None) -> str:
+    """The pod a leaf acts on: ``--pod``, ``DOCKET_POD``, then the cwd; exit 1 when none."""
+    try:
+        return resolve_pod(name, env=os.environ, cwd=Path.cwd())
+    except TargetError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from exc
+
+
+def _require_members(project: str) -> list[str]:
+    members = pod_member_ids(project)
+    if not members:
+        ui.error(f"No pod named '{project}'", "Create one with: docket init")
+        raise typer.Exit(1)
+    return members
+
+
+def _require_member(project: str, member_id: str) -> str:
+    """The member's role, or exit 1 when ``member_id`` is not in the pod."""
+    _require_members(project)
+    if pod.parse_member_id(member_id, project) is None:
+        ui.error(f"'{member_id}' is not a member of the '{project}' pod", "See: docket pod show")
+        raise typer.Exit(1)
+    return _fleet.meta_get(member_id, "role", "")
+
+
+def _implementer_member(project: str, member_id: str) -> None:
+    """Exit 1 unless ``member_id`` is an implementer of the pod (the only role with a verify gate)."""
+    role = _require_member(project, member_id)
+    if role != "implementer":
         ui.error(
-            f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "config | sync | apply | export."
+            f"'{member_id}' is a {role or 'unknown role'}",
+            "verify applies only to implementers",
         )
         raise typer.Exit(1)
 
 
-def _pod_list(project: str) -> None:
-    all_ids = [a.id for a in _fleet.list_agents()]
-    members = pod.members_of(all_ids, project)
-    if not members:
-        ui.warn(f"No pod found for '{project}'. Create one with: docket init {project}")
-        return
-    has_resources = any(bool(_fleet.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
-    table = Table(title=f"Pod — {project}")
-    table.add_column("MEMBER", style="bold")
-    table.add_column("ROLE")
-    table.add_column("MODEL")
-    table.add_column("PURPOSE", style="dim")
-    if has_resources:
-        table.add_column("PORTS")
-        table.add_column("SCRATCH")
-    for mid, role, _idx in members:
-        model = _fleet.meta_get(mid, "model", "?")
-        if has_resources:
-            port_start_s = _fleet.meta_get(mid, "portRangeStart", "")
-            port_count_s = _fleet.meta_get(mid, "portRangeCount", "")
-            scratch = _fleet.meta_get(mid, "scratchDir", "")
-            if port_start_s and port_count_s:
-                try:
-                    port_end = int(port_start_s) + int(port_count_s) - 1
-                    ports_str = f"{port_start_s}-{port_end}"
-                except ValueError:
-                    ports_str = port_start_s
-            else:
-                ports_str = "—"
-            table.add_row(mid, role, model, _role_purpose(role), ports_str, scratch or "—")
-        else:
-            table.add_row(mid, role, model, _role_purpose(role))
-    ui.console.print(table)
+@pod_app.command("show")
+def cmd_show(
+    member: str | None = typer.Argument(None, help="A member id, for its full configuration"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """The pod: members, settings and the approval mode dispatch will use, with sources.
+
+    With a member id, that member's whole effective configuration instead.
+
+    Example: docket pod show"""
+    project = _pod_name(pod_name)
+    _require_members(project)
+    if member is not None:
+        _require_member(project, member)
+    try:
+        report = _show.member_report(member) if member else _show.pod_report(project)
+    except (_dispatch.DispatchError, pod.PodSettingsError) as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    if json_out:
+        _contract.emit_json(report)
+    elif member:
+        _show.render_member(report)
+    else:
+        _show.render_pod(report)
 
 
-def _pod_add(project: str, extra: list[str]) -> None:
-    if not pod_member_ids(project):
-        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
-        raise typer.Exit(1)
-    role, count, verify_cmd = _parse_add_args(extra)
-    if role is None:
-        ui.error('Usage: docket pod <project> add <role> [--count N] [--verify "<cmd>"]')
-        raise typer.Exit(1)
+def add_members(project: str, role: str, *, count: int = 1, verify_cmd: str = "") -> list[str]:
+    """Add ``count`` members of ``role`` to the pod; returns the new member ids."""
+    base_ids = _require_members(project)
+    try:
+        canon_role = pod.normalize_role(role, project)
+    except pod.PodError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
     if verify_cmd:
         try:
             verify_cmd = _validate_verify_cmd(verify_cmd)
@@ -300,28 +296,25 @@ def _pod_add(project: str, extra: list[str]) -> None:
             ui.error(str(ex))
             raise typer.Exit(1) from ex
 
-    # Inherit codebase/stack/description (and, for a `workdir`-kind pod, the
-    # shared working directory + blueprint name) from the pod's Lead (or any
-    # member) — a new member of a workdir pod must not fall back to being a
-    # codebase-kind member.
-    base_id = pod_member_ids(project)[0]
-    codebase = _fleet.meta_get(base_id, "codebase", "")
-    stack = _fleet.meta_get(base_id, "stack", "")
-    description = _fleet.meta_get(base_id, "description", "")
+    # A new member inherits codebase/stack/description (and a workdir pod's shared directory and
+    # blueprint) from an existing one, so it is never provisioned as a codebase-kind member.
+    base_id = base_ids[0]
+    inherited: dict[str, Any] = {
+        "codebase": _fleet.meta_get(base_id, "codebase", ""),
+        "stack": _fleet.meta_get(base_id, "stack", ""),
+        "description": _fleet.meta_get(base_id, "description", ""),
+        "work_dir": _fleet.meta_get(base_id, "workDir", ""),
+        "blueprint_name": _fleet.meta_get(base_id, "blueprint", ""),
+    }
     project_key = _fleet.meta_get(base_id, "projectKey", "default") or "default"
-    work_dir = _fleet.meta_get(base_id, "workDir", "")
-    blueprint_name = _fleet.meta_get(base_id, "blueprint", "")
     role_models, _, _ = _mp.load_registry()
 
-    canon_role = pod.normalize_role(role, project)
     if canon_role == "implementer":
         port_start, port_count, scratch = _pp.allocate_pod_resources(project)
     else:
         port_start, port_count, scratch = 0, 0, ""
         if verify_cmd:
-            ui.warn(
-                f"--verify only applies to implementer members — ignoring for role '{canon_role}'."
-            )
+            ui.warn(f"--verify only applies to implementers; ignored for {canon_role}")
             verify_cmd = ""
 
     created: list[str] = []
@@ -339,39 +332,53 @@ def _pod_add(project: str, extra: list[str]) -> None:
             raise typer.Exit(1) from ex
         ok, msg = provision_member(
             member,
-            codebase=codebase,
-            stack=stack,
-            description=description,
             project=project,
             project_key=project_key,
             port_range_start=port_start,
             port_range_count=port_count,
             scratch_dir=scratch,
             verify_cmd=verify_cmd,
-            work_dir=work_dir,
-            blueprint_name=blueprint_name,
+            **inherited,
         )
-        if ok:
-            ui.success(escape(f"Added {member.member_id} [{member.role}] {member.model}"))
-            created.append(member.member_id)
-            if verify_cmd:
-                audit_log("pod.set-verify", f"member={member.member_id} cmd={verify_cmd!r}")
-        else:
-            ui.warn(f"{member.member_id}: registration failed — {msg}")
+        if not ok:
+            ui.warn(f"{member.member_id}: registration failed - {msg}")
+            continue
+        ui.success(f"Added {member.member_id} ({member.role}, {member.model})")
+        created.append(member.member_id)
+        if verify_cmd:
+            audit_log("pod.set-verify", f"member={member.member_id} cmd={verify_cmd!r}")
     if created:
         audit_log("pod.add", f"{project} role={canon_role} members={','.join(created)}")
+    return created
 
 
-def _pod_remove(project: str, extra: list[str]) -> None:
-    if not extra:
-        ui.error("Usage: docket pod <project> remove <member-id>")
+@pod_app.command("add")
+def cmd_add(
+    role: str = typer.Argument(..., help="Role archetype name, e.g. reviewer"),
+    count: int = typer.Option(1, "--count", "-n", min=1, help="How many members to add"),
+    verify: str = typer.Option("", "--verify", help="Verify command for a new implementer"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Add members of a role to the pod.
+
+    Example: docket pod add reviewer"""
+    project = _pod_name(pod_name)
+    if add_members(project, role, count=count, verify_cmd=verify):
+        _contract.next_step("docket pod show")
+        return
+    raise typer.Exit(1)
+
+
+def remove_member(project: str, member_id: str, *, yes: bool) -> None:
+    """Remove one non-Lead member after confirmation; frees the pod's resources with its last
+    implementer."""
+    role = _require_member(project, member_id)
+    if role == "lead":
+        ui.error(f"{member_id} is the pod's Lead", "Delete the pod instead: docket pod delete")
         raise typer.Exit(1)
-    member_id = extra[0]
-    if pod.parse_member_id(member_id, project) is None:
-        ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
+    if not _contract.confirm(f"Remove {member_id} and its workspace", yes=yes):
+        ui.warn("Aborted.")
         raise typer.Exit(1)
-    # Read role before teardown removes the workspace.
-    role = _fleet.meta_get(member_id, "role", "")
     ok, msg = teardown_member(member_id)
     if ok:
         ui.success(f"Removed {member_id}")
@@ -380,17 +387,163 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     else:
         ui.warn(f"{member_id}: fleet deregistration reported: {msg} (workspace cleaned)")
     audit_log("pod.remove", f"{project} member={member_id} role={role}")
-    # Free runtime resources if this was the last implementer in the pod.
     if role == "implementer":
-        remaining = pod_member_ids(project)
-        remaining_roles = {_fleet.meta_get(mid, "role", "") for mid in remaining}
-        if "implementer" not in remaining_roles:
+        remaining = {_fleet.meta_get(mid, "role", "") for mid in pod_member_ids(project)}
+        if "implementer" not in remaining:
             free_pod_resources(project)
+
+
+@pod_app.command("remove")
+def cmd_remove(
+    member: str = typer.Argument(..., help="Member id, e.g. demo-reviewer"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Remove a member and its workspace. The Lead is removed only with the pod.
+
+    Example: docket pod remove demo-reviewer"""
+    remove_member(_pod_name(pod_name), member, yes=yes)
+    _contract.next_step("docket pod show")
+
+
+def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
+    """Distill ``memory/*.md`` into MEMORY.md through one driver turn. Callers gate their
+    destructive step on ``.ok`` so a failed distillation deletes nothing."""
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    ui.info("Distilling memory before proceeding (one driver-backed turn)...")
+    result = _mem.distill_memory(
+        ws,
+        label=str(raw.get("name", agent_id)),
+        agent_id=agent_id,
+        session_key=str(raw.get("sessionKey", "")),
+        driver=_dr.default_driver().run_turn,
+    )
+    if not result.ok:
+        kind = f" ({result.failure_kind})" if result.failure_kind else ""
+        ui.error(
+            f"Distillation failed{kind}: {result.error or 'unknown error'}", "Nothing was deleted"
+        )
+    elif result.skipped:
+        ui.info("No memory logs to distill.")
+    else:
+        ui.success(
+            f"Distilled {result.logs_distilled} log(s) into MEMORY.md; "
+            f"original(s) archived under memory/{_mem.DISTILLED_ARCHIVE_DIRNAME}/."
+        )
+    return result
+
+
+def _clear_memory(agent_id: str, ws: Path, *, keep_memory_md: bool) -> int:
+    """Delete ``memory/*.md``, clear MEMORY.md (unless just distilled) and reset the ledger."""
+    removed = 0
+    mem_dir = ws / "memory"
+    if mem_dir.is_dir():
+        for f in mem_dir.glob("*.md"):
+            f.unlink()
+            removed += 1
+    memory_md = ws / "MEMORY.md"
+    if not keep_memory_md and memory_md.is_file():
+        memory_md.write_text("# MEMORY.md\n\n_Cleared by docket pod reset._\n", encoding="utf-8")
+        memory_md.chmod(0o600)
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    hb = ws / _mem.HEARTBEAT_FILE
+    hb.write_text(_mem.heartbeat_seed(str(raw.get("name", agent_id))), encoding="utf-8")
+    hb.chmod(0o600)
+    return removed
+
+
+def reset_member(project: str, member_id: str, *, yes: bool) -> None:
+    """Distill a member's memory, clear it and rebuild SOUL/AGENTS/TOOLS from its metadata.
+    A failed distillation aborts before anything is touched."""
+    _require_member(project, member_id)
+    if not _contract.confirm(f"Reset {member_id}: memory is distilled, then cleared", yes=yes):
+        ui.warn("Aborted.")
+        raise typer.Exit(1)
+    ws = _cfg.workspace_dir(member_id)
+    result = _run_distillation(member_id, ws)
+    if not result.ok:
+        raise typer.Exit(1)
+    removed = _clear_memory(member_id, ws, keep_memory_md=not result.skipped)
+    for name, text in _pp.rendered_member_files(member_id).items():
+        (ws / name).write_text(text, encoding="utf-8")
+        (ws / name).chmod(0o600)
+    _fleet.meta_set(member_id, "templateVersion", str(POD_TEMPLATE_VERSION))
+    audit_log("pod.reset", f"{project} member={member_id} logs={removed}")
+    ui.success(f"Reset {member_id}: {removed} memory log(s) cleared, workspace files rebuilt")
+
+
+@pod_app.command("reset")
+def cmd_reset(
+    member: str = typer.Argument(..., help="Member id, e.g. demo-implementer"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Distill a member's memory, then clear it and rebuild its workspace files.
+
+    Example: docket pod reset demo-implementer"""
+    reset_member(_pod_name(pod_name), member, yes=yes)
+    _contract.next_step("docket pod show")
+
+
+def _delete_pod(project: str, members: list[str]) -> int:
+    """Tear down every member of a pod, its resources, history and bindings."""
+    from docket.core import conversations as _conv
+
+    for mid in members:
+        if _fleet.get_binding(mid):
+            _fleet.remove_binding(mid)
+        _conv.remove_agent_durable(mid)
+        ok, msg = teardown_member(mid)
+        if ok:
+            ui.success(f"Removed {mid}")
+            if msg:
+                ui.dim(f"  {msg}")
+        else:
+            ui.warn(f"{mid}: fleet deregistration reported: {msg} (workspace cleaned)")
+    free_pod_resources(project)
+    purge_pod_history(project, members)
+    audit_log("pod.delete", f"{project} pod ({len(members)} members)")
+    ui.success(f"Pod '{project}' deleted")
+    return 0
+
+
+@pod_app.command("delete")
+def cmd_delete(
+    confirm: str | None = typer.Option(None, "--confirm", help="The pod name, to confirm"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Destroy the pod: every member, workspace, session and trace. The audit log stays.
+
+    Example: docket pod delete --confirm demo"""
+    project = _pod_name(pod_name)
+    members = pod_member_ids(project)
+    if not members:
+        if _cfg.workspace_dir(project).is_dir():
+            ui.error(f"'{project}' is a member id, not a pod", "Pass the pod name with --pod")
+        else:
+            ui.error(f"No pod named '{project}'", "See: docket status --all")
+        raise typer.Exit(1)
+    if confirm is not None and confirm != project:
+        ui.error(f"--confirm must be the pod name '{project}'", f"Re-run with --confirm {project}")
+        raise typer.Exit(1)
+    ui.header("pod", project)
+    for mid in members:
+        ui.dim(f"  {mid} ({_fleet.meta_get(mid, 'role', '?')})")
+    ui.warn(
+        "This removes every member's workspace, session history and traces; the audit log stays"
+    )
+    if not _contract.confirm(
+        f"Delete pod {project} ({len(members)} members)", yes=confirm == project, typed=project
+    ):
+        ui.warn("Aborted.")
+        raise typer.Exit(1)
+    _delete_pod(project, members)
+    _contract.next_step("docket init")
 
 
 def _regenerate_member_tools(member_id: str, project: str) -> None:
     """Rewrite TOOLS.md for an existing Implementer after a meta change (e.g.
-    set-verify). No-op for non-implementers, and for members with no allocated
+    a verify change). No-op for non-implementers, and for members with no allocated
     resources and no verify command (nothing to render)."""
     role = _fleet.meta_get(member_id, "role", "")
     if role != "implementer":
@@ -416,125 +569,136 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     (ws / "TOOLS.md").write_text(content, encoding="utf-8")
 
 
-def _pod_set_verify(project: str, extra: list[str]) -> None:
-    """Set the verify command on an existing Implementer and rewrite TOOLS.md. The
-    command is validated (no NUL/newline, length-capped — ``_validate_verify_cmd``)
-    and audit-logged; docket still runs it with ``shell=True`` once stored."""
-    if len(extra) < 2:
-        ui.error('Usage: docket pod <project> set-verify <member-id> "<cmd>"')
-        raise typer.Exit(1)
-    member_id, *cmd_parts = extra
-    verify_cmd = " ".join(cmd_parts)
-    if pod.parse_member_id(member_id, project) is None:
-        ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
-        raise typer.Exit(1)
-    role = _fleet.meta_get(member_id, "role", "")
-    if role != "implementer":
-        ui.error(
-            f"'{member_id}' is a {role or 'unknown role'} — verifyCmd only applies to implementers."
-        )
-        raise typer.Exit(1)
+def _set_member_verify(project: str, member_id: str, command: str) -> None:
+    """Set an implementer's verify command (validated, audited) and re-render its TOOLS.md."""
+    _implementer_member(project, member_id)
     try:
-        verify_cmd = _validate_verify_cmd(verify_cmd)
+        command = _validate_verify_cmd(command)
     except VerifyCmdError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    _fleet.meta_set(member_id, "verifyCmd", verify_cmd)
+    _fleet.meta_set(member_id, "verifyCmd", command)
     _regenerate_member_tools(member_id, project)
-    audit_log("pod.set-verify", f"member={member_id} cmd={verify_cmd!r}")
-    ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")
+    audit_log("pod.set-verify", f"member={member_id} cmd={command!r}")
+    ui.success(f"Set verify command for {member_id}: {command!r}")
 
 
-def _pod_config(project: str, extra: list[str]) -> None:
-    """``docket pod <project> config [get|set <key> <value>|unset <key>] [--json]``.
-    Reads/writes the Lead's typed dispatch settings (``core.pod.PodSettings``)
-    through the existing meta writer; every write is audited as ``pod.config``."""
-    json_out = "--json" in extra
-    rest = [a for a in extra if a != "--json"]
-    action = rest[0] if rest else "get"
+def _unset_member_verify(project: str, member_id: str) -> None:
+    _implementer_member(project, member_id)
+    raw = store.read_json(_cfg.meta_path(member_id))
+    raw.pop("verifyCmd", None)
+    store.write_json(_cfg.meta_path(member_id), raw)
+    _regenerate_member_tools(member_id, project)
+    audit_log("pod.unset-verify", f"member={member_id}")
+    ui.success(f"Cleared the verify command for {member_id}")
 
+
+def _lead_for_settings(project: str) -> str:
+    """The Lead's member id, after checking the pod exists and has one."""
     try:
-        _dispatch.pod_pipeline(project)  # validates the pod exists and has a Lead
+        _dispatch.pod_pipeline(project)
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    lead_id = pod.member_id(project, "lead")
+    return pod.member_id(project, "lead")
 
-    if action == "get":
-        if len(rest) > 1:
-            ui.error("Usage: docket pod <project> config [get] [--json]")
+
+def _budget_changed(project: str, lead_id: str, *, cap_removed: bool) -> None:
+    """A new budget re-queues the pod's budget-blocked tasks and lifts an auto-pause."""
+    unblocked = _dispatch.unblock_pod(project)
+    if unblocked:
+        ui.info(f"Unblocked {unblocked} budget-blocked task(s)")
+    if not cap_removed:
+        _fleet.meta_set(lead_id, "paused", False)
+        _fleet.meta_set(lead_id, "pausedReason", "")
+
+
+def set_setting(project: str, key: str, value: str, *, member: str | None = None) -> None:
+    """Set one pod setting, or with ``member`` an implementer's verify command."""
+    if key == "verify" or member is not None:
+        if key != "verify":
+            ui.error(
+                "--member applies only to verify", "Example: docket pod set verify 'make test'"
+            )
             raise typer.Exit(1)
-        try:
-            settings = pod.PodSettings.load_for(project)
-        except pod.PodSettingsError as ex:
-            ui.error(str(ex))
-            raise typer.Exit(1) from ex
-        rows = [(k, *settings.value_and_source(k, project)) for k in pod.PodSettings.KEYS]
-        if json_out:
-            print(_json.dumps({k: {"value": v, "source": s} for k, v, s in rows}, indent=2))
-        else:
-            table = Table(title=f"Pod config — {project}")
-            table.add_column("KEY", style="bold")
-            table.add_column("VALUE")
-            table.add_column("SOURCE", style="dim")
-            for k, v, s in rows:
-                table.add_row(k, str(v), s)
-            ui.console.print(table)
+        if member is None:
+            ui.error("verify belongs to one member", "Pass --member <id>")
+            raise typer.Exit(1)
+        _set_member_verify(project, member, value)
         return
-
-    if action == "set":
-        if len(rest) != 3:
-            ui.error("Usage: docket pod <project> config set <key> <value>")
-            raise typer.Exit(1)
-        _, key, value = rest
-        if key == "pipeline":
-            _pod_config_set_pipeline(project, lead_id, value)
-            return
-        if key == "schedule":
-            _pod_config_set_schedule(project, lead_id, value)
-            return
-        if key in pod.PodSettings.RECORDED_KEYS:
-            ui.error(f"{key} is written by apply, not by config set")
-            raise typer.Exit(1)
-        try:
-            coerced = pod.PodSettings.coerce(key, value, project=project)
-        except pod.PodSettingsError as ex:
-            ui.error(str(ex))
-            raise typer.Exit(1) from ex
-        _fleet.meta_set(lead_id, key, coerced)
-        audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
-        ui.success(f"Set {key}={coerced} for pod '{project}'.")
+    lead_id = _lead_for_settings(project)
+    if key == "pipeline":
+        _pod_config_set_pipeline(project, lead_id, value)
         return
-
-    if action == "unset":
-        if len(rest) != 2:
-            ui.error("Usage: docket pod <project> config unset <key>")
-            raise typer.Exit(1)
-        _, key = rest
-        if key not in pod.PodSettings.KEYS:
-            ui.error(f"unknown pod setting {key!r}; valid keys: {', '.join(pod.PodSettings.KEYS)}")
-            raise typer.Exit(1)
-        # None round-trips through AgentMeta's typed fields and reads back
-        # exactly like an absent key -- the writer's only way to clear one.
-        _fleet.meta_set(lead_id, key, None)
-        if key == "pipeline":
-            # Best-effort: the meta hash is already cleared (the part that
-            # matters -- effective_pipeline falls back the moment it reads
-            # no pipeline set), so a failed cleanup here never blocks unset.
-            with contextlib.suppress(OSError):
-                pod.bound_pipeline_path(project).unlink()
-        if key == "schedule":
-            # Not best-effort: docket-schedules.json, not the meta key just cleared
-            # above, is what the serve sweep actually reads (see
-            # `_pod_config_set_schedule`), so this call must succeed for "unset"
-            # to really stop the schedule from firing.
-            _sched.unset_schedule(_cfg.SCHEDULE_FILE, project)
-        audit_log("pod.config", f"project={project} action=unset key={key}")
-        ui.success(f"Unset {key} for pod '{project}' — falls back to its default.")
+    if key == "schedule":
+        _pod_config_set_schedule(project, lead_id, value)
         return
+    if key in pod.PodSettings.RECORDED_KEYS:
+        ui.error(f"{key} is written by apply, not by set")
+        raise typer.Exit(1)
+    try:
+        coerced = pod.PodSettings.coerce(key, value, project=project)
+    except pod.PodSettingsError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    _fleet.meta_set(lead_id, key, coerced)
+    audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
+    ui.success(f"Set {key}={coerced} for pod '{project}'")
+    if key == "budgetUsd":
+        _budget_changed(project, lead_id, cap_removed=not coerced)
 
-    ui.error(f"Unknown pod config action {action!r}. Use: get | set <key> <value> | unset <key>.")
-    raise typer.Exit(1)
+
+def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
+    """Clear one pod setting back to its default, or with ``member`` a verify command."""
+    if key == "verify" or member is not None:
+        if key != "verify" or member is None:
+            ui.error("--member goes with verify", "Example: docket pod unset verify --member <id>")
+            raise typer.Exit(1)
+        _unset_member_verify(project, member)
+        return
+    lead_id = _lead_for_settings(project)
+    if key not in pod.PodSettings.KEYS:
+        ui.error(f"unknown pod setting {key!r}", f"Valid keys: {', '.join(pod.PodSettings.KEYS)}")
+        raise typer.Exit(1)
+    # None reads back exactly like an absent key: the writer's only way to clear one.
+    _fleet.meta_set(lead_id, key, None)
+    if key == "pipeline":
+        with contextlib.suppress(OSError):
+            pod.bound_pipeline_path(project).unlink()
+    if key == "schedule":
+        # docket-schedules.json, not the meta key cleared above, is what the serve sweep reads.
+        _sched.unset_schedule(_cfg.SCHEDULE_FILE, project)
+    audit_log("pod.config", f"project={project} action=unset key={key}")
+    ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
+    if key == "budgetUsd":
+        _budget_changed(project, lead_id, cap_removed=True)
+
+
+@pod_app.command("set")
+def cmd_set(
+    key: str = typer.Argument(..., help="A pod setting (see docket pod show), or verify"),
+    value: str = typer.Argument(..., help="The new value"),
+    member: str | None = typer.Option(None, "--member", help="Member id, for verify"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Set a pod setting; with --member, set an implementer's verify command.
+
+    Example: docket pod set budgetUsd 5"""
+    set_setting(_pod_name(pod_name), key, value, member=member)
+    _contract.next_step("docket pod show")
+
+
+@pod_app.command("unset")
+def cmd_unset(
+    key: str = typer.Argument(..., help="A pod setting (see docket pod show), or verify"),
+    member: str | None = typer.Option(None, "--member", help="Member id, for verify"),
+    pod_name: str | None = pod_option(),
+) -> None:
+    """Clear a pod setting back to its default; with --member, clear a verify command.
+
+    Example: docket pod unset verify --member demo-implementer"""
+    unset_setting(_pod_name(pod_name), key, member=member)
+    _contract.next_step("docket pod show")
 
 
 def _pod_sync(project: str, extra: list[str]) -> None:
@@ -694,7 +858,7 @@ def _pod_export_cmd(project: str, extra: list[str]) -> None:
 # operator's original path, which can drift or disappear -- core/dispatch.py's
 # effective_pipeline verifies the copy against this hash on every read.
 def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
-    """``docket pod <project> config set pipeline <file>``: validate *path_str* and
+    """``docket pod set pipeline <file>``: validate *path_str* and
     plan it against the pod's real roster before binding it."""
     path = Path(path_str)
     if not path.is_file():
@@ -737,7 +901,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
 # copy exists only so `config get`/`list` can report it through the same generic
 # `PodSettings.value_and_source` every other setting uses, instead of a bespoke display path.
 def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
-    """``docket pod <project> config set schedule <spec>``: validate *spec*, persist it as
+    """``docket pod set schedule <spec>``: validate *spec*, persist it as
     this pod's writer into ``docket-schedules.json``, and mirror it into the Lead's meta
     for display."""
     try:
@@ -755,478 +919,3 @@ def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:
     _fleet.meta_set(lead_id, "schedule", coerced)
     audit_log("pod.config", f"project={project} action=set key=schedule value={coerced!r}")
     ui.success(f"Set schedule={coerced} for pod '{project}'.")
-
-
-def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
-    """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]``.
-    ``--verify`` (Implementer only; warned-and-ignored otherwise) sets the mechanical
-    verification gate `dispatch.py` runs after the new member's hop."""
-    role: str | None = None
-    count = 1
-    verify_cmd = ""
-    i = 0
-    while i < len(extra):
-        tok = extra[i]
-        if tok in ("--count", "-n") and i + 1 < len(extra):
-            with_val = extra[i + 1]
-            count = int(with_val) if with_val.isdigit() else 1
-            i += 2
-            continue
-        if tok == "--verify" and i + 1 < len(extra):
-            verify_cmd = extra[i + 1]
-            i += 2
-            continue
-        if tok.startswith("--verify="):
-            verify_cmd = tok[len("--verify=") :]
-            i += 1
-            continue
-        if role is None:
-            role = tok
-        i += 1
-    return role, count, verify_cmd
-
-
-def cmd_add(ctx: typer.Context) -> None:
-    """Add role agents to an existing project pod. Never creates a project.
-
-    Pod inferred from the current directory, or given explicitly with
-    `--project <pod>` when running outside the project's configured
-    `codebase`/`workDir`. Docket chooses the most-specific registered pod
-    containing the cwd and fails clearly when there is no match or the result
-    is ambiguous.
-
-    Flags (parsed from the extra CLI args, not fixed Typer options):
-      --project <pod>     explicit pod, instead of directory inference
-      --count N           add N indexed copies of the role
-      --verify "<cmd>"    set the new Implementer's mechanical verify gate"""
-    from docket.cli._agents import run_add
-
-    raise typer.Exit(run_add(list(ctx.args)))
-
-
-def cmd_info(
-    agent_id: str | None = typer.Argument(None),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Detailed status of one agent.
-
-    Shows identity, codebase/stack, model and its source, session/project
-    keys, creation time, workspace path, and Telegram binding for one agent --
-    pulled from `.docket-meta.json`. With no agent id given, shows a numbered
-    picker."""
-    from docket.cli._agents import run_info
-
-    raise typer.Exit(run_info(agent_id, json_out))
-
-
-def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
-    """Remove a project agent or a whole pod, and optionally its workspace.
-
-    Given a pod id, lists every member and (in an interactive terminal)
-    requires typing the exact pod id to confirm, then removes every member's
-    registration, binding, conversation-registry entry, workspace/worktree,
-    pod runtime directory, durable session history, and traces. The global
-    audit record is preserved. Given a legacy flat agent id, separately asks
-    whether to also remove its workspace.
-
-    Cannot be undone -- back up first if unsure. A deleted
-    member's git worktree is removed, but its dedicated branch remains in the
-    source repository so committed code is not silently destroyed; remove
-    that branch separately after reviewing it."""
-    from docket.cli._agents import run_delete
-
-    raise typer.Exit(run_delete(agent_id))
-
-
-def _delete_pod(project: str, members: list[str]) -> int:
-    """Tear down every member of a pod. Kept here, not ``cli/_agents.py``, because
-    ``tests/integration/test_pod_provisioning.py`` calls it directly as
-    ``docket.cli._delete_pod`` -- moving it would be a rename, not an extraction."""
-    from docket.cli import _pod
-
-    ui.header(f"Delete pod: {project}  ({len(members)} members)")
-    ui.console.print()
-    for mid in members:
-        role = _fleet.meta_get(mid, "role", "?")
-        ui.console.print(f"  - {mid}  ({role})")
-    ui.console.print()
-    ui.warn(
-        "This removes every member's registration, binding, workspace, runtime, session history, "
-        "and traces. The audit record is preserved."
-    )
-    ui.console.print()
-
-    if sys.stdin.isatty():
-        confirm = input(f"Type the pod id to confirm deletion [{project}]: ").strip()
-        if confirm != project:
-            ui.warn("Aborted.")
-            return 0
-
-    from docket.core import conversations as _conv
-
-    for mid in members:
-        if _fleet.get_binding(mid):
-            _fleet.remove_binding(mid)
-        _conv.remove_agent_durable(mid)
-        ok, msg = _pod.teardown_member(mid)
-        if ok:
-            ui.success(f"Removed {mid}")
-            if msg:
-                ui.dim(f"  {msg}")
-        else:
-            ui.warn(f"{mid}: fleet deregistration reported: {msg} (workspace cleaned)")
-    # Free pod runtime resources (port range + scratch dir) after all members gone.
-    _pod.free_pod_resources(project)
-    _pod.purge_pod_history(project, members)
-
-    audit_log("agent.delete", f"{project} pod ({len(members)} members)")
-    ui.success(f"Pod '{project}' deleted.")
-    return 0
-
-
-def cmd_maintain(
-    ctx: typer.Context,
-    agent_id: str | None = typer.Argument(None),
-    mode: str | None = typer.Argument(None),
-) -> None:
-    """Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill).
-
-    Subcommands:
-      check (default)  health check and auto-fix -- permissions (700/600),
-                        missing workspace files, session-key sync between
-                        `.docket-meta.json` and SOUL.md, memory directory,
-                        and a per-turn context-footprint estimate (warns if
-                        SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together exceed
-                        the configured token budget)
-      clean             clear memory logs only (`memory/*.md`) -- distills
-                        first by default (see below)
-      reset             clear memory + MEMORY.md + HEARTBEAT.md -- distills
-                        first by default
-      rebuild           deep rebuild -- regenerate SOUL.md, AGENTS.md,
-                        TOOLS.md from `.docket-meta.json`. Refuses a pod
-                        member outright (its files are pod-provisioning's,
-                        not this command's); never touches memory/
-      sessions          report per-session message counts, on-disk size,
-                        and last-active time for this agent -- sizes only,
-                        no trimming or archiving
-      distill           summarize `memory/*.md` into MEMORY.md via one
-                        driver-backed turn, then archive the originals under
-                        `memory/<archive-dir>/`
-
-    `--no-distill-first` (clean/reset only) skips the automatic pre-delete
-    distillation and deletes/clears memory undistilled.
-
-    Memory is never bare-deleted: before clean deletes `memory/*.md`, or reset
-    clears memory + HEARTBEAT.md, docket runs one driver-backed turn that
-    summarizes pending logs into MEMORY.md and archives the originals -- the
-    same work `distill` does standalone. A failed distillation aborts the
-    delete outright; nothing is touched. `failure_kind` (`timeout`,
-    `daemon_error`, `invalid_output`) tells you whether to just retry or
-    whether the model's output needs a closer look (`daemon_error` means the
-    turn didn't complete cleanly). When a reset runs a real distillation, MEMORY.md is
-    left freshly distilled rather than immediately cleared again in the same
-    breath.
-
-    Preserves identity (`.docket-meta.json`, fleet registration). clean/
-    reset/rebuild prompt for confirmation and require a TTY -- a
-    non-interactive call is cancelled, not silently applied."""
-    from docket.cli._agents import run_maintain
-
-    raise typer.Exit(run_maintain(agent_id, mode, list(ctx.args)))
-
-
-def cmd_profile(
-    agent_id: str | None = typer.Argument(None),
-    model: str | None = typer.Argument(None),
-    budget: str | None = typer.Option(None, "--budget", help="USD cap (0 = remove)"),
-    resume: bool = typer.Option(
-        False, "--resume", help="Clear an auto-pause (e.g. a reached budget cap)"
-    ),
-) -> None:
-    """Pin or unpin an agent's model; set a budget cap; resume from auto-pause.
-
-    Every agent follows its role's policy model by default
-    (`modelSource: policy`). Pinning (`modelSource: pinned`) detaches it --
-    policy and preset changes will no longer touch it.
-
-    With no model argument, shows the current model, role, source, and
-    budget. A `provider/model` argument pins it; `default` re-attaches it to
-    the role policy. `--budget <USD>` sets a per-agent spend cap (0 = none).
-    `--resume` clears an auto-pause (e.g. a reached budget cap) -- when the
-    target is a pod's Lead it also un-blocks that pod's blocked tasks so
-    dispatch can claim them again, and writes a `profile.resume` audit entry.
-    A model argument must be a full `provider/model` id; `docket models`
-    shows and sets the role policy."""
-    if agent_id is None:
-        if not sys.stdin.isatty():
-            ui.error("An agent id is required.")
-            raise typer.Exit(1)
-        agent_id = _pick_agent("Set model for")
-
-    aid: str = agent_id
-    ws = _cfg.workspace_dir(aid)
-    if not ws.is_dir():
-        ui.error(f"Agent '{aid}' not found.")
-        raise typer.Exit(1)
-
-    if resume:
-        # The only writer that CLEARS an auto-pause (`core/dispatch.py`'s
-        # `_pause_lead_for_budget` is the only one that SETS it). Mirrors the
-        # `--budget` branch below: if the resumed agent is a pod's Lead, also
-        # unblock its budget-blocked tasks — a pause with no way to un-stick
-        # the tasks that queued up behind it would be a no-op resume.
-        _fleet.meta_set(aid, "paused", False)
-        _fleet.meta_set(aid, "pausedReason", "")
-        audit_log("profile.resume", f"agent={aid}")
-        pod_project = _pod_core.pod_of(aid)
-        if pod_project is not None and _pod_core.member_id(pod_project, "lead") == aid:
-            unblocked = _dispatch.unblock_pod(pod_project)
-            if unblocked:
-                ui.info(f"  Unblocked {unblocked} budget-blocked task(s) in pod '{pod_project}'.")
-        ui.success(f"Resumed '{aid}' — auto-pause cleared.")
-        if budget is None and model is None:
-            return
-
-    if budget is not None:
-        try:
-            bval = float(budget)
-            if bval < 0:
-                raise ValueError
-        except ValueError:
-            ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
-            raise typer.Exit(1) from None
-        _fleet.meta_set(aid, "budgetUsd", bval)
-        audit_log("profile.budget", f"{aid}=${budget}")
-        # A pod-wide budget change is one of the two sanctioned ways a
-        # budget-`blocked` task re-enters `pending` (the other is an explicit
-        # `docket pod <p> queue --retry <task-id>`) — a blocked task never
-        # retries on its own. Only the Lead owns the pod's cap (dispatch.pod_budget
-        # reads the Lead's budgetUsd), so only changing the Lead's budget unblocks.
-        pod_project = _pod_core.pod_of(aid)
-        if pod_project is not None and _pod_core.member_id(pod_project, "lead") == aid:
-            unblocked = _dispatch.unblock_pod(pod_project)
-            if unblocked:
-                ui.info(f"  Unblocked {unblocked} budget-blocked task(s) in pod '{pod_project}'.")
-        if budget != "0":
-            _fleet.meta_set(aid, "paused", False)
-            _fleet.meta_set(aid, "pausedReason", "")
-            ui.success(f"Budget cap set to ${budget} for '{aid}'.")
-        else:
-            ui.success(f"Budget cap removed for '{aid}'.")
-        if model is None:
-            return  # budget-only change, nothing more to do
-
-    name = _fleet.meta_get(aid, "name", aid)
-    current = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
-    role = _mp.agent_role(aid)
-    src = _mp.agent_model_source(aid)
-    bud = _fleet.meta_get(aid, "budgetUsd", "")
-
-    if model is None:
-        role_models, _, _ = _mp.load_registry()
-        policy_model = _mp.resolve_role_model(
-            role, role_models, project=_pod_core.pod_of(aid) or ""
-        )
-        ui.header(f"Model: {name} ({aid})")
-        ui.console.print()
-        ui.console.print(f"  [bold]{'Current model:':<18}[/bold] {current}")
-        ui.console.print(f"  [bold]{'Role:':<18}[/bold] {role}  [dim]({_mp.role_why(role)})[/dim]")
-        if src == "policy":
-            ui.console.print(
-                f"  [bold]{'Source:':<18}[/bold] policy — follows the role's model (docket models)"
-            )
-        else:
-            ui.console.print(
-                f"  [bold]{'Source:':<18}[/bold] pinned — unaffected by policy changes"
-            )
-        if bud and bud != "0":
-            ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] ${float(bud):.2f}")
-        else:
-            ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] none")
-        ui.console.print()
-        ui.console.print(f"  [bold]Policy for role '{role}':[/bold] {policy_model}")
-        ui.console.print()
-        ui.console.print(f"  docket profile {aid} <provider/model>   # pin this agent")
-        ui.console.print(f"  docket profile {aid} default            # follow role policy")
-        ui.console.print(f"  docket profile {aid} --budget <USD>     # spending cap (0=none)")
-        ui.console.print("  docket models                         # view/change role policy")
-        ui.console.print()
-        return
-
-    if model == "default":
-        role_models, _, _ = _mp.load_registry()
-        new_model = _mp.resolve_role_model(role, role_models, project=_pod_core.pod_of(aid) or "")
-        new_src = "policy"
-    else:
-        try:
-            new_model, warnings = _mp.validate_model(model)
-        except ValueError as exc:
-            ui.error(str(exc))
-            raise typer.Exit(1) from None
-        for w in warnings:
-            ui.warn(w)
-        new_src = "pinned"
-
-    if new_model == current and new_src == src:
-        ui.warn(f"Already using {new_model} ({new_src}). No change.")
-        return
-
-    _fleet.set_model_both(aid, new_model)
-    _fleet.meta_set(aid, "modelSource", new_src)
-    audit_log("profile.model", f"{aid}={new_model} ({new_src})")
-
-    if new_src == "policy":
-        ui.success(f"Model: {current} → {new_model} (follows role policy '{role}')")
-    else:
-        ui.success(f"Model pinned: {current} → {new_model}")
-
-
-def cmd_pod(
-    ctx: typer.Context,
-    project: str = typer.Argument(..., help="Project (pod) id"),
-    sub: str | None = typer.Argument(
-        None,
-        help=(
-            "list | add <role> [--verify CMD] | remove <member-id> | "
-            "set-verify <member-id> CMD | config [get|set <key> <value>|unset <key>] | "
-            "sync [--dry-run] | apply [<name|dir>] [--dry-run] [--json] | "
-            "export [<dir>] [--force]"
-        ),
-    ),
-) -> None:
-    """Manage a project's pod: list members, add/remove a role, set an
-    implementer's verify command, and run its dispatch pipeline.
-
-    A pod is the isolated team of project-scoped agents created by
-    `docket init`; `pod <project> add <role>` extends an existing one. Every
-    member has its own permission-locked workspace, so no role is ever
-    shared between projects. See docs/AGENT-TEAMS.md.
-
-    Subcommands:
-      list (default)   show the pod's members and their roles
-      add <role>       [--count N|-n N] [--verify "<cmd>"]. Role is validated
-                        against the open role-archetype registry
-                        (`docket roles`), not a hardcoded
-                        implementer|reviewer|tester list -- a blueprint role
-                        or any user-defined archetype works too. The Lead
-                        is unique and cannot be added this way. Duplicated
-                        roles get `-2`, `-3` ids. `--count`/`-n` adds several
-                        at once. `--verify "<cmd>"` sets the mechanical
-                        verification gate dispatch runs after that member's
-                        hop -- written into the new member's
-                        `.docket-meta.json` (`verifyCmd`) and documented in
-                        its TOOLS.md; passing it for a non-implementer role
-                        is silently ignored with a warning, since only an
-                        Implementer hop is verify-gated. A new member
-                        inherits the pod's workspaceKind/workDir/blueprint
-                        from its existing members.
-      remove <id>      remove one member by id
-      set-verify <id> "<cmd>"
-                       set (or change) the verify command on an existing
-                        Implementer -- the only public way to do this short
-                        of the internal debug command. Rewrites the member's
-                        TOOLS.md. Validated (no NUL/newline, length-capped)
-                        and audit-logged (`pod.set-verify`); runs at dispatch
-                        time in the Implementer's git worktree when one
-                        exists, falling back to the pod's shared codebase
-                        root, then the member's own workspace dir.
-      config           [get|set <key> <value>|unset <key>] [--json]. Typed,
-                        validated dispatch settings on the pod's Lead
-                        (`core.pod.PodSettings`): `budgetUsd`, `maxReworkCycles`,
-                        `turnTimeoutS`, `verifyTimeoutS`. `get` (default) shows
-                        each key's effective value and whether it is `set` or
-                        `default`; `--json` emits the same as a bare object --
-                        see cli-json-shapes.spec.md. `set` validates before
-                        writing (an invalid value exits 1, nothing persisted)
-                        and audit-logs `pod.config`; `unset` removes an
-                        override, falling back to the built-in default. A
-                        stored value that fails validation (e.g. a hand-edited
-                        `.docket-meta.json`) refuses `config get` and
-                        `dispatch` alike, naming the key, instead of silently
-                        substituting the default.
-      delegate <task>  [--priority high|normal|low]. Queue a task on the
-                        pod's task queue (in the Lead's workspace). Priority
-                        defaults to normal. The description is capped at 500
-                        characters. Queues only -- run it with `dispatch`.
-      queue            [--retry <task-id>]. Show the queue with per-task
-                        status (pending/running/done/failed/blocked) and
-                        estimated cost. `--retry` moves one blocked task back
-                        to pending -- the explicit, single-task way around a
-                        reached budget cap (`docket profile <lead-id>
-                        --budget`/`--resume` un-blocks every task in the pod
-                        at once instead).
-      dispatch         [--resume] [--timeout <seconds>]. Run the pod's
-                        pending (and, with --resume, crash-recoverable) tasks
-                        through its pipeline -- one real agent turn per hop:
-                        Lead -> Implementer -> Reviewer (if present) ->
-                        Tester (if present). Only the roles the pod actually
-                        has take part. Each task is claimed under a filelock
-                        before its first hop runs, so two dispatchers can
-                        never double-run the same task, and each hop is
-                        persisted as it completes so a crash loses at most
-                        the in-flight hop. `--resume` also reclaims any task
-                        a prior dispatcher left failed with a stale claim
-                        or as `dispatch_refused` (a deterministic refusal
-                        settled mid-task), and counts a still-`running`
-                        task as work so the stale-claim sweep can judge it,
-                        continuing from its last persisted hop. `--timeout`
-                        overrides both the agent-turn timeout and the
-                        verifyCmd timeout for this run only (otherwise each
-                        falls back to the pod's own configured timeouts,
-                        then a 300s default).
-      sync             [--dry-run]. Re-render SOUL.md/AGENTS.md/TOOLS.md for
-                        every member whose managed files have drifted from
-                        the current archetype and stored metadata (a
-                        template bump, or a role's own archetype content
-                        changing). `--dry-run` prints the diff without
-                        writing; without it, each stale member is rewritten
-                        and its metadata restamped (audit-logged as
-                        `pod.sync`). `INSTRUCTIONS.md` is operator-owned and
-                        is never read, written, or diffed by this command --
-                        an already-current pod changes nothing.
-      apply [<name|dir>]  [--dry-run] [--json]. Apply a recipe/manifest
-                        directory (role YAML, `pipeline.yaml`, and a small
-                        `pod.yaml` naming `members`/`settings`/`pipeline`) to
-                        this pod in one command, composing the same writers
-                        `roles add`/`add <role>`/`config set pipeline`/
-                        `config set <key> <value>` already use. A directory
-                        path if one exists there, else a shipped recipe name
-                        (`docket recipes list`) as
-                        `init --recipe` resolves it; default `<codebase>/.docket`. Validates
-                        everything -- roles, the roster the pipeline would
-                        resolve against once `members` join, and every
-                        setting -- before writing anything; an invalid
-                        manifest exits 1 naming the problem with nothing
-                        written. Idempotent: applying the same directory
-                        twice plans every item `skip` the second time and
-                        writes nothing. `--dry-run` prints the plan without
-                        writing. Audit-logged once as `pod.apply`, only when
-                        something actually changed.
-      export [<dir>]   [--force]. Write this pod's own scope -- pod-overlay
-                        `roles/*.yaml`, this pod's own `policies/*`, a
-                        bound `pipeline.yaml` copy (if any), and a `pod.yaml`
-                        naming non-Lead `members` and every non-default
-                        `setting` -- into `<dir>`, the same shape `apply`
-                        reads back. `<dir>` defaults to `<codebase>/.docket`,
-                        like `apply`. Global scope (the operator's own role
-                        overlay, fleet-wide policies, other pods) is never
-                        exported. Refuses a non-empty `<dir>` unless
-                        `--force`, which overwrites any same-named file
-                        already there. Audit-logged as `pod.export`.
-
-    Dispatch guarantees: budget-gated with real auto-pause (checked before
-    each hop against the Lead's cap; over budget leaves the task blocked and
-    pauses the pod's Lead until `docket profile <project>-lead --resume`); a
-    timed-out or daemon-error hop retries in place (linear backoff, small
-    per-role budget) before failing, a real non-zero exit or bad verdict is
-    never retried; a Reviewer's REQUEST-CHANGES sends the task back to the
-    Implementer for one rework cycle (default) before a second rejection
-    fails it; a set verifyCmd runs in the Implementer's git worktree when one
-    exists; every hop/retry/gate outcome/claim/sweep event is traced
-    (`docket trace`) on a per-task session; every invocation creates a
-    queryable `docket runs` record; dispatch only ever targets the project's
-    own pod -- there is no cross-pod dispatch path. See
-    specs/functional/pod-dispatch.spec.md."""
-    from docket.cli import _pod
-
-    _pod.dispatch(project, sub, list(ctx.args))

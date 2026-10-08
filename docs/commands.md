@@ -35,8 +35,8 @@ With no arguments, docket derives the project id, path, and stack from the
 current directory (non-interactive, deterministic). Member ids are
 predictable: `<project>-lead`, `<project>-implementer`, `<project>-reviewer`,
 `<project>-tester` (duplicated roles get `-2`, `-3` suffixes). A pod
-always has exactly one Lead. Resize a pod later with `docket pod`; tear
-the whole pod down with `docket delete`.
+always has exactly one Lead. Resize a pod later with `docket pod add|remove`; tear
+the whole pod down with `docket pod delete`.
 
 Flags (parsed from the extra CLI args, not fixed Typer options):
   --pod full            provision Lead, Implementer, Reviewer, and Tester.
@@ -92,7 +92,7 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          `description`, `projectKey`, `budgetUsd`,
                          `telegram`); an entry with no `blueprint`
                          provisions a single flat agent the same shape
-                         `docket add` always has (fields: `name`,
+                         `docket init` always has (fields: `name`,
                          `codebase`, `stack`, `model`, `description`,
                          `telegram`, `budgetUsd`, `projectKey`). Mutually
                          exclusive with every other flag/prompt. An entry
@@ -131,26 +131,6 @@ re-prompted); the project name is suggested from that directory's name.
 
 ---
 
-### add
-
-**Usage:** `docket add`
-
-Add role agents to an existing project pod. Never creates a project.
-
-Pod inferred from the current directory, or given explicitly with
-`--project <pod>` when running outside the project's configured
-`codebase`/`workDir`. Docket chooses the most-specific registered pod
-containing the cwd and fails clearly when there is no match or the result
-is ambiguous.
-
-Flags (parsed from the extra CLI args, not fixed Typer options):
-  --project <pod>     explicit pod, instead of directory inference
-  --count N           add N indexed copies of the role
-  --verify "<cmd>"    set the new Implementer's mechanical verify gate
-
-
----
-
 ### status
 
 **Usage:** `docket status`
@@ -180,229 +160,71 @@ Example: docket run --dry-run
 
 ---
 
-### info
-
-**Usage:** `docket info`
-
-Detailed status of one agent.
-
-Shows identity, codebase/stack, model and its source, session/project
-keys, creation time, workspace path, and Telegram binding for one agent --
-pulled from `.docket-meta.json`. With no agent id given, shows a numbered
-picker.
-
-
----
-
-### delete
-
-**Usage:** `docket delete`
-
-Remove a project agent or a whole pod, and optionally its workspace.
-
-Given a pod id, lists every member and (in an interactive terminal)
-requires typing the exact pod id to confirm, then removes every member's
-registration, binding, conversation-registry entry, workspace/worktree,
-pod runtime directory, durable session history, and traces. The global
-audit record is preserved. Given a legacy flat agent id, separately asks
-whether to also remove its workspace.
-
-Cannot be undone -- back up first if unsure. A deleted
-member's git worktree is removed, but its dedicated branch remains in the
-source repository so committed code is not silently destroyed; remove
-that branch separately after reviewing it.
-
-
----
-
-### maintain
-
-**Usage:** `docket maintain`
-
-Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill).
-
-Subcommands:
-  check (default)  health check and auto-fix -- permissions (700/600),
-                    missing workspace files, session-key sync between
-                    `.docket-meta.json` and SOUL.md, memory directory,
-                    and a per-turn context-footprint estimate (warns if
-                    SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together exceed
-                    the configured token budget)
-  clean             clear memory logs only (`memory/*.md`) -- distills
-                    first by default (see below)
-  reset             clear memory + MEMORY.md + HEARTBEAT.md -- distills
-                    first by default
-  rebuild           deep rebuild -- regenerate SOUL.md, AGENTS.md,
-                    TOOLS.md from `.docket-meta.json`. Refuses a pod
-                    member outright (its files are pod-provisioning's,
-                    not this command's); never touches memory/
-  sessions          report per-session message counts, on-disk size,
-                    and last-active time for this agent -- sizes only,
-                    no trimming or archiving
-  distill           summarize `memory/*.md` into MEMORY.md via one
-                    driver-backed turn, then archive the originals under
-                    `memory/<archive-dir>/`
-
-`--no-distill-first` (clean/reset only) skips the automatic pre-delete
-distillation and deletes/clears memory undistilled.
-
-Memory is never bare-deleted: before clean deletes `memory/*.md`, or reset
-clears memory + HEARTBEAT.md, docket runs one driver-backed turn that
-summarizes pending logs into MEMORY.md and archives the originals -- the
-same work `distill` does standalone. A failed distillation aborts the
-delete outright; nothing is touched. `failure_kind` (`timeout`,
-`daemon_error`, `invalid_output`) tells you whether to just retry or
-whether the model's output needs a closer look (`daemon_error` means the
-turn didn't complete cleanly). When a reset runs a real distillation, MEMORY.md is
-left freshly distilled rather than immediately cleared again in the same
-breath.
-
-Preserves identity (`.docket-meta.json`, fleet registration). clean/
-reset/rebuild prompt for confirmation and require a TTY -- a
-non-interactive call is cancelled, not silently applied.
-
-
----
-
 ## Pod Coordination
 
 ### pod
 
 **Usage:** `docket pod`
 
-Manage a project's pod: list members, add/remove a role, set an
-implementer's verify command, and run its dispatch pipeline.
+Manage this project's pod: members, settings and configuration.
 
-A pod is the isolated team of project-scoped agents created by
-`docket init`; `pod <project> add <role>` extends an existing one. Every
-member has its own permission-locked workspace, so no role is ever
-shared between projects. See docs/AGENT-TEAMS.md.
+### pod show
 
-Subcommands:
-  list (default)   show the pod's members and their roles
-  add <role>       \[--count N|-n N\] \[--verify "<cmd>"\]. Role is validated
-                    against the open role-archetype registry
-                    (`docket roles`), not a hardcoded
-                    implementer|reviewer|tester list -- a blueprint role
-                    or any user-defined archetype works too. The Lead
-                    is unique and cannot be added this way. Duplicated
-                    roles get `-2`, `-3` ids. `--count`/`-n` adds several
-                    at once. `--verify "<cmd>"` sets the mechanical
-                    verification gate dispatch runs after that member's
-                    hop -- written into the new member's
-                    `.docket-meta.json` (`verifyCmd`) and documented in
-                    its TOOLS.md; passing it for a non-implementer role
-                    is silently ignored with a warning, since only an
-                    Implementer hop is verify-gated. A new member
-                    inherits the pod's workspaceKind/workDir/blueprint
-                    from its existing members.
-  remove <id>      remove one member by id
-  set-verify <id> "<cmd>"
-                   set (or change) the verify command on an existing
-                    Implementer -- the only public way to do this short
-                    of the internal debug command. Rewrites the member's
-                    TOOLS.md. Validated (no NUL/newline, length-capped)
-                    and audit-logged (`pod.set-verify`); runs at dispatch
-                    time in the Implementer's git worktree when one
-                    exists, falling back to the pod's shared codebase
-                    root, then the member's own workspace dir.
-  config           \[get|set <key> <value>|unset <key>\] \[--json\]. Typed,
-                    validated dispatch settings on the pod's Lead
-                    (`core.pod.PodSettings`): `budgetUsd`, `maxReworkCycles`,
-                    `turnTimeoutS`, `verifyTimeoutS`. `get` (default) shows
-                    each key's effective value and whether it is `set` or
-                    `default`; `--json` emits the same as a bare object --
-                    see cli-json-shapes.spec.md. `set` validates before
-                    writing (an invalid value exits 1, nothing persisted)
-                    and audit-logs `pod.config`; `unset` removes an
-                    override, falling back to the built-in default. A
-                    stored value that fails validation (e.g. a hand-edited
-                    `.docket-meta.json`) refuses `config get` and
-                    `dispatch` alike, naming the key, instead of silently
-                    substituting the default.
-  delegate <task>  \[--priority high|normal|low\]. Queue a task on the
-                    pod's task queue (in the Lead's workspace). Priority
-                    defaults to normal. The description is capped at 500
-                    characters. Queues only -- run it with `dispatch`.
-  queue            \[--retry <task-id>\]. Show the queue with per-task
-                    status (pending/running/done/failed/blocked) and
-                    estimated cost. `--retry` moves one blocked task back
-                    to pending -- the explicit, single-task way around a
-                    reached budget cap (`docket profile <lead-id>
-                    --budget`/`--resume` un-blocks every task in the pod
-                    at once instead).
-  dispatch         \[--resume\] \[--timeout <seconds>\]. Run the pod's
-                    pending (and, with --resume, crash-recoverable) tasks
-                    through its pipeline -- one real agent turn per hop:
-                    Lead -> Implementer -> Reviewer (if present) ->
-                    Tester (if present). Only the roles the pod actually
-                    has take part. Each task is claimed under a filelock
-                    before its first hop runs, so two dispatchers can
-                    never double-run the same task, and each hop is
-                    persisted as it completes so a crash loses at most
-                    the in-flight hop. `--resume` also reclaims any task
-                    a prior dispatcher left failed with a stale claim
-                    or as `dispatch_refused` (a deterministic refusal
-                    settled mid-task), and counts a still-`running`
-                    task as work so the stale-claim sweep can judge it,
-                    continuing from its last persisted hop. `--timeout`
-                    overrides both the agent-turn timeout and the
-                    verifyCmd timeout for this run only (otherwise each
-                    falls back to the pod's own configured timeouts,
-                    then a 300s default).
-  sync             \[--dry-run\]. Re-render SOUL.md/AGENTS.md/TOOLS.md for
-                    every member whose managed files have drifted from
-                    the current archetype and stored metadata (a
-                    template bump, or a role's own archetype content
-                    changing). `--dry-run` prints the diff without
-                    writing; without it, each stale member is rewritten
-                    and its metadata restamped (audit-logged as
-                    `pod.sync`). `INSTRUCTIONS.md` is operator-owned and
-                    is never read, written, or diffed by this command --
-                    an already-current pod changes nothing.
-  apply \[<name|dir>\]  \[--dry-run\] \[--json\]. Apply a recipe/manifest
-                    directory (role YAML, `pipeline.yaml`, and a small
-                    `pod.yaml` naming `members`/`settings`/`pipeline`) to
-                    this pod in one command, composing the same writers
-                    `roles add`/`add <role>`/`config set pipeline`/
-                    `config set <key> <value>` already use. A directory
-                    path if one exists there, else a shipped recipe name
-                    (`docket recipes list`) as
-                    `init --recipe` resolves it; default `<codebase>/.docket`. Validates
-                    everything -- roles, the roster the pipeline would
-                    resolve against once `members` join, and every
-                    setting -- before writing anything; an invalid
-                    manifest exits 1 naming the problem with nothing
-                    written. Idempotent: applying the same directory
-                    twice plans every item `skip` the second time and
-                    writes nothing. `--dry-run` prints the plan without
-                    writing. Audit-logged once as `pod.apply`, only when
-                    something actually changed.
-  export \[<dir>\]   \[--force\]. Write this pod's own scope -- pod-overlay
-                    `roles/*.yaml`, this pod's own `policies/*`, a
-                    bound `pipeline.yaml` copy (if any), and a `pod.yaml`
-                    naming non-Lead `members` and every non-default
-                    `setting` -- into `<dir>`, the same shape `apply`
-                    reads back. `<dir>` defaults to `<codebase>/.docket`,
-                    like `apply`. Global scope (the operator's own role
-                    overlay, fleet-wide policies, other pods) is never
-                    exported. Refuses a non-empty `<dir>` unless
-                    `--force`, which overwrites any same-named file
-                    already there. Audit-logged as `pod.export`.
+**Usage:** `docket pod show`
 
-Dispatch guarantees: budget-gated with real auto-pause (checked before
-each hop against the Lead's cap; over budget leaves the task blocked and
-pauses the pod's Lead until `docket profile <project>-lead --resume`); a
-timed-out or daemon-error hop retries in place (linear backoff, small
-per-role budget) before failing, a real non-zero exit or bad verdict is
-never retried; a Reviewer's REQUEST-CHANGES sends the task back to the
-Implementer for one rework cycle (default) before a second rejection
-fails it; a set verifyCmd runs in the Implementer's git worktree when one
-exists; every hop/retry/gate outcome/claim/sweep event is traced
-(`docket trace`) on a per-task session; every invocation creates a
-queryable `docket runs` record; dispatch only ever targets the project's
-own pod -- there is no cross-pod dispatch path. See
-specs/functional/pod-dispatch.spec.md.
+The pod: members, settings and the approval mode dispatch will use, with sources.
+
+With a member id, that member's whole effective configuration instead.
+
+Example: docket pod show
+
+### pod add
+
+**Usage:** `docket pod add`
+
+Add members of a role to the pod.
+
+Example: docket pod add reviewer
+
+### pod remove
+
+**Usage:** `docket pod remove`
+
+Remove a member and its workspace. The Lead is removed only with the pod.
+
+Example: docket pod remove demo-reviewer
+
+### pod reset
+
+**Usage:** `docket pod reset`
+
+Distill a member's memory, then clear it and rebuild its workspace files.
+
+Example: docket pod reset demo-implementer
+
+### pod delete
+
+**Usage:** `docket pod delete`
+
+Destroy the pod: every member, workspace, session and trace. The audit log stays.
+
+Example: docket pod delete --confirm demo
+
+### pod set
+
+**Usage:** `docket pod set`
+
+Set a pod setting; with --member, set an implementer's verify command.
+
+Example: docket pod set budgetUsd 5
+
+### pod unset
+
+**Usage:** `docket pod unset`
+
+Clear a pod setting back to its default; with --member, clear a verify command.
+
+Example: docket pod unset verify --member demo-implementer
 
 
 ---
@@ -530,28 +352,6 @@ body. Installs, removes, or fetches nothing; `docket pod <p> apply`/
 ---
 
 ## Utility Commands
-
-### profile
-
-**Usage:** `docket profile`
-
-Pin or unpin an agent's model; set a budget cap; resume from auto-pause.
-
-Every agent follows its role's policy model by default
-(`modelSource: policy`). Pinning (`modelSource: pinned`) detaches it --
-policy and preset changes will no longer touch it.
-
-With no model argument, shows the current model, role, source, and
-budget. A `provider/model` argument pins it; `default` re-attaches it to
-the role policy. `--budget <USD>` sets a per-agent spend cap (0 = none).
-`--resume` clears an auto-pause (e.g. a reached budget cap) -- when the
-target is a pod's Lead it also un-blocks that pod's blocked tasks so
-dispatch can claim them again, and writes a `profile.resume` audit entry.
-A model argument must be a full `provider/model` id; `docket models`
-shows and sets the role policy.
-
-
----
 
 ### setup
 
@@ -942,32 +742,6 @@ Example: docket setup mcp remove playwright
 
 ---
 
-### config
-
-**Usage:** `docket config`
-
-Read-only inspection of an agent's effective configuration.
-
-Subcommands:
-  explain <agent-id> \[--json\]  The configuration a real dispatch turn would
-                    actually use for this agent, with the source that set
-                    each value: resolved model + endpoint (policy/pinned);
-                    the composed system prompt's sections with their bytes
-                    and fit status (full/truncated/omitted); tools after
-                    role denial, plus configured MCP servers; the
-                    guardrail policies that apply to this role; the
-                    effective pipeline and its source (bound
-                    pipeline/blueprint/built-in default); and, for a pod
-                    member, the pod's dispatch settings (budgetUsd,
-                    maxReworkCycles, turnTimeoutS, verifyTimeoutS,
-                    approvalMode, allowCommands) with each key's
-                    set/default source. Composes existing resolvers only
-                    -- writes nothing, adds no new configuration surface.
-                    See specs/data/cli-json-shapes.spec.md.
-
-
----
-
 ### start
 
 **Usage:** `docket start`
@@ -1271,7 +1045,7 @@ No command emits any other exit code today.
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
 | `APPROVALS_DIR` | Where `docket task approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
-| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
+| `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
 | `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
@@ -1296,9 +1070,9 @@ No command emits any other exit code today.
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |
 | `EXPORT_FLUSH_TIMEOUT_S` | Per-flush wall-clock bound for the background exporter sender | `5.0` |
 | `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket setup --fix` flags older agents for rebuild past a bump | `4` |
-| `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards in `docket maintain check` | `4` |
-| `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this | `6000` |
-| `DISTILL_TIMEOUT_S` | Wall-clock bound on `docket maintain distill`'s one driver-backed turn | `120` |
+| `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards behind the prompt budget | `4` |
+| `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it | `6000` |
+| `DISTILL_TIMEOUT_S` | Wall-clock bound on the one driver-backed distillation turn `docket pod reset` runs | `120` |
 | `DISTILL_MAX_INPUT_BYTES` | How much daily-log content goes into a distillation turn's prompt | `49152` (48 KiB) |
 | `DISPATCH_RETRIES_DEFAULT` | Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override | `2` |
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER`, `DISPATCH_RETRIES_TESTER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
@@ -1347,25 +1121,16 @@ There is **no** environment kill switch for the audit log — a prior `DOCKET_NO
 
 ## Tips and Tricks
 
-### Interactive Pickers
-
-If you have fzf installed, omit the agent-id for fuzzy search:
-
-```bash
-docket info      # Opens fzf picker
-docket delete    # Opens fzf picker
-```
-
 ### Batch Operations
 
 Use bash loops for batch operations:
 
 ```bash
-# Clean one agent's memory
-docket maintain "$id" clean
+# Reset every member of a pod (each distills its memory first)
+for id in $(docket pod show --json | jq -r '.members[].id'); do docket pod reset "$id" --yes; done
 
 # Cheaper models fleet-wide: change the policy once — every
-# policy-following agent updates automatically (pins are untouched)
+# agent updates automatically
 docket setup model preset openrouter-free
 ```
 

@@ -29,7 +29,6 @@ _FULL_META: dict[str, Any] = {
     "type": "repo",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
-    "modelSource": "policy",
     "stack": "Node.js",
     "codebase": "/tmp/myshop",
     "sessionKey": "agent:myshop:default",

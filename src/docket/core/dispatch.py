@@ -466,7 +466,7 @@ def _bound_pipeline(project: str, pipeline_hash: str) -> _pipeline.PipelineSpec:
     """Load this pod's bound pipeline copy, verified against *pipeline_hash*
     (the Lead's stored ``PodSettings.pipeline`` digest)."""
     path = _pod.bound_pipeline_path(project)
-    rebind_hint = f"rebind with 'docket pod {project} config set pipeline <file>'"
+    rebind_hint = f"rebind with 'docket pod set pipeline <file> --pod {project}'"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -657,7 +657,7 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
 def _pause_lead_for_budget(project: str) -> None:
     """Mark the pod's Lead paused once budget is reached, so ``_claim_next_task`` refuses
     every further claim (one write here, not a per-hop recheck) until an operator clears it
-    (``docket profile <lead-id> --resume``). Idempotent."""
+    (``docket run --resume``). Idempotent."""
     lead_id = _pod.member_id(project, "lead")
     _fleet.meta_set(lead_id, "paused", True)
     _fleet.meta_set(lead_id, "pausedReason", "budget")
@@ -3106,8 +3106,8 @@ def retry_task(project: str, task_id: str) -> bool:
 
 
 def unblock_pod(project: str) -> int:
-    """Un-block every ``blocked`` task in *project*'s queue. Wired to ``docket profile
-    <lead-id> --budget ...`` -- the other sanctioned re-entry path besides ``retry_task``.
+    """Un-block every ``blocked`` task in *project*'s queue. Wired to ``docket pod set
+    budgetUsd`` and ``docket run --resume`` -- the sanctioned re-entry paths besides ``retry_task``.
     Returns the number of tasks unblocked."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():

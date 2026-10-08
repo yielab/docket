@@ -15,10 +15,12 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
+import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -205,6 +207,25 @@ def _mark_running(project: str, task_id: str) -> None:
         return doc
 
     _store.read_modify_write(_dispatch.pod_task_list_path(project), _fn)
+
+
+def _write_agent_meta(agent_id: str, codebase: Path) -> None:
+    workspace = _cfg.PROJECTS_DIR / agent_id
+    workspace.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "schemaVersion": 1,
+        "kind": "project",
+        "scope": "project",
+        "role": "implementer",
+        "name": agent_id,
+        "codebase": str(codebase),
+        "model": "anthropic/claude-haiku-4-5",
+        "sessionKey": f"agent:{agent_id}:demo",
+        "projectKey": "demo",
+        "created": "2026-09-12T00:00:00+00:00",
+    }
+    (workspace / ".docket-meta.json").write_text(json.dumps(meta))
+    _fleet.add_agent(agent_id)
 
 
 def test_docket_task_cancel_reaches_a_real_bash_sleep(

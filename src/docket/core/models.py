@@ -11,11 +11,6 @@ class AgentKind(StrEnum):
     project = "project"
 
 
-class ModelSource(StrEnum):
-    policy = "policy"
-    pinned = "pinned"
-
-
 class AgentScope(StrEnum):
     """Whose data an agent may see: ``project`` is scoped to a single project/pod,
     never shared across projects."""
@@ -54,7 +49,6 @@ class AgentMeta(BaseModel):
     workspace_kind: WorkspaceKind = Field(WorkspaceKind.codebase, alias="workspaceKind")
     work_dir: str = Field("", alias="workDir")
     model: str = ""
-    model_source: ModelSource = Field(ModelSource.policy, alias="modelSource")
     created: str = ""
     session_key: str = Field("", alias="sessionKey")
     project_key: str = Field("", alias="projectKey")

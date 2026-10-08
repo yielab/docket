@@ -1,16 +1,16 @@
 # Model Policy Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
-above both policy and pin, resolved once per hop and never persisted — see "Model intent per
+above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
 This specification defines the **role→model policy** that decides which model every kind of
-agent runs on, how agents record their model intent (follow the policy vs. an explicit pin),
-and how policy changes propagate to the fleet. It replaces the v1 tier system
+agent runs on, and how policy changes propagate to the fleet. A model comes from exactly three
+layers: the role policy, a pod's own role overlay, and a pipeline step's `model:`. It replaces the v1 tier system
 (economy/standard/premium), which was removed entirely in 0.2.0 — the rank values survive only
 as a private internal seed table, never as accepted user input.
 
@@ -21,9 +21,9 @@ This specification covers:
 - The agent roles the policy knows about and their built-in model classes
 - The user registry overlay (`~/.docket/docket-models.json`), including the registry-
   overridable rank-anchor seed table (`rankAnchors`)
-- Model intent per agent (`modelSource: policy | pinned`) and its inference on read
-- Viewing/changing the policy (`docket setup model`) and pinning agents (`docket profile`)
-- Automatic re-resolution of policy-following agents on policy changes
+- Where an agent's model comes from (the role policy, a pod role overlay, a step's `model:`)
+- Viewing/changing the policy (`docket setup model`)
+- Automatic re-resolution of every agent on policy changes
 - The built-in provider presets (`docket setup model preset`), including the free/local path
 - The provider catalog (`core/provider.py`): `kind: provider` documents, the built-in/global
   scopes, and `docket-providers.json`
@@ -59,7 +59,7 @@ feasibility spike remains in ROADMAP and Git history.
    - **strong** (reasoning-dense): `implementer`, `critic`, `operator`, `researcher` → the
      standard rank anchor (default `anthropic/claude-sonnet-4-6`)
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
-   only as a per-agent pin.
+   only through an explicit `docket setup model set <role> <provider/model>` override.
 4. Each role **MUST** carry a short human-readable WHY string shown by `docket setup model`: the
    archetype's own `description`.
 5. Resolving a role not in this table **MUST NOT** collapse to the compiled-in `DEFAULT_MODEL`:
@@ -104,22 +104,19 @@ feasibility spike remains in ROADMAP and Git history.
    locator (`rankAnchors.<anchor>`, `roles.<role>`, or `default`) plus the reason. It never
    edits the registry (ROADMAP P26-12).
 
-### Model intent per agent
+### Where a member's model comes from
 
-1. Every agent **MUST** record `modelSource` in `.docket-meta.json`: `policy` (follow the
-   role policy) or `pinned` (explicit model choice).
-2. Agents created without an explicit model, or with a model equal to their role's policy
-   model, **MUST** be stamped `policy`; an explicit divergent model **MUST** be stamped
-   `pinned`.
-3. An agent whose metadata has no `modelSource` **MUST** have it inferred on read
-   (`core.models_policy.agent_model_source`): no model, or a model equal to the role's policy
-   model → `policy`, otherwise → `pinned` (so such an agent is never silently moved to a
-   different model). Nothing writes the inferred value back.
-4. A pipeline step's own `model` (`pipeline-format.spec.md`'s "Steps" Requirement 10) **MUST**
-   sit above both `policy` and `pinned` resolution, for that one hop only, and **MUST NOT**
-   change `modelSource` or `model` in `.docket-meta.json` — a pinned agent stays pinned, and a
-   policy-following agent keeps following the policy, in both cases entirely unaffected once the
-   hop ends. `core.models_policy.resolve_step_model(value)` **MUST** resolve the literal rank
+1. A member's model **MUST** be its role's model: the role policy, or the pod's own role overlay
+   when the pod defines that role (`docket pod show` reports the source as `policy` or
+   `pod overlay`). There is no per-agent pin and `.docket-meta.json` carries no `modelSource`; a
+   metadata file that still has the key is read without it.
+2. A model **MUST** only be set per member by provisioning (the role's resolved model) and by an
+   in-place `exec` run, which sets the one model the run was given on every member of its
+   ephemeral pod.
+3. A pipeline step's own `model` (`pipeline-format.spec.md`'s "Steps" Requirement 10) **MUST**
+   sit above the policy and the pod's role overlay, for that one hop only, and **MUST NOT**
+   change `model` in `.docket-meta.json` — the member keeps following its role's model,
+   entirely unaffected once the hop ends. `core.models_policy.resolve_step_model(value)` **MUST** resolve the literal rank
    words `cheap`/`strong` against the live rank anchors (`economy`/`standard` respectively, the
    same table "User registry overlay" requirement 4 already overlays) and **MUST** return any
    other value unchanged after checking that its `<provider>/…` prefix names a provider present
@@ -136,12 +133,11 @@ feasibility spike remains in ROADMAP and Git history.
    override to the registry, and apply it live.
 3. `docket setup model preset <name>` **MUST** map the preset's cheap/strong classes onto all
    ten roles and persist them, plus the rank anchors and default.
-4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
-   and project, registered or not) **MUST** be re-resolved to its role's new model in
+4. After any policy change (set/preset/reset), every agent (registered or not) **MUST** be
+   re-resolved to its role's new model in
    `.docket-meta.json` — the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`
    tracks bare registration only, never a copy of `model`, so there is no second config source
-   to keep in sync, and no gateway to restart since P19-7b deleted it). Pinned agents **MUST
-   NOT** be touched.
+   to keep in sync, and no gateway to restart since P19-7b deleted it).
 5. Each policy change (`set`/`preset`/`reset`) **MUST** write one audit-log entry (the
    `models.*` action family — see audit.spec.md's Requirement 1) recording the role(s) affected
    (or `default`) and the before/after model, so the audit log alone answers "which role
@@ -149,23 +145,10 @@ feasibility spike remains in ROADMAP and Git history.
    `preset`/`reset` call, which can touch every role at once, **MUST** be recorded as one entry
    listing every role's before/after pair, not one entry per role (ROADMAP Phase 15 G-4b).
 
-### Pinning agents (docket profile)
-
-1. `docket profile <id> <provider/model>` **MUST** pin the agent: set the model in
-   `.docket-meta.json` (the only place it lives, see "Changing the policy" above) and
-   `modelSource: pinned`. There is no gateway-restart step: `restart_gateway()` and its ~15
-   ceremonial call sites across `cli/` were deleted outright (CL-C, ROADMAP Phase 19 wave 14) —
-   not kept as a no-op stub — since nothing ever observed its return value.
-2. `docket profile <id> default` **MUST** re-attach the agent to its role policy: resolve the
-   role's model, set it, and stamp `modelSource: policy`.
-3. `docket profile <id>` with no argument **MUST** display the current model, role (with WHY),
-   source (policy/pinned), and budget.
-4. `docket profile` **MUST** work for specialists as well as project agents.
-
 ### Tier names (removed, 0.2.0)
 
 1. The tier names `economy`, `standard`, `premium` **MUST NOT** be accepted anywhere a model
-   or role value is expected — `docket profile <id> premium` and `docket setup model set premium
+   or role value is expected — `docket setup model set premium
    <model>` both **MUST** fail with an error naming a full `provider/model` id, not resolve.
    Removed in 0.2.0 per the D-2 deprecation-window exit; see ROADMAP.md D-2.
 2. The three rank values survive as a private internal seed table (`_RANK_ANCHORS` in
@@ -331,7 +314,7 @@ feasibility spike remains in ROADMAP and Git history.
    Azure OpenAI's `api-key` header and a multi-workspace Anthropic key's
    `anthropic-workspace-id` without a second adapter (ADR 0011 §3). A `bearer`-auth document's
    request headers **MUST** stay byte-identical to a provider absent from the catalog.
-7. **Observability.** `docket config explain <agent> --json` **MUST** report, for the agent's
+7. **Observability.** `docket pod show <member> --json` **MUST** report, for the agent's
    resolved model, the provider's name, catalog scope (`"built-in"` / `"global"` / `""` when the
    provider is absent from the catalog), `dialect`, `baseUrl`, the resolved credential's name and
    source (`core.provider.resolve_credential`'s `"override"`/`"env"`/`"store"`/`"none"`), and the
@@ -372,10 +355,7 @@ docket setup model set <role|default> <provider/model>
 docket setup model preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
 docket setup model reset                        # Restore built-in defaults (asks to confirm)
 docket setup provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
-docket profile <agent-id>                  # Show model, role, source, budget
-docket profile <agent-id> <provider/model> # Pin
-docket profile <agent-id> default          # Follow the role policy
-docket profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
+docket pod show [<member-id>]              # Each member's model and where it comes from
 ```
 
 ### Built-in policy (Anthropic defaults)
@@ -433,9 +413,8 @@ from the built-in `MODEL_PRICING` snapshot, and any other key is ignored.
 
 ### Return Codes
 
-Like every other docket command (see cli-interface.spec.md), `docket profile` and `docket
-models` use a plain success/failure contract — `0` on success, `1` on any error (agent not
-found, invalid model, unknown role). There is no distinct exit code per error kind.
+Like every other docket command (see cli-interface.spec.md), `docket setup model` uses a plain
+success/failure contract — `0` on success, `1` on any error (invalid model, unknown role). There is no distinct exit code per error kind.
 
 ## Examples
 
@@ -457,16 +436,6 @@ $ docket setup model set implementer openai/gpt-4.1
 
 The count line is printed only when at least one policy-following agent changed;
 `models_policy.reapply_role_policy` returns a count and `core/` never prints per-agent lines.
-
-### Pinning and unpinning an agent
-
-```bash
-$ docket profile mywebsite anthropic/claude-opus-4-6
-✓ Model pinned: anthropic/claude-sonnet-4-6 → anthropic/claude-opus-4-6
-
-$ docket profile mywebsite default
-✓ Model: anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 (follows role policy 'implementer')
-```
 
 ### Switching the whole fleet to a free/local preset
 
@@ -493,23 +462,29 @@ $ docket setup model
 
 ### Pre-conditions
 
-- The target agent **MUST** exist (profile) / the role **MUST** be known (models set).
+- The role **MUST** be known (models set).
 
 ### Post-conditions
 
-- After a pin or policy change, `.docket-meta.json` `model` **MUST** reflect the new value —
+- After a policy change, `.docket-meta.json` `model` **MUST** reflect the new value —
   the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`'s `FleetAgent` tracks bare
   registration only, never a copy of `model`, so there is no second location to keep in sync).
-  `modelSource` **MUST** reflect the intent (`policy` vs `pinned`).
 
 ### Invariants
 
 - A role **MUST** always resolve to exactly one model id.
-- A pinned agent's model **MUST** survive any number of policy/preset changes.
 - Pricing **MUST** exist for every built-in model that Docket displays with a numeric price;
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.2.0 (2026-10-08)
+
+- Phase 39 (P39-10): the per-agent pin is removed. `docket profile` is gone, `modelSource` is no
+  longer written or read (`core.models_policy.agent_model_source` and the pinned branch of
+  `reapply_role_policy` are deleted; a stored `modelSource` is ignored), and a policy change
+  re-resolves every agent. A model comes from the role policy, a pod role overlay or a step's
+  `model:`; `docket pod show` reports which. `config explain` becomes `docket pod show <member>`.
 
 ### Version 3.1.0 (2026-10-07)
 

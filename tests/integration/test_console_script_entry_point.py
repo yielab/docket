@@ -42,9 +42,9 @@ def test_entry_point_targets_main() -> None:
 
 
 def test_entry_point_runs_a_command(tmp_path: Path) -> None:
-    result = _run_entry_point(["info", "--help"], tmp_path)
+    result = _run_entry_point(["status", "--help"], tmp_path)
     assert result.returncode == 0
-    assert "Detailed status of one agent" in result.stdout
+    assert "Show where a pod stands" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -70,10 +70,13 @@ def test_a_retired_command_name_is_an_unknown_command(args: list[str], tmp_path:
 def test_module_invocation_runs_the_app(tmp_path: Path) -> None:
     env = {**os.environ, "DOCKET_HOME": str(tmp_path / ".docket")}
     result = subprocess.run(
-        [sys.executable, "-m", "docket", "info", "--help"], capture_output=True, text=True, env=env
+        [sys.executable, "-m", "docket", "status", "--help"],
+        capture_output=True,
+        text=True,
+        env=env,
     )
     assert result.returncode == 0
-    assert "Detailed status of one agent" in result.stdout
+    assert "Show where a pod stands" in result.stdout
 
 
 def test_importing_dunder_main_has_no_side_effect() -> None:
