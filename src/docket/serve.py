@@ -1280,7 +1280,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self._send(json.dumps(task_resp).encode(), "application/json")
 
     def _handle_post_task_answer(self, task_id: str) -> None:
-        """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket pod <p> answer`.
+        """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`.
         Body: `{"pod", "action", "content"?, "actor"?}`; `actor` is a label only, and the
         channel is always `"http"`."""
         if not task_id:
@@ -1346,7 +1346,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self._send(json.dumps(view).encode(), "application/json")
 
     def _handle_post_task_pregrant(self, task_id: str) -> None:
-        """`POST /tasks/<id>/pregrants` -- the HTTP counterpart of `docket pod <p> pregrant`.
+        """`POST /tasks/<id>/pregrants` -- the HTTP counterpart of `docket task approve --for`.
         Body: `{"pod", "command", "tool"?, "actor"?}`; the channel is always `"http"`."""
         if not task_id:
             self._send_json_error("Missing task id", 400)

@@ -56,7 +56,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Security and Audit",
-        ["log", "policies", "plugins", "approve", "deny", "inbox", "chat", "task"],
+        ["log", "policies", "plugins", "inbox", "task"],
     ),
     (
         "Observability Commands",
@@ -174,8 +174,8 @@ docket -V
 _EXIT_CODES = """\
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
+| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
@@ -349,7 +349,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("APPROVALS_DIR",),
-        "Where `docket approve`/`deny`'s approval-token store lives",
+        "Where `docket task approve`/`deny`'s approval-token store lives",
         "`$DOCKET_HOME/approvals`",
     ),
     (
@@ -615,6 +615,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     (("DOCKET_NO_TRACE",), "Set to `1` to disable trace-store writes", "unset (tracing on)"),
     (("NO_COLOR",), "Any value switches output to plain mode (no colour, ASCII symbols)", "unset"),
     (("DOCKET_NO_HINTS",), "Set to `1` to silence the closing `Next:` line", "unset"),
+    (
+        ("DOCKET_POD",),
+        "Pod that commands taking `--pod` act on when the flag is omitted",
+        "unset",
+    ),
     (
         ("DOCKET_NO_EXPORT",),
         "Set to `1` to disable every export queue/flush action",

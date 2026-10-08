@@ -467,8 +467,8 @@ class TestAnswer:
         assert _dispatch.read_tasks("other")[0]["status"] == "waiting_input"
 
     def test_a_multi_property_question_is_refused_with_cli_guidance(self) -> None:
-        """A bare chat message cannot be split across fields -- mirrors ``cli/_pod.py``'s
-        ``_pod_answer`` bare-text refusal for the same case."""
+        """A bare chat message cannot be split across fields -- mirrors ``cli/_task.py``'s
+        ``_task_answer`` bare-text refusal for the same case."""
         task = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
         tasks = _dispatch.read_tasks("demo")
@@ -478,7 +478,7 @@ class TestAnswer:
         outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
 
         assert not outcome.ok
-        assert "docket pod demo answer" in outcome.reply
+        assert "docket task answer" in outcome.reply
         assert _dispatch.read_tasks("demo")[0]["status"] == "waiting_input"
 
     def test_a_block_policy_refuses_before_the_answer_is_ever_written(self) -> None:

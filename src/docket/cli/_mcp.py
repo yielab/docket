@@ -157,7 +157,7 @@ def tool_approvals_list() -> dict[str, Any]:
 
 
 def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
-    """Grant a pending approval token. Identical to `docket approve`/`docket start`'s
+    """Grant a pending approval token. Identical to `docket task approve`/`docket start`'s
     `POST /approvals/<token>` — same `core.approval.approval_grant` call (``channel="mcp"``)
     and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated.
     *option* ``approve_task`` also grants the same call for the rest of its task."""
@@ -179,7 +179,7 @@ def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
-    """Deny a pending approval token. Identical to `docket deny`/`docket start`'s
+    """Deny a pending approval token. Identical to `docket task deny`/`docket start`'s
     `POST /approvals/<token>` — same `core.approval.approval_deny` call (``channel="mcp"``)
     and `core.dispatch.resolve_waiting_approval` follow-up, failing any task it gated."""
     _audit("approvals_deny", f"token={token}")
@@ -198,7 +198,7 @@ def tool_approvals_deny(token: str) -> dict[str, Any]:
 def tool_task_answer(
     project: str, task_id: str, action: str, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Answer a task's parked ``input`` question. Identical to `docket pod <project> answer`
+    """Answer a task's parked ``input`` question. Identical to `docket task answer`
     / `docket start`'s `POST /tasks/<task_id>/answer` -- same `core.answers.answer_task`
     call (``channel="mcp"``, ``actor="mcp"``)."""
     _audit("task_answer", f"project={project} task={task_id} action={action}")
@@ -215,7 +215,7 @@ def tool_task_pregrant(
     project: str, task_id: str, command: str, tool: str = "bash"
 ) -> dict[str, Any]:
     """Record a single-use pre-grant for one command on one task, ahead of dispatch.
-    Identical to `docket pod <project> pregrant` / `POST /tasks/<task_id>/pregrants`."""
+    Identical to `docket task approve --for` / `POST /tasks/<task_id>/pregrants`."""
     _audit("task_pregrant", f"project={project} task={task_id} tool={tool}")
     try:
         token = _interruptions.record_pregrant(

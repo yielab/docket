@@ -15,15 +15,14 @@ from typing import Any
 import pytest
 from tests.conftest import record_isolation_off, repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 
@@ -106,7 +105,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
     env = os.environ.copy()
     env["DOCKET_HOME"] = str(home)
     cancelled = subprocess.run(
-        [sys.executable, "-m", "docket", "runs", "cancel", run["id"]],
+        [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
         cwd=Path(__file__).parents[2],
         env=env,
         text=True,
@@ -198,30 +197,20 @@ class _OneShotBashBackend:
         )
 
 
-def _write_agent_meta(agent_id: str, codebase: Path) -> None:
-    workspace = _cfg.PROJECTS_DIR / agent_id
-    workspace.mkdir(parents=True, exist_ok=True)
-    meta = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": "implementer",
-        "name": agent_id,
-        "codebase": str(codebase),
-        "model": "anthropic/claude-haiku-4-5",
-        "modelSource": "policy",
-        "sessionKey": f"agent:{agent_id}:demo",
-        "projectKey": "demo",
-        "created": "2026-09-12T00:00:00+00:00",
-    }
-    (workspace / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(agent_id)
+def _mark_running(project: str, task_id: str) -> None:
+    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
+        for t in doc["tasks"]:
+            if t["id"] == task_id:
+                t["status"] = "running"
+        return doc
+
+    _store.read_modify_write(_dispatch.pod_task_list_path(project), _fn)
 
 
-def test_docket_runs_cancel_reaches_a_real_bash_sleep(
+def test_docket_task_cancel_reaches_a_real_bash_sleep(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The whole-path proof: `docket runs cancel`, through the production
+    """The whole-path proof: `docket task cancel`, through the production
     driver, terminalizes a run whose hop is sitting inside a real `bash
     sleep`-shaped command."""
     home = tmp_path / ".docket"
@@ -232,8 +221,10 @@ def test_docket_runs_cancel_reaches_a_real_bash_sleep(
 
     codebase = tmp_path / "codebase"
     codebase.mkdir()
-    agent_id = "demo-implementer"
-    _write_agent_meta(agent_id, codebase)
+    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+    agent_id = _pod.pod.member_id("demo", "implementer")
+    task = _dispatch.enqueue_task("demo", "sleep in bash")
+    _mark_running("demo", task["id"])
 
     # `python3` is on the command classifier's curated allowlist, so this
     # reaches `run_bash` on a bare "allow" verdict -- the subject here is
@@ -260,7 +251,7 @@ def test_docket_runs_cancel_reaches_a_real_bash_sleep(
     env["DOCKET_HOME"] = str(home)
     requested_at = time.monotonic()
     cancelled = subprocess.run(
-        [sys.executable, "-m", "docket", "runs", "cancel", run["id"]],
+        [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
         cwd=Path(__file__).parents[2],
         env=env,
         text=True,

@@ -44,11 +44,9 @@ def run_runs(sub: str | None, args: list[str]) -> int:
         return _list(args)
     if sub == "show":
         return _show(args)
-    if sub == "cancel":
-        return _cancel(args)
     if sub == "prune":
         return _prune(args)
-    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id> | cancel <id> | prune.")
+    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id> | prune.")
     return 1
 
 
@@ -172,18 +170,4 @@ def _prune(args: list[str]) -> int:
     removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run)
     verb = "Would remove" if dry_run else "Removed"
     ui.success(f"{verb} {removed} terminal run record(s).")
-    return 0
-
-
-def _cancel(args: list[str]) -> int:
-    """Request cancellation and signal any in-flight process groups."""
-    if not args:
-        ui.error("Usage: docket runs cancel <id>")
-        return 1
-    run_id = args[0]
-    outcome = _runs.cancel_run(run_id)
-    if not outcome.ok:
-        ui.error(outcome.message)
-        return 1
-    ui.success(outcome.message)
     return 0

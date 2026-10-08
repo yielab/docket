@@ -24,7 +24,7 @@ pack, the resulting roster and `pipeline.yaml` before writing anything, and is s
 deploy/production-shaped operator command always asks a human too, independent of which
 pipeline step it reached.
 
-Answer the resulting approval with `docket approve <token>` / `docket deny <token>` (also
+Answer the resulting approval with `docket task approve <token>` / `docket task deny <token>` (also
 reachable over HTTP, MCP or Telegram `/approve` — every channel is audited). Unanswered
 requests are denied after `APPROVAL_TIMEOUT` (900s).
 

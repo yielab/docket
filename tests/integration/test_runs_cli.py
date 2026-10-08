@@ -14,7 +14,6 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli._runs import run_runs
-from docket.core import audit as _audit
 from docket.core import runs as _runs
 
 SUBJECT = "docket.cli"
@@ -113,67 +112,6 @@ class TestRunsShowCli:
         assert "Cancel stopped:" in output
 
 
-class TestRunsCancelCli:
-    """`docket runs cancel <id>`."""
-
-    def test_cancel_missing_arg_is_an_error(self, runs_file: Path) -> None:
-        assert run_runs("cancel", []) == 1
-
-    def test_cancel_unknown_id_is_an_error(self, runs_file: Path) -> None:
-        assert run_runs("cancel", ["run-nope"]) == 1
-
-    def test_cancel_already_terminal_run_is_an_error(self, runs_file: Path) -> None:
-        rec = _runs.create_run("cli", "demo")
-        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
-        assert run_runs("cancel", [rec["id"]]) == 1
-        assert _runs.get_run(rec["id"])["state"] == "succeeded"
-
-    def test_cancel_a_running_run_with_no_pids_persists_the_request(self, runs_file: Path) -> None:
-        rec = _runs.create_run("cli", "demo")
-        _runs.mark_running(rec["id"])
-        assert run_runs("cancel", [rec["id"]]) == 0
-        requested = _runs.get_run(rec["id"])
-        assert requested is not None
-        assert requested["state"] == "running"
-        assert requested["cancellation"]["requestedAt"] is not None
-        assert requested["cancellation"]["stoppedAt"] is None
-
-
-class TestRunsCancelAuditEntry:
-    """`docket runs cancel` writes an audit entry like every other privileged action (see
-    ``core/audit.py``). ``_isolate_audit_log`` (conftest.py, autouse) repoints ``_cfg.AUDIT_LOG``
-    at a per-test tmp file, so ``_audit.read_audit()`` reads exactly what this test wrote."""
-
-    def test_successful_cancel_writes_a_runs_cancel_entry(self, runs_file: Path) -> None:
-        rec = _runs.create_run("cli", "demo-project")
-        _runs.mark_running(rec["id"])
-        assert run_runs("cancel", [rec["id"]]) == 0
-
-        entries = [e for e in _audit.read_audit() if e["action"] == "runs.cancel"]
-        assert len(entries) == 1
-        assert rec["id"] in entries[0]["detail"]
-        assert "demo-project" in entries[0]["detail"]
-
-    def test_unknown_id_writes_no_audit_entry(self, runs_file: Path) -> None:
-        assert run_runs("cancel", ["run-nope"]) == 1
-        assert [e for e in _audit.read_audit() if e["action"] == "runs.cancel"] == []
-
-    def test_already_terminal_run_writes_no_audit_entry(self, runs_file: Path) -> None:
-        rec = _runs.create_run("cli", "demo")
-        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
-        assert run_runs("cancel", [rec["id"]]) == 1
-        assert [e for e in _audit.read_audit() if e["action"] == "runs.cancel"] == []
-
-    def test_cancel_entry_is_chained_like_every_other_action(self, runs_file: Path) -> None:
-        rec = _runs.create_run("cli", "demo")
-        _runs.mark_running(rec["id"])
-        run_runs("cancel", [rec["id"]])
-
-        result = _audit.verify_chain()
-        assert result.break_at is None
-        assert result.chained >= 1
-
-
 class TestRunsPruneCli:
     """`docket runs prune` -- the manual counterpart to ``docket serve``'s sweep."""
 
@@ -220,21 +158,6 @@ class TestRunsCommandWiring:
         assert result.exit_code == 0
         out = json.loads(result.output)
         assert out["id"] == rec["id"]
-
-    def test_runs_cancel_wired_on_app(self, runs_file: Path) -> None:
-        from typer.testing import CliRunner
-
-        from docket.cli import app
-
-        rec = _runs.create_run("cli", "demo")
-        _runs.mark_running(rec["id"])
-        runner = CliRunner()
-        result = runner.invoke(app, ["runs", "cancel", rec["id"]])
-        assert result.exit_code == 0
-        requested = _runs.get_run(rec["id"])
-        assert requested is not None
-        assert requested["state"] == "running"
-        assert requested["cancellation"]["requestedAt"] is not None
 
     def test_runs_is_a_top_level_command(self) -> None:
         import typer.main

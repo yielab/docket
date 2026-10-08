@@ -241,7 +241,7 @@ def render_data(item: TaskView | ApprovalView, level: str) -> dict[str, Any]:
         if item.expires_at:
             data["expiresAt"] = item.expires_at
         data["respond"] = {
-            "cli": f"docket approve {item.token}",
+            "cli": f"docket task approve {item.token}",
             "http": f"/approvals/{item.token}",
         }
         if level != "minimal" and item.action:

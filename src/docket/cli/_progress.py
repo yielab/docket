@@ -91,12 +91,12 @@ def render_event(record: dict[str, Any], *, now: float | None = None) -> str | N
         return f"■ {role} finished — status={status}"
     token = str(payload.get("token", "?"))
     if event_type == "approval_required":
-        return f"⏸ {role} hop needs approval · token {token} · docket approve {token}"
+        return f"⏸ {role} hop needs approval · token {token} · docket task approve {token}"
     action = str(payload.get("action", ""))
     remaining = _seconds_remaining(record, now=now)
     return (
         f"⏸ {role} wants: {action} · token {token} · denies in {remaining}s · "
-        f"docket approve {token}"
+        f"docket task approve {token}"
     )
 
 
@@ -117,7 +117,7 @@ class PromptOutcome:
 
 def handle_approval_prompt(token: str, answer: str) -> PromptOutcome:
     """Apply *answer* to *token* via the grant/deny + ``resolve_waiting_approval``
-    pair ``docket approve``/``docket deny`` use. Keeps waiting on an empty or
+    pair ``docket task approve``/``docket task deny`` use. Keeps waiting on an empty or
     unknown answer; reports rather than raises a token resolved elsewhere."""
     if answer == "a":
         try:

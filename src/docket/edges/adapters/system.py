@@ -550,7 +550,7 @@ def run_verify_cmd(
     command that backgrounds work (``build & wait``, a test runner spawning workers)
     leaves orphans behind every time it is killed on timeout. The pid is never
     registered anywhere, so this group is reachable only from inside this function;
-    ``docket runs cancel`` cannot interrupt an in-flight verify command (see
+    ``docket task cancel`` cannot interrupt an in-flight verify command (see
     ``specs/functional/pod-dispatch.spec.md``'s Cancellation requirement 2)."""
     risk_cls = _sec.match_high_risk(cmd)
     if risk_cls is not None:

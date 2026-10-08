@@ -73,8 +73,6 @@ class TestCommandsPresent:
 
     REQUIRED = (
         "policies",
-        "approve",
-        "deny",
         "setup",
         "log",
         "trace",

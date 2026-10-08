@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-06
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -34,7 +34,7 @@ This specification covers:
   surface (`core/inbox.py`, `cli/_inbox.py`, `docket serve`'s `GET /inbox`, `docket mcp serve`'s
   `inbox` tool, and Telegram's `/status`)
 - The interruption forecast and the CLI/HTTP/MCP pre-grant surface (`core/interruptions.py`,
-  `docket pod <p> explain interruptions`, `docket pod <p> pregrant`)
+  `docket pod <p> explain interruptions`, `docket task approve --for`)
 
 This specification does NOT cover (each is a distinct future requirement area below, owned by
 its own card):
@@ -91,7 +91,7 @@ operator-loop-level contract that section's behaviour must satisfy.
    `waiting_approval` already carries. A client reading `a2aState` alone cannot distinguish the
    two triggers, and MUST NOT need to: both mean "nothing runs until a human decides."
 2. `core.operator_contract.canonical_args_digest(tool, args)` MUST be the one digest a parked
-   call's record, a `resolve_waiting_approval` pre-grant, and `docket pod <p> pregrant`'s
+   call's record, a `resolve_waiting_approval` pre-grant, and `docket task approve --for`'s
    CLI-issued pre-grant (requirement area 9, deferred) all key against — so a CLI-issued
    pre-grant and an in-turn parked approval are matched identically by `core/tools.py`'s single
    matcher, never two independent digest implementations that could silently disagree.
@@ -107,8 +107,8 @@ operator-loop-level contract that section's behaviour must satisfy.
    does not describe an already-attempted, parked hop. The re-entry MUST instead re-run that
    exact hop, carrying a single-use pre-grant matched by `canonical_args_digest`, so the model's
    identical next call passes once without asking again.
-5a. Granting a parked approval with the `approve_task` option (`docket approve <token> --option
-   approve_task`, Telegram `/approve <token> task`; the option is recorded with
+5a. Granting a parked approval with the `approve_task` option (`docket task approve <task> --task`,
+   Telegram `/approve <token> task`; the option is recorded with
    `approval_set_option` before the grant) MUST also record a task-wide grant
    `{tool, argsDigest, role, token, grantedAt, actor, channel}` in the task's `taskGrants`, where
    `role` is the parked approval's role, distinct from the single-use `pregrants`. `_compose_hop`
@@ -445,7 +445,7 @@ pause a task and wait on a human -- without ever running a live dispatch.
    `Nothing in this pod will ask you.` when the same headline list is empty, else `May ask you:
    <n> <kind>, ... — see: docket pod <project> explain interruptions` (kinds sorted, counts
    grouped by kind with `_` rendered as a space, no further grammar).
-5. `docket pod <p> pregrant <task-id> "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
+5. `docket task approve <ref> --for "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
    (body `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id,
    command, tool="bash")` MUST each call `core.interruptions.record_pregrant(project, task_id,
    command, tool=tool, channel=<"cli"|"http"|"mcp">, actor=<...>)`, which:
@@ -467,10 +467,6 @@ pause a task and wait on a human -- without ever running a live dispatch.
      `resolve_waiting_approval`'s own parked-grant append already produces, so `_compose_hop`
      serialises it into `DOCKET_PREGRANTS` on the task's very next hop, not only a re-run after a
      park.
-6. `docket chat <task-id>` MUST print one `Pre-grant: docket pod <project> pregrant <task-id>
-   "<action>"` line under each of the task's brief's `expectedRiskyActions`, when a brief is
-   present.
-
 Non-goals (ADR 0016 §10): fuzzy command matching -- the exact-after-whitespace-collapse limit in
 item 5 is the only normalisation applied, and a rephrased command is asked again regardless; a
 `--role` override for `create_pregrant`'s stored `role` field (fixed to `"implementer"`, since
@@ -478,41 +474,44 @@ matching is by `(tool, argsDigest)` alone and never reads it).
 
 ### 10. Answer surfaces
 
-**Status: Implemented (CLI, `docket chat`, HTTP, MCP; Telegram is area 8's own card).** Every
+**Status: Implemented (CLI, HTTP, MCP; Telegram is area 8's own card).** Every
 surface below calls `core.answers.answer_task` directly (area 7) -- none re-implements schema
 validation, the `pre_input` screen, or the resume. ADR 0016 §8 names these as "two core
 functions, every surface is transport"; this area is that transport.
 
-1. `docket pod <p> answer <task-id> [text] [--field name=value]... [--decline]`
-   (`cli/_pod.py::_pod_answer`) MUST call `answer_task(channel="cli", actor=<OS user via
-   getpass.getuser()>)`. A bare `text` argument MUST fill the single property of a
-   one-property `requestedSchema`, read from the task's own parked `question`; against a
-   schema with more than one property, a bare `text` MUST be refused (exit 1, nothing sent)
-   naming `--field name=value` as the alternative. `--field` MAY be repeated to set named
-   properties explicitly. `--decline` MUST set `action="decline"` and ignore any `text`/
-   `--field` values, matching `validate_answer`'s own decline/cancel short-circuit. Neither
-   `text` nor a `--field` nor `--decline` is a usage error (exit 1, nothing sent).
-2. `docket chat <task-id> [--pod <project>]` (`cli/_chat.py::run_chat`) MUST locate *task-id*
-   across every `core.dispatch.dispatchable_pods()` pod when `--pod` is omitted, else within
-   just that one pod; an unresolved task-id MUST exit 1. It MUST render the task's brief (when
-   present), its `answers[]` (when present) and its pending `question`'s message (when
-   `waiting_input`), plus, for a v1.1 question, each option as `<id> - <label>` with the
-   recommended one marked and its description beneath. On a TTY with a pending question, it
-   MUST first prompt for the option id when the question has options (Enter takes the
-   recommended one), then once per `requestedSchema` property (a blank optional property is
-   omitted from `content`; a blank required one is passed through unchanged, so the schema
-   check itself reports it -- never a client-side retry loop) and then call
-   `answer_task(action="accept", channel="cli", actor=<OS user>)` with `optionId` in
-   `content`. Off a TTY, or with no pending question, it MUST only display -- never call
-   `answer_task`; the off-TTY hint names `--option <id>` when the question has options.
-   `docket pod <p> answer` MUST accept `--option <id>` for the same purpose and, when the
-   question has options and neither `--option` nor `--decline` was given, MUST exit 1 naming
-   the option ids instead of sending an answer the contract would refuse. `docket inbox`'s
-   human view MUST print a `waiting_input` task's question, its option ids and labels (the
-   recommended one marked `(recommended)`) and the `docket task answer <task-id>` command beneath the
-   task line, and a `waiting_approval` task's held action (`asks: <approval.action>`) with the
-   `docket task approve <id>` / `docket task deny <id>` commands -- what the standalone approval line
-   carried before inbox item 3 folded it into its task.
+1. `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline]
+   [--pod <p>]` (`cli/_task.py::_task_answer`) MUST resolve *ref* through
+   `core.task_ref.resolve_task` (full id, short id, prefix or run id; every pod unless `--pod`)
+   and call `answer_task(channel="cli", actor=<OS user via getpass.getuser()>)`. A task without a
+   pending question MUST be refused (exit 1, nothing sent). Bare `text` MUST fill the single
+   property of a one-property `requestedSchema`, read from the task's own parked `question`;
+   against a schema with more than one property it MUST be refused (exit 1, nothing sent)
+   naming `--field name=value`. `--field` MAY be repeated. `--option <id>` MUST put `optionId`
+   in `content`. `--decline` MUST set `action="decline"` and ignore `text`/`--field`/`--option`.
+2. With no `text`, `--field` or `--option`: on a TTY the command MUST print the question and each
+   option as `<id> - <label>` (the recommended one marked, its description beneath), prompt for
+   the option id when the question has options (Enter takes the recommended one), then once per
+   `requestedSchema` property (a blank optional property is omitted from `content`; a blank
+   required one is passed through unchanged, so the schema check reports it -- never a
+   client-side retry loop) and call `answer_task(action="accept")`. Off a TTY it MUST exit 1
+   naming `--option <id>` (the ids listed) when the question has options, else the three
+   flags; it never prompts. When the question has options and the answer carries no `optionId`
+   (and is not a decline), the command MUST exit 1 naming the option ids instead of sending an
+   answer the contract would refuse. `docket inbox`'s human view MUST print a `waiting_input`
+   task's question, its option ids and labels (the recommended one marked `(recommended)`) and
+   the `docket task answer <task-id>` command beneath the task line, and a `waiting_approval`
+   task's held action (`asks: <approval.action>`) with the `docket task approve <id>` /
+   `docket task deny <id>` commands -- what the standalone approval line carried before inbox
+   item 3 folded it into its task.
+2a. `docket task approve <ref>` MUST resolve the task's pending approval from the task's own
+   `approvalToken` (a task not `waiting_approval` is refused, exit 1; an `apr-` token is accepted
+   as given for an approval no task carries) and grant it with `channel="cli"`; `--task` MUST
+   set the `approve_task` option first, and `--once` (the default) conflicts with it (exit 2).
+   `docket task deny <ref>` MUST deny the same approval. After a grant, an answer, a pre-grant or
+   a retry the command MUST end with the run hint: `docket is running and will pick it up` when
+   the service's pid check says `docket start` is running, else the single `Next: docket run
+   --pod <p>` line. A granted pending task is the "approved, ready" state `inbox` and `status`
+   render.
 3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
    file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
    and enqueue nothing. A well-formed brief MUST be passed through to
@@ -646,7 +645,7 @@ clarification or decision to its operator.
    approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id; the harness
    run token), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
    (`taskId` = the real task id, `step` = the hop's step id), so the inbox lists it under
-   `needsYou` and `docket pod <p> answer`, HTTP, MCP and recipe-harness answers reach it through
+   `needsYou` and `docket task answer`, HTTP, MCP and recipe-harness answers reach it through
    `answer_task` unchanged; `optionId` travels in the answer `content`. `answer_task` validates a
    v1.1 question with `validate_answer_v11` (accept needs a valid `optionId`; a refused answer
    leaves the task `waiting_input`), records `answers[]`, and reopens the task `pending` with a
@@ -780,6 +779,10 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.5.0 (2026-10-08)
+
+- Phase 39 (P39-9): `docket task answer <ref>` absorbs `docket chat` and `docket pod <p> answer`; the pre-grant is `docket task approve <ref> --for "<command>"`; `docket task approve|deny <ref>` resolve the task's own pending approval and end with the run hint. The standalone `approve`, `deny`, `chat` and `pod <p> pregrant` commands, and `chat`'s `Pre-grant:` line under a brief's risky actions, are removed.
 
 ### Version 1.4.0 (2026-10-07)
 
