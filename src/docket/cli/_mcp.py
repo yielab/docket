@@ -1,15 +1,10 @@
-"""docket mcp — expose the control plane as an MCP server (`serve`), or configure the external MCP
-servers docket connects to as a client (`servers`); two unrelated halves. `serve` drives docket's
-control plane through the same governance spine a CLI call goes through, never around it: every
-call audit-logs into the same tamper-evident chain, and dispatch/delegate/approvals call the
-exact same `core/` functions the CLI and HTTP API already call — no parallel path, no auto-
-approve, no shortcut. A server, never a host; the reverse (docket consuming another server's
-tools live) is `core/mcp_tools.py`'s `load_mcp_tools` — see its docstring for what is wired.
-`servers add/list/remove` is pure presentation over `core/mcp_tools.py`, never talking to a
-remote server itself — why hand-rolling browser/search tools is on the never-build list, per
-specs/functional/mcp-client.spec.md. stdio discipline: tool functions never touch `docket.ui`;
-stdout is reserved for JSON-RPC once `serve` runs. The `mcp` SDK is optional, imported lazily in
-`serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`."""
+"""docket start --mcp -- expose the control plane as an MCP server over stdio. Every call goes
+through the same governance spine a CLI call does and audit-logs into the same tamper-evident
+chain; dispatch, delegate and approvals call the exact same `core/` functions the CLI and HTTP
+API call. A server, never a host. stdio discipline: tool functions never touch `docket.ui`;
+stdout is reserved for JSON-RPC once the server runs. The `mcp` SDK is optional, imported lazily
+in `serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`.
+The lower half of this module configures the external MCP servers docket connects to."""
 
 from __future__ import annotations
 
@@ -19,19 +14,22 @@ import sys
 import threading
 from typing import Any
 
+import docket.config as _cfg
 from docket.core import answers as _answers
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
 from docket.core import interruptions as _interruptions
 from docket.core import runs as _runs
+from docket.core import utils as _utils
 from docket.core.audit import audit_log
+from docket.edges import store as _store
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
 # that replaced `mcp.server.fastmcp.FastMCP` (renamed/relocated, not
 # redesigned) when the SDK's 2.0 rework removed the `fastmcp` module outright.
 MISSING_SDK_HINT = (
-    "The 'mcp' package is not installed — `docket mcp serve` needs the optional MCP extra.\n"
+    "The 'mcp' package is not installed — `docket start --mcp` needs the optional MCP extra.\n"
     "Install it with:  pip install 'docket[mcp]'\n"
     "(uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')"
 )
@@ -72,7 +70,7 @@ def _audit(tool: str, detail: str = "") -> None:
 def tool_status() -> dict[str, Any]:
     """Fleet-wide status snapshot: channels, every agent's
     model/registration/cost, and total recorded spend. Identical shape to
-    `docket serve`'s `GET /status.json` (see serve-read-api.spec.md)."""
+    `docket start`'s `GET /status.json` (see serve-read-api.spec.md)."""
     _audit("status")
     from docket import serve as _serve
 
@@ -159,7 +157,7 @@ def tool_approvals_list() -> dict[str, Any]:
 
 
 def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
-    """Grant a pending approval token. Identical to `docket approve`/`docket serve`'s
+    """Grant a pending approval token. Identical to `docket approve`/`docket start`'s
     `POST /approvals/<token>` — same `core.approval.approval_grant` call (``channel="mcp"``)
     and `core.dispatch.resolve_waiting_approval` follow-up, resuming any task it gated.
     *option* ``approve_task`` also grants the same call for the rest of its task."""
@@ -181,7 +179,7 @@ def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
-    """Deny a pending approval token. Identical to `docket deny`/`docket serve`'s
+    """Deny a pending approval token. Identical to `docket deny`/`docket start`'s
     `POST /approvals/<token>` — same `core.approval.approval_deny` call (``channel="mcp"``)
     and `core.dispatch.resolve_waiting_approval` follow-up, failing any task it gated."""
     _audit("approvals_deny", f"token={token}")
@@ -201,7 +199,7 @@ def tool_task_answer(
     project: str, task_id: str, action: str, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Answer a task's parked ``input`` question. Identical to `docket pod <project> answer`
-    / `docket serve`'s `POST /tasks/<task_id>/answer` -- same `core.answers.answer_task`
+    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `core.answers.answer_task`
     call (``channel="mcp"``, ``actor="mcp"``)."""
     _audit("task_answer", f"project={project} task={task_id} action={action}")
     try:
@@ -230,7 +228,7 @@ def tool_task_pregrant(
 
 def tool_inbox(since: str | None = None) -> dict[str, Any]:
     """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
-    failed/done/running context, and a cursor. Identical shape to `docket serve`'s `GET /inbox`."""
+    failed/done/running context, and a cursor. Identical shape to `docket start`'s `GET /inbox`."""
     _audit("inbox", f"since={since or ''}")
     from docket.core import inbox as _inbox
 
@@ -238,14 +236,35 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     return view.model_dump(by_alias=True, mode="json")
 
 
+def _cost_row(agent_id: str) -> tuple[dict[str, Any], float]:
+    raw = _store.read_json(_cfg.meta_path(agent_id))
+    budget_raw = raw.get("budgetUsd")
+    totals = _utils.aggregate_cost(agent_id)
+    budget = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
+    row = {
+        "id": agent_id,
+        "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
+        "input": totals.input_tokens,
+        "output": totals.output_tokens,
+        "costUsd": round(totals.cost_usd, 6),
+        "pricingKnown": True,
+        "turns": totals.turns,
+        "budgetUsd": budget,
+    }
+    return row, totals.cost_usd
+
+
+def _cost_snapshot() -> dict[str, Any]:
+    rows = [_cost_row(pid) for pid in _utils.project_ids()]
+    return {"agents": [r for r, _ in rows], "totalUsd": round(sum(c for _, c in rows), 6)}
+
+
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
     figure); the ``MODEL_PRICING`` estimate `docket cost` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
-    from docket.cli._cost import cost_snapshot
-
-    snapshot = cost_snapshot()
+    snapshot = _cost_snapshot()
     if not agent_id:
         return snapshot
     agents: list[dict[str, Any]] = snapshot["agents"]
@@ -291,7 +310,7 @@ def _build_server() -> Any:
 
 
 def serve_stdio() -> int:
-    """Run `docket mcp serve` — blocks until the client disconnects (Ctrl-C/EOF).
+    """Run the MCP stdio server -- blocks until the client disconnects (Ctrl-C/EOF).
     Returns 1 with an actionable hint (stderr) if the ``mcp`` SDK isn't installed,
     else 0. Never prints to stdout — that is the JSON-RPC transport once running."""
     try:
@@ -301,7 +320,7 @@ def serve_stdio() -> int:
         return 1
 
     print(
-        "docket mcp serve: stdio transport starting "
+        "docket start --mcp: stdio transport starting "
         f"({len(_TOOL_NAMES)} tools: {', '.join(_TOOL_NAMES)}) — Ctrl-C/EOF to stop",
         file=sys.stderr,
     )

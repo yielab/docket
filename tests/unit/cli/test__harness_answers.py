@@ -1,4 +1,4 @@
-"""`docket harness run --answers stdin` -- the one-line-at-a-time answer reader.
+"""`docket exec --answers stdin` -- the one-line-at-a-time answer reader.
 
 Pure-logic coverage: each fail-closed branch of ``handle_line`` against a real
 approval record in an isolated home. The process-boundary behaviour (a paused

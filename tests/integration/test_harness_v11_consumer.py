@@ -1,6 +1,6 @@
 """The harness contract 1.1 consumer seam, driven the way Tack drives it.
 
-Each test spawns the real ``python -m docket harness run --contract 1.1`` process, takes the
+Each test spawns the real ``python -m docket exec --contract 1.1`` process, takes the
 task from a file, and reads its stdout as a caller does: ``process_started`` before a signal,
 an approval answered on stdin, ``files`` from the terminal result, a ``--recipe`` run, and a
 SIGTERM cancel that ends with ``process_exited``. Every emitted line is validated against the
@@ -28,7 +28,7 @@ from tests.integration.test_harness_cli import (
     llm_server,  # noqa: F401 - fixture, re-used here
 )
 
-SUBJECT = "docket.cli._harness"
+SUBJECT = "docket.cli._exec"
 
 SCHEMA_PATH = REPO_ROOT / "docs" / "contracts" / "harness-v1.1" / "schema.json"
 _PUSH_CALL = {"command": "git push origin production"}
@@ -59,7 +59,6 @@ def _write_task(tmp_path: Path, text: str = "do the thing") -> Path:
 
 def _consumer_args(workspace: Path, task: Path, *extra: str) -> list[str]:
     return [
-        "run",
         "--workspace",
         str(workspace),
         "--task-file",

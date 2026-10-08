@@ -112,13 +112,11 @@ app.command(
     "runs",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_runs)
-app.command(
-    "harness",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_exec.cmd_harness)
-app.command("audit")(_log.cmd_audit)
+app.command("exec")(_exec.cmd_exec)
+app.add_typer(_log.log_app)
 app.command("snapshot")(_status.cmd_snapshot)
-app.command("serve")(_service.cmd_serve)
+app.command("start")(_service.cmd_start)
+app.command("stop")(_service.cmd_stop)
 app.command("validate")(_pod_config.cmd_validate)
 app.command(
     "plugins",

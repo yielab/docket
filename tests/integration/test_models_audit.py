@@ -4,7 +4,7 @@
 writes exactly one `models.*` audit entry naming the role(s) affected (or `default`) and the
 before/after model, so the log alone answers "which role changed, from what, to what, and when";
 and those entries carry the same hash-chain fields (`seq`/`prev_hash`) as every other family, so
-`docket audit verify` walks a log containing them without reporting a break.
+`docket log verify` walks a log containing them without reporting a break.
 """
 
 from __future__ import annotations
@@ -226,7 +226,7 @@ class TestModelsAuditChainIntegrity:
         _run(["setup", "model", "preset", "openai"], oc_dir)
         _run(["setup", "model", "reset"], oc_dir, input_text="y\n")
 
-        rc, out, err = _run(["audit", "verify"], oc_dir)
+        rc, out, err = _run(["log", "verify"], oc_dir)
         assert rc == 0, f"stdout: {out}\nstderr: {err}"
         assert "verified clean" in out
 
@@ -237,7 +237,7 @@ class TestModelsAuditChainIntegrity:
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         _run(["setup", "model", "preset", "openai"], oc_dir)
 
-        rc, out, err = _run(["audit", "verify"], oc_dir)
+        rc, out, err = _run(["log", "verify"], oc_dir)
         assert rc == 0, f"stdout: {out}\nstderr: {err}"
         assert "verified clean" in out
         assert _audit_entries(oc_dir, "models.set")

@@ -1,6 +1,6 @@
 """The optional `mcp` SDK dependency degrade path + real-SDK smoke test.
 
-`docket mcp serve` needs the official MCP Python SDK (`mcp`), an *optional* extra
+`docket start --mcp` needs the official MCP Python SDK (`mcp`), an *optional* extra
 (`docket[mcp]`) kept out of the base install so `pip install docket` stays
 dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema,
 opentelemetry, ...). Covers three cases: a real absence check (skipped if the SDK

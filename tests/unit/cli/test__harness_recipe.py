@@ -1,4 +1,4 @@
-"""`docket harness run --recipe` -- argument refusals, answer routing and status mapping.
+"""`docket exec --recipe` -- argument refusals, answer routing and status mapping.
 
 Pure-logic coverage of the recipe runner's helpers. The process-boundary behaviour (a recipe
 run end to end over a real pipe) is covered in ``tests/integration/test_harness_cli.py``.
@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from docket.cli import _harness_recipe
+from docket.cli._exec import ExecOptions
 from docket.core import harness
 
 SUBJECT = "docket.cli._harness_recipe"
@@ -27,38 +28,40 @@ def _answer_line(question_id: str) -> harness.AnswerLine:
 
 class TestUsageError:
     def test_no_recipe_and_no_verify_is_fine(self) -> None:
-        assert _harness_recipe.usage_error(["run"], "1.0") is None
+        assert _harness_recipe.usage_error(ExecOptions()) is None
 
     def test_verify_without_recipe_is_refused(self) -> None:
-        problem = _harness_recipe.usage_error(["run", "--verify", "true"], "1.1")
+        problem = _harness_recipe.usage_error(ExecOptions(verify="true", contract="1.1"))
         assert problem == "--verify needs --recipe"
 
     def test_recipe_needs_contract_1_1(self) -> None:
-        problem = _harness_recipe.usage_error(["run", "--recipe", "tdd"], "1.0")
+        problem = _harness_recipe.usage_error(ExecOptions(recipe="tdd"))
         assert problem == "--recipe needs --contract 1.1"
 
     @pytest.mark.parametrize(
         ("extra", "fragment"),
         [
-            (["--role", "reviewer"], "--role"),
-            (["--max-tokens", "10"], "--max-tokens"),
-            (["--agent-id", "x"], "--agent-id"),
+            ({"role": "reviewer"}, "--role"),
+            ({"max_tokens": "10"}, "--max-tokens"),
+            ({"agent_id": "x"}, "--agent-id"),
         ],
     )
     def test_flags_that_a_recipe_run_cannot_honour_are_refused(
-        self, extra: list[str], fragment: str
+        self, extra: dict[str, str], fragment: str
     ) -> None:
-        problem = _harness_recipe.usage_error(["run", "--recipe", "tdd", *extra], "1.1")
+        problem = _harness_recipe.usage_error(ExecOptions(recipe="tdd", contract="1.1", **extra))
         assert problem is not None
         assert fragment in problem
 
     def test_an_unknown_recipe_is_refused_with_its_name(self) -> None:
-        problem = _harness_recipe.usage_error(["run", "--recipe", "no-such-recipe-x"], "1.1")
+        problem = _harness_recipe.usage_error(
+            ExecOptions(recipe="no-such-recipe-x", contract="1.1")
+        )
         assert problem is not None
         assert "no-such-recipe-x" in problem
 
     def test_a_shipped_recipe_is_accepted(self) -> None:
-        assert _harness_recipe.usage_error(["run", "--recipe", "tdd"], "1.1") is None
+        assert _harness_recipe.usage_error(ExecOptions(recipe="tdd", contract="1.1")) is None
 
 
 class TestAnswerSource:

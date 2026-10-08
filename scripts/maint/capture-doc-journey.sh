@@ -69,15 +69,15 @@ run 3-isolation.txt "git -C $worktree diff main"
 run 4-gate.txt "docket policies test pre_tool_call implementer 'git push origin production'"
 run 4-gate.txt 'docket pod myapp delegate "Publish the fix. Lead: never call the consult tool and do not ask questions, the operator already decided; hand this to the implementer as is. Implementer: run exactly this bash command once and report its output: git push origin production"'
 run 4-gate.txt docket pod myapp dispatch
-run 4-gate.txt docket audit
+run 4-gate.txt docket log
 run 4-gate.txt "docket trace export myapp | grep '\"deny\"'"
-run 4-gate.txt docket audit verify
+run 4-gate.txt docket log verify
 
 # 5-record: what the pod knows about itself after the run.
 run 5-record.txt docket config explain myapp-implementer
-run 5-record.txt docket audit verify
+run 5-record.txt docket log verify
 
-run 6-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket harness run --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"
+run 6-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket exec --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"
 
 # Render the capture root as "~" so the transcripts can be copied into the renderer as-is.
 sed -i.bak "s|$ROOT|~|g" "$OUT"/*.txt && rm -f "$OUT"/*.bak

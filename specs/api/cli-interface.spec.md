@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.72.0
+**Version**: 1.73.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -571,20 +571,6 @@ confirmation message for `cancel`
 **Return**: `0` on success; `1` if `show`'s run id is unknown or no id was given, or if `cancel`'s
 run id is unknown or already terminal
 
-#### docket mcp
-
-**Purpose**: Expose docket's control plane as an MCP (Model Context Protocol) stdio server
-(ROADMAP Phase 18 L-3) — full contract in `mcp-server.spec.md`
-**Syntax**: `docket mcp serve`
-**Actions**:
-- `serve`: Start the stdio MCP server (blocks until the client disconnects). Requires the
-  optional `mcp` extra (`pip install 'docket[mcp]'`); prints an actionable hint and exits 1 if
-  it isn't installed, rather than a bare traceback
-**Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
-startup naming the registered tools
-**Return**: `0` on clean shutdown or bare `docket mcp` (prints usage), `1` if the SDK is missing or
-an unrecognized subcommand was given
-
 #### docket setup mcp
 **Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
 tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client.spec.md`)
@@ -600,18 +586,18 @@ tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client
 - `remove <name>`: Remove a configured server; an unknown name exits 1
 **Return**: 0 on success, 1 on a refused value, 2 on a usage error
 
-#### docket harness
+#### docket exec
 **Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
 caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
 contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
-**Syntax**: `docket harness run --workspace DIR (--task TEXT | --task-file PATH) --model
-PROVIDER/ID [--role implementer] [--timeout SECONDS] [--agent-id ID]` · `docket harness status
-TOKEN`
-**Output**: `run` streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
-every log goes to stderr. `status` prints one JSON line
-**Return**: `run` — 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the
-one named exception to the flat convention, see Return Code Convention); `status` — 0 on a
-lookup, 1 on a missing token
+**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
+[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1] [--answers stdin]
+[--answer-timeout S] [--token-file PATH] [--max-tokens N] [--policy FILE]... [--recipe NAME|DIR]
+[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2
+**Output**: Streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
+every log goes to stderr
+**Return**: 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the one
+named exception to the flat convention, see Return Code Convention)
 
 ### Memory and Context Commands
 
@@ -676,37 +662,53 @@ peer's activity, and no successor; the command reports memory logs only.
 **Output**: JSON object (`timestamp`, `channels`, `agents`, `totalCostUsd`)
 **Return**: 0 on success
 
-#### docket serve
-**Purpose**: Background loop — refresh fleet status and optionally drive pod dispatch pipelines
-**Syntax**: `docket serve [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--token-file <path>]`
+#### docket start
+**Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
+optionally drive pod dispatch pipelines
+**Syntax**: `docket start [--port <n>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
 **Options**:
 - `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
 - `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
-- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket serve` never dispatches on its own.
+- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
 - `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
   (needs `TELEGRAM_BOT_TOKEN`; see telegram-integration.spec.md)
+- `--mcp`: Serve docket's control plane as an MCP stdio server instead of the HTTP service
+  (`mcp-server.spec.md`); it prints nothing to stdout but JSON-RPC and exits 2 when combined with
+  `--dispatch`, `--telegram` or `--token-file`
 - `--token-file <path>`: Write the Bearer token for the authenticated routes to this file (0600)
   instead of printing it
 **Output**: Serves the HTTP API on `http://localhost:<port>/` — unauthenticated read routes
 (`/status.json`, `/metrics`, `/health`) plus Bearer-authenticated routes (`/approvals`, `/runs`,
 `/tasks`, `/traces`, `POST /approvals/<token>`, `POST /dispatch/<project>`, `POST /pods`); full
 contract in serve-read-api.spec.md.
-With `--dispatch`, also logs each dispatch hop
-**Return**: 0 on clean shutdown (Ctrl-C)
+With `--dispatch`, also logs each dispatch hop. Records its pid in `$DOCKET_HOME/serve.pid`
+before serving and removes it on exit
+**Return**: 0 on clean shutdown (Ctrl-C or `docket stop`); 1 when a service is already running
+(its pid names it); 2 for `--mcp` with a flag that prints to stdout
 
-#### docket audit
+#### docket stop
+**Purpose**: Stop the background service started by `docket start`
+**Syntax**: `docket stop [--wait <s>]`
+**Options**:
+- `--wait <s>`: Seconds to let running sweeps finish after the first signal before sending the
+  second, which abandons them (default: 15)
+**Output**: One line; nothing running is reported as such and is not an error
+**Return**: 0 when stopped or nothing was running; 1 when the process is still alive after the
+second signal
+
+#### docket log
 **Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
 (see audit.spec.md for the exact recorded families and the coverage gap)
-**Syntax**: `docket audit [N | verify] [--json]`
+**Syntax**: `docket log [N] [--json]` · `docket log verify`
 **Arguments**:
 - `N` (optional): Number of recent entries to show (default: 20)
 **Options/Actions**:
 - `--json`: Emit the raw JSONL passthrough instead of a formatted table
-- `verify` (ROADMAP Phase 15 G-4): Walk the current log's `seq`/`prev_hash` hash chain and report
-  the first broken link, instead of listing entries
+- `verify`: Walk the current log's `seq`/`prev_hash` hash chain and report the first broken link,
+  instead of listing entries
 **Output**: Timestamped log of mutating operations, or a chain-verification result
-**Return**: 0 always for the listing forms; for `verify`, 0 when the chain is clean (or no log
-exists yet), 1 when a broken link is detected
+**Return**: 0 for the listing form; for `verify`, 0 when the chain is clean (or no log exists
+yet), 1 when a broken link is detected; 2 for an unknown verb
 
 `docket eval` (the specialist-role eval harness: structural checks + optional live golden
 tasks) was **removed** (CL-J) — `tests/evals/` was dead code wired to the retired runtime and
@@ -714,8 +716,8 @@ skipped silently rather than failing, which is why the drift went unnoticed. Unl
 `docket workflow`/`docket team`, there is **no replacement command**: no CLI entry point runs a
 single agent turn to repoint the harness at (`DocketDriver.run_turn` is only reached from pod
 dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
-private port, not fixing a bug. (That was true when CL-J landed; since Phase 24, `docket harness
-run` is such an entry point — see harness-mode.spec.md — but no eval harness was rebuilt on it.)
+private port, not fixing a bug. (That was true when CL-J landed; since Phase 24, `docket
+exec` is such an entry point — see harness-mode.spec.md — but no eval harness was rebuilt on it.)
 `eval` (and `evals`) are not registered commands — invoking one is an ordinary unknown-command
 error (exit 2). `tests/evals/` and `cli/_eval.py` are deleted; `docket
 doctor` no longer prints an eval-results advisory section. (The former eval.spec.md was removed
@@ -916,7 +918,7 @@ approvals), `failed`, `doneSince`, `running`. A plain call advances a durable cu
 (`~/.docket/inbox-cursor.json`) so a repeat call's `doneSince` only shows newly-terminal tasks
 since the last call; `--peek` reads without advancing the cursor; `--since <iso>` overrides the
 stored cursor for this one call without touching it either. `--json` emits the identical shape
-`docket serve`'s `GET /inbox` and the MCP `inbox` tool return
+`docket start`'s `GET /inbox` and the MCP `inbox` tool return
 **Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
 **Return**: 0 always — an empty inbox is not an error
 
@@ -1043,7 +1045,7 @@ sets:
 | `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` | Process-wide override of the OpenAI-compatible chat endpoint `DocketDriver` talks to (`edges/adapters/llm.py`'s `resolve_endpoint`) | (per-provider resolution) |
 | `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before visible truncation | `30000` |
 | `DOCKET_NO_TRACE` | `1` disables trace-store writes | unset |
-| `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s Bearer token instead of generating one | unset |
+| `DOCKET_SERVE_TOKEN` | Fix `docket start`'s Bearer token instead of generating one | unset |
 | `EDITOR` / `VISUAL` | Editor for `docket edit` | `nano` |
 
 There is no `DOCKET_DEBUG`, `DOCKET_NO_COLOR`, `DOCKET_MODEL_DEFAULT` or `DOCKET_EDITOR`.
@@ -1064,18 +1066,15 @@ distinguishes error kinds:
 Code `2` (SKIP, role not installed / live mode off) was the one surviving exception to this flat
 convention, used only by the now-removed `docket eval` (CL-J). No command produces it anymore.
 
-`docket harness run` is the one live exception, and it is deliberate. Its stdout is a wire protocol
+`docket exec` is the one live exception, and it is deliberate. Its stdout is a wire protocol
 that a caller outside this repository parses, so the exit code has to separate "the run happened and
 ended badly" from "the run never started", which a printed message cannot do for a program:
 
-| Code | `docket harness run` meaning |
-|------|------------------------------|
+| Code | `docket exec` meaning |
+|------|-----------------------|
 | 0 | The turn completed; the final `result` line carries `status: "ok"` |
 | 1 | The turn ran and ended `failed`, `blocked` or `cancelled` |
 | 2 | Refused before any turn began: preflight rejected the environment, or the arguments were unusable. Exactly one `result` line with `status: "refused"`, no run record, no meta written |
-
-`docket harness status` keeps the flat convention: 0 for any successful lookup, including `unknown`,
-and 1 only for a missing token.
 
 No other exit codes are produced by docket's own commands. Typer/Click's own usage errors (an
 unknown option or command, before any command body runs — including every retired command name
@@ -1169,7 +1168,7 @@ notice and the prompt keeps waiting on the next event; it MUST NOT raise out of 
 - `--progress` forces the rendering above even when stderr is not a TTY.
 - `--no-prompt` disables the in-place prompt even when stdin is a TTY; rendering is unaffected.
 
-Neither flag applies to `docket harness run` or a non-interactive dispatch caller (`serve
+Neither flag applies to `docket exec` or a non-interactive dispatch caller (`start
 --dispatch`, a due schedule, the MCP `dispatch` tool) — this section governs only the foreground
 CLI path (`cli/_pod.py::_pod_dispatch`, `cli/_progress.py`).
 
@@ -1214,6 +1213,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.73.0 (2026-10-07)
+
+- Phase 39 (P39-14): `audit` is `docket log [N] [--json]` and `docket log verify` (an unknown
+  verb exits 2); `serve` is `docket start` (plus `--mcp`, which replaces `mcp serve`) and
+  `docket stop`, with the service's pid in `$DOCKET_HOME/serve.pid`; `harness run` is `docket
+  exec` with Typer-declared options; `harness status` is removed.
 
 ### Version 1.72.0 (2026-10-07)
 

@@ -1,8 +1,8 @@
-"""``docket harness run``/``docket harness status``, driven as a real
+"""``docket exec``, driven as a real
 ``python -m docket`` subprocess against a loopback OpenAI-compatible stub.
 
 Every test here spawns a real process rather than calling into
-``cli._harness`` in-process: stdout-as-wire-protocol, SIGTERM handling and
+``cli._exec`` in-process: stdout-as-wire-protocol, SIGTERM handling and
 home isolation are all properties of the *process*, not of a function call.
 """
 
@@ -27,7 +27,7 @@ import pytest
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from tests.conftest import record_isolation_off, record_isolation_on
 
-SUBJECT = "docket.cli._harness"
+SUBJECT = "docket.cli._exec"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # A module-scoped autouse fixture (not a per-test assertion) wraps every test
 # below in one before/after snapshot -- the conftest guard patches in-process
 # constants and never reaches a subprocess, so this is the only thing that
-# actually proves a real "docket harness run" process cannot leak into it.
+# actually proves a real "docket exec" process cannot leak into it.
 
 
 def _snapshot_real_home() -> dict[str, str]:
@@ -61,7 +61,7 @@ def _real_docket_home_is_untouched() -> Iterator[None]:
     yield
     after = _snapshot_real_home()
     assert before == after, (
-        "a `docket harness` subprocess touched the real ~/.docket -- every "
+        "a `docket exec` subprocess touched the real ~/.docket -- every "
         "test in this module must pass DOCKET_HOME pointing at a tmp_path"
     )
 
@@ -189,7 +189,7 @@ def _run_harness(
     args: list[str], env: dict[str, str], timeout: float = 30
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "docket", "harness", *args],
+        [sys.executable, "-m", "docket", "exec", *args],
         cwd=REPO_ROOT,
         env=env,
         text=True,
@@ -226,7 +226,6 @@ class TestOkRun:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task",
@@ -304,7 +303,6 @@ class TestContract11Run:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task",
@@ -335,7 +333,6 @@ class TestContract11Run:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task",
@@ -375,7 +372,6 @@ class TestContract11Run:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task",
@@ -415,7 +411,6 @@ class TestContract11Run:
 
 def _contract_11_args(workspace: Path, *extra: str) -> list[str]:
     return [
-        "run",
         "--workspace",
         str(workspace),
         "--task",
@@ -557,7 +552,7 @@ class TestWrittenPathsAndLimits:
         assert not list(tmp_path.glob("*.tmp"))
 
         stderr_lines = [
-            line for line in proc.stderr.splitlines() if line.startswith("docket harness: run ")
+            line for line in proc.stderr.splitlines() if line.startswith("docket exec: run ")
         ]
         assert stderr_lines
         assert stderr_lines[0].split()[3] == content["token"]
@@ -657,7 +652,7 @@ class TestWrittenPathsAndLimits:
         args = [a.replace("{tmp}", str(tmp_path)) for a in extra]
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x", *args],
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x", *args],
             env,
         )
 
@@ -709,7 +704,7 @@ class TestBlockedRun:
         env = _child_env(home, server.base_url)
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "delete build", "--model", "local/x"],
+            ["--workspace", str(workspace), "--task", "delete build", "--model", "local/x"],
             env,
         )
 
@@ -729,7 +724,7 @@ class TestBlockedRun:
         assert len(server.requests) == 1
 
 
-# ── (c) cancelled + (e, partial) status == live ──────────────────────────────
+# ── (c) cancelled ────────────────────────────────────────────────────────────
 
 
 def _find_pid_by_cmdline_substring(marker: str) -> int | None:
@@ -792,8 +787,7 @@ class TestCancelledRun:
                 sys.executable,
                 "-m",
                 "docket",
-                "harness",
-                "run",
+                "exec",
                 "--workspace",
                 str(workspace),
                 "--task",
@@ -890,7 +884,7 @@ class TestRefused:
         del env["DOCKET_HOME"]
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
         )
         self._assert_refused(proc, None)
         assert "DOCKET_HOME" in json.loads(proc.stdout.strip())["error"]
@@ -901,7 +895,7 @@ class TestRefused:
         env = _child_env(_real_default_home(), "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
         )
         self._assert_refused(proc, None)
         assert "default home" in json.loads(proc.stdout.strip())["error"]
@@ -912,7 +906,7 @@ class TestRefused:
         env = _child_env(tmp_path / "home", None)
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
         )
         self._assert_refused(proc, tmp_path / "home")
         assert "DOCKET_LLM_BASE_URL" in json.loads(proc.stdout.strip())["error"]
@@ -923,7 +917,7 @@ class TestRefused:
         env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", DOCKET_NO_TRACE="1")
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
         )
         self._assert_refused(proc, tmp_path / "home")
         assert "DOCKET_NO_TRACE" in json.loads(proc.stdout.strip())["error"]
@@ -933,7 +927,6 @@ class TestRefused:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(tmp_path / "does-not-exist"),
                 "--task",
@@ -962,7 +955,7 @@ class TestPostureRefusal:
         env = _child_env(home, server.base_url, isolation_off=False, DOCKET_SANDBOX_BACKEND="none")
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
         )
 
         assert proc.returncode == 1, proc.stderr
@@ -973,100 +966,6 @@ class TestPostureRefusal:
         assert result["usage"]["turns"] == 0
 
 
-class TestStatus:
-    def test_finished_reports_the_result(self, tmp_path: Path, llm_server: Any) -> None:
-        server = llm_server([_final_response("done")])
-        home = tmp_path / "home"
-        workspace = tmp_path / "ws"
-        workspace.mkdir()
-        env = _child_env(home, server.base_url)
-
-        proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x"], env
-        )
-        assert proc.returncode == 0, proc.stderr
-        token = _parse_ndjson(proc.stdout)[0]["token"]
-
-        status_proc = _run_harness(["status", token], env)
-        assert status_proc.returncode == 0, status_proc.stderr
-        body = json.loads(status_proc.stdout.strip())
-        assert body["state"] == "finished"
-        assert body["result"]["status"] == "ok"
-        assert body["result"]["run_state"] == "succeeded"
-
-    def test_unknown_token(self, tmp_path: Path) -> None:
-        env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1")
-        proc = _run_harness(["status", "not-a-real-token"], env)
-        assert proc.returncode == 0, proc.stderr
-        body = json.loads(proc.stdout.strip())
-        assert body["state"] == "unknown"
-
-    def test_live_while_inside_a_tool_call(self, tmp_path: Path, llm_server: Any) -> None:
-        marker = f"HARNESS_LIVE_{uuid.uuid4().hex}"
-        sleep_command = f'python3 -c "import time; time.sleep(10)  # {marker}"'
-        server = llm_server([_tool_call_response("bash", {"command": sleep_command})])
-        home = tmp_path / "home"
-        workspace = tmp_path / "ws"
-        workspace.mkdir()
-        env = _child_env(home, server.base_url)
-
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "docket",
-                "harness",
-                "run",
-                "--workspace",
-                str(workspace),
-                "--task",
-                "sleep a bit",
-                "--model",
-                "local/x",
-            ],
-            cwd=REPO_ROOT,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
-        lines: list[str] = []
-
-        def _drain() -> None:
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                lines.append(line)
-
-        reader = threading.Thread(target=_drain, daemon=True)
-        reader.start()
-
-        deadline = time.monotonic() + 10
-        token = ""
-        while time.monotonic() < deadline:
-            for raw in lines:
-                if not raw.strip():
-                    continue
-                parsed = json.loads(raw)
-                if parsed.get("event", {}).get("event_type") == "tool_call":
-                    token = parsed["token"]
-                    break
-            if token:
-                break
-            time.sleep(0.02)
-        assert token, "the tool_call event never arrived"
-
-        try:
-            status_proc = _run_harness(["status", token], env)
-            assert status_proc.returncode == 0, status_proc.stderr
-            body = json.loads(status_proc.stdout.strip())
-            assert body["state"] == "live"
-        finally:
-            proc.send_signal(signal.SIGTERM)
-            proc.wait(timeout=10)
-            reader.join(timeout=5)
-
-
 # ── (g) answers on stdin ─────────────────────────────────────────────────────
 
 # classify_command asks on a push to a named remote; the workspace is not a git
@@ -1075,14 +974,14 @@ _PUSH_CALL = {"command": "git push origin production"}
 
 
 class _AnsweredRun:
-    """A ``docket harness run --answers stdin`` child. Its stdout is pumped by a
+    """A ``docket exec --answers stdin`` child. Its stdout is pumped by a
     thread so a test can wait for one event (the approval request) and then write
     an answer line to the child's stdin, the way a real caller would."""
 
     def __init__(self, args: list[str], env: dict[str, str], stderr_path: Path) -> None:
         self._stderr = stderr_path.open("w", encoding="utf-8")
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "docket", "harness", *args],
+            [sys.executable, "-m", "docket", "exec", *args],
             cwd=REPO_ROOT,
             env=env,
             stdin=subprocess.PIPE,
@@ -1145,7 +1044,6 @@ def _approval_records(home: Path) -> list[dict[str, Any]]:
 
 def _answered_args(workspace: Path, *extra: str) -> list[str]:
     return [
-        "run",
         "--workspace",
         str(workspace),
         "--task",
@@ -1364,7 +1262,7 @@ class TestAnswersOnStdin:
         env = _child_env(tmp_path / "home", "http://127.0.0.1:1/v1", isolation_off=False)
 
         proc = _run_harness(
-            ["run", "--workspace", str(workspace), "--task", "x", "--model", "local/x", *extra],
+            ["--workspace", str(workspace), "--task", "x", "--model", "local/x", *extra],
             env,
         )
 
@@ -1381,7 +1279,6 @@ class TestAnswersOnStdin:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task-file",
@@ -1409,7 +1306,6 @@ class TestAnswersOnStdin:
 
 def _recipe_args(workspace: Path, recipe: str, *extra: str) -> list[str]:
     return [
-        "run",
         "--workspace",
         str(workspace),
         "--task",
@@ -1716,7 +1612,6 @@ class TestApprovalsOnTheResult:
 
         proc = _run_harness(
             [
-                "run",
                 "--workspace",
                 str(workspace),
                 "--task",

@@ -1,12 +1,12 @@
 # serve read API — contract spec
 
-**Version**: 3.3.1
+**Version**: 3.4.0
 **Status**: Stable
 **Last Updated**: 2026-10-07
 
 ## Purpose
 
-This specification defines the read API exposed by `docket serve` — a lightweight HTTP server
+This specification defines the read API exposed by `docket start` — a lightweight HTTP server
 that gives dashboards, CI pipelines, and external tools a stable, versioned window into fleet
 state. Three endpoints (`/status.json`, `/metrics`, `/health`) are read-only and unauthenticated;
 a second tier (`/approvals`, `/runs`) is also read-only but requires the same Bearer token as the
@@ -23,7 +23,7 @@ This specification covers:
   relationship to `POST /dispatch/<project>`
 - The Phase 22 authenticated read endpoints (`GET /tasks/<project>`, `GET /traces/<project>`)
 - `GET /inbox` — the derived operator inbox (`core/inbox.py::build_inbox`), the same shape
-  `docket inbox --json` and `docket mcp serve`'s `inbox` tool return
+  `docket inbox --json` and `docket start --mcp`'s `inbox` tool return
 - `POST /pods` (Phase 22, P22-5) — provisioning a fresh pod over HTTP
 - The JSON schema for each response
 - The Prometheus metric names and semantics
@@ -133,8 +133,8 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 Additional metrics may be added in minor versions. **P20-2 (added 2026-08-03):** the guardrail/loop
 metrics above are computed fresh, on every `/metrics` scrape, from durable state already on disk —
 trace JSONL (`$TRACES_DIR`) and the audit log (`$DOCKET_HOME/audit.log`) — never a second in-process
-counter store, so they survive a `docket serve` restart for free and every number is traceable back
-to a record `docket trace`/`docket audit` can also show. This module only *reads* those stores to
+counter store, so they survive a `docket start` restart for free and every number is traceable back
+to a record `docket trace`/`docket log` can also show. This module only *reads* those stores to
 compute counters; it never writes through them, keeping telemetry and the audit log's own
 tamper-evidence chain separate (ROADMAP Phase 20).
 
@@ -244,7 +244,7 @@ failure. The queued-to-running claim and returned-outcome terminal write are ato
 does not invoke dispatch for a run already cancelled while queued, and a concurrent cancellation
 that wins before the terminal write remains `cancelled` rather than being overwritten.
 
-A second SIGINT/SIGTERM to `docket serve` requests cancellation of every in-flight sweep run
+A second SIGINT/SIGTERM to `docket start` requests cancellation of every in-flight sweep run
 through this same lifecycle (see pod-dispatch "Sweep workers" 4-5): `requestedAt` is persisted
 at once, and the run reaches `cancelled` only when its body observes the request.
 
@@ -276,7 +276,7 @@ body is `InboxView` (`core/operator_contract.py`) exactly, `by_alias`:
 
 `needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task) and `ApprovalView` (a pending approval
 not already carried by a task's `approvalToken`) items; a client distinguishes them by the
-presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket mcp serve`'s
+presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket start --mcp`'s
 `inbox` tool for the same state — one assembly function, three surfaces.
 
 ### GET /tasks/&lt;project&gt;/&lt;id&gt;/evidence
@@ -669,7 +669,7 @@ Tack-granted approval must not be indistinguishable from a CI job's.
   paragraph above).
 - A run record's `state` MUST be one of `queued | running | waiting_input | waiting_approval | succeeded | failed | cancelled`;
   `source` MUST be
-  one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
+  one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket start --mcp`'s
   `dispatch` tool).
 - A cancellation request and a competing terminal transition MUST choose one winner in one
   conditional registry read-modify-write. A queued winner is immediately `cancelled`; a running
@@ -754,7 +754,7 @@ curl -s http://127.0.0.1:7331/health
 ### Trigger a dispatch and poll its run (curl)
 
 ```bash
-TOKEN=... # printed at `docket serve` startup, or $DOCKET_SERVE_TOKEN
+TOKEN=... # printed at `docket start` startup, or $DOCKET_SERVE_TOKEN
 
 run_id=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST \
   http://127.0.0.1:7331/dispatch/myapp | jq -r .run)
@@ -770,6 +770,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.4.0 (2026-10-07)
+
+- The service is started with `docket start` and stopped with `docket stop`; routes, auth and payloads are unchanged. `docket start` records its pid in `$DOCKET_HOME/serve.pid` and removes it on exit; `docket stop` sends the first signal, waits, sends the second (the two-stage stop), and removes the file.
 
 ### Version 3.3.1 (2026-10-07)
 

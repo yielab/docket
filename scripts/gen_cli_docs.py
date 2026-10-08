@@ -54,18 +54,19 @@ GROUPS: list[tuple[str, list[str]]] = [
             "cost",
             "setup",
             "config",
-            "serve",
+            "start",
+            "stop",
             "validate",
             "snapshot",
         ],
     ),
     (
         "Security and Audit",
-        ["audit", "policies", "plugins", "approve", "deny", "inbox", "chat"],
+        ["log", "policies", "plugins", "approve", "deny", "inbox", "chat"],
     ),
     (
         "Observability Commands",
-        ["runs", "trace", "metrics", "harness"],
+        ["runs", "trace", "metrics", "exec"],
     ),
 ]
 
@@ -192,7 +193,7 @@ _EXIT_CODES = """\
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
 """
@@ -431,7 +432,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("AUDIT_LOG_MAX_BYTES",),
-        "Audit-log rotation threshold (`docket audit`)",
+        "Audit-log rotation threshold (`docket log`)",
         "`5242880` (5 MiB)",
     ),
     (("SESSION_TIMEOUT",), "Age past which an expired approval is denied (fail-closed)", "`3600`"),
@@ -538,12 +539,12 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DISPATCH_TURN_TIMEOUT_S",),
-        "`docket serve`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches",
+        "`docket start`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches",
         "unset (no serve-wide override)",
     ),
     (
         ("DISPATCH_SWEEP_WORKERS",),
-        "`docket serve --dispatch`: how many pods one sweep tick runs at once (`1` is serial)",
+        "`docket start --dispatch`: how many pods one sweep tick runs at once (`1` is serial)",
         "`4`",
     ),
     (
@@ -655,7 +656,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     (("VISUAL",), "Fallback text editor for `docket edit` when `EDITOR` is unset", "`nano`"),
     (
         ("DOCKET_SERVE_TOKEN",),
-        "Fix `docket serve`'s bearer token instead of generating one per run",
+        "Fix `docket start`'s bearer token instead of generating one per run",
         "unset (random)",
     ),
     (

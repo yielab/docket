@@ -215,7 +215,7 @@ _RECORD = [
     "⋯",
     "  Config source:   ⋯/templates/recipes/secure-build  (digest ec69082e5924..., drift: no)",
     "⋯",
-    "$ docket audit verify",
+    "$ docket log verify",
     "✓ 7 chained line(s) verified clean.",
 ]
 
@@ -261,7 +261,7 @@ _GATE = [
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
     "⚠   [task-31f81c52-d1fd-481d-a679-6e315a587197] waiting_approval — implementer hop parked "
     "for approval (token=apr-12f07fc8-d922-4958-9738-8bab58932c2e)",
-    "$ docket audit",
+    "$ docket log",
     "  ⋯",
     "  2026-10-05T15:12:49.964Z  demo        tool.ask          tool=bash agent=myapp-implementer "
     "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
@@ -269,7 +269,7 @@ _GATE = [
     '{"ts": "2026-10-05T15:12:49Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
     '"tool": "bash", ⋯ "decision": "deny", "ok": false, "executed": false, "denialKind": '
     '"approval_parked", "policyId": "high-risk-deploy", ⋯}}',
-    "$ docket audit verify",
+    "$ docket log verify",
     "✓ 7 chained line(s) verified clean.",
 ]
 

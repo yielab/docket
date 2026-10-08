@@ -41,7 +41,6 @@ def test_harness_recipe_task_evidence_equals_the_cli_json_of_the_same_home(
     env = _child_env(tmp_path / "home", server.base_url)
     stderr = tmp_path / "stderr.txt"
     args = [
-        "run",
         "--workspace",
         str(workspace),
         "--task",

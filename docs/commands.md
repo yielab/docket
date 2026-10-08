@@ -1101,44 +1101,32 @@ Subcommands:
 
 ---
 
-### serve
+### start
 
-**Usage:** `docket serve`
+**Usage:** `docket start`
 
-Local HTTP endpoints: /status.json /metrics /health.
+Start the background service: the local HTTP API, sweeps, and what you turn on.
 
-Binds to 127.0.0.1 (loopback-only) -- not reachable off this host. With
---dispatch, each refresh also runs every pod's queue through the
-Lead->Implementer->Reviewer->Tester pipeline. Each hop is a real agent
-turn and is budget-gated; leave it off for a read-only monitor. With
---telegram, also polls docket's own Telegram bot so a chat bound via
-`docket wire` can /approve, /deny, /status, /delegate or /answer -- idle until a
-bot token is stored.
+Binds 127.0.0.1 only. Always runs the sweeps and /status.json /metrics /health.
+--dispatch also runs every pod's queue (spends budget), --telegram polls the
+Telegram bot, --mcp serves docket's tools over stdio and runs nothing else.
+Stop it with `docket stop`.
 
-`-p`/`--port <N>` (default 7331) binds a port -- 127.0.0.1 only, never
-reachable off the host. `-i`/`--interval <seconds>` (default 30) sets
-the sweep refresh interval. `--token-file <path>` writes the bearer
-token needed for /approvals, /dispatch, and /runs to a 0600 file instead
-of printing it to stdout.
+Example: docket start --dispatch
 
-HTTP endpoints while running: GET /status.json, /metrics, /health (no
-auth); GET /approvals, POST /approvals/<token>
-{"action": "grant"|"deny"}, GET /runs and /runs?project=<p>, GET
-/runs/<id>, GET /tasks/<project>, GET /traces/<project>?since=<cursor>,
-POST /tasks/<project>, POST /dispatch/<project>, POST /pods (all
-Bearer-token-authed). The
-bearer token is generated fresh per invocation (printed to stdout,
-written to --token-file if given, or overridable via
-DOCKET_SERVE_TOKEN) and compared with secrets.compare_digest. POST
-/dispatch/<project> returns {"run": "<id>"} immediately and runs the
-pipeline in the background -- poll GET /runs/<id> (or
-`docket runs show <id>`) for the outcome.
 
-Plain `docket serve` never dispatches and never polls Telegram; both are
-opt-in. Read-only by default, so it's safe to leave running for
-monitoring. --dispatch spends real budget; over-budget tasks are left
-blocked, not run. Per-task dispatch is traced (`docket trace`) for
-auditability.
+---
+
+### stop
+
+**Usage:** `docket stop`
+
+Stop the background service: let sweeps finish, then abandon them if they hang.
+
+Sends the service one signal and waits up to --wait seconds for it to exit; a
+second signal abandons any sweep still running.
+
+Example: docket stop
 
 
 ---
@@ -1180,33 +1168,19 @@ tool.
 
 ## Security and Audit
 
-### audit
+### log
 
-**Usage:** `docket audit`
+**Usage:** `docket log`
 
-Show the audit log, or verify its tamper-evidence chain.
+The hash-chained record of what was authorized and done.
 
-A durable, append-only, tamper-evident record of docket-initiated
-mutations (key changes, gate toggles, profile pins, scope changes,
-agent/pod add/delete, persona changes, etc.).
+### log verify
 
-With no argument, shows the last 20 entries (human-readable); `\[N\]`
-shows the last N; `--json` dumps the raw audit.log JSONL file verbatim;
-`verify` walks the hash chain and reports the first broken link (exit 1)
-or that it verified clean (exit 0).
+**Usage:** `docket log verify`
 
-Stored at `~/.docket/audit.log` -- one JSON object per line (seq, ts
-(millisecond resolution), user, pid, action, detail, prev_hash), never
-containing secret values. Every line chains to the previous one via a
-SHA-256 prev_hash (stdlib hashlib, no new dependency); `verify` detects a
-hand-tampered line, and a line without `seq`/`prev_hash` is a break.
-Rotates to a single-generation `audit.log.1` backup once past
-AUDIT_LOG_MAX_BYTES (default 5 MiB, env-overridable); the first entry
-after a rotation claims continuity, and `verify` checks that claim
-against the backup. Best-effort and never raises; there
-is no environment kill switch -- recording cannot be silently disabled.
-Always exits 0 for the listing forms (malformed lines are skipped, not
-fatal); `verify` exits 1 on a detected broken chain link.
+Check the chain; exit 1 and name the first broken line if it was altered.
+
+Example: docket log verify
 
 
 ---
@@ -1402,36 +1376,19 @@ operator questions by kind and outcome, and decision latency.
 
 ---
 
-### harness
+### exec
 
-**Usage:** `docket harness`
+**Usage:** `docket exec`
 
-Run one agent, one turn, to completion, for a caller-owned workspace and home.
+Run one agent for one task in a workspace you own, for programs.
 
-`run --workspace DIR (--task TEXT | --task-file PATH) --model
-PROVIDER/ID \[--role implementer\] \[--timeout S\] \[--agent-id ID\]` executes
-synchronously and streams newline-delimited JSON events on stdout,
-finishing with exactly one versioned result object -- see
-`docs/adr/0001-harness-mode.md` and `specs/api/harness-mode.spec.md` for
-the full wire contract. stdout carries only that NDJSON; every log goes
-to stderr.
+Streams newline-delimited JSON events on stdout and ends with exactly one
+versioned result line; every log goes to stderr. Needs DOCKET_HOME set to a
+caller-owned directory and DOCKET_LLM_BASE_URL set. A tool call that would need
+a human is denied at once. SIGTERM cancels the run. Exit 0 the result is ok,
+1 it failed, was blocked or cancelled, 2 refused before any run started.
 
-Refuses (exit 2, one `result` with `status: refused`) unless `DOCKET_HOME`
-is set to a caller-owned directory (never the operator's own default
-home), `DOCKET_LLM_BASE_URL` is set, `DOCKET_NO_TRACE` is unset, and
-`--workspace` is a real directory -- this command never touches the
-operator's own approvals or audit log. Approval mode is fixed to
-non-interactive refusal: a tool call that would otherwise wait for a
-human is denied immediately as `blocked` rather than hanging for up to
-two minutes. On `SIGTERM` it persists a cancellation request, kills any
-in-flight tool subprocess's process group, and exits with a `cancelled`
-result. Exit codes: 0 the run's result is `ok`; 1 it ended `failed`,
-`blocked`, or `cancelled`; 2 refused before any run started -- the one
-named exception to this CLI's flat 0/1 convention.
-
-`status TOKEN` reports whether a run token from a prior `run` invocation
-is `live`, `finished` (with a best-effort reconstructed result), or
-`unknown`.
+Example: docket exec --workspace . --task "fix the failing test" --model local/qwen
 
 
 ---
@@ -1485,7 +1442,7 @@ docket -V
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
 
@@ -1514,7 +1471,7 @@ No command emits any other exit code today.
 | `NOTIFY_STATE_FILE` | `core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
 | `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`core/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
-| `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
+| `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket log`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
 | `APPROVAL_TIMEOUT` | The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |
 | `TOOL_APPROVAL_TIMEOUT` | The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT` | `120` |
@@ -1536,8 +1493,8 @@ No command emits any other exit code today.
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER`, `DISPATCH_RETRIES_TESTER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
 | `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
 | `DISPATCH_RETRY_MAX_WAIT_S` | Ceiling on a retry's sleep, whichever of the linear backoff or the endpoint's own `Retry-After` asked for longer | `60` |
-| `DISPATCH_TURN_TIMEOUT_S` | `docket serve`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches | unset (no serve-wide override) |
-| `DISPATCH_SWEEP_WORKERS` | `docket serve --dispatch`: how many pods one sweep tick runs at once (`1` is serial) | `4` |
+| `DISPATCH_TURN_TIMEOUT_S` | `docket start`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches | unset (no serve-wide override) |
+| `DISPATCH_SWEEP_WORKERS` | `docket start --dispatch`: how many pods one sweep tick runs at once (`1` is serial) | `4` |
 | `DISPATCH_VERIFY_TIMEOUT_S` | Same as `DISPATCH_TURN_TIMEOUT_S`, for the verify step | unset (no serve-wide override) |
 | `AGENT_LOOP_MAX_ITERATIONS` | Hard cap on model round-trips within one turn | `20` |
 | `AGENT_LOOP_MAX_TOOL_CALLS` | Hard cap on total tool calls dispatched across one turn | `40` |
@@ -1565,7 +1522,7 @@ No command emits any other exit code today.
 | `SHELL` | Login shell name; `docket setup` uses it to name the completion command it offers | unset (bash assumed) |
 | `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |
 | `VISUAL` | Fallback text editor for `docket edit` when `EDITOR` is unset | `nano` |
-| `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
+| `DOCKET_SERVE_TOKEN` | Fix `docket start`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
 | `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket setup provider add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |

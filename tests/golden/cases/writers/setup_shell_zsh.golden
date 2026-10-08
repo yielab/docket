@@ -23,10 +23,10 @@ _docket() {
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
-    'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
-    'audit:Show the audit log, or verify its tamper-evidence chain'
+    'exec:Run one agent for one task in a workspace you own, for programs'
     'snapshot:Export system state snapshot as JSON'
-    'serve:Local HTTP endpoints: /status.json /metrics /health'
+    'start:Start the background service: the local HTTP API, sweeps, and what you turn on'
+    'stop:Stop the background service: let sweeps finish, then abandon them if they hang'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
     'recipes:List and inspect the recipe library'
@@ -39,6 +39,7 @@ _docket() {
     'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
     'help:Show help'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
+    'log:The hash-chained record of what was authorized and done'
   )
 
   _docket_ids() {

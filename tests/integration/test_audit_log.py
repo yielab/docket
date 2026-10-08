@@ -1,8 +1,8 @@
-"""The audit log's hash chain, `docket audit verify`, and command coverage.
+"""The audit log's hash chain, `docket log verify`, and command coverage.
 
 Pins the hash chain (seq + prev_hash, GENESIS_HASH: clean on a fresh log,
 a tampered middle line detected, tolerant of pre-chain and malformed lines),
-`docket audit verify`, and that keys/profile/scope/agent/persona commands each
+`docket log verify`, and that keys/profile/scope/agent/persona commands each
 write exactly one correctly-shaped, secret-free entry (pod.add/pod.remove
 coverage lives in test_pod_provisioning.py). Every fixture repoints
 ``_cfg.AUDIT_LOG`` explicitly rather than relying on the autouse isolation
@@ -22,7 +22,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _audit as audit_cli
+from docket.cli import _log as audit_cli
 from docket.cli import _pod, _remove
 from docket.cli import _setup_model as keys_cli
 from docket.cli._agents import run_delete, run_init
@@ -429,7 +429,7 @@ class TestChainVerify:
             '{"ts": "x", "user": "a", "pid": 1, "action": "gates.enable", "detail": ""}\n',
             encoding="utf-8",
         )
-        rc = audit_cli.run_audit()
+        rc = audit_cli.show_log()
         assert rc == 0
 
     def test_single_rotation_continues_the_chain_and_verifies_clean(
@@ -581,14 +581,14 @@ class TestPreexistingLogBackwardCompat:
 
 class TestAuditVerifyCommand:
     def test_verify_missing_log(self, audit_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         out = capsys.readouterr().out
         assert rc == 0
         assert "Nothing to verify" in out
 
     def test_verify_clean_log(self, audit_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
         _audit.audit_log("keys.add", "A")
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         out = capsys.readouterr().out
         assert rc == 0
         assert "verified clean" in out
@@ -601,7 +601,7 @@ class TestAuditVerifyCommand:
         raw = '{ "action": "unchained", "detail": "A" }\n'
         (audit_home / "audit.log").write_text(raw, encoding="utf-8")
 
-        rc = audit_cli.run_audit(json_out=True)
+        rc = audit_cli.show_log(json_out=True)
 
         assert rc == 0
         assert capsys.readouterr().out == raw
@@ -618,7 +618,7 @@ class TestAuditVerifyCommand:
         lines[0] = json.dumps(e)
         logf.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         captured = capsys.readouterr()
         assert rc == 1
         assert "line 2" in captured.err
@@ -639,7 +639,7 @@ class TestAuditVerifyCommand:
         lines[0] = json.dumps(e)
         logf.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         captured = capsys.readouterr()
         assert rc == 1
         assert "line 2 of 3" in captured.err
@@ -651,7 +651,7 @@ class TestAuditVerifyCommand:
         _audit.audit_log("keys.add", "FIRST")
         _audit.audit_log("keys.add", "SECOND")
 
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         out = capsys.readouterr().out
         assert rc == 0
         assert "verified clean" in out
@@ -660,14 +660,14 @@ class TestAuditVerifyCommand:
     def test_verify_reports_erasure_of_the_rotated_backup_as_a_failure(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Deleting audit.log.1 after a rotation must not let `docket audit verify`
+        # Deleting audit.log.1 after a rotation must not let `docket log verify`
         # report a clean chain (exit 0); it must fail loudly (exit 1).
         monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
         _audit.audit_log("keys.add", "FIRST")
         _audit.audit_log("keys.add", "SECOND")
         (audit_home / "audit.log.1").unlink()
 
-        rc = audit_cli.run_audit_verify()
+        rc = audit_cli.verify_log()
         captured = capsys.readouterr()
         assert rc == 1
         assert "audit.log.1 is missing" in captured.err
