@@ -223,3 +223,36 @@ against `exec`.
   explained. The README prose tests are rebuilt from the new README, never carried forward.
 - The mechanical parts (moving command bodies out of `cli/__init__.py`, rewriting command names in
   docs, templates, scripts and tests) are scripts under `scripts/maint/`, each with a `--check`.
+
+## Live run
+
+Measured 2026-10-08 on `develop` at the Wave 94 rollup (P39-24), the six journeys of the
+audit's live run re-run under a throwaway `DOCKET_HOME` against the local endpoint; the
+transcript is the gitignored `internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`.
+
+- **None of the sixteen defects reproduces.** `run --dry-run` starts nothing and an unknown
+  flag exits 2; `pod unset verify --member` clears a verify command; a done task's worktree,
+  branch, base, diff and merge command are printed by `task show` and its path by `task list`;
+  `setup sandbox` bare is read-only; an unknown role is one line; the Lead cannot be removed and
+  `pod delete` off a terminal needs `--confirm <name>`; after `task approve` the inbox says
+  `approved ready` with the `run` command; the short id, a prefix and the approval token all
+  resolve; the verify command shows in `pod show`; one role vocabulary; `pod --help` lists
+  every verb; one tagline. A dispatch killed mid-hop is settled by `task cancel`, requeued by
+  `task retry` and finished by `run --resume`.
+- **The newcomer path types no pod name**: `setup`, `init`, `task add`, `run`, `status`, `inbox`,
+  `task show`, `task diff` and `task answer` all resolved the pod from the directory.
+- **A fresh machine reaches `Ready` through `docket setup` alone** with the local provider, and a
+  hosted-shaped provider registers against a fake endpoint (`--credential`, rotate, remove with
+  `--yes`).
+- **Every `--help` at every level shows its own help with an example** (`-h` included); the
+  guessed commands: `docket run` works, `docket pods|add|approve` get the right suggestion,
+  `docket dispatch|delegate|ls` exit 2 with no suggestion because no live name is near them
+  (decision 4 leaves no old name to point at).
+- **Checklist: 18 of 20.** The two exceptions: rule 5, `pod recipes|roles|policies` take a bare
+  name where the rest of the tree says `show`; rule 16, there is no switch to turn hints off and
+  `task approve <token>` prints no `Next` line.
+- **New, for triage** (locators in the transcript's last section): the `--progress` stream names
+  the first step for every hop; a denied dispatch's run record stays `waiting_approval` and the
+  deny reason reaches the log only; `status` has no "waiting input" bucket; `pod check` requires
+  `--role`; a custom provider without `--model` records `local-model`; three `Example:` lines pass
+  a timestamp as a task ref.

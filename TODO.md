@@ -1053,7 +1053,7 @@ docket harness tests pass against `exec`. Oracle: the gates.
 
 ### P39-24 — the measurement: six journeys re-run, checklist re-scored
 
-**Status:** IN PROGRESS (integrator, Wave 95 opened 2026-10-08 on the Wave 94 rollup `cf3e036e`) · **Size:** S · **Wave:** 95 · **Model:** Integrator · **Spec:** ADR 0022 gains a "Live run" section
+**Status:** DONE (integrator, 2026-10-08: six journeys re-run on the local endpoint under a throwaway `DOCKET_HOME`; none of the sixteen defects reproduces; checklist 18/20 with rule 5 (bare-name library readers) and rule 16 (no hint switch) as the named exceptions; transcript in `internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`, score in ADR 0022 "Live run", eighteen new locators for triage in the transcript) · **Size:** S · **Wave:** 95 · **Model:** Integrator · **Spec:** ADR 0022 gains a "Live run" section
 
 **Goal:** the six journeys of the audit's live run (first run, daily loop, the gate, make it
 yours, ops, errors) re-run against the Wave 94 rollup under the same throwaway `HOME` and the
