@@ -7,7 +7,7 @@ no run id, no status query, and no way to tell "done" from "failed" from "never 
 
 This module closes that gap: every time something asks a pod to dispatch (the CLI,
 the serve webhook, a due schedule, the periodic sweep loop, or an MCP tool
-call — ``docket mcp serve``'s ``dispatch`` tool) a run record is
+call — ``start --mcp``'s ``dispatch`` tool) a run record is
 created *before* the work starts and folded to a terminal state when it
 finishes — successfully or not. Records persist to ``cfg.RUNS_FILE`` (a single
 docket-owned JSON document, one list of records) through

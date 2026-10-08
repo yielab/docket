@@ -68,8 +68,8 @@ class TestDelivering:
         assert delivering == []
         text = _channel.unreached_warning(delivering)
         assert text is not None
-        assert "docket channels enable desktop" in text
-        assert "docket channels enable ntfy --set topic=" in text
+        assert "docket setup notify enable desktop" in text
+        assert "docket setup notify enable ntfy --set topic=" in text
         assert "docket inbox" in text
 
     def test_an_enabled_notify_channel_delivers_and_silences_the_warning(self) -> None:

@@ -63,8 +63,8 @@ _UNREACHED_WARNING = (
     "Only console is on, and console sends nothing.\n"
     "  A parked task waits unseen until you run docket inbox.\n"
     "  Before running unattended, enable a channel:\n"
-    "    docket channels enable desktop                   # this machine\n"
-    "    docket channels enable ntfy --set topic=<topic>  # your phone"
+    "    docket setup notify enable desktop                   # this machine\n"
+    "    docket setup notify enable ntfy --set topic=<topic>  # your phone"
 )
 
 

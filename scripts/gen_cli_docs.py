@@ -45,7 +45,6 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Lifecycle Commands", ["list", "init", "add", "status", "info", "delete", "maintain"]),
     ("Session and Context Management", ["scope", "context", "persona"]),
     ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
-    ("Telegram Integration", ["wire", "unwire", "conversations"]),
     (
         "Utility Commands",
         [
@@ -58,7 +57,6 @@ GROUPS: list[tuple[str, list[str]]] = [
             "serve",
             "validate",
             "snapshot",
-            "mcp",
         ],
     ),
     (
@@ -67,7 +65,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ),
     (
         "Observability Commands",
-        ["runs", "trace", "metrics", "harness", "exporters", "channels", "notify"],
+        ["runs", "trace", "metrics", "harness"],
     ),
 ]
 
@@ -392,7 +390,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("MCP_SERVERS_FILE",),
-        "Registry of configured external MCP tool servers (`docket mcp servers`)",
+        "Registry of configured external MCP tool servers (`docket setup mcp`)",
         "`$DOCKET_HOME/docket-mcp-servers.json`",
     ),
     (

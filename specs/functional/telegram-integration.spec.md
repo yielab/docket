@@ -1,9 +1,10 @@
 # Telegram Integration Specification
 
-**Version**: 2.4.0
-**Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
-discovers a Telegram group from a one-time `/wire <code>` message (with manual entry as a
-fallback), records its binding in `fleet.json`, and `docket serve
+**Version**: 2.5.0
+**Status**: Implemented. Docket owns the whole channel: `docket setup notify enable telegram
+--chat <id>` connects it in one operation (token, allowed chats, a binding per pod Lead in
+`fleet.json`), `docket setup notify bind`/`unbind` handle the per-pod exception (guided
+discovery from a one-time `/wire <code>` message, manual entry as a fallback), and `docket serve
 --telegram` long-polls the Telegram Bot API (`edges/adapters/telegram.py`, stdlib `urllib`, zero
 new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through docket's
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
@@ -14,7 +15,7 @@ fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny throu
 ## Purpose
 
 This specification defines two things: (1) how docket records which Telegram peer/group maps to
-which agent (`docket wire`/`docket unwire`, unchanged in shape since 1.1.0), and (2) how docket's
+which agent (`docket setup notify enable telegram` and `bind`/`unbind`), and (2) how docket's
 own bot (`docket serve --telegram`) turns an inbound message on a bound chat into an approve/
 deny/status/delegate action against Docket's real state and approval mechanism.
 
@@ -22,7 +23,8 @@ deny/status/delegate action against Docket's real state and approval mechanism.
 
 This specification covers:
 
-- Recording a Telegram peer/group ID binding for an agent (`docket wire`/`docket unwire`)
+- Recording a Telegram peer/group ID binding for an agent (`docket setup notify bind`/`unbind`)
+- Connecting Telegram in one step (`docket setup notify enable telegram`)
 - The binding's storage in `fleet.json` (`core/fleet.py`) and its role as the channel's **entire
   authorization boundary** (see Security below)
 - The bot's wire protocol: `getUpdates` long-poll, `sendMessage` reply (`edges/adapters/
@@ -46,7 +48,7 @@ public endpoint. Two independent checks stand between an inbound message and any
 
 1. **Sender authorization.** Only a chat id with an existing `fleet.json` binding
    (`core.fleet.find_binding("telegram", chat_id)`) may approve, deny, check status, or delegate
-   anything. **The binding recorded by `docket wire` is the entire authorization boundary** —
+   anything. **The binding recorded by `docket setup notify bind` (or `enable telegram`) is the entire authorization boundary** —
    there is no second allowlist, no per-user check beyond it. An unbound chat's message is
    refused (`"This chat is not wired to a docket agent."`) and the attempt is audited
    (`telegram.unauthorized`, carrying the chat id and update id, never the message body) —
@@ -64,7 +66,7 @@ blocked policy verdict never default to granting or denying anything.
 
 ## Requirements
 
-### Wiring a group (docket wire)
+### Connecting Telegram (docket setup notify)
 
 1. For Telegram, when `TELEGRAM_BOT_TOKEN` is configured, **MUST** offer guided discovery before
    manual entry: show a short one-time `/wire <code>` command, read Telegram updates after the
@@ -80,11 +82,21 @@ blocked policy verdict never default to granting or denying anything.
 4. **MUST** state plainly that the binding is the channel's entire authorization boundary: anyone
    who can post in the bound chat can act as that agent's operator once the bot is running.
 5. **SHOULD** show an existing binding for the agent, if any, before prompting for a new one.
-6. **MUST** fall back to the interactive agent picker when no agent id is supplied.
+6. **MUST** refuse off a TTY when no `--chat` is supplied, naming `--chat`; it never opens an agent picker.
 7. **MUST NOT** invent a binding from empty manual input; an empty entry **MUST** abort cleanly
    (exit 0, "Aborted").
+8. `enable telegram --chat <id> [--token T] [--test]` **MUST** be one operation: it stores the bot
+   token (`--token`, then `TELEGRAM_BOT_TOKEN` in the environment, then a hidden prompt on a TTY;
+   a stored token is kept when none is given), enables the `telegram` channel with `actors` set to
+   the chat ids, upserts one binding per pod Lead (to the first chat id), and prints what it wrote
+   in each store. Every precondition (a chat id, a token) **MUST** be checked before the first
+   write, so a refusal writes nothing.
+9. `enable telegram` **MUST NOT** send any message unless `--test` is passed; with `--test` it
+   sends exactly one. `core/telegram.py` still never messages a wired chat first.
+10. `show telegram` **MUST** list the bindings in `fleet.json` and the open Telegram conversations
+    in `docket-conversations.json`; `bind` seeds the conversation registry entry.
 
-### Unwiring a group (docket unwire)
+### Unbinding a group (docket setup notify unbind)
 
 1. **MUST** remove the binding for the given agent from `fleet.json`. Because the binding is the
    authorization boundary, this is the operative "revoke access" action for the channel — it
@@ -96,8 +108,8 @@ blocked policy verdict never default to granting or denying anything.
 1. **MUST** be opt-in (`docket serve --telegram`), matching the existing `--dispatch` flag's
    shape — a real externally-reachable channel is not something `docket serve` starts
    unconditionally.
-2. **MUST** read the bot token from docket's own secrets store (`docket keys add
-   TELEGRAM_BOT_TOKEN`) — never a bespoke config file, never a CLI argument (which would land in
+2. **MUST** read the bot token from docket's own secrets store (`docket setup notify
+   enable telegram`) — never a bespoke config file, never a CLI argument (which would land in
    shell history).
 3. **MUST** degrade to an idle, periodically-retried wait — never crash `docket serve` — when no
    token is configured. The same degrade-not-crash contract applies to a Telegram-side transport
@@ -219,14 +231,14 @@ amends the command grammar above with the fifth verb and documents the dialect's
 ### CLI Command Signatures
 
 ```bash
-# Bind a Telegram group/peer to an agent (guided discovery, manual ID fallback)
-docket wire [agent-id] [--channel <name>]
+# Connect Telegram: store the token, allow the chat, bind every pod Lead (sends nothing)
+docket setup notify enable telegram --chat <id> [--token T] [--test]
 
-# Remove an agent's channel binding
-docket unwire [agent-id] [--channel <name>]
+# Bind one pod member to a group/peer (guided discovery, manual ID fallback)
+docket setup notify bind <member> [--channel <name>] [--chat <id>]
 
-# Store the bot token (read by core/telegram.py; excluded from per-agent .env sync)
-docket keys add TELEGRAM_BOT_TOKEN
+# Remove a member's channel binding
+docket setup notify unbind <member> [--channel <name>] [--yes]
 
 # Start docket's own bot (long-poll; idle if no token is stored)
 docket serve --telegram
@@ -234,8 +246,8 @@ docket serve --telegram
 
 ### Return Codes
 
-- `0`: Success (bound / unbound / nothing to do / aborted on empty entry)
-- `1`: Any error (unknown agent — CLI-wide convention, see ../api/cli-interface.spec.md)
+- `0`: Success (connected / bound / unbound / nothing to do / aborted on empty entry)
+- `1`: Any error (unknown agent, a missing chat id or token — CLI-wide convention, see ../api/cli-interface.spec.md)
 
 ### Bot command grammar
 
@@ -249,45 +261,34 @@ docket serve --telegram
 
 ## Examples
 
-### Wiring an agent to a group
+### Connecting Telegram in one step
 
 ```bash
-$ docket wire mywebsite
-Wire Telegram: My Shop (mywebsite)
+$ docket setup notify enable telegram --chat -1001234567890
+Telegram connected.
+  secrets.json     TELEGRAM_BOT_TOKEN
+  channel catalog  actors -1001234567890
+  fleet.json       mywebsite-lead
+```
 
-Easy setup:
-  1. Add your Docket bot to the Telegram group.
-  2. In that group, send: /wire A1B2C3
-  3. Return here and press Enter.
+### Binding one member to a group
 
-Press Enter after sending it, or paste the group ID:
-[SUCCESS] Found Telegram group "My Shop Team"
-[SUCCESS] Binding: mywebsite ← telegram group -1001234567890
-  This binding is the whole authorization story: whoever can post in this chat can now
-  /approve, /deny, /status, or /delegate for 'mywebsite' once docket's own bot is running
-  (docket serve --telegram, with TELEGRAM_BOT_TOKEN configured). Keep the chat restricted
-  to people who should hold that power.
-[SUCCESS] Done. 'mywebsite' is now wired to telegram peer -1001234567890
+```bash
+$ docket setup notify bind mywebsite-lead --chat -1001234567890
+Binding: mywebsite-lead <- telegram chat -1001234567890
+  This binding is the whole authorization story for that chat.
 ```
 
 ### Removing a binding (revokes channel access immediately)
 
 ```bash
-$ docket unwire mywebsite
-Unwire Telegram: My Shop (mywebsite)
-
-This will remove the telegram binding for peer -1001234567890
-Confirm? [y/N]: y
-[SUCCESS] Binding removed
+$ docket setup notify unbind mywebsite-lead --yes
+Binding removed
 ```
 
 ### Starting the bot
 
 ```bash
-$ docket keys add TELEGRAM_BOT_TOKEN
-Enter value for TELEGRAM_BOT_TOKEN (hidden): ****
-[SUCCESS] Key 'TELEGRAM_BOT_TOKEN' stored.
-
 $ docket serve --telegram
 docket serve  port=7331  refresh=30s  telegram=on  (Ctrl-C to stop)
 ...
@@ -312,13 +313,14 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
 - No daemon-related pre-conditions — there is none. The operator **MUST** already know the
   peer/group ID only when using the manual fallback.
 - The bot **MUST** have a stored `TELEGRAM_BOT_TOKEN` for guided discovery or polling
-  (`docket keys add TELEGRAM_BOT_TOKEN`); manual ID entry remains available without it.
+  (`docket setup notify enable telegram`); manual ID entry remains available without it.
 
 ### Post-conditions
 
-- After `docket wire`, `fleet.json` **MUST** contain a binding linking the entered peer ID to
-  the agent.
-- After `docket unwire`, no binding for the agent **MUST** remain in `fleet.json`, and the next
+- After `docket setup notify bind`, `fleet.json` **MUST** contain a binding linking the entered
+  peer ID to the agent; after `enable telegram --chat <id>`, `secrets.json` holds the token, the
+  channel catalog holds `actors: [<id>]` enabled, and every pod Lead has a binding.
+- After `docket setup notify unbind`, no binding for the agent **MUST** remain in `fleet.json`, and the next
   inbound message on that peer **MUST** be refused as unauthorized.
 - After a `/approve`/`/deny` from a bound chat, the approval record **MUST** be in its granted/
   denied state and an `audit_log()` entry tagged `channel="telegram"` **MUST** exist.
@@ -337,6 +339,13 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Version 2.5.0 (2026-10-07)
+
+- Phase 39 (P39-13): connecting Telegram is one operation, `docket setup notify enable telegram
+  --chat <id>` (Connecting Telegram 8-10): the token, the allowed chats and a binding for every pod
+  Lead are written together, nothing is sent unless `--test`. `docket wire`/`unwire` are replaced
+  by `setup notify bind`/`unbind`; the inbound-only pins on `core/telegram.py` are unchanged.
 
 ### Version 2.4.0 (2026-10-05)
 

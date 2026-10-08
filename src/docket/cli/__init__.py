@@ -63,6 +63,9 @@ _setup.setup_app.add_typer(_setup_model.provider_app)
 _setup.setup_app.add_typer(_setup_model.model_app)
 _setup.setup_app.add_typer(_setup_sandbox.sandbox_app)
 _setup.setup_app.command("shell")(_setup_shell.cmd_shell)
+_setup.setup_app.add_typer(_setup_notify.notify_app)
+_setup.setup_app.add_typer(_setup_export.export_app)
+_setup.setup_app.add_typer(_setup_mcp.mcp_app)
 app.command("list")(_remove.cmd_list)
 app.command("status")(_status.cmd_status)
 app.command(
@@ -83,8 +86,6 @@ app.command(
     "context",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_remove.cmd_context)
-app.command("wire")(_setup_notify.cmd_wire)
-app.command("unwire")(_setup_notify.cmd_unwire)
 app.command("scope")(_remove.cmd_scope)
 app.command("profile")(_pod.cmd_profile)
 app.command("persona")(_remove.cmd_persona)
@@ -108,10 +109,6 @@ app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_config)
 app.command(
-    "conversations",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_notify.cmd_conversations)
-app.command(
     "runs",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_runs)
@@ -119,10 +116,6 @@ app.command(
     "harness",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_exec.cmd_harness)
-app.command(
-    "mcp",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_mcp.cmd_mcp)
 app.command("audit")(_log.cmd_audit)
 app.command("snapshot")(_status.cmd_snapshot)
 app.command("serve")(_service.cmd_serve)
@@ -135,18 +128,6 @@ app.command(
     "recipes",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_recipes)
-app.command(
-    "exporters",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_export.cmd_exporters)
-app.command(
-    "channels",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_notify.cmd_channels)
-app.command(
-    "notify",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_setup_notify.cmd_notify)
 app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},

@@ -195,7 +195,7 @@ class TestNotifications:
         issues = _setup_check._check_notifications(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
-        assert "docket channels enable desktop" in out
+        assert "docket setup notify enable desktop" in out
         assert "docket inbox" in out
 
     def test_no_agents_is_informational(
@@ -205,7 +205,7 @@ class TestNotifications:
         issues = _setup_check._check_notifications([])
         out = capsys.readouterr().out
         assert issues == 0
-        assert "docket channels enable desktop" in out
+        assert "docket setup notify enable desktop" in out
 
     def test_a_delivering_channel_is_named_and_healthy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -215,7 +215,7 @@ class TestNotifications:
         out = capsys.readouterr().out
         assert issues == 0
         assert "desktop" in out
-        assert "docket channels enable" not in out
+        assert "docket setup notify enable" not in out
 
     def test_json_names_the_delivering_channels(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

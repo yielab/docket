@@ -553,7 +553,7 @@ class TestFlushNotifyAfterDispatch:
     ) -> None:
         self._flush_returns(monkeypatch, 1)
         _pod._flush_notify_after_dispatch()
-        assert "docket channels enable desktop" in capsys.readouterr().out
+        assert "docket setup notify enable desktop" in capsys.readouterr().out
 
     def test_no_events_stay_silent(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

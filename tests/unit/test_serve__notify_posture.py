@@ -35,7 +35,7 @@ def test_dispatch_with_only_console_warns_at_startup(
 ) -> None:
     _run(monkeypatch, dispatch=True)
     out = capsys.readouterr().out
-    assert "docket channels enable desktop" in out
+    assert "docket setup notify enable desktop" in out
     assert "docket inbox" in out
 
 
@@ -46,11 +46,11 @@ def test_dispatch_with_a_delivering_channel_is_quiet(
     _run(monkeypatch, dispatch=True)
     out = capsys.readouterr().out
     assert "dispatch=on" in out
-    assert "docket channels enable" not in out
+    assert "docket setup notify enable" not in out
 
 
 def test_read_only_serve_never_warns(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run(monkeypatch, dispatch=False)
-    assert "docket channels enable" not in capsys.readouterr().out
+    assert "docket setup notify enable" not in capsys.readouterr().out

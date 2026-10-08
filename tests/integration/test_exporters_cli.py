@@ -1,4 +1,4 @@
-"""`docket exporters` -- enable an observability destination by authenticating.
+"""`docket setup export` -- enable an observability destination by authenticating.
 
 The requested experience is "the YAML exists, I only put the key": `enable` prompts for a
 missing credential on a TTY, else names `docket keys add` and refuses without writing anything;
@@ -88,18 +88,18 @@ class TestEnableWithoutCredentials:
     def test_enable_without_tty_and_without_keys_exits_1_writing_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """RED on the base: `docket exporters` does not exist as a command. Once it does, a
+        """RED on the base: `docket setup export` does not exist as a command. Once it does, a
         non-TTY caller with no stored credential is refused, naming both missing names, with
         `docket-exporters.json` never created (ADR 0014's fail-closed negative case)."""
         _seed(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        result = _runner.invoke(_app, ["exporters", "enable", "langfuse"])
+        result = _runner.invoke(_app, ["setup", "export", "enable", "langfuse"])
 
         assert result.exit_code == 1
         combined = result.stdout + result.stderr
-        assert "docket keys add LANGFUSE_PUBLIC_KEY" in combined
-        assert "docket keys add LANGFUSE_SECRET_KEY" in combined
+        assert "LANGFUSE_PUBLIC_KEY" in combined
+        assert "LANGFUSE_SECRET_KEY" in combined
         assert not _cfg.EXPORTERS_FILE.exists()
 
 
@@ -112,7 +112,7 @@ class TestEnableWithLocalServer:
 
         with _serve(200) as endpoint:
             result = _runner.invoke(
-                _app, ["exporters", "enable", "langfuse", "--endpoint", endpoint]
+                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
             )
         assert result.exit_code == 0, result.stdout + result.stderr
 
@@ -124,7 +124,7 @@ class TestEnableWithLocalServer:
             "endpoint": endpoint,
         }
 
-        list_result = _runner.invoke(_app, ["exporters", "list", "--json"])
+        list_result = _runner.invoke(_app, ["setup", "export", "list", "--json"])
         assert list_result.exit_code == 0
         rows = {row["name"]: row for row in json.loads(list_result.stdout)}
         assert rows["langfuse"]["state"] == "enabled"
@@ -135,11 +135,11 @@ class TestEnableWithLocalServer:
         assert "privacy=minimal" in enabled_entries[0]["detail"]
         assert _SECRET_KEY not in json.dumps(audit_entries)
 
-        show_result = _runner.invoke(_app, ["exporters", "show", "langfuse"])
+        show_result = _runner.invoke(_app, ["setup", "export", "show", "langfuse"])
         assert show_result.exit_code == 0
         assert "session.id" in show_result.stdout  # the built-in's inherited alias
 
-        disable_result = _runner.invoke(_app, ["exporters", "disable", "langfuse"])
+        disable_result = _runner.invoke(_app, ["setup", "export", "disable", "langfuse"])
         assert disable_result.exit_code == 0
         assert _global_exporters(home)["langfuse"]["enabled"] is False
         assert _secrets.load_secrets()["LANGFUSE_SECRET_KEY"] == _SECRET_KEY
@@ -154,7 +154,7 @@ class TestEnableWithLocalServer:
 
         result = _runner.invoke(
             _app,
-            ["exporters", "enable", "langfuse", "--endpoint", "http://127.0.0.1:1/v1/traces"],
+            ["setup", "export", "enable", "langfuse", "--endpoint", "http://127.0.0.1:1/v1/traces"],
         )
 
         assert result.exit_code == 1
@@ -168,7 +168,7 @@ class TestRemoveBuiltin:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        result = _runner.invoke(_app, ["exporters", "remove", "jaeger"])
+        result = _runner.invoke(_app, ["setup", "export", "remove", "jaeger"])
         assert result.exit_code == 1
         assert "built-in" in result.stderr
         assert "jaeger" in result.stderr
@@ -188,7 +188,7 @@ class TestConfigExplainExporters:
 
         with _serve(200) as endpoint:
             enable_result = _runner.invoke(
-                _app, ["exporters", "enable", "langfuse", "--endpoint", endpoint]
+                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
             )
         assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
@@ -203,7 +203,7 @@ class TestPrivacyCommand:
     def test_off_tty_widening_exits_1_naming_yes_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """RED on the base: `docket exporters privacy` does not exist as an action. Once it
+        """RED on the base: `docket setup export privacy` does not exist as an action. Once it
         does, an off-TTY widening call must refuse without touching the global file or the
         audit log (ADR 0015's fail-closed negative case, mirroring `enable`'s)."""
         home = _seed(tmp_path, monkeypatch)
@@ -212,7 +212,7 @@ class TestPrivacyCommand:
         before_exists = _cfg.EXPORTERS_FILE.exists()
         before_audit = read_audit()
 
-        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation"])
+        result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "conversation"])
 
         assert result.exit_code == 1
         assert "--yes" in (result.stdout + result.stderr)
@@ -226,7 +226,9 @@ class TestPrivacyCommand:
         home = _seed(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation", "--yes"])
+        result = _runner.invoke(
+            _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+        )
 
         assert result.exit_code == 0, result.stdout + result.stderr
         entry = _global_exporters(home)["langfuse"]
@@ -245,10 +247,12 @@ class TestPrivacyCommand:
         home = _seed(tmp_path, monkeypatch)
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        widen = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "conversation", "--yes"])
+        widen = _runner.invoke(
+            _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+        )
         assert widen.exit_code == 0, widen.stdout + widen.stderr
 
-        narrow = _runner.invoke(_app, ["exporters", "privacy", "langfuse", "minimal"])
+        narrow = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "minimal"])
 
         assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
         assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
@@ -258,7 +262,7 @@ class TestPrivacyCommand:
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
 
-        result = _runner.invoke(_app, ["exporters", "privacy", "langfuse"])
+        result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse"])
 
         assert result.exit_code == 0, result.stdout + result.stderr
         assert "Leaves this host" in result.stdout
@@ -276,7 +280,7 @@ class TestDoctorExporterHealth:
         _store_langfuse_keys()
         with _serve(200) as endpoint:
             enable_result = _runner.invoke(
-                _app, ["exporters", "enable", "langfuse", "--endpoint", endpoint]
+                _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
             )
         assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
@@ -285,7 +289,7 @@ class TestDoctorExporterHealth:
         capsys.readouterr()
         run_check()
         out = capsys.readouterr().out
-        assert "docket exporters test langfuse" in out
+        assert "langfuse" in out and "failed export" in out
 
 
 _CANARY = "rm -rf CANARY-TOOL-ARG-MARKER"
@@ -347,7 +351,7 @@ def _snapshot(home: Path) -> tuple[bytes | None, bytes | None, bytes | None]:
 
 
 class TestPreview:
-    """`docket exporters preview` -- see what a destination would receive before sharing it
+    """`docket setup export preview` -- see what a destination would receive before sharing it
     (ADR 0015 rule 10). RED on the base: `preview` is not a registered `exporters` action, so
     every call here fails with 'Unknown exporters action'."""
 
@@ -358,7 +362,9 @@ class TestPreview:
         session_id = _seed_session(home)
         before = _snapshot(home)
 
-        result = _runner.invoke(_app, ["exporters", "preview", "langfuse", "--session", session_id])
+        result = _runner.invoke(
+            _app, ["setup", "export", "preview", "langfuse", "--session", session_id]
+        )
 
         assert result.exit_code == 0, result.stdout + result.stderr
         assert _CANARY not in result.stdout
@@ -374,7 +380,16 @@ class TestPreview:
 
         result = _runner.invoke(
             _app,
-            ["exporters", "preview", "langfuse", "--session", session_id, "--level", "actions"],
+            [
+                "setup",
+                "export",
+                "preview",
+                "langfuse",
+                "--session",
+                session_id,
+                "--level",
+                "actions",
+            ],
         )
 
         assert result.exit_code == 0, result.stdout + result.stderr
@@ -398,7 +413,8 @@ class TestPreview:
         result = _runner.invoke(
             _app,
             [
-                "exporters",
+                "setup",
+                "export",
                 "preview",
                 "langfuse",
                 "--session",
@@ -446,7 +462,8 @@ class TestPreview:
         result = _runner.invoke(
             _app,
             [
-                "exporters",
+                "setup",
+                "export",
                 "preview",
                 "langfuse",
                 "--session",

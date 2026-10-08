@@ -12,8 +12,6 @@ _docket() {
     'delete:Remove a project agent or a whole pod, and optionally its workspace'
     'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)'
     'context:Agent context views (show/project) -- read-only'
-    'wire:Wire or update a channel group binding (Telegram by default)'
-    'unwire:Remove a channel binding (Telegram by default)'
     'scope:Manage session scope / project isolation key'
     'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
@@ -24,19 +22,14 @@ _docket() {
     'edit:Open agent workspace files in $EDITOR'
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
-    'conversations:Inspect and resume the conversation registry (list/show/resume/set/prune)'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
     'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
-    'mcp:Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)'
     'audit:Show the audit log, or verify its tamper-evidence chain'
     'snapshot:Export system state snapshot as JSON'
     'serve:Local HTTP endpoints: /status.json /metrics /health'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
     'recipes:List and inspect the recipe library'
-    'exporters:Observability export destinations: list, inspect, and enable by authenticating'
-    'channels:Notification/conversation/decision destinations: list, inspect, and enable'
-    'notify:Flush operator events to every enabled channel'
     'trace:View agent execution traces'
     'metrics:Show session success-rate and drift metrics'
     'policies:Manage tool-approval policies'
@@ -68,10 +61,8 @@ _docket() {
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
-    mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
-    conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
     trace)           compadd tail export ingest expire ;;
@@ -79,7 +70,7 @@ _docket() {
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

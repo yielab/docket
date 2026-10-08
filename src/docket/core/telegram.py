@@ -17,7 +17,7 @@ can message it. Two independent checks stand between an inbound message and
 anything happening:
 
 1. **Sender authorization** (:func:`_authorize`). Only a chat that is
-   *explicitly bound* to an agent via ``docket wire`` (``fleet.json``'s
+   *explicitly bound* to an agent via ``docket setup notify bind`` (``fleet.json``'s
    bindings -- ``core.fleet.find_binding``) may approve, deny, check status,
    or delegate anything. An unbound chat gets a plain refusal and the
    attempt is **audited** (``telegram.unauthorized``) -- never silently
@@ -159,7 +159,7 @@ class TelegramActionResult:
 
 @dataclass(frozen=True)
 class TelegramGroup:
-    """A Telegram group found during the guided ``docket wire`` flow."""
+    """A Telegram group found during the guided ``setup notify bind`` flow."""
 
     chat_id: str
     title: str = ""

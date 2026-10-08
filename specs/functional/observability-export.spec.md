@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.12.0
+**Version**: 1.12.1
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -58,7 +58,7 @@ This specification covers:
   idempotent start; a `flush` and a `config.EXPORTERS_HEALTH_FILE` write on every return path;
   `atexit`-registered `close`.
 - Turning an exporter on or off by authenticating (`core/exporter.py::enable_exporter`/
-  `disable_exporter`, `docket exporters`, `cli-interface.spec.md` §"docket exporters"): the
+  `disable_exporter`, `docket setup export`, `cli-interface.spec.md` §"docket setup export"): the
   minimal-write property, the non-TTY refusal, and the audit entries each of `enable`/
   `disable`/`add`/`remove` writes.
 
@@ -317,11 +317,11 @@ document rather than replace it:
 59. `disable_exporter(name)` **MUST** flip only `enabled` to `false` in the global catalog,
     leaving any other stored override (e.g. a prior `endpoint` override) untouched, and **MUST
     NOT** remove or alter any credential in the secret store.
-60. `docket exporters enable <name>` **MUST NOT** activate an exporter whose declared
+60. `docket setup export enable <name>` **MUST NOT** activate an exporter whose declared
     credentials do not all resolve (Requirement 29): on a TTY it prompts for and stores each
-    missing one; on a non-TTY it **MUST** exit non-zero naming `docket keys add <NAME>` for
+    missing one; on a non-TTY it **MUST** exit non-zero naming
     every missing credential and **MUST NOT** write the global catalog file at all.
-61. `docket exporters enable`/`add` **MUST** probe the (possibly `--endpoint`-overridden)
+61. `docket setup export enable`/`add` **MUST** probe the (possibly `--endpoint`-overridden)
     endpoint and classify it exactly as Requirement 31 describes before writing anything; a
     `reachable=False` classification **MUST** exit non-zero and **MUST NOT** write the global
     catalog file, unless the operator passed `--no-verify`.
@@ -329,7 +329,7 @@ document rather than replace it:
     `exporter.enabled` / `exporter.disabled` / `exporter.added` / `exporter.removed` — whose
     detail names the exporter and, for `enabled`/`added`, its `privacy` label and `endpoint`
     (requirement 87); **MUST NOT** ever include a credential value.
-63. `docket exporters test <name>` **MUST** probe and classify *name*'s endpoint the same way
+63. `docket setup export test <name>` **MUST** probe and classify *name*'s endpoint the same way
     `enable` does, and **MUST NOT** write the global catalog file, the health file, or an audit
     entry — it is read-only.
 
@@ -447,12 +447,12 @@ document rather than replace it:
 89. `core.exporter.is_widening(old, new)` **MUST** return `True` exactly when `new` (a
     `frozenset[str]` of content classes) contains a class absent from `old`, and `False` for an
     equal or narrower set.
-90. `docket exporters privacy <name>` given no level, no `--share` and no `--max-chars`
-    **MUST** print the same "Leaves this host" disclosure `docket exporters show <name>` prints
+90. `docket setup export privacy <name>` given no level, no `--share` and no `--max-chars`
+    **MUST** print the same "Leaves this host" disclosure `docket setup export show <name>` prints
     (one line per `core.privacy.describe` class, granted or not, its example attributes, and
     the fixed line naming that credentials and secret-shaped values are never sent) and
     **MUST NOT** write anything.
-91. `docket exporters privacy <name> <level>` or `--share a,b` **MUST** resolve the requested
+91. `docket setup export privacy <name> <level>` or `--share a,b` **MUST** resolve the requested
     classes through `core.privacy.resolve` and compare them, via `core.exporter.is_widening`,
     against the exporter's presently effective classes (`spec.privacy_classes`) before writing.
 92. A widening call **MUST** print each newly granted class (present in the requested classes,
@@ -466,16 +466,16 @@ document rather than replace it:
 94. Every successful `set_privacy` call **MUST** append one `exporter.privacy` audit entry
     naming `name`, `from` (the previous label), `to` (the new label) and `host` (the endpoint's
     hostname) — never content.
-95. `docket exporters enable <name> --privacy <level>|--share a,b` **MUST** apply the same
+95. `docket setup export enable <name> --privacy <level>|--share a,b` **MUST** apply the same
     widening/confirmation rule (requirements 91–94) before writing, comparing against the
     exporter's classes before enabling. The retired `--payload metadata|full` flag **MUST NOT**
     be accepted by `enable` — a document setting `privacy`/`share` is the only way to widen what
     an exporter shares.
-96. `docket exporters add <file.yaml>` whose resolved document shares beyond `minimal`
+96. `docket setup export add <file.yaml>` whose resolved document shares beyond `minimal`
     **MUST** apply the same widening/confirmation rule, comparing against the classes of any
     existing catalog entry of the same name, or the empty set when there is none.
-97. `docket exporters list` **MUST** gain a `SHARES` column (the exporter's `privacy_label`);
-    `docket exporters enable` **MUST** always print `shares: <label> (<classes, comma-joined,
+97. `docket setup export list` **MUST** gain a `SHARES` column (the exporter's `privacy_label`);
+    `docket setup export enable` **MUST** always print `shares: <label> (<classes, comma-joined,
     or "structure only">)` in place of the retired payload warning; `docket config explain`
     **MUST** print the privacy label per exporter and its `--json` form's `exporters` entries
     **MUST** carry `privacy: {label, classes}` in place of a bare label string; `docket doctor`
@@ -484,7 +484,7 @@ document rather than replace it:
 
 ### Preview
 
-98. `docket exporters preview <name> [--session <id>] [--level <level>|--share a,b] [--json]`
+98. `docket setup export preview <name> [--session <id>] [--level <level>|--share a,b] [--json]`
     **MUST** resolve *name* through `core.exporter.load_catalog()`, build an `ExportPolicy` from
     that exporter document's own resolved `privacy`/`share`/`events`/`content_max_chars` fields
     the same way `core.telemetry.start` builds one for a started `Pipeline` — or, when `--level`
@@ -1102,6 +1102,12 @@ The pod's tasks then parked on `bash` calls the curated allowlist refuses (`pyth
 stayed clean.
 
 ## Changelog
+
+### Version 1.12.1 (2026-10-07)
+
+- Phase 39 (P39-13): the exporter verbs live under `docket setup export` (`docket exporters` is
+  removed); `remove` confirms (`--yes` off a TTY); a non-TTY `enable` with a missing credential
+  names the missing credentials and writes nothing.
 
 ### Version 1.12.0 (2026-10-03)
 

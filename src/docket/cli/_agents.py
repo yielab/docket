@@ -278,7 +278,6 @@ def run_init(all_args: list[str]) -> int:
         if apply_rc:
             return apply_rc
 
-    lead_id = f"{aid}-lead"
     members = _pp.pod_member_ids(aid) or created  # includes what `.docket/`/--recipe added
     ui.console.print()
     ui.success(f"Pod '{aid}' created with {len(members)} members!")
@@ -287,7 +286,6 @@ def run_init(all_args: list[str]) -> int:
     ui.console.print()
     ui.console.print(f"  docket pod {aid}              # inspect the pod")
     ui.console.print(f"  docket pod {aid} add reviewer # add a role")
-    ui.console.print(f"  docket wire {lead_id}   # optional Telegram binding")
     _offer_desktop_channel()
     from docket.cli import _contract, _setup
 
@@ -301,7 +299,7 @@ def _offer_desktop_channel() -> None:
     """After the created summary: say so when nothing delivers beyond the console and, on a TTY
     with a desktop session, offer to turn `desktop` on now and send one test notification so
     the operator sees it work before a parked task needs it. Off a TTY only the warning prints."""
-    from docket.cli._channels import _run_test
+    from docket.cli._setup_notify import send_test
     from docket.core import channel as _channel
     from docket.edges.adapters import system as _sys
 
@@ -317,7 +315,7 @@ def _offer_desktop_channel() -> None:
         return
     _channel.enable_channel("desktop")
     ui.success("Channel enabled: desktop -- sending one test notification, you should see it now.")
-    _run_test(["desktop"])
+    send_test("desktop")
 
 
 def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[str]]:

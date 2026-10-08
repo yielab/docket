@@ -1,26 +1,75 @@
-"""`docket exporters preview` -- the pure argument-parsing, classification and display helpers.
-
-The CLI integration test (`tests/integration/test_exporters_cli.py::TestPreview`) only
-exercises these through a real seeded session; covered here in isolation the same way
-`tests/unit/cli/test__exporters.py` covers its neighbour module's pure helpers.
-"""
+"""``docket setup export``: auth headers, preview helpers and the credential fail-closed path."""
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
-from docket.cli import _exporters_preview as _preview
+import docket.config as _cfg
+from docket.cli import _contract, _setup_export, app
+from docket.core import exporter as _exp
 
-SUBJECT = "docket.cli._exporters_preview"
+SUBJECT = "docket.cli._setup_export"
+
+_preview = _setup_export
 
 
-class TestParseOpts:
-    def test_splits_positionals_from_key_value_and_key_equals_value(self) -> None:
-        pos, opts = _preview._parse_opts(["langfuse", "--session", "sess-1", "--level=actions"])
-        assert pos == ["langfuse"]
-        assert opts == {"session": "sess-1", "level": "actions"}
+class TestAuthHeaderFor:
+    def _spec(self, auth_type: str, header: str = "") -> _exp.ExporterSpec:
+        credentials = {"none": [], "bearer": ["TOK"], "header": ["TOK"], "basic": ["U", "P"]}
+        return _exp.ExporterSpec(
+            kind="exporter",
+            name="x",
+            endpoint="https://x/v1/traces",
+            auth=_exp.ExporterAuth(
+                type=auth_type,  # type: ignore[arg-type]
+                header=header,
+                credentials=credentials[auth_type],
+            ),
+        )
+
+    def test_none_auth_never_carries_a_header(self) -> None:
+        assert _setup_export._auth_header_for(self._spec("none"), []) is None
+
+    def test_bearer_carries_the_resolved_value_on_authorization(self) -> None:
+        header = _setup_export._auth_header_for(self._spec("bearer"), ["secret-value"])
+        assert header == ("Authorization", "Bearer secret-value")
+
+    def test_header_type_uses_the_declared_header_name(self) -> None:
+        spec = self._spec("header", "X-Api-Key")
+        assert _setup_export._auth_header_for(spec, ["secret-value"]) == (
+            "X-Api-Key",
+            "secret-value",
+        )
+
+    def test_basic_base64_encodes_user_and_password_in_order(self) -> None:
+        header = _setup_export._auth_header_for(self._spec("basic"), ["pub", "sec"])
+        assert header == ("Authorization", "Basic cHViOnNlYw==")
+
+    def test_missing_values_carry_no_header(self) -> None:
+        assert _setup_export._auth_header_for(self._spec("bearer"), [""]) is None
+
+
+def test_enable_without_credentials_off_a_tty_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    result = CliRunner().invoke(app, ["setup", "export", "enable", "langfuse"])
+    assert result.exit_code == 1
+    assert not _cfg.EXPORTERS_FILE.exists()
+
+
+def test_widening_privacy_off_a_tty_needs_yes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_contract, "_is_tty", lambda: False)
+    result = CliRunner().invoke(app, ["setup", "export", "privacy", "langfuse", "full"])
+    assert result.exit_code == 1
+    assert not _cfg.EXPORTERS_FILE.exists()
 
 
 class TestAttributeClass:
@@ -75,14 +124,14 @@ class TestNewestTraceFile:
     def test_none_when_traces_dir_has_no_sessions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_preview._cfg, "TRACES_DIR", tmp_path / "traces", raising=True)
+        monkeypatch.setattr(_cfg, "TRACES_DIR", tmp_path / "traces", raising=True)
         assert _preview._newest_trace_file() is None
 
     def test_picks_the_most_recently_modified_file_across_projects(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         traces = tmp_path / "traces"
-        monkeypatch.setattr(_preview._cfg, "TRACES_DIR", traces, raising=True)
+        monkeypatch.setattr(_cfg, "TRACES_DIR", traces, raising=True)
         older = traces / "proj-a" / "sess-old.jsonl"
         newer = traces / "proj-b" / "sess-new.jsonl"
         older.parent.mkdir(parents=True)
@@ -90,8 +139,6 @@ class TestNewestTraceFile:
         older.write_text("{}\n")
         newer.write_text("{}\n")
         newer.touch()
-        import os
-        import time
 
         old_time = time.time() - 100
         os.utime(older, (old_time, old_time))

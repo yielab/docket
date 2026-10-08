@@ -73,10 +73,8 @@ _docket_complete() {
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
     setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
-    mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs)            words="list show cancel prune" ;;
-    conversations)   words="list show resume set prune" ;;
     persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
     trace)           words="tail export ingest expire" ;;
@@ -84,7 +82,7 @@ _docket_complete() {
     recipes)         words="list show" ;;
     roles)           words="list show add validate" ;;
     cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|logs|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac
@@ -124,10 +122,8 @@ __ZSH_COMMANDS__
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     setup)           compadd provider model notify export sandbox mcp shell --json --fix ;;
-    mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
-    conversations)   compadd list show resume set prune ;;
     persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
     trace)           compadd tail export ingest expire ;;
@@ -135,7 +131,7 @@ __ZSH_COMMANDS__
     recipes)         compadd list show ;;
     roles)           compadd list show add validate ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|logs|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

@@ -3,7 +3,7 @@
 The only module in docket that knows the OTLP JSON shape: ``encode`` turns
 ``core.telemetry`` spans into a ``resourceSpans`` document, ``OtlpHttpSink``
 POSTs it (one retry on 429/502/503/504, honouring ``Retry-After``), and
-``probe`` answers ``docket exporters enable``'s reachability check. Stdlib
+``probe`` answers ``docket setup export enable``'s reachability check. Stdlib
 ``urllib``/``json`` only, modelled on ``edges/adapters/llm.py``.
 """
 
