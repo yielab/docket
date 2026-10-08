@@ -451,7 +451,7 @@ def _wait_cancellable(
 
     deadline = time.monotonic() + timeout
     while True:
-        # Checked before `reader.is_alive()`: an external kill (e.g. `docket runs cancel`
+        # Checked before `reader.is_alive()`: an external kill (e.g. `docket task cancel`
         # signalling this same process group directly) can make the reader see EOF and
         # finish in the same instant the cancellation flag it set becomes visible here.
         # `cancel_run` always persists that flag *before* signalling, so a poll tick that

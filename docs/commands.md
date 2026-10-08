@@ -1079,44 +1079,6 @@ what copies a recipe's `plugins/*.py` into pod scope.
 
 ---
 
-### approve
-
-**Usage:** `docket approve`
-
-Approve a pending tool-action.
-
-Grants a pending HITL approval token from docket's own approval store
-($APPROVALS_DIR). With no token, lists pending approvals; with a token,
-grants it. Token format: apr-*. Returns exit 1 if the token is not
-found, or if you resolve it to the opposite verdict from what it already
-has; re-resolving to the same verdict it already has is treated as an
-idempotent no-op -- a warning, but exit 0. An apr-* token is created by
-docket itself, from an in-turn `ask` verdict on a tool call
-(`dispatch_tool`, blocking that call until answered), a pod-dispatch hop
-held on a requireApprovalRoles/pipeline approval step, or a task a
-guardrail policy flagged at enqueue. This store is the only approval
-mechanism, and
-`docket approve`/`docket deny` (plus the HTTP and MCP equivalents, and a
-Telegram reply in a wired chat) are the only ways to answer it, each
-audit-logged with the channel that answered. See also `docket deny`.
-
-
----
-
-### deny
-
-**Usage:** `docket deny`
-
-Deny a pending tool-action.
-
-Denies a pending HITL approval token from docket's own approval store
-($APPROVALS_DIR). With no token, lists pending approvals; with a token,
-denies it. Same token format, idempotency, and provenance rules as
-`docket approve` -- see its help for the full contract.
-
-
----
-
 ### inbox
 
 **Usage:** `docket inbox`
@@ -1127,22 +1089,6 @@ Every item carries the exact docket command that moves it forward. A plain call 
 a cursor so a repeat call shows only newly finished tasks; --peek and --since do not.
 
 Example: docket inbox --peek
-
-
----
-
-### chat
-
-**Usage:** `docket chat`
-
-See and answer one task's parked question.
-
-`docket chat <task-id> \[--pod <project>\]` -- searches every pod for *task-id* (or just
-*pod* when given), then shows its brief, its pending question (if any) and its earlier
-answers. On a TTY, a pending question is followed by one prompt per schema property and
-then answered through the same `core.answers.answer_task` every other surface calls
-(`channel="cli"`, `actor=<OS user>`). Off a TTY, or with no pending question, this only
-ever displays -- use `docket pod <p> answer` to answer non-interactively.
 
 
 ---
@@ -1203,6 +1149,56 @@ A dirty worktree or unmerged branch is kept unless --force.
 
 Example: docket task prune --dry-run
 
+### task approve
+
+**Usage:** `docket task approve`
+
+Approve what a task is waiting on, or pre-grant one command before it asks.
+
+Resolves the task's pending approval and grants it; with --task the same call is also
+allowed for the rest of the task. --for records a single-use pre-grant for one exact
+command instead.
+
+Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
+
+### task deny
+
+**Usage:** `docket task deny`
+
+Deny what a task is waiting on; the task fails and nothing runs.
+
+Example: docket task deny 2026-10-08T10-00 --reason "touches production"
+
+### task answer
+
+**Usage:** `docket task answer`
+
+Answer the question a task is parked on and let it continue.
+
+On a terminal with no text or option it shows the question and prompts. Off a terminal
+pass text, --field name=value or --option <id>; a question with options needs --option.
+
+Example: docket task answer 2026-10-08T10-00 --option opt2
+
+### task retry
+
+**Usage:** `docket task retry`
+
+Put a failed or blocked task back on the queue, keeping the hops it finished.
+
+Example: docket task retry 2026-10-08T10-00
+
+### task cancel
+
+**Usage:** `docket task cancel`
+
+Stop the run a task is in and settle a claim left behind by a dead dispatch.
+
+A live run is asked to stop and its processes are signalled. A task still marked running
+whose dispatcher is gone is settled as failed, ready for `docket task retry`.
+
+Example: docket task cancel 2026-10-08T10-00
+
 
 ---
 
@@ -1255,8 +1251,8 @@ docket -V
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
+| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket exec`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `context`, `maintain`) |
 
 No command emits any other exit code today.
@@ -1273,7 +1269,7 @@ No command emits any other exit code today.
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
-| `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
+| `APPROVALS_DIR` | Where `docket task approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod <p> config set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
@@ -1332,6 +1328,7 @@ No command emits any other exit code today.
 | `NO_COLOR` | Any value switches output to plain mode (no colour, ASCII symbols) | unset |
 | `DOCKET_POD` | Pod a command acts on when `--pod` is not given | unset (the pod whose codebase contains the current directory) |
 | `DOCKET_NO_HINTS` | Set to `1` to silence the closing `Next:` line | unset |
+| `DOCKET_POD` | Pod that commands taking `--pod` act on when the flag is omitted | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket setup sandbox on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |

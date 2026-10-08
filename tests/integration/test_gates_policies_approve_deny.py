@@ -18,9 +18,10 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _approve, _deny, _policies, _setup_sandbox
+from docket.cli import _policies, _setup_sandbox, app
 from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
@@ -415,91 +416,60 @@ def _create(oc_dir: Path, action: str = "rm -rf /tmp") -> str:
     return _ap.approval_create("myshop", "programmer", action)
 
 
+def _task_cmd(verb: str, *args: str) -> Any:
+    return CliRunner().invoke(app, ["task", verb, *args])
+
+
 class TestApprove:
-    def test_list_empty(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _approve.run_approve(None)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "No pending approvals." in out
+    def test_no_ref_is_a_usage_error(self, oc_dir: Path) -> None:
+        assert _task_cmd("approve").exit_code == 2
 
-    def test_create_then_list(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_grant_transitions_state(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        rc = _approve.run_approve(None)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert token in out
-        assert "project=myshop" in out
-
-    def test_grant_transitions_state(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        token = _create(oc_dir)
-        rc = _approve.run_approve(token)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Approval granted" in out
+        result = _task_cmd("approve", token)
+        assert result.exit_code == 0
+        assert "Approved" in result.stdout
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "granted"
 
-    def test_grant_already_granted_warns(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_grant_already_granted_warns(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        _approve.run_approve(token)
-        capsys.readouterr()
-        rc = _approve.run_approve(token)
-        captured = capsys.readouterr()
-        assert rc == 0
-        assert "Already granted" in captured.out  # warn() → stdout
+        _task_cmd("approve", token)
+        result = _task_cmd("approve", token)
+        assert result.exit_code == 0
+        assert "Already granted" in result.stdout  # warn() -> stdout
 
-    def test_grant_missing_token_errors(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _approve.run_approve("apr-does-not-exist")
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Approval not found" in captured.err
+    def test_grant_missing_token_errors(self, oc_dir: Path) -> None:
+        result = _task_cmd("approve", "apr-does-not-exist")
+        assert result.exit_code == 1
+        assert "Approval not found" in result.stderr
 
 
 class TestDeny:
-    def test_deny_transitions_state(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_deny_transitions_state(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        rc = _deny.run_deny(token)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Approval denied" in out
+        result = _task_cmd("deny", token)
+        assert result.exit_code == 0
+        assert "Denied" in result.stdout
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "denied"
 
-    def test_deny_no_token_shows_help(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        rc = _deny.run_deny(None)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket deny <token>" in out
+    def test_deny_no_ref_is_a_usage_error(self, oc_dir: Path) -> None:
+        assert _task_cmd("deny").exit_code == 2
 
-    def test_deny_after_grant_errors(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_deny_after_grant_errors(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        _approve.run_approve(token)
-        capsys.readouterr()
-        rc = _deny.run_deny(token)
-        captured = capsys.readouterr()
-        assert rc == 1
-        assert "Cannot deny approval in state 'granted'" in captured.err
+        _task_cmd("approve", token)
+        result = _task_cmd("deny", token)
+        assert result.exit_code == 1
+        assert "Cannot deny approval in state 'granted'" in result.stderr
 
-    def test_deny_already_denied_warns(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_deny_already_denied_warns(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        _deny.run_deny(token)
-        capsys.readouterr()
-        rc = _deny.run_deny(token)
-        captured = capsys.readouterr()
-        assert rc == 0
-        assert "Already denied" in captured.out  # warn() → stdout
+        _task_cmd("deny", token)
+        result = _task_cmd("deny", token)
+        assert result.exit_code == 0
+        assert "Already denied" in result.stdout  # warn() -> stdout
 
 
 class TestSweep:

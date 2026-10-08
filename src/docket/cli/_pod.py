@@ -14,13 +14,11 @@ the two surfaces cannot drift apart.
 from __future__ import annotations
 
 import contextlib
-import getpass as _getpass
 import hashlib as _hashlib
 import json as _json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.markup import escape
@@ -29,11 +27,9 @@ from rich.table import Table
 import docket.config as _cfg
 from docket import ui
 from docket.cli._agents import _pick_agent
-from docket.core import answers as _answers
 from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
-from docket.core import interruptions as _interruptions
 from docket.core import models_policy as _mp
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
@@ -66,15 +62,6 @@ pod_app = typer.Typer(
     help="Manage this project's pod: members, settings and configuration.",
     no_args_is_help=True,
 )
-
-
-def _actor() -> str:
-    """The OS user running this CLI invocation, falling back to '?' (mirrors
-    `core.audit`'s own username lookup)."""
-    try:
-        return _getpass.getuser()
-    except Exception:
-        return "?"
 
 
 def _role_purpose(role: str) -> str:
@@ -247,10 +234,6 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_remove(project, extra)
     elif action == "set-verify":
         _pod_set_verify(project, extra)
-    elif action == "answer":
-        _pod_answer(project, extra)
-    elif action == "pregrant":
-        _pod_pregrant(project, extra)
     elif action == "config":
         _pod_config(project, extra)
     elif action == "sync":
@@ -262,7 +245,7 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
     else:
         ui.error(
             f"Unknown pod action {action!r}. Use: list | add | remove | set-verify | "
-            "answer | pregrant | config | sync | apply | export."
+            "config | sync | apply | export."
         )
         raise typer.Exit(1)
 
@@ -460,142 +443,6 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     _regenerate_member_tools(member_id, project)
     audit_log("pod.set-verify", f"member={member_id} cmd={verify_cmd!r}")
     ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")
-
-
-def _pod_answer(project: str, extra: list[str]) -> None:
-    """Answer a parked question: ``docket pod <project> answer <task-id> [text]
-    [--option <id>] [--field k=v]... [--decline]``. Bare ``text`` fills a one-property
-    schema; ``--option`` picks one of a consult's options (required when it has any);
-    ``--field`` names each property explicitly; ``--decline`` ignores all three."""
-    usage = (
-        "Usage: docket pod <project> answer <task-id> [text] [--option <id>] "
-        "[--field k=v]... [--decline]"
-    )
-    task_id: str | None = None
-    text_parts: list[str] = []
-    fields: dict[str, str] = {}
-    option_id: str | None = None
-    decline = False
-    i = 0
-    while i < len(extra):
-        tok = extra[i]
-        if tok == "--field":
-            if i + 1 >= len(extra) or "=" not in extra[i + 1]:
-                ui.error("Usage: --field name=value")
-                raise typer.Exit(1)
-            key, value = extra[i + 1].split("=", 1)
-            fields[key] = value
-            i += 2
-        elif tok == "--option":
-            if i + 1 >= len(extra):
-                ui.error("Usage: --option <id>")
-                raise typer.Exit(1)
-            option_id = extra[i + 1]
-            i += 2
-        elif tok == "--decline":
-            decline = True
-            i += 1
-        elif task_id is None:
-            task_id = tok
-            i += 1
-        else:
-            text_parts.append(tok)
-            i += 1
-
-    if task_id is None:
-        ui.error(usage)
-        raise typer.Exit(1)
-
-    if decline:
-        action = "decline"
-        content: dict[str, Any] | None = None
-    else:
-        action = "accept"
-        content = dict(fields)
-        text = " ".join(text_parts).strip()
-        task = next((t for t in _dispatch.read_tasks(project) if t.get("id") == task_id), None)
-        if task is None:
-            ui.error(f"Task '{task_id}' not found in pod '{project}'.")
-            raise typer.Exit(1)
-        question = task.get("question")
-        if not isinstance(question, dict):
-            ui.error(f"Task '{task_id}' has no pending question.")
-            raise typer.Exit(1)
-        if text:
-            properties = question.get("requestedSchema", {}).get("properties", {})
-            if len(properties) == 1:
-                (prop_name,) = properties
-                content.setdefault(prop_name, text)
-            else:
-                ui.error(
-                    "A bare text answer requires a single-property question; use "
-                    "--field name=value for each property instead."
-                )
-                raise typer.Exit(1)
-        raw_options = question.get("options")
-        option_ids = (
-            [str(o.get("id", "")) for o in raw_options if isinstance(o, dict)]
-            if isinstance(raw_options, list)
-            else []
-        )
-        if option_id:
-            content["optionId"] = option_id
-        elif option_ids:
-            ui.error(
-                "This question has options; pick one with --option <id>: "
-                + ", ".join(option_ids)
-                + " (or --decline)."
-            )
-            raise typer.Exit(1)
-        if not content:
-            ui.error(usage)
-            raise typer.Exit(1)
-
-    try:
-        _answers.answer_task(project, task_id, action, content, channel="cli", actor=_actor())
-    except _answers.AnswerRejected as exc:
-        ui.error(f"Answer blocked by policy '{exc.policy_id}'.")
-        raise typer.Exit(1) from exc
-    except _answers.AnswerError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
-    ui.success(f"Answered task '{task_id}' in pod '{project}' ({action}).")
-
-
-def _pod_pregrant(project: str, extra: list[str]) -> None:
-    """``docket pod <project> pregrant <task-id> "<command>" [--tool bash]`` — a single-use
-    pre-grant for one exact command on one task, ahead of dispatch (ADR 0016 SS10)."""
-    if not pod_member_ids(project):
-        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
-        raise typer.Exit(1)
-    tool = "bash"
-    rest: list[str] = []
-    i = 0
-    while i < len(extra):
-        if extra[i] == "--tool":
-            if i + 1 >= len(extra):
-                ui.error("Missing tool name. Use: --tool bash")
-                raise typer.Exit(1)
-            tool = extra[i + 1]
-            i += 2
-        else:
-            rest.append(extra[i])
-            i += 1
-    if len(rest) < 2:
-        ui.error('Usage: docket pod <project> pregrant <task-id> "<command>" [--tool bash]')
-        raise typer.Exit(1)
-    task_id, command = rest[0], " ".join(rest[1:])
-
-    try:
-        token = _interruptions.record_pregrant(
-            project, task_id, command, tool=tool, channel="cli", actor=_actor()
-        )
-    except _interruptions.InterruptionsError as exc:
-        ui.error(str(exc))
-        raise typer.Exit(1) from exc
-    ui.success(
-        escape(f"Pre-granted '{command}' on task '{task_id}' in pod '{project}' (token={token}).")
-    )
 
 
 def _pod_config(project: str, extra: list[str]) -> None:

@@ -251,7 +251,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
     for item in needs_you:
         if isinstance(item, _oc.ApprovalView):
             # `action` was already redacted at approval_create() time (core/approval.py's
-            # own _redact) -- safe to echo back verbatim, same as `docket approve`'s listing.
+            # own _redact) -- safe to echo back verbatim, same as `docket inbox`'s listing.
             action_text = str(item.action or "")[:120]
             lines.append(f"  approval {item.token}  role={item.role}  {action_text}")
         else:
@@ -315,9 +315,9 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
 
 def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResult:
     """Accept *text* as the answer to *task_id*'s parked question, mirroring
-    ``docket pod <project> answer``'s bare-text path (``cli/_pod.py::_pod_answer``): a
+    ``docket task answer``'s bare-text path (``cli/_task.py::_task_answer``): a
     single-property schema fills from the whole message, a multi-property one is refused
-    with the CLI/``docket chat`` guidance instead of guessing which field the text belongs
+    with the CLI guidance instead of guessing which field the text belongs
     to. The pod is the bound agent's own project (:func:`_lead_project`) --
     ``core.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
     same way it does for any other channel."""
@@ -350,7 +350,7 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
         return TelegramActionResult(
             False,
             "This question has more than one field -- answer it with "
-            f"'docket pod {project} answer {task_id} --field name=value ...' or 'docket chat'.",
+            f"'docket task answer {task_id} --field name=value ...'.",
             True,
             "answer",
         )

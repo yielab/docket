@@ -31,7 +31,7 @@ subprocess's pid against (``add_hop_pid``/``remove_hop_pid``), and
 parallel group's worker threads (``ThreadPoolExecutor.submit`` does not do
 this on its own). ``pids`` is a *list* on the run record, not a scalar,
 because a parallel step can have more than one hop genuinely in flight at
-once. ``cancel_run`` — the ``docket runs cancel`` CLI's real work — persists
+once. ``cancel_run`` — the ``docket task cancel`` CLI's real work — persists
 one request atomically before signalling every captured pid's process group.
 Queued work is stopped immediately; running in-process work remains visibly
 requested until its owning ``execute()`` call returns and records observation
@@ -168,7 +168,7 @@ class RunCancellationSignal:
 
 @dataclass
 class CancelOutcome:
-    """Result of :func:`cancel_run` — what a ``docket runs cancel <id>`` call
+    """Result of :func:`cancel_run` — what a ``docket task cancel <ref>`` call
     found and did. ``core/`` returns typed results; ``cli/`` renders them."""
 
     ok: bool
@@ -526,7 +526,7 @@ def remove_hop_pid(run_id: str, pid: int) -> None:
 
 
 def cancel_run(run_id: str) -> CancelOutcome:
-    """Cancel an in-flight dispatch run (``docket runs cancel <id>``). One
+    """Cancel an in-flight dispatch run (``docket task cancel <ref>``). One
     locked transition picks request-vs-terminal winner, captures and clears
     every in-flight pid, and persists the request before signalling. Queued
     work stops in that transition; running work stays nonterminal until

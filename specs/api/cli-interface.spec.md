@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.76.0
+**Version**: 1.77.0
 **Status**: Complete
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -447,20 +447,6 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   `<dir>` (including the default) unless `--force`. See `pod-blueprints.spec.md`,
   "Pod manifests: export"
 - `remove <member-id>`: Remove a pod member
-- `answer <task-id> [text] [--option <id>] [--field name=value]... [--decline]`: Answer a parked
-  question (Phase 34, P34-13; see operator-loop.spec.md "Answer surfaces"). A bare `text` fills
-  the single property of a one-property question schema; `--option <id>` picks one of a
-  consult's options and is required when the question has any (omitting it exits 1 naming the
-  ids); `--field` sets named properties explicitly
-  (required for a multi-property schema); `--decline` ignores any `text`/`--field`. Calls
-  `core.answers.answer_task(channel="cli", actor=<OS user>)`
-- `pregrant <task-id> "<command>" [--tool bash]` (Phase 34, P34-15, ADR 0016 §10): Record a
-  single-use pre-grant for one exact command on one task, ahead of dispatch — the CLI counterpart
-  of `POST /tasks/<id>/pregrants` and the MCP `task_pregrant` tool. Calls
-  `core.interruptions.record_pregrant(channel="cli", actor=<OS user>)`, which calls
-  `core.approval.create_pregrant` exactly as an in-turn park does; when the pipeline later
-  reaches that exact call (matched by `core.operator_contract.canonical_args_digest`), it passes
-  once without asking again
 **Output**: Pod roster. Every bracketed identifier (`[<role>]`, `[<member-id>]`) is printed
 literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
@@ -485,21 +471,6 @@ user-defined (see role-archetypes.spec.md)
 `list`/`show` report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`
 **Return**: `0` on success, `1` on an unknown subcommand, an unknown `show` target, or an invalid
 archetype definition
-
-#### docket runs
-**Purpose**: Cancel one dispatch run in flight (ROADMAP Phase 16 W-2)
-**Syntax**: `docket runs cancel <run-id>`
-**Actions**:
-- `cancel <run-id>`: Kill every hop subprocess currently recorded as in-flight for that run — its
-  whole process group, not just the immediate child (see pod-dispatch.spec.md's "Cancellation")
-  — and durably request cancellation. Queued work becomes terminal immediately; running work stays
-  visibly `running` with a cancel-requested marker until its executor observes the signal and fully
-  stops. A no-op (reported, not an error-free success) against a run that's already terminal. A
-  genuine cancellation writes exactly one `runs.cancel` audit entry
-  (ROADMAP Phase 16 W-4; see audit.spec.md) naming the run, its project, its pre-cancel state,
-  and how many process groups were killed — the no-op paths write nothing
-**Output**: A confirmation message
-**Return**: `0` on success; `1` if the run id is unknown or already terminal
 
 #### docket setup mcp
 **Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
@@ -753,44 +724,45 @@ privacy confirmation or refusal, or a preview of what a destination would receiv
 **Return**: 0 on success, 1 on an unknown exporter, a missing credential, an unreachable
 endpoint, a refused widening, or (`preview`) an unknown session
 
-#### docket approve
-**Purpose**: Grant a pending HITL approval token
-**Syntax**: `docket approve <token>`
+#### docket task approve|deny|answer|retry|cancel
+**Purpose**: Move one task forward: grant or refuse what it waits on, answer its question, put a
+failed task back on the queue, or stop it (operator-loop.spec.md "Answer surfaces",
+pod-dispatch.spec.md "Cancellation")
+**Syntax**:
+- `docket task approve <ref> [--reason TEXT] [--once|--task] [--for "<command>" [--tool bash]] [--pod <p>]`
+- `docket task deny <ref> [--reason TEXT] [--pod <p>]`
+- `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline] [--pod <p>]`
+- `docket task retry <ref> [--pod <p>]`
+- `docket task cancel <ref> [--pod <p>]`
 **Arguments**:
-- `token` (required): An `apr-*` token from docket's approval store (list pending with
-  `docket approve` and no arguments). The store has **three** production producers since Phase 15
-  G-1/G-2 and Phase 19 P19-3: pod-level/pipeline-step `require_approval` gates, a `pre_input`
-  policy match at enqueue, and an in-turn `core/tools.py` tool-call gate. Since ROADMAP Phase 19
-  P19-7b deleted the daemon outright, this is now the **only** approval system — the "daemon's
-  own gate prompt, unbridged" caveat this line used to carry no longer applies to anything real
-  (security-gates.spec.md v0.11.0)
-**Output**: Approval confirmation
-**Return**: 0 on success, 1 if token not found or already resolved
-
-#### docket deny
-**Purpose**: Deny a pending HITL approval token
-**Syntax**: `docket deny <token>`
-**Arguments**:
-- `token` (required): An `apr-*` token from docket's approval store (same provenance note
-  as `docket approve`)
-**Output**: Denial confirmation
-**Return**: 0 on success, 1 if token not found or already resolved
-
-#### docket chat
-**Purpose**: See and answer one task's parked question in the foreground (Phase 34, P34-13; see
-operator-loop.spec.md "Answer surfaces")
-**Syntax**: `docket chat <task-id> [--pod <project>]`
-**Behavior**: Searches every pod for *task-id* (or just *pod* when given), then shows its brief,
-its pending question (if any), its options (recommended one marked) and its earlier answers. On
-a TTY, a pending question is followed by an option prompt when it has options (Enter takes the
-recommended one) and one prompt per `requestedSchema` property (a blank optional property is omitted; a blank
-required one is passed through so the schema check itself reports it) and then answered through
-`core.answers.answer_task(action="accept", channel="cli", actor=<OS user>)`. Off a TTY, or with no
-pending question, this command only ever displays — use `docket pod <p> answer` to answer
-non-interactively
-**Output**: The task's status/brief/question/answers; an answer confirmation when one is sent
-**Return**: 0 on success or a read-only display, 1 if *task-id* is not found, the answer is
-blocked by a `pre_input` policy, or fails the question's own schema validation
+- `ref` (required): a task id, its short id, a unique prefix, or a run id (`core.task_ref.resolve_task`);
+  every pod is searched unless `--pod` or `DOCKET_POD` names one. `approve` and `deny` also
+  accept an `apr-*` token as given, for an approval no task carries. The approval store has
+  three production producers (pod-level/pipeline-step `require_approval` gates, a `pre_input`
+  policy match at enqueue, an in-turn `core/tools.py` tool-call gate) and is the only approval
+  system
+**Behavior**:
+- `approve` resolves the task's pending approval from its own `approvalToken` and grants it
+  (`channel="cli"`); a task that is not `waiting_approval` exits 1. `--task` also allows the
+  same call for the rest of the task; `--once` is the default and conflicts with `--task` (exit
+  2). `--for` records a single-use pre-grant for one exact command ahead of dispatch instead
+  (`core.interruptions.record_pregrant`) and conflicts with `--task`
+- `deny` denies the same approval; the task fails with `approval_denied`
+- `answer` answers the parked question through `core.answers.answer_task`; on a TTY with no
+  text, field or option it prompts, off a TTY it exits 1 naming `--option`
+- `retry` calls `core.dispatch.retry_task` (a `failed` or `blocked` task goes back to `pending`,
+  audited `task.retry`)
+- `cancel` requests cancellation of the task's live run (`core.runs.cancel_run`, which writes
+  one `runs.cancel` audit entry and kills every tracked process group) and settles a stale
+  `running` claim as `failed` (`core.dispatch.reclaim_stale_running`)
+**Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
+hint: `docket is running and will pick it up` when `docket start` is running, else
+`Next: docket run --pod <p>` on stderr; `cancel` ends with `Next: docket task retry <id>` when it
+settled a stale claim
+**Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
+an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
+opposite way, a blocked or invalid answer, or a `cancel` with nothing in flight; 2 on a usage
+error
 
 #### docket inbox
 **Purpose**: List everything across every pod that needs the operator, in one call (see
@@ -1007,9 +979,9 @@ render one line per event on stderr while the dispatch runs, whenever stderr is 
 
 - `session_start` → `▶ <role> …`
 - `approval_requested` → `⏸ <role> wants: <action> · token <token> · denies in <n>s · docket
-  approve <token>`, where `<n>` is `TOOL_APPROVAL_TIMEOUT` minus the elapsed time since the event
+  task approve <token>`, where `<n>` is `TOOL_APPROVAL_TIMEOUT` minus the elapsed time since the event
 - `approval_required` (the hop-level gate) → `⏸ <role> hop needs approval · token <token> ·
-  docket approve <token>`
+  docket task approve <token>`
 - `session_end` → `■ <role> finished — status=<status>`
 
 No other trace event type renders a line. Without a TTY and without `--progress`, no worker
@@ -1022,7 +994,7 @@ When the rendering above is active, stdin is also a real TTY, and `--no-prompt` 
 `approval_requested` event additionally prints `[a]pprove  [d]eny  [Enter] keep waiting` and reads
 one line from stdin. `a` MUST call `core.approval.approval_grant(token, channel="cli")` then
 `core.dispatch.resolve_waiting_approval(token, "granted")`; `d` MUST call the same pair with
-`approval_deny`/`"denied"` — the identical pair `docket approve`/`docket deny` use, so an in-place
+`approval_deny`/`"denied"` — the identical pair `docket task approve`/`docket task deny` use, so an in-place
 answer is indistinguishable from a second terminal's. Any other input (including a bare Enter)
 keeps waiting. A token already resolved through another channel (`ApprovalNoop`) prints one dim
 notice and the prompt keeps waiting on the next event; it MUST NOT raise out of the dispatch call.
@@ -1078,6 +1050,9 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ## Changelog
 
+### Version 1.77.0 (2026-10-08)
+
+- Phase 39 (P39-9): `docket task approve|deny|answer|retry|cancel` are added; `docket approve`, `deny`, `chat`, `docket pod <p> answer|pregrant` and `docket runs cancel` are removed and are ordinary unknown commands (exit 2). The trace progress line names `docket task approve <token>`.
 ### Version 1.76.0 (2026-10-08)
 
 - Phase 39 (P39-8): `docket task add|list|show|diff|trace|prune` replace `delegate`, `pod <p>

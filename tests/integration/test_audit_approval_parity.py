@@ -22,10 +22,10 @@ from pathlib import Path
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _approve as approve_cli
-from docket.cli import _deny as deny_cli
+from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
 from docket.core import trace as _trace
@@ -127,12 +127,16 @@ def _race_pending_transitions(
 # ── CLI channel ────────────────────────────────────────────────────────────────
 
 
+def _task_cmd(verb: str, *args: str) -> int:
+    return CliRunner().invoke(app, ["task", verb, *args]).exit_code
+
+
 class TestGrantDenyViaCli:
     def test_grant_via_cli_audits_channel_cli(
         self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = _ap.approval_create("proj-cli-grant", "implementer", "deploy")
-        rc = approve_cli.run_approve(token)
+        rc = _task_cmd("approve", token)
         assert rc == 0
 
         entry = _last_audit_entry("approval.grant")
@@ -147,7 +151,7 @@ class TestGrantDenyViaCli:
         self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = _ap.approval_create("proj-cli-deny", "reviewer", "nope")
-        rc = deny_cli.run_deny(token)
+        rc = _task_cmd("deny", token)
         assert rc == 0
 
         entry = _last_audit_entry("approval.deny")
@@ -160,7 +164,7 @@ class TestGrantDenyViaCli:
 
     def test_approve_with_reason_records_actor_and_reason(self, home: Path) -> None:
         token = _ap.approval_create("proj-cli-approve-reason", "reviewer", "ok")
-        rc = approve_cli.run_approve(token, reason="looks good")
+        rc = _task_cmd("approve", token, "--reason", "looks good")
         assert rc == 0
 
         entry = _last_audit_entry("approval.grant")
@@ -169,7 +173,7 @@ class TestGrantDenyViaCli:
 
     def test_deny_with_reason_records_actor_and_reason(self, home: Path) -> None:
         token = _ap.approval_create("proj-cli-deny-reason", "reviewer", "nope")
-        rc = deny_cli.run_deny(token, reason="not ready")
+        rc = _task_cmd("deny", token, "--reason", "not ready")
         assert rc == 0
 
         entry = _last_audit_entry("approval.deny")

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.35.0
+**Version**: 6.36.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -91,7 +91,7 @@ is this version's own major change: `core/orchestrator.py` resolves a
 retries, crash resume all unchanged); gate execution reads each step's *resolved* gate — its own
 declared `gate`, or (only when a step omits one) its archetype's `gateContract` (W-6) — instead of
 branching on a hardcoded role name; a `parallel` step's children run concurrently via a bounded
-worker pool and join before the pipeline advances; and `docket runs cancel <id>` kills an
+worker pool and join before the pipeline advances; and `docket task cancel <ref>` kills an
 in-flight hop's process group. This version documents that machine as it actually ships.
 
 ## Scope
@@ -120,7 +120,7 @@ This specification covers:
   generically, and the byte-identical-behavior guarantee for the four built-in roles
 - **Parallel step groups** (W-2): bounded concurrent execution of a group's children, join
   semantics, and per-hop persistence ordering
-- **Cancellation** (W-2, W26-C10c, W30-C1): how `docket runs cancel <id>` reaches an in-flight hop
+- **Cancellation** (W-2, W26-C10c, W30-C1): how `docket task cancel <ref>` reaches an in-flight hop
   — the cooperative run signal, an in-flight `bash` command's process group, and any tracked pid
 - The require_approval gate's two wired sources for this version (a pod-level Lead-meta role
   list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
@@ -446,6 +446,9 @@ was seeded once at binding time.)*
    operator: `retry_task(project, task_id)` flips a `failed` (or `blocked`) task to `pending`,
    keeps its `hops[]`, clears `failureKind`/`reason`/`completedAt`, and writes
    `audit_log("task.retry", ...)`. It returns False for a missing task or any other status.
+   `docket task retry <ref>` (`cli/_task.py::_task_retry`) is the operator surface: it calls
+   `retry_task` for the resolved task, exits 1 naming the task's status when it returns False,
+   and otherwise ends with the run hint.
 
 ### Pipeline order and participation
 
@@ -1081,7 +1084,7 @@ was seeded once at binding time.)*
    `failed`. It re-enters `pending` only through a resolved approval (below), never automatically,
    and never via `retry_task`/`unblock_pod` (those are budget-gate-only escape hatches).
 4. Resolving the gate's approval (`core/dispatch.py`'s `resolve_waiting_approval`, called by
-   `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, the Telegram
+   `docket task approve`/`docket task deny`, `serve.py`'s `POST /approvals/<token>`, the Telegram
    `/approve`/`/deny` verbs (`core/telegram.py`), `cli/_mcp.py`'s `approvals_grant`/`approvals_deny`
    MCP tools, and `approval_sweep_expired`'s fail-closed timeout path — see
    `security-gates.spec.md`) **MUST**:
@@ -1413,8 +1416,15 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 
 ### Cancellation
 
-1. `docket runs cancel <id>` **MUST** durably request cancellation and kill every tracked process
-   group currently recorded as in-flight for that run. Queued work becomes terminal immediately;
+1. `docket task cancel <ref>` (`cli/_task.py::_task_cancel`) **MUST** resolve the task through
+   `core.task_ref.resolve_task`, then call `core.runs.cancel_run` for every queued or running run
+   of the task's pod that lists the task or, while the task is `running`, names none yet (a run
+   lists its tasks only when it finishes), and **MUST** settle a `running` task whose claimant is
+   gone through `core.dispatch.reclaim_stale_running` (`failed`, `failureKind: "stale_claim"`,
+   audited `task.reclaimed`), ending with `Next: docket task retry <id>`; with neither a live
+   run nor a stale claim it **MUST** exit 1 and change nothing. `cancel_run` **MUST** durably
+   request cancellation and kill every tracked process group currently recorded as in-flight for
+   that run. Queued work becomes terminal immediately;
    running work remains `running` with a visible request until its executor observes the signal and
    finishes stopping — see
    `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
@@ -1431,7 +1441,7 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    (`SIGKILL`, tolerating an already-exited process) when the command's own *timeout* expires, so
    a command that backgrounds work leaves no orphan behind. But its pid is never registered —
    `DocketDriver.run_turn` ignores `on_spawn` for it — so it is **not** reachable from
-   `docket runs cancel`; a cancelled run's in-flight verify command keeps running until it returns
+   `docket task cancel`; a cancelled run's in-flight verify command keeps running until it returns
    or times out on its own. This is a known limit, not a bug to fix under this requirement.
 3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
    one. `core/agent_loop.py` cooperatively checks the run signal at turn boundaries, after backend
@@ -1869,7 +1879,7 @@ dispatch [--resume] [--timeout <seconds>]`, `docket pod <project> queue --retry 
 `docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`, `docket serve
 --dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry record each
 invocation of this pipeline creates (`docket runs`, `GET /runs`), including its `pids` field and
-the `"cancelled"` state `docket runs cancel <id>` produces, is documented in
+the `"cancelled"` state `docket task cancel <ref>` produces, is documented in
 `serve-read-api.spec.md`/`cli-json-shapes.spec.md`.
 
 ### Trace events this pipeline emits
@@ -1971,15 +1981,15 @@ run continues from the Reviewer.)
 $ docket run
   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
 
-$ docket approve apr-1234
-✓ Approval granted: apr-1234
-  The waiting action may now proceed.
+$ docket task approve task-9a1b2c3d
+✓ Approved task-9a1b2c3d
+Next: docket run --pod myapp
 
 $ docket run
   [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
-(The Lead hop already completed before the gate fired is not re-invoked; `docket approve` moves
+(The Lead hop already completed before the gate fired is not re-invoked; `docket task approve` moves
 the task back to `pending`, and the *next* `docket run` continues from the
 Implementer — the exact hop the gate stopped it on.)
 
@@ -1989,9 +1999,8 @@ Implementer — the exact hop the gate stopped it on.)
 $ docket run
   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
 
-$ docket deny apr-1234
-✓ Approval denied: apr-1234
-  The waiting action has been blocked.
+$ docket task deny task-9a1b2c3d
+✓ Denied task-9a1b2c3d; the action is blocked
 ```
 
 (The task is now `failed`, `failureKind: "approval_denied"`, immediately — no further dispatch
@@ -2057,7 +2066,7 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   verification-skipped notice), for any role/archetype, not only the built-in four.
 - Every production pod-turn loop event **MUST** join that same task-wide trace even though its
   messages and measured usage are persisted under a step-scoped history key.
-- Cancelling a run (`docket runs cancel`) **MUST** kill a hop's entire process group, never leave
+- Cancelling a run (`docket task cancel`) **MUST** kill a hop's entire process group, never leave
   an orphaned child process running after the cancellation lifecycle reaches full stop.
 - The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region
   — an agent's own prose anywhere else in `HEARTBEAT.md` survives every dispatch-driven rewrite.
@@ -2076,6 +2085,9 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   resolves to its task), `task diff` prints the worktree diff, `task prune` removes finished
   worktrees (and, with `--traces`, old traces and run records). `pod <p> delegate|queue|explain|
   evidence|corrections|worktrees`, `runs list|show|prune` and `trace` are removed.
+### Version 6.36.0 (2026-10-08)
+
+- Phase 39 (P39-9): `docket task retry <ref>` is the operator surface of `retry_task`; `docket task cancel <ref>` replaces `docket runs cancel <id>` and also settles a `running` task whose dispatcher is gone (`reclaim_stale_running`, the public name of the `--resume` reclaim); `docket task approve|deny <ref>` replace `docket approve|deny <token>` and `docket pod <p> pregrant`.
 
 ### Version 6.34.0 (2026-10-07)
 
@@ -2177,7 +2189,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
   `core.answers.answer_task` resumes it on the step's own `on:` route, never failing an
   unanswered question. "Task brief" (P34-12, §4): the Lead's typed `TaskBrief`, the
   deterministic `secret:`/`path:`/`verify` resource pre-check, and the Implementer's `## Brief`
-  view replacing raw prose. "Pre-grants from intake" (P34-15, §10): `docket pod <p> pregrant`
+  view replacing raw prose. "Pre-grants from intake" (P34-15, §10): `docket task approve <ref> --for`
   records a task-scoped, exact-command pre-grant through the same digest matcher a parked
   in-turn call uses.
 
@@ -2661,7 +2673,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
     thread pool, join semantics, per-child persistence as each completes (not deferred to the
     group's join, preserving R-1's crash-safety guarantee for a concurrent fan-out), and a
     documented limitation that a mid-group crash resumes by re-running the whole group.
-  - `docket runs cancel <id>` — see "Cancellation": kills every pid recorded in-flight for a run
+  - `docket task cancel <ref>` — see "Cancellation": kills every pid recorded in-flight for a run
     (its whole process group, not just the immediate child — every hop subprocess now starts its
     own session), and marks the run a new terminal state, `"cancelled"`.
   - `_replay_pipeline_position` (crash resume) generalizes from a role-keyed set to a step-id-
@@ -2704,7 +2716,7 @@ Phase 36 close (P36-10): the entries below were Unreleased and are now this vers
     `_policy_requires_approval` (ROADMAP Phase 15 G-2) and `_pipeline_step_requires_approval`
     (ROADMAP Phase 16 W-1/W-2) — both always return `False` today; neither is claimed as wired.
   - `resolve_waiting_approval`: reacts to a grant/deny already applied by `core/approval.py` (via
-    `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, or the expiry sweep)
+    `docket task approve`/`docket task deny`, `serve.py`'s `POST /approvals/<token>`, or the expiry sweep)
     by moving the gated task `waiting_approval` -> `pending` (grant, with a single-use
     `gateOverridePipelineIndex` handoff to the next claim) or `waiting_approval` -> `failed`
     (deny, immediately, `failureKind: "approval_denied"`, never reclaimed).

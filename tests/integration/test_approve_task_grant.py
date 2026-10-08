@@ -11,9 +11,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner
 
-from docket.cli import _pod
-from docket.cli._approve import run_approve
+from docket.cli import _pod, app
 from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -27,6 +27,11 @@ from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import _parse_pregrants
 
 SUBJECT = "docket.core"
+
+
+def run_approve(token: str, *flags: str) -> int:
+    return CliRunner().invoke(app, ["task", "approve", token, *flags]).exit_code
+
 
 PROJECT = "demo"
 CALL = {"command": "git push origin feature"}
@@ -114,7 +119,7 @@ class TestApproveTaskCli:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
         token = _park(task["id"])
 
-        assert run_approve(token, option="approve_task") == 0
+        assert run_approve(token, "--task") == 0
 
         grants = _task(task["id"])["taskGrants"]
         assert len(grants) == 1
@@ -148,13 +153,13 @@ class TestApproveTaskCli:
     def test_another_task_with_the_same_call_still_parks(self) -> None:
         first = _dispatch.enqueue_task(PROJECT, "one")
         second = _dispatch.enqueue_task(PROJECT, "two")
-        run_approve(_park(first["id"]), option="approve_task")
+        run_approve(_park(first["id"]), "--task")
         assert not _task(second["id"]).get("taskGrants")
         assert _spend(_later_hop_env(second["id"])) is None
 
     def test_a_later_hop_of_another_role_gets_no_task_grant(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
-        run_approve(_park(task["id"]), option="approve_task")
+        run_approve(_park(task["id"]), "--task")
         assert _task(task["id"])["taskGrants"][0]["role"] == "implementer"
         env = _later_hop_env(task["id"], "reviewer")
         assert _spend(env) is not None  # the parked call's own single-use pre-grant
@@ -162,19 +167,19 @@ class TestApproveTaskCli:
 
     def test_a_different_argument_digest_still_parks(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
-        run_approve(_park(task["id"]), option="approve_task")
+        run_approve(_park(task["id"]), "--task")
         env = _later_hop_env(task["id"])
         assert _spend(env, {"command": "git push origin main"}) is None
 
-    def test_unknown_option_is_refused_and_leaves_the_approval_pending(self) -> None:
+    def test_conflicting_scopes_are_refused_and_leave_the_approval_pending(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
         token = _park(task["id"])
-        assert run_approve(token, option="approve_forever") == 1
+        assert run_approve(token, "--once", "--task") == 2
         assert _approval.approval_get(token)["state"] == "pending"
 
     def test_grants_are_dropped_when_the_task_reaches_a_terminal_status(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
-        run_approve(_park(task["id"]), option="approve_task")
+        run_approve(_park(task["id"]), "--task")
         stored = _task(task["id"])
         _dispatch._apply_result(stored, _dispatch.TaskResult(task["id"], "done"))
         assert "taskGrants" not in stored
@@ -191,7 +196,7 @@ class TestApproveTaskCli:
     def test_the_twenty_first_grant_is_refused_with_a_message(self) -> None:
         task = _dispatch.enqueue_task(PROJECT, "ship it")
         for i in range(_dispatch.TASK_GRANT_CAP):
-            run_approve(_park(task["id"], {"command": f"echo {i}"}), option="approve_task")
+            run_approve(_park(task["id"], {"command": f"echo {i}"}), "--task")
         assert len(_task(task["id"])["taskGrants"]) == _dispatch.TASK_GRANT_CAP
 
         token = _park(task["id"], {"command": "echo extra"})

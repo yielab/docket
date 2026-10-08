@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="status add init info delete maintain profile pod pipeline roles config exec start stop validate plugins recipes policies approve deny chat inbox run setup log task"
+  local commands="status add init info delete maintain profile pod pipeline roles config exec start stop validate plugins recipes policies inbox run setup log task"
 
   # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"

@@ -926,7 +926,7 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
 
     assert calls == [
         ("runs", "cancel", "run-live"),
-        ("deny", "approval-private"),
+        ("task", "deny", "approval-private"),
     ]
     error = str(exc_info.value)
     assert "source=approval" in error
@@ -1009,7 +1009,7 @@ def test_live_approval_grants_only_typed_allowed_call(
         assert state.granted == ["approval-allowed"]
         assert state.abort.is_set() is False
 
-    assert calls == [("approve", "approval-allowed")]
+    assert calls == [("task", "approve", "approval-allowed")]
 
 
 def test_run_cli_does_not_start_after_canary_abort(

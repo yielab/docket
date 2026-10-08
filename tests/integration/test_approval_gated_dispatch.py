@@ -41,9 +41,10 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
-from docket.cli import _approve, _deny
+from docket.cli import app
 from docket.core import approval as _ap
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
@@ -393,7 +394,7 @@ class TestGrantResumesAtHop:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = self._gate_then_grant()
-        rc = _approve.run_approve(token)
+        rc = CliRunner().invoke(app, ["task", "approve", token]).exit_code
         assert rc == 0
         capsys.readouterr()
 
@@ -454,7 +455,7 @@ class TestDenyFailsTerminally:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = self._gate()
-        rc = _deny.run_deny(token)
+        rc = CliRunner().invoke(app, ["task", "deny", token]).exit_code
         assert rc == 0
         capsys.readouterr()
 

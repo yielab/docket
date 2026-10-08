@@ -95,7 +95,7 @@ class TestRenderEvent:
         line = _progress.render_event(
             _record("approval_required", {"token": "apr-1", "role": "lead"}, role="lead")
         )
-        assert line == "⏸ lead hop needs approval · token apr-1 · docket approve apr-1"
+        assert line == "⏸ lead hop needs approval · token apr-1 · docket task approve apr-1"
 
     def test_approval_requested_counts_down_from_the_configured_timeout(
         self, monkeypatch: pytest.MonkeyPatch
@@ -109,7 +109,7 @@ class TestRenderEvent:
         line = _progress.render_event(record, now=now)
         assert line == (
             "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
-            "docket approve apr-2"
+            "docket task approve apr-2"
         )
 
     def test_an_unrenderable_event_type_returns_none(self) -> None:

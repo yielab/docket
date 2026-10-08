@@ -1473,7 +1473,7 @@ def _run_hop_turn(
             raise DispatchError(f"step {node.step_id!r}: {exc}") from exc
 
     # Record the production driver's spawned pid as in-flight for
-    # `docket runs cancel` — only while the subprocess is actually
+    # `docket task cancel` — only while the subprocess is actually
     # running; removed again the moment this attempt returns, so a long
     # multi-hop task never accumulates stale pids from finished hops.
     run_id_for_pids = _runs.current_run_id() if ctx.track_pid else None
@@ -2679,7 +2679,7 @@ def dispatch_task(
     claim, and a crash (any *other* exception) still propagates unchanged, leaving the task
     ``running`` for the stale-claim sweep exactly as before."""
     run = runner or _dr.default_driver().run_turn
-    # pid tracking (for `docket runs cancel`) only makes sense for a real
+    # pid tracking (for `docket task cancel`) only makes sense for a real
     # OS process, i.e. the production driver — never an injected test
     # runner/fake, none of which accept an `on_spawn` kwarg (and none of which
     # have a process to report anyway). Gating on `runner is None` (rather
@@ -3042,7 +3042,7 @@ def _claim_stale_reason(task: dict[str, Any], now: _dt.datetime, lease_s: int) -
     return ""
 
 
-def _reclaim_stale_running(project: str) -> None:
+def reclaim_stale_running(project: str) -> None:
     """``--resume``: settle every stale ``running`` claim to ``failed``/``stale_claim`` so the
     claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``."""
     now = _dt.datetime.now(_dt.UTC)
@@ -3364,7 +3364,7 @@ def dispatch_pod(
         )
     _sweep_stale_claims(project)
     if resume:
-        _reclaim_stale_running(project)
+        reclaim_stale_running(project)
 
     results: list[TaskResult] = []
     while max_tasks is None or len(results) < max_tasks:

@@ -1059,7 +1059,7 @@ def _approve_live_tool_calls(
                         )
                     state.abort.set()
                     try:
-                        _run_cli(repo, env, "deny", token, process_timeout=30)
+                        _run_cli(repo, env, "task", "deny", token, process_timeout=30)
                     except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
                         del exc
                         state.failures.append(
@@ -1087,7 +1087,7 @@ def _approve_live_tool_calls(
                     )
                     return
                 try:
-                    _run_cli(repo, env, "approve", token, process_timeout=30)
+                    _run_cli(repo, env, "task", "approve", token, process_timeout=30)
                 except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
                     del exc
                     state.failures.append(
@@ -1803,7 +1803,7 @@ def _run(
             _require(bool(token), "waiting task has no approval token")
             print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
 
-            run_cli("approve", token)
+            run_cli("task", "approve", token)
             second_run = ["run", "--pod", "smoke", "--pipeline", str(pipeline)]
             if live is None:
                 second_run.extend(["--timeout", "30"])
@@ -2165,7 +2165,7 @@ def _oploop_approval_counts(home: Path) -> dict[str, int]:
         elif state == "granted":
             counts["granted"] += 1
         elif state in ("denied", "expired"):
-            # This scenario never runs `docket approve`/`docket deny`, so every
+            # This scenario never runs `docket task approve`/`docket task deny`, so every
             # resolved record here was resolved by TOOL_APPROVAL_TIMEOUT's own
             # timeout-as-denied path (core/approval.py::_resolve_timeout_as_denied),
             # not an explicit operator decision -- there is no persisted "channel"
