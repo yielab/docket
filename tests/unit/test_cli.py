@@ -11,7 +11,7 @@ def test_bare_invocation_prints_the_quick_reference() -> None:
     result = CliRunner().invoke(app, [])
     assert result.exit_code == 0
     assert "docket init" in result.stdout
-    assert "docket help" in result.stdout
+    assert "docket help" not in result.stdout
 
 
 def test_version_flag_prints_the_version_and_exits_0() -> None:

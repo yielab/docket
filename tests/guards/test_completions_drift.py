@@ -77,7 +77,6 @@ class TestCommandsPresent:
         "deny",
         "metrics",
         "keys",
-        "context",
         "snapshot",
         "audit",
         "gates",

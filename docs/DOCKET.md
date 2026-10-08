@@ -234,7 +234,7 @@ Every agent's state lives in two docket-owned files, split by who reads them and
 by docket, through `edges/store.py`:
 
 - **`.docket-meta.json`**, in each workspace — per-agent facts: kind, role, name, codebase, stack,
-  model, `modelSource`, description, `sessionKey`, `projectKey`, budget, persona, and platform-era
+  model, `modelSource`, description, `sessionKey`, `projectKey`, budget, and platform-era
   additions like `blueprint`/`workspaceKind`/`workDir` and a pod's allocated
   `portRangeStart`/`portRangeCount`/`scratchDir`
 - **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
@@ -580,8 +580,7 @@ The Implementer reads:
 Context stays scoped to one project's pod
 ```
 
-There is no generated `SNAPSHOT.md`, and `docket context` has only `show` and `project` (any
-other action exits 2). There is no separate semantic memory index —
+There is no generated `SNAPSHOT.md`. There is no separate semantic memory index —
 docket's own turn loop has no `memory_search` tool of its own; an agent searches its memory files
 the same way it reads any other file, with `read`/`grep`. What actually scopes a pod's context is
 the **workspace startup contract** docket provisions on `docket add`/`docket init` and
@@ -619,20 +618,12 @@ _none_
 _none_
 ```
 
-`docket context <id> show` and `docket context <id> project` are read-only renderers over
-exactly these files — recent memory-log lines, active tasks parsed from `HEARTBEAT.md`,
-`MEMORY.md`'s section headers, and last-activity/log-count stats. They display the contract; they
-don't generate a separate summary artifact.
+These files are the contract: recent memory-log lines, active tasks parsed from `HEARTBEAT.md`,
+and `MEMORY.md`'s section headers. docket generates no separate summary artifact.
 
 ### Memory Commands
 
 ```bash
-# Read-only dashboard: recent memory logs, active tasks, session-size/last-active stats
-docket context <id> show
-
-# Project quick reference: codebase/stack/model, active tasks, MEMORY.md sections
-docket context <id> project
-
 # Summarize pending daily logs into MEMORY.md (see Memory Distillation below)
 docket maintain <id> distill
 
@@ -745,7 +736,7 @@ Tester:      ✓ Behavior-only validation
 
 ### Features Implemented ✅
 
-- [x] Memory management system (`docket context show/project`)
+- [x] Memory management system (`docket maintain`)
 - [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`)
 - [x] Workspace startup contract generation (`WORKFLOW_AUTO.md`/`MEMORY.md`/`HEARTBEAT.md`) +
   `docket doctor` re-seeding of a missing or stale one
@@ -1083,7 +1074,7 @@ Inspect the boundary or copy the lazy constructors from
 
 1. **First project:** `docket init` in the project directory (the pod is a lead + implementer)
 2. **Add another project pod:** `docket init <project> [path]`
-3. **Inspect context:** `docket context <project>-lead show` (quick per-agent view)
+3. **Inspect an agent:** `docket info <project>-lead` (quick per-agent view)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (measured tokens; no recorded dollar spend)
 

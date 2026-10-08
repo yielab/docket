@@ -65,8 +65,8 @@ story-to-test coverage: a criterion without a backing test is simply left unchec
 - [ ] Agent is created with unique ID in under 2 seconds
 - [ ] Workspace directory is created with correct permissions (700/600)
 - [ ] Stack is auto-detected from project files
-- [ ] The role→model policy assigns the agent's model (visible in `docket list`)
-- [ ] Agent appears in `docket list` immediately after creation
+- [ ] The role→model policy assigns the agent's model (visible in `docket info`)
+- [ ] Agent appears in `docket status` immediately after creation
 - [ ] Session key is generated for project isolation
 - [ ] Creation fails gracefully if agent ID already exists
 - [ ] User receives clear success confirmation with workspace path
@@ -292,7 +292,7 @@ But SOUL.md should remain unchanged
 When I run "docket delete testapp"
 And I confirm the deletion
 Then the workspaces for all pod members should be removed
-And no testapp-* agents should appear in "docket list"
+And no testapp-* agents should appear in "docket status --all"
 ```
 
 ### Scenario: Cost Tracking

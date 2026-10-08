@@ -18,7 +18,6 @@ from docket.cli import (
     _log,
     _pod,
     _pod_config,
-    _remove,
     _service,
     _setup,
     _setup_export,
@@ -54,11 +53,9 @@ def _default(
         ui.console.print("  docket status --all  show global status by project")
         ui.console.print("  docket add <role>    add an agent to the current pod")
         ui.console.print("  docket doctor        check workstation-wide health")
-        ui.console.print("  docket help          show the full command reference")
 
 
 app.add_typer(_setup.setup_app)
-app.command("list")(_remove.cmd_list)
 app.command("status")(_status.cmd_status)
 app.command(
     "add",
@@ -74,15 +71,9 @@ app.command(
     "maintain",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod.cmd_maintain)
-app.command(
-    "context",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_remove.cmd_context)
 app.command("wire")(_setup_notify.cmd_wire)
 app.command("unwire")(_setup_notify.cmd_unwire)
-app.command("scope")(_remove.cmd_scope)
 app.command("profile")(_pod.cmd_profile)
-app.command("persona")(_remove.cmd_persona)
 app.command(
     "keys",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -103,8 +94,6 @@ app.command(
     "roles",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_roles)
-app.command("logs")(_remove.cmd_logs)
-app.command("edit")(_remove.cmd_edit)
 app.command("cost")(_status.cmd_cost)
 app.command(
     "config",
@@ -175,4 +164,3 @@ app.command(
     "inbox",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_inbox.cmd_inbox)
-app.command("help")(_remove.cmd_help)

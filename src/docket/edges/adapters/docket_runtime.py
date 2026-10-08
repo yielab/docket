@@ -529,7 +529,7 @@ class DocketDriver:
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         """Enumerate this agent's sessions. A directory name is the percent-encoded session KEY
         (``agent:<id>:<project>``), not the bare id, so matching by the ``agent:<id>:`` prefix
-        also surfaces every project this agent has ever been scoped to (``docket scope ... set``)."""
+        also surfaces every project key this agent has had."""
         if not _cfg.SESSIONS_DIR.is_dir():
             return []
         prefix = f"agent:{agent_id}:"

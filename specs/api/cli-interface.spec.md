@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.70.0
+**Version**: 1.75.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -67,7 +67,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
 | `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
-| `action` | `scope`, `keys`, `pod`, `gates` | MUST be a verb from that command's documented action set |
+| `action` | `keys`, `pod`, `gates` | MUST be a verb from that command's documented action set |
 
 Unrecognized or excess positional arguments MUST produce a clear error and exit 1.
 
@@ -212,19 +212,9 @@ agent inventory.
 - `--all` reports the same summary for every registered pod, once per project rather than once per
   agent.
 - No current-directory match **MUST** fail with an actionable `docket init`/`--all` message.
-- `doctor` remains workstation-wide technical health; `list` remains the detailed global agent
-  inventory. Neither behavior is an implicit side effect of `status` or bare `docket`.
+- `doctor` remains workstation-wide technical health. It is not an implicit side effect of
+  `status` or bare `docket`.
 **Return**: 0 on success, 1 when current-project resolution fails.
-
-#### docket list
-**Purpose**: Display all agents
-**Syntax**: `docket list [--json]`
-**Arguments**: None
-**Options**:
-- `--json`: Emit the listing as one JSON document instead of the Rich table (see
-  `cli-json-shapes.spec.md`)
-**Output**: Formatted agent list
-**Return**: 0 always
 
 #### docket info
 **Purpose**: Display detailed agent information
@@ -320,16 +310,6 @@ catalog
 - `reset`: Restore built-in defaults
 **Output**: Role→model table or update confirmation
 **Return**: 0 on success, 1 on invalid role, preset, or provider action
-
-#### docket scope
-**Purpose**: Manage session keys for project isolation
-**Syntax**: `docket scope [agent-id] [action] [value]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-- `action` (optional): show (default)/set/reset
-- `value` (conditional): Required for 'set' action
-**Output**: Current or updated session key
-**Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket keys
 **Purpose**: Manage API keys centrally; the model resolver reads selected-provider keys directly
@@ -608,43 +588,6 @@ one named exception to the flat convention, see Return Code Convention); `status
 lookup, 1 on a missing token
 
 ### Memory and Context Commands
-
-#### docket context
-**Purpose**: Inspect and manage an agent's memory/context
-**Syntax**: `docket context [agent-id] [action]`
-**Actions**:
-- `show`: Recent activity overview (default)
-- `project`: Show project-level context
-
-Any other action prints `docket context: unknown action '<action>' (expected: show, project)`
-and exits 2; it never falls through to `show`.
-
-`search`/`snapshot`/`index`/`compress` and the `SNAPSHOT.md` artifact were **removed** — see the
-CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory (`memory_search`/
-`memory_get`) is not part of Docket's runtime — there is no keyword-index successor, so this is a
-real, named gap
-rather than a capability delegated elsewhere. Folding logs into `MEMORY.md` is
-`docket maintain <id> distill`.
-**Output**: Context view or action confirmation
-**Return**: 0 on success, 1 if not found, 2 on an unknown action
-
-#### docket edit
-**Purpose**: Open an agent's workspace files in `$EDITOR`
-**Syntax**: `docket edit [agent-id]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Opens SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md in the editor
-**Return**: 0 on success, 1 if not found
-
-#### docket logs
-**Purpose**: Show an agent's latest memory log. **ROADMAP Phase 19 P19-7b removed the
-"today's gateway entries" section** — there is no daemon gateway log left to scan for a bound
-peer's activity, and no successor; the command reports memory logs only.
-**Syntax**: `docket logs [agent-id]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Latest memory day-log (first ~40 lines, with a "more lines" note if truncated)
-**Return**: 0 on success, 1 if not found
 
 ### Maintenance Commands
 
@@ -1027,16 +970,6 @@ sent without delivering or advancing the snapshot
 
 ### Identity & Conversations
 
-#### docket persona
-**Purpose**: Manage an agent's docket-owned cosmetic persona (display name/emoji rendered into SOUL.md)
-**Syntax**: `docket persona <agent-id> <show|set "<label>"|clear>`
-**Actions**:
-- `show`: Print the current persona (if any)
-- `set "<Name emoji>"`: Set/replace the persona (survives `maintain rebuild`)
-- `clear`: Remove the persona (agent displays by role/id again)
-**Output**: Persona confirmation or display
-**Return**: 0 on success, 1 on error
-
 #### docket conversations
 **Purpose**: Inspect docket's durable conversation registry (pointers to channel threads; even
 before ROADMAP Phase 19 P19-7b deleted the daemon outright, it kept no durable transcript of its
@@ -1089,16 +1022,6 @@ Phase 19 wave 14).
 
 ### Help
 
-#### docket help
-**Purpose**: Show usage information
-**Syntax**: `docket help [command]`
-**Arguments**:
-- `command` (optional): Show help for a specific command
-**Output**: With no `command`, docket's full hand-written command reference. With a known
-`command`, that command's own usage text (its `--help` output). With an unknown `command`,
-a one-line error naming it.
-**Return**: 0 for no `command` or a known `command`; 1 for an unknown `command`
-
 ## Output Formats
 
 ### The console voice
@@ -1150,7 +1073,6 @@ sets:
 | `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before visible truncation | `30000` |
 | `DOCKET_NO_TRACE` | `1` disables trace-store writes | unset |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s Bearer token instead of generating one | unset |
-| `EDITOR` / `VISUAL` | Editor for `docket edit` | `nano` |
 
 There is no `DOCKET_DEBUG`, `DOCKET_NO_COLOR`, `DOCKET_MODEL_DEFAULT` or `DOCKET_EDITOR`.
 `DOCKET_APPROVAL_MODE` is not an environment variable despite its name: it is a key of the `env`
@@ -1187,7 +1109,7 @@ No other exit codes are produced by docket's own commands. Typer/Click's own usa
 unknown option or command, before any command body runs — including every retired command name
 and former alias) exit `2`. Commands that parse their own trailing arguments report the same
 class of usage error with `2` too: an unrecognized flag (`find_unknown_flag`), an unknown
-`docket gates` subcommand, or an unknown `docket context` action. (Earlier revisions of this
+`docket gates` subcommand. (Earlier revisions of this
 spec described codes 2–9 and 127 per failure kind; those were never implemented — removed in
 v1.5.0.)
 
@@ -1288,7 +1210,7 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 
 ### Example
 ```
-✗ Error: Project key required. Usage: docket scope <agent-id> set <project-key>
+✗ Error: Usage: docket keys add <KEY_NAME>
 ```
 
 ## Performance Requirements
@@ -1321,6 +1243,12 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.75.0 (2026-10-07)
+
+- Phase 39 (P39-16): `docket list`, `context`, `logs`, `edit`, `scope`, `persona` and `help` are
+  removed and are ordinary unknown commands (exit 2); `EDITOR`/`VISUAL` leave the environment
+  table. The bare-`docket` guide drops the `help` line.
 
 ### Version 1.70.0 (2026-10-07)
 

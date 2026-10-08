@@ -2,7 +2,7 @@
 
 Pins the hash chain (seq + prev_hash, GENESIS_HASH: clean on a fresh log,
 a tampered middle line detected, tolerant of pre-chain and malformed lines),
-`docket audit verify`, and that keys/profile/scope/agent/persona commands each
+`docket audit verify`, and that keys/profile/agent commands each
 write exactly one correctly-shaped, secret-free entry (pod.add/pod.remove
 coverage lives in test_pod_provisioning.py). Every fixture repoints
 ``_cfg.AUDIT_LOG`` explicitly rather than relying on the autouse isolation
@@ -24,7 +24,7 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.cli import _audit as audit_cli
 from docket.cli import _keys as keys_cli
-from docket.cli import _pod, _remove
+from docket.cli import _pod
 from docket.cli._agents import run_delete, run_init
 from docket.core import audit as _audit
 
@@ -713,26 +713,6 @@ class TestKeysAudit:
         assert entries[0]["detail"] == "ANTHROPIC_API_KEY"
 
 
-class TestScopeAudit:
-    def test_scope_set_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _remove.cmd_scope("demo", "set", "beta")
-        entries = _entries("scope.set")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo=beta"
-
-    def test_scope_reset_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _remove.cmd_scope("demo", "reset", None)
-        entries = _entries("scope.reset")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo"
-
-
 class TestProfileAudit:
     def test_profile_budget_writes_one_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -751,27 +731,6 @@ class TestProfileAudit:
         entries = _entries("profile.model")
         assert len(entries) == 1
         assert entries[0]["detail"] == "demo=anthropic/claude-haiku-4-5 (pinned)"
-
-
-class TestPersonaAudit:
-    def test_persona_set_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _remove.cmd_persona("demo", "set", "Orion 🔭")
-        entries = _entries("persona.set")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo=Orion 🔭"
-
-    def test_persona_clear_writes_one_entry(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed_agent(tmp_path, monkeypatch)
-        _remove.cmd_persona("demo", "set", "Orion 🔭")
-        _remove.cmd_persona("demo", "clear", None)
-        entries = _entries("persona.clear")
-        assert len(entries) == 1
-        assert entries[0]["detail"] == "demo"
 
 
 class TestAgentAddDeleteAudit:

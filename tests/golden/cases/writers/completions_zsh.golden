@@ -4,26 +4,20 @@ EXIT:0
 _docket() {
   local -a commands
   commands=(
-    'list:List all project agents'
     'status:Show current-project status, or every project with --all'
     'add:Add role agents to an existing project pod'
     'init:Initialize the current project with its minimum isolated pod'
     'info:Detailed status of one agent'
     'delete:Remove a project agent or a whole pod, and optionally its workspace'
     'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)'
-    'context:Agent context views (show/project) -- read-only'
     'wire:Wire or update a channel group binding (Telegram by default)'
     'unwire:Remove a channel binding (Telegram by default)'
-    'scope:Manage session scope / project isolation key'
     'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
-    'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
     'models:View and edit the role->model policy -- the single place that decides which model each kind of agent runs on'
     'pod:Manage a project'\''s pod: list members, add/remove a role, set an implementer'\''s verify command, and run its dispatch pipeline'
     'pipeline:Validate, plan, and run a docket-native pipeline -- the one dialect docket actually executes'
     'roles:Manage declarative role archetypes: list/show/add/validate'
-    'logs:View an agent'\''s latest memory log'
-    'edit:Open agent workspace files in $EDITOR'
     'cost:Token usage and cost breakdown, with per-agent budget caps and runaway-session detection'
     'config:Read-only inspection of an agent'\''s effective configuration'
     'doctor:System-wide health check and diagnostics, with an optional auto-fix pass'
@@ -49,7 +43,6 @@ _docket() {
     'deny:Deny a pending tool-action'
     'chat:See and answer one task'\''s parked question'
     'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
-    'help:Show help'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
   )
 
@@ -69,14 +62,11 @@ _docket() {
   case "${words[2]}" in
     status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
-    scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
-    context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
     conversations)   compadd list show resume set prune ;;
-    persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
     gates)           compadd status isolate network classes ;;
     keys)            compadd add list remove rotate setup validate export ;;
@@ -87,7 +77,7 @@ _docket() {
     roles)           compadd list show add validate ;;
     completions)     compadd bash zsh ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|wire|unwire)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

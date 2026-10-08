@@ -87,14 +87,11 @@ _docket_complete() {
   case "$cmd" in
     status)          words="--all --json" ;;
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
-    scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
-    context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch config apply export" ;;
     mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs)            words="list show cancel prune" ;;
     conversations)   words="list show resume set prune" ;;
-    persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
     audit)           words="verify --json" ;;
     gates)           words="status isolate network classes" ;;
     keys)            words="add list remove rotate setup validate export" ;;
@@ -105,7 +102,7 @@ _docket_complete() {
     roles)           words="list show add validate" ;;
     completions)     words="bash zsh" ;;
     cost)            [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|wire|unwire)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac
@@ -141,14 +138,11 @@ __ZSH_COMMANDS__
   case "${words[2]}" in
     status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
-    scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
-    context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch config apply export ;;
     mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs)            compadd list show cancel prune ;;
     conversations)   compadd list show resume set prune ;;
-    persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
     audit)           compadd verify --json ;;
     gates)           compadd status isolate network classes ;;
     keys)            compadd add list remove rotate setup validate export ;;
@@ -159,7 +153,7 @@ __ZSH_COMMANDS__
     roles)           compadd list show add validate ;;
     completions)     compadd bash zsh ;;
     cost)            (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|delete|profile|wire|unwire|logs|edit)
+    info|delete|profile|wire|unwire)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

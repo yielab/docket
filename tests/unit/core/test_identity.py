@@ -1,6 +1,6 @@
-"""Agent identity: Docket-owned persona and prompt composition.
+"""Agent identity: prompt composition from the workspace identity files.
 
-Identity is a pure function of docket metadata (persona → name → role), rendered into SOUL.md.
+The display name is a pure function of docket metadata (name → role).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import identity as I
 from docket.core import pod as _pod
-from docket.core.models import AgentMeta, Persona
+from docket.core.models import AgentMeta
 from docket.edges import store as _store
 
 _LOCAL_WINDOW = 16_384
@@ -22,20 +22,8 @@ _HOSTED_WINDOW = 200_000
 SUBJECT = "docket.core.identity"
 
 
-class TestPersonaModel:
-    def test_label_name_and_emoji(self) -> None:
-        assert Persona(name="Orion", emoji="🔭").label() == "Orion 🔭"
-
-    def test_label_name_only(self) -> None:
-        assert Persona(name="Atlas").label() == "Atlas"
-
-    def test_label_empty_when_no_name(self) -> None:
-        assert Persona().label() == ""
-        assert Persona(emoji="🔭").label() == ""
-
-
 class TestDisplayName:
-    def test_persona_wins(self) -> None:
+    def test_a_persona_key_in_meta_does_not_rename_the_agent(self) -> None:
         m = AgentMeta.model_validate(
             {
                 "kind": "project",
@@ -44,7 +32,7 @@ class TestDisplayName:
                 "persona": {"name": "Orion", "emoji": "🔭"},
             }
         )
-        assert m.display_name() == "Orion 🔭"
+        assert m.display_name() == "docket lead"
 
     def test_falls_back_to_name_then_role(self) -> None:
         assert (
@@ -58,51 +46,20 @@ class TestDisplayName:
             == "lead"
         )
 
-    def test_persona_round_trips_through_json(self) -> None:
-        m = AgentMeta.model_validate(
-            {"kind": "project", "role": "lead", "persona": {"name": "Orion", "emoji": "🔭"}}
+
+class TestSoulHasNoPersonaBlock:
+    def test_a_meta_written_with_a_persona_composes_without_it(self) -> None:
+        ws = _cfg.workspace_dir("persona-free")
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / "SOUL.md").write_text("# SOUL\nbody\n")
+        _store.write_json(
+            _cfg.meta_path("persona-free"),
+            {"kind": "project", "role": "lead", "persona": {"name": "Orion", "emoji": "x"}},
         )
-        dumped = m.model_dump(by_alias=True)
-        assert dumped["persona"] == {"name": "Orion", "emoji": "🔭", "vibe": ""}
-        assert AgentMeta.model_validate(dumped).persona is not None
-
-
-class TestParseLabel:
-    def test_name_and_emoji(self) -> None:
-        p = I.parse_persona_label("Orion 🔭")
-        assert (p.name, p.emoji) == ("Orion", "🔭")
-
-    def test_multiword_name_no_emoji(self) -> None:
-        p = I.parse_persona_label("Site Builder")
-        assert (p.name, p.emoji) == ("Site Builder", "")
-
-    def test_empty(self) -> None:
-        assert I.parse_persona_label("   ").label() == ""
-
-
-class TestUpsertPersonaBlock:
-    SOUL = "# SOUL.md — docket lead\n\n## Identity\nYou are the Lead.\n"
-
-    def test_insert_then_idempotent(self) -> None:
-        p = Persona(name="Orion", emoji="🔭")
-        once = I.upsert_persona_block(self.SOUL, p)
-        assert I.PERSONA_BEGIN in once and "Orion 🔭" in once
-        assert I.upsert_persona_block(once, p) == once  # idempotent
-
-    def test_replace_changes_name_not_duplicate(self) -> None:
-        once = I.upsert_persona_block(self.SOUL, Persona(name="Orion", emoji="🔭"))
-        twice = I.upsert_persona_block(once, Persona(name="Atlas"))
-        assert twice.count(I.PERSONA_BEGIN) == 1
-        assert "Atlas" in twice and "Orion" not in twice
-
-    def test_clear_restores_original(self) -> None:
-        once = I.upsert_persona_block(self.SOUL, Persona(name="Orion", emoji="🔭"))
-        cleared = I.upsert_persona_block(once, None)
-        assert I.PERSONA_BEGIN not in cleared
-        assert cleared.strip() == self.SOUL.strip()
-
-    def test_no_persona_no_change(self) -> None:
-        assert I.upsert_persona_block(self.SOUL, None) == self.SOUL
+        text = I.compose_agent_prompt("persona-free").text
+        assert "body" in text
+        assert "Orion" not in text
+        assert "## Persona" not in text
 
 
 class TestRuntimeWorkspaceContextReporting:
@@ -201,7 +158,7 @@ class TestComposeAgentPromptIsWindowAware:
 
     def _oversized_soul_workspace(self, agent_id: str) -> Path:
         """No ``.docket-meta.json`` needed: ``compose_agent_prompt`` degrades a missing
-        persona lookup to ``None`` rather than raising, and DOCKET_HOME isolation is the
+        meta file to no prompt material rather than raising, and DOCKET_HOME isolation is the
         autouse ``tests/conftest.py`` fixture, not something this test manages."""
         ws = _cfg.workspace_dir(agent_id)
         ws.mkdir(parents=True, exist_ok=True)

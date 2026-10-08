@@ -90,7 +90,7 @@ docket init myapp ~/code/myapp     # or: cd ~/code/myapp && docket init
 #   myapp-implementer   (writes code inside ~/code/myapp)
 
 docket pod myapp            # inspect the pod and its roles
-docket list                 # every pod member shows up like any other agent
+docket status --all          # every pod member shows up like any other agent
 ```
 
 A lean pod is the right default for prototyping and low-risk changes: one owner of completion
@@ -664,7 +664,7 @@ which pod settings are in play, and where each came from).
 ### What makes a pod member
 
 Each member is an ordinary registered agent with its **own** permission-locked workspace, so
-`docket list` / `info` / `cost` / `doctor` see every member for free.
+`docket status --all` / `info` / `cost` / `doctor` see every member for free.
 
 ```
 ~/.docket/workspaces/projects/myapp-implementer/
@@ -683,11 +683,7 @@ Each member is an ordinary registered agent with its **own** permission-locked w
 
 Pod members share the project's session-key namespace (`agent:myapp:<key>`), which keeps the
 pod's conversation context together and **isolated from every other project**. Dispatch runs
-each task on its own per-task session (`agent:myapp:<task_id>`). Change a member's scope with:
-
-```bash
-docket scope myapp-implementer set myapp-staging
-```
+each task on its own per-task session (`agent:myapp:<task_id>`).
 
 The load-bearing isolation primitive is the **per-member workspace** — session keys isolate
 conversation; separate workspaces isolate files, memory, and identity.
@@ -722,7 +718,7 @@ Agents record intent in `modelSource`: `policy` (follow the role) or `pinned` (e
 ### Morning
 
 ```bash
-docket list                     # every pod member + org specialist
+docket status --all              # every pod member
 docket doctor                   # health check (add --fix to repair drift)
 ```
 
@@ -753,7 +749,7 @@ the chat ids you explicitly list, never every wired binding.
 ```bash
 docket pod myapp queue          # this pod's queue + per-task status/cost
 docket trace tail myapp         # follow the pod's latest trace session
-docket logs myapp-lead          # the Lead's activity
+docket trace tail myapp         # the pod's activity
 ```
 
 ### Review and commit

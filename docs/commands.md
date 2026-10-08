@@ -7,7 +7,6 @@ Complete reference for all docket commands, rendered from each command's own `--
 ## Table of Contents
 
 - [Lifecycle Commands](#lifecycle-commands)
-- [Session and Context Management](#session-and-context-management)
 - [Pod Coordination](#pod-coordination)
 - [Telegram Integration](#telegram-integration)
 - [Keys and Authentication](#keys-and-authentication)
@@ -21,21 +20,6 @@ Complete reference for all docket commands, rendered from each command's own `--
 - [Next Steps](#next-steps)
 
 ## Lifecycle Commands
-
-### list
-
-**Usage:** `docket list`
-
-List all project agents.
-
-Shows every registered agent -- pod members for each project -- with role/pod, model and
-its source, Telegram binding, and last activity. Telegram status reflects
-docket's own channel bindings (`~/.docket/fleet.json`); the session column
-shows the agent's current project key. `--json` emits the same listing as
-one JSON document instead of the Rich table, for scripting.
-
-
----
 
 ### init
 
@@ -263,69 +247,6 @@ breath.
 Preserves identity (`.docket-meta.json`, fleet registration). clean/
 reset/rebuild prompt for confirmation and require a TTY -- a
 non-interactive call is cancelled, not silently applied.
-
-
----
-
-## Session and Context Management
-
-### scope
-
-**Usage:** `docket scope`
-
-Manage session scope / project isolation key.
-
-Subcommands: `show` (default) prints the current scope and session key;
-`set <project-key>` changes it; `reset` restores `default`. The session
-key has the form `agent:<id>:<project>` and prevents cross-project
-contamination between parallel work on the same agent; changing it
-updates `.docket-meta.json` only -- it prints a reminder to update
-SOUL.md yourself, it does not rewrite the file.
-
-
----
-
-### context
-
-**Usage:** `docket context`
-
-Agent context views (show/project) -- read-only.
-
-There is no separate semantic memory index: docket's own turn loop has no
-`memory_search` tool, so an agent (and this command) reads memory files
-the same way it reads any other file -- `context` is just two dashboards.
-
-Subcommands:
-  show (default)  the last 3 memory-log files (last 5 lines each), active
-                  tasks parsed from HEARTBEAT.md, and quick stats
-                  (memory-log count, session size from docket's own
-                  durable per-session storage, last-active timestamp)
-  project         a project-metadata-focused view -- codebase path,
-                  stack, model, session key, active tasks, and MEMORY.md
-                  section headers
-
-Both subcommands are read-only and touch only the named agent's own
-workspace; any other action exits 2. Use `docket snapshot` for a
-whole-fleet JSON export.
-
-
----
-
-### persona
-
-**Usage:** `docket persona`
-
-Set/clear an agent's optional display persona (docket-owned; rendered into SOUL.md).
-
-Identity of record is the agent's role; a persona is only a display skin
-docket controls -- never a self-authored IDENTITY.md.
-
-Subcommands: (show, default) current persona + role; `set "<label>"`
-assigns a display name; `clear` removes it (back to role/name).
-
-Stored in `.docket-meta.json` (`persona`) and rendered into `SOUL.md`;
-survives `maintain rebuild`. Use this command to give an agent a
-friendly name.
 
 
 ---
@@ -721,38 +642,6 @@ a name index; remove clears the keyring entry too.
 ---
 
 ## Utility Commands
-
-### logs
-
-**Usage:** `docket logs`
-
-View an agent's latest memory log.
-
-Prints the most recent `memory/YYYY-MM-DD.md` file's first 40 lines (with
-a note if there are more). Memory logs are the durable, docket-owned
-activity record. For active tasks, read
-HEARTBEAT.md directly (`docket edit <id>`) or use
-`docket context <id> show`. Shows the single latest file only, not a
-rolling tail across days -- use `tail -f` on the file directly for live
-monitoring. Memory logs rotate daily.
-
-
----
-
-### edit
-
-**Usage:** `docket edit`
-
-Open agent workspace files in $EDITOR.
-
-Opens SOUL.md (identity and session key), AGENTS.md (delegation rules),
-TOOLS.md (project commands), HEARTBEAT.md (active tasks), and
-.docket-meta.json (metadata). Respects $EDITOR, falling back to `vi` if
-unset. Be careful editing `.docket-meta.json` by hand -- use
-`docket maintain <id> check` to fix drift afterward.
-
-
----
 
 ### profile
 
@@ -1495,23 +1384,6 @@ docket -h
 docket <command> --help
 ```
 
-### help
-
-Show help.
-
-With no topic, docket's full hand-written command reference (common
-commands and the current role->model policy) -- richer than
-`docket --help`'s auto-generated command list; always exits 0. With a
-topic, that command's own usage text (exit 0), or an unknown-command
-error naming it (exit 1).
-
-**Syntax:**
-```bash
-docket help
-```
-
-**Aliases:** None
-
 ### --version / -V
 
 Show the installed docket version.
@@ -1531,7 +1403,7 @@ docket -V
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
 | 1 | Error (generic; also used by `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
-| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `context`, `maintain`) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or an unrecognized flag or subcommand on a manually parsed command (e.g. `gates`, `maintain`) |
 
 No command emits any other exit code today.
 
@@ -1608,8 +1480,6 @@ No command emits any other exit code today.
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
 | `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
-| `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |
-| `VISUAL` | Fallback text editor for `docket edit` when `EDITOR` is unset | `nano` |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
 | `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
@@ -1631,7 +1501,6 @@ If you have fzf installed, omit the agent-id for fuzzy search:
 ```bash
 docket info      # Opens fzf picker
 docket delete    # Opens fzf picker
-docket logs      # Opens fzf picker
 ```
 
 ### Batch Operations
@@ -1639,10 +1508,8 @@ docket logs      # Opens fzf picker
 Use bash loops for batch operations:
 
 ```bash
-# Reset all agents
-for id in $(docket list | awk '{print $1}' | tail -n +2); do
-  docket maintain "$id" clean
-done
+# Clean one agent's memory
+docket maintain "$id" clean
 
 # Cheaper models fleet-wide: change the policy once — every
 # policy-following agent updates automatically (pins are untouched)

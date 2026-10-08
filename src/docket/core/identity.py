@@ -1,17 +1,11 @@
-"""Agent identity — the persona layer docket renders into SOUL.md.
+"""Agent identity — how docket composes a turn's system prompt.
 
-docket owns an agent's identity as a pure function of its ``.docket-meta.json``. An
-agent's *role* is its real identity; a **persona** (name/emoji/vibe) is an optional
-operator-assigned skin on top. This module holds the pure string logic for rendering
-that persona into ``SOUL.md`` and parsing an operator label — no I/O (the ``cli``
-layer does the file writes and gateway restart) — plus the one I/O entry point that
-composes a turn's system prompt from this agent's own on-disk identity files.
-
-The persona lives in ``SOUL.md`` between HTML markers so it can be upserted
-idempotently without disturbing the rest of the (role-derived) SOUL.
+docket owns an agent's identity as a pure function of its ``.docket-meta.json``: the
+agent's *role* is its identity. This module composes a turn's system prompt from this
+agent's own on-disk identity files; the pure string logic does no I/O.
 
 Without this module, ``core/agent_loop.py`` would compose no system prompt at all —
-``SOUL.md`` (identity, scope, session key), the docket-owned persona, and a
+``SOUL.md`` (identity, scope, session key) and a
 runtime-safe projection of ``WORKFLOW_AUTO.md``'s resume/durability contract would
 never reach the model. The same is true of the private workspace state that
 contract names: HEARTBEAT/AGENTS/TOOLS/MEMORY are loaded fresh here and appended by
@@ -20,11 +14,7 @@ agent cannot resume from a HEARTBEAT it was told to find under project-tool root
 that deliberately exclude its private workspace.
 
 ``compose_agent_prompt`` is the single function ``run_agent_turn`` calls, once
-per turn. It re-reads the persona from ``.docket-meta.json`` rather than trusting
-whatever ``SOUL.md`` already has upserted, because ``AgentMeta.display_name()`` is
-the one documented source of truth for a display name — folding the *live* persona
-in via ``upsert_persona_block`` (idempotent) means a persona change is reflected on
-the very next turn even if something skipped re-rendering the file. Nothing here is
+per turn. Nothing here is
 persisted back to session history — composed fresh every turn, never stored as a
 stale copy.
 """
@@ -45,15 +35,10 @@ from docket.core import policy as _policy
 from docket.core import skills as _skills
 from docket.core.audit import audit_log
 from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
-from docket.core.models import AgentMeta, Persona
-from docket.edges import store as _store
 
 #: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
 #: `core/agent_loop.py` emits -- this module stays trace-free and only reports data.
 PromptSectionStatus = Literal["full", "truncated", "omitted"]
-
-PERSONA_BEGIN = "<!-- docket-persona:begin -->"
-PERSONA_END = "<!-- docket-persona:end -->"
 
 #: The identity file `compose_agent_prompt` reads alongside
 #: ``WORKFLOW_AUTO.md`` — kept as a local constant (not re-exported from
@@ -117,82 +102,27 @@ class PromptComposition:
     budget_source: _context.BudgetSource = "default"
 
 
-def parse_persona_label(label: str) -> Persona:
-    """Parse an operator label like ``"Orion 🔭"`` into a :class:`Persona`. A trailing
-    token containing no alphanumerics is taken as the emoji; the rest is the name.
-    ``""`` → an empty persona, which signals "clear"."""
-    tokens = label.strip().split()
-    if not tokens:
-        return Persona()
-    emoji = ""
-    if len(tokens) > 1 and not any(c.isalnum() for c in tokens[-1]):
-        emoji = tokens[-1]
-        tokens = tokens[:-1]
-    return Persona(name=" ".join(tokens), emoji=emoji)
-
-
-def render_persona_block(persona: Persona | None) -> str:
-    """The marked ``SOUL.md`` snippet for *persona* — ``""`` if no name set. Deliberately
-    terse: it names the persona but reasserts that the role is the true identity, so a
-    friendly name never dilutes the pod-role contract."""
-    if persona is None or not persona.label():
-        return ""
-    vibe = f" — {persona.vibe}" if persona.vibe else ""
-    return (
-        f"{PERSONA_BEGIN}\n"
-        "## Persona\n"
-        f"You may present yourself as **{persona.label()}**{vibe}. That is a "
-        "display name only — your real identity, scope, and rules are your role "
-        "above. Do not invent a different name or self-author an identity file.\n"
-        f"{PERSONA_END}"
-    )
-
-
-def upsert_persona_block(soul_text: str, persona: Persona | None) -> str:
-    """Return *soul_text* with the persona block inserted, replaced, or removed.
-    Idempotent: an existing block (matched by markers) is replaced or dropped; a new
-    block is appended. Clearing (``persona`` None/empty) removes any block."""
-    block = render_persona_block(persona)
-    start = soul_text.find(PERSONA_BEGIN)
-    if start != -1:
-        end = soul_text.find(PERSONA_END, start)
-        if end != -1:
-            end += len(PERSONA_END)
-            # Also swallow a single trailing newline pair to avoid blank buildup.
-            head, tail = soul_text[:start].rstrip("\n"), soul_text[end:].lstrip("\n")
-            if not block:
-                return (head + "\n" + tail).rstrip("\n") + "\n" if tail else head + "\n"
-            return f"{head}\n\n{block}\n\n{tail}".rstrip("\n") + "\n"
-    if not block:
-        return soul_text
-    return soul_text.rstrip("\n") + "\n\n" + block + "\n"
-
-
 # ── the turn's system prompt ────────────────────────────────────────────────
 
 
 def compose_system_prompt(
     soul_text: str,
     runtime_contract_text: str,
-    persona: Persona | None,
     runtime_context: str = "",
     instructions_text: str = "",
     project_instructions_text: str = "",
     skills_text: str = "",
 ) -> str:
-    """Fold SOUL.md, the live persona, operator instructions, opt-in project
+    """Fold SOUL.md, operator instructions, opt-in project
     instructions, the skills index, and a runtime contract into one system prompt. Pure — no
-    I/O (``compose_agent_prompt`` below is the I/O entry point). *soul_text* is passed
-    through ``upsert_persona_block`` unconditionally (idempotent no-op if already
-    matching) so the persona reflects *persona* as given, not whatever ``SOUL.md`` had
-    on disk. *instructions_text* (already fit to budget by the caller) is placed right
+    I/O (``compose_agent_prompt`` below is the I/O entry point). *instructions_text* (already fit to budget by the caller) is placed right
     after the SOUL section; *project_instructions_text* (also pre-fit) is placed right
     after *instructions_text*; *skills_text* (also pre-fit) is placed right after
     *project_instructions_text* and still ahead of the runtime contract.
     Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract composes to
     ``""``, which ``core/agent_loop.py`` treats as "no system message this turn" rather
     than sending the model an empty one."""
-    effective_soul = upsert_persona_block(soul_text, persona).strip()
+    effective_soul = soul_text.strip()
     instructions = instructions_text.strip()
     project_instructions = project_instructions_text.strip()
     skills = skills_text.strip()
@@ -556,21 +486,6 @@ def _skills_raw(agent_id: str, project_roots: tuple[Path, ...]) -> str:
     return "\n".join(lines)
 
 
-def load_agent_persona(agent_id: str) -> Persona | None:
-    """Read *agent_id*'s persona straight from ``.docket-meta.json`` — the single
-    source of truth ``AgentMeta.display_name()`` also reads, never derived from
-    ``SOUL.md`` text. Never raises: any missing/malformed input resolves to ``None``."""
-    if not agent_id:
-        return None
-    raw = _store.read_json(_cfg.meta_path(agent_id))
-    if not raw:
-        return None
-    try:
-        return AgentMeta.model_validate(raw).persona
-    except Exception:
-        return None
-
-
 def _read_workspace_text(path: Path) -> str:
     """Best-effort text read — ``""`` for a missing file or an unreadable one."""
     if not path.is_file():
@@ -605,7 +520,6 @@ def compose_agent_prompt(
     project_instructions_raw = _project_instructions_raw(agent_id, project_roots)
     skills_raw = _skills_raw(agent_id, project_roots)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
-    persona = load_agent_persona(agent_id)
     has_private_state = any((ws / name).is_file() for name in _RUNTIME_CONTEXT_FILES)
     has_prompt_material = bool(
         soul_text_raw.strip()
@@ -614,7 +528,6 @@ def compose_agent_prompt(
         or skills_raw.strip()
         or workflow_text.strip()
         or has_private_state
-        or (persona is not None and persona.label())
     )
     if not has_prompt_material:
         return PromptComposition("", budget_tokens=budget_tokens, budget_source=budget_source)
@@ -652,7 +565,6 @@ def compose_agent_prompt(
     base_prompt = compose_system_prompt(
         soul_text,
         runtime_contract,
-        persona,
         instructions_text=instructions_text,
         project_instructions_text=project_instructions_text,
         skills_text=skills_text,
@@ -661,7 +573,6 @@ def compose_agent_prompt(
     text = compose_system_prompt(
         soul_text,
         runtime_contract,
-        persona,
         runtime_context,
         instructions_text,
         project_instructions_text,

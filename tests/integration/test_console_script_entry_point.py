@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SUBJECT = "docket"
 
 
@@ -45,9 +47,22 @@ def test_entry_point_runs_a_command(tmp_path: Path) -> None:
     assert "Detailed status of one agent" in result.stdout
 
 
-def test_a_retired_command_name_is_an_unknown_command(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["team", "delegate", "fix login"],
+        ["list"],
+        ["context"],
+        ["logs"],
+        ["edit"],
+        ["scope"],
+        ["persona"],
+        ["help"],
+    ],
+)
+def test_a_retired_command_name_is_an_unknown_command(args: list[str], tmp_path: Path) -> None:
     """No old name is resolved or explained: it fails like any other unknown command."""
-    result = _run_entry_point(["team", "delegate", "fix login"], tmp_path)
+    result = _run_entry_point(args, tmp_path)
     assert result.returncode == 2
     assert "No such command" in result.stderr
 

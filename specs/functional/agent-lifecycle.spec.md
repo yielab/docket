@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Complete
 **Last Updated**: 2026-10-03
 
@@ -13,7 +13,6 @@ This specification defines the complete lifecycle of docket agents from creation
 This specification covers:
 - Agent creation (`docket init` creates a project pod; `docket add` / `docket pod <p> add` add
   role agents to an existing pod and never create a project)
-- Agent listing (`docket list`)
 - Agent information display (`docket info`)
 - Agent deletion (`docket delete`)
 - Agent maintenance operations (`docket maintain`)
@@ -74,19 +73,6 @@ This specification does NOT cover:
 An agent is either **registered** (workspace + `.docket-meta.json` + a `fleet.json` entry all
 present) or **deleted**. There is no separate stopped state; the docket-local `paused` flag
 (cost-tracking.spec.md) marks an agent that dispatch must refuse, without unregistering it.
-
-### Agent Listing (docket list)
-
-Output **MUST** include:
-- Agent ID (slugified, unique)
-- Kind/scope (project; pod role where applicable)
-- Codebase path (if applicable)
-- Current model and source (policy or pinned)
-- Telegram binding status
-- Session key / project scope
-
-The exact table rendering is pinned by the golden suite; the machine-readable shape by
-../data/cli-json-shapes.spec.md.
 
 ### Agent Information (docket info)
 
@@ -230,9 +216,6 @@ docket add <role> [--project <pod>] [--count N] [--verify "<cmd>"]
 # from a spec file (JSON, or YAML when PyYAML is present)
 docket init --from <agents.yaml|agents.json>
 
-# List agents
-docket list [--json]
-
 # Show agent info
 docket info <agent-id> [--json]
 
@@ -286,7 +269,7 @@ Continue? (y/N): y
 After successful creation:
 - Workspace directory **MUST** exist at expected path
 - All core files **MUST** be present and valid
-- Agent **MUST** appear in `docket list` output
+- Agent **MUST** appear in `docket status` output
 - Agent **MUST** be registered in docket's fleet registry (`fleet.json`)
 
 ### Invariants
@@ -322,6 +305,11 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.17.0 (2026-10-07)
+
+- Phase 39 (P39-16): agent listing leaves this spec with `docket list`; members are read from
+  `docket status`.
 
 ### Version 1.16.0 (2026-10-07)
 

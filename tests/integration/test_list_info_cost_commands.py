@@ -1,4 +1,4 @@
-"""list, info, cost — fully-ported read-only commands.
+"""info, cost — fully-ported read-only commands.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory so tests are hermetic and never touch
@@ -115,112 +115,6 @@ def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
         repoint_docket_home(mp, oc_dir)
         result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
-
-
-# ---------------------------------------------------------------------------
-# docket list
-# ---------------------------------------------------------------------------
-
-
-class TestCmdList:
-    def test_list_json_structure(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["list", "--json"], oc_dir)
-        assert rc == 0, f"exit {rc}\nstderr: {err}"
-        data = json.loads(out)
-        assert "agents" in data
-        assert len(data["agents"]) == 1
-        a = data["agents"][0]
-        assert a["id"] == "myshop"
-        assert a["name"] == "My Shop"
-        assert a["registered"] is True
-        assert a["telegram"] is None
-        assert a["stack"] == "Node.js"
-        assert a["modelSource"] == "policy"
-
-    def test_list_json_budget_null_when_absent(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["list", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["agents"][0]["budgetUsd"] is None
-
-    def test_list_json_budget_is_number_when_present(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
-        budgeted_meta = {**META, "budgetUsd": "10.50"}
-        (ws / ".docket-meta.json").write_text(json.dumps(budgeted_meta))
-        rc, out, _ = _run(["list", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        budget = data["agents"][0]["budgetUsd"]
-        assert isinstance(budget, (int, float)) and not isinstance(budget, bool)
-        assert budget == 10.5
-
-    def test_list_json_unregistered_agent(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # Write fleet.json with an empty agents list (registration lives here)
-        (oc_dir / "fleet.json").write_text(
-            json.dumps({"agents": [], "bindings": [], "defaults": {"model": ""}})
-        )
-        rc, out, _ = _run(["list", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["agents"][0]["registered"] is False
-
-    def test_list_json_telegram_binding(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        fleet = {
-            **FLEET_CONFIG,
-            "bindings": [
-                {
-                    "agentId": "myshop",
-                    "channel": "telegram",
-                    "peerKind": "group",
-                    "peerId": "-123456",
-                }
-            ],
-        }
-        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
-        rc, out, _ = _run(["list", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert data["agents"][0]["telegram"] == "-123456"
-
-    def test_list_human_exits_zero(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["list"], oc_dir)
-        assert rc == 0
-        assert "myshop" in out
-        assert "My Shop" in out
-
-    def test_list_human_has_no_specialist_section(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["list"], oc_dir)
-        assert rc == 0
-        assert "SPECIALISTS" not in out
-
-    def test_list_empty_no_agents(self, tmp_path: Path) -> None:
-        oc_dir = tmp_path / ".docket"
-        oc_dir.mkdir()
-        rc, out, _err = _run(["list"], oc_dir)
-        assert rc == 0
-        assert "No project agents" in out
-
-    def test_list_json_multiple_agents(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, "myshop")
-        # Add second agent
-        ws2 = oc_dir / "workspaces" / "projects" / "blog"
-        ws2.mkdir(parents=True)
-        meta2 = {**META, "name": "Blog"}
-        (ws2 / ".docket-meta.json").write_text(json.dumps(meta2))
-        rc, out, _ = _run(["list", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        ids = [a["id"] for a in data["agents"]]
-        assert "blog" in ids
-        assert "myshop" in ids
-        assert ids == sorted(ids)  # sorted output
 
 
 # ---------------------------------------------------------------------------

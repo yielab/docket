@@ -49,7 +49,7 @@ Implementers when the work warrants it.
 
 Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-implementer-2`,
 `myapp-reviewer`, `myapp-tester`. Because each is an ordinary registered agent,
-`docket list`/`info`/`cost`/`doctor` see every pod member for free.
+`docket status --all`/`info`/`cost`/`doctor` see every pod member for free.
 
 ```bash
 docket init myapp ~/code/myapp       # lean pod: myapp-lead + myapp-implementer
@@ -296,21 +296,10 @@ matching ledger entry, or a ledger entry naming a task that is not (or is no lon
 
 ---
 
-## Identity — role first, persona optional
+## Identity — role first
 
-An agent's identity is a pure function of its metadata: **role** (structural — "I am this pod's
-Implementer," from `SOUL.md`) plus an optional **persona** (cosmetic — a display name/emoji,
-purely a skin docket controls).
-
-```bash
-docket persona myapp-lead set "Orion 🔭"   # give the Lead a display name
-docket persona myapp-lead show             # see the current persona
-docket persona myapp-lead clear            # back to role-only
-```
-
-The persona lives in a marked block inside `SOUL.md` (it survives `docket pod <project> sync`) and
-never replaces the role itself — a persona-carrying agent is still, structurally, "the
-Implementer." Display names (`docket list`/`info`) resolve persona → name → role, never from a
+An agent's identity is a pure function of its metadata: its **role** (structural — "I am this pod's
+Implementer," from `SOUL.md`). Display names (`docket info`) resolve name → role, never from a
 self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
@@ -348,7 +337,7 @@ into a real codebase.
 Pod members share the project's session-key namespace (`agent:<project>:<key>`), which keeps the
 pod's conversation context together and **isolated from every other project**. Dispatch runs each
 task on its own per-task session (`agent:<project>:<task_id>`) so tasks don't bleed into each
-other. Change a pod's scope with `docket scope <member-id> set <key>`. The real isolation
+other. The real isolation
 primitive, though, is the **per-member workspace** — session keys isolate conversation; separate
 workspaces isolate files, memory, and identity.
 
@@ -421,11 +410,6 @@ docket pod <project> pregrant <task-id> "<command>" [--tool bash]          # pre
 docket pod <project> explain interruptions [--json]      # what could pause this pod's next task
 docket channels list|show|enable <name>|disable <name>   # who gets notified, and how much they see
 docket notify flush [--dry-run]                          # push pending notifications now
-
-# Identity
-docket persona <member-id> set "<label>" # optional display persona
-docket persona <member-id> clear
-docket persona <member-id> show
 
 ```
 
