@@ -967,7 +967,7 @@ top-level name over `docs`, `src/docket/templates`, `scripts`, `specs`, `tests/a
 
 ### P39-19 — README and quick start on the new surface
 
-**Status:** TODO · **Size:** M · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (README is descriptive, D-37); agent-lane prose tests rebuilt
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-19-readme` based on `a5f04351`) · **Size:** M · **Wave:** 94 · **Model:** Sonnet · **Spec:** none (README is descriptive, D-37); agent-lane prose tests rebuilt
 
 **Goal:** after P39-18, rewrite `README.md` ("Quick start", "Your first team", "The run", "The
 gate and the record", "Make it yours", "Everything is configuration", "Also shipped", "Known
@@ -984,7 +984,7 @@ integrator spot-checks six). Oracle: the agent lane and the check.
 
 ### P39-20 — the guides: AGENT-TEAMS, DOCKET, WORKFLOW-GUIDE
 
-**Status:** TODO · **Size:** M · **Wave:** 94 · **Model:** Haiku · **Spec:** none
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-20-guides` based on `a5f04351`) · **Size:** M · **Wave:** 94 · **Model:** Haiku · **Spec:** none
 
 **Goal:** after P39-18's mechanical pass, the three guides read as one surface: every remaining
 unmappable line (listed by the script) is rewritten by hand, the "Org specialists" section of
@@ -1000,7 +1000,7 @@ the two commands.
 
 ### P39-21 — the reference docs: CONFIGURATION, SECURITY-SIMPLE, troubleshooting, MODEL-GATEWAYS, docs index, contracts
 
-**Status:** TODO · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** none
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-21-reference` based on `a5f04351`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** none
 
 **Goal:** same method as P39-20 over `docs/CONFIGURATION.md`, `docs/SECURITY-SIMPLE.md`
 (`gates` → `setup sandbox` throughout; the opt-in section keeps its content),
@@ -1014,7 +1014,7 @@ docket profile|docket maintain|harness run` over `docs/` is empty. Oracle: the t
 
 ### P39-22 — recipe READMEs, templates and the specs' prose
 
-**Status:** TODO · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** every spec that names a CLI command in prose (26 files, listed in the packet); versions bumped patch-level with one changelog line each: "command names follow ADR 0022"
+**Status:** IN PROGRESS (Wave 94 claimed 2026-10-08, branch `p39-22-templates-specs` based on `a5f04351`) · **Size:** S · **Wave:** 94 · **Model:** Haiku · **Spec:** every spec that names a CLI command in prose (26 files, listed in the packet); versions bumped patch-level with one changelog line each: "command names follow ADR 0022"
 
 **Goal:** after the script: the eighteen recipe `README.md` files under `src/docket/templates/
 recipes/` (thirteen say `docket pod <project> config unset pipeline`; they now say `docket pod
