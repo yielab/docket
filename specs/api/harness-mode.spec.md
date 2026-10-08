@@ -1,7 +1,7 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.6.0
-**Status**: Implemented (`docket harness run`/`docket harness status`, W30-C4). Contract 1.1
+**Version**: 1.7.0
+**Status**: Implemented (`docket exec`). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below.
 **Last Updated**: 2026-10-04
@@ -11,7 +11,7 @@
 This specification defines the versioned, non-interactive contract an outside caller pins
 against to run one docket agent, in one caller-supplied workspace, to completion. The
 contract is the wire shape (`HarnessEvent`/`HarnessResult`) plus the refusal and mapping rules
-around it, and the `docket harness run`/`docket harness status` command that produces it. See
+around it, and the `docket exec` command that produces it. See
 [ADR 0001](../../docs/adr/0001-harness-mode.md) for the full design reasoning.
 
 ## Scope
@@ -23,27 +23,24 @@ This specification covers:
 - The refusal conditions a caller must satisfy before a run starts
 - The mapping from a driver outcome to a published result
 - The exit-code convention this contract adds to `cli-interface.spec.md`
-- `docket harness run`/`docket harness status` syntax, options, and process behavior
+- `docket exec` syntax, options, and process behavior
 
 It does **not** cover:
 
-- `docket harness status`'s reconstructed-result CLI output shape (best-effort, not
-  wire-pinned -- only the `run` NDJSON/result stream and the exit-code table are a published
-  contract an external caller pins against)
 - Interactive approvals, pod/team execution, or provisioning a workspace -- see ADR 0001's
   "What harness mode is not" section
 
 ## Syntax
 
 ```
-docket harness run --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
-                    [--role implementer] [--timeout SECONDS] [--agent-id ID]
-docket harness status TOKEN
+docket exec --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
+            [--role implementer] [--timeout SECONDS] [--agent-id ID]
 ```
 
-`run` executes synchronously and streams the wire protocol below on stdout; `status` prints
-one JSON line reporting a prior run token's liveness. stdout carries **only** that output;
-every log/diagnostic line goes to stderr.
+`exec` executes synchronously and streams the wire protocol below on stdout. stdout carries
+**only** that output; every log/diagnostic line goes to stderr. Every option is a declared
+Typer option; an unknown option exits 2 before the command body runs. A finished run's record is
+read with `docket task show <run-id>`.
 
 The wire syntax is newline-delimited JSON (NDJSON): zero or more `HarnessEvent` lines, in
 ascending `seq` order starting at 0 (the first is always a synthesized `harness_start` event),
@@ -58,13 +55,12 @@ no line depends on another to parse.
 
 ## Arguments
 
-| Argument | Command | Rule |
-|---|---|---|
-| `--workspace DIR` | `run` | required; must be an existing directory the caller owns -- never provisioned by this command |
-| `--task TEXT` | `run` | the message the agent's turn starts from; mutually exclusive with `--task-file` |
-| `--task-file PATH` | `run` | reads the task message from *PATH*; mutually exclusive with `--task` |
-| `--model PROVIDER/ID` | `run` | required; the model the caller asked for (`HarnessResult.model.requested`) |
-| `TOKEN` | `status` | a run id printed as the `token` field of a prior `run` invocation |
+| Argument | Rule |
+|---|---|
+| `--workspace DIR` | required; must be an existing directory the caller owns -- never provisioned by this command |
+| `--task TEXT` | the message the agent's turn starts from; mutually exclusive with `--task-file` |
+| `--task-file PATH` | reads the task message from *PATH*; mutually exclusive with `--task` |
+| `--model PROVIDER/ID` | required; the model the caller asked for (`HarnessResult.model.requested`) |
 
 Exactly one of `--task`/`--task-file` MUST be given. A missing `--workspace`/`--model`, or
 both/neither of `--task`/`--task-file`, is refused (exit 2) before `preflight` runs -- the
@@ -99,9 +95,9 @@ contract's fields below then take the place of these arguments for wire validati
 
 | Option | Command | Default | Rule |
 |---|---|---|---|
-| `--role NAME` | `run` | `implementer` | MUST name a role whose archetype does not deny `write` (see `agent_meta_for` below) |
-| `--timeout SECONDS` | `run` | `300` | the whole turn's wall-clock budget, passed straight through to the driver |
-| `--agent-id ID` | `run` | a generated `harness-<hex>` id | the id registered in the caller's `DOCKET_HOME` for this run only |
+| `--role NAME` | `implementer` | MUST name a role whose archetype does not deny `write` (see `agent_meta_for` below) |
+| `--timeout SECONDS` | `300` | the whole turn's wall-clock budget, passed straight through to the driver |
+| `--agent-id ID` | a generated `harness-<hex>` id | the id registered in the caller's `DOCKET_HOME` for this run only |
 
 `run` additionally fixes `ToolContext.approval_mode` to `"refuse"` for every tool call in the
 turn (ADR 0001 decision 11) -- there is no flag to change this in v1.
@@ -123,7 +119,7 @@ HarnessEvent` / `#/definitions/HarnessResult`), not only through the Pydantic mo
 
 ## Return
 
-`docket harness run` is the one named exception to `cli-interface.spec.md`'s flat 0/1
+`docket exec` is the one named exception to `cli-interface.spec.md`'s flat 0/1
 convention:
 
 | Code | Meaning |
@@ -131,9 +127,6 @@ convention:
 | 0 | the run's terminal `HarnessResult.status` is `ok` |
 | 1 | the run reached a terminal, non-`ok` result (`failed`, `blocked`, or `cancelled`) |
 | 2 | refused before any run started; exactly one `HarnessResult` with `status: refused` is printed |
-
-`docket harness status` always returns 0 on a successful lookup (whatever `state`/`result` it
-reports) and 1 only on a usage error (a missing `TOKEN` argument).
 
 ## Validation
 
@@ -155,13 +148,13 @@ reports) and 1 only on a usage error (a missing `TOKEN` argument).
   the committed `docs/contracts/harness-v1/schema.json`.
 - **Fixture validity.** Every line of every committed fixture MUST validate against
   `HarnessEvent` (all but the last line) or `HarnessResult` (the last line).
-- **CLI argument checks precede `preflight`.** `docket harness run` MUST refuse (exit 2, one
+- **CLI argument checks precede `preflight`.** `docket exec` MUST refuse (exit 2, one
   `HarnessResult` with `status: refused`) a missing `--workspace`, a missing `--model`, or
   both/neither of `--task`/`--task-file`, before `core.harness.preflight` ever runs.
-- **`approval_mode` reaches the driver.** `docket harness run` MUST pass
+- **`approval_mode` reaches the driver.** `docket exec` MUST pass
   `DOCKET_APPROVAL_MODE=refuse` in `run_turn`'s `env`, and `DocketDriver.run_turn` MUST map it
   onto `ToolContext.approval_mode` -- an unset or unrecognized value MUST resolve to `"wait"`.
-- **Isolation.** No `docket harness` invocation may read or write anything under the
+- **Isolation.** No `docket exec` invocation may read or write anything under the
   operator's own default `DOCKET_HOME` -- every docket-owned file it touches lives under the
   caller-supplied home.
 
@@ -179,7 +172,7 @@ recorded in ADR 0017.
 
 ### 1. Selecting the contract
 
-`docket harness run` accepts a `--contract` option:
+`docket exec` accepts a `--contract` option:
 
 | Value | Effect |
 |---|---|
@@ -230,7 +223,7 @@ section only documents the shape a v1.1 consumer sees, it does not gate on the f
 
 Verified live by `tests/integration/test_harness_cli.py::TestContract11Run::
 test_a_bash_call_reports_process_lifecycle_events_on_the_v11_stream`, which spawns a real
-`docket harness run --contract 1.1` subprocess with a scripted `bash` tool call and asserts both
+`docket exec --contract 1.1` subprocess with a scripted `bash` tool call and asserts both
 events appear on stdout in order with a real pgid.
 `tests/fixtures/harness-contract/v1.1/cancelled-process.ndjson` is a hand-authored sample of the
 signal-carrying shape (`docket runs cancel` reaching a live `bash` subprocess is exercised by
@@ -263,9 +256,9 @@ itself).
    `{"v": "1.1.0", "token": "<run token>", "pid": <harness pid>}`. The parent directory must
    exist, or the run is refused with exit 2.
 3. **The stderr line.** The line
-   `docket harness: run <token> agent=<id> model=<model> role=<role>` is the pinned stable
+   `docket exec: run <token> agent=<id> model=<model> role=<role>` is the pinned stable
    format, written to stderr once the run exists and after the token file. A caller matches it
-   with `^docket harness: run (\S+) agent=(\S+) `. Stdout stays NDJSON only.
+   with `^docket exec: run (\S+) agent=(\S+) `. Stdout stays NDJSON only.
 4. **`--max-tokens N`** (a positive integer). The turn's measured-token bound: the harness sets
    the `DOCKET_TURN_TOKEN_BUDGET` key of `run_turn`'s env, which the driver pops into
    `LoopConfig.token_budget` in place of `AGENT_LOOP_TOKEN_BUDGET`. Exceeding it stops the turn
@@ -349,13 +342,13 @@ elicitation result shape) to this process's stdin, while the run is live. The re
 Verified by `tests/integration/test_harness_cli.py::TestAnswersOnStdin` (granted, declined,
 timed out, a malformed or foreign line that is never echoed, a content line held by a
 `pre_input` policy, a question answer, and the usage refusals), which drive a real
-`docket harness run --answers stdin` subprocess over pipes, and by
+`docket exec --answers stdin` subprocess over pipes, and by
 `tests/unit/cli/test__harness_answers.py`. `tests/fixtures/harness-contract/v1.1/asked-answered.ndjson`
 and `answer-lines.ndjson` remain hand-authored samples of the shape.
 
 ### 6. Recipe runs -- Implemented and live (P35-9)
 
-`docket harness run --contract 1.1 --recipe NAME|DIR --task ...` runs one recipe, in place, for one
+`docket exec --contract 1.1 --recipe NAME|DIR --task ...` runs one recipe, in place, for one
 task, and reports its hops through `HarnessResultV11.task`.
 
 1. **Arguments.** `--recipe` takes a name or directory that `docket recipes` resolves. It is
@@ -434,6 +427,10 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Version 1.7.0 (2026-10-07)
+
+- The command is `docket exec`; the wire contract, refusal table and exit codes 0/1/2 are unchanged. `docket harness status` is removed; a run's record is read with `docket task show <run-id>`. Options are declared Typer options.
 
 ### Version 1.6.0 (2026-10-05)
 

@@ -30,11 +30,11 @@ _docket() {
     'gates:Show docket'\''s tool-call gate and manage workspace isolation'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set/prune)'
     'runs:Inspect the dispatch run registry (list/show/cancel/prune) -- one record per invocation'
-    'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
+    'exec:Run one agent for one task in a workspace you own, for programs'
     'mcp:Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)'
-    'audit:Show the audit log, or verify its tamper-evidence chain'
     'snapshot:Export system state snapshot as JSON'
-    'serve:Local HTTP endpoints: /status.json /metrics /health'
+    'start:Start the background service: the local HTTP API, sweeps, and what you turn on'
+    'stop:Stop the background service: let sweeps finish, then abandon them if they hang'
     'completions:Shell completion helpers'
     'validate:Validate role, pipeline, policy, and pod configuration documents'
     'plugins:List predicate plugins an operator has applied'
@@ -51,6 +51,7 @@ _docket() {
     'inbox:List everything across every pod that needs you: waiting/blocked tasks and pending approvals, plus failed/done/running context'
     'help:Show help'
     'setup:Set up this workstation: model endpoint, notifications, sandbox, shell'
+    'log:The hash-chained record of what was authorized and done'
   )
 
   _docket_ids() {

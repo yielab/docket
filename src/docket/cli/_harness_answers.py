@@ -1,4 +1,4 @@
-"""``docket harness run --answers stdin`` -- the caller's side of a paused approval.
+"""``docket exec --answers stdin`` -- the caller's side of a paused approval.
 
 A run in wait mode blocks its turn on each approval it asks for. A caller answers
 by writing one ``AnswerLine`` per line to this process's stdin. Every line that
@@ -37,7 +37,7 @@ _HOLD_ACTIONS = ("block", "require_approval")
 
 
 def _say(message: str) -> None:
-    print(f"docket harness: {message}", file=sys.stderr, flush=True)
+    print(f"docket exec: {message}", file=sys.stderr, flush=True)
 
 
 def handle_line(

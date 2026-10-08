@@ -36,10 +36,12 @@ PODS_DIR = WORKSPACES_DIR / "pods"
 
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
 AUDIT_LOG = DOCKET_HOME / "audit.log"
+# SERVE_PID_FILE: the pid of the running `docket start`, so `docket stop` can find it.
+SERVE_PID_FILE = DOCKET_HOME / "serve.pid"
 # AUDIT_LOG_MAX_BYTES: audit.log rotates to a single-generation backup
 # (audit.log.1, overwriting any prior one) once it reaches this size. Rotation
 # carries the outgoing generation's final seq/hash forward rather than
-# restarting the chain, so `docket audit verify` can substantiate the new
+# restarting the chain, so `docket log verify` can substantiate the new
 # file's first-entry continuation claim against audit.log.1 -- but no further
 # back than that one backup (see specs/functional/audit.spec.md).
 AUDIT_LOG_MAX_BYTES = int(os.environ.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1024)))
@@ -468,7 +470,7 @@ TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN"
 TELEGRAM_POLL_TIMEOUT_S = int(os.environ.get("TELEGRAM_POLL_TIMEOUT_S", "25"))
 TELEGRAM_REQUEST_TIMEOUT_S = float(os.environ.get("TELEGRAM_REQUEST_TIMEOUT_S", "35"))
 # TELEGRAM_OFFSET_FILE: the last-processed `update_id` + 1, persisted so a
-# `docket serve` restart resumes from where it left off instead of Telegram
+# `docket start` restart resumes from where it left off instead of Telegram
 # redelivering the whole backlog (getUpdates only forgets an update once a
 # strictly-greater offset has been acknowledged). No env override -- internal
 # bookkeeping, not something an operator has a reason to relocate (same

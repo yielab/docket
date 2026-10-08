@@ -79,7 +79,7 @@ class TestCommandsPresent:
         "keys",
         "context",
         "snapshot",
-        "audit",
+        "log",
         "gates",
         "trace",
     )

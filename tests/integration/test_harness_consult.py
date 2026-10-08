@@ -1,4 +1,4 @@
-"""The ``consult`` tool through a real ``docket harness run`` process: a question on the stream,
+"""The ``consult`` tool through a real ``docket exec`` process: a question on the stream,
 an answer line on stdin, and the blocked v1.1 result under ``refuse``."""
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from tests.integration.test_harness_cli import (
     llm_server,  # noqa: F401 - fixture, re-used here
 )
 
-SUBJECT = "docket.cli._harness"
+SUBJECT = "docket.cli._exec"
 
 SCHEMA_PATH = REPO_ROOT / "docs" / "contracts" / "harness-v1.1" / "schema.json"
 
@@ -36,7 +36,6 @@ _CONSULT = {
 
 def _args(workspace: Path, *extra: str) -> list[str]:
     return [
-        "run",
         "--workspace",
         str(workspace),
         "--task",
@@ -121,7 +120,7 @@ class TestConsultUnderRefuse:
         env = _child_env(tmp_path / "home", server.base_url)
 
         proc = subprocess.run(
-            [sys.executable, "-m", "docket", "harness", *_args(workspace)],
+            [sys.executable, "-m", "docket", "exec", *_args(workspace)],
             cwd=REPO_ROOT,
             env=env,
             capture_output=True,

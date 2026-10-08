@@ -15,7 +15,7 @@ import pytest
 from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
-from docket.cli import _audit as audit_cli
+from docket.cli import _log as audit_cli
 from docket.cli import _trace as trace_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
@@ -85,20 +85,20 @@ class TestAudit:
         assert audit_core.read_audit()[0]["action"] == "keys.add"
 
     def test_run_audit_no_log(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = audit_cli.run_audit()
+        rc = audit_cli.show_log()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "No audit log yet." in out
+        assert "No log yet." in out
 
     def test_run_audit_show_and_limit(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         for i in range(5):
             audit_core.audit_log("keys.add", f"KEY_{i}")
-        rc = audit_cli.run_audit(limit=2)
+        rc = audit_cli.show_log(limit=2)
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Audit log — last 2 change(s)" in out
+        assert "last 2 change(s)" in out
         assert "KEY_4" in out
         assert "KEY_3" in out
         assert "KEY_0" not in out
@@ -107,7 +107,7 @@ class TestAudit:
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         audit_core.audit_log("scope.set", "myshop")
-        rc = audit_cli.run_audit(json_out=True)
+        rc = audit_cli.show_log(json_out=True)
         out = capsys.readouterr().out
         assert rc == 0
         parsed = [json.loads(line) for line in out.splitlines() if line.strip()]

@@ -5,7 +5,7 @@ The default endpoint is deterministic and loopback-only so the command is suitab
 ``--live-model`` instead defaults to a realistic memory-backed code repair against a real loopback
 model (port 8081 by default), without scripting its replies. ``--scenario basic`` retains the
 smaller live infrastructure diagnostic. ``--scenario operator-loop`` measures a baseline: a real
-``docket serve --dispatch`` sweep against two pods, one of which blocks on an unanswered in-turn
+``docket start --dispatch`` sweep against two pods, one of which blocks on an unanswered in-turn
 approval, written to ``--report PATH`` as JSON. Everything on Docket's side is
 production in every mode: CLI subprocesses, persisted state, endpoint resolution, the
 chat-completions adapter, ``DocketDriver``, the agent loop, gated tools, pipeline gates, resume,
@@ -1846,7 +1846,7 @@ def _run(
         run_cli("runs", "list", "--project", "smoke", "--json")
         run_cli("trace", "export", "smoke")
         run_cli("cost", "smoke-implementer", "--json")
-        run_cli("audit", "verify")
+        run_cli("log", "verify")
 
     _verify_final_state(world, home, model, scenario)
     if scenario == _MEMORY_SCENARIO:
@@ -1861,7 +1861,7 @@ def _run(
 
 # ── operator-loop scenario: a measured multi-pod approval-blocking baseline ──
 #
-# Two real pods (alpha, beta) dispatched through one real `docket serve
+# Two real pods (alpha, beta) dispatched through one real `docket start
 # --dispatch` sweep. alpha's first task issues a high-risk bash command that
 # the baseline security classifier asks about; nobody ever answers it, so it
 # times out. Because `serve.py::_run_sweeps` dispatches one pod fully before
@@ -2316,7 +2316,7 @@ def _run_operator_loop_scenario(
             sys.executable,
             "-m",
             "docket",
-            "serve",
+            "start",
             "--port",
             str(port),
             "--interval",

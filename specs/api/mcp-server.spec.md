@@ -1,12 +1,12 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.0
+**Version**: 1.9.1
 **Status**: Implemented
 **Last Updated**: 2026-10-03
 
 ## Purpose
 
-This specification defines `docket mcp serve` — an MCP (Model Context Protocol) stdio server
+This specification defines `docket start --mcp` — an MCP (Model Context Protocol) stdio server
 that exposes docket's control plane (pods, task queue, dispatch, the run registry, HITL
 approvals, and recorded cost) as MCP tools, so any MCP client (Claude Code, Codex, or any other
 compliant client) can drive docket *through* the same governance spine a CLI invocation goes
@@ -16,7 +16,7 @@ through, never around it (ROADMAP Phase 18 L-3).
 
 This specification covers:
 
-- The `docket mcp serve` command's syntax, transport, and process lifecycle
+- The `docket start --mcp` command's syntax, transport, and process lifecycle
 - Every exposed tool's name, arguments, return shape, and failure behavior
 - The audit, approval, and dispatch-gating guarantees every tool call MUST uphold
 - The optional-dependency (`docket[mcp]`) degrade path when the SDK is not installed
@@ -35,7 +35,7 @@ It does NOT cover:
 
 ## Design constraint: a server, never a host
 
-`docket mcp serve` exposes docket's own control plane as MCP tools for an external client to
+`docket start --mcp` exposes docket's own control plane as MCP tools for an external client to
 call. It MUST NOT become an MCP *host*: this server has no notion of an upstream MCP server to
 call; it only ever answers requests. Docket consuming external MCP servers' tools inside an agent
 turn does exist since decision D-19 (docket owns the loop), but it lives in `core/mcp_tools.py`
@@ -44,7 +44,7 @@ and `DocketDriver.run_turn` (see `mcp-client.spec.md`), never in this server.
 ## Design constraint: through the governance spine, not around it
 
 Every tool call MUST go through the same paths a CLI invocation (or, where one exists, a
-`docket serve` HTTP call) would:
+`docket start` HTTP call) would:
 
 1. **Audited.** Every tool call — including the six read-only ones, which have no other audited
    surface anywhere in this project — writes an audit-log entry (`core/audit.py`, action
@@ -52,7 +52,7 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
    other audit entry (see `audit.spec.md`). This entry is written unconditionally, before the
    underlying operation runs, so a call is recorded even if that operation goes on to fail.
 2. **No parallel logic.** `dispatch`, `delegate`, `approvals_grant`, and `approvals_deny` call the
-   *exact same* `core/` functions the CLI and `docket serve`'s HTTP API already call
+   *exact same* `core/` functions the CLI and `docket start`'s HTTP API already call
    (`core.dispatch.dispatch_pod`/`enqueue_task`, `core.approval.approval_grant`/`approval_deny`).
    There is no MCP-specific dispatch path, no auto-approve, and no shortcut around a budget or
    approval gate. The only MCP-specific behavior is tagging the approval channel as `"mcp"` and
@@ -66,7 +66,7 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
 ## Syntax
 
 ```
-docket mcp serve
+docket start --mcp
 ```
 
 `docket mcp` with no subcommand, or any subcommand other than `serve` or `servers` (the MCP
@@ -75,11 +75,11 @@ discipline below) and exits: `0` for no subcommand, `1` for an unrecognized one.
 
 ## Transport
 
-stdio only. `docket mcp serve` speaks newline-delimited JSON-RPC 2.0 (the MCP protocol) on
+stdio only. `docket start --mcp` speaks newline-delimited JSON-RPC 2.0 (the MCP protocol) on
 stdout/stdin — there is no HTTP/SSE mode, no bind address, and no bearer token, unlike
-`docket serve`. The process's trust boundary is *whoever can spawn it* (the same boundary the CLI
+`docket start`. The process's trust boundary is *whoever can spawn it* (the same boundary the CLI
 itself already has) — there is no separate network exposure to reason about, because there is no
-network listener at all. An MCP client (e.g. Claude Code) launches `docket mcp serve` as a child
+network listener at all. An MCP client (e.g. Claude Code) launches `docket start --mcp` as a child
 process and speaks the protocol over its stdin/stdout pipes.
 
 ### stdio discipline
@@ -87,7 +87,7 @@ process and speaks the protocol over its stdin/stdout pipes.
 An MCP stdio server's stdout **IS** the protocol channel — any stray non-protocol byte on stdout
 corrupts the stream. `cli/_mcp.py`'s tool functions MUST NOT import or call `docket.ui` (which
 prints Rich-formatted output to stdout for every other command) and MUST return plain data, never
-print. The one human-readable line `docket mcp serve` itself prints (confirming the tool count at
+print. The one human-readable line `docket start --mcp` itself prints (confirming the tool count at
 startup) MUST go to stderr, never stdout.
 
 ## Optional dependency
@@ -95,13 +95,13 @@ startup) MUST go to stderr, never stdout.
 The official `mcp` Python SDK is **not** a base dependency — it is an optional extra
 (`docket[mcp]`, pinned `mcp>=2.0.0`, no upper bound) so a base `pip install docket` stays
 dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema, and more).
-`docket mcp serve` imports the SDK lazily, inside its own function, guarded by
+`docket start --mcp` imports the SDK lazily, inside its own function, guarded by
 `try`/`except ImportError` — the same pattern this project already uses for the optional PyYAML
-dependency (`core/pipeline.py`/`cli/_agents.py`). When the SDK is missing, `docket mcp serve` prints
+dependency (`core/pipeline.py`/`cli/_agents.py`). When the SDK is missing, `docket start --mcp` prints
 an actionable install hint to stderr and exits `1` instead of raising a bare traceback:
 
 ```
-The 'mcp' package is not installed — `docket mcp serve` needs the optional MCP extra.
+The 'mcp' package is not installed — `docket start --mcp` needs the optional MCP extra.
 Install it with:  pip install 'docket[mcp]'
 (uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')
 ```
@@ -125,7 +125,7 @@ exception from a tool call into a `CallToolResult` with `isError: true` carrying
 this is the MCP-native way to signal "this call failed," so a successful response's shape never
 has to reserve a field for an error case that didn't happen. Two tools' *successful* response
 shapes do carry an `"ok": true` field — `dispatch` and `approvals_grant`/`approvals_deny` — because
-those shapes are a deliberate byte-for-byte match with `docket serve`'s existing
+those shapes are a deliberate byte-for-byte match with `docket start`'s existing
 `POST /dispatch/<project>` and `POST /approvals/<token>` response bodies (see
 `serve-read-api.spec.md`), not a new generic envelope convention.
 
@@ -134,7 +134,7 @@ those shapes are a deliberate byte-for-byte match with `docket serve`'s existing
 **Purpose**: Fleet-wide status snapshot — enabled channels, every agent's
 model/registration/cost, and total recorded spend.
 **Arguments**: none.
-**Output**: identical shape to `docket serve`'s `GET /status.json` (see `serve-read-api.spec.md`).
+**Output**: identical shape to `docket start`'s `GET /status.json` (see `serve-read-api.spec.md`).
 **Failure modes**: none expected in normal operation.
 
 ### `pods`
@@ -189,12 +189,12 @@ in that project's queue.
 
 **Gating**: calls `core.dispatch.dispatch_pod` directly — the pod budget cap, the Implementer's
 `verifyCmd` gate, the Reviewer verdict gate, and the Tester PASS/FAIL gate all apply exactly as
-they do for the CLI and the `docket serve` webhook. There is no MCP-specific dispatch path.
+they do for the CLI and the `docket start` webhook. There is no MCP-specific dispatch path.
 **Output**: `{"ok": true, "run": "run-...", "project": "myapp", "status": "dispatched"}` —
 byte-for-byte the same shape as `POST /dispatch/<project>`'s response body. A run record (source
 `"mcp"`) is created and its id returned **before** any dispatch work starts; the pipeline itself
 runs in a background thread (this call MUST NOT block on a real agent turn) — poll the `runs` tool
-with the returned id for the outcome, exactly as a `docket serve` webhook caller polls `GET
+with the returned id for the outcome, exactly as a `docket start` webhook caller polls `GET
 /runs/<id>`.
 **Failure modes**: raises if `timeout` is given and not a positive integer. An invalid `project`
 or a dispatch-pipeline exception does NOT raise from this call — it surfaces asynchronously as a
@@ -216,7 +216,7 @@ or a dispatch-pipeline exception does NOT raise from this call — it surfaces a
 
 **Purpose**: List pending HITL approvals awaiting a grant/deny decision.
 **Arguments**: none.
-**Output**: `{"pending": [...]}` — identical shape to `docket serve`'s `GET /approvals`.
+**Output**: `{"pending": [...]}` — identical shape to `docket start`'s `GET /approvals`.
 
 ### `approvals_grant`
 
@@ -245,7 +245,7 @@ dispatch task stuck `waiting_approval` from an earlier grant that never reached 
 
 ### `approvals_deny`
 
-**Purpose**: Deny a pending approval token — identical to `docket deny <token>` / `docket serve`'s
+**Purpose**: Deny a pending approval token — identical to `docket deny <token>` / `docket start`'s
 `POST /approvals/<token>` with `{"action": "deny"}`.
 **Arguments**: `token` (string, required).
 **Gating**: calls `core.approval.approval_deny(token, channel="mcp")`, mirroring
@@ -259,7 +259,7 @@ follow-up still runs before the raise.
 ### `task_answer`
 
 **Purpose**: Answer a task's parked `input` question — identical to `docket pod <project>
-answer <task-id>` / `docket serve`'s `POST /tasks/<task-id>/answer`.
+answer <task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`.
 **Arguments**: `project` (string, required), `task_id` (string, required), `action` (string,
 required — `"accept"`, `"decline"` or `"cancel"`), `content` (object, optional).
 **Gating**: calls `core.answers.answer_task(channel="mcp", actor="mcp")` — the exact function
@@ -288,7 +288,7 @@ already produces. When the pipeline later reaches that exact call (matched by
 ### `inbox`
 
 **Purpose**: The derived operator inbox — every pod's tasks needing a human, plus pending
-approvals, failed/done/running context — identical to `docket serve`'s `GET /inbox`.
+approvals, failed/done/running context — identical to `docket start`'s `GET /inbox`.
 **Arguments**: `since` (string, optional) — an ISO timestamp; restricts `doneSince` to tasks that
 completed after it. Omitted, `doneSince` lists every terminal task.
 **Output**: `InboxView` (`core/operator_contract.py`), `by_alias` — `{"needsYou": [...], "failed":
@@ -319,7 +319,7 @@ the SDK itself, before `cli/_mcp.py`'s code runs at all).
 
 ## Options
 
-`docket mcp serve` takes no command-line options or flags today.
+`docket start --mcp` takes no command-line options or flags today.
 
 ## Output
 
@@ -331,7 +331,7 @@ serving the protocol, until its stdin closes or it is interrupted.
 
 | Code | Meaning |
 |------|---------|
-| 0 | `docket mcp serve` shut down cleanly (stdin closed, or Ctrl-C) |
+| 0 | `docket start --mcp` shut down cleanly (stdin closed, or Ctrl-C) |
 | 1 | The optional `mcp` SDK is not installed |
 | 0 | `docket mcp` with no subcommand (prints usage) |
 | 1 | `docket mcp <unrecognized-subcommand>` |
@@ -344,7 +344,7 @@ not as a process exit code — the server process itself only exits when the tra
 - Every tool call MUST write exactly one `mcp.<tool>` audit-log entry (`core/audit.py`), written
   unconditionally before the underlying operation runs.
 - `dispatch`, `delegate`, `approvals_grant`, and `approvals_deny` MUST call the same `core/`
-  functions the CLI and `docket serve` call — no duplicated or parallel implementation.
+  functions the CLI and `docket start` call — no duplicated or parallel implementation.
 - `dispatch` MUST create a run record (source `"mcp"`) and return its id before the dispatch
   pipeline itself has necessarily finished (or even started) running.
 - `approvals_grant`/`approvals_deny` MUST tag the approval's audit entry with `channel="mcp"`.
@@ -364,7 +364,7 @@ uv sync --extra mcp
 
 ### Starting the server (from an MCP client's perspective)
 
-An MCP client is configured to launch `docket mcp serve` as a stdio subprocess — see that
+An MCP client is configured to launch `docket start --mcp` as a stdio subprocess — see that
 client's own documentation for how it registers a local MCP server (docket does not provide or
 require any client-side configuration file of its own; this is intentionally the client's
 concern, not docket's — see Scope above).
@@ -383,7 +383,7 @@ concern, not docket's — see Scope above).
 }
 ```
 
-### Dispatch + poll (mirrors the `docket serve` webhook's curl example)
+### Dispatch + poll (mirrors the `docket start` webhook's curl example)
 
 ```json
 // → {"name": "dispatch", "arguments": {"project": "myapp"}}
@@ -394,6 +394,10 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.9.1 (2026-10-07)
+
+- The server is started with `docket start --mcp`; the tool names, arguments, return shapes and the audit, approval and dispatch-gating guarantees are unchanged. `--mcp` prints nothing to stdout but JSON-RPC and exits 2 when combined with `--dispatch`, `--telegram` or `--token-file`.
 
 ### Version 1.9.0 (2026-10-05)
 

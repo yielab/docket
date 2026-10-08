@@ -1,4 +1,0 @@
-EXIT:0
--> No audit log yet.
-  Mutations (keys, gates, profile, scope, add/delete) are recorded to
-  <HOME>/.docket/audit.log once you make a change.

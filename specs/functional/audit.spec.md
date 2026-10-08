@@ -1,13 +1,13 @@
 # Audit Log Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
 The log file lives at `$DOCKET_HOME/audit.log`; see Requirement 5. **ROADMAP Phase 19 P19-8** gave the
 `channel=telegram` tag on `approval.grant`/`approval.deny` a real producer for the first time —
 see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1** closed the gap
-where two rotations in a row could erase security-relevant history while `docket audit verify`
+where two rotations in a row could erase security-relevant history while `docket log verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
 **Last Updated**: 2026-10-03
@@ -16,7 +16,7 @@ plainly is NOT, detected now.
 
 This specification defines the audit log that records mutating docket operations —
 who changed what, and when — the tamper-evidence chain that lets an operator detect
-if a line was altered after the fact, and the `docket audit` command family that
+if a line was altered after the fact, and the `docket log` command family that
 displays and verifies it. The audit trail answers "what changed this agent/binding/
 key, and when" without granting access to any secret material.
 
@@ -27,8 +27,8 @@ This specification covers:
 - The `audit_log` helper and which operations call it
 - The on-disk JSONL format, its permissions, and its tamper-evidence hash chain
 - Size-capped rotation and the verification boundary it creates
-- Viewing the log (`docket audit [N]`, `docket audit --json`) and verifying its
-  chain (`docket audit verify`)
+- Viewing the log (`docket log [N]`, `docket log --json`) and verifying its
+  chain (`docket log verify`)
 - Why there is no environment kill switch
 
 This specification does NOT cover audit events emitted by programs outside Docket, tool-approval
@@ -73,7 +73,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      comma-joined after a `roles:` prefix, alongside a `default:` before/after pair — matching
      `agent.add`'s whole-pod-in-one-line style above, not one entry per role. See the Entry
      Schema section for a full example line.
-   - `mcp.<tool>` (`cli/_mcp.py`, ROADMAP Phase 18 L-3) — **every** `docket mcp serve` tool call
+   - `mcp.<tool>` (`cli/_mcp.py`, ROADMAP Phase 18 L-3) — **every** `docket start --mcp` tool call
      (`status`, `pods`, `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`,
      `approvals_grant`, `approvals_deny`, `cost`) writes one entry unconditionally, before the
      underlying operation runs — including the six read-only tools, which have no other
@@ -91,7 +91,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
      `cli-interface.spec.md`'s `docket runs` entry. Written from `core/` rather than `cli/`, like
      `approval.*`, the pod-path `agent.add`, `telegram.*`, `mcp_client.*` and `tool.*`.
-   - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket mcp servers add|remove`,
+   - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket start --mcprs add|remove`,
      ROADMAP Phase 19 P19-13) — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
      `remove_mcp_server` (P19-10). `detail` names the server and, for `add`, the launch command —
      never the server's `env` values, matching `keys.add`'s convention of naming a secret's key,
@@ -148,7 +148,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    I/O detail, and leaves no partial JSON line or claimed event. If append fails after a rotation,
    the intact `audit.log.1` remains authoritative and the next successful write continues from its
    chained tail without a sequence gap. `read_audit()` and `verify_chain()` use the compatible lock
-   to take one coherent current/backup snapshot; the public `docket audit` reader routes through
+   to take one coherent current/backup snapshot; the public `docket log` reader routes through
    those core snapshots rather than opening the log directly.
 7. **There is no environment kill switch.** A prior `DOCKET_NO_AUDIT=1` escape
    hatch has been removed entirely — it was an unauthenticated way to silently
@@ -189,7 +189,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    generation's final seq> + 1` and `prev_hash = <SHA-256 of the rotated
    generation's final entry>` — i.e. exactly the entry the old file's chain
    would have produced next, had it not been renamed away. This is a claim,
-   not a proof: `docket audit verify` (see Viewing Requirement 5) **MUST**
+   not a proof: `docket log verify` (see Viewing Requirement 5) **MUST**
    check it against the single retained backup (`audit.log.1`) and
    distinguish three states for the current file's first entry:
    - **genesis** — `seq=1` and `prev_hash=GENESIS_HASH`. No predecessor is
@@ -220,7 +220,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    the past is gone once its backup is itself overwritten by the next
    rotation, by design (Rotation Requirement 4) — only the *fact* that
    something preceded the current file (a `seq` greater than the file's own
-   line count) remains visible, not that generation's content. `docket audit
+   line count) remains visible, not that generation's content. `docket log
    verify` (see Viewing) walks the chain and reports the first line where a
    stored `prev_hash` does not match the recomputed hash of the entry before
    it, a line it cannot verify (malformed JSON, no `seq`/`prev_hash`,
@@ -249,14 +249,14 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    own last line had nothing chained to continue from (empty file, or a last
    line with no usable `seq`/`prev_hash`), in which case the new file starts a
    fresh genesis chain (Requirement 9c).
-3. `docket audit verify` **MUST** verify only the current `audit.log`'s own
+3. `docket log verify` **MUST** verify only the current `audit.log`'s own
    entries, but **MUST** check a first-entry continuation claim (2, above)
    against `audit.log.1` and report a break when that claim cannot be
    substantiated (Requirement 9c) — it is never permitted to silently accept
    an unverifiable claim as if it were a genuine genesis chain.
 4. Verification never bridges past the single retained backup: a generation
    two or more rotations back is unrecoverable once its own backup is
-   overwritten by the next rotation, and `docket audit verify` **MUST NOT**
+   overwritten by the next rotation, and `docket log verify` **MUST NOT**
    claim to check it. When a rotated backup exists, whether or not the
    current chain makes a claim on it, the command **MUST** say so explicitly
    (rather than silently ignoring it or claiming full-history coverage it
@@ -269,18 +269,18 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    introduced for those other stores — the audit trail is an intentionally separate, non-lossy
    record (see Requirement 2), and remains bounded only by the single-generation rotation above.
 
-### Viewing and verifying (docket audit)
+### Viewing and verifying (docket log)
 
-1. `docket audit [N]` **MUST** print the last N entries (default 20) as a human-readable
+1. `docket log [N]` **MUST** print the last N entries (default 20) as a human-readable
    table of timestamp, user, action, and detail. A non-numeric argument **MUST** fall
    back to the default count.
-2. `docket audit --json` **MUST** emit the raw JSONL unmodified (stable for scripting).
+2. `docket log --json` **MUST** emit the raw JSONL unmodified (stable for scripting).
 3. When no log exists yet, the command **MUST** explain where entries will be recorded
    and exit 0.
 4. Malformed lines **MUST** be skipped, never crash the display. A line
    missing `seq`/`prev_hash` still displays normally in the listing; only
-   `docket audit verify` treats it as a break.
-5. `docket audit verify` **MUST** walk the current log's hash chain and:
+   `docket log verify` treats it as a break.
+5. `docket log verify` **MUST** walk the current log's hash chain and:
    - exit 0 and report "no audit log yet" when the file does not exist;
    - exit 0 and report the count of chained lines when the chain verifies
      clean. When the first entry made a rotation-
@@ -303,10 +303,10 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 ### CLI Command Signatures
 
 ```bash
-docket audit            # Last 20 changes, human-readable
-docket audit <N>        # Last N changes
-docket audit --json     # Raw JSONL passthrough
-docket audit verify     # Walk the current file's hash chain; exit 1 on a detected break
+docket log            # Last 20 changes, human-readable
+docket log <N>        # Last N changes
+docket log --json     # Raw JSONL passthrough
+docket log verify     # Walk the current file's hash chain; exit 1 on a detected break
 ```
 
 ### Entry Schema (one JSON object per line)
@@ -327,14 +327,14 @@ A `models.preset` entry, showing the multi-role-in-one-line shape (Requirement 1
 ```
 
 Every field above is required. A line lacking `seq`/`prev_hash` still parses
-for `docket audit` and `docket audit --json`, but `docket audit verify`
+for `docket log` and `docket log --json`, but `docket log verify`
 reports it as a break.
 
 ### Return Codes
 
-- `0`: Success (including "no log yet" for both `docket audit` and `docket audit verify`,
-  and a clean chain for `docket audit verify`)
-- `1`: `docket audit verify` detected a broken chain link
+- `0`: Success (including "no log yet" for both `docket log` and `docket log verify`,
+  and a clean chain for `docket log verify`)
+- `1`: `docket log verify` detected a broken chain link
 
 ## Examples
 
@@ -344,7 +344,7 @@ reports it as a break.
 $ docket gates isolate on
 $ docket approve apr-1234…
 
-$ docket audit 2
+$ docket log 2
   2026-07-30T08:00:00.041Z  alice       gates.isolate     on
   2026-07-30T08:00:11.902Z  alice       approval.grant    token=apr-1234… project=mywebsite channel=cli
 ```
@@ -352,10 +352,10 @@ $ docket audit 2
 ### Verifying the chain
 
 ```bash
-$ docket audit verify
+$ docket log verify
 ✓ 214 chained line(s) verified clean.
 
-$ docket audit verify   # after a line was hand-edited
+$ docket log verify   # after a line was hand-edited
 ✗ Error: Tamper check FAILED at line 87 of 214: prev_hash mismatch — an earlier line was altered or removed
 ```
 
@@ -368,11 +368,11 @@ the total, so restating it would be redundant.
 ### Verifying across a rotation (W18-1)
 
 ```bash
-$ docket audit verify   # after a size-triggered rotation, backup intact
+$ docket log verify   # after a size-triggered rotation, backup intact
 ✓ 6 chained line(s) verified clean.
   Chain continues from a rotated generation ending at seq=214 — verified against audit.log.1.
 
-$ docket audit verify   # audit.log.1 was deleted after that same rotation
+$ docket log verify   # audit.log.1 was deleted after that same rotation
 ✗ Error: Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, but audit.log.1 is missing — earlier history may have been deleted
 ```
 
@@ -380,19 +380,19 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
 
 ### Pre-conditions
 
-- None — every `docket audit` subcommand works with or without an existing log.
+- None — every `docket log` subcommand works with or without an existing log.
 
 ### Post-conditions
 
 - After any mutating command in an implemented action family (Requirement 1), the
   log contains exactly one new line describing it, chained to the previous entry.
-- `docket audit verify` after a hand-edit of any non-final line reports a break at
+- `docket log verify` after a hand-edit of any non-final line reports a break at
   the first line whose `prev_hash` no longer matches.
 - After a rotation whose rotated-away generation had a chained tail, the new
   current file's first entry continues that chain's `seq`/`prev_hash`
-  (Requirement 9c) rather than restarting it, and `docket audit verify`
+  (Requirement 9c) rather than restarting it, and `docket log verify`
   reports the continuation as clean when `audit.log.1` still substantiates it.
-- If `audit.log.1` is deleted or altered after such a rotation, `docket audit
+- If `audit.log.1` is deleted or altered after such a rotation, `docket log
   verify` reports a break at the current file's first line — this is the one
   thing distinguishing it from an install that never had prior history.
 
@@ -417,6 +417,10 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.12.0 (2026-10-07)
+
+- The viewer is `docket log [N] [--json]` and the chain check is `docket log verify`; `log` is a Typer group, so an unknown verb is a usage error (exit 2). The recorded families, chain and rotation rules are unchanged.
 
 ### Version 2.11.0 (2026-10-03)
 

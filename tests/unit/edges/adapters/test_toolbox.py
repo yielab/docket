@@ -1,6 +1,6 @@
 """`run_bash`'s process lifecycle callback (`on_process`).
 
-An external plan-of-record (Tack) spawning `docket harness run` needs one event per real OS
+An external plan-of-record (Tack) spawning `docket exec` needs one event per real OS
 process group a `bash` call starts, so it can show and cancel a long-running command. Pins:
 exactly one `("started", {"pgid": ...})` followed by exactly one `("exited", {...})` per call,
 `exitCode` on a normal (or non-zero) completion, `signal="SIGKILL"` when this module itself

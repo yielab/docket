@@ -1,4 +1,4 @@
-"""``docket harness run --recipe NAME|DIR`` -- one recipe, one task, run in place (contract 1.1).
+"""``docket exec --recipe NAME|DIR`` -- one recipe, one task, run in place (contract 1.1).
 
 The recipe runs in an ephemeral pod whose Implementer works in the caller's workspace (see
 ``core.harness_pipeline``). Events stream through the same trace relay as a single-agent run;
@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from docket.cli import _harness as _h
+from docket.cli import _exec as _h
 from docket.cli import _harness_answers as _answers
 from docket.core import evidence as _evidence
 from docket.core import harness
@@ -31,18 +31,18 @@ from docket.edges.adapters import system as _system
 _QuestionQueue = queue.Queue[harness.AnswerLine | None]
 
 
-def usage_error(args: list[str], contract_raw: str) -> str | None:
+def usage_error(opts: _h.ExecOptions) -> str | None:
     """The argument refusals for ``--recipe`` and the flags that only make sense with it."""
-    recipe = _h._flag(args, "--recipe")
+    recipe = opts.recipe
     if recipe is None:
-        return "--verify needs --recipe" if _h._flag(args, "--verify") is not None else None
-    if contract_raw != "1.1":
+        return "--verify needs --recipe" if opts.verify is not None else None
+    if opts.contract != "1.1":
         return "--recipe needs --contract 1.1"
-    if _h._flag(args, "--role") is not None:
+    if opts.role is not None:
         return "--recipe and --role are mutually exclusive; the recipe chooses the roles"
-    if _h._flag(args, "--max-tokens") is not None:
+    if opts.max_tokens is not None:
         return "--max-tokens does not apply to --recipe runs"
-    if _h._flag(args, "--agent-id") is not None:
+    if opts.agent_id is not None:
         return "--agent-id does not apply to --recipe runs"
     try:
         _pod_apply.resolve_recipe(recipe)
@@ -67,7 +67,7 @@ def _answer_source(
             if line.answer.questionId == question.get("id"):
                 return line.answer
             print(
-                "docket harness: answer line ignored: not the open question",
+                "docket exec: answer line ignored: not the open question",
                 file=sys.stderr,
                 flush=True,
             )
@@ -181,27 +181,27 @@ def _finish(
         approvals=approvals.finish(cancelled=status == "cancelled"),
     ).model_copy(update={"status": status, "error": reason, "blocked": blocked})
     print(result.model_dump_json())
-    print(f"docket harness: run {token} finished status={status}", file=sys.stderr)
+    print(f"docket exec: run {token} finished status={status}", file=sys.stderr)
     return 0 if status == "ok" else 1
 
 
 def run_recipe(
-    args: list[str],
+    opts: _h.ExecOptions,
     *,
     token: str,
     workspace: Path,
     task: str,
     emit: Callable[[dict[str, Any]], None],
 ) -> int:
-    """Run the ``--recipe`` named in *args* in place for *task* under *token*; print the one
+    """Run the ``--recipe`` named in *opts* in place for *task* under *token*; print the one
     terminal result."""
-    recipe = _h._flag(args, "--recipe") or ""
-    model = _h._flag(args, "--model") or ""
-    timeout_raw = _h._flag(args, "--timeout")
+    recipe = opts.recipe or ""
+    model = opts.model or ""
+    timeout_raw = opts.timeout
     timeout = int(timeout_raw) if timeout_raw is not None else _h._DEFAULT_TIMEOUT
-    verify_cmd = _h._flag(args, "--verify") or ""
-    answers_raw = _h._flag(args, "--answers")
-    answer_timeout_raw = _h._flag(args, "--answer-timeout")
+    verify_cmd = opts.verify or ""
+    answers_raw = opts.answers
+    answer_timeout_raw = opts.answer_timeout
     questions: _QuestionQueue = queue.Queue()
     stdin_answers = answers_raw == "stdin"
     answer_timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None

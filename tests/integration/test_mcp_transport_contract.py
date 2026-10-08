@@ -1,4 +1,4 @@
-"""`docket mcp serve`'s contract holds against the real, installed `mcp` SDK.
+"""`docket start --mcp`'s contract holds against the real, installed `mcp` SDK.
 
 Proves it through the SDK's own in-memory transport rather than by calling
 `tool_*` directly (test_mcp_server.py's job): the dependency pin, the single

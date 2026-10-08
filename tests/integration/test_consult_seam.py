@@ -1,4 +1,4 @@
-"""``consult`` over the real ``docket harness run --contract 1.1`` subprocess.
+"""``consult`` over the real ``docket exec --contract 1.1`` subprocess.
 
 Two cards exchange the question here: the consult tool builds a ``QuestionV11`` and the
 harness answer router maps a ``questionId`` line back to the waiting call. Neither card's own
@@ -55,7 +55,6 @@ def test_consult_answered_by_question_id_reaches_the_model_and_every_line_valida
     env = _child_env(tmp_path / "home", server.base_url)
     stderr = tmp_path / "stderr.txt"
     args = [
-        "run",
         "--workspace",
         str(workspace),
         "--task",
