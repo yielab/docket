@@ -1,7 +1,7 @@
 """``approve_task`` on a parked pod approval: the grant lasts the rest of that task.
 
 Drives the real writers: a parked approval as ``core/tools.py::_park_call`` creates it, the task
-flipped to ``waiting_approval`` as ``_apply_result`` does, then ``docket approve --option`` /
+flipped to ``waiting_approval`` as ``_apply_result`` does, then ``docket task approve --option`` /
 Telegram ``/approve <token> task`` into ``resolve_waiting_approval``, and ``_compose_hop`` into
 the real ``DOCKET_PREGRANTS`` decoder and the real pre-grant consumer.
 """

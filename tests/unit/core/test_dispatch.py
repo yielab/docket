@@ -706,7 +706,7 @@ class TestBoundPipeline:
 
     def _bind(self, project: str, text: str | None = None) -> str:
         """Seed a bound pipeline directly -- the docket-owned copy plus its Lead-meta hash --
-        exactly what ``docket pod <project> config set pipeline <file>`` produces. Bypasses
+        exactly what ``docket pod set pipeline <file>`` produces. Bypasses
         the CLI setter itself, which has its own integration coverage."""
         text = self._CUSTOM_YAML if text is None else text
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

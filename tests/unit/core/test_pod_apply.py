@@ -46,7 +46,7 @@ def _unit(step_id: str, *, role: str | None, agent: str | None, skipped: bool) -
 
 
 class TestUnresolvablePipelineSteps:
-    """The shared helper ``docket pod <p> config set pipeline`` and ``apply`` both use."""
+    """The shared helper ``docket pod set pipeline`` and ``apply`` both use."""
 
     def test_no_problems_for_a_fully_resolved_plan(self) -> None:
         plan = _orch.ExecutionPlan(

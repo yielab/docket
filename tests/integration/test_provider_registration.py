@@ -1,4 +1,4 @@
-"""Provider registration (`docket models provider add/list/show/remove/export`).
+"""Provider registration (`docket setup provider add/list/show/remove/export`).
 
 Registration verifies `<base-url>/models` **with the resolved credential** and classifies the
 result (ADR 0011 §4) instead of collapsing it to a boolean: only a transport failure refuses;

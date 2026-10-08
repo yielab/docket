@@ -3,7 +3,7 @@
 Unlike most routes, not a thin wrapper over a pre-existing `core/` function: the real
 provisioning path prints through `ui.py`, and `serve.py` never imports `docket.cli`.
 `core.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
-effects; `docket add`'s pod path and this route both call it, so the two cannot drift apart.
+effects; `docket pod add`'s pod path and this route both call it, so the two cannot drift apart.
 Covers auth (401), bad requests (400, nothing touched), the happy path (workspaces really exist on
 disk), idempotence (409, existing pod untouched), rollback (a real induced mid-provisioning
 failure leaves no workspace/fleet-registration/orphaned allocation, proven by on-disk/fleet
@@ -403,7 +403,7 @@ class TestRollback:
         assert "flaky" not in alloc.get("allocations", {})
 
 
-# ── docket add and POST /pods share one code path ───────────────────────────
+# ── docket pod add and POST /pods share one code path ───────────────────────────
 
 
 class TestSharedProvisioningPath:

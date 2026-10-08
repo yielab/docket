@@ -1,11 +1,11 @@
 # Example docket-native pipeline — validate with:
-#   docket pipeline validate examples/pipelines/code-review.yaml
+#   docket pod validate examples/pipelines/code-review.yaml
 # Try it against a real pod with:
-#   docket pipeline plan <project> --file examples/pipelines/code-review.yaml
-#   docket pipeline run  <project> --file examples/pipelines/code-review.yaml --follow
+#   docket pod plan --pipeline examples/pipelines/code-review.yaml
+#   docket run --pipeline examples/pipelines/code-review.yaml
 #
 # A review-heavy pipeline with no automated Tester: Implementer's own
-# verifyCmd (whatever `docket pod <project> set-verify` configured) gates the
+# verifyCmd (whatever `docket pod set verify` configured) gates the
 # build, Reviewer's APPROVE/REQUEST-CHANGES verdict can send it back for
 # rework, and a final `approval` gate holds the pipeline for an explicit
 # human sign-off (via docket's approval store — CLI/HTTP/MCP/Telegram) before

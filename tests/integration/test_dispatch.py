@@ -752,7 +752,7 @@ class TestEndToEnd:
     def test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The resume path: `docket approve <t>` then `docket pod <p> dispatch` re-runs the
+        """The resume path: `docket task approve <t>` then `docket run` re-runs the
         implementer hop (not the lead's already-persisted one) at its own index, and the exact
         same tool call the human approved passes once via a single-use pre-grant."""
         from docket.core import approval as _approval_mod
@@ -783,7 +783,7 @@ class TestEndToEnd:
         token = parked[0].approval_token
         assert token
 
-        # docket approve <token>
+        # docket task approve <token>
         _approval_mod.approval_grant(token, channel="cli")
         assert _dispatch.resolve_waiting_approval(token, "granted") is True
         task = _dispatch.read_tasks("demo")[0]
@@ -796,7 +796,7 @@ class TestEndToEnd:
         # never reused to re-run an already-attempted hop.
         assert task.get("gateOverridePipelineIndex") is None
 
-        # docket pod demo dispatch -- the implementer's identical call is
+        # docket run -- the implementer's identical call is
         # re-issued by the model and this time passes via the pre-grant, then
         # the hop finishes normally.
         resume_backend = _ScriptedBackend(
@@ -1405,7 +1405,7 @@ class TestDeterministicRefusalSettlesTheClaim:
 
 
 class TestResumeGateCountsRunningTasksTowardRecovery:
-    """``docket pod <p> dispatch --resume``'s "anything to do?" gate must not require a decoy
+    """``docket run --resume``'s "anything to do?" gate must not require a decoy
     pending task just to let ``dispatch_pod``'s own stale-claim sweep run over an orphaned
     `running` task — see pod-dispatch.spec.md, "Claiming"."""
 
@@ -1505,7 +1505,7 @@ class TestBlockedStaysBlocked:
         # The first cap breach also pauses the Lead, so a second dispatch
         # call is refused outright at claim time — task Two is never even
         # attempted (still "pending"). Clear the pause (what a real
-        # `docket profile <lead> --resume`/`--budget` would do) so the second
+        # `docket run --resume`/`--budget` would do) so the second
         # call can claim and block it too, exercising the same
         # `unblock_pod` contract the original test covered.
         _fleet.meta_set(lead_id, "paused", False)

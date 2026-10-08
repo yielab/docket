@@ -221,7 +221,7 @@ class TestAgentTurnBashCancellation:
     ) -> None:
         """A `bash` call's real process group is registered against the current run
         (`ToolContext.on_process`, mirroring `edges/adapters/docket_runtime.py`'s production
-        wiring) while it is in flight, so `docket runs cancel` reaches it and the turn's own
+        wiring) while it is in flight, so `docket task cancel` reaches it and the turn's own
         cooperative check (the same persisted signal) reports the kill as `process_exited`
         with `signal`, not `exitCode`."""
         backend = _OneShotBashBackend(_SLEEP.format(seconds=30))

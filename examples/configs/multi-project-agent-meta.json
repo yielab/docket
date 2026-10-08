@@ -15,5 +15,5 @@
   "projectKey": "staging",
   "templateVersion": "2",
   "blueprint": "software",
-  "notes": "Session scoped to 'staging' (docket scope ecommerce-lead set staging) to isolate from production work. 'notes' is not a schema field docket reads -- AgentMeta allows and round-trips unknown extra fields."
+  "notes": "Session scoped to 'staging' (the member's own `sessionKey`) to isolate from production work. 'notes' is not a schema field docket reads -- AgentMeta allows and round-trips unknown extra fields."
 }

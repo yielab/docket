@@ -112,11 +112,11 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          1 before any provisioning.
   --no-apply             provision the pod only, skipping the apply step
                          for a present `.docket/` or a resolved `--recipe`;
-                         prints the `docket pod <p> apply <dir>` command
+                         prints the `docket pod apply <dir>` command
                          that would apply it.
 
 A repository's own `<location>/.docket/` -- the same directory shape
-`docket pod <p> apply` reads (roles/*.yaml, policies/*.json,
+`docket pod apply` reads (roles/*.yaml, policies/*.json,
 pipeline.yaml, pod.yaml) -- is discovered automatically: every document
 under it is validated before anything is provisioned, and applied after
 (unless `--no-apply`) through that same command's plan/apply path. A

@@ -86,7 +86,7 @@ def tool_pods() -> dict[str, Any]:
 def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]:
     """Show a pod's task queue (all statuses, not just pending). If ``retry_task_id`` is
     given, first moves that one ``blocked`` task back to ``pending`` (mirrors
-    `docket pod <project> queue --retry`) — an error if it isn't currently blocked."""
+    `docket task retry`) — an error if it isn't currently blocked."""
     detail = f"project={project}"
     if retry_task_id:
         detail += f" retry={retry_task_id}"
@@ -99,7 +99,7 @@ def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]
 def tool_delegate(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
     """Queue a new task for a pod's Lead. ``priority`` is high/normal/low (default
     normal); ``description`` is capped at 500 chars — the same limits
-    `docket pod <project> delegate` enforces. Returns the created task record."""
+    `docket task add` enforces. Returns the created task record."""
     _audit("delegate", f"project={project}")
     if not description:
         raise McpToolError("description is required")
@@ -262,7 +262,7 @@ def _cost_snapshot() -> dict[str, Any]:
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
-    figure); the ``MODEL_PRICING`` estimate `docket cost` shows is not returned here."""
+    figure); the ``MODEL_PRICING`` estimate `docket status` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
     snapshot = _cost_snapshot()
     if not agent_id:

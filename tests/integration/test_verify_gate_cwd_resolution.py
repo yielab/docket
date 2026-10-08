@@ -276,7 +276,7 @@ class TestSetVerifyValidation:
 
 
 class TestPodAddVerifyValidation:
-    """The same validation + audit trail applies to `docket pod <p> add --verify`."""
+    """The same validation + audit trail applies to `docket pod add --verify`."""
 
     def test_add_rejects_newline_in_verify(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

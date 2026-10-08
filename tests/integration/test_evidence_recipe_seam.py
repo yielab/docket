@@ -1,5 +1,5 @@
 """Seam: one task's evidence is identical through a real ``--recipe`` harness run and the
-CLI ``docket pod <p> evidence <task> --json`` read against the same ``DOCKET_HOME``.
+CLI ``docket task show <task> --json`` read against the same ``DOCKET_HOME``.
 
 ``test_evidence_surfaces.py`` compares the in-process builders; this one runs the real harness
 subprocess so the ``task.evidence`` block of the terminal result is the value under test.

@@ -15,5 +15,5 @@
   "projectKey": "default",
   "templateVersion": "2",
   "blueprint": "software",
-  "notes": "Pinned to Opus (docket profile security-scanner-implementer anthropic/claude-opus-4-6) for complex security analysis and threat modeling -- modelSource is 'pinned' rather than 'policy', so role->model repolicy runs (docket models set/preset) skip it."
+  "notes": "Pinned to Opus (model anthropic/claude-opus-4-6) for complex security analysis and threat modeling -- modelSource is 'pinned' rather than 'policy', so role->model repolicy runs (docket setup model set/preset) skip it."
 }

@@ -289,7 +289,7 @@ class TestLockedMutations:
 
 
 class TestPruneDurable:
-    """``prune_closed_durable`` -- the call ``docket serve``'s sweep makes."""
+    """``prune_closed_durable`` -- the call ``docket start``'s sweep makes."""
 
     def test_prune_removes_old_done_conversations(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

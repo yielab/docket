@@ -247,7 +247,7 @@ class TestRecordedSpendNeverContaminated:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         lead_id = _podcore.member_id("demo", "lead")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-        # aggregate_cost (what `docket cost` reports) must stay exactly the
+        # aggregate_cost (what `docket status` reports) must stay exactly the
         # driver's own recorded figure — 0.0 here — never the estimate, even
         # though plenty of tokens (and a known price) exist to estimate from.
         assert _utils.aggregate_cost(lead_id).cost_usd == 0.0

@@ -36,7 +36,7 @@ entry points; ``record_last_run`` is the one write path — it persists into the
 same file, under a ``lastRun`` key sitting alongside ``schedules``, via
 ``edges/store.py``'s locked read-modify-write (docket-owned JSON, single-writer
 rule applies). Before this, the last-run timestamp lived only in an in-memory
-``dict`` in ``serve.py``, so every ``docket serve`` restart re-fired every due
+``dict`` in ``serve.py``, so every ``docket start`` restart re-fired every due
 schedule immediately — persisting it here is what fixes that.
 """
 
@@ -220,7 +220,7 @@ def record_last_run(path: Path, project: str, ts: float) -> None:
     A locked read-modify-write (``edges/store.py``) against the same file
     ``load_schedules``/``load_last_run`` read — the ``schedules`` key is
     preserved untouched, only ``lastRun[project]`` is updated. This is what
-    makes the due-check survive a ``docket serve`` restart instead of
+    makes the due-check survive a ``docket start`` restart instead of
     re-firing every schedule on the first sweep.
     """
 

@@ -1,4 +1,4 @@
-"""`docket serve --dispatch` says once, at startup, when no channel delivers beyond the console
+"""`docket start --dispatch` says once, at startup, when no channel delivers beyond the console
 (operator-loop.spec.md Notifications 17): an unattended sweep parks tasks nobody would hear about.
 """
 

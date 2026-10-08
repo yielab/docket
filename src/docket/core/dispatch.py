@@ -3414,7 +3414,7 @@ def dispatchable_pods() -> list[str]:
 
 def pod_roster() -> list[dict[str, Any]]:
     """Every provisioned pod (grouped by project, alphabetical) with its member roster. Pure
-    data assembly for ``docket mcp serve``'s ``pods`` tool, mirroring ``cli/_pod.py``'s
+    data assembly for ``docket start --mcp``'s ``pods`` tool, mirroring ``cli/_pod.py``'s
     ``_pod_list``; lives here (not ``core/pod.py``) to keep that module I/O-free."""
     all_ids = [a.id for a in _fleet.list_agents()]
     projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})

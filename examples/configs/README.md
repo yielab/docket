@@ -39,14 +39,14 @@ a model **pinned** directly rather than following the role policy.
 
 A pod Lead with a non-default `projectKey`/`sessionKey` (`agent:ecommerce:staging` instead of
 `agent:ecommerce:default`) — the isolation primitive that keeps staging work from bleeding into
-production context for the same codebase. Set with `docket scope <id> set <project-key>`.
+production context for the same codebase. Set it in the member's `.docket-meta.json`.
 
 ### premium-agent-meta.json
 
 A pod Implementer **pinned** to a stronger model (`modelSource: "pinned"`) for reasoning-heavy
-work — set with `docket profile <id> <provider/model>`. A pinned agent is skipped by
-`docket models set`/`preset` re-resolution; `docket profile <id> default` re-attaches it to the
-role policy.
+work — set in the member's `.docket-meta.json`. A pinned agent is skipped by
+`docket setup model set`/`preset` re-resolution; setting `modelSource` back to `policy` re-attaches
+it to the role policy.
 
 ## Field reference
 
@@ -77,10 +77,10 @@ day:
 ## Inspecting and fixing metadata
 
 ```bash
-docket info <id>                   # formatted view
-docket doctor                      # fleet-wide health, including metadata drift
-docket doctor --fix                # re-sync what it can
-docket maintain <id> rebuild       # deep: regenerate workspace files from metadata
+docket pod show <id>               # a member's effective configuration
+docket setup                       # fleet-wide health, including metadata drift
+docket setup --fix                 # re-sync what it can
+docket pod reset <id>              # deep: rebuild the member's workspace from metadata
 ```
 
 There is no bare-JSON-editing helper shipped anymore (the old Bash `meta_get`/`meta_set`

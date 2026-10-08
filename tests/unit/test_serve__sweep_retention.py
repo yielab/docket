@@ -1,4 +1,4 @@
-"""`docket serve`'s periodic sweep: what it calls, in what order, and its effect.
+"""`docket start`'s periodic sweep: what it calls, in what order, and its effect.
 
 core/trace.py's expire_old_traces() is tested in isolation by
 test_trace_retention.py. This file pins the *wiring* -- that _run_sweeps calls

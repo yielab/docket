@@ -215,7 +215,7 @@ class TestScheduleWriter:
 
 
 class TestFindScheduleProblems:
-    """`find_schedule_problems`: what `docket doctor` surfaces."""
+    """`find_schedule_problems`: what `docket setup` surfaces."""
 
     def test_no_file_has_no_problems(self, tmp_path: Path) -> None:
         assert _sched.find_schedule_problems(tmp_path / "docket-schedules.json") == []

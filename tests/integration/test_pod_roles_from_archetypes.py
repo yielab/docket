@@ -6,7 +6,7 @@ hardcoded string in `core/pod.py`.
 
 Also covers `core/models_policy.py`'s archetype-modelClass fallback (a role
 with no named `ALL_ROLES` row resolves through its own `modelClass` against
-the live rank anchors) and an end-to-end `docket pod <project> add
+the live rank anchors) and an end-to-end `docket pod add
 <starter-role>` provisioning smoke test.
 """
 

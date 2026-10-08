@@ -3,8 +3,8 @@
 ``approval_grant``/``approval_deny`` already emit a trace event; they must also write an
 ``audit_log()`` entry (action ``approval.grant``/``approval.deny``, detail carrying
 ``token=... project=... channel=...``) so ``docket log`` has a record of who approved/denied
-what, and through which surface. Covers the concrete call sites: CLI (``docket approve``/
-``docket deny`` -> cli/_approve.py, cli/_deny.py), HTTP (``serve.py``'s POST
+what, and through which surface. Covers the concrete call sites: CLI (``docket task approve``/
+``docket task deny`` -> cli/_approve.py, cli/_deny.py), HTTP (``serve.py``'s POST
 /approvals/<token>), and an explicit channel argument (e.g. ``"telegram"``) exercised directly
 against the core function. Each site must produce both the existing trace event (payload
 unchanged) and the new audit-log line with the correct channel tag.

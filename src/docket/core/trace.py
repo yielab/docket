@@ -405,7 +405,7 @@ def _write_index(index_file: Path, index: dict[str, int]) -> None:
 
 
 def sweep_all() -> None:
-    """Coerce stale open traces to 'aborted' (called by docket serve).
+    """Coerce stale open traces to 'aborted' (called by docket start).
     Appends a synthetic session_end to any trace whose last event is older
     than SESSION_TIMEOUT and has no session_end yet."""
     traces_root = _cfg.TRACES_DIR

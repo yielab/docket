@@ -6,7 +6,7 @@
 #
 # Required per entry: id, name. Everything else has a default:
 #   blueprint    provisions a full pod (Lead + role members) from a named
-#                pod shape (see `docket roles list` / core/blueprints.py:
+#                pod shape (see `docket pod roles` / core/blueprints.py:
 #                software, research, content, ops, agentic-product). Omit it
 #                and you get a single flat agent instead (the legacy shape —
 #                no Lead/Implementer split, just one workspace).
@@ -15,7 +15,7 @@
 #   stack        auto-detected from the codebase when omitted
 #   model        flat agents only; falls back to the docket default. A
 #                blueprint pod's members follow the normal role->model
-#                policy instead (docket models) unless pinned afterwards.
+#                policy instead (docket setup model).
 #   description, telegram, budgetUsd, projectKey  all optional
 #
 # Verified against the real loader (`docket init --from`, core/cli/_agents.py

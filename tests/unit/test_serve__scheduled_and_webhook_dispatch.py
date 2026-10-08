@@ -286,7 +286,7 @@ class TestCheckSchedules:
     ) -> None:
         """The last-run timestamp is written into the schedules FILE, not an
         in-memory dict, so a fresh `load_last_run` call reads it -- the
-        same path a restarted `docket serve` process uses."""
+        same path a restarted `docket start` process uses."""
         schedule_file.write_text(
             json.dumps({"schedules": {"projC": "@every 1s"}}),
             encoding="utf-8",

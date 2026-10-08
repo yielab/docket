@@ -1,7 +1,7 @@
 """Pod membership resolution reads recorded meta, never guesses from the id string.
 
 A custom role named `security-reviewer` (registered via the archetype user-overlay) is
-provisionable via `docket pod <p> add`, but its member id (`<project>-security-reviewer`) can
+provisionable via `docket pod add`, but its member id (`<project>-security-reviewer`) can
 make `core/pod.py::pod_of` mis-parse the tail `reviewer` as the role, answering the wrong
 (nonexistent) project and tripping the cross-pod dispatch refusal in
 `core/dispatch.py::_execute_unit`. See pod-dispatch.spec.md ("Pipeline order and participation",

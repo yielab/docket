@@ -1,4 +1,4 @@
-"""Memory runtime-contract + `docket add` UX-helper + arg parsing.
+"""Memory runtime-contract + `docket pod add` UX-helper + arg parsing.
 
 Guards the fix for the failure where agents looped forever because the
 runtime's own post-compaction check demanded WORKFLOW_AUTO.md /

@@ -52,7 +52,7 @@ behaviour (see the module-level ``send_message`` call-site pin in
 ``tests/integration/test_telegram_channel.py``).
 
 **The bot token is never handled here.** This module reads it once (from
-``core.secrets``, the same store ``docket keys`` uses) to hand to
+``core.secrets``, the same store ``docket setup provider`` uses) to hand to
 ``edges/adapters/telegram.py``'s functions; it is never interpolated into an
 audit entry, a trace payload, or a reply message. See that module's own
 docstring for the wire-level half of this guarantee (the token never
@@ -61,7 +61,7 @@ surfaces in a returned error string either).
 **Message bodies are not logged beyond what a human already sees.** The only
 audit entries this module writes carry a chat id, an update id, and (for the
 delegate path) a policy id/action -- never the raw message text. A human
-reading ``docket audit`` sees that *something* was blocked or refused, not
+reading ``docket log`` sees that *something* was blocked or refused, not
 the untrusted content that triggered it (the same discipline
 ``core.approval``'s ``action`` field already applies via ``_redact`` at
 creation time).

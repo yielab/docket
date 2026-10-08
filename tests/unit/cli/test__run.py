@@ -142,9 +142,9 @@ class TestForegroundApprovalPrompt:
         assert "channel=cli" in audit_text
 
     def test_d_denies_the_gated_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """`d` denies through the same pair `docket deny` uses: the tool result
+        """`d` denies through the same pair `docket task deny` uses: the tool result
         records `denialKind: approval_denied` and the audit line names the
-        `cli` channel, exactly as a second-terminal `docket deny` would."""
+        `cli` channel, exactly as a second-terminal `docket task deny` would."""
         home = _seed_pod(tmp_path, monkeypatch)
         install_policies()
         _fast_approval_polling(monkeypatch)

@@ -1,7 +1,7 @@
 """Provider agnosticism.
 
 Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
-docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket models`'s
+docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket setup model`'s
 display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
 now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local)",
 never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the

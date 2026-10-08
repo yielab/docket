@@ -1,6 +1,6 @@
 """POST /tasks/<id>/answer — resolving a parked question over HTTP.
 
-The HTTP counterpart of `docket pod <p> answer` and the MCP `task_answer` tool: same
+The HTTP counterpart of `docket task answer` and the MCP `task_answer` tool: same
 `core.answers.answer_task` call (`channel="http"`), so validation/screening/resume are
 byte-for-byte identical to every other surface. Covers auth, the happy path (a `TaskView`
 response, the durably appended answer, the `actor` field), the error mappings (`422`/`409`/

@@ -1,4 +1,4 @@
-"""Cancellation — `docket runs cancel <id>` actually kills the in-flight hop's process group.
+"""Cancellation — `docket task cancel <id>` actually kills the in-flight hop's process group.
 
 Covers ``edges.adapters.system.kill_process_group`` (a real process group leader + child both
 die; an already-dead pid is a harmless no-op) and ``core/runs.py``'s registry additions:
