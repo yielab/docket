@@ -29,11 +29,19 @@ def _parse_env(pairs: list[str]) -> dict[str, str]:
 
 
 @mcp_app.command("list")
-def cmd_list() -> None:
+def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -> None:
     """List the configured MCP tool servers; env values are masked.
 
     Example: docket setup mcp list"""
     servers = _mcp_tools.load_mcp_servers()
+    if json_out:
+        _contract.emit_json(
+            [
+                {**cfg.model_dump(mode="json"), "env": dict.fromkeys(sorted(cfg.env), "****")}
+                for cfg in servers
+            ]
+        )
+        return
     if not servers:
         ui.info("No MCP servers configured.")
         return

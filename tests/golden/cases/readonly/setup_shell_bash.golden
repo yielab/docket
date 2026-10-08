@@ -102,7 +102,7 @@ _docket_options() {
     "setup export privacy") echo "--share --max-chars --yes --help" ;;
     "setup export preview") echo "--session --level --share --json --help" ;;
     "setup mcp") echo "--help" ;;
-    "setup mcp list") echo "--help" ;;
+    "setup mcp list") echo "--json --help" ;;
     "setup mcp add") echo "--env --timeout --kind --tools --no-isolate --help" ;;
     "setup mcp remove") echo "--help" ;;
   esac

@@ -70,9 +70,6 @@ def _readers() -> list[tuple[str, ...]]:
     return found
 
 
-# Readers whose --json is still missing; each flips to a failure once fixed, so the list only falls.
-_KNOWN_GAPS: set[tuple[str, ...]] = {("setup", "mcp", "list")}
-
 # A bare `setup` report exits 1 while a piece is unconfigured, with the JSON still printed.
 _EXIT_OK: dict[tuple[str, ...], tuple[int, ...]] = {("setup",): (0, 1)}
 
@@ -103,12 +100,7 @@ def test_no_reader_is_missing_from_the_argument_table() -> None:
     assert not missing, f"add these list/show/status/inbox leaves to _ARGS: {missing}"
 
 
-def _param(path: tuple[str, ...]) -> object:
-    marks = [pytest.mark.xfail(strict=True, reason="--json not implemented")]
-    return pytest.param(path, id=" ".join(path), marks=marks if path in _KNOWN_GAPS else [])
-
-
-@pytest.mark.parametrize("path", [_param(p) for p in _ALL])
+@pytest.mark.parametrize("path", _ALL, ids=[" ".join(p) for p in _ALL])
 def test_the_reader_prints_one_json_document(path: tuple[str, ...], fixture_home: str) -> None:
     args = [a.replace("{task}", fixture_home) for a in _ARGS.get(path, [])]
 

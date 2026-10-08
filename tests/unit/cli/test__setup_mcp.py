@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -54,3 +56,11 @@ def test_remove_deletes_a_configured_server() -> None:
     _runner.invoke(app, ["setup", "mcp", "add", "weather", "--", "npx"])
     assert _runner.invoke(app, ["setup", "mcp", "remove", "weather"]).exit_code == 0
     assert _mt.load_mcp_servers() == []
+
+
+def test_list_json_is_one_document_with_masked_env() -> None:
+    _runner.invoke(app, ["setup", "mcp", "add", "s", "--env", "API=tok-secret", "--", "srv"])
+    result = _runner.invoke(app, ["setup", "mcp", "list", "--json"])
+    assert result.exit_code == 0
+    servers = json.loads(result.stdout)
+    assert [s["name"] for s in servers] == ["s"] and servers[0]["env"] == {"API": "****"}

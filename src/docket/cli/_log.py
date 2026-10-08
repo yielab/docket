@@ -38,14 +38,13 @@ def show_log(limit: int | None = None, json_out: bool = False) -> int:
     """Print the last *limit* entries (default 20), or the raw JSONL with *json_out*."""
     logf = _cfg.AUDIT_LOG
     raw = _audit.read_audit_text()
+    if json_out:
+        print(raw or "", end="")
+        return 0
     if raw is None:
         ui.info("No log yet.")
         ui.dim("  Changes (keys, gates, pods, scope) are recorded to")
         ui.dim(f"  {logf} once you make one.")
-        return 0
-
-    if json_out:
-        print(raw, end="")
         return 0
 
     n = limit if limit is not None and limit > 0 else _DEFAULT_COUNT

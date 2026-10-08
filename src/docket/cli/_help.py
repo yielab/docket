@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import importlib
 from difflib import get_close_matches
+from typing import TYPE_CHECKING
 
-from typer import _click as click
 from typer.core import TyperGroup
+
+if TYPE_CHECKING:
+    from typer import _click as click
+else:
+    # The click TyperGroup is built on: typer's vendored copy when it has one, else click itself.
+    click = importlib.import_module(TyperGroup.__mro__[1].__module__.rpartition(".")[0])
 
 DAILY = "Daily"
 POD = "The pod"

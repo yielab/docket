@@ -45,6 +45,11 @@ class TestLog:
             "entry-1",
         ]
 
+    def test_json_on_an_empty_log_prints_nothing(self, home: Path) -> None:
+        result = runner.invoke(app, ["log", "--json"])
+        assert result.exit_code == 0
+        assert result.output == ""
+
     def test_an_unknown_verb_is_a_usage_error(self, home: Path) -> None:
         assert runner.invoke(app, ["log", "bogus"]).exit_code == 2
 
