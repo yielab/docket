@@ -4,8 +4,9 @@
 Only inline code spans, fenced blocks and lines that start with `docket` count; prose
 such as "docket writes" is skipped. Each word must be a verb of its group, each option
 an option of its leaf and the positional count must fit. Placeholders (`<x>`, `[x]`,
-`UPPER`, `...`, `$VAR`, quoted text) and `a|b` alternatives of live verbs are accepted;
-`init` is exempt (hand-parsed flags). A spec's `## Changelog` is the record and is cut.
+`UPPER`, `...`, `$VAR`, quoted text) stand for values; where a verb is expected only `<x>`,
+`[x]` and `...` do, and the rest of a `<a|b>` line must fit at least one of those verbs. A spec's
+`## Changelog` is the record and is cut.
 
 Usage: lint_cli_invocations.py [--self-check] FILE...  (prints file:line: invocation: reason)
 """
@@ -42,6 +43,13 @@ PLANTED = (
     ("docket task list --retry", True),
     ("docket status <agent>", True),
     ("docket setup sandbox isolate on", True),
+    ("docket task FOO", True),
+    ("docket pod $VERB --json", True),
+    ("docket pod <apply|export> a b c", True),
+    ("docket setup <provider|model> list --bogus", True),
+    ("docket setup <provider|model> list", False),
+    ("docket pod <recipes|roles|policies> NAME", False),
+    ("docket task <verb> ...", False),
     ("docket task add 'two words' --pod p", False),
     ("docket pod set KEY VALUE [--member ID]", False),
     ("docket log 50", False),
@@ -52,6 +60,14 @@ PLANTED = (
 
 def _placeholder(w: str) -> bool:
     return w[0] in "<[\"'{$" or w == "..." or re.fullmatch(r"[A-Z][A-Z0-9_./-]*", w) is not None
+
+
+def _verb_placeholder(w: str) -> bool:
+    """Only a bracketed placeholder may stand where a verb goes; `FOO` and `$X` are not verbs."""
+    return w[0] in "<[" or w == "..."
+
+
+VERB_ALTERNATIVES = re.compile(r"<([a-z-]+(?:\|[a-z-]+)+)>")
 
 
 def invocations(line: str, in_fence: bool) -> list[str]:
@@ -94,7 +110,7 @@ def split(text: str) -> list[str]:
 
 def _placeholder_verbs(node: Any, w: str) -> str | None:
     """A `<a|b|c>` verb placeholder lists live verbs; any other placeholder is unchecked."""
-    m = re.fullmatch(r"<([a-z-]+(?:\|[a-z-]+)+)>", w)
+    m = VERB_ALTERNATIVES.fullmatch(w)
     missing = [a for a in m.group(1).split("|") if a not in node.commands] if m else []
     return f"'{missing[0]}' is not a verb of '{node.name}'" if missing else None
 
@@ -104,8 +120,10 @@ def _walk_verbs(words: list[str]) -> tuple[Any, int, str | None]:
     i = 0
     while i < len(words) and getattr(node, "commands", None) is not None:
         w = words[i]
-        if w.startswith("-") or _placeholder(w):
+        if w.startswith("-") or _verb_placeholder(w):
             return node, i, _placeholder_verbs(node, w)
+        if _placeholder(w):
+            return node, i, f"'{w}' is not a verb of '{node.name or 'docket'}'"
         alts = [a for a in re.split(r"[|/]", w) if a]
         if all(a in node.commands for a in alts):
             node = node.commands[alts[0]]
@@ -136,7 +154,7 @@ def _check_rest(node: Any, words: list[str], i: int) -> str | None:
             takes = name in params and not getattr(params[name], "is_flag", False) and "=" not in w
             j += 2 if takes else 1
             continue
-        if is_group and not _placeholder(w):
+        if is_group and not _verb_placeholder(w):
             if not (getattr(node, "invoke_without_command", False) and w.isdigit()):
                 return f"'{w}' is not a verb of '{node.name}'"
         else:
@@ -150,10 +168,19 @@ def _check_rest(node: Any, words: list[str], i: int) -> str | None:
 def problems(words: list[str]) -> str | None:
     """Why `docket <words>` is not a live invocation, or None."""
     node, i, why = _walk_verbs(words)
-    if why or node.name == "init":
+    if why:
         return why
-    if i < len(words) and words[i].startswith("<") and getattr(node, "commands", None) is not None:
-        return None
+    if i < len(words) and getattr(node, "commands", None) is not None:
+        alternatives = VERB_ALTERNATIVES.fullmatch(words[i])
+        if alternatives is None:
+            return None if words[i].startswith("<") else _check_rest(node, words, i)
+        failures: list[str] = []
+        for verb in alternatives.group(1).split("|"):
+            why = problems([*words[:i], verb, *words[i + 1 :]])
+            if why is None:
+                return None
+            failures.append(f"as '{verb}': {why}")
+        return failures[0]
     return _check_rest(node, words, i)
 
 
