@@ -617,6 +617,31 @@ and the score to ADR 0022 "Live run"; the first journey is `docket setup` on a f
 `local` and a hosted provider against a fake. A new defect is a locator for triage, not a fix in
 this card.
 
+### P39-25 — the invocation guard (Sonnet)
+
+Branch `p39-25-invocation-guard`. No spec.
+
+- **Where.** `scripts/maint/lint_cli_invocations.py` (a starting copy is in the worktree,
+  untracked: the integrator's scratch linter from the Wave 94 merges; keep its shape, finish it)
+  and `tests/guards/test_cli_invocations_true.py`, a sibling of
+  `tests/guards/test_no_removed_cli_names.py` (load the script with `importlib`, reuse
+  `rewrite_cli_names.py::split_record` for specs and its `EXCLUDED` idea for the roots).
+- **The tree.** `typer.main.get_command(app)` from `docket.cli`; a group has `.commands`, a leaf
+  has `.params` (`param_type_name == "argument"`, `opts`, `is_flag`, `nargs`). `log` is a group
+  invoked without a verb and takes a count (`docket log 50`); `setup` and `status` likewise take
+  no verb. `init` is hand-parsed and exempt.
+- **False positives seen in Wave 94, all to handle:** markdown tables escape the pipe (`\|`);
+  syntax lines in specs (`docket pod set KEY VALUE [--member ID]`); a code span holding just
+  `docket`; `docket --version`; the `-h` option; a quoted task text with spaces; a shell line
+  that continues with `|`, `&&`, `#` or `\`.
+- **What it finds today** is the card's RED list: run it over the roots first, record every line,
+  fix the false ones (one line each, in the doc that holds it), keep the true ones as evidence of
+  a linter gap and fix the linter, never the doc, for those.
+- **Help examples.** Walk every leaf; its help holds one `Example:` line; lint it. A failing
+  example is a one-line fix in the leaf's help string.
+- Return: the RED list with each line's disposition (doc fixed | linter fixed), the guard's run
+  time, and the CHANGELOG line.
+
 ## Wave 91 returns (integrator, 2026-10-07)
 
 Six cards merged into `develop` in the packet's order (`5cbcac79` P39-4, `798bd56c` P39-6,

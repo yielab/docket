@@ -362,7 +362,7 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 | 93a | P39-12, P39-13, P39-14, P39-15, P39-16 | 12, 13, 14, 15, 16 | Disjoint modules (`setup`, `log`/`start`/`stop`/`exec`, `run`/`status`/`inbox`, removals). P39-15 owns the dispatch functions of `cli/_pod.py`. |
 | 93b | P39-8, P39-9, P39-10, P39-11 | 8, 9, 10, 11 | All take functions out of `cli/_pod.py` or build onto it; ownership is per function, named in each packet. Based on the 93a rollup. |
 | 94 | P39-17, P39-18 first; then P39-19, P39-20, P39-21, P39-22; then P39-23 | 17, 18, 19–22, 23 | P39-18's script runs before any Haiku doc card. P39-19 (README) is Sonnet. |
-| 95 | P39-24 | — | Integrator, live endpoint. |
+| 95 | P39-24, P39-25 | 25 | P39-24 is the integrator on the live endpoint (no source files); P39-25 adds one script and one guard. |
 
 **Wave 91 closed 2026-10-07** (six merges `5cbcac79`..`54bb3977` plus the integrator rollup). Follow-ups the workers returned are recorded in the packets file under "Wave 91 returns"; Wave 92 (P39-7) based on the rollup commit.
 
@@ -1053,7 +1053,7 @@ docket harness tests pass against `exec`. Oracle: the gates.
 
 ### P39-24 — the measurement: six journeys re-run, checklist re-scored
 
-**Status:** TODO · **Size:** S · **Wave:** 95 · **Model:** Integrator · **Spec:** ADR 0022 gains a "Live run" section
+**Status:** IN PROGRESS (integrator, Wave 95 opened 2026-10-08 on the Wave 94 rollup `cf3e036e`) · **Size:** S · **Wave:** 95 · **Model:** Integrator · **Spec:** ADR 0022 gains a "Live run" section
 
 **Goal:** the six journeys of the audit's live run (first run, daily loop, the gate, make it
 yours, ops, errors) re-run against the Wave 94 rollup under the same throwaway `HOME` and the
@@ -1066,3 +1066,34 @@ in this card unless one line).
 newcomer path never types the pod name; every `--help` at every level has an example; the four
 guessed commands work or suggest correctly; checklist 18/20 or better. Oracle: the transcript
 saved under `internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`.
+
+### P39-25 — every documented invocation is true against the live tree
+
+**Status:** IN PROGRESS (Wave 95 claimed 2026-10-08, branch `p39-25-invocation-guard` based on the claim commit) · **Size:** S · **Wave:** 95 · **Model:** Sonnet · **Spec:** none (a guard; lane per `specs/test-framework.md` §"Lanes and placement", beside `tests/guards/test_no_removed_cli_names.py`)
+
+**Trigger (deterministic reproduction, 2026-10-08, "Wave 94 returns" in the packets file):** the
+removed-name guard proves an old name is gone and nothing proves a new line is true. P39-21's
+first return carried about twenty invocations the tree does not have (`setup sandbox isolate on`,
+`setup notify content`, `status <agent>`, `task list --retry`, `pod check <hook> <role>`) and four
+more survived in `docs/README.md` to the merge; the integrator's scratch linter, walking the live
+Click tree, found every one and the gates found none.
+
+**Goal:** `scripts/maint/lint_cli_invocations.py` checks every `docket ...` invocation found in
+a code span or a fenced block of the given files against the live command tree: each word is a
+verb of its group, each `--flag` is an option of its leaf, the positional count fits the leaf's
+arguments; placeholders (`<x>`, `[x]`, `UPPER`, `...`, `$VAR`, quoted text) are accepted; `a|b`
+is accepted when every alternative is live; `init` is exempt (hand-parsed flags). It prints
+`file:line: invocation: reason` and exits 1 on any finding; `--self-check` plants false lines and
+expects them back. `tests/guards/test_cli_invocations_true.py` runs it in process over
+`README.md`, `CONTRIBUTING.md`, `docs/` (not `cycles-ended/`, not `adr/`), `specs/` (a spec's
+`## Changelog` is the record: `rewrite_cli_names.py::split_record`), `src/docket/templates/` and
+the `Example:` line of every leaf's help. A line it flags that is false is fixed in this card.
+
+**Non-goals:** prose (`docket runs teams of coding agents` is a sentence), `CHANGELOG.md`,
+Python source (P39-18's roots cover comments), any behaviour change; no table of removed names.
+
+**Acceptance:** RED: on the base, a tmp file holding `docket task list --retry` and a tmp spec
+whose body (not its changelog) holds `docket status <agent>` each produce one finding, and the
+guard lists the live findings over the roots (fixed in the card, one line each); GREEN: zero
+findings over the roots in under 2 s, `--self-check` returns its planted lines, every gate green.
+Oracle: the guard, and `lint_cli_invocations.py FILE` by hand on a doc with one false line.
