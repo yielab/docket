@@ -1,7 +1,7 @@
 """MCP server isolation state visibility in doctor, config, and recipes.
 
 Requirement 40: unjailed MCP servers (isolate: false) are shown by `docket setup --fix`,
-`docket config explain`, and `docket recipes show --json`, with pod context where applicable.
+`docket config explain`, and `docket pod recipes --json`, with pod context where applicable.
 """
 
 from __future__ import annotations
@@ -117,18 +117,18 @@ class TestConfigExplainShowsIsolateBool:
 
 
 class TestRecipesJsonShowsUnjailedServers:
-    """recipes show/list --json includes unjailed_mcp_servers field."""
+    """pod recipes [name] --json includes unjailed_mcp_servers field."""
 
     def test_recipes_show_json_has_unjailed_mcp_servers_field(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
         # Use the shipped code-intel recipe if it exists
-        from docket.cli._recipes import run_recipes
+        from typer.testing import CliRunner
 
-        capsys.readouterr()
-        run_recipes(["show", "code-intel", "--json"])
-        output = capsys.readouterr().out
+        from docket.cli import _pod
+
+        output = CliRunner().invoke(_pod.pod_app, ["recipes", "code-intel", "--json"]).output
         if output and not output.strip().startswith("Error"):
             report = json.loads(output)
             assert "unjailed_mcp_servers" in report
@@ -137,11 +137,11 @@ class TestRecipesJsonShowsUnjailedServers:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch)
-        from docket.cli._recipes import run_recipes
+        from typer.testing import CliRunner
 
-        capsys.readouterr()
-        run_recipes(["list", "--json"])
-        output = capsys.readouterr().out
+        from docket.cli import _pod
+
+        output = CliRunner().invoke(_pod.pod_app, ["recipes", "--json"]).output
         report = json.loads(output)
         # At least one recipe should have the field (even if empty)
         assert any("unjailed_mcp_servers" in recipe for recipe in report)

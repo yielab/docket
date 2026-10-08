@@ -1,6 +1,6 @@
 """A recipe may declare pod-scoped MCP servers (``mcp-servers/*.yaml``, ``kind: mcp-server``).
 
-Installed only by ``docket pod <p> apply`` (ADR 0012), live for that pod's turns only, never
+Installed only by ``docket pod apply`` (ADR 0012), live for that pod's turns only, never
 selectable by another pod, and round-tripped by ``pod export``. See mcp-client.spec.md
 ("Pod-scoped servers") and config-format.spec.md.
 """
@@ -16,6 +16,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod as _cli_pod
+from docket.cli import _pod_config
 from docket.core import config_docs as _config_docs
 from docket.core import mcp_tools as _mt
 from docket.core import pod
@@ -234,7 +235,7 @@ def test_plan_summary_and_validate_say_the_server_runs_unjailed(
 ) -> None:
     directory = _two_server_recipe(tmp_path)
     plan = _pod_apply.plan_apply("shop", directory)
-    _cli_pod.render_apply_plan(plan)
+    _pod_config.render_apply_plan(plan)
     out = capsys.readouterr().out
     assert out.count("runs unjailed (isolate: false)") == 1
     assert "freesrv: runs unjailed (isolate: false)" in out

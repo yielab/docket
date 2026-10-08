@@ -100,7 +100,7 @@ def test_tdd_check_red_routes_pass_to_fail_and_fail_to_green() -> None:
 def test_recipe_applies_cleanly_to_a_fixture_pod(
     name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket pod <p> apply <recipe>`` leaves every pipeline step resolvable on a lean pod
+    """``docket pod apply <recipe>`` leaves every pipeline step resolvable on a lean pod
     (only the base ``lead``/``implementer`` roles)."""
     project = f"fixture-{name.replace('-', '_')}"
     _seed_fixture_pod(tmp_path, monkeypatch, project)

@@ -42,7 +42,7 @@ def _load_click_group():
 # appear in exactly one group.
 GROUPS: list[tuple[str, list[str]]] = [
     ("Lifecycle Commands", ["init", "add", "status", "run", "info", "delete", "maintain"]),
-    ("Pod Coordination", ["pod", "pipeline", "roles", "recipes"]),
+    ("Pod Coordination", ["pod"]),
     (
         "Utility Commands",
         [
@@ -51,12 +51,11 @@ GROUPS: list[tuple[str, list[str]]] = [
             "config",
             "start",
             "stop",
-            "validate",
         ],
     ),
     (
         "Security and Audit",
-        ["log", "policies", "plugins", "approve", "deny", "inbox", "chat", "task"],
+        ["log", "approve", "deny", "inbox", "chat", "task"],
     ),
     (
         "Observability Commands",
@@ -334,12 +333,12 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("POLICIES_DIR",),
-        "Root of installed/edited policy JSON (`docket policies`, `docket setup sandbox`)",
+        "Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`)",
         "`$DOCKET_HOME/policies`",
     ),
     (
         ("PLUGINS_DIR",),
-        "Root of operator-applied predicate plugins (`docket plugins`, a policy's `when.plugin`)",
+        "Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`)",
         "`$DOCKET_HOME/plugins`",
     ),
     (

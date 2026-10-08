@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.35.0
+**Version**: 0.36.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -86,7 +86,7 @@ are owned here, not there.
    allowed, but `echo ... >`/`>>`/`&>` still asks by the same "not on the curated allowlist" path,
    because its argument is often model-composed text and an output redirect turns that into an
    unattended arbitrary-path write — adding `echo` to the allowlist **MUST NOT** also unlock that.
-   `docket policies test pre_tool_call <role> "<text>"` **MUST** report the same verdict a live
+   `docket pod check "<text>" --role <role>` **MUST** report the same verdict a live
    exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
    function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
    `cd`-prefixed or otherwise-shaped command cannot get a different answer in the dry-run than it
@@ -335,14 +335,14 @@ requirement 2 above for why `resolve_command_action` in particular could never h
 
 Before this card, `core/policy.py` was fully built and unit-tested (`policy_eval`, hooks,
 actions, most-restrictive-wins ranking) but had exactly one caller anywhere: the CLI's own
-dry-run printer, `docket policies test`. The retired installer never installed the six shipped
+dry-run printer, `docket pod check`. The retired installer never installed the six shipped
 templates. `cli/_metrics.py` already shipped a reader for guardrail-trip trace events with no
 producer anywhere. This section is what closes that gap — the same "built, tested, connected to
 nothing" shape G-1 fixed for the approval store one card earlier.
 
 1. On the first run, `docket init` **MUST** install the baseline policy templates into `$POLICIES_DIR`
    (idempotent — an existing file is left untouched, never overwritten), via the same producer
-   `docket policies init` uses (`core.policy.install_policies`). An empty `$POLICIES_DIR` makes
+   `docket setup` uses (`core.policy.install_policies`). An empty `$POLICIES_DIR` makes
    every hook evaluation a no-op (`policy_eval` returns `allow` unconditionally), so this step is
    what makes the rest of this section possible at all, not an optional nicety.
 2. The `pre_input` hook **MUST** be evaluated exactly once per task, at
@@ -398,11 +398,11 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    *universally* unevaluated — see "In-turn tool-call gate" below for the separate surface
    (`core/tools.py`) where it now genuinely fires on every turn, and the Status line above for
    exactly what that does and does not cover today.
-6. `docket policies validate [id|file.json]` **MUST** wire `core.policy.validate_policy` — a
-   schema check (required fields, valid hook/action, a compilable regex pattern) previously
-   implemented and unit-tested but callable only from tests, not the CLI. No argument validates
-   every file in `$POLICIES_DIR`; an argument is looked up first as a file path, then as an
-   installed policy's `id`. Exit code `1` if any checked file is invalid.
+6. `docket pod validate [PATH]` **MUST** wire `core.policy.validate_policy` through the one
+   validator (`core.config_docs.validate_path`) — a schema check (required fields, valid
+   hook/action, a compilable regex pattern). A policy file, or a directory whose `policies/` holds
+   them (`$DOCKET_HOME` checks the installed set), is the argument. Exit code `1` if any checked
+   file is invalid.
 7. **Policy store integrity — a broken policy fails closed.** One function owns policy validity
    (`core.policy.validate_policy` over a parsed document), and the evaluator applies the same
    check on every read: a policy file that cannot be parsed, or that fails validation (missing
@@ -414,9 +414,10 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    audit/trace paths attribute the denial to the file. The `--trusted` injection-id skip applies
    only when the file's `id` is readable and matches; brokenness never widens it. `docket setup`
    **MUST** report each broken policy file as an issue.
-8. `docket policies test <hook> <role> "<text>"` **MUST** accept `--tool <name>` (default
-   `bash`): the name is resolved against the built-in tool registry (unknown → error, exit 1,
-   naming the valid tools), an `exec`-kind tool evaluates through
+8. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept `--tool <name>` (default
+   `bash`; `--hook` defaults to `pre_tool_call` and an unknown hook is a usage error): the name is
+   resolved against the built-in tool registry (unknown → usage error, exit 2, naming the valid
+   tools), an `exec`-kind tool evaluates through
    `core/tools.py::evaluate_tool_call` (classifier + policy hook, as requirement 6 of
    "Tool-approval gates" wired for `bash`), and a non-`exec` kind evaluates the declarative hook
    alone on the given text, reporting that the command classifier does not apply — because the
@@ -433,9 +434,9 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    agree with it. `project=""` (no pod, or a bare `--pod`-less CLI call) **MUST** see the global
    set only, unchanged from before this requirement. A pod policy file that fails validation
    **MUST** fail closed via the exact same path requirement 7 already describes, attributed to
-   that file. `docket policies list|test|validate` **MUST** accept `--pod <p>` to fold that pod's
-   directory into the files considered; omitting `--pod` **MUST** leave `docket policies list`'s
-   output byte-identical to before this requirement.
+   that file. `docket pod policies|check` **MUST** resolve the pod as every pod command does
+   (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) and fold that pod's
+   directory into the files considered; outside any pod they **MUST** see the global set only.
 
 ### Policy format v1 (short form and structured predicates) (implemented, ROADMAP D-44, ADR 0010)
 
@@ -498,19 +499,19 @@ predicates it adds beside the rendered text.
    `edges/adapters/system.py::git_current_branch` over `ctx.roots[0]` (`""` with no roots) — and
    pass it as `policy_eval_detail`'s `call`. This is the only change this requirement makes to
    that function.
-7. `docket policies test <hook> <role> "<text>"` **MUST** accept repeatable `--arg key=value`
+7. `docket pod check "<text>" --role <role> [--hook <hook>]` **MUST** accept repeatable `--arg key=value`
    flags building a `ToolCallFacts` (`branch_of` always `""` in a dry run, since there is no
    worktree to read one from) passed to the evaluation, for both the `exec`-kind path
    (`evaluate_tool_call`, `args = {"command": text, **call_args}`) and the declarative-only path
-   (`policy_eval_detail(..., call=...)`) — so `docket policies test pre_tool_call implementer ""
+   (`policy_eval_detail(..., call=...)`) — so `docket pod check "" --role implementer
    --tool write --arg path=.github/x.yml` reports the verdict a `when.path` predicate on `write`
    would give a live call, with an empty `<text>` accepted (a predicate-only test has no rendered
    text to check).
 8. Every shipped template under `templates/policies/` **MUST** be short-form YAML; behaviour
    (id, pattern, applies-to, action, message) **MUST** be unchanged from the JSON it replaces —
    proven by the existing policy suite passing unmodified in substance (only the installed file's
-   *extension* is a visible difference, e.g. `docket policies init` now reports `installed:
-   block-destructive.yaml`).
+   *extension* is a visible difference, e.g. the installed file is
+   `block-destructive.yaml`).
 
 ### Predicate plugins (implemented, ADR 0010)
 
@@ -559,11 +560,11 @@ it rewrite its own gate for the next turn.
    field, `ctx.roots[0]` when the call has roots, else `""`) through to a plugin's
    `PolicyContext.worktree_root` unchanged; this is the only change this requirement makes to
    that function.
-7. `docket plugins list [--pod <p>]` **MUST** print every predicate `discover` returns for that
+7. `docket pod policies --plugins [--pod <p>]` **MUST** print every predicate `discover` returns for that
    scope -- name, scope, file, sha256 -- global first, then the pod's own; `"No plugins
    applied."` when empty. A predicate present only under a codebase's own `.docket/plugins/`
    **MUST NOT** appear: only `PLUGINS_DIR` and a pod's own overlay are ever searched.
-8. `docket pod <p> apply` **MUST** copy a recipe's `plugins/*.py` into that pod's own
+8. `docket pod apply` **MUST** copy a recipe's `plugins/*.py` into that pod's own
    `pod_config_dir(project)/plugins`, by sha256 (an installed copy with the same hash is left
    alone, any other content is replaced) -- exactly the same by-hash copy `apply` already gives
    policies. A later edit to the codebase's own copy **MUST** change nothing until the operator
@@ -1158,24 +1159,20 @@ POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (beare
 # approval store.
 ```
 
-### `docket policies` command (implemented, ROADMAP Phase 15 G-2)
+### `docket pod policies` and `docket pod check` commands (implemented, ROADMAP Phase 15 G-2)
 
 ```bash
-docket policies list [--pod <p>]            # MUST list installed policies (id/hook/action/description);
-                                             #   --pod folds that pod's own policy directory in too
-                                             #   (ROADMAP P27-2); omitted, output is unchanged
-docket policies show <id>                   # MUST print one installed policy's raw JSON
-docket policies init                        # MUST seed $POLICIES_DIR from the shipped templates
-                                             #   (idempotent; same producer first init uses)
-docket policies test <hook> <role> "<text>" [--tool <name>] [--pod <p>]
+docket pod policies [<id>] [--json] [--plugins] [--pod <p>]
+                                             # MUST list installed policies (id/hook/action/description)
+                                             #   or, with an id, print that policy's raw JSON; a pod's
+                                             #   own policy directory is folded in (ROADMAP P27-2);
+                                             #   --plugins adds the predicate plugins section
+docket pod check "<text>" --role <role> [--hook <hook>] [--tool <name>] [--arg key=value] [--pod <p>]
                                              # MUST dry-run the evaluator (no trace emitted);
                                              #   --tool picks the built-in tool whose kind decides
                                              #   whether the command classifier applies (default bash);
-                                             #   --pod scopes the evaluation to that pod's own
-                                             #   policies too (ROADMAP P27-2)
-docket policies validate [id|file.json] [--pod <p>]
-                                             # MUST schema-check installed policies, one, or a file;
-                                             #   --pod also checks that pod's own directory
+                                             #   the pod's own policies are folded in (ROADMAP P27-2)
+docket pod validate [PATH]                   # MUST schema-check a policy file, or a directory's policies/
 ```
 
 ## Examples
@@ -1566,6 +1563,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.36.0 (2026-10-08)
+
+- `docket pod check "<text>" --role R [--hook H] [--tool T]` is the dry-run evaluator; `docket pod policies [id] [--json] [--plugins]` lists and shows (plugins are its section); `docket pod validate` checks a policy file or directory. `policies init` and `policies validate` of the installed set are gone; `docket setup` installs the baseline.
 
 ### Version 0.35.0 (2026-10-07)
 

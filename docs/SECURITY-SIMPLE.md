@@ -136,7 +136,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - **Simple git diff, that's it**
 
 ### Layer 4: Guardrail Policies (Automatic, on real dispatch tasks)
-- A small set of installed policies (`docket policies`) scan text at two points in docket's own
+- A small set of installed policies (`docket pod policies`) scan text at two points in docket's own
   pod-dispatch pipeline — not a raw Telegram chat, only work that goes through
   `docket pod <p> delegate`/`dispatch`:
   - **Once**, when a task is delegated — before it's even added to the queue.
@@ -144,7 +144,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - A match can `allow`/`warn` (just logged), `redact` (scrub it before it's stored), `block`
   (reject the task, or stop the pipeline where it tripped), or — enqueue-time only —
   `require_approval` (routes into the approval store above).
-- `docket policies list` to see what's installed, `docket policies test <hook> <role> "<text>"`
+- `docket pod policies` to see what's installed, `docket pod check <hook> <role> "<text>"`
   to dry-run one without touching anything real. Add `--tool <name>` when testing `pre_tool_call`
   against something other than `bash` (the default), so a non-shell tool isn't misclassified
   against the command allowlist.
@@ -334,7 +334,7 @@ grep "Never push" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
 ```bash
 # Only if the pod has a Reviewer (replace "myapp" with your project name)
 grep "Read-only" ~/.docket/workspaces/projects/myapp-reviewer/SOUL.md
-docket roles show reviewer   # its denied_tools are what actually enforce it
+docket pod roles reviewer   # its denied_tools are what actually enforce it
 ```
 
 ### Test 3: Review Agent Commits
@@ -427,7 +427,7 @@ None of this needs a human to run day to day — it's here for when you want to 
 ```bash
 docket gates status       # gate always active; isolation mode
 docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
-docket policies list      # installed guardrail policies
+docket pod policies      # installed guardrail policies
 docket doctor             # catches a broken policy file before a live turn does, and more
 docket approve            # list pending approvals in docket's own store
 docket audit verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened

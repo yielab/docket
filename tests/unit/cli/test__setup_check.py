@@ -861,7 +861,7 @@ class TestPodSyncCheck:
         out = capsys.readouterr().out
         assert "✗" in out
         assert "demo-lead" in out
-        assert "docket pod <project> sync" in out
+        assert "docket pod apply" in out
         # Advisory only, same as `_check_template_version`.
         assert issues == 0
 

@@ -3,7 +3,7 @@
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the user-overlay pattern (mirrors `docket-models.json`:
 built-ins + starter library overlaid by `~/.docket/docket-roles.json`, user wins by name),
-`docket roles` list/show/add/validate, and that reviewer/tester gate-contract data resolved
+`docket pod roles` list/show and `pod apply <file>`, and that reviewer/tester gate-contract data resolved
 through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
 constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ from docket.core import archetypes as arch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 
-SUBJECT = "docket.cli._roles"
+SUBJECT = "docket.core.archetypes"
 
 
 @pytest.fixture
@@ -29,6 +30,11 @@ def registry_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "docket-roles.json"
     monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", path, raising=True)
     return path
+
+
+@pytest.fixture
+def seeded_pod() -> str:
+    return "demo"
 
 
 class TestClosedEnums:
@@ -285,49 +291,33 @@ class TestRegistryOverlay:
 
 
 class TestRolesCli:
-    def test_list_exits_zero(self, registry_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        from docket.cli._roles import run_roles
+    @staticmethod
+    def _run(*args: str) -> Any:
+        from typer.testing import CliRunner
 
-        rc = run_roles("list")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "lead" in out
-        assert "researcher" in out
+        from docket.cli import _pod
 
-    def test_show_unknown_fails(
-        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli._roles import run_roles
+        return CliRunner().invoke(_pod.pod_app, list(args))
 
-        rc = run_roles("show", args=["nonexistent"])
-        assert rc == 1
+    def test_list_exits_zero(self, registry_file: Path) -> None:
+        result = self._run("roles")
+        assert result.exit_code == 0
+        assert "lead" in result.output
+        assert "researcher" in result.output
 
-    def test_show_known_prints_definition(
-        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli._roles import run_roles
+    def test_show_unknown_fails(self, registry_file: Path) -> None:
+        assert self._run("roles", "nonexistent").exit_code == 1
 
-        rc = run_roles("show", args=["tester"])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "tester" in out
-        assert "PASS" in out or "regexes" in out.lower()
+    def test_show_known_prints_definition(self, registry_file: Path) -> None:
+        result = self._run("roles", "tester")
+        assert result.exit_code == 0
+        assert "tester" in result.output
+        assert "PASS" in result.output or "regexes" in result.output.lower()
 
-    def test_validate_with_no_args_validates_whole_registry(
-        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli._roles import run_roles
-
-        rc = run_roles("validate")
-        assert rc == 0
-
-    def test_add_then_list_then_validate(
-        self, registry_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli._roles import run_roles
-
+    def test_apply_then_list(self, registry_file: Path, tmp_path: Path, seeded_pod: str) -> None:
         p = tmp_path / "producer.yaml"
         p.write_text(
+            "kind: role\n"
             "name: producer\n"
             "version: 1\n"
             "scope: pod\n"
@@ -339,24 +329,15 @@ class TestRolesCli:
             'agentsTemplate: "hi ${project}"\n',
             encoding="utf-8",
         )
-        rc = run_roles("add", args=[str(p)])
-        assert rc == 0
-        capsys.readouterr()
+        assert self._run("apply", str(p), "--pod", seeded_pod).exit_code == 0
+        assert "producer" in self._run("roles", "--pod", seeded_pod).output
 
-        rc = run_roles("list")
-        out = capsys.readouterr().out
-        assert "producer" in out
-
-        rc = run_roles("validate")
-        assert rc == 0
-
-    def test_add_rejects_invalid_scope(
-        self, registry_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    def test_apply_rejects_invalid_scope(
+        self, registry_file: Path, tmp_path: Path, seeded_pod: str
     ) -> None:
-        from docket.cli._roles import run_roles
-
         p = tmp_path / "bad.yaml"
         p.write_text(
+            "kind: role\n"
             "name: bad\n"
             "version: 1\n"
             "scope: galaxy\n"
@@ -368,27 +349,12 @@ class TestRolesCli:
             'agentsTemplate: "hi ${project}"\n',
             encoding="utf-8",
         )
-        rc = run_roles("add", args=[str(p)])
-        assert rc == 1
+        assert self._run("apply", str(p), "--pod", seeded_pod).exit_code == 1
 
-    def test_unknown_subcommand_shows_help(
-        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli._roles import run_roles
+    def test_list_rejects_unknown_flag(self, registry_file: Path) -> None:
+        """A flag `roles` does not declare is a usage error, never a silently ignored token."""
+        assert self._run("roles", "--bogus").exit_code == 2
 
-        rc = run_roles("bogus")
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "docket roles" in out
-
-    def test_list_rejects_unknown_flag(
-        self, registry_file: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """`roles` documents no flags at all, so `--json` reaching `list` must be a usage error,
-        not a silently ignored token that still prints the table and exits 0."""
-        from docket.cli._roles import run_roles
-
-        rc = run_roles("list", args=["--json"])
-        err = capsys.readouterr().err
-        assert rc == 2
-        assert "--json" in err
+    def test_list_json_names_each_archetype(self, registry_file: Path) -> None:
+        rows = json.loads(self._run("roles", "--json").output)
+        assert "lead" in {r["name"] for r in rows}

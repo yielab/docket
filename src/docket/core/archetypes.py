@@ -31,8 +31,8 @@ resource budget cannot drift apart; defaults to 6000 when unset.
 
 User archetypes overlay built-ins via `~/.docket/docket-roles.json` (same
 pattern as `docket-models.json`), tolerant on load (a malformed entry is
-skipped, never crashes a live fleet; `docket roles validate` explains why).
-The authoring format is a standalone YAML file (`docket roles add
+skipped, never crashes a live fleet; `docket pod validate` explains why).
+The authoring format is a standalone YAML file (`docket pod apply
 <file.yaml>`), merged into the JSON overlay. Built-in/starter archetypes stay
 Python literals here, matching the project's convention of generating
 workspace prose inline rather than loading shipped template files.
@@ -121,7 +121,7 @@ class RoleArchetype:
     agents_template: str  # open prose; $-style variables, see `render`
     gate_contract: GateContract  # closed kind, see GateContract
     tool_profile: str  # open prose (not enforced; descriptive only)
-    description: str = ""  # open one-line prose, shown by `docket roles list/show`
+    description: str = ""  # open one-line prose, shown by `docket pod roles`
     # This role's context-compiler token budget — see
     # the module docstring's "token_budget" paragraph and `core/context.py`.
     token_budget: int = 6000
@@ -169,7 +169,7 @@ class RoleArchetype:
             raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
 
     def to_wire(self) -> dict[str, Any]:
-        """Serialize to the camelCase wire format (`docket roles show`, overlay persistence)."""
+        """Serialize to the camelCase wire format (`docket pod roles`, overlay persistence)."""
         doc: dict[str, Any] = {
             "name": self.name,
             "version": self.version,
@@ -446,7 +446,7 @@ BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "teste
 #
 # These ship as data, proving "a research pod, a content pod, an ops pod" are
 # expressible without a new hardcoded role string anywhere in core/pod.py or
-# cli/_pod.py. They participate in `docket roles`/`normalize_role`/`member_id`,
+# cli/_pod.py. They participate in `docket pod roles`/`normalize_role`/`member_id`,
 # in pod composition presets (`core/blueprints.py`'s research/content/ops
 # blueprints), and — via `gate_contract` — in the dispatch executor's gate
 # resolution (`core/orchestrator.py`).
@@ -650,7 +650,7 @@ class ArchetypeRegistry:
 
     def source_of(self, name: str) -> str:
         """'built-in' | 'starter' | 'user' | 'pod:<project>' | '' (unknown) — for
-        `docket roles list`. A role the pod overlay defines is reported distinctly from
+        `docket pod roles`. A role the pod overlay defines is reported distinctly from
         the global 'user' overlay, even when both define the same name (pod wins)."""
         if name not in self.archetypes:
             return ""
@@ -835,7 +835,7 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
     """Validate a candidate archetype definition without raising. Returns a list of
-    human-readable error strings (empty = valid). Used by `docket roles validate`/`add`
+    human-readable error strings (empty = valid). Used by `docket pod validate` and `docket pod apply`
     to give a full error report instead of stopping at the first problem."""
     errors: list[str] = []
     try:
@@ -868,7 +868,7 @@ def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
 
 
 def parse_yaml_file(path: str) -> dict[str, Any]:
-    """Parse a standalone archetype YAML file (the `docket roles add <file>` input)."""
+    """Parse a standalone archetype YAML file (the `docket pod apply <file>` input)."""
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
     except ImportError:

@@ -86,14 +86,6 @@ app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod.cmd_pod)
 app.command(
-    "pipeline",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_pipeline)
-app.command(
-    "roles",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_roles)
-app.command(
     "config",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_pod_config.cmd_config)
@@ -105,23 +97,10 @@ app.command("exec")(_exec.cmd_exec)
 app.add_typer(_log.log_app)
 app.command("start")(_service.cmd_start)
 app.command("stop")(_service.cmd_stop)
-app.command("validate")(_pod_config.cmd_validate)
-app.command(
-    "plugins",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_plugins)
-app.command(
-    "recipes",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_recipes)
 app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )(_task.cmd_trace)
-app.command(
-    "policies",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)(_pod_config.cmd_policies)
 app.command("approve")(_task.cmd_approve)
 app.command("deny")(_task.cmd_deny)
 app.command(
@@ -131,3 +110,11 @@ app.command(
 app.command("inbox")(_inbox.cmd_inbox)
 app.add_typer(_task.task_app)
 app.command("run")(_run.cmd_run)
+_pod.pod_app.command("apply")(_pod_config.cmd_apply)
+_pod.pod_app.command("export")(_pod_config.cmd_export)
+_pod.pod_app.command("validate")(_pod_config.cmd_validate)
+_pod.pod_app.command("plan")(_pod_config.cmd_plan)
+_pod.pod_app.command("check")(_pod_config.cmd_check)
+_pod.pod_app.command("recipes")(_pod_config.cmd_recipes)
+_pod.pod_app.command("roles")(_pod_config.cmd_roles)
+_pod.pod_app.command("policies")(_pod_config.cmd_policies)

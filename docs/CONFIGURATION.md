@@ -53,7 +53,7 @@ noted.
 ├── port-allocations.json               first pod    per-pod port range bases
 ├── audit.log                           first change hash-chained record of every mutation
 ├── policies/*.yaml                     init         6 baseline guardrail policies (JSON also loads)
-├── docket-roles.json                   roles add    your custom role archetypes
+├── docket-roles.json                   you          your custom role archetypes (global scope)
 ├── docket-mcp-servers.json             mcp servers  external MCP tool servers
 ├── docket-exporters.json               exporters    your kind: exporter overrides (built-ins ship in the wheel, all off)
 ├── exporters-health.json               first export delivery counters per enabled exporter
@@ -148,7 +148,7 @@ context passes the budget.
 |---|---|
 | `WORKFLOW_AUTO.md` | The startup contract for an agent reading its workspace by hand. A live turn replaces it with the runtime contract above. Editing it changes nothing a docket turn sees. |
 | `memory/YYYY-MM-DD.md` | Input to `docket maintain distill` (and to `clean`/`reset`, which distill first). Not in the prompt. Distill to move its content into `MEMORY.md`, which is. |
-| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--file` or bound with `pod config set pipeline` (see §3.5). |
+| `workflows/*.yaml` in a workspace | Nothing reads it. Pipelines are passed with `--pipeline` or bound with `pod config set pipeline` (see §3.5). |
 
 ### Who decides what: the ownership map
 
@@ -163,9 +163,9 @@ global) — the same three `docket config explain <agent> --json` labels per val
 | What needs doing? | **Task** | pod | the Lead's `TASK_LIST.json` | `docket pod <p> delegate` |
 | Which team shape does a new pod get? | **Blueprint** | pod (creation-time only) | Lead meta `blueprint` | `docket init --blueprint` |
 | Who works a task, in what order, behind which quality gates, with how much rework? | **Pipeline** | global \| pod | the blueprint's built-in default; a YAML file for a custom route, run once or bound as the pod default | `docket pipeline validate/plan/run`, `docket pod <p> config set pipeline` |
-| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket roles [--pod <p>]`, `docket pod <p> add <role>` |
+| How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| global \| pod | built-ins + `~/.docket/docket-roles.json` + this pod's own `config/roles.json` | `docket pod roles [--pod <p>]`, `docket pod <p> add <role>` |
 | What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `pod config set projectInstructions CONTRIBUTING.md` |
-| What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket policies [--pod <p>]` |
+| What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/policies/*.yaml|json` + this pod's own `config/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket pod policies [--pod <p>]` |
 | What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod <p> config get/set/unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `set-verify` |
 
 **A pod's own overlay lives at `~/.docket/workspaces/pods/<pod>/config/`** (`docket.config.pod_config_dir(project)`) — `roles.json` (same shape as the global `docket-roles.json`) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the global layer for that pod alone, never shared with any other pod. `docket doctor` flags a malformed entry in either file, naming the pod.
@@ -176,17 +176,17 @@ Two boundaries worth stating because they are easy to get backwards:
   and *how the output is judged* (mechanical exit code, verdict marker, human approval). What the
   agent is told comes from its role template and workspace files (§2), plus the task text.
 - **Every pod always has a pipeline.** `docket pod <p> dispatch` runs the blueprint's default with
-  no setup. For a *custom* route: `docket pipeline validate` checks a file, `plan` shows it against
-  the real roster without spending tokens, `run --file` executes it once by hand, and
+  no setup. For a *custom* route: `docket pod validate` checks a file, `docket pod plan --pipeline` shows it
+  against the real roster without spending tokens, `docket run --pipeline` executes it once by hand, and
   `docket pod <p> config set pipeline <file>` **binds it as the pod's default for every trigger**
   (dispatch, serve sweep, schedules, webhooks, MCP). Binding validates and plans the file first,
   stores a docket-owned copy with its hash, and a later hash mismatch refuses dispatch loudly.
-  `docket pipeline plan <p>` prints a `Source:` line naming which route would run.
+  `docket pod plan <p>` prints a `Source:` line naming which route would run.
 
 **The task itself** arrives as the turn's user message, built by dispatch: the task description,
 an instruction line, and the previous hops' output trimmed to the role's `tokenBudget`. The
 instruction is, in order of precedence: the pipeline step's own `instructions` (which may
-interpolate declared `${variables}`, fed by `docket pipeline run --var key=value` or the webhook
+interpolate declared `${variables}`, fed by `docket run --var key=value` or the webhook
 body), the built-in role's hardcoded line, or a custom role's `hopInstruction` (declared, or
 generated from its `gateContract` so a verdict role always knows its marker). Workspace files are
 not re-read into it.
@@ -281,7 +281,7 @@ member it gates.
 `docket pod <p> config set <key> <value>` validates before writing and is audited as
 `pod.config`; `config unset` restores the default. A hand-edited value that fails validation is
 not ignored: `config get` and `dispatch` both refuse, naming the key. Confirm with
-`docket pipeline plan <p>`, which prints the resolved rework budget and steps.
+`docket pod plan <p>`, which prints the resolved rework budget and steps.
 
 ```json
 {
@@ -300,11 +300,11 @@ not ignored: `config get` and `dispatch` both refuse, naming the key. Confirm wi
 Roles are data. A role archetype carries its `SOUL.md`/`AGENTS.md` templates, the model class it
 resolves to, the tools it is denied, its gate contract and its context budget. Built-ins (`lead`,
 `implementer`, `reviewer`, `tester`, plus `researcher`, `analyst`, `writer`, `critic`, `operator`,
-`monitor`) cannot be edited, only shadowed by name. See all of them with `docket roles list`, and
-dump one as a starting point with `docket roles show reviewer`.
+`monitor`) cannot be edited, only shadowed by name. See all of them with `docket pod roles`, and
+dump one as a starting point with `docket pod roles reviewer`.
 
 ```yaml
-# security-reviewer.yaml — the short form; `docket roles show reviewer` dumps the canonical
+# security-reviewer.yaml — the short form; `docket pod roles reviewer` dumps the canonical
 # form this normalizes to (role-archetypes.spec.md, "Wire format")
 kind: role
 name: security-reviewer
@@ -335,8 +335,8 @@ Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 ```
 
 ```bash
-docket roles validate security-reviewer.yaml    # checks fields and dry-renders both templates
-docket roles add security-reviewer.yaml         # -> ~/.docket/docket-roles.json
+docket pod validate security-reviewer.yaml    # checks fields and dry-renders both templates
+docket pod apply security-reviewer.yaml         # -> ~/.docket/docket-roles.json
 docket pod myapp add security-reviewer          # provisions myapp-security-reviewer
 ```
 
@@ -364,7 +364,7 @@ software|research|content|ops|agentic-product`. Only these five exist, and the c
 `blueprint` in the Lead's meta. Dispatch uses the blueprint's built-in pipeline.
 
 **Pipeline files** declare your own hop order, gates and rework edges. This one runs the custom role
-from §3.4, in the short form — `docket pipeline validate` normalizes it to the canonical form
+from §3.4, in the short form — `docket pod validate` normalizes it to the canonical form
 `pipeline-format.spec.md` defines, which is what `plan`/`run` actually execute:
 
 ```yaml
@@ -383,9 +383,9 @@ steps:
 ```
 
 ```bash
-docket pipeline validate pipeline.yaml         # structure only, no pod needed
-docket pipeline plan myapp --file pipeline.yaml # resolves against the real roster, runs nothing
-docket pipeline run myapp --file pipeline.yaml  # executes; same budget/gates/traces/runs as dispatch
+docket pod validate pipeline.yaml              # structure only, no pod needed
+docket pod plan --pipeline pipeline.yaml       # resolves against the real roster, runs nothing
+docket run --pipeline pipeline.yaml            # executes; same budget/gates/traces/runs as dispatch
 ```
 
 Short form (unknown keys are rejected at every level; `pipeline-format.spec.md`, "Short form",
@@ -406,7 +406,7 @@ form):
   line becoming its outcome.
 
 One rule to plan around: a **bound** pipeline (`pod config set pipeline`) is treated like a
-caller-supplied `--file` — the pod's `maxReworkCycles` setting never patches it, so the file's own
+caller-supplied `--pipeline` — the pod's `maxReworkCycles` setting never patches it, so the file's own
 rework edges are what run. Only the blueprint/built-in default is patched by that setting.
 
 ### 3.6 Govern what agents may do
@@ -505,19 +505,19 @@ How policies combine and what they ignore:
   unknown action evaluates as `block` within its readable scope (the hook and roles it declares,
   or every hook and role when the file itself will not parse), attributed to the file so you know
   what to fix; `docket doctor` names it before a live turn does. After every edit, run
-  `docket policies test` with a string the policy must match, for example
-  `docket policies test pre_tool_call implementer "make deploy"`, and confirm the expected result.
+  `docket pod check` with a string the policy must match, for example
+  `docket pod check "make deploy" --role implementer`, and confirm the expected result.
 - **`redact`** uses docket's generic secret redactor, not your pattern.
 - **Ignored fields.** `description` is documentation only.
 
 **Extending with a predicate plugin.** The closed `when` vocabulary above covers most policies;
 for a check no built-in predicate expresses, `~/.docket/plugins/` (operator scope) or a pod's own
-`config/plugins/` (copied there by `docket pod <p> apply`, never read live from a codebase) can
+`config/plugins/` (copied there by `docket pod apply`, never read live from a codebase) can
 hold a small Python file registering a named predicate, referenced as `when: {plugin: <name>,
 with: {...}}` — `then:` still decides the action. Every predicate plugin is loaded only from
 operator/pod scope (never the agent's own workspace), audited by name and file hash, and a
 plugin that raises, times out, or returns a non-`bool` fails **closed** (`deny`), never open.
-`docket plugins list` shows each one's name, scope, file and hash. See
+`docket pod policies --plugins` shows each one's name, scope, file and hash. See
 [ADR 0010](adr/0010-config-format-v1-and-extension-points.md) §4 for the trust boundary this is
 built around.
 
@@ -612,8 +612,8 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 
 A recipe is a directory in the same shape as a repository's `.docket/` (§3.11): `pod.yaml`,
 `roles/`, `pipeline.yaml`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
-brings is derived from what the directory holds, never declared**: `docket validate <dir>`,
-`docket pod <p> apply --dry-run`, `docket init --recipe` and `docket recipes show` all print the
+brings is derived from what the directory holds, never declared**: `docket pod validate <dir>`,
+`docket pod apply --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
 same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Eighteen
 ship with docket, of five kinds; the full page, generated from the recipes themselves, is
 [the recipe library](recipes.md).
@@ -627,8 +627,8 @@ ship with docket, of five kinds; the full page, generated from the recipes thems
 | Tooling | `code-intel` | MCP servers for the pod (structural search, read-only language intelligence) |
 
 ```bash
-docket recipes list                        # every recipe reachable by name, what each brings
-docket recipes show tdd                    # description, summary, the recipe's own README
+docket pod recipes                        # every recipe reachable by name, what each brings
+docket pod recipes tdd                    # description, summary, the recipe's own README
 docket init --recipe secure-build          # a new pod for this repository, recipe applied after provisioning
 docket pod myapp apply git-safety          # a policy pack onto a pod that already exists
 docket pod myapp apply ./team-recipes/ci   # a directory of your own, same shape
@@ -661,7 +661,7 @@ git add .docket && git commit -m "Add: the myapp agent team"
 ```
 
 Two pipelines applied in sequence replace each other (the plan says `replace`); policies and
-roles accumulate. `docket pod <p> export <dir>` writes the reverse of `apply`: this pod's own
+roles accumulate. `docket pod export <dir>` writes the reverse of `apply`: this pod's own
 scope, in the same directory shape and the short form, with a `# yaml-language-server:` header
 resolved against the `config-v1` JSON Schemas it copies into `<dir>/.schemas/` (the same schemas
 `scripts/gen_config_schemas.py` publishes under `docs/contracts/config-v1/`).
@@ -719,7 +719,7 @@ one. The loop you run each time the team changes:
 ```bash
 docket pod myapp export             # first time: write what the pod has now into ./.docket/
 $EDITOR .docket/pipeline.yaml       # change the route, a rule, a role
-docket validate                     # every document, invalid files first, exit 1 on any error
+docket pod validate                     # every document, invalid files first, exit 1 on any error
 docket pod myapp apply --dry-run    # the plan: add / replace / skip per item
 docket pod myapp apply              # write it (one pod.apply audit entry when something changed)
 git add .docket && git commit       # the team is versioned with the code
@@ -730,8 +730,8 @@ Three commands read it, and nothing else does:
 | Moment | Command | What happens |
 |---|---|---|
 | Creating the pod | `docket init` (with `.docket/` present) or `docket init --recipe <name\|dir>` | every document is validated **before** the pod is provisioned (an error exits 1 naming file, line and field, and provisions nothing); after provisioning, the directory is applied exactly as `pod apply` would, with one `pod.apply` audit entry. `--no-apply` provisions only. `--recipe` and a present `.docket/` together are refused: one source of record. |
-| Re-applying after a change | `docket pod <p> apply` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
-| Writing it back | `docket pod <p> export` (defaults to `<codebase>/.docket/`; refuses a non-empty one without `--force`) | the pod's own scope in the short form, ready to commit |
+| Re-applying after a change | `docket pod apply` (defaults to `<codebase>/.docket/`) | additive and idempotent: a second run plans every item `skip`; `--dry-run` shows the plan |
+| Writing it back | `docket pod export` (defaults to `<codebase>/.docket/`; refuses a non-empty one without `--force`) | the pod's own scope in the short form, ready to commit |
 
 Rules worth knowing:
 
@@ -743,7 +743,7 @@ Rules worth knowing:
   with the global ones under the most-restrictive rule; a global `block` stays a block.
 - **A credential value never appears.** Provider documents and policies carry names; keys live in
   `docket keys`.
-- **Validate from the repo root** with `docket validate` (no argument: `.docket/` when present).
+- **Validate from the repo root** with `docket pod validate` (no argument: `.docket/` when present).
   Commit `.schemas/` if you want editor autocompletion offline; `export` regenerates it.
 - **A step may name its model** (`model: cheap|strong|<provider/id>`): it applies to that hop
   only and is never written to the agent's own metadata, so `docket profile` still shows the
@@ -1084,8 +1084,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `fleet.json` | `agents[{id}]`, `bindings[{agentId,channel,peerKind,peerId}]`, `security{isolationMode,networkMode}` | init, `wire`, `gates` | isolation and network mode (`isolationMode`, `networkMode`), Telegram auth (`bindings`) | careful. Use commands where they exist. |
 | `docket-providers.json` | `providers{<name>: kind: provider document}` (fields in "Provider catalog" above) | `models provider add/remove` | endpoint resolution (`baseUrl`, `dialect`, `auth`, `models[].id/contextWindow/maxTokens`) | via `models provider add/remove/export`. Malformed entries are named by `docket doctor`. |
 | `docket-models.json` | `default`, `roles{role: provider/model}`, `rankAnchors{economy,standard,premium}` | `models set/preset/reset` | policy resolution for agents following policy; `economy`/`standard` back `modelClass` cheap/strong | yes, but prefer `models set`. Malformed entries are ignored silently. |
-| `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | `roles add` | tool narrowing, hop budget, gate contract; templates at provisioning | via `roles add` |
-| `policies/*.yaml\|json` | one policy per file (§3.6) | `policies init`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
+| `docket-roles.json` | `{"roles": {name: archetype}}` (fields in §3.4) | you | tool narrowing, hop budget, gate contract; templates at provisioning | by hand; `pod apply <file>` writes the pod's own overlay |
+| `policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `docket-mcp-servers.json` | `servers[{name,command,args,env,timeout,kind,tools,isolate}]` | `mcp servers add/remove` | every turn | via command |
 | `docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `exporters enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
 | `exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `exporters show`, `doctor` | no |
@@ -1159,7 +1159,7 @@ rest of the original list; what remains below is the honest boundary, not a back
 - **`WORKFLOW_AUTO.md` and `memory/` are not in the prompt** (§2). Edit `SOUL.md`/`MEMORY.md`.
 - **Your prompt text belongs in `INSTRUCTIONS.md`.** It is operator-owned (docket never writes
   it), composes right after `SOUL.md`, and survives `set-verify` and `pod sync`; generated files
-  are re-rendered wholesale by `docket pod <p> sync` when a template or archetype changes
+  are re-rendered wholesale by `docket pod apply` when a template or archetype changes
   (`--dry-run` shows the diff, doctor flags stale members).
 - **A skipped file is silent on the live path, but doctor names it.** An invalid schedule spec,
   model-policy entry or overlay role — global or pod-scoped — never crashes a fleet — the loader

@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.23.0
+**Version**: 1.23.1
 **Status**: Implemented. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
 takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
 `resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
@@ -8,7 +8,7 @@ takes an optional `project` so a pod-scoped role's declared `tokenBudget` is hon
 instead of duplicating its `policy` id. **P30-4** retired `editRights` (ADR 0012 §2 rule 7): the archetype schema has no such field, and
 `deniedTools` is its only capability statement — see "Archetype schema" requirement 5 and
 "Per-role tool sets" below. **P27-6** gives a recipe's own role YAML a second consumer,
-`docket pod <p> apply <dir>` (`core/pod_apply.py`), alongside the existing `docket roles add` —
+`docket pod apply <dir>` (`core/pod_apply.py`), alongside `docket pod apply <file>` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
 remaining built-in exemption in "Hop
 instructions": the `lead` archetype now carries a real `hopInstruction` (the pre-existing
@@ -16,7 +16,7 @@ hardcoded text, unchanged), served through `resolve_hop_instruction` like any cu
 pipeline step's own `instructions` now overrides the Lead's hop message too — see "Hop
 instructions" below. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
 policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
-existing `docket roles`/`docket pod`/`docket policies` CLI surface; a recipe's own role YAML is
+existing `docket pod roles`/`docket pod`/`docket pod policies` CLI surface; a recipe's own role YAML is
 data validated exactly like a hand-authored one, and none of the roles the shipped recipes
 target (`operator`, `researcher`, `analyst`, `writer`, `critic`) needed a new archetype field to
 support this. **P26-9** removed a live contradiction from the four built-in and six
@@ -55,7 +55,7 @@ that closed set: a role's name, scope, model class, identity prose, gate contrac
 and tool profile are now data — built-in archetypes reproduce the four legacy roles
 byte-identical, a starter library ships six more (`researcher`, `analyst`, `writer`, `critic`,
 `operator`, `monitor`), and a user can define or override an archetype via a YAML file
-(`docket roles add`).
+(`docket pod apply <file>`).
 
 ## Scope
 
@@ -82,12 +82,12 @@ This specification covers:
   without replacing it
 - How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`
   resolve against this registry instead of a hardcoded list
-- The `docket roles list/show/add/validate` CLI surface
+- The `docket pod roles` CLI surface
 - Shipped recipe bundles (`templates/recipes/<name>/`, P26-20): pre-authored role YAML(s) for a
-  bundle's own custom role, validated by the same `docket roles validate`/`add` this spec already
-  documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
+  bundle's own custom role, validated by the same `docket pod validate` and installed by the same
+  `docket pod apply <file>` this spec already documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
   `pipeline-format.spec.md`'s document shape, not this spec's, and an optional policy pack is
-  plain policy data (see `docket policies validate`), owned by neither spec
+  plain policy data (see `docket pod validate`), owned by neither spec
 
 This specification does NOT cover:
 
@@ -144,7 +144,7 @@ This specification does NOT cover:
    one-to-one (the `tester` archetype was `"read-only"` yet kept `bash`, since observing
    behaviour requires running it). `deniedTools` is the archetype schema's only capability
    statement; nothing computes it from anything else. `editRights` gets no special handling
-   anywhere (`docket validate` prints no note for it).
+   anywhere (`docket pod validate` prints no note for it).
 6. `name` **MUST** match `^[a-z][a-z0-9-]*$` (lowercase letters/digits/hyphens, starting with a
    letter). `version` **MUST** be a positive integer. `soulTemplate`/`agentsTemplate` **MUST NOT**
    be blank.
@@ -173,10 +173,9 @@ This specification does NOT cover:
    rely on `role`, `memberId`, `sessionKey`, `stack`, `codebaseOrConfigured`, `codebaseOrIt`, and
    `requiredStartupFile` — supplied by `core/pod_provisioning.py`'s `_render_context` for every
    pod member, but not part of the publicly documented minimum a user archetype is guaranteed.
-3. `docket roles validate` **MUST** dry-run render both templates against a representative sample
+3. `docket pod validate <file>` **MUST** dry-run render both templates against a representative sample
    variable set and report any unknown-variable error, so an authoring mistake is caught before
-   `docket roles add` persists it (or, for a live registry entry, is caught by an operator
-   proactively).
+   `docket pod apply` persists it.
 
 ### Built-in archetypes and legacy fidelity
 
@@ -345,7 +344,7 @@ depended entirely on its own SOUL template to know its marker convention or task
 
 1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `critic`, `operator`,
    `monitor` (`core/archetypes.py`'s `STARTER_ARCHETYPES`). Each **MUST** pass
-   `docket roles validate` (structural validation + a dry-run template render).
+   `docket pod validate` (structural validation + a dry-run template render).
 2. Each starter archetype resolves through its own name as the model-policy key (see
    "Role→model policy integration").
 3. Provisioning a starter role into a live pod (e.g. `docket pod <project> add researcher`) works
@@ -375,25 +374,25 @@ to rediscover the same pitfalls.
    ships no role YAML at all, since one would just restate data this registry already has; an
    optional policy pack **is** read and applied (`pod-blueprints.spec.md`'s "Pod manifests: apply"
    requirement 3) — no manual copy into the fleet-wide policy directory remains.
-3. A recipe's own role YAML **MUST** pass `docket roles validate` unmodified — a recipe is not a
+3. A recipe's own role YAML **MUST** pass `docket pod validate` unmodified — a recipe is not a
    second archetype format; it is data consumed by the same `add_user_archetype`/`from_wire`
-   this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pipeline validate`
+   this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pod validate`
    (`pipeline-format.spec.md`) and, once the roster its README describes is provisioned, **MUST**
    resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
    its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
-4. Applying a shipped recipe **MUST** be one command, `docket pod <p> apply <dir>`
-   (`pod-blueprints.spec.md`, "Pod manifests: apply"), which composes the pre-existing `docket
-   roles add --pod <p>`/`docket pod <p> add <role>`/`docket pod <p> config set pipeline <file>`
-   writers (a recipe's own roles and its optional policy pack both land in `<p>`'s own pod-scoped
-   directories, never a global one) rather than replacing them — that manual sequence remains
-   valid for a partial or hand-tuned application. A separate `docket recipes` command remains an
-   explicit non-goal.
+4. Applying a shipped recipe **MUST** be one command, `docket pod apply <name|dir>`
+   (`pod-blueprints.spec.md`, "Pod manifests: apply"), which composes the pre-existing role,
+   member and pipeline-binding writers (a recipe's own roles and its optional policy pack both
+   land in the pod's own pod-scoped directories, never a global one) rather than replacing them —
+   `docket pod apply <file>` and `docket pod add <role>` remain valid for a partial or hand-tuned
+   application. `docket pod recipes` lists and shows the library (`pod-blueprints.spec.md`,
+   "Recipe listing").
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
    read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
    archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
    human `approval` gate (`ops-approval`). Each **MUST** carry an integration or unit test that
    loads it from `recipes_dir()` (not a hand-copied re-transcription) and validates it the same
-   way `docket roles validate`/`docket pipeline validate`/`docket policies validate` would.
+   way `docket pod validate` would.
 
 ### Role→model policy integration
 
@@ -451,8 +450,7 @@ to rediscover the same pitfalls.
      has a project context)
    - `core/agent_loop.py`'s `_TurnState.run_compaction` **MUST** pass `self.project` to
      `compact_session`, the only call site in the live code.
-4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod apply` or
-   `docket roles add --pod <p>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
+4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod apply <file>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
    is called; a call without the project argument **MUST** return the built-in value, not the
    pod-scoped override.
 
@@ -475,8 +473,8 @@ to rediscover the same pitfalls.
    (lead/implementer/reviewer/tester) is an explicit operator choice; the byte-identical
    guarantee (see "Built-in archetypes and legacy fidelity") applies to the out-of-the-box state
    with no user overlay present, not to a fleet a user has deliberately customized.
-3. The **authoring** format for a new archetype **MUST** be a standalone YAML file (`docket roles
-   add <file.yaml>`) — "a role becomes a versioned YAML definition." The file is parsed,
+3. The **authoring** format for a new archetype **MUST** be a standalone YAML file (`docket pod apply
+   <file.yaml>`) — "a role becomes a versioned YAML definition." The file is parsed,
    validated, and merged into the JSON-backed overlay via `edges/store.py`'s atomic
    read-modify-write (docket's D-12 single-writer chokepoint for docket-owned JSON) — the same
    boundary every other docket-owned registry file goes through.
@@ -493,36 +491,37 @@ to rediscover the same pitfalls.
    lookup (`core/pod_provisioning.py`'s SOUL.md/AGENTS.md rendering, the pipeline-plan role
    check in `cli/_pod.py`, and the custom-role hop-instruction lookup in `core/dispatch.py`)
    **MUST** resolve through the calling turn's or member's own project, so a pod-scoped override
-   is genuinely enforced end to end, not only visible to `docket roles`. `find_overlay_problems`
+   is genuinely enforced end to end, not only visible to `docket pod roles`. `find_overlay_problems`
    **MUST** accept the same `project` and cover the pod file too, for `docket doctor`.
 
 ### CLI surface
 
-1. `docket roles list` **MUST** show every registered archetype (built-in, starter, and user —
-   including a user override of a built-in/starter name) with its scope, model class, gate
-   contract kind, and one-line description. It **MUST NOT** show `editRights` (retired, P30-4).
-2. `docket roles show <name>` **MUST** print one archetype's full definition (YAML when PyYAML
-   is available, JSON otherwise) or fail with a non-zero exit if `<name>` is not registered.
-3. `docket roles add <file.yaml>` **MUST** validate the file's archetype definition and, on
-   success, merge it into the user overlay; on failure it **MUST** report the specific invalid
-   field(s) and make no change to the overlay file. `list`, `show`, and `add` **MUST** accept
-   `--pod <p>`, resolving (and, for `add`, writing) against pod `<p>`'s own overlay instead of —
-   layered above — the global one; `list`/`show` **MUST** report a pod-overlay-defined role's
-   source as `pod:<p>`, distinct from `user`. `validate` takes no `--pod`: it has no pod-specific
-   overlay concept.
-4. `docket roles validate [file.yaml]` **MUST**, with no argument, validate every archetype in
-   the live merged registry (reporting per-archetype pass/fail); with a file argument, it
-   **MUST** validate that file's definition without persisting it (a dry run ahead of `add`).
+1. `docket pod roles [--json]` **MUST** show every registered archetype (built-in, starter, and
+   user — including a user override of a built-in/starter name) with its source, scope, model
+   class, gate contract kind, and one-line description. It **MUST NOT** show `editRights`
+   (retired, P30-4). `--json` prints a list of `{name, source, scope, modelClass, gate,
+   description}`.
+2. `docket pod roles <name> [--json]` **MUST** print one archetype's full definition (YAML when
+   PyYAML is available, JSON otherwise; `--json` adds `source` to the wire object) or fail with a
+   non-zero exit if `<name>` is not registered. Both forms resolve against the pod in scope
+   (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) layered above the global
+   overlay, and report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`;
+   outside any pod they see the global registry.
+3. `docket pod apply <file.yaml>` **MUST** validate the file's archetype definition (a `kind:
+   role` document, or one whose location names the kind) and, on success, merge it into that
+   pod's own overlay; on failure it **MUST** report the specific invalid field(s) and make no
+   change to the overlay file.
+4. `docket pod validate <file.yaml>` **MUST** validate that file's definition without persisting
+   it (a dry run ahead of `apply`).
 
 ## Interface Contracts
 
 ### CLI Command Signatures
 
 ```text
-docket roles list
-docket roles show <name>
-docket roles add <file.yaml>
-docket roles validate [file.yaml]
+docket pod roles [<name>] [--json] [--pod <p>]
+docket pod apply <file.yaml>
+docket pod validate <file.yaml>
 ```
 
 ### Wire format (a user archetype YAML file)
@@ -557,14 +556,14 @@ agentsTemplate: |
   Stay within the `${project}` pod.
 ```
 
-A second, short form is also accepted, both by `docket roles add`/`docket roles validate` and by
-`docket pod <p> apply` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
+A second, short form is also accepted, both by `docket pod apply <file>`/`docket pod validate` and by
+`docket pod apply <dir>` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
 it (the presence of any of `cannot`/`verdict`/`verify`/`approval`/`instructions`/`model`, or an
 explicit `kind: role` with none of the canonical-only keys) and normalizes it into the canonical
 form above (`normalize_role`) before `from_wire` ever sees it. A document carrying any
 canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
 `agentsTemplate`) is canonical and passes through unchanged whatever its `kind:` says — so a
-`docket roles show` dump with `kind: role` added loads as written — and `kind: role` is accepted
+`docket pod roles` dump with `kind: role` added loads as written — and `kind: role` is accepted
 and stripped either way. A document mixing a short-form key with a canonical-only key **MUST** be
 refused naming both sets of keys, never normalized with the canonical keys silently dropped:
 
@@ -615,8 +614,8 @@ omits them — the same defaults `from_wire` already applies to the canonical fo
 
 ### Return Codes
 
-- `0`: success (listed/shown/added/validated cleanly)
-- `1`: unknown subcommand, `show`/`add`/`validate` target not found or invalid, or a malformed
+- `0`: success (listed/shown/applied/validated cleanly)
+- `1`: a `roles <name>`, `apply` or `validate` target not found or invalid, or a malformed
   archetype definition
 
 ## Examples
@@ -624,35 +623,34 @@ omits them — the same defaults `from_wire` already applies to the canonical fo
 ### Listing and inspecting archetypes
 
 ```bash
-docket roles list
-docket roles show reviewer
+docket pod roles
+docket pod roles reviewer
 ```
 
-### Adding a custom archetype
+### Applying a custom archetype
 
 ```bash
-docket roles add ./producer.yaml
-# Added archetype 'producer' (scope=pod, modelClass=cheap).
+docket pod apply ./producer.yaml
+# Applied role 'producer' to pod 'myapp'.
 ```
 
-### Validating before adding
+### Validating before applying
 
 ```bash
-docket roles validate ./producer.yaml
-docket roles validate   # validates the whole live registry
+docket pod validate ./producer.yaml
 ```
 
 ## Validation
 
 ### Pre-conditions
 
-- `~/.docket/` exists (created lazily by the first `docket init`); `docket roles add`/`validate` create the
-  overlay file's parent directory if needed
+- `~/.docket/` exists (created lazily by the first `docket init`); `docket pod apply` creates the
+  pod overlay file's parent directory if needed
 
 ### Post-conditions
 
-- `docket roles add` on a valid file leaves exactly one archetype added/overridden in
-  `docket-roles.json`'s `roles:` map; no other key in that file is touched
+- `docket pod apply <file>` on a valid file leaves exactly one archetype added/overridden in the
+  pod's `roles.json` `roles:` map; no other key in that file is touched
 - The four legacy archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the pre-W-6
   generators for any input, with no user overlay present
 
@@ -666,9 +664,13 @@ docket roles validate   # validates the whole live registry
 - A malformed user-overlay entry never prevents the rest of the registry (built-ins, starter
   library, other user entries) from loading
 - A shipped recipe's role YAML carries no exemption from `from_wire`/`__post_init__`: a recipe
-  that could not pass `docket roles add` if hand-copied is a broken recipe, not a special case
+  that could not pass `docket pod apply` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
+
+### Version 1.23.1 (2026-10-08)
+
+- The CLI surface is `docket pod roles [name] [--json]` (list and show; the pod in scope layers its overlay), `docket pod apply <file>` (installs into the pod's overlay) and `docket pod validate <file>`. Validating the whole live registry is gone.
 
 ### Version 1.23.0 (2026-10-07)
 

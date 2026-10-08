@@ -18,7 +18,7 @@ text, so it fires on the command regardless of which role or pipeline step issue
 
 ```bash
 docket init --recipe git-safety          # a new pod for the current directory
-docket pod <project> apply git-safety    # onto an existing pod
+docket pod apply git-safety    # onto an existing pod
 ```
 
 `apply` validates both policy files and plans them (`policy` items only -- there is no
@@ -28,15 +28,15 @@ docket pod <project> apply git-safety    # onto an existing pod
 ## See it fire
 
 ```bash
-docket pod <project> apply git-safety
-docket policies test pre_tool_call implementer "git push --force origin main" --pod <project>
+docket pod apply git-safety
+docket pod check "git push --force origin main" --role implementer
 ```
 
 The result names `git-safety-block-destructive` and blocks. A plain `git push origin main`
 (destination or current branch is protected) asks instead:
 
 ```bash
-docket policies test pre_tool_call implementer "git push origin main" --pod <project>
+docket pod check "git push origin main" --role implementer
 ```
 
 ## Files

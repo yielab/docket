@@ -32,17 +32,17 @@ HEADER = """# The recipe library
 A recipe is a directory in the same shape as a repository's `.docket/`: an optional `pod.yaml`
 (`kind: pod`, `name`, `description`, `members`, `settings`), optional `roles/`, `pipeline.yaml`,
 `policies/`, `plugins/`, `skills/` and `mcp-servers/`. What a recipe brings is derived from what the directory
-holds, never declared; `docket recipes list` prints the same derivation. Apply one with:
+holds, never declared; `docket pod recipes` prints the same derivation. Apply one with:
 
 ```bash
 docket init --recipe <name>            # a new pod for the current repository
-docket pod <project> apply <name>      # onto a pod that already exists (--dry-run to plan)
-docket recipes show <name>             # description, what it brings, its README
+docket pod apply <name>      # onto a pod that already exists (--dry-run to plan)
+docket pod recipes <name>             # description, what it brings, its README
 ```
 
 A directory of your own under `~/.docket/recipes/<name>/` is addressable the same way and wins
 over a shipped recipe of the same name. Composition: apply as many recipes as you need, then
-`docket pod <project> export` writes the merged team to `.docket/`, the configuration of record.
+`docket pod export` writes the merged team to `.docket/`, the configuration of record.
 
 """
 
@@ -102,7 +102,7 @@ def render() -> str:
         lines.append("")
         lines.append("```bash")
         lines.append(f"docket init --recipe {p.name}")
-        lines.append(f"docket pod <project> apply {p.name}")
+        lines.append(f"docket pod apply {p.name}")
         lines.append("```")
         lines.append("")
         body = _readme_body(p)

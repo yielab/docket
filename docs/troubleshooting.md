@@ -117,7 +117,7 @@ docket maintain <agent-id> clean
 # Level 2: Clear memory + MEMORY.md + HEARTBEAT.md (also distills first)
 docket maintain <agent-id> reset
 
-# Level 3: regenerate SOUL/AGENTS/TOOLS from metadata (not for pod members: docket pod <p> sync)
+# Level 3: regenerate SOUL/AGENTS/TOOLS from metadata (not for pod members: docket pod apply)
 docket maintain <agent-id> rebuild
 ```
 
@@ -502,7 +502,7 @@ into MEMORY.md first:
 docket maintain <agent-id> reset
 ```
 
-For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod <p> sync`;
+For a pod member's generated files (SOUL/AGENTS/TOOLS) use `docket pod apply`;
 `maintain rebuild` regenerates them only for an agent outside a pod and refuses pod members.
 
 ## Harness Mode (`docket harness run`)
@@ -584,6 +584,6 @@ outcome** — one stopped on a specific denied tool call, the other never starte
 5. **Emergency reset:**
    ```bash
    # If all else fails: re-render a pod's member files, or rebuild an agent outside a pod
-   docket pod <project> sync
+   docket pod apply
    docket maintain <agent-id> rebuild
    ```

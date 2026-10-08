@@ -19,7 +19,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe dual-review          # a new pod for the current repository
-docket pod <project> apply dual-review    # onto an existing pod
+docket pod apply dual-review    # onto an existing pod
 ```
 
 `pod.yaml` names the two members this recipe adds (`reviewer`, `critic`); `apply` validates the

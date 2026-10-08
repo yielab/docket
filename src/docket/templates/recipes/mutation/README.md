@@ -20,7 +20,7 @@ unless it already existed.
 
 ```bash
 docket init --recipe mutation          # a new pod
-docket pod <project> apply mutation    # onto an existing pod
+docket pod apply mutation    # onto an existing pod
 ```
 
 ## Commands the step runs
@@ -43,7 +43,7 @@ or `setup.cfg`). Python only.
 
 The step declares `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
 `mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod <project>
-export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod <project> apply
+export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod apply
 <dir>`. For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
 
 ## Undo

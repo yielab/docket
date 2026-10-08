@@ -1,7 +1,7 @@
 """Shipped recipe bundles (``templates/recipes/<name>/``) are real, tested and configurable.
 
 Each recipe is data only: role YAML(s), a pipeline YAML, a small `pod.yaml`, and an optional
-policy pack, applied in one command (`docket pod <p> apply`, `core.pod_apply`). The tests below
+policy pack, applied in one command (`docket pod apply`, `core.pod_apply`). The tests below
 read exactly what the wheel ships (`docket.config.recipes_dir()`), so a recipe that fails to
 validate, resolve against a real roster, or actually dispatch fails here first, never only in an
 operator's hands. See pipeline-format.spec.md, role-archetypes.spec.md and
@@ -13,11 +13,13 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 import typer
 from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
+from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _config, _pod
@@ -36,6 +38,12 @@ from docket.core import trace as _trace
 SUBJECT = "docket.config"
 
 RECIPES_DIR = _cfg.recipes_dir()
+
+
+def _pod_cli(*args: str) -> Any:
+    return CliRunner().invoke(_pod.pod_app, list(args))
+
+
 REQUIRED_RECIPES = ("secure-build", "research-review", "ops-approval")
 
 
@@ -144,7 +152,7 @@ def _seed_fixture_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: 
 def test_recipe_applies_cleanly_to_a_fixture_pod(
     recipe_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket pod <p> apply <recipe_dir>`` leaves every pipeline step resolvable -- a policy
+    """``docket pod apply <recipe_dir>`` leaves every pipeline step resolvable -- a policy
     pack has no pipeline to resolve, so applying it cleanly is the whole assertion."""
     project = "fixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
@@ -171,14 +179,12 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(
 def test_pod_apply_resolves_a_shipped_recipe_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket pod <p> apply secure-build`` applies the shipped recipe, as ``init --recipe``
+    """``docket pod apply secure-build`` applies the shipped recipe, as ``init --recipe``
     does -- a README can print a command that needs no path into the installed package."""
-    from docket.cli import _pod as _cli_pod
-
     project = "byname"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
-    _cli_pod.dispatch(project, "apply", ["secure-build"])
+    assert _pod_cli("apply", "secure-build", "--pod", project).exit_code == 0
 
     assert "security-vetter" in _dispatch.pod_full_roster(project)
 
@@ -495,7 +501,7 @@ def test_export_then_apply_round_trip_matches_config_explain(
     _pod.dispatch(source_project, "config", ["set", "approvalMode", "refuse"])
 
     export_dir = tmp_path / "exported"
-    _pod.dispatch(source_project, "export", [str(export_dir)])
+    assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 0
     assert (export_dir / "roles" / "security-vetter.yaml").is_file()
     assert (export_dir / "roles" / "security-vetter.md").is_file()
     assert (export_dir / "pipeline.yaml").is_file()
@@ -506,10 +512,9 @@ def test_export_then_apply_round_trip_matches_config_explain(
         export_dir / "policies" / "require-approval-secret-writes.yaml"
     ) == _policy.read_policy(recipe_dir / "policies" / "require-approval-secret-writes.yaml")
 
-    with pytest.raises(typer.Exit) as exc:
-        _pod.dispatch(source_project, "export", [str(export_dir)])
-    assert exc.value.exit_code == 1
-    _pod.dispatch(source_project, "export", [str(export_dir), "--force"])  # overwrites cleanly
+    assert _pod_cli("export", str(export_dir), "--pod", source_project).exit_code == 1
+    # overwrites cleanly
+    assert _pod_cli("export", str(export_dir), "--pod", source_project, "--force").exit_code == 0
 
     # Round trip: re-planning this pod's own export against itself plans every item `skip` --
     # the schema-header/regenerated-short-form export is still recognized as unchanged.
@@ -690,7 +695,7 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`docket pod <p> export` with no argument defaults to `<codebase>/.docket` (ADR 0012 §2
+    """`docket pod export` with no argument defaults to `<codebase>/.docket` (ADR 0012 §2
     rule 5); a non-empty one there still refuses without `--force`."""
     project = "exportdefault"
     codebase = tmp_path / "codebase"
@@ -706,12 +711,10 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     default_dir.mkdir()
     (default_dir / "marker.txt").write_text("existing", encoding="utf-8")
 
-    with pytest.raises(typer.Exit) as exc:
-        _pod.dispatch(project, "export", [])
-    assert exc.value.exit_code == 1
+    assert _pod_cli("export", "--pod", project).exit_code == 1
     assert not (default_dir / "pod.yaml").exists()
 
-    _pod.dispatch(project, "export", ["--force"])
+    assert _pod_cli("export", "--pod", project, "--force").exit_code == 0
     assert (default_dir / "pod.yaml").is_file()
 
     # The exported default directory re-applies as a no-op.
@@ -743,7 +746,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
     assert _fleet.meta_get(pod.member_id(project, "security-vetter"), "model", "") == "local/x"
 
 
-# ── docket recipes: the operator's own recipes directory (ADR 0013 SS1 rule 4-5) ─────────────
+# ── docket pod recipes: the operator's own recipes directory (ADR 0013 SS1 rule 4-5) ─────────────
 
 
 def test_operator_recipe_is_listed_and_applies_via_pod_apply(
@@ -751,7 +754,7 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
 ) -> None:
     """A recipe under the operator's own ``recipes/`` directory is listed with scope
     ``operator`` alongside every shipped recipe, and resolves by name for
-    ``docket pod <p> apply`` exactly as a shipped one does."""
+    ``docket pod apply`` exactly as a shipped one does."""
     project = "recipefixture"
     _seed_fixture_pod(tmp_path, monkeypatch, project)
 
@@ -772,32 +775,26 @@ def test_operator_recipe_is_listed_and_applies_via_pod_apply(
     for shipped_name in REQUIRED_RECIPES:
         assert infos[shipped_name].scope == "shipped"
 
-    capsys.readouterr()
-    _pod.dispatch(project, "apply", ["mine", "--dry-run", "--json"])
-    plan = json.loads(capsys.readouterr().out)
+    plan = json.loads(_pod_cli("apply", "mine", "--pod", project, "--dry-run", "--json").output)
     assert [(item["kind"], item["name"], item["action"]) for item in plan["items"]] == [
         ("policy", "x.yaml", "add")
     ]
 
 
 def test_recipes_show_unknown_name_exits_1_naming_both_scopes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``docket recipes show <unknown>`` exits 1, with a message naming both ``operator:``
-    and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod <p> apply``/
+    """``docket pod recipes <unknown>`` exits 1, with a message naming both ``operator:``
+    and ``shipped:`` recipe lists -- the same fail-closed error ``docket pod apply``/
     ``docket init --recipe`` raise."""
-    from docket.cli._recipes import run_recipes
-
     home = tmp_path / ".docket"
     repoint_docket_home(monkeypatch, home)
 
-    capsys.readouterr()
-    exit_code = run_recipes(["show", "nope"])
-    err = capsys.readouterr().err
+    result = _pod_cli("recipes", "nope")
 
-    assert exit_code == 1
-    assert "operator:" in err
-    assert "shipped:" in err
+    assert result.exit_code == 1
+    assert "operator:" in result.output
+    assert "shipped:" in result.output
 
 
 def test_a_recipe_step_env_survives_apply_and_export(
@@ -807,7 +804,7 @@ def test_a_recipe_step_env_survives_apply_and_export(
     _seed_fixture_pod(tmp_path / "source", monkeypatch, project)
     _pod_apply.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
     export_dir = tmp_path / "exported"
-    _pod.dispatch(project, "export", [str(export_dir)])
+    assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
     result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))
     assert result.spec is not None, result.errors
     step = next(s for s in result.spec.steps if s.id == "check-mutation-score")

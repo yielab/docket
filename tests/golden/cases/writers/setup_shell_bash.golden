@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="status add init info delete maintain profile pod pipeline roles config runs exec start stop validate plugins recipes trace policies approve deny chat inbox run setup log task"
+  local commands="status add init info delete maintain profile pod config runs exec start stop trace approve deny chat inbox run setup log task"
 
   # Live agent ids (pod members) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
@@ -34,13 +34,9 @@ _docket_complete() {
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue config apply export" ;;
     setup)           words="provider model notify export sandbox mcp shell --json --fix" ;;
-    pipeline)        words="validate plan" ;;
     runs)            words="list show cancel prune" ;;
     audit)           words="verify --json" ;;
     trace)           words="tail export ingest expire" ;;
-    policies)        words="list show init test validate" ;;
-    recipes)         words="list show" ;;
-    roles)           words="list show add validate" ;;
     info|delete|profile)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;

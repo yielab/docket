@@ -526,8 +526,16 @@ class TestMemberSync:
         assert _pp.member_sync_status("nobody-here") is None
 
 
+def _sync(*flags: str) -> str:
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(_pod.pod_app, ["apply", "--pod", "demo", *flags])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
 class TestPodSync:
-    """`docket pod <project> sync [--dry-run]` -- the CLI surface over `member_sync_status`/
+    """`docket pod apply` with no argument -- the CLI surface over `member_sync_status`/
     `resync_member`."""
 
     def test_dry_run_reports_without_writing(
@@ -538,7 +546,7 @@ class TestPodSync:
         soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
         soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
-        _pod.dispatch("demo", "sync", ["--dry-run"])
+        _sync("--dry-run")
 
         assert soul_path.read_text() == "STALE-HAND-EDITED-SOUL\n"
 
@@ -548,7 +556,7 @@ class TestPodSync:
         soul_path = home / "workspaces" / "projects" / "demo-lead" / "SOUL.md"
         soul_path.write_text("STALE-HAND-EDITED-SOUL\n")
 
-        _pod.dispatch("demo", "sync", [])
+        _sync()
 
         assert "STALE-HAND-EDITED-SOUL" not in soul_path.read_text()
         entries = [e for e in _audit.read_audit() if e["action"] == "pod.sync"]
@@ -556,17 +564,17 @@ class TestPodSync:
         assert "demo-lead" in entries[0]["detail"]
 
     def test_untouched_pod_is_a_no_op(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         before = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
 
-        _pod.dispatch("demo", "sync", [])
+        output = _sync()
 
         assert (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text() == before
         assert not [e for e in _audit.read_audit() if e["action"] == "pod.sync"]
-        assert "already in sync" in capsys.readouterr().out
+        assert "already in sync" in output
 
     def test_sync_never_touches_instructions_md(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -577,7 +585,7 @@ class TestPodSync:
         (ws / "SOUL.md").write_text("STALE-HAND-EDITED-SOUL\n")
         (ws / "INSTRUCTIONS.md").write_text("OPERATOR-OWNED-LINE\n")
 
-        _pod.dispatch("demo", "sync", [])
+        _sync()
 
         assert (ws / "INSTRUCTIONS.md").read_text() == "OPERATOR-OWNED-LINE\n"
 

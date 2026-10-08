@@ -45,7 +45,7 @@ body:
         - Cost & budget tracking
         - Security & gates
         - Telegram integration
-        - Pipelines (docket pipeline)
+        - Pipelines (docket run, docket pod plan)
         - Doctor / health checks
         - Pod coordination / dispatch
         - MCP / external tool servers

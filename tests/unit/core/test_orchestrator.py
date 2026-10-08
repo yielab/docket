@@ -264,7 +264,7 @@ class TestRunGroup:
         assert _orch.run_group((_unit("solo"),), lambda u: u.step_id, max_workers=8) == ["solo"]
 
 
-# ── render_plan: the one and only `docket pipeline plan` renderer ────────────
+# ── render_plan: the one and only `docket pod plan` renderer ────────────
 
 
 class TestRenderPlan:

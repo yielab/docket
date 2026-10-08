@@ -17,7 +17,7 @@ For a new pod, or onto one that already has its `lead` and `implementer`:
 
 ```bash
 docket init --recipe reflexion          # a new pod for the current repository
-docket pod <project> apply reflexion    # onto an existing pod
+docket pod apply reflexion    # onto an existing pod
 ```
 
 `pod.yaml` names the two members this recipe adds (`critic`, `tester`); `apply` validates the

@@ -1793,7 +1793,7 @@ def _run(
             print("[check] memory logs distilled and archived with current decisions retained")
 
         _delegate_smoke_task(run_cli, scenario)
-        run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
+        run_cli("pod", "plan", "--pod", "smoke", "--pipeline", str(pipeline))
         first_run = ["run", "--pod", "smoke", "--pipeline", str(pipeline)]
         if live is None:
             first_run.extend(["--timeout", "30"])
@@ -2287,7 +2287,7 @@ def _run_operator_loop_scenario(
         run_cli("init", "--from", str(alpha_spec))
         run_cli("init", "--from", str(beta_spec))
         run_cli("setup", "sandbox", "off")
-        run_cli("pod", "alpha", "apply", "prod-approval")
+        run_cli("pod", "apply", "prod-approval", "--pod", "alpha")
         run_cli("pod", "beta", "set-verify", "beta-implementer", "false")
         print("[check] two pods provisioned: alpha (prod-approval) and beta (verifyCmd false)")
 

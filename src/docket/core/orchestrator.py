@@ -10,7 +10,7 @@ step's *resolved* gate -- its own, or (only when omitted) its archetype's
 Deliberately **pure and dispatch-independent**: no filesystem I/O, no subprocess, no
 import of ``core/dispatch.py`` (the dependency runs one-way -- ``dispatch.py``'s hop
 loop calls back into :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
-:func:`run_group`; the reverse would be a cycle). ``docket pipeline plan`` renders
+:func:`run_group`; the reverse would be a cycle). ``docket pod plan`` renders
 directly from :func:`resolve_plan` too, so there is never a second, drift-prone
 pretty-printer.
 

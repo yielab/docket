@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.24.0
+**Version**: 1.26.0
 **Status**: Implemented
 **Last Updated**: 2026-10-05
 
@@ -45,7 +45,7 @@ This specification does NOT cover:
   when the meta is absent, empty, or names an unknown blueprint — see `pod-dispatch.spec.md`,
   "Pipeline order and participation", for the exact resolution order. A `research`, `content`, or
   `ops` pod dispatched that way now runs its full roster and gates, not only its Lead step.
-- User-authored blueprint definitions. Unlike `docket roles add` for archetypes, there is no
+- User-authored blueprint definitions. Unlike `docket pod apply` for archetypes, there is no
   `docket blueprints add <file.yaml>` yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)
 - Per-role org-vs-pod scope as a blueprint-level concept — scope is a property of the *archetype*
@@ -167,7 +167,7 @@ This specification does NOT cover:
 
 ### User-authored blueprints
 
-1. Unlike role archetypes (`docket roles add <file.yaml>`), there is currently no
+1. Unlike role archetypes (`docket pod apply <file.yaml>`), there is currently no
    `docket blueprints add` — the five built-ins in `core/blueprints.py` are Python literals and
    are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
@@ -178,14 +178,12 @@ This specification does NOT cover:
 
 A blueprint shapes a pod at `docket init` time; this section covers the complementary case — a
 team shape applied to a pod that already exists (ADR 0009). Before this section, applying a
-shipped recipe to an existing pod meant a per-recipe sequence of `docket roles add`/`docket pod
-<p> add <role>`/`docket pod <p> config set pipeline <file>` commands; `docket pod <p> apply
-<dir>` composes the same writers into one command, once a directory shape becomes common enough
+shipped recipe to an existing pod meant a per-recipe sequence of role installs, `docket pod add
+<role>` and pipeline-binding commands; `docket pod apply <dir>` composes the same writers into one command, once a directory shape becomes common enough
 (a pod reproduced on a second machine) to be worth automating.
 
-1. `docket pod <project> apply [<name|dir>] [--dry-run] [--json]` **MUST** read *dir* (default
-   `<codebase>/.docket/`, from the pod Lead's own `codebase` meta; an argument that is not an
-   existing directory resolves as a shipped recipe name through the same `resolve_recipe`
+1. `docket pod apply <name|dir> [--dry-run] [--json]` **MUST** read *dir* (an argument that is
+   not an existing directory resolves as a shipped recipe name through the same `resolve_recipe`
    requirement 8 gives `docket init --recipe`, and an unresolvable name exits 1 naming the
    shipped recipes) as: an optional `roles/*.yaml`
    directory (role definitions, the same wire format `role-archetypes.spec.md` defines), an
@@ -205,7 +203,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    complete Agent Skill, applied whole into this pod's own `config/skills/<name>/` (see
    requirement 6's digest and "Pod manifests: export" below).
 2. A role in `roles/*.yaml` **MUST** be written into *that pod's own* role overlay
-   (`core.config.pod_config_dir(project)/roles.json`), the same target `docket roles add
+   (`core.config.pod_config_dir(project)/roles.json`), the same target `docket pod apply
    --pod <project> <file.yaml>` already writes to — never the global user overlay
    (`~/.docket/docket-roles.json`). `core/pod.py`'s roster helpers (the id-parsing
    `_role_names`/`parse_member_id` that `pod_full_roster`/`members_of` depend on to resolve a
@@ -269,7 +267,7 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `--recipe` together with a present `.docket/` **MUST** exit 1 naming both sources, before
    provisioning — two sources of record is an ambiguity this command refuses rather than picks
    between. `--no-apply` **MUST** provision the pod and skip applying either source, instead
-   printing the `docket pod <p> apply <dir>` command that would apply it.
+   printing the `docket pod apply <dir>` command that would apply it.
 9. **Recipe summary (ADR 0013 §1 rule 1).** A directory's scope is derived from its contents,
    never a declared field: `core.pod_apply.summarize_recipe(directory)` reads, without needing a
    project or a role registry, the count of `roles/*.yaml|yml|json`, `policies/*.yaml|yml|json`,
@@ -285,16 +283,16 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
    `pipeline`, `plugins`, `skills`, `settings` — as one line, e.g. `roles 1 · policies 1 ·
    members 1 · pipeline secure-build · plugins 0 · skills 0 · settings 0` (`pipeline none` when
    no pipeline resolves), with `· exporters <name>[, <name>...]` appended only when the recipe
-   names at least one (e.g. `... · settings 0 · exporters langfuse`). `docket validate <dir>` (see
-   `config-format.spec.md`) prints this summary after its per-file lines; `docket pod <p> apply`
+   names at least one (e.g. `... · settings 0 · exporters langfuse`). `docket pod validate <dir>` (see
+   `config-format.spec.md`) prints this summary after its per-file lines; `docket pod apply`
    and `docket init --recipe`/a discovered `.docket/` print it, and the directory's own
    `description` when set, before the plan itself (`cli-interface.spec.md`).
 10. **Recipe listing (ADR 0013 §1 rule 5).** `core.pod_apply.list_recipes()` **MUST** return one
     `RecipeInfo` (`name`, `scope` — `"operator"` or `"shipped"` — `directory`, `summary`) per
     name reachable across both scopes `resolve_recipe` reads, sorted by name; a name present in
     both **MUST** resolve to the operator's own directory, matching requirement 8's resolution
-    order. `docket recipes list [--json]` **MUST** print every entry — name, scope, a derived
-    `brings` (the non-zero summary parts joined with `+` in summary order, e.g. `roles+members+pipeline+policies`; `nothing` for an empty directory) -- never a stored field, matching requirement 9's rule that scope is always derived. `docket recipes
+    order. `docket pod recipes [--json]` **MUST** print every entry — name, scope, a derived
+    `brings` (the non-zero summary parts joined with `+` in summary order, e.g. `roles+members+pipeline+policies`; `nothing` for an empty directory) -- never a stored field, matching requirement 9's rule that scope is always derived. `docket pod recipes
     show <name|dir> [--json]` **MUST** resolve *name|dir* through the same `resolve_recipe`
     (an unresolvable name **MUST** exit 1 naming both scopes' recipe names, matching
     requirement 8) and print that directory's scope (omitted for a bare path outside both
@@ -323,20 +321,33 @@ shipped recipe to an existing pod meant a per-recipe sequence of `docket roles a
     `export_pod` **MUST** write this pod's recorded `exporters` list back into `pod.yaml` (see
     "Pod manifests: export" below) when at least one is set — unlike `configSource`/
     `configDigest`, which describe provenance and are never written back, `exporters` is part of
-    what a recipe declares and round-trips like `members`. `docket recipes show <name|dir>`
+    what a recipe declares and round-trips like `members`. `docket pod recipes <name|dir>`
     **MUST** print the same per-name state lines, from the directory's own declared list
     (requirement 9), without requiring a project.
+
+12. **One file, and no argument (ADR 0022 decision 5).** `docket pod apply <file>` with an
+    existing file **MUST** install that one document: a `kind: role` file into this pod's own role
+    overlay (the target requirement 2 names) and a `kind: policy` file into this pod's own
+    `config/policies/` (validated first by `core.policy.validate_policy`); any other kind **MUST**
+    exit 1 naming the kind, since a pipeline, manifest or MCP server document is applied with its
+    directory. It **MUST** support `--dry-run` and `--json` (`{"items": [...]}` as for a
+    directory), write one `pod.apply` audit entry naming the file, and leave `configSource`/
+    `configDigest` alone — a single document is not the configuration of record. `docket pod
+    apply` with **no** argument **MUST** re-render the SOUL/AGENTS/TOOLS of every member whose
+    stored template version is stale from the current archetype and metadata (`--dry-run` shows
+    the diffs without writing; an in-sync pod is a no-op), never touching the operator-owned
+    `INSTRUCTIONS.md`, and writes one `pod.sync` audit entry per re-rendered member; `--json` with
+    no argument exits 1.
 
 ### Pod manifests: export
 
 The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
 directory *onto* a pod; `export` writes one back out, in the same shape, so a pod already
 configured by hand — or evolved past whatever recipe seeded it — can be reproduced on a second
-machine, the trigger `docket pod <p> apply` itself named as deferred.
+machine, the trigger `docket pod apply` itself named as deferred.
 
-1. `docket pod <project> export [<dir>]` **MUST** write exactly this pod's own scope — *dir*
-   defaults to `<codebase>/.docket/` (the pod Lead's own `codebase` meta, the same default
-   "Pod manifests: apply" requirement 1 reads) when omitted — in the same directory shape
+1. `docket pod export [<dir>]` **MUST** write exactly this pod's own scope — *dir*
+   defaults to `<codebase>/.docket/` (the pod Lead's own `codebase` meta) when omitted — in the same directory shape
    `apply` reads, every YAML file in the **short form** (config-format.spec.md,
    "Short-form export") with a leading `# yaml-language-server:` header: `roles/<name>.yaml`
    (this pod's own role overlay entries only —
@@ -374,7 +385,7 @@ machine, the trigger `docket pod <p> apply` itself named as deferred.
    (`~/.docket/docket-roles.json`), fleet-wide policies (`~/.docket/policies/`), other pods, and
    this pod's own secrets, sessions, traces, and task queue are all out of scope; only what
    `pod_config_dir(project)` and the bound-pipeline copy hold is written.
-3. `docket pod <project> export [<dir>]` **MUST** refuse a non-empty *dir* — including the
+3. `docket pod export [<dir>]` **MUST** refuse a non-empty *dir* — including the
    defaulted `<codebase>/.docket/` — unless `--force` is given, so a stray argument (or an
    accidental bare `export`) cannot silently overwrite an operator's existing directory; an empty
    or not-yet-existing *dir* always succeeds. `--force` **MUST** proceed and write over any
@@ -539,6 +550,10 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.26.0 (2026-10-08)
+
+- `docket pod apply <name|dir|file>` and `docket pod export [dir]` join the pod group; `apply <file>` installs one role or policy document, and `apply` with no argument re-syncs stale instructions. `docket pod recipes [name]` lists and shows the library.
 
 ### Version 1.24.0 (2026-10-05)
 

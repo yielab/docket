@@ -18,6 +18,7 @@ from docket.core import archetypes as _archetypes
 from docket.core import channel as _channel
 from docket.core import exporter as _exporter
 from docket.core import mcp_tools as _mcp_tools
+from docket.core import models_policy as _models_policy
 from docket.core import pipeline as _pipeline
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
@@ -280,7 +281,7 @@ def _infer_kind_from_location(path: Path) -> str | None:
 
 def _load_role(path: Path) -> dict[str, Any]:
     """The canonical wire dict for a role file: the short form is normalised first
-    (``core.archetypes.load_role_file``), then validated exactly as ``roles add`` does."""
+    (``core.archetypes.load_role_file``), then validated exactly as ``pod apply`` does."""
     try:
         doc = _archetypes.load_role_file(str(path))
         _archetypes.from_wire(str(doc.get("name", "")), doc)
@@ -438,3 +439,51 @@ def validate_directory(directory: str | Path) -> list[ConfigDocError]:
         except ConfigDocError as exc:
             errors.append(exc)
     return errors
+
+
+@dataclass(frozen=True)
+class PathResult:
+    """One file's outcome from :func:`validate_path`: its document, or the error that refused it."""
+
+    path: Path
+    document: Document | None
+    error: ConfigDocError | None
+
+
+def _step_model_error(document: Document) -> ConfigDocError | None:
+    """A pipeline step whose own ``model`` names a provider absent from the catalog."""
+    spec = _pipeline.load_pipeline(document.path.read_text(encoding="utf-8")).spec
+    if spec is None:
+        return None
+    for step in spec.steps:
+        for unit in step.parallel or [step]:
+            if not unit.model:
+                continue
+            try:
+                _models_policy.resolve_step_model(unit.model)
+            except ValueError as exc:
+                return ConfigDocError(document.path, f"step {unit.id!r}: {exc}")
+    return None
+
+
+def _validate_one(path: Path, kind: str | None) -> PathResult:
+    try:
+        document = load_document(path, kind=kind)
+    except ConfigDocError as exc:
+        return PathResult(path, None, exc)
+    if document.kind == "pipeline":
+        error = _step_model_error(document)
+        if error is not None:
+            return PathResult(path, None, error)
+    return PathResult(path, document, None)
+
+
+def validate_path(target: str | Path, *, kind: str | None = None) -> list[PathResult]:
+    """Validate one ``kind:`` document, or every document ``discover_config_paths`` finds under
+    a directory, with the validator each kind owns. *kind* is the fallback for a document with
+    no ``kind:`` key and no location that names one. Invalid files come first."""
+    base = Path(target)
+    paths = [base] if base.is_file() else discover_config_paths(base)
+    results = [_validate_one(path, kind) for path in paths]
+    results.sort(key=lambda r: r.error is None)
+    return results

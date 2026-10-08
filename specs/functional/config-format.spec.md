@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -12,10 +12,9 @@ manifest) starts with, and the single entry point, `core/config_docs.py::load_do
 reads one such file, resolves its kind, and dispatches to the parser that already owns that
 kind's real structure. Before this spec, a role, a pipeline, a policy and the Phase 27 pod
 manifest were told apart only by which directory a file lived in or which command read it —
-`docket roles add`, `docket pipeline validate`, `docket policies validate` and `docket pod
-<p> apply` each called a different parser directly, and nothing said what a given file *was*
+each command that read one called a different parser directly, and nothing said what a given file *was*
 short of trying to parse it as one specific thing and seeing whether that failed. `docket
-validate` is the one command that checks every kind of file in a directory in one pass.
+pod validate` is the one command that checks every kind of file in a directory in one pass.
 
 ## Scope
 
@@ -29,7 +28,7 @@ This specification covers:
   `deprecated=True`
 - `ConfigDocError`: the one error shape every kind's validation failure is reported through,
   and its `file:line field: message (valid: ...; did you mean "...")` rendering
-- `docket validate [dir|file]`: validates every document under a directory (or one file) and
+- `docket pod validate [dir|file]`: validates every document under a directory (or one file) and
   the pod manifest, printing one line per file, invalid files first, exit 1 on the first
   invalid file found
 - The seven parsers this dispatches to unchanged: `core.archetypes.from_wire`,
@@ -51,7 +50,7 @@ This specification does NOT cover:
 - Short forms / sugar for any of the four kinds (role, pipeline, policy, pod short-hand
   normalizers) — a separate, later card per kind; this spec only describes the short-form
   *models* used for schema generation and error refinement, not the normalizers themselves
-- Wiring JSON Schema validation into `docket validate`'s live path — the published schemas are
+- Wiring JSON Schema validation into `docket pod validate`'s live path — the published schemas are
   a generated, pinned artifact for external editors/validators, never consulted by
   `load_document` itself
 - A published JSON Schema or short-form sugar for `provider` — it has neither (see above)
@@ -118,9 +117,9 @@ This specification does NOT cover:
 2. A parser's own exception or non-empty error string **MUST** be surfaced as a
    `ConfigDocError` naming the file and the parser's own message; this spec does not change what
    any of the six parsers accepts or rejects.
-3. `core/pod_apply.py::plan_apply`'s manifest read and `_plan_roles`'s per-file role read, and
-   `docket roles add`/`validate`, `docket pipeline validate`, and the file-path branch of
-   `docket policies validate`, **MUST** all call `load_document` rather than their own prior
+3. `core/pod_apply.py::plan_apply`'s manifest read and `_plan_roles`'s per-file role read,
+   `docket pod apply <file>`, `docket pod validate` and `docket pod plan --pipeline` **MUST** all
+   call `load_document` (through `validate_path` for the last two) rather than their own prior
    direct parse call — one parse path for every command that reads a stand-alone configuration
    file.
 
@@ -136,7 +135,7 @@ This specification does NOT cover:
 2. Neither location nor a caller-stated kind resolving one **MUST** raise `ConfigDocError`
    naming every value in `KINDS` — an unresolvable file is treated the same as an unknown-kind
    one.
-3. `docket validate` **MUST** print one note per file it loads through this deprecation path:
+3. `docket pod validate` **MUST** print one note per file it loads through this deprecation path:
    `note: <file> has no 'kind:' -- add 'kind: <k>' (files without it stop loading one release
    after v1)`, naming the kind it resolved. This is advisory only — the file still loads and is
    still reported `ok`.
@@ -154,21 +153,26 @@ This specification does NOT cover:
    file's first line or the parser's own (unrelated) line convention; `0` when the line cannot
    be determined (PyYAML missing, or the key not found as a plain top-level mapping key).
 
-### `docket validate`
+### `docket pod validate`
 
-1. `docket validate [dir|file]` **MUST** default to `<cwd>/.docket` when that directory exists,
+1. `docket pod validate [dir|file]` **MUST** default to `<cwd>/.docket` when that directory exists,
    else the current directory, when no argument is given; a file argument **MUST** validate
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
    `roles/` and `policies/`, plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
    directly under the directory, when present. `discover_config_paths` does not look for a
-   provider, exporter or channel document by location — `docket validate <file>` naming one
+   provider, exporter or channel document by location — `docket pod validate <file>` naming one
    directly still loads it (`kind: provider`/`exporter`/`channel` is enough; `load_document`
    needs no directory convention to resolve any of the three).
-3. It **MUST** print one line per file — `ok <file> (<kind> <name>)` for a file that loads, or
-   its `ConfigDocError` — with every invalid file printed before every valid file, and **MUST**
-   exit `1` if any file was invalid, `0` otherwise (matching `docket roles validate`'s and
-   `docket pipeline validate`'s existing exit-code convention).
+3. It **MUST** print one line per file — `ok <file> (<kind> <name>)` on stdout for a file that
+   loads, or its `ConfigDocError` on stderr — with every invalid file printed before every valid file, and **MUST**
+   exit `1` if any file was invalid, `0` otherwise.
+4. It **MUST** be one validator for every kind: `core.config_docs.validate_path(target, *,
+   kind=None)` returns one `PathResult(path, document, error)` per file, invalid first, and is
+   the only function `docket pod validate` and `docket pod plan --pipeline` call. A pipeline
+   whose step `model` names a provider absent from the catalog **MUST** be invalid there, naming
+   the step, exactly as a pipeline structure error is. `kind` is the fallback for a document
+   with no `kind:` key and no location that names one (`pod plan --pipeline` passes `pipeline`).
 
 ### Published schemas
 
@@ -198,7 +202,7 @@ This specification does NOT cover:
    would otherwise reject every canonical-only field (`modelClass`, `hook`, ...) as unknown
    instead of surfacing the real error.
 4. These schemas are a generated, pinned artifact for external editors and validators, not a
-   second validation path: `docket validate`/`load_document` **MUST** continue to dispatch to
+   second validation path: `docket pod validate`/`load_document` **MUST** continue to dispatch to
    each kind's own parser as the sole authority for whether a document is valid.
 
 ### Short-form export
@@ -248,7 +252,7 @@ scripts.gen_config_schemas.main(argv=None) -> int        # writes, or --check ex
 ### CLI Command Signature
 
 ```text
-docket validate [dir|file]
+docket pod validate [dir|file]
 ```
 
 ### The pod manifest key set (extends `core.pod_apply._MANIFEST_KEYS`)
@@ -273,14 +277,14 @@ docket validate [dir|file]
 ### An unknown kind
 
 ```bash
-$ docket validate policies/broken.yaml
+$ docket pod validate policies/broken.yaml
 policies/broken.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel)
 ```
 
 ### A directory with one good role and one invalid file
 
 ```bash
-$ docket validate .docket
+$ docket pod validate .docket
 roles/bad.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel)
 ok roles/good.yaml (role security-vetter)
 ```
@@ -288,7 +292,7 @@ ok roles/good.yaml (role security-vetter)
 ### A role file with no `kind:` still loads
 
 ```bash
-$ docket validate roles/legacy.yaml
+$ docket pod validate roles/legacy.yaml
 note: roles/legacy.yaml has no 'kind:' -- add 'kind: role' (files without it stop loading one release after v1)
 ok roles/legacy.yaml (role legacy)
 ```
@@ -312,6 +316,13 @@ ok roles/legacy.yaml (role legacy)
 - A `Document` returned by `load_document` never has `kind` outside `KINDS`.
 
 ## Changelog
+
+### Version 1.9.0 (2026-10-08)
+
+- One validator, `docket pod validate [PATH]`, for any `kind:` document or directory
+  (`core.config_docs.validate_path`, `PathResult`); the pipeline step-`model` check folds into it.
+  Invalid files print on stderr, valid ones on stdout. `docket pod apply <file>` and `docket pod
+  plan --pipeline` read through `load_document`.
 
 ### Version 1.8.0 (2026-10-05)
 

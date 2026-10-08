@@ -79,10 +79,10 @@ editing code. Now every role — including the four legacy ones — is a **role 
 templates, gate contract, denied tools, and tool profile.
 
 ```bash
-docket roles list                 # every registered archetype: built-in, starter, user
-docket roles show reviewer        # one archetype's full definition (YAML/JSON)
-docket roles add ./producer.yaml  # register a custom archetype from a YAML file
-docket roles validate             # dry-run every archetype's schema + template render
+docket pod roles                 # every registered archetype: built-in, starter, user
+docket pod roles reviewer        # one archetype's full definition (YAML/JSON)
+docket pod apply ./producer.yaml  # register a custom archetype from a YAML file
+docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
 Four **built-in** archetypes reproduce the legacy roles byte-identically. A **starter library**
@@ -102,7 +102,7 @@ ships six more you can drop into any pod without writing a line of YAML:
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod <project> add researcher`. A user-authored archetype (a standalone YAML file,
-`docket roles add`) can add a brand-new role name or override an existing one — merged into
+`docket pod apply`) can add a brand-new role name or override an existing one — merged into
 `~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
 is absent from that role's turn, not merely discouraged: it is the only capability statement a role
 carries (`cannot:` in the short form), and denying a tool denies every tool of its kind, MCP tools
@@ -157,8 +157,8 @@ compose a custom shape today, provision the closest built-in and add roles by ha
 `secrets-guard`, `prod-approval`), methodology pipelines that are the practice (`tdd`,
 `spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
 that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a tool pack
-(`code-intel`). `docket recipes list` shows what each brings, derived from
-its files; `docket init --recipe tdd` starts a new pod from one, `docket pod <project> apply
+(`code-intel`). `docket pod recipes` shows what each brings, derived from
+its files; `docket init --recipe tdd` starts a new pod from one, `docket pod apply
 git-safety` applies one onto a pod that already exists, and a directory under
 `~/.docket/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
 a repository's own `.docket/`, which plain `docket init` discovers, validates and applies when it
@@ -303,7 +303,7 @@ Implementer," from `SOUL.md`). Display names (`docket info`) resolve name → ro
 self-authored `IDENTITY.md`; the prompt composer never reads one. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
-templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod <project> sync` when
+templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod apply` when
 they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
 `SOUL.md` (docket never writes it, so it survives a `sync`/rebuild), and a
 `projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
@@ -349,7 +349,7 @@ Each role maps to the **cheapest model adequate for its workload** — coordinat
 review/test are cheap-class; the Implementer (and security audits) get the strong class. Change a
 role once and every policy-following agent re-resolves; pin one agent with `docket profile`. A
 starter or custom archetype with no dedicated policy-table row falls back to resolving through its
-own `modelClass` (`cheap`/`strong`) instead of the global default — see `docket roles show <name>`
+own `modelClass` (`cheap`/`strong`) instead of the global default — see `docket pod roles <name>`
 for what class a given role carries.
 
 | Role | Policy key | Default class |
@@ -375,13 +375,13 @@ docket init <project> [path] --pod full   # + Reviewer + Tester
 docket init <project> [path] --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
-docket recipes list                      # the eighteen shipped recipes and your own, what each brings
+docket pod recipes                      # the eighteen shipped recipes and your own, what each brings
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied
                                          #   by plain `docket init`
-docket pod <project> apply [<name|dir>]  # apply .docket/ (default), a recipe name or a directory
-docket pod <project> export [<dir>]      # write the pod's own scope back to .docket/
-docket validate [<dir|file>]             # check every kind: document before applying
+docket pod apply <name|dir>    # apply a recipe name or a directory such as .docket
+docket pod export [<dir>]      # write the pod's own scope back to .docket/
+docket pod validate [<dir|file>]       # check every kind: document before applying
 docket pod <project>                     # list members
 docket pod <project> add <role> [--count N]
 docket add <role> [--project <project>] [--count N]  # same, pod inferred from the cwd
@@ -389,10 +389,10 @@ docket pod <project> remove <member-id>
 docket delete <project>                  # tear down the whole pod
 
 # Role archetypes
-docket roles list                        # every registered archetype
-docket roles show <name>                 # one archetype's full definition
-docket roles add <file.yaml>             # register/override a custom archetype
-docket roles validate [file.yaml]        # dry-run schema + template validation
+docket pod roles                        # every registered archetype
+docket pod roles <name>                 # one archetype's full definition
+docket pod apply <file.yaml>             # register/override a custom archetype
+docket pod validate [file.yaml]        # dry-run schema + template validation
 
 # Run the pipeline
 docket pod <project> delegate [--priority high|normal|low] [--brief FILE.json] "<task>"

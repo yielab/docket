@@ -1,7 +1,7 @@
 # code-intel
 
 Two pod-scoped MCP servers that let an agent search code by syntax tree and ask a language
-server about symbols. No roles, no pipeline, no members; `docket pod <p> apply code-intel`
+server about symbols. No roles, no pipeline, no members; `docket pod apply code-intel`
 installs the two server declarations for that pod only (the `mcp-server` items), and nothing
 runs until a turn loads them. Applying never installs the binaries below.
 

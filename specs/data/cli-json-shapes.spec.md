@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.23.0
+**Version**: 1.26.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -339,6 +339,20 @@ one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)
 `Exporters:` block listing each `name dialect state (scope)` (or `none enabled`), and,
 when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
+### `docket pod apply --json` / `pod roles --json` / `pod policies --json` / `pod recipes --json`
+
+```json
+{
+  "pod apply": {"items": [{"kind": "role|policy|plugin|skill|mcp-server|member|pipeline|setting", "name": "string", "action": "add|replace|skip", "note": "string"}]},
+  "pod roles": "array of {name, source, scope, modelClass, gate, description}; with a NAME, the archetype's wire object plus \"source\"",
+  "pod policies": "array of {id, hook, action, description}; with --plugins, {\"policies\": that array, \"plugins\": array of {name, scope, file, sha256}}; with an ID, the policy's own JSON",
+  "pod recipes": "array of {name, scope, brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers, unjailed_mcp_servers}; with a NAME, one such object plus \"readme\""
+}
+```
+
+`pod apply --dry-run --json` prints the plan and writes nothing; `pod apply --json` with no argument
+exits 1. Output is Rich-free on stdout.
+
 ### `docket serve` HTTP endpoints
 
 | Endpoint | Content-Type | Shape |
@@ -390,6 +404,10 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.26.0 (2026-10-08)
+
+- `docket pod roles`, `pod policies` and `pod recipes` print JSON with `--json`; `pod apply --json` prints the plan's items. `pod recipes` keeps the shape `recipes list|show --json` had.
 
 ### Version 1.23.0 (2026-10-07)
 
