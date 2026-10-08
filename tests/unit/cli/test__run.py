@@ -260,6 +260,21 @@ class TestEndpointGate:
         assert _runs_file() == ""
         assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
 
+    def test_refuses_through_the_real_readiness_report(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The seam: no stand-in for ``readiness()``; a fresh home resolves to a hosted model
+        with no credential, so the real report says the endpoint is missing."""
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "a task")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        result = runner.invoke(_app, ["run", "--pod", "demo"])
+
+        assert result.exit_code == 1
+        assert "docket setup" in result.output
+        assert _runs_file() == ""
+
 
 class TestUsage:
     def test_an_unknown_flag_exits_2_naming_it(self) -> None:

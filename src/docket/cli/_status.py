@@ -49,13 +49,10 @@ def _last_activity_or_never(agent_id: str) -> str:
 
 
 def _start_running() -> bool:
-    """True when ``docket start`` is running: its pid file exists and the process answers."""
-    try:
-        pid = int((_cfg.DOCKET_HOME / "serve.pid").read_text(encoding="utf-8").strip())
-        os.kill(pid, 0)
-    except (OSError, ValueError):
-        return False
-    return True
+    """True when ``docket start`` is running (the service's own pid-file check)."""
+    from docket.cli import _service
+
+    return _service.is_running()
 
 
 def _approved_ready(task: dict[str, Any]) -> bool:

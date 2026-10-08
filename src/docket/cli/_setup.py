@@ -24,7 +24,6 @@ setup_app = typer.Typer(
 
 _PROVIDER_COMMAND = "docket setup provider add <name>"
 _NOTIFY_COMMAND = "docket setup notify enable desktop"
-_TELEGRAM_COMMAND = "docket setup notify enable telegram --chat <id>"
 _SANDBOX_COMMAND = "docket setup sandbox on"
 _SERVICE_UNIT = Path(".config") / "systemd" / "user" / "docket-serve.service"
 
@@ -237,6 +236,26 @@ def _ask_endpoint() -> int:
     return _setup_model.add_provider(chosen, url)
 
 
+def _ask_telegram() -> None:
+    """The wizard's Telegram step: the same one-operation connect `setup notify enable` does."""
+    import getpass
+
+    from docket.cli import _setup_notify
+
+    chat = input("Telegram chat id: ").strip()
+    if not chat:
+        ui.warn("Skipped: no chat id")
+        return
+    token = getpass.getpass("Bot token (hidden; blank keeps the stored one): ").strip() or None
+    _ran(f"docket setup notify enable telegram --chat {chat} --token")
+    try:
+        written = _setup_notify.enable_telegram([chat], token, test=False)
+    except _setup_notify.NotifySetupError as exc:
+        ui.error("Telegram not connected", str(exc))
+        return
+    ui.success(f"Telegram connected: chat {chat}, {len(written.bindings)} Lead binding(s)")
+
+
 def _ask_optional(r: Readiness) -> None:
     from docket.cli import _setup_sandbox
     from docket.edges.adapters import system as _sys
@@ -249,7 +268,7 @@ def _ask_optional(r: Readiness) -> None:
         _channel.enable_channel("desktop")
         ui.success("Channel enabled: desktop")
     if not r.notify.ok and _ask("Set up Telegram?"):
-        ui.info(f"Run: {_TELEGRAM_COMMAND}")
+        _ask_telegram()
     if not r.sandbox.ok and _backend_found() != "none" and _ask("Turn the sandbox on?"):
         _ran(_SANDBOX_COMMAND)
         _setup_sandbox.isolate("on")

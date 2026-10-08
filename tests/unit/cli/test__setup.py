@@ -141,6 +141,37 @@ class TestScriptedTerminal:
         assert not (home / "docket-providers.json").exists()
 
 
+class TestTelegramStep:
+    def test_the_wizard_calls_the_one_step_connect(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The seam between the flow and ``setup notify``: one function, called with the chat
+        and token the operator typed, and told not to send."""
+        import getpass
+
+        from docket.cli import _setup_notify
+
+        _home(tmp_path, monkeypatch)
+        calls: list[tuple[list[str], str | None, bool]] = []
+
+        def _record(chats: list[str], token: str | None, *, test: bool) -> _setup_notify.Written:
+            calls.append((chats, token, test))
+            return _setup_notify.Written(secret="TELEGRAM_BOT_TOKEN", actors=chats, bindings=["a"])
+
+        monkeypatch.setattr(_setup_notify, "enable_telegram", _record)
+        monkeypatch.setattr(_setup, "_ask", lambda q: q == "Set up Telegram?")
+        monkeypatch.setattr("builtins.input", lambda _p="": "42")
+        monkeypatch.setattr(getpass, "getpass", lambda _p="": "t")
+        report = _setup.Readiness(
+            endpoint=_setup.Piece("model endpoint", True, "", ""),
+            notify=_setup.Piece("notifications", False, "console only", "docket setup notify"),
+        )
+
+        _setup._ask_optional(report)
+
+        assert calls == [(["42"], "t", False)]
+
+
 class TestFix:
     def test_fix_runs_the_health_engine_with_repairs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
