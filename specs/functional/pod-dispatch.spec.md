@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.36.0
+**Version**: 6.36.1
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,12 +65,12 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
-This specification defines the pod dispatch pipeline's state machine — how `docket pod
-<project> dispatch` (and the opt-in `docket serve --dispatch` loop) claims and drives queued
+This specification defines the pod dispatch pipeline's state machine — how `docket run`
+(and the opt-in `docket start --dispatch` loop) claims and drives queued
 tasks through a pod's roles hop by hop, how it survives a crash mid-task, how a task retries,
 blocks, waits for a human decision, and resumes, what gates can stop advancement at each hop, and
 what a caller can observe (task status, per-hop record, trace events) after a run. The pipeline
@@ -149,9 +149,9 @@ This specification does NOT cover:
 - `core/approval.py`'s own approval-record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
   channels, audit-log parity) — see `security-gates.spec.md`. This spec covers only how
   *dispatch* creates and reacts to a record, not the record's own store contract
-- The CLI surface for queuing/inspecting/dispatching tasks (`docket task add|list|show|diff|trace|prune`, `docket pod <project>
-  add/set-verify`, `docket run`, `docket runs cancel`, including their flags) — see `cli-interface.spec.md`
-- Budget-cap accounting in general, and the `docket profile <id> --budget`/`--resume` CLI
+- The CLI surface for queuing/inspecting/dispatching tasks (`docket task add|list|show|diff|trace|prune`, `docket pod
+  add` and `docket pod set verify`, `docket run`, `docket task cancel`, including their flags) — see `cli-interface.spec.md`
+- Budget-cap accounting in general, and the `docket pod set budgetUsd` and `docket run --resume` CLI
   contract — see `cost-tracking.spec.md`. This spec covers only the pre-hop budget check and the
   auto-pause/claim-refusal mechanics it drives
 - The persisted dispatch-run registry (`core/runs.py`, `GET /runs`) that records
@@ -162,8 +162,8 @@ This specification does NOT cover:
   not the registry's own record shape
 - `edges/store.py`'s `with_lock`/`read_modify_write` locking primitive itself (this spec only
   relies on its atomicity guarantee) — see the module's own docstring
-- The retired org-wide `docket team` queue (removed-command notice only; durable record in
-  ROADMAP decision D-11 — its spec was removed 2026-07-30)
+- The retired org-wide manual queue (durable record in ROADMAP decision D-11 — its spec was
+  removed 2026-07-30)
 - The declarative role-archetype registry's schema itself (`gateContract`'s closed kinds, the
   built-in/starter-library archetypes, the user overlay) — see `role-archetypes.spec.md`. This
   spec covers only how the executor *consumes* an archetype's `gateContract` as a gate fallback,
@@ -336,8 +336,8 @@ requirement 6, close that gap.)*
    and the loop **MUST** continue to the pod's next eligible task rather than aborting the whole
    dispatch run. Any hop that completed before the refusal (e.g. the Lead's) was already
    persisted incrementally (see above) and **MUST** remain in the task's `hops[]`.
-3. A `dispatch_refused`-tagged `failed` task **MUST** be reclaimable by `docket pod <project>
-   dispatch --resume` (per "Claiming" requirement 3) once its underlying cause is fixed — a
+3. A `dispatch_refused`-tagged `failed` task **MUST** be reclaimable by `docket run
+   --resume` (per "Claiming" requirement 3) once its underlying cause is fixed — a
    corrected pipeline file naming a real pod member, for instance — and **MUST** then continue
    from its last persisted hop exactly as a resumed `stale_claim` task does (requirements 4-5
    above apply identically; `dispatch_refused` is not a fifth pipeline-position bookkeeping
@@ -393,7 +393,7 @@ implementation notes this section summarizes.)*
    sync triggered by either task's lifecycle **MUST** regenerate the *whole* region from the
    queue's current state, never just the one task that triggered it, so neither dispatcher's sync
    can silently erase the other's entry.
-6. `docket doctor` **MUST** flag a divergence between `TASK_LIST.json`'s `running` tasks and the
+6. `docket setup` **MUST** flag a divergence between `TASK_LIST.json`'s `running` tasks and the
    Lead's ledger — a task `running` with no matching ledger entry, or a ledger entry naming a
    task that is not (or is no longer) `running` — and **MUST**, under `--fix`, resolve it by
    re-syncing the ledger from `TASK_LIST.json` (the same `sync_dispatch_tasks` dispatch itself
@@ -402,8 +402,8 @@ implementation notes this section summarizes.)*
 
 ### Conversation registry auto-population (ROADMAP Phase 17 C-5)
 
-*(`core/conversations.py`'s registry was previously populated only at bind time — `docket wire`
-— and by hand (`docket conversations set`). This section closes the deferred TC item: dispatch
+*(`core/conversations.py`'s registry was previously populated only at bind time — `docket setup notify bind`
+— and by hand (`docket setup notify show telegram` lists them). This section closes the deferred TC item: dispatch
 keeps a wired agent's conversation current with the real task it is working, not just whatever
 was seeded once at binding time.)*
 
@@ -415,7 +415,7 @@ was seeded once at binding time.)*
    fabricated by this path — it is a no-op for an unwired member.
 2. This path **MUST NOT** alter a conversation's `topic`, `status`, `channel`, `peer_id`, or
    `peer_kind` — only `last_message`/`task_ref`/`updated` move; an operator's own classification
-   of a thread (via `docket conversations set`) is never overwritten by dispatch activity.
+   of a thread (by hand in the conversation registry) is never overwritten by dispatch activity.
 3. A hop for one pod member (e.g. the Implementer) **MUST NOT** touch a different member's
    (e.g. the Lead's) conversation — each hop only ever refreshes the conversation(s) keyed to its
    own `member_id`.
@@ -435,7 +435,7 @@ was seeded once at binding time.)*
    `blockedReason`. A `blocked` task is not attempted again by any future `dispatch_pod` call —
    it is not in the claimable set at all — until one of exactly two operator-driven actions moves
    it back to `pending`:
-   - `retry_task` (`docket pod <project> queue --retry <task-id>`) — a single named task, a
+   - `retry_task` (`docket task retry <task-id>`) — a single named task, a
      no-op if that task is neither `blocked` nor `failed` (requirement 2).
    - A pod-wide budget change on the Lead (`docket pod set budgetUsd <n>` with `n > 0`,
      or `docket run --resume`) — `unblock_pod` flips **every** `blocked` task in
@@ -453,8 +453,7 @@ was seeded once at binding time.)*
 ### Pipeline order and participation
 
 1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` (W-1) —
-   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, `docket pod <project>
-   dispatch`, the serve sweep/schedule/webhook, and `cli/_mcp.py`'s dispatch tool) resolves
+   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, `docket run`, the serve sweep/schedule/webhook, and `cli/_mcp.py`'s dispatch tool) resolves
    `effective_pipeline(project, None)`. The resolution order is: a caller-supplied `spec`
    always wins outright (returned unpatched); otherwise this pod's **bound pipeline**
    (`core.pod.PodSettings.pipeline`, see "Pod dispatch settings" below) wins next, also
@@ -502,7 +501,7 @@ was seeded once at binding time.)*
    considers. `core.pod`'s roster helpers (`_role_names`, `parse_member_id`, `members_of`)
    **MUST** resolve that role against the pod's own overlay (`core.archetypes.load_registry
    (project)`) as well as the global one, so a pod-only custom role is a real roster member, not
-   only visible to `docket roles --pod`.
+   only visible to `docket pod roles --pod`.
 6. `docket pod set pipeline <file>` **MUST** validate *file*
    (`core.pipeline.load_pipeline`) and plan it against the pod's *current* roster
    (`core.orchestrator.resolve_plan`) before accepting it: a role-targeted step whose role the
@@ -519,7 +518,7 @@ was seeded once at binding time.)*
    fail loud, never a silent fall back to the blueprint/built-in pipeline. `unset pipeline`
    **MUST** clear the stored digest (falling back to requirement 1's blueprint/built-in
    resolution) and **SHOULD** best-effort remove the stored copy, never failing the unset if
-   that removal fails. `docket pipeline plan <project>` **MUST** name its resolved source: an
+   that removal fails. `docket pod plan` **MUST** name its resolved source: an
    explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
    default".
 
@@ -556,7 +555,7 @@ was seeded once at binding time.)*
    resolution" below); an injected five-argument `Runner` test double is unaffected and continues
    to run its own agent's configured model, since that seam predates and does not carry a `model`
    parameter. A step `model` literal whose provider is absent from the provider catalog **MUST**
-   be a `docket pipeline validate`/`plan` error naming the step, the same "caught before dispatch"
+   be a `docket pod validate`/`plan` error naming the step, the same "caught before dispatch"
    posture an unresolvable `role`/`agent` target already gets.
 6. Every trace event `core/agent_loop.py` writes for a hop (`context_composed`, `tool_call`,
    `tool_result`, `llm_call`, `session_compaction`, `request_fit`, `budget_warning`) **MUST**
@@ -640,10 +639,10 @@ was seeded once at binding time.)*
    override passed to that specific invocation — `docket run --timeout
    <seconds>` for a CLI-triggered run (this one flag overrides **both** the turn and verify
    timeout for that run), or the process-wide `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S`
-   env config for a run `docket serve` triggers (webhook, due schedule, or the sweep loop); (b)
+   env config for a run `docket start` triggers (webhook, due schedule, or the sweep loop); (b)
    the pod Lead's own `turnTimeoutS`/`verifyTimeoutS` meta; (c) `DEFAULT_TIMEOUT` (300 seconds,
    `core/dispatch.py`) as the fallback of last resort.
-3. When `docket serve`'s process-wide timeout env vars are set, they take the "explicit
+3. When `docket start`'s process-wide timeout env vars are set, they take the "explicit
    override" slot for every pod that server instance dispatches (webhook/schedule/sweep) — for
    those runs they are resolved *before* that pod's own Lead-meta setting is even consulted, not
    layered beneath it. A CLI-triggered `docket run` (no `--timeout`) is
@@ -742,7 +741,7 @@ was seeded once at binding time.)*
    live agent-loop path, which must never crash over a hand-edited meta file.
 9. `PodSettings` also carries `network` (`none`|`open`, default `open`; any other value is
    refused at `set`). `none` cuts the network of this pod's jailed tool calls; it only narrows
-   the global `docket gates network` mode (a pod `open` under a global `none` stays `none`), via
+   the global `docket setup sandbox network` mode (a pod `open` under a global `none` stays `none`), via
    `core.pod.effective_network`, which `DocketDriver` reads each turn. See `security-gates.spec.md`
    "Network egress" requirement 7.
 
@@ -757,13 +756,13 @@ was seeded once at binding time.)*
    skip a malformed registry/overlay entry. None of these crash the sweep or a live fleet —
    that tolerance is intentional and unchanged — but nothing ever told an operator why a
    schedule never fired or an override never took effect.
-2. `docket pod <project> config set schedule "<spec>"` **MUST** validate *spec* (rejecting an
+2. `docket pod set schedule "<spec>"` **MUST** validate *spec* (rejecting an
    unrecognized `@every`/`HH:MM`/cron string with exit 1 and the meta record untouched, same
    as every other setting) and, on success, persist it into `docket-schedules.json` via
    `core.schedule.set_schedule` — the writer that file lacked. `unset schedule` **MUST**
    remove the project's entry via `core.schedule.unset_schedule`, leaving `lastRun` as-is.
    Both go through `edges/store.py`'s locked read-modify-write, never a direct file write.
-3. `docket doctor` **MUST** run a read-only check over `docket-schedules.json`
+3. `docket setup` **MUST** run a read-only check over `docket-schedules.json`
    (`core.schedule.find_schedule_problems`) and report every entry that `is_schedule_due`
    would silently treat as never-due, or an unreadable/malformed file itself — naming the
    file, the project key, and the reason. It never edits the file.
@@ -778,7 +777,7 @@ was seeded once at binding time.)*
 ### Unattended approval posture (`approvalMode`, ROADMAP P26-5)
 
 1. **Trigger.** A pod-dispatch hop that hits an `ask` policy verdict with nobody able to answer
-   (no operator watching a headless `docket serve`/schedule/webhook run) previously blocked the
+   (no operator watching a headless `docket start`/schedule/webhook run) previously blocked the
    whole hop for `TOOL_APPROVAL_TIMEOUT` (120s, see `security-gates.spec.md`) per gated call, with
    no way to shorten that for a pod that is known to run unattended. Only harness mode
    (`cli/_harness.py`) could opt out, by setting `DOCKET_APPROVAL_MODE=refuse` on its own `run_turn`
@@ -1120,7 +1119,7 @@ was seeded once at binding time.)*
    `DocketDriver.run_turn` builds the `ToolContext` a hop's turn runs under; its `project` field
    **MUST** resolve to the caller-supplied `trace_project` (the pod, threaded in from
    `core/dispatch.py`'s `_run_hop_turn`) when one is given, falling back to the agent id only for
-   a non-dispatch caller (e.g. `docket harness run`, which has no pod to file under). This is what
+   a non-dispatch caller (e.g. `docket exec`, which has no pod to file under). This is what
    `core/approval.py`'s `approval_create`/`approval_grant`/`approval_deny` — called with
    `ctx.project` — actually file their `approval_requested`/`approval_granted`/`approval_denied`
    events against; before this requirement, an in-turn gate's approval trace landed under
@@ -1144,7 +1143,7 @@ was seeded once at binding time.)*
 3. Eligibility is measured from when a record **became** terminal, not from when it was created:
    a run's `finishedAt`, an approval file's own mtime (its state transition is its only write
    after creation), and a conversation's `updated` timestamp.
-4. `docket serve`'s periodic sweep (`_run_sweeps`) **MUST** run all three prunes, each
+4. `docket start`'s periodic sweep (`_run_sweeps`) **MUST** run all three prunes, each
    independently best-effort like the existing trace/approval-expiry sweeps — one store's prune
    failing **MUST NOT** block the others or the server. `docket task prune --traces [--days N]` **MUST** expose the same
    underlying functions for on-demand use between sweeps.
@@ -1625,7 +1624,7 @@ any CLI rendering of this evidence.*
    selects in-place provisioning defaults to off.
 2. An in-place run **MUST** provision its pod through the same core provisioning function that
    `docket init` uses, and **MUST** apply its recipe through the same plan-then-apply path that
-   `docket pod <project> apply` uses.
+   `docket pod apply` uses.
 3. Every member of an in-place pod **MUST** run on the one model the run was given, including
    members a recipe adds.
 4. The run's approval mode **MUST** be written through the typed pod-setting coercion, never as a
@@ -1639,7 +1638,7 @@ any CLI rendering of this evidence.*
 
 ### Task worktrees
 
-1. `docket add`/`docket init` **MUST NOT** create a git worktree for a repo Implementer, and
+1. `docket pod add`/`docket init` **MUST NOT** create a git worktree for a repo Implementer, and
    provisioning records no `worktreeDir`/`worktreeBranch` on any member. There is no per-member
    worktree code path.
 2. At claim (`_claim_next_task`), for a task with no `worktree` recorded, a pod whose Implementer
@@ -1772,7 +1771,7 @@ the archetype-side `tokenBudget` schema this section consumes.)*
 5. `blocked` — the pod's budget cap was reached before a hop could run, or (ADR 0016, "Operator
    input steps and answers" below) a parked question's `expiresAt` passed unanswered
    (`blockedReason: "input_expired"`). Not terminal — re-enters `pending` only via
-   `docket pod <project> queue --retry <task-id>` or a pod-wide budget change on the Lead (never
+   `docket task retry <task-id>` or a pod-wide budget change on the Lead (never
    automatically, never via a plain dispatch run). An expired question is never `failed` --
    `retry_task` accepts any `blockedReason` unchanged.
 6. `waiting_approval` (ROADMAP Phase 15 G-1) — either a require_approval gate fired before a hop
@@ -1840,8 +1839,8 @@ card), scores nothing, and carries no dollar figure.*
 2. A pod whose previous sweep has not ended **MUST** be skipped by the next tick; a pod is never
    swept twice concurrently by the sweep loop.
 3. `_sweep_loop` **MUST**, once its stop event is set, wait for the in-flight sweeps to end
-   before returning, and `docket serve` joins it on shutdown.
-4. `docket serve` **MUST** stop in two stages on SIGINT/SIGTERM (handlers installed in the main
+   before returning, and `docket start` joins it on shutdown.
+4. `docket start` **MUST** stop in two stages on SIGINT/SIGTERM (handlers installed in the main
    thread before the startup sweep). The first signal stops the server and the sweep loop,
    prints one line (`stopping: waiting for N pod sweep(s); signal again to abandon`) and waits
    for in-flight sweeps (requirement 3). The second signal **MUST** request cancellation
@@ -1874,11 +1873,10 @@ card), scores nothing, and carries no dollar figure.*
 
 ## Interface Contracts
 
-This spec defines behavior only; the CLI surface that triggers it (`docket pod <project>
-dispatch [--resume] [--timeout <seconds>]`, `docket pod <project> queue --retry <task-id>`,
-`docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`, `docket serve
+This spec defines behavior only; the CLI surface that triggers it (`docket task retry <task-id>`,
+`docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`, `docket start
 --dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry record each
-invocation of this pipeline creates (`docket runs`, `GET /runs`), including its `pids` field and
+invocation of this pipeline creates (`docket task list`, `GET /runs`), including its `pids` field and
 the `"cancelled"` state `docket task cancel <ref>` produces, is documented in
 `serve-read-api.spec.md`/`cli-json-shapes.spec.md`.
 
@@ -1959,7 +1957,7 @@ Implementer and Reviewer once each.)
 $ docket run
   [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
-$ docket profile myapp-lead --resume
+$ docket run --resume
   Unblocked 1 budget-blocked task(s) in pod 'myapp'.
 ✓ Resumed 'myapp-lead' — auto-pause cleared.
 ```
@@ -2059,7 +2057,7 @@ run is needed to observe this; a later `docket run` — with or without `--resum
 - `core.orchestrator.resolve_plan` **MUST** be deterministic: the same `PipelineSpec` + the same
   roster + the same archetype registry **MUST** always resolve to a byte-identical
   `ExecutionPlan`, independent of wall-clock time, dict-construction order, or which thread calls
-  it — the property `docket pipeline plan` and the real executor both rely on to never drift from
+  it — the property `docket pod plan` and the real executor both rely on to never drift from
   each other.
 - Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
   task trace <ref> --tail` — nothing in the pipeline is silent (including the printed
@@ -2075,6 +2073,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.36.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 6.35.0 (2026-10-08)
 

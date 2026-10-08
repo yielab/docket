@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.2.0
+**Version**: 3.2.1
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -121,7 +121,7 @@ feasibility spike remains in ROADMAP and Git history.
    same table "User registry overlay" requirement 4 already overlays) and **MUST** return any
    other value unchanged after checking that its `<provider>/…` prefix names a provider present
    in `core.provider.load_catalog()`; a prefix absent from the catalog **MUST** raise, naming the
-   unknown provider, so `docket pipeline validate`/`plan` can refuse the step before any hop runs
+   unknown provider, so `docket pod validate`/`plan` can refuse the step before any hop runs
    (`pod-dispatch.spec.md`'s "Per-hop execution" requirement 5) instead of failing mid-dispatch.
 
 ### Changing the policy (docket setup model)
@@ -354,7 +354,7 @@ docket setup model                              # Show the role→model policy
 docket setup model set <role|default> <provider/model>
 docket setup model preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
 docket setup model reset                        # Restore built-in defaults (asks to confirm)
-docket setup provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
+docket setup provider add <name> <base-url> [--model ID] [--ctx N] [--max-tokens N]
 docket pod show [<member-id>]              # Each member's model and where it comes from
 ```
 
@@ -477,6 +477,10 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.2.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 3.2.0 (2026-10-08)
 

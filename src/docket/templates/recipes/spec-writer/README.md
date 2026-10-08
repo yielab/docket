@@ -35,5 +35,5 @@ run plans every item `skip`). `--dry-run` prints the plan without writing.
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```

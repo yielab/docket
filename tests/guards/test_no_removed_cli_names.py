@@ -32,7 +32,7 @@ ROOTS: tuple[str, ...] = (
     "benchmarks",
 )
 # Files inside ROOTS whose owners have not swept them yet.
-PENDING: tuple[str, ...] = ("src/docket/templates",)
+PENDING: tuple[str, ...] = ()
 
 
 class TestRoots:

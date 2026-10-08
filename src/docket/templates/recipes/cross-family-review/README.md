@@ -35,6 +35,6 @@ and pipeline before writing anything, and is safe to run again (a second run pla
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-reviewer
 ```

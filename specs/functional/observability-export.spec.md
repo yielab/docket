@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 1.12.1
+**Version**: 1.12.2
 **Status**: Implemented and live. Model, projection, the exporter catalog, the `otlp-http` wire
 dialect, the bounded queue/background sender, the `run_turn` wiring, CLI activation (`docket
 exporters enable/disable/test/add/remove/list/show/export/privacy/preview`), `pod.yaml`'s
@@ -16,7 +16,7 @@ document, the built-in + global catalog, pure activation classification, and
 shipped wire encoding and transport; `edges/adapters/exporters/__init__.py` builds a `SpanSink`
 from a resolved `ExporterSpec` (`sink_for`); `edges/adapters/docket_runtime.py::run_turn` starts
 the pipeline lazily and flushes it, writing `config.EXPORTERS_HEALTH_FILE`, on every return path.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -476,9 +476,9 @@ document rather than replace it:
     existing catalog entry of the same name, or the empty set when there is none.
 97. `docket setup export list` **MUST** gain a `SHARES` column (the exporter's `privacy_label`);
     `docket setup export enable` **MUST** always print `shares: <label> (<classes, comma-joined,
-    or "structure only">)` in place of the retired payload warning; `docket config explain`
+    or "structure only">)` in place of the retired payload warning; `docket pod show`
     **MUST** print the privacy label per exporter and its `--json` form's `exporters` entries
-    **MUST** carry `privacy: {label, classes}` in place of a bare label string; `docket doctor`
+    **MUST** carry `privacy: {label, classes}` in place of a bare label string; `docket setup`
     **MUST** add one informational line (not counted as an issue) per enabled exporter at
     `conversation`/`full` sharing to a non-loopback host.
 
@@ -537,7 +537,7 @@ the end of each of them. These requirements keep that session one complete trace
      closes it, or when `Pipeline.close` closes every span still open (`flush_open`). Langfuse
      keeps a trace's Input and Output from the first root observation it receives and ignores
      later copies, so an early copy would freeze the trace on the first hop's answer. Both
-     live `run_turn` callers (`core/dispatch.py` and `docket harness run`) write
+     live `run_turn` callers (`core/dispatch.py` and `docket exec`) write
      `session_end`; a library caller that never does gets its root at process exit.
 107. The built-in `langfuse` document **MUST** alias `docket.session.input` to
      `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
@@ -932,22 +932,22 @@ An `otel/opentelemetry-collector` container (image digest
 `debug` exporter on its `traces` pipeline, receiving OTLP/HTTP on `4318`.
 
 ```text
-$ docket exporters enable otel-collector
+$ docket setup export enable otel-collector
 ✓ Exporter enabled: otel-collector  ->  http://127.0.0.1:4318/v1/traces
   scope: global  payload: full
 ⚠ tool arguments and results leave this host
 ```
 
-A real `docket pod rack-cli dispatch` (a freshly provisioned `software` pod, full roster) ran
+A real `docket run` (a freshly provisioned `software` pod, full roster) ran
 one task through all four hops -- Lead, Implementer, Reviewer, Tester -- against the local
 llama.cpp endpoint (`DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), and completed: `done -- 4 hop(s)`.
 
 - The collector's own log recorded 5 `docket.session` root spans, 29 `gen_ai.chat` spans
   carrying real measured token counts (e.g. `gen_ai.usage.input_tokens: Int(2467)`,
   `gen_ai.usage.output_tokens: Int(63)`), and 39 `execute_tool` spans (`read`, `grep`, `glob`).
-- `docket trace <session>` showed the matching 29 `llm_call` lines for the same session, with
+- `docket task trace <session>` showed the matching 29 `llm_call` lines for the same session, with
   the same token counts, confirming the projected spans and the underlying trace agree.
-- `docket exporters show otel-collector` reported `health exported=71 dropped=0 failed=0` --
+- `docket setup export show otel-collector` reported `health exported=71 dropped=0 failed=0` --
   Requirement 28's health file is a non-zero, never-failed counter under real traffic.
 
 This exercises the `auth: none` path (Requirements 24-27) end to end: catalog resolution,
@@ -956,31 +956,31 @@ and the module-level wiring into `run_turn` (Requirements 50-57).
 
 ### Langfuse, `otlp-http`, `auth: basic` -- live round-trip verified 2026-09-28
 
-`docket exporters enable langfuse` was first run on this machine with no credential stored, and
+`docket setup export enable langfuse` was first run on this machine with no credential stored, and
 correctly refused -- the real, reproducible non-TTY path Requirement 60 describes:
 
 ```text
-$ docket exporters enable langfuse
+$ docket setup export enable langfuse
 ✗ Error: Exporter 'langfuse' needs credentials that are not set:
-  docket keys add LANGFUSE_PUBLIC_KEY
-  docket keys add LANGFUSE_SECRET_KEY
+  docket setup provider add LANGFUSE_PUBLIC_KEY --credential
+  docket setup provider add LANGFUSE_SECRET_KEY --credential
 ```
 
 The same refusal was reproduced for `honeycomb` (`auth: header`), confirming Requirement 60
 across both non-`none` auth kinds.
 
-The operator then stored both keys (`docket keys add LANGFUSE_PUBLIC_KEY` /
+The operator then stored both keys (`docket setup provider add LANGFUSE_PUBLIC_KEY --credential` /
 `LANGFUSE_SECRET_KEY`) and `enable` succeeded, probing the real endpoint with the real
 credential:
 
 ```text
-$ docket exporters enable langfuse
+$ docket setup export enable langfuse
 ✓ Exporter enabled: langfuse  ->  https://cloud.langfuse.com/api/public/otel/v1/traces
   scope: global  payload: metadata
 ```
 
-A second real `docket pod rack-cli dispatch` (4 hops, local model, 10 `llm_call` events) ran with
-both `otel-collector` and `langfuse` enabled at once. `docket exporters show langfuse` afterward
+A second real `docket run` (4 hops, local model, 10 `llm_call` events) ran with
+both `otel-collector` and `langfuse` enabled at once. `docket setup export show langfuse` afterward
 reported `health exported=27 dropped=0 failed=0`: every one of the 27 spans this dispatch
 produced (session roots, `gen_ai.chat`, `execute_tool`) got a 2xx response from Langfuse's real
 cloud endpoint, under the real basic-auth credential -- `OtlpHttpSink.emit`'s `accepted` count
@@ -1031,12 +1031,12 @@ instead. The fixture and its golden are unchanged.
 
 ### Privacy levels -- live, 2026-09-28
 
-One real `docket harness run` turn per level against the local llama.cpp endpoint, each in a
+One real `docket exec` turn per level against the local llama.cpp endpoint, each in a
 fresh `DOCKET_HOME` with `otel-collector` (local container, `debug` exporter, `detailed`) and
-`langfuse` (the operator's project) both enabled at that level by `docket exporters enable
+`langfuse` (the operator's project) both enabled at that level by `docket setup export enable
 <name> --privacy <level> --yes`. The task carried a unique `CANARY-TASK-<level>-<hex>` and the
 file the agent was told to read held a unique `CANARY-FILE-<level>-<hex>`. After each turn,
-`docket exporters preview langfuse` and `--json`, the collector's log since the turn began, and
+`docket setup export preview langfuse` and `--json`, the collector's log since the turn began, and
 the trace read back through Langfuse's public API (`/api/public/traces/<id>`) were searched for
 both canaries. Every run: `result: ok`, `exported=4 dropped=0 failed=0` on both exporters.
 
@@ -1077,7 +1077,7 @@ privacy leak:
 - At `full`, Langfuse showed every generation's and tool's Input and Output, but the trace's
   own Input and Output stayed empty. Langfuse derives them from the root observation, and
   `docket.session` carried no content at any level. Fixed by requirements 104, 105 and 107.
-- A `docket harness run` turn exports no `gen_ai.system_instructions` even at `full`. That is
+- A `docket exec` turn exports no `gen_ai.system_instructions` even at `full`. That is
   correct, not a gap: a harness workspace composes no system prompt (no `prompt_composed`
   record), so there are no instructions to send.
 
@@ -1098,10 +1098,14 @@ Re-run on the fixed code, a new task's session projected 33 spans locally and La
 the same 33 ids, none extra and none missing: one root, 14 generations each with Input and
 Output, the Lead's hop span from its start to its reply, and the task as the trace's Input.
 The pod's tasks then parked on `bash` calls the curated allowlist refuses (`python`, `perl`,
-`apt-get install`); two were approved and resumed, the rest denied, and `docket audit verify`
+`apt-get install`); two were approved and resumed, the rest denied, and `docket log verify`
 stayed clean.
 
 ## Changelog
+
+### Version 1.12.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.12.1 (2026-10-07)
 

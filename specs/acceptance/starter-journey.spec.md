@@ -1,8 +1,8 @@
 # Extractable Starter Journey
 
-**Version**: 1.0.1
+**Version**: 1.0.2
 **Status**: Implemented — artifact-installed Python 3.11 journey tested outside the checkout
-**Last Updated**: 2026-09-29
+**Last Updated**: 2026-10-08
 
 ## Overview
 
@@ -66,9 +66,10 @@ contracts: the starter MUST NOT claim that `docket-runtime` owns the CLI run reg
    `Starter journey completed.`. The done task's persisted final hop MUST contain the complete
    `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `verdict`, `notes`, and
    `brief`), and its legacy `output` MUST equal the typed artifact's summary.
-7. The installed public CLI MUST successfully execute `docket runs list --project docket-starter
-   --json`, `docket runs show <id> --json`, `docket trace export docket-starter`, and
-   `docket audit verify`. List/show MUST agree on a successful run that names the completed task;
+7. The installed public CLI MUST successfully execute `docket task list --pod docket-starter
+   --json`, `docket task show <id> --pod docket-starter --json`, `docket task trace <id> --pod
+   docket-starter --export`, and
+   `docket log verify`. List/show MUST agree on a successful run that names the completed task;
    the exported trace MUST contain one adjacent `tool_call`/`tool_result` pair with matching
    project, session, role, tool, and call id; audit verification MUST report a clean chain.
 8. The starter MUST print `STARTER JOURNEY PASS` plus the target, task-list, trace, and audit
@@ -106,6 +107,10 @@ all use their production paths.
   artifact installation.
 
 ## Changelog
+
+### Version 1.0.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.0.1 (2026-09-29)
 

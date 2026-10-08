@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.20.0
+**Version**: 2.20.1
 **Status**: Active
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Overview
 
@@ -207,7 +207,7 @@ turn, tool, token, or output limits merely to make the canary predictable.
 
 The default live scenario **MUST** be `memory-maintenance`, a realistic code-repair task whose
 critical current decision exists only in the Lead's private dated memory logs. The scenario
-**MUST** call the public `docket maintain <lead> distill` command against the genuine model, verify
+**MUST** call the public `docket pod reset <lead> --yes` command against the genuine model, verify
 that pending logs were archived and the superseding `- [exact]` decisions survived byte-faithfully
 into `MEMORY.md`, then
 delegate a task that refers to durable project decisions without restating their values. Its
@@ -223,7 +223,7 @@ The delegated task **MUST** direct every downstream role to consume those durabl
 through the Lead's typed handoff, explicitly forbid searching for or accessing Docket private
 control paths (`MEMORY.md`, `HEARTBEAT.md`, `memory/`, and `.docket`) with project tools, and
 **MUST NOT** restate the private fact values. That complete instruction **MUST** fit the public
-`docket pod <project> delegate` 500-character description ceiling and be exercised through that
+`docket task add` 500-character description ceiling and be exercised through that
 real CLI boundary before live inference. Because opaque shell execution fails closed, the same
 instruction **MUST** tell downstream roles to mutate source through structured `edit`/`write`
 tools, spell the fixture README's regression command byte-for-byte as the only allowed shell
@@ -260,7 +260,7 @@ the already-durable approval/session/trace/audit evidence, never executes the de
 cannot turn the cancelled run into success.
 Exact model prose is not contractual; retained fact values and the resulting behavior are. If the
 un-scripted agent requests a policy-gated `bash` validation, the
-canary **MUST** exercise a genuine operator grant through `docket approve` in its isolated home;
+canary **MUST** exercise a genuine operator grant through `docket task approve` in its isolated home;
 it **MUST NOT** disable the policy or shorten its timeout. Pipeline approval remains a distinct,
 explicit pause/resume assertion. `--scenario basic` **MUST** retain the smaller W23 live workflow for focused
 infrastructure diagnosis, while the deterministic default invocation remains unchanged.
@@ -430,6 +430,10 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.20.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 2.20.0 (2026-10-08)
 

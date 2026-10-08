@@ -38,6 +38,6 @@ docket pod apply tdd    # onto an existing pod
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-tester
+docket pod unset pipeline
+docket pod remove <project>-tester
 ```

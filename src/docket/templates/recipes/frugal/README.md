@@ -10,7 +10,7 @@ right-size-the-model-to-the-role practice model-routing setups use.
 gate — a task that would exceed it pauses rather than silently overspending. `maxReworkCycles: 1`
 bounds the Reviewer's own rework edge pod-wide. `model: cheap` on `plan` and `review` resolves
 against the live rank anchors for that hop only; it is never persisted to the Lead's or
-Reviewer's own pinned model, so removing this pipeline restores their ordinary resolution.
+Reviewer's own model, so removing this pipeline restores their ordinary resolution.
 
 ## Apply it
 
@@ -37,9 +37,9 @@ docket pod apply frugal    # onto an existing pod
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> config unset budgetUsd
-docket pod <project> config unset maxReworkCycles
-docket pod <project> config unset turnTimeoutS
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod unset budgetUsd
+docket pod unset maxReworkCycles
+docket pod unset turnTimeoutS
+docket pod remove <project>-reviewer
 ```

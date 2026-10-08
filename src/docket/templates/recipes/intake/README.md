@@ -43,6 +43,6 @@ validates the roster and `pipeline.yaml` before writing anything, and is safe to
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-reviewer
 ```

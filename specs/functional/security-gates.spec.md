@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.36.0
+**Version**: 0.36.1
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-06
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -91,7 +91,7 @@ are owned here, not there.
    function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
    `cd`-prefixed or otherwise-shaped command cannot get a different answer in the dry-run than it
    would live. **A pod MAY extend the curated allowlist for its own turns** via
-   `core.pod.PodSettings.allowCommands` (`docket pod <project> config set allowCommands
+   `core.pod.PodSettings.allowCommands` (`docket pod set allowCommands
    <bin>[,<bin>...]`, comma-separated exact basenames): `core/security.py::classify_command` takes
    an `extra_bins` parameter, default an empty `frozenset`, so every prior verdict in this spec is
    byte-identical when it is unset. A configured extra bin is folded into the `SAFE_BINS`
@@ -109,9 +109,9 @@ are owned here, not there.
    the live-path wiring), and a `pre_tool_call` policy `block`/`require_approval` on the same
    binary still wins (most-restrictive-wins, item 3 of the next section).
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
-   channel (CLI `docket approve`/`docket deny`, HTTP `POST /approvals/<token>`, or — since
+   channel (CLI `docket task approve`/`docket task deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
-   answered by `docket serve --telegram`'s poll loop with no interactive session required). Since
+   answered by `docket start --telegram`'s poll loop with no interactive session required). Since
    Phase 19 P19-7b deleted the daemon, docket's store is the **only** approval system left — the
    "daemon's own gate prompt, unbridged" caveat that used to qualify this requirement no longer
    applies to anything real; see the approval-seam note above. Since ROADMAP Phase 15 G-1, one
@@ -138,7 +138,7 @@ are owned here, not there.
    docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
    `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in
    the async approval store **MUST** resolve to **denied** (not the pre-G-1 `"expired"` state)
-   after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket serve` is
+   after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket start` is
    up. For a G-1-originated record (one gating a dispatch task), that resolution **MUST** also
    fail the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
@@ -146,7 +146,7 @@ are owned here, not there.
    through (`core/approval.py`'s `APPROVAL_CHANNELS`: `cli`, `http`, `mcp`, `telegram`, `tack` — an
    HTTP caller-supplied tag — or `timeout` for the expiry sweep's own fail-closed denial; an
    in-turn wait that observes run cancellation denies with `cancellation`). **Since ROADMAP Phase 19 P19-8, the `telegram` tag is live**: it is docket's own bot
-   (`docket serve --telegram`, `core/telegram.py`) answering through docket's own approval store —
+   (`docket start --telegram`, `core/telegram.py`) answering through docket's own approval store —
    never, as this spec used to (mis)describe before a daemon existed for the ambiguity to matter,
    a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
    one; see the G-5 findings section below for why that path was investigated and closed.
@@ -382,7 +382,7 @@ nothing" shape G-1 fixed for the approval store one card earlier.
      above) — a match raises a bare `allow` to `warn` but **MUST NOT** downgrade or override an
      already-stronger `policy_eval_detail` verdict.
 4. Every non-`allow` verdict on either hook **MUST** emit a `guardrail_check` trace event
-   (`payload: {hook, policy, action}`) — a pure audit trail, visible via `docket trace`. A `block`
+   (`payload: {hook, policy, action}`) — a pure audit trail, visible via `docket task trace`. A `block`
    verdict **MUST** additionally emit `guardrail_block`, with `payload.action` set to the
    *tripped policy's id* (not the literal word `"block"`) — this is the shape
    `cli/_metrics.py`'s existing "Guardrail trips" reader keys its tally on
@@ -625,8 +625,7 @@ tool call to take.**
    `project=ctx.project`. `edges/adapters/docket_runtime.py::run_turn` **MUST** resolve `project`
    as `trace_project or core.pod.pod_of(agent_id) or agent_id`: a dispatch hop's own
    `trace_project` still wins, a standalone pod-member turn now resolves to its pod (so it still
-   sees that pod's own policies, not just the global set), and a non-pod agent (an org specialist,
-   the harness) falls back to `agent_id` exactly as before.
+   sees that pod's own policies, not just the global set), and a non-pod agent (the harness) falls back to `agent_id` exactly as before.
 5. An `ask` verdict **MUST** block the call synchronously on the real approval store rather than
    merely reporting the requirement: `dispatch_tool` calls `core.approval.approval_create` (falling
    back to `"operator"`/`"tool"` when `project`/`role` are unset) and then
@@ -636,7 +635,7 @@ tool call to take.**
      knob from the async `APPROVAL_TIMEOUT` (900s) `core/dispatch.py`'s require_approval gate
      uses. The two differ because they block different things: `APPROVAL_TIMEOUT` costs only wall
      clock (a task sits `waiting_approval`, nothing is running); `TOOL_APPROVAL_TIMEOUT` blocks a
-     live call — the model's turn and, under `docket serve`, a real worker slot — so it is kept
+     live call — the model's turn and, under `docket start`, a real worker slot — so it is kept
      well under `core/dispatch.py`'s `DEFAULT_TIMEOUT` (300s, one hop's whole budget), leaving
      room for the tool to actually run after a grant.
    - The wait **MUST** poll, not busy-spin (`config.TOOL_APPROVAL_POLL_INTERVAL_S`, default 2s).
@@ -651,7 +650,7 @@ tool call to take.**
    key in a `write` call's content, a credential in a `bash` command). Approval resolution itself
    (grant, explicit deny, or timeout-deny) continues to be recorded by `core/approval.py`'s
    existing `approval.grant`/`approval.deny` audit entries, so a fully gated call leaves **both**
-   the gate's own decision and its resolution in `docket audit`.
+   the gate's own decision and its resolution in `docket log`.
 7. Every denied, non-executed `ToolResult` **MUST** carry exactly one closed, privacy-safe denial
    kind: `invalid_call` for an unknown tool, undecodable arguments, or missing required arguments;
    `gate_denied` for a direct command-classifier or policy denial; `approval_denied` for an explicit
@@ -734,7 +733,7 @@ tool call to take.**
     makes inside `core/tools.py`. The field is filled once per turn by the driver
     (`edges/adapters/docket_runtime.py::run_turn`), which resolves the calling agent's pod
     (`core.pod.pod_of`) and reads that pod's `PodSettings.allow_commands` — the same source
-    `docket pod <project> config get/set/unset allowCommands` reads and writes, so there is one
+    `docket pod show/set/unset allowCommands` reads and writes, so there is one
     reader and one writer, not a second copy. A non-pod agent, or a pod whose Lead's stored
     settings fail `PodSettings` validation for any reason, **MUST** resolve to an empty tuple
     (fail closed to the unmodified `SAFE_BINS` allowlist) rather than raise out of `run_turn` or
@@ -991,7 +990,7 @@ otherwise.
    before any model call (`DispatchError`, as for the isolation refusal: one attempt, one
    `network.refused` audit entry, task `dispatch_refused`), naming both settings. `fetch` runs in
    docket's own process and is untouched: its domain allowlist stays the inspectable path.
-   `docket setup sandbox`, `docket setup` and `docket config explain` report the mode and scope.
+   `docket setup sandbox`, `docket setup` and `docket pod show` report the mode and scope.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
@@ -1046,7 +1045,7 @@ without asking again.
    `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
    shape `approval_unavailable_error` uses, plus `approval_token`. See agent-loop.spec.md, "The
    approval_parked stop".
-8. **Harness mode is unaffected, except under `--answers stdin`.** `docket harness run` sets
+8. **Harness mode is unaffected, except under `--answers stdin`.** `docket exec` sets
    `DOCKET_APPROVAL_MODE=refuse` unless the caller passes `--answers stdin` (Contract 1.1, P35-5),
    which sets `wait` for that run; see "The harness answer channel" below. `approval_parked`
    cannot occur on the default path, and `core/harness.py`'s wire contract is untouched by this
@@ -1054,7 +1053,7 @@ without asking again.
 
 ### The harness answer channel (implemented, ROADMAP Phase 35 P35-5)
 
-A non-interactive caller can answer a paused approval over stdin (`docket harness run
+A non-interactive caller can answer a paused approval over stdin (`docket exec
 --answers stdin`, `specs/api/harness-mode.spec.md` Section 5). This section states what the
 channel may do to an approval. Where it differs from item 8 of "Parked calls and single-use
 pre-grants", this section governs for `--answers stdin` only.
@@ -1121,7 +1120,7 @@ pre-grants", this section governs for `--answers stdin` only.
 docket setup sandbox            # MUST report the gate as always-active, plus isolation posture
 docket setup sandbox <other>           # any other subcommand (enable/disable included): MUST print an
                                 #   unknown-subcommand error plus usage and exit 2
-docket setup sandbox on|off [on|off]  # MUST record on/off explicitly; bare (or any other word) is a read: print the
+docket setup sandbox on|off           # MUST record on/off explicitly; bare (or any other word) is a read: print the
                                 #   isolation posture plus usage, write and audit nothing, exit 2 (on requires a usable backend per
                                 #   sandbox_availability(), bwrap or docker). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
@@ -1141,17 +1140,17 @@ docket setup sandbox           # MUST report gate status, isolation posture and 
 # docket's approval store -- the only approval system that exists since Phase 19 P19-7b deleted
 # the daemon (production producer since Phase 15 G-1: core/dispatch.py's require_approval gate,
 # plus P19-3's in-turn core/tools.py gate -- see pod-dispatch.spec.md)
-docket approve                 # List pending approvals in docket's store
-docket approve <token>         # Grant a pending approval — headless, no chat session needed
+docket inbox                        # List what is waiting for you, with the exact approve line
+docket task approve <id>            # Grant the approval a task holds — headless, no chat session needed
                                 #   (G-1: also resumes any dispatch task it gated)
-docket deny <token>            # Deny a pending approval — headless, no chat session needed
+docket task deny <id>               # Deny the approval a task holds — headless, no chat session needed
                                 #   (G-1: also fails any dispatch task it gated, terminally)
-GET  /approvals                # docket serve: list pending approvals (bearer auth)
-POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (bearer auth)
+GET  /approvals                # docket start: list pending approvals (bearer auth)
+POST /approvals/<token>        # docket start: {"action": "grant"|"deny"} (bearer auth)
                                 #   (G-1: same resume/kill behavior as the CLI channel)
 
-# /approve <token> and /deny <token> in a chat bound via `docket wire`, answered by docket's
-# own bot (`docket serve --telegram`, ROADMAP Phase 19 P19-8) -- same resume/kill behavior,
+# /approve <token> and /deny <token> in a chat bound via `docket setup notify bind`, answered by docket's
+# own bot (`docket start --telegram`, ROADMAP Phase 19 P19-8) -- same resume/kill behavior,
 # same audit trail, tagged channel="telegram". See telegram-integration.spec.md.
 #
 # There is no longer a daemon-side gate prompt to contrast any of the above with (P19-7b
@@ -1183,20 +1182,20 @@ This one *is* real today — narrower than the target state above (it gates a po
 not an arbitrary daemon exec prompt), but genuinely end to end, store to task:
 
 ```text
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-1234)
 
-$ docket approve apr-1234
+$ docket task approve task-9a1b2c3d
 ✓ Approval granted: apr-1234
   The waiting action may now proceed.
 
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
 An unanswered token fail-closes the same way: `approval_sweep_expired` (running only under
-`docket serve`) resolves it to `denied` after `APPROVAL_TIMEOUT`, and the dispatch task fails
-terminally (`failureKind: "approval_denied"`) without anyone calling `docket deny` at all. See
+`docket start`) resolves it to `denied` after `APPROVAL_TIMEOUT`, and the dispatch task fails
+terminally (`failureKind: "approval_denied"`) without anyone calling `docket task deny` at all. See
 `pod-dispatch.spec.md` v2.1.0 for the full state-machine contract this flow is built on.
 
 ### Policy engine flow — enqueue-time gate (implemented, ROADMAP Phase 15 G-2)
@@ -1205,16 +1204,16 @@ A `require_approval` policy match on a task's description gates it before it is 
 same resolution path as the G-1 example above, fed from a second source:
 
 ```text
-$ docket pod myapp delegate "URGENT WIRE the vendor before EOD"
+$ docket task add "URGENT WIRE the vendor before EOD"
 ✓ Queued for pod 'myapp': [task-9a1b2c3d-...] URGENT WIRE the vendor before EOD
 
-$ docket pod myapp queue
+$ docket task list
   [task-9a1b2c3d-...] waiting_approval — URGENT WIRE the vendor before EOD
 
-$ docket approve apr-5678
+$ docket task approve task-9a1b2c3d
 ✓ Approval granted: apr-5678
 
-$ docket pod myapp dispatch
+$ docket run
   [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
 ```
 
@@ -1222,16 +1221,16 @@ A `block` match never reaches the queue at all — the CLI reports the rejection
 nothing is persisted:
 
 ```text
-$ docket pod myapp delegate "wipe the prod database tonight"
+$ docket task add "wipe the prod database tonight"
 ✗ task rejected by guardrail policy 'no-wipes' at enqueue: absolutely not
 ```
 
-`docket metrics` reads its "Guardrail trips" tally from exactly the `guardrail_block` events
+`docket status` reads its "Guardrail trips" tally from exactly the `guardrail_block` events
 either flow (this one, or a `pre_output` block mid-dispatch) produces:
 
 ```text
-$ docket metrics
-docket metrics  (window: 12 terminal sessions)
+$ docket status
+docket status  (window: 12 terminal sessions)
 
   Success rate   83.3%  (10 success / 2 failure / 0 aborted)
   ...
@@ -1273,8 +1272,8 @@ secret-access — Secret/credential writes and key generation
 A verify command matching a high-risk class is refused before the shell ever starts:
 
 ```text
-$ docket pod myapp add --verify "stripe charge customer --amount 500 && uv run pytest"
-$ docket pod myapp dispatch
+$ docket pod add --verify "stripe charge customer --amount 500 && uv run pytest"
+$ docket run
   [task-...] failed — verifyCmd failed: 'stripe charge customer --amount 500 && uv run pytest'
 ```
 
@@ -1288,7 +1287,7 @@ path (no installed JSON policy also matched here, so the built-in classifier's `
 what fires):
 
 ```text
-$ docket trace myapp <session-id>
+$ docket task trace <id>
   ... guardrail_check  {"hook": "pre_output", "policy": "high-risk:secret-access", "action": "warn"}
 ```
 
@@ -1325,7 +1324,7 @@ A `require_approval` policy asks, then executes once granted — through the sam
 
 ```text
 >>> dispatch_tool(ToolCall(id="c1", name="write", arguments='{"x": "launch-codes"}'), ctx, registry)
-# blocks; a concurrent `docket approve <token>` (or the timeout above) resolves it
+# blocks; a concurrent `docket task approve <id>` (or the timeout above) resolves it
 ToolResult(decision='allow', executed=True, ok=True, ...)   # granted
 ToolResult(decision='deny', executed=False, ...)            # denied, or unanswered past
                                                              #   TOOL_APPROVAL_TIMEOUT
@@ -1334,7 +1333,7 @@ ToolResult(decision='deny', executed=False, ...)            # denied, or unanswe
 Every gated call above leaves an audit trail, not just a return value:
 
 ```text
-$ docket audit
+$ docket log
   ... tool.ask     tool=bash agent=... role=implementer project=demo policy_id='block-destructive' policy_action='require_approval': ... call=bash command="rm -rf /var/data"
   ... approval.deny token=apr-... project=demo channel=timeout
 ```
@@ -1465,7 +1464,7 @@ $ git clone https://anywhere.example/repo.git
 - A gate prompt with no approver **MUST** resolve to denied. For an in-turn `core/tools.py` call
   this is `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate"); for an async dispatch-level
   gate, stale docket-store records resolve to **denied** (fail-closed, not merely "expire") while
-  `docket serve` runs, and — since G-1 — a dispatch task waiting on such a record is failed
+  `docket start` runs, and — since G-1 — a dispatch task waiting on such a record is failed
   terminally as part of that same resolution.
 - Since ROADMAP Phase 19 P19-3, every non-`allow` decision `core/tools.py`'s `dispatch_tool`
   makes (`deny`, `ask`, and a `warn`/`redact` hit that still allows the call) **MUST** appear in
@@ -1483,7 +1482,7 @@ $ git clone https://anywhere.example/repo.git
   in-turn tool call, and `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
   require_approval gate on a pod dispatch hop.
 - Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
-  G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket audit verify` detects
+  G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket log verify` detects
   an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
   audit.spec.md.
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
@@ -1563,6 +1562,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.36.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 0.36.0 (2026-10-08)
 

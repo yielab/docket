@@ -97,7 +97,7 @@ test with old passing ones passes the check only if the file as a whole fails on
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```
 
 ## code-intel
@@ -200,8 +200,8 @@ and pipeline before writing anything, and is safe to run again (a second run pla
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-reviewer
 ```
 
 ## dual-review
@@ -252,9 +252,9 @@ every item `skip`). `--dry-run` prints the plan without writing.
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-reviewer
-docket pod <project> remove <project>-critic
+docket pod unset pipeline
+docket pod remove <project>-reviewer
+docket pod remove <project>-critic
 ```
 
 ## frugal
@@ -278,7 +278,7 @@ right-size-the-model-to-the-role practice model-routing setups use.
 gate — a task that would exceed it pauses rather than silently overspending. `maxReworkCycles: 1`
 bounds the Reviewer's own rework edge pod-wide. `model: cheap` on `plan` and `review` resolves
 against the live rank anchors for that hop only; it is never persisted to the Lead's or
-Reviewer's own pinned model, so removing this pipeline restores their ordinary resolution.
+Reviewer's own model, so removing this pipeline restores their ordinary resolution.
 
 ### Apply it
 
@@ -305,11 +305,11 @@ docket pod apply frugal    # onto an existing pod
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> config unset budgetUsd
-docket pod <project> config unset maxReworkCycles
-docket pod <project> config unset turnTimeoutS
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod unset budgetUsd
+docket pod unset maxReworkCycles
+docket pod unset turnTimeoutS
+docket pod remove <project>-reviewer
 ```
 
 ## git-safety
@@ -434,8 +434,8 @@ validates the roster and `pipeline.yaml` before writing anything, and is safe to
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-reviewer
 ```
 
 ## mutation
@@ -491,14 +491,14 @@ or `setup.cfg`). Python only.
 ### Customise
 
 The step declares `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
-`mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod <project>
+`mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod
 export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod apply
 <dir>`. For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
 
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```
 
 ## no-egress
@@ -602,7 +602,7 @@ pack, the resulting roster and `pipeline.yaml` before writing anything, and is s
 deploy/production-shaped operator command always asks a human too, independent of which
 pipeline step it reached.
 
-Answer the resulting approval with `docket task approve <token>` / `docket task deny <token>` (also
+Answer the resulting approval with `docket task approve <id>` / `docket task deny <id>` (`docket inbox` prints the exact line; also
 reachable over HTTP, MCP or Telegram `/approve` — every channel is audited). Unanswered
 requests are denied after `APPROVAL_TIMEOUT` (900s).
 
@@ -619,7 +619,7 @@ requests are denied after `APPROVAL_TIMEOUT` (900s).
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 rm ~/.docket/workspaces/pods/<project>/config/policies/ops-approval-high-risk.yaml
 ```
 
@@ -723,9 +723,9 @@ every item `skip`). `--dry-run` prints the plan without writing.
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-critic
-docket pod <project> remove <project>-tester
+docket pod unset pipeline
+docket pod remove <project>-critic
+docket pod remove <project>-tester
 ```
 
 ## research-review
@@ -770,7 +770,7 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```
 
 ## secrets-guard
@@ -889,8 +889,8 @@ verdict.
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-security-vetter
+docket pod unset pipeline
+docket pod remove <project>-security-vetter
 rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
 rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
 ```
@@ -942,10 +942,10 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-writer
-docket pod <project> remove <project>-critic
-docket pod <project> remove <project>-reviewer
+docket pod unset pipeline
+docket pod remove <project>-writer
+docket pod remove <project>-critic
+docket pod remove <project>-reviewer
 ```
 
 ## spec-writer
@@ -994,7 +994,7 @@ run plans every item `skip`). `--dry-run` prints the plan without writing.
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```
 
 ## tdd
@@ -1046,6 +1046,6 @@ docket pod apply tdd    # onto an existing pod
 ### Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-tester
+docket pod unset pipeline
+docket pod remove <project>-tester
 ```

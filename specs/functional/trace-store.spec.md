@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -8,14 +8,14 @@ every trace-emitting module writes through: `core/agent_loop.py` (tool and model
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-05
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
 Docket traces every agent action it can observe to `$TRACES_DIR/<project>/<session_id>.jsonl`,
 one append-only file per session. This specification defines that store: the record shape written
 per line, the full `EVENT_TYPES` vocabulary an event type must belong to before it is accepted,
-the `subscribe` seam a live consumer (`docket task trace --tail`, `docket harness run`) reads from
+the `subscribe` seam a live consumer (`docket task trace --tail`, `docket exec`) reads from
 without touching disk, `redact`'s secret-shape scrubbing, the `trace_ingest` bridge that projects
 a driver's own session log into this store, and the retention functions (`sweep_all`,
 `expire_old_traces`) that keep it bounded.
@@ -187,7 +187,7 @@ exit, of a real OS process group a tool handler spawns. The only current produce
 `edges/adapters/toolbox.py::run_bash`'s `on_process` callback, threaded through
 `core/tools.py::ToolContext.on_process` and wired to real trace emission by
 `edges/adapters/docket_runtime.py::DocketDriver`. Built for an external plan-of-record (Tack)
-that needs to show and cancel a long-running `bash` call spawned through `docket harness run`.
+that needs to show and cancel a long-running `bash` call spawned through `docket exec`.
 
 1. `EVENT_TYPES` **MUST** additionally include `process_started` and `process_exited`.
 2. `process_started`'s payload **MUST** carry exactly `{"pgid": <int>}` — the spawned process
@@ -208,7 +208,7 @@ that needs to show and cancel a long-running `bash` call spawned through `docket
 6. When a dispatch run is current (`core.runs.current_run_id()` is not `None`) at the moment a
    `process_started`/`process_exited` event is reported, the reporting driver **MUST**
    register or clear that pgid against the run (`core.runs.add_hop_pid`/`remove_hop_pid`) so
-   `docket runs cancel` reaches it; with no run current, the event is still traced, but no pid
+   `docket task cancel` reaches it; with no run current, the event is still traced, but no pid
    is registered anywhere.
 
 See `harness-mode.spec.md`'s Contract 1.1 (owned by a separate card in this same wave) for how an
@@ -326,6 +326,10 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.6.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.6.0 (2026-10-08)
 

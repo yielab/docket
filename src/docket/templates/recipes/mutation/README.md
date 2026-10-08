@@ -42,12 +42,12 @@ or `setup.cfg`). Python only.
 ## Customise
 
 The step declares `MUTATION_THRESHOLD` (percent, default `80`) and `MUTATION_CMD` (default
-`mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod <project>
+`mutmut`) under its own `env:`. A pod overrides them by editing the step: `docket pod
 export <dir>`, change the `env:` values in `<dir>/pipeline.yaml`, then `docket pod apply
 <dir>`. For anything else edit the script in `pipeline.yaml`. The step has a 900 second timeout.
 
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
+docket pod unset pipeline
 ```

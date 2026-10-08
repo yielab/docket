@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -19,9 +19,7 @@ This specification covers:
 
 This specification does NOT cover:
 - Agent communication (see telegram-integration.spec.md)
-- Pipeline definitions (see pipeline-format.spec.md; `docket workflow`, the retired Lobster YAML
-  surface it replaced, is gone per ROADMAP D-16 — see cli-interface.spec.md's Pipeline Commands
-  section)
+- Pipeline definitions (see pipeline-format.spec.md; the retired Lobster YAML surface is gone per ROADMAP D-16)
 - Pod delegation and dispatch (see pod-dispatch.spec.md)
 - Blueprint selection/composition (which roster, workspace kind, default pipeline, and default
   budget a pod is provisioned with) — see the new pod-blueprints.spec.md (ROADMAP Phase 16 W-7).
@@ -117,7 +115,7 @@ write anything.
 4. **MUST** then delete `memory/*.md`, clear MEMORY.md (unless a distillation just refreshed it
    this invocation) and reset HEARTBEAT.md. For a pod Lead the reset also clears the docket-owned
    dispatch ledger region, so the ledger and `TASK_LIST.json` disagree until the next dispatch
-   event or `docket setup check --fix` re-syncs it
+   event or `docket setup --fix` re-syncs it
 5. **MUST** rebuild SOUL.md, AGENTS.md and (for an implementer with resources or a verify command)
    TOOLS.md from the member's metadata, and stamp the template version. It **MUST NOT** touch
    `INSTRUCTIONS.md`, `.docket-meta.json`, the fleet registration or the session keys
@@ -231,7 +229,7 @@ After successful creation:
 | Agent already exists | Duplicate ID | Use different ID or delete existing |
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.docket permissions |
-| Workspace corrupted | Missing files | Run `docket setup check --fix`, or `docket pod reset <member>` to rebuild its files |
+| Workspace corrupted | Missing files | Run `docket setup --fix`, or `docket pod reset <member>` to rebuild its files |
 | Distillation turn failed (model error, timeout, no credential) | `docket pod reset` (distillation is not optional) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable |
 
 ## Performance Criteria
@@ -243,6 +241,10 @@ After successful creation:
   fixed local-operation budget — it is a real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 2.0.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 2.0.0 (2026-10-08)
 

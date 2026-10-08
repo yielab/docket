@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.1
+**Version**: 1.9.2
 **Status**: Implemented
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -69,9 +69,9 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
 docket start --mcp
 ```
 
-`docket mcp` with no subcommand, or any subcommand other than `serve` or `servers` (the MCP
-client configuration commands, see `mcp-client.spec.md`), prints usage (to stderr — see stdio
-discipline below) and exits: `0` for no subcommand, `1` for an unrecognized one.
+`docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file` prints a usage error
+(to stderr — see stdio discipline below) and exits `2`. The MCP client configuration commands
+(`docket setup mcp list|add|remove`, see `mcp-client.spec.md`) are a separate group.
 
 ## Transport
 
@@ -147,7 +147,7 @@ model/registration/cost, and total recorded spend.
 {"pods": [{"project": "myapp", "members": [{"id": "myapp-lead", "role": "lead", "model": "..."}]}]}
 ```
 
-Members are ordered Lead-first, matching `docket pod <project>`'s own member ordering.
+Members are ordered Lead-first, matching `docket pod show`'s own member ordering.
 
 ### `queue`
 
@@ -156,10 +156,10 @@ Members are ordered Lead-first, matching `docket pod <project>`'s own member ord
 **Arguments**:
 
 - `project` (string, required)
-- `retry_task_id` (string, optional) — mirrors `docket pod <project> queue --retry <task-id>`
+- `retry_task_id` (string, optional) — mirrors `docket task retry <task-id>`
 
-**Output**: `{"project": "myapp", "tasks": [...]}` — the task shape matches `docket pod <project>
-queue`'s underlying records (see `pod-dispatch.spec.md`).
+**Output**: `{"project": "myapp", "tasks": [...]}` — the task shape matches `docket task list`'s
+underlying records (see `pod-dispatch.spec.md`).
 **Failure modes**: raises if `retry_task_id` is given but does not name a currently-`blocked` task
 in that project's queue.
 
@@ -174,7 +174,7 @@ in that project's queue.
 
 **Output**: the created task record (bare, matching `core.dispatch.enqueue_task`'s return value).
 **Failure modes**: raises on an empty or >500-char description, an invalid `priority`, or a
-`project` with no provisioned pod — the same validation `docket pod <project> delegate` applies.
+`project` with no provisioned pod — the same validation `docket task add` applies.
 
 ### `dispatch`
 
@@ -208,8 +208,8 @@ or a dispatch-pipeline exception does NOT raise from this call — it surfaces a
 - `project` (string, optional) — filter to one pod
 - `run_id` (string, optional) — fetch a single record
 
-**Output**: `{"runs": [...]}` (newest-first) when no `run_id` is given, matching `docket runs list
---json`; the bare record (matching `docket runs show <id> --json`) when `run_id` is given.
+**Output**: `{"runs": [...]}` (newest-first) when no `run_id` is given, matching `docket task list
+--json`; the bare record (matching `docket task show <id> --json`) when `run_id` is given.
 **Failure modes**: raises if `run_id` is given but unknown.
 
 ### `approvals_list`
@@ -220,8 +220,8 @@ or a dispatch-pipeline exception does NOT raise from this call — it surfaces a
 
 ### `approvals_grant`
 
-**Purpose**: Grant a pending approval token — identical to `docket approve <token>` / `docket
-serve`'s `POST /approvals/<token>` with `{"action": "grant"}`.
+**Purpose**: Grant a pending approval token — the same grant `docket task approve <id>` records / `docket
+start`'s `POST /approvals/<token>` with `{"action": "grant"}`.
 **Arguments**: `token` (string, required); `option` (string, optional: `approve_once` or
 `approve_task`; anything else raises before any change). `approve_task` is recorded with
 `approval_set_option` before the grant, so a parked pod task gains the task-wide grant of
@@ -237,7 +237,7 @@ an already-granted token (see Failure modes) — it is not skipped just because 
 **Output**: `{"ok": true, "token": "apr-...", "state": "granted"}`.
 **Failure modes**: raises if the token is unknown, or if it is not currently `pending` (already
 granted, denied, or expired) — an already-granted token raises rather than silently reporting
-success, a deliberate difference from `docket approve`'s CLI behavior (which treats a repeat grant
+success, a deliberate difference from `docket task approve`'s CLI behavior (which treats a repeat grant
 as a benign warning, exit 0): an automated MCP caller should learn explicitly that its call did
 not perform a fresh state transition, rather than receiving an ambiguous `"ok": true` for a call
 that changed nothing. The `resolve_waiting_approval` follow-up still runs before this raise, so a
@@ -245,7 +245,7 @@ dispatch task stuck `waiting_approval` from an earlier grant that never reached 
 
 ### `approvals_deny`
 
-**Purpose**: Deny a pending approval token — identical to `docket deny <token>` / `docket start`'s
+**Purpose**: Deny a pending approval token — the same denial `docket task deny <id>` records / `docket start`'s
 `POST /approvals/<token>` with `{"action": "deny"}`.
 **Arguments**: `token` (string, required).
 **Gating**: calls `core.approval.approval_deny(token, channel="mcp")`, mirroring
@@ -258,13 +258,13 @@ follow-up still runs before the raise.
 
 ### `task_answer`
 
-**Purpose**: Answer a task's parked `input` question — identical to `docket pod <project>
-answer <task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`.
+**Purpose**: Answer a task's parked `input` question — identical to `docket task answer
+<task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`.
 **Arguments**: `project` (string, required), `task_id` (string, required), `action` (string,
 required — `"accept"`, `"decline"` or `"cancel"`), `content` (object, optional).
 **Gating**: calls `core.answers.answer_task(channel="mcp", actor="mcp")` — the exact function
 every other surface calls, so the schema/`pre_input` screen and the resume onto the step's own
-route are byte-for-byte the same as `docket pod <p> answer`/`docket chat`/the HTTP route.
+route are byte-for-byte the same as `docket task answer`/the HTTP route.
 **Output**: `{"ok": true, "task": "<task_id>", "project": "<project>", "action": "accept"}`.
 **Failure modes**: raises (`McpToolError`) naming the policy id if the answer's `content` matched
 a `pre_input` `block` policy; raises naming the underlying reason for an unknown task, a task not
@@ -273,8 +273,8 @@ currently `waiting_input`, or `content` failing the question's own `requestedSch
 ### `task_pregrant`
 
 **Purpose**: Record a single-use pre-grant for one exact command on one task, ahead of dispatch
-(ADR 0016 §10) — identical to `docket pod <project> pregrant <task-id> "<command>"` / `docket
-serve`'s `POST /tasks/<task_id>/pregrants`.
+(ADR 0016 §10) — identical to `docket task approve <task-id> --for "<command>"` / `docket
+start`'s `POST /tasks/<task_id>/pregrants`.
 **Arguments**: `project` (string, required), `task_id` (string, required), `command` (string,
 required — the exact command line to pre-approve), `tool` (string, optional, default `"bash"`).
 **Gating**: calls `core.interruptions.record_pregrant(project, task_id, command, tool=tool,
@@ -300,14 +300,14 @@ completed after it. Omitted, `doneSince` lists every terminal task.
 
 **Purpose**: **Recorded** USD spend — one agent or the whole fleet.
 **Arguments**: `agent_id` (string, optional) — one agent's totals; omitted for the whole fleet.
-**Output**: `{"agents": [...], "totalUsd": ...}` (matches `docket cost --json`) when `agent_id` is
+**Output**: `{"agents": [...], "totalUsd": ...}` (matches `docket status --json`) when `agent_id` is
 omitted; a single agent's cost record when given.
 **Failure modes**: raises if `agent_id` is given but not a known project agent.
 **Cost-reporting discipline**: this figure is recorded spend from session data, which is always
 `0.0` today because `DocketDriver` records measured tokens but no dollar figure; the
-`MODEL_PRICING` estimate `docket cost` shows is not returned here. It is never a
+`MODEL_PRICING` estimate `docket status` shows is not returned here. It is never a
 projected/estimated figure, and never presented as a dollar *savings* claim (a standing
-product discipline across every docket cost surface — see `cost-tracking.spec.md`).
+product discipline across every docket status surface — see `cost-tracking.spec.md`).
 
 ## Arguments
 
@@ -323,8 +323,8 @@ the SDK itself, before `cli/_mcp.py`'s code runs at all).
 
 ## Output
 
-See Tools above for each tool's response shape. There is no top-level output for `docket mcp
-serve` itself beyond the one stderr startup line (tool count + names) — the process then blocks,
+See Tools above for each tool's response shape. There is no top-level output for `docket start --mcp`
+itself beyond the one stderr startup line (tool count + names) — the process then blocks,
 serving the protocol, until its stdin closes or it is interrupted.
 
 ## Return
@@ -333,8 +333,7 @@ serving the protocol, until its stdin closes or it is interrupted.
 |------|---------|
 | 0 | `docket start --mcp` shut down cleanly (stdin closed, or Ctrl-C) |
 | 1 | The optional `mcp` SDK is not installed |
-| 0 | `docket mcp` with no subcommand (prints usage) |
-| 1 | `docket mcp <unrecognized-subcommand>` |
+| 2 | `docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file` (usage error) |
 
 A tool call's own success/failure is expressed inside the MCP protocol (`CallToolResult.isError`),
 not as a process exit code — the server process itself only exits when the transport session ends.
@@ -394,6 +393,10 @@ concern, not docket's — see Scope above).
 ```
 
 ## Changelog
+
+### Version 1.9.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.9.1 (2026-10-07)
 

@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.4.0
+**Version**: 3.4.1
 **Status**: Stable
-**Last Updated**: 2026-10-07
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -11,8 +11,8 @@ that gives dashboards, CI pipelines, and external tools a stable, versioned wind
 state. Three endpoints (`/status.json`, `/metrics`, `/health`) are read-only and unauthenticated;
 a second tier (`/approvals`, `/runs`) is also read-only but requires the same Bearer token as the
 write endpoints, since it exposes per-agent/per-dispatch detail an unauthenticated caller
-shouldn't see. All mutation flows through the CLI (`docket approve/deny`, `docket pod <p>
-dispatch`, etc.) or these same token-guarded write endpoints.
+shouldn't see. All mutation flows through the CLI (`docket task approve/deny`, `docket run`,
+etc.) or these same token-guarded write endpoints.
 
 ## Scope
 
@@ -134,7 +134,7 @@ Additional metrics may be added in minor versions. **P20-2 (added 2026-08-03):**
 metrics above are computed fresh, on every `/metrics` scrape, from durable state already on disk —
 trace JSONL (`$TRACES_DIR`) and the audit log (`$DOCKET_HOME/audit.log`) — never a second in-process
 counter store, so they survive a `docket start` restart for free and every number is traceable back
-to a record `docket trace`/`docket log` can also show. This module only *reads* those stores to
+to a record `docket task trace`/`docket log` can also show. This module only *reads* those stores to
 compute counters; it never writes through them, keeping telemetry and the audit log's own
 tamper-evidence chain separate (ROADMAP Phase 20).
 
@@ -148,7 +148,7 @@ NOT a monotonic total.** Both sources lose history, for different reasons:
    the current file, so a rotation silently drops whatever history was in the backup.
 2. **Trace-derived** — the rest of these metrics — had no such gap until 2.5.0, because traces were
    only ever appended to. They now expire: `core/trace.py`'s `expire_old_traces()` (P22-6) deletes
-   *terminated* traces past `TRACE_RETENTION_S`, run by `docket trace expire` and by `serve`'s
+   *terminated* traces past `TRACE_RETENTION_S`, run by `docket task prune` and by `start`'s
    periodic sweep. Retention bounds the unbounded storage growth this caveat used to name as an
    open gap, at the cost of giving these counters the same drop behaviour.
 
@@ -217,7 +217,7 @@ to one pod.
 
 `variables` (added Phase 16 W-4, additive) is the pipeline variable namespace this run was
 resolved against — `{}` for every source except `webhook` (see `POST /dispatch/<project>` below);
-`cancelled` (added Phase 16 W-2, additive) is a run `docket runs cancel <id>` killed in flight.
+`cancelled` (added Phase 16 W-2, additive) is a run `docket task cancel <id>` killed in flight.
 
 `cancellation` (added W26-C10a, additive) is the persisted cross-process cancellation signal. Its
 nullable `requestedAt`, `observedAt`, and `stoppedAt` timestamps distinguish an operator request
@@ -283,8 +283,8 @@ presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `dock
 
 **Added (P36-4).** Requires `Authorization: Bearer <token>` exactly like `GET /tasks/<project>`
 (`401` first, then the project-id check). Body is `core.evidence.task_evidence(project,
-id).model_dump_json(by_alias=True)`, the evidence-v1 document, byte-for-byte what `docket pod
-<project> evidence <id> --json` prints. An unknown task is `404 {"ok": false, "error": ...}`.
+id).model_dump_json(by_alias=True)`, the evidence-v1 document, byte-for-byte the `evidence` object
+`docket task show <id> --json` prints. An unknown task is `404 {"ok": false, "error": ...}`.
 
 ### GET /tasks/&lt;project&gt;
 
@@ -389,7 +389,7 @@ response body carries its id:
 ```
 
 The dispatch pipeline itself still runs asynchronously (this endpoint must not block on a real
-agent turn) — poll `GET /runs/<id>` (or `docket runs show <id>`) for the outcome. Before API
+agent turn) — poll `GET /runs/<id>` (or `docket task show <id>`) for the outcome. Before API
 version 2 this response had no `run` field and the dispatch outcome, including any exception, was
 silently discarded.
 
@@ -416,13 +416,13 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
   pipeline never declared passes through unchanged) is persisted on the created run record's new
   `variables` field (see `GET /runs` above).
 - The effective pipeline resolved here is always the pod's own configured/default one (whatever
-  `docket pod <project> dispatch` would use) — the webhook has no way to supply a `--file` pipeline
+  `docket run` would use) — the webhook has no way to supply a `--file` pipeline
   of its own; only its *variable values* are payload-driven.
 
 ### POST /tasks/&lt;project&gt;
 
 **Added in 2.4.0.** Requires `Authorization: Bearer <token>`. Enqueues one task onto the pod's
-queue — the HTTP counterpart of `docket pod <project> delegate` and the MCP `delegate` tool, closing
+queue — the HTTP counterpart of `docket task add` and the MCP `delegate` tool, closing
 the one enqueue gap Phase 22 exists to close (`POST /dispatch/<project>` above only *runs* an
 already-populated queue). Calls the exact same `core.dispatch.enqueue_task` those two callers use,
 so the `pre_input` guardrail gate, priority normalization and persisted task shape are byte-for-byte
@@ -441,7 +441,7 @@ Request body:
 | `description` | string | Yes | `400` if absent or empty. |
 | `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization `enqueue_task` already applies to the CLI/MCP callers. |
 | `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue (see `core.dispatch.enqueue_task`'s `trusted` parameter). Omitted, it preserves the CLI/MCP default exactly (trusted). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (today: whether the `prompt-injection` policy id is skipped). |
-| `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket pod <p> delegate --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. A well-formed one is passed to `core.dispatch.enqueue_task(brief=...)`, which appends it to the task description as a `## Pre-brief` section and persists it on the task's `brief` field — the same path `delegate --brief` takes. |
+| `brief` | object | No | **Added in 2.13.2 (Phase 34, P34-13).** A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket task add --brief`. A non-object value is `400`; a malformed/invalid one is `422` before anything is enqueued. A well-formed one is passed to `core.dispatch.enqueue_task(brief=...)`, which appends it to the task description as a `## Pre-brief` section and persists it on the task's `brief` field — the same path `delegate --brief` takes. |
 
 Success response (task queued, `pending`):
 
@@ -457,10 +457,10 @@ Success response (task queued, `pending`):
 - A project with no pod (`docket init <project>` never run) is rejected with `404`, naming the
   project — this is a real "nothing to enqueue against" condition, not a server error.
 - A `pre_input` guardrail policy matching the description with a `block` verdict is rejected with a
-  `4xx` naming the policy id (the same `DispatchError` message `docket pod <p> delegate` prints) —
+  `4xx` naming the policy id (the same `DispatchError` message `docket task add` prints) —
   nothing is persisted.
 - A `pre_input` policy matching with a `require_approval` verdict is **not** an error: the task is
-  genuinely created (visible on `GET /tasks/<project>`, `docket pod <p> queue`, etc.) but gated, so
+  genuinely created (visible on `GET /tasks/<project>`, `docket task list`, etc.) but gated, so
   the response is an honest `200` reporting the real state instead of one that implies the task is
   queued to run:
 
@@ -481,7 +481,7 @@ Success response (task queued, `pending`):
 ### POST /tasks/&lt;id&gt;/answer
 
 **Added in 2.13.2 (Phase 34, P34-13).** Requires `Authorization: Bearer <token>`. Resolves one
-task's parked `input` question — the HTTP counterpart of `docket pod <p> answer` and the MCP
+task's parked `input` question — the HTTP counterpart of `docket task answer` and the MCP
 `task_answer` tool. Calls the exact same `core.answers.answer_task` those two callers use, so the
 schema/`pre_input` screen and the resume onto the step's own route are byte-for-byte identical —
 this route adds no new semantics (operator-loop.spec.md, "Answer surfaces").
@@ -532,7 +532,7 @@ Success response (`200`) — the answered task's `TaskView` (operator-v1, `by_al
 
 **Added in 2.15.0 (Phase 34, P34-15, ADR 0016 §10).** Requires `Authorization: Bearer <token>`.
 Records a single-use pre-grant for one exact command on one task, ahead of dispatch — the HTTP
-counterpart of `docket pod <p> pregrant` and the MCP `task_pregrant` tool. Calls
+counterpart of `docket task approve --for` and the MCP `task_pregrant` tool. Calls
 `core.interruptions.record_pregrant`, which calls `core.approval.create_pregrant` exactly as an
 in-turn park does, then appends the grant to the task's own `pregrants` list — the same shape a
 live park already produces. When the pipeline later reaches that exact call (matched by
@@ -591,7 +591,7 @@ Request body:
 | `blueprint` | string | No | A `core.blueprints` registry name. Defaults to `"software"` (`core.blueprints.DEFAULT_BLUEPRINT`, `docket init`'s own default). An unknown name is `400`, naming the invalid blueprint (`core.blueprints.BlueprintError`'s own message). |
 | `pod` | `"full"` | No | Mirrors `docket init --pod full` — a CLI roster override (`--with` has no HTTP counterpart), itself restricted to the `software` blueprint (a non-`software` blueprint provisions its own fixed roster; `pod` is silently ignored for one, exactly as the CLI warns-and-ignores rather than erroring). Any value other than `"full"` is `400`. |
 | `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A non-numeric value is `400`. |
-| `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same `verify_cmd` parameter `docket pod <p> add --verify` / `docket pod <p> set-verify` already thread through post-hoc, just supplied at creation instead. Validated the same way (`core.pod_provisioning.VerifyCmdError` — no NUL byte, no newline, length-capped); a failing value is `400`. |
+| `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same `verify_cmd` parameter `docket pod add --verify` / `docket pod set verify --member` already thread through post-hoc, just supplied at creation instead. Validated the same way (`core.pod_provisioning.VerifyCmdError` — no NUL byte, no newline, length-capped); a failing value is `400`. |
 
 Success response (`201`) — the created pod roster:
 
@@ -770,6 +770,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.4.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 3.4.0 (2026-10-07)
 

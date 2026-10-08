@@ -42,8 +42,8 @@ verdict.
 ## Undo
 
 ```bash
-docket pod <project> config unset pipeline
-docket pod <project> remove <project>-security-vetter
+docket pod unset pipeline
+docket pod remove <project>-security-vetter
 rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
 rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
 ```

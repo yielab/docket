@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.32.0
+**Version**: 1.32.1
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-03
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -217,7 +217,7 @@ This specification does NOT cover:
     omits it composes byte-identically to before this default existed.
     `core.identity.project_instruction_files(settings, root)` **MUST** be the single function that
     resolves the effective files and their source (`"set"`/`"default"`/`""`), used by both this
-    composition and `docket config explain`'s report of the same. Each configured (or defaulted)
+    composition and `docket pod show`'s report of the same. Each configured (or defaulted)
     path is resolved against the first of `project_roots` (the same containment root a live turn's
     project tools already use) and, unlike `INSTRUCTIONS.md`, is never trusted: it **MUST** be
     screened through the `pre_input` policy hook (`trusted=False`) exactly as `core.mcp_tools`
@@ -806,6 +806,10 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.32.1 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.32.0 (2026-10-07)
 

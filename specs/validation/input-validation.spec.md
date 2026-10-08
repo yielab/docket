@@ -1,6 +1,6 @@
 # Input Validation Specification
 
-**Version**: 1.6.1
+**Version**: 1.6.2
 **Status**: Partial — model-id (§3), command-action (§6) and API-key (§7) validation, the
 project/pod-id check (§1), the boundary sanitization rules, and `AgentMeta` are implemented. The
 forbidden-directory path check (§2), the numeric range/leading-zero helper (§4) and the
@@ -8,7 +8,7 @@ session-key grammar check (§5) are **Deferred — no measured need**: `validate
 `validate_number`, `validate_session_key` and `confine_to_base` are reference sketches only, with
 no implementing function in `src/` and no incident or measured gap that calls for one today (see
 the reason stated under each section and the note under Rules).
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-10-08
 
 ## Purpose
 
@@ -36,15 +36,14 @@ snippets and module pointers show how that contract is enforced today.
 > is only ever chosen by the same local operator who already has unrestricted shell access to
 > that filesystem — a forbidden-dir check would not restrict an untrusted actor docket's threat
 > model includes; §4's ranges (reset level 1-3, cost period 1-365, timeout 1-3600) do not match
-> any live numeric argument — `docket maintain`'s mode is a string subcommand, not a numeric
-> level, and `docket cost --days N` is an untyped-range `int` with no such bound; §5's session key
+> any live numeric argument — no `docket` command takes a numeric reset level, and `docket status --days N` is an untyped-range `int` with no such bound; §5's session key
 > is URL-quoted before it ever becomes a path component (`core/session.py::_session_dir`) and
 > nothing in `src/` parses a session key back into its components, so an unvalidated grammar
 > cannot reach the filesystem or be misread downstream. Whether to implement them anyway, or to
 > retire the MUST rules outright, remains a maintainer decision — this pass only records why no
 > trigger has fired. §1 is different: project/pod ids are produced by `core/provisioning.py`'s
 > `slugify` and validated by that module's `validate_project_id`, called as the first statement of
-> `core/pod_provisioning.py::provision_pod` — every caller (`docket add`, `docket init --from`,
+> `core/pod_provisioning.py::provision_pod` — every caller (`docket pod add`, `docket init --from`,
 > `POST /pods`, and the four other `serve.py` handlers that take a project path segment) rejects
 > an invalid id before it reaches workspace-path construction.
 
@@ -95,7 +94,7 @@ def validate_project_id(project: str) -> str:
 
 `core/pod_provisioning.py::provision_pod` calls `validate_project_id` as its first statement,
 before the per-project lock and before any workspace path is built, so every path that reaches
-it — `docket add`/`docket init --from`'s blueprint entries, and `POST /pods` — rejects an invalid
+it — `docket pod add`/`docket init --from`'s blueprint entries, and `POST /pods` — rejects an invalid
 id (`ProjectIdError` → CLI exit 1 / HTTP 400) before touching disk. `serve.py`'s four other
 project-path-segment handlers (`GET /tasks/<project>`, `GET /traces/<project>`,
 `POST /tasks/<project>`, `POST /dispatch/<project>`) call `validate_project_id` directly and
@@ -203,9 +202,8 @@ canonical, warnings = validate_model("anthropic/claude-sonnet-4-6")
 ### 4. Numeric Validation
 
 **Status: Deferred — no measured need.** These ranges predate the current CLI surface and no
-live argument matches them: `docket maintain`'s mode is a string subcommand name (`check`,
-`clean`, `reset`, `rebuild`, `sessions`, `distill`), not a numeric reset level, and
-`docket cost --days N` is a typed `int` with default 0 = no limit and no upper bound. Typer's
+live argument matches them: no `docket` command takes a numeric reset level, and
+`docket status --days N` is a typed `int` with default 0 = no limit and no upper bound. Typer's
 `int` conversion already rejects non-numeric input; nothing measured has needed the range or
 leading-zero checks on top of that.
 
@@ -291,36 +289,21 @@ def validate_session_key(key: str) -> tuple[str, str]:
 ### 6. Command Action Validation
 
 **Field**: action / sub-command
-**Used By**: keys, pod, gates, runs, pipeline, roles, conversations
+**Used By**: task, pod, log, setup (and its provider, model, sandbox, notify, export, mcp and shell groups)
 
 **Rules**:
-- **MUST** be from the allowed action list for that command
+- **MUST** be a verb declared by the group; an unknown verb or flag is a usage error (exit 2)
 - Case sensitive
-- **MUST** have the required arguments
+- **MUST** have the required arguments; a missing one is a usage error (exit 2)
 
-**Actions by Command**:
-- keys: list (default), add, remove, rotate, validate, export, setup
-- pod: list (default), add, remove, set-verify, delegate, queue, dispatch
-
-(`docket workflow` and `docket team` were retired — D-16 and D-11 — and now print a
-removed-command notice instead of validating actions.)
-
-**Reference**: sub-commands and their required arguments are modelled directly in the Typer
-command signatures (`src/docket/cli/__init__.py` and the split groups under
-`src/docket/cli/_*.py`). The action is matched in the command body and a missing required
-argument aborts via `ui.error` + `typer.Exit(1)` — e.g. the `keys` command:
-
-```python
-# inside the `keys` command (cli/_keys.py)
-if not name:
-    ui.error("Usage: docket keys add <KEY_NAME>")
-    raise typer.Exit(1)
-```
+**Reference**: each group is a Typer sub-app (`src/docket/cli/__init__.py` registers them), so
+the verbs and their required arguments are declared in the command signatures and no command
+body matches an action word by hand.
 
 ### 7. API Key Validation
 
 **Field**: api-key
-**Used By**: keys
+**Used By**: setup provider
 
 **Rules**:
 - Key **name** **MUST** match `^[A-Z][A-Z0-9_]*$` (UPPERCASE_WITH_UNDERSCORES)
@@ -509,6 +492,10 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.6.2 (2026-10-08)
+
+- Command names follow ADR 0022.
 
 ### Version 1.6.1 (2026-10-07)
 
