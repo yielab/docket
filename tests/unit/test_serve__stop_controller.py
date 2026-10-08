@@ -1,4 +1,4 @@
-"""SUBJECT: docket.serve._StopController -- the two-stage SIGINT/SIGTERM stop of `docket serve`."""
+"""SUBJECT: docket.serve._StopController -- the two-stage SIGINT/SIGTERM stop of `docket start`."""
 
 from __future__ import annotations
 

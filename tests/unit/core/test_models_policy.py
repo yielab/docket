@@ -2,7 +2,7 @@
 
 `load_registry` itself stays silently tolerant of a malformed `rankAnchors`/`default`/`roles`
 entry (model-profiles.spec.md's User registry overlay contract) -- this covers the separate,
-read-only `find_registry_problems` surface `docket doctor` reports through instead.
+read-only `find_registry_problems` surface `docket setup` reports through instead.
 """
 
 from __future__ import annotations

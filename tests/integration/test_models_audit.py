@@ -1,6 +1,6 @@
-"""Audit coverage for `models.*` — docket models set/preset/reset.
+"""Audit coverage for `models.*` — docket setup model set/preset/reset.
 
-`docket models set/preset/reset` change the role->model policy for the entire fleet. Covers: each
+`docket setup model set/preset/reset` change the role->model policy for the entire fleet. Covers: each
 writes exactly one `models.*` audit entry naming the role(s) affected (or `default`) and the
 before/after model, so the log alone answers "which role changed, from what, to what, and when";
 and those entries carry the same hash-chain fields (`seq`/`prev_hash`) as every other family, so
@@ -74,7 +74,7 @@ def _audit_entries(oc_dir: Path, action: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# docket models set
+# docket setup model set
 # ---------------------------------------------------------------------------
 
 
@@ -139,7 +139,7 @@ class TestModelsSetAudit:
 
 
 # ---------------------------------------------------------------------------
-# docket models preset
+# docket setup model preset
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ class TestModelsPresetAudit:
 
 
 # ---------------------------------------------------------------------------
-# docket models reset
+# docket setup model reset
 # ---------------------------------------------------------------------------
 
 

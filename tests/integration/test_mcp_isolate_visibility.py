@@ -1,7 +1,7 @@
 """MCP server isolation state visibility in doctor, config, and recipes.
 
 Requirement 40: unjailed MCP servers (isolate: false) are shown by `docket setup --fix`,
-`docket config explain`, and `docket pod recipes --json`, with pod context where applicable.
+`docket pod show`, and `docket pod recipes --json`, with pod context where applicable.
 """
 
 from __future__ import annotations

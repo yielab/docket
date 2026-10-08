@@ -95,7 +95,7 @@ class TestHighRiskPatterns:
     def test_git_and_npm_are_the_bins_with_an_attached_class(self) -> None:
         # The attached-bin set is read straight off HIGH_RISK_PATTERNS. It used
         # to come from a `high_risk_bins()` helper, deleted because it had no
-        # production caller: `docket gates classes` walks `cls.bins`
+        # production caller: `docket setup sandbox classes` walks `cls.bins`
         # itself and nothing else ever wanted the flattened set.
         bins = {name for cls in _sec.HIGH_RISK_PATTERNS for name in cls.bins}
 
@@ -128,7 +128,7 @@ class TestGatesStatus:
     ) -> None:
         # There is no daemon gate report to query -- docket's own tool-call
         # gate (pre_tool_call + classify_command) is unconditionally active,
-        # and `docket gates status` says so regardless of isolation configuration.
+        # and `docket setup sandbox status` says so regardless of isolation configuration.
         rc = _setup_sandbox.status()
         out = capsys.readouterr().out
         assert rc == 0

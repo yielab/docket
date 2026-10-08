@@ -28,7 +28,7 @@ Real-world long-poll quirks handled here, not above:
 - A network failure (DNS, connection refused, a slow/dead endpoint) degrades
   to a typed ``ok=False`` result -- neither function ever raises, so a poll
   loop above can keep going and try again next iteration instead of taking
-  ``docket serve`` down.
+  ``docket start`` down.
 
 **The bot token never appears in a returned error message.** Every failure
 path below reports the HTTP status / Telegram's own ``description`` field /

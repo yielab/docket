@@ -227,7 +227,7 @@ class TestEnqueuePreInputGate:
     def test_block_emits_a_self_contained_terminal_session(self) -> None:
         """A rejected task is never dispatched, so nothing else will ever close
         out its trace file — the enqueue gate must close it itself, or the
-        guardrail_block event is invisible to `docket metrics`."""
+        guardrail_block event is invisible to `docket status`."""
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block")
         with pytest.raises(_dispatch.DispatchError):

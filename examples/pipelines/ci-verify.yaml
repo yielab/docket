@@ -1,8 +1,8 @@
 # Example docket-native pipeline — validate with:
-#   docket pipeline validate examples/pipelines/ci-verify.yaml
+#   docket pod validate examples/pipelines/ci-verify.yaml
 # Try it against a real pod with:
-#   docket pipeline plan <project> --file examples/pipelines/ci-verify.yaml
-#   docket pipeline run  <project> --file examples/pipelines/ci-verify.yaml --follow
+#   docket pod plan --pipeline examples/pipelines/ci-verify.yaml
+#   docket run --pipeline examples/pipelines/ci-verify.yaml
 #
 # A CI-style verify pipeline: Lead plans, Implementer must pass a real test
 # command (a mechanical gate — nonzero exit fails the step), Reviewer must

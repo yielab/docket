@@ -167,7 +167,7 @@ class TestGeneratedInstructionsAgreeWithRuntimeContract:
 
 
 class TestFindOverlayProblems:
-    """`find_overlay_problems`: what `docket doctor` surfaces for a malformed
+    """`find_overlay_problems`: what `docket setup` surfaces for a malformed
     `docket-roles.json` entry that `load_registry` silently skips."""
 
     def test_no_file_has_no_problems(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

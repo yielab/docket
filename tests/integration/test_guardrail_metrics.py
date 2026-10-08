@@ -1,5 +1,5 @@
 """Guardrail + loop metrics on the existing Prometheus surface.
-Extends `docket serve`'s `/metrics` with denial rate, approvals by channel, policy-hit counts,
+Extends `docket start`'s `/metrics` with denial rate, approvals by channel, policy-hit counts,
 tool-call rate and turn latency -- recomputed fresh, on every scrape, from durable state on
 disk (trace JSONL + audit log), never a second in-process counter store. Pins:
 `docket_tool_calls_total{decision}` counts `tool_result` trace events by gate decision,

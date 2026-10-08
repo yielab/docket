@@ -141,7 +141,7 @@ def _resolve_repo_apply_source(loc_path: Path, cli_recipe: str | None) -> tuple[
 
 def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     """Plan and apply *apply_source* onto the just-provisioned pod *aid*, printing the plan
-    the way ``docket pod <p> apply`` does; ``--no-apply`` only prints the command that would
+    the way ``docket pod apply`` does; ``--no-apply`` only prints the command that would
     do it. Called only after provisioning succeeds (ADR 0012)."""
     if no_apply:
         ui.console.print()
@@ -714,11 +714,11 @@ def cmd_init(ctx: typer.Context) -> None:
                              1 before any provisioning.
       --no-apply             provision the pod only, skipping the apply step
                              for a present `.docket/` or a resolved `--recipe`;
-                             prints the `docket pod <p> apply <dir>` command
+                             prints the `docket pod apply <dir>` command
                              that would apply it.
 
     A repository's own `<location>/.docket/` -- the same directory shape
-    `docket pod <p> apply` reads (roles/*.yaml, policies/*.json,
+    `docket pod apply` reads (roles/*.yaml, policies/*.json,
     pipeline.yaml, pod.yaml) -- is discovered automatically: every document
     under it is validated before anything is provisioned, and applied after
     (unless `--no-apply`) through that same command's plan/apply path. A

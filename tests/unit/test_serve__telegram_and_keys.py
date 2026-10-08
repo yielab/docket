@@ -1,4 +1,4 @@
-"""`docket serve --telegram` wiring: the poll loop's pacing/backoff discipline.
+"""`docket start --telegram` wiring: the poll loop's pacing/backoff discipline.
 
 Pinned here, which the channel/adapter test modules don't reach: `serve.py`'s poll loop
 paces itself (no busy-loop on an unconfigured bot or transport error) and never lets an

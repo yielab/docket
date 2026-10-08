@@ -39,7 +39,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _bind_pipeline(project: str, text: str) -> None:
-    """Bind *text* as *project*'s own pipeline -- what ``docket pod <p> config set pipeline
+    """Bind *text* as *project*'s own pipeline -- what ``docket pod set pipeline
     <file>`` produces -- so ``answer_task``'s own ``effective_pipeline(project, None)``
     resolves the same steps the seeded task was actually dispatched through."""
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

@@ -267,7 +267,7 @@ class TestDeletePod:
 
 
 class TestPodAddVerify:
-    """`docket pod <project> add --verify` sets `verifyCmd` + TOOLS.md."""
+    """`docket pod add --verify` sets `verifyCmd` + TOOLS.md."""
 
     def test_add_implementer_with_verify_sets_meta(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -360,7 +360,7 @@ class TestPodSetVerify:
 
 
 class TestPodAddRemoveAudit:
-    """`docket pod <p> add/remove` each write exactly one audit line."""
+    """`docket pod add/remove` each write exactly one audit line."""
 
     def test_pod_add_writes_one_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

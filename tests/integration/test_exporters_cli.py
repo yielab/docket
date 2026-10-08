@@ -1,7 +1,7 @@
 """`docket setup export` -- enable an observability destination by authenticating.
 
 The requested experience is "the YAML exists, I only put the key": `enable` prompts for a
-missing credential on a TTY, else names `docket keys add` and refuses without writing anything;
+missing credential on a TTY, else names `docket setup provider add` and refuses without writing anything;
 a reachable endpoint activates the exporter with a minimal patch document, inheriting the rest
 from the built-in at read time (`core.exporter._merge_with_builtin_raw`). See
 specs/functional/observability-export.spec.md "Activation".

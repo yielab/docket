@@ -82,7 +82,7 @@ def pod_prefix(project: str) -> str:
 
 
 def session_key(project: str, project_key: str = "default") -> str:
-    """Return the base scope key written to pod-member metadata, kept for ``docket scope`` and
+    """Return the base scope key written to pod-member metadata, kept for
     metadata compatibility. Pod-dispatch runtime history does not use it — it derives a
     task/step key per turn via ``core.dispatch.step_session_key`` instead."""
     return f"agent:{project}:{project_key}"

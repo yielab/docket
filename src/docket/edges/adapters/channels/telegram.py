@@ -30,7 +30,7 @@ def deliver(
 ) -> DeliveryResult:
     """Send *event* to every chat id in `spec.actors`. Never raises. `secret` is the bot
     token, resolved by `core.notify.resolve_secret` from `spec.secret` -- the built-in
-    document names the same `TELEGRAM_BOT_TOKEN` credential `docket keys add
+    document names the same `TELEGRAM_BOT_TOKEN` credential `docket setup provider add
     TELEGRAM_BOT_TOKEN` stores. Sends only to `spec.actors`; never broadcasts to every
     `fleet.json` binding."""
     if not secret:

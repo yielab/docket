@@ -1,6 +1,6 @@
 """POST /tasks/<id>/pregrants — recording a single-use pre-grant over HTTP.
 
-The HTTP counterpart of `docket pod <p> pregrant` and the MCP `task_pregrant` tool: same
+The HTTP counterpart of `docket task approve <id> --for` and the MCP `task_pregrant` tool: same
 `core.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
 byte-for-byte identical to every other surface. Covers auth, the happy path (the token, and the
 task's own `pregrants` list), and the error mappings (`404`/`400`).

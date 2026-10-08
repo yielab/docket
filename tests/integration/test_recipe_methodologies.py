@@ -229,7 +229,7 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(
     _seed_fixture_pod(tmp_path, monkeypatch, project)
     recipe_dir = _recipe_dir("reflexion")
 
-    # Add this recipe's extra roster members through the ordinary `docket pod <p> add <role>`
+    # Add this recipe's extra roster members through the ordinary `docket pod add <role>`
     # path; the recipe's own `pipeline.yaml` is exercised unmodified.
     _cli_pod.add_members(project, "critic")
     _cli_pod.add_members(project, "tester")

@@ -226,7 +226,7 @@ def approval_create(
     _store.write_json(_approval_path(token), data)
 
     # The call a paused approval is for, when the caller names it. A caller answering
-    # the request (``docket harness run --answers stdin``) needs these to know which
+    # the request (``docket exec --answers stdin``) needs these to know which
     # call it is resolving; nothing else in the payload changes.
     requested: dict[str, Any] = {"token": token, "action": redacted_action}
     for key in ("tool", "callId"):

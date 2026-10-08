@@ -3,7 +3,7 @@
 Covers protocol conformance (both ``DocketDriver`` and ``FakeDriver`` satisfy
 ``core.runtime_driver.RuntimeDriver``, and ``default_driver()``'s singleton contract);
 ``trace_ingest`` through the real production ``DocketDriver`` (the path that must work for
-``docket trace`` to show anything real, since a pod-dispatch hop's turns live in
+``docket task trace`` to show anything real, since a pod-dispatch hop's turns live in
 ``core/session.py``'s own storage); and ``FakeDriver`` exercised directly. ``DocketDriver`` backs
 onto no OS process and no daemon-shaped file. See test_llm_port.py for response-parsing and
 test_docket_driver.py for ``DocketDriver.run_turn`` itself.
@@ -42,7 +42,7 @@ class TestProtocolConformance:
 
 # ── trace_ingest through DocketDriver -- what production actually resolves.
 # A pod-dispatch hop's turns live in core/session.py's own storage, not
-# daemon JSONL, so this is the path that must work for `docket trace` to
+# daemon JSONL, so this is the path that must work for `docket task trace` to
 # show anything real. ─────────────────────────────────────────────────────
 
 

@@ -2,7 +2,7 @@
 
 ``HarnessEvent``/``HarnessResult`` are the versioned wire shapes an outside
 caller pins against; ``preflight``/``agent_meta_for``/``result_from`` are
-the pure helpers the future ``docket harness`` command composes. Nothing
+the pure helpers the ``docket exec`` command composes. Nothing
 here touches a filesystem, an environment store, or stdout, so it stays
 free to import from either the CLI distribution or the runtime closure.
 """
@@ -39,7 +39,7 @@ HARNESS_CONTRACT_V11 = "1.1.0"
 HARNESS_CONTRACT_VERSIONS = (HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT_V11)
 
 HarnessResultStatus = Literal["ok", "failed", "blocked", "cancelled", "refused"]
-# `docket harness status TOKEN`'s three answers -- a later command's own
+# `docket task show TOKEN`'s three answers -- a later command's own
 # concern, named here because the contract's status vocabulary is one document.
 HarnessRunState = Literal["live", "finished", "unknown"]
 
