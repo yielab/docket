@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket task` is the task group.** `task add "<text>" [--priority] [--brief]` queues (what
+  `delegate` did) and ends with the `docket run` hint; `task list [--json]` is the queue with
+  status, cost and each task's worktree path; `task show <ref> [--json]` is one task's whole
+  story (hops, evidence, runs, corrections, the interruption forecast) and, for a task with a
+  worktree, its path, branch, base commit and the exact diff and merge commands; `task diff`
+  runs that diff; `task trace <ref> [--tail] [--export] [--json]` names tools on tool-call lines
+  and `--tail` ends when the session ends; `task prune [--traces --days N]` removes finished
+  worktrees and expired traces and run records. `task approve|deny <ref>` resolve the task's
+  own pending approval (`--for "<cmd>"` records the pre-grant `pod pregrant` wrote), `task
+  answer <ref> [text] [--option] [--field] [--decline]` answers a parked question (prompting on a
+  terminal, as `chat` did), `task retry <ref>` re-queues a failed or blocked task and `task
+  cancel <ref>` stops the run in flight or settles a stale claim. Every ref is a full id, the
+  short id, an unambiguous prefix or a run id (`core/task_ref.py`); an ambiguous prefix lists
+  the candidates and exits 1. After a state change the hint is `docket run`, or "docket is
+  running and will pick it up" when the service holds the pod.
+- **`docket pod` is a real group, resolved like every other command** (`--pod`, `DOCKET_POD`,
+  then the directory). Roster: `pod show [MEMBER] [--json]` (members with role, model and its
+  source, workspace and verify command; the settings with their source; the approval mode the
+  dispatcher will use; config of record and drift: `config explain` and `pod config get` in
+  one), `pod add ROLE [--count] [--verify]`, `pod remove ID [--yes]` (the Lead is refused),
+  `pod reset ID [--yes]` (distils memory first and fails closed, then rebuilds the workspace
+  files), `pod set KEY VALUE [--member]` / `pod unset KEY [--member]` (every `PodSettings`
+  key; `verify --member` writes a member's verify command; `set budgetUsd` lifts a budget
+  pause), `pod delete [--confirm NAME]` (the name typed on a terminal, `--confirm` off one; a
+  member id is refused). Configuration: `pod apply [NAME|DIR|FILE] [--dry-run] [--json]` (a
+  recipe by name, a directory, or a single `kind:` document; no argument re-syncs
+  instructions), `pod export [DIR] [--force]`, `pod validate [PATH]` (one validator for every
+  `kind:` document or directory), `pod plan [--pipeline FILE]` (from the real executor),
+  `pod check "<text>" --role R [--hook] [--tool]` (would the pod's rules allow this),
+  `pod recipes|roles|policies [NAME] [--json]` (`--plugins` on `policies`).
 - **`docket setup` is the first run.** Bare `setup` prints the readiness report (model
   endpoint, notifications, sandbox, shell completion, background service) with the command that
   fixes each piece; on a terminal it then asks only for what is missing, required first, and
@@ -42,6 +72,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The pod has no positional id and no action word.** `docket pod <project> <action>` is gone;
+  `pod show` replaces `config explain <agent>` and `pod <p> config get`, `pod set budgetUsd`
+  replaces `profile --budget`, `pod set verify --member` replaces `pod <p> set-verify`, and
+  `pod apply <file>` installs the single role or policy document `roles add`/`policies add`
+  installed. `policies init` and the whole-registry `roles validate` have no replacement
+  (`docket setup` installs the baseline policies; `pod validate` checks a document).
+- **The per-agent model pin is gone.** Three layers remain (policy, pod overlay, pipeline
+  step); `.docket-meta.json` no longer carries `modelSource` and a meta written with it is read
+  without it.
 - **`log`, `exec`, `status`, `inbox`.** `docket log [N] [--json]` and `log verify` replace
   `audit`; `docket exec` replaces `harness run` with the same NDJSON events, result line and exit
   codes 0/1/2 (`harness status` is gone; Tack's probe changes one argv word). `status` shows the
@@ -68,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Seventeen more top-level commands, each now an ordinary unknown command (exit 2): `delegate`,
+  `approve`, `deny`, `chat`, `runs`, `trace`, `add`, `info`, `delete`, `maintain`, `profile`,
+  `config`, `pipeline`, `roles`, `policies`, `recipes`, `plugins`, `validate`; with them the pod
+  actions `list|add|remove|set-verify|config|delegate|answer|explain|pregrant|queue|sync|apply|
+  export|corrections|evidence|worktrees`, `maintain check|sessions|distill|clean|rebuild` (no
+  replacement for the context-footprint warning), `runs list|show|cancel|prune`, `trace
+  tail|export|ingest|expire`, and the `apr-` token on the surface (`inbox` and the channels
+  still print it, and `task approve` still accepts it for an approval no task carries).
 - **Twenty top-level commands.** `doctor`, `models`, `keys`, `gates`, `completions`,
   `channels`, `wire`, `unwire`, `notify`, `conversations`, `exporters`, `mcp`, `audit`, `serve`,
   `harness`, `cost`, `metrics`, `snapshot`, `pod <p> dispatch`, `pipeline run`, and the seven

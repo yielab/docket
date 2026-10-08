@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 93b (Phase 39, one CLI surface, D-57; opened 2026-10-07)
+> ## ▶ ACTIVE BOARD — WAVE 94 (Phase 39, one CLI surface, D-57; opened 2026-10-07)
 >
 > **Phase 39 opened 2026-10-07** (ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md)):
 > twenty-six cards over Waves 91–95, the active section at the end of this file. The CLI becomes
@@ -310,7 +310,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ▶ WAVE 93b ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
+## ▶ WAVE 94 ACTIVE — Phase 39, one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)
 
 **Decision:** ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md). Read the ADR's
 "Decision" section once; it is the contract every card below answers to. **Trigger (explicit
@@ -369,6 +369,8 @@ mechanical rename script exists, `Integrator` for rollups, goldens, assets and t
 **Wave 92 closed 2026-10-07** (one merge `a99e0344` plus the integrator rollup): `cli/__init__.py` is a 177-line registry; the worker's return is under "Wave 92 returns" in the packets file. Wave 93a (P39-12, P39-13, P39-14, P39-15, P39-16) is next and bases on the Wave 92 rollup commit.
 
 **Wave 93a closed 2026-10-07** (five merges `3633ed8d`, `7c4acba1`, `c81aac07`, `77ca8ed6`, `e29436be`, the integrator wiring `f61f1bac` and the rollup): the five groups exist (`setup` with `provider|model|notify|export|sandbox|mcp|shell`, `log`, `start|stop`, `exec`, `run`, `status`, `inbox`); 27 top-level commands remain. The workers' returns are under "Wave 93a returns" in the packets file. Wave 93b (P39-8, P39-9, P39-10, P39-11) is next and bases on the Wave 93a rollup commit.
+
+**Wave 93b closed 2026-10-08** (seed `f54020ee`, four merges `f2dcfb4b`, `372c46d4`, `9fba00fb`, `2f1105e1`, the integrator release-lane pass `515a606b`, its completion `70b41380` and the rollup): `task` (`add|list|show|diff|trace|prune|approve|deny|answer|retry|cancel`) and `pod` (`show|add|remove|reset|set|unset|delete|apply|export|validate|plan|check|recipes|roles|policies`) are real groups; eleven top-level commands remain (`init status inbox task run pod log setup start stop exec`), the tree ADR 0022 names. The workers' returns are under "Wave 93b returns" in the packets file. Wave 94 (P39-17 and P39-18 first, then P39-19..P39-22, then P39-23) is next and bases on the Wave 93b rollup commit.
 
 ### P39-1 — one pod resolver: `--pod`, `DOCKET_POD`, then the directory you stand in
 
@@ -607,7 +609,7 @@ than ten lines"; it fails on the base with forty-six.
 
 ### P39-8 — the `task` group: add, list, show, diff, trace, prune
 
-**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-8-task-group` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (task views, worktree prune, the queue), `trace-store.spec.md` (`task trace`), `cli-json-shapes.spec.md` (`task list|show --json` with `worktree`), `cli-interface.spec.md` (`delegate`, `pod delegate|queue|evidence|corrections|explain|worktrees`, `runs list|show|prune`, `trace` removed)
+**Status:** DONE (merged to `develop` 2026-10-08, `f2dcfb4b`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `pod-dispatch.spec.md` (task views, worktree prune, the queue), `trace-store.spec.md` (`task trace`), `cli-json-shapes.spec.md` (`task list|show --json` with `worktree`), `cli-interface.spec.md` (`delegate`, `pod delegate|queue|evidence|corrections|explain|worktrees`, `runs list|show|prune`, `trace` removed)
 
 **Trigger (ADR 0022 evidence, live run B3, C6, P7):** a task reported `done` changes nothing the
 operator can see; the fix sits uncommitted in the task worktree and no surface prints the path,
@@ -640,7 +642,7 @@ the base (no command).
 
 ### P39-9 — `task approve|deny|answer|retry|cancel`
 
-**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-9-task-answers` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (answer surfaces: `task answer` absorbs `chat`; pre-grant through `task approve --for`; the "approved, ready" state and the `run` hint), `pod-dispatch.spec.md` (`task retry` uses the core retry; `task cancel`), `cli-interface.spec.md` (`approve`, `deny`, `chat`, `pod answer|pregrant`, `runs cancel` removed)
+**Status:** DONE (merged to `develop` 2026-10-08, `372c46d4`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `operator-loop.spec.md` (answer surfaces: `task answer` absorbs `chat`; pre-grant through `task approve --for`; the "approved, ready" state and the `run` hint), `pod-dispatch.spec.md` (`task retry` uses the core retry; `task cancel`), `cli-interface.spec.md` (`approve`, `deny`, `chat`, `pod answer|pregrant`, `runs cancel` removed)
 
 **Trigger (ADR 0022 evidence, live run C5, C6, C11, C12):** `approve` says "may now proceed"
 while nothing proceeds and `inbox` says "Nothing needs you"; `chat` rejects the short id; a failed
@@ -670,7 +672,7 @@ the base.
 
 ### P39-10 — the `pod` group, roster half: show, add, remove, reset, set, unset, delete
 
-**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-10-pod-roster` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md` -> 2.0.0 (member lifecycle; Lead removal refused; `reset` distills first, fails closed; pod deletion by typed name, never a picker), `model-profiles.spec.md` (per-agent pin removed), `docket-meta.spec.md` (`modelSource` removed), `pod-blueprints.spec.md` (`pod set|unset` over every `PodSettings` key), `cli-interface.spec.md` (`add`, `info`, `delete`, `maintain`, `profile`, `pod <p> list|add|remove|set-verify|config`, `config explain` removed)
+**Status:** DONE (merged to `develop` 2026-10-08, `9fba00fb`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `agent-lifecycle.spec.md` -> 2.0.0 (member lifecycle; Lead removal refused; `reset` distills first, fails closed; pod deletion by typed name, never a picker), `model-profiles.spec.md` (per-agent pin removed), `docket-meta.spec.md` (`modelSource` removed), `pod-blueprints.spec.md` (`pod set|unset` over every `PodSettings` key), `cli-interface.spec.md` (`add`, `info`, `delete`, `maintain`, `profile`, `pod <p> list|add|remove|set-verify|config`, `config explain` removed)
 
 **Trigger (ADR 0022 evidence, live run B2, B5, C9, C13, F6, F7):** `set-verify <m> --clear`
 stores the literal `--clear`; `pod add wizard` prints a traceback; `pod remove <lead>` has no
@@ -705,7 +707,7 @@ refused; both fail on the base.
 
 ### P39-11 — the `pod` group, configuration half: apply, export, validate, plan, check, recipes, roles, policies
 
-**Status:** IN PROGRESS (Wave 93b claimed 2026-10-08, branch `p39-11-pod-config` based on `f54020ee`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `config-format.spec.md` (one validator: `pod validate [PATH]` for any `kind:` document or directory), `pod-blueprints.spec.md` (`pod apply|export`; `apply` with no argument re-syncs instructions; `apply <file>` installs one document), `pipeline-format.spec.md` (`pod plan`), `security-gates.spec.md` (`pod check`), `role-archetypes.spec.md` (`pod roles`), `cli-interface.spec.md` (`validate`, `roles`, `policies`, `recipes`, `plugins`, `pipeline validate|plan`, `pod <p> apply|export|sync` removed)
+**Status:** DONE (merged to `develop` 2026-10-08, `2f1105e1`) · **Size:** M · **Wave:** 93b · **Model:** Sonnet · **Spec:** `config-format.spec.md` (one validator: `pod validate [PATH]` for any `kind:` document or directory), `pod-blueprints.spec.md` (`pod apply|export`; `apply` with no argument re-syncs instructions; `apply <file>` installs one document), `pipeline-format.spec.md` (`pod plan`), `security-gates.spec.md` (`pod check`), `role-archetypes.spec.md` (`pod roles`), `cli-interface.spec.md` (`validate`, `roles`, `policies`, `recipes`, `plugins`, `pipeline validate|plan`, `pod <p> apply|export|sync` removed)
 
 **Trigger (ADR 0022 evidence, inventory C6):** four validators and a fifth check; two installers;
 `roles`/`policies` unknown actions exit 0; `plugins` is a one-verb command; `policies test` is

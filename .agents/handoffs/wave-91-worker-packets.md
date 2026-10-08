@@ -764,3 +764,76 @@ three cards edited by class. Live-home check after the merge: `setup`, `status [
   has no entry for the new `run.resume` action (P39-23's spec 2.0.0 pass).
 - `setup mcp test` was not requested and does not exist; `bind` without `--chat` runs the guided
   discovery on a TTY only; `readiness().service` only checks for the systemd user unit file.
+
+## Wave 93b returns (integrator, 2026-10-08)
+
+Base `a7588463` (the board claim on top of the seed `f54020ee`, which defined `cli/_pod.py::pod_app`
+unregistered, `cli/_task.py::task_app` registered, and `tests/unit/cli/test__task.py` with the pod
+helpers both task cards use). Merged in the packet order with `--no-ff`: P39-8 `f2dcfb4b` (clean),
+P39-9 `372c46d4`, P39-10 `9fba00fb`, P39-11 `2f1105e1`; integrator release-lane pass `515a606b` and `70b41380`; then
+the rollup. Every conflict was in a file the packets predicted: `cli/_pod.py` (four cards deleting
+neighbouring functions), `cli/_task.py` (two cards replacing neighbouring legacy commands),
+`cli/__init__.py`, `scripts/gen_cli_docs.py::GROUPS`, the completions goldens and `docs/commands.md`
+(regenerated after each merge), `cli-interface`, `pod-dispatch`, `pod-blueprints` and
+`cli-json-shapes` (pre-assigned numbers, blocks kept in version order), `tests/unit/cli/test__pod.py`
+and `test_runs_cli.py` (by class), `_setup_shell.py`'s hand-written word lists, the two guard
+baselines. Live check on a throwaway home: `pod --help`, `pod policies|roles|recipes|validate|check`
+answer outside a pod, `pod plan|apply|show`, `task list` refuse outside one naming `docket init`,
+`task show x` names the ref, and every removed name exits 2.
+
+**Decisions taken at merge.**
+- The registration swap (`app.command("pod")(_pod.cmd_pod)` -> `app.add_typer(_pod.pod_app)`) and
+  the deletion of `cmd_pod` happened at P39-10's merge; the emptied `dispatch()` switch was deleted
+  at P39-11's merge, and `cli/_runs.py` at P39-9's, as the prompts said.
+- A deletion conflict resolves to neither side: when both cards removed the neighbouring function,
+  the hunk's two sides are what each card had *kept*, so "take both" would have resurrected every
+  removed function. Three fragments survived the first pass (an argument loop in `_pod.py`, a
+  method tail in `test__pod.py`, two dangling `app.command(` lines in the registry) and were caught
+  by importing the package before each merge commit.
+- `cli/_task.py` ended with two `_resolve`/`_task_record` helpers (one per card); one survives.
+  `_implementer_member` (P39-10) was restored from the branch after a resolution dropped it.
+- `tests/guards/test_completions_drift.py::TestSubcommandListsMatchTheImplementation` was deleted:
+  it derived truth from `sub == "..."` literals and no module has one left.
+- `cli-interface.spec.md` lost the emptied `#### docket runs` and the legacy pod-action section;
+  `cli-json-shapes.spec.md`'s surface sentence names `task list|show|trace` and `pod show`.
+- The release lane (integrator pass): `examples/starter/starter.py`, `scripts/release_journey.py`
+  and `tests/agent/release/test_starter_journey.py` inspect through `task show <id> --pod --json`
+  (its `runs` list replaces `runs list|show`) and `task trace <id> --export`; the benchmark's
+  corrupt-primary scenario triggers the store recovery through `task show task-one`;
+  `scripts/render-doc-assets.py` and `scripts/maint/capture-doc-journey.sh` speak the new verbs
+  and the three assets were re-rendered; `scripts/smoke_workflow.py`'s memory scenario runs
+  `pod reset --yes` where it ran `maintain distill` (reset distils, then clears and rebuilds: a
+  live-only script, flagged here, not verified live).
+  The first gate run on the pass found three more: the smoke test still asserted
+  `runs cancel`, the benchmark's approve/deny action and the starter's approval listing
+  (`docket approve` with no token) still used the top-level verbs; they are `task cancel`,
+  `task approve|deny <token>` and `docket inbox` now. The evidence schema and the recipe
+  docs were regenerated (a docstring the schema embeds named `docket trace`).
+  Two facts the starter journey taught: a task parked for approval shows in `inbox` under its
+  task id (the `apr-` token is printed only for an approval no task holds), so the starter
+  denies and approves by task id; and `task trace <id> --export` is the task's own session,
+  so the `approval_denied`/`approval_granted` events, written on the pod's approval session,
+  are not in it: the journey test pins `approval_task_denied`/`approval_resumed` instead.
+- P39-10 reported one accidental request to a vendor host during a manual `pod reset` in a
+  throwaway home (no credential, HTTP 401). The rule stands; the tests use `FakeDriver`.
+
+**Follow-ups by owning card (locators only).**
+- P39-17: `cli/_setup_shell.py` `pod)` and `task)` word lists are hand-trimmed, the `$_ids` arm on
+  `pod` is wrong now that there is no positional id; the greeting; `tests/golden/run.sh` read-only
+  list.
+- P39-18/19/20..22: `README.md` (quick start still says `docket pod myapp delegate|dispatch`,
+  `runs list`, `trace`, `pod myapp export`, `docket add --from`; pinned by
+  `tests/agent/release/test_public_release_truth.py:157,162,210-214`, which still passes because
+  the README is unchanged), `docs/*.md` (P39-11 swept `pod apply|export|validate|plan|check|
+  recipes|roles|policies`; `task`, `pod show|set|unset|reset|delete`, `maintain`, `profile`,
+  `info`, `config explain` mentions remain), `examples/configs/*`, `examples/pipelines/
+  code-review.yaml:8`, `src/docket/templates/recipes/*/README.md` (partly swept by P39-11).
+- P39-23 (spec 2.0.0 pass): `audit.spec.md` has no entries for `pod.reset`, `pod.delete`
+  (replaces `agent.delete`), `pod.unset-verify`, `run.resume`; stale names remain in
+  `workspace-structure`, `cost-tracking`, `mcp-client`, `operator-loop`, `model-profiles`,
+  `harness-mode`, `security-gates`, `acceptance/user-stories.md`. Comments in frozen files:
+  `serve.py:151`, `core/agent_loop.py:119`.
+- No replacement exists for `maintain check|sessions` (the context-footprint warning),
+  `policies init` and the whole-registry `roles validate`; `cli/_setup_check.py::
+  _check_template_version` keeps an unused `drift` counter.
+- `tests/integration/test_doctor_ledger_drift.py:106` expects `Fix with: docket setup --fix`.
