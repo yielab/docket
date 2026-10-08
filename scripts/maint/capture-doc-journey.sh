@@ -46,35 +46,35 @@ docket setup sandbox on >/dev/null 2>&1 || exit 1
 
 # 1-team: the team comes from a shipped recipe, is written back to .docket/, validated, planned.
 run 1-team.txt docket init --recipe secure-build
-run 1-team.txt docket pod myapp export
+run 1-team.txt docket pod export --pod myapp
 run 1-team.txt "find .docket -type f | sort"
-run 1-team.txt docket validate
-run 1-team.txt docket pipeline plan myapp
-run 1-team.txt "docket pod myapp set-verify myapp-implementer \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\""
+run 1-team.txt docket pod validate
+run 1-team.txt docket pod plan --pod myapp
+run 1-team.txt "docket pod set verify --member myapp-implementer --pod myapp \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\""
 
-run 2-dispatch.txt 'docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"'
+run 2-dispatch.txt 'docket task add "Fix calc.add so it returns the sum of a and b" --pod myapp'
 run 2-dispatch.txt docket run --pod myapp
-run 2-dispatch.txt docket runs list
-session="$(basename "$(ls -t "$HOME"/.docket/traces/myapp/*.jsonl | head -1)" .jsonl)"
-run 2-dispatch.txt "docket trace $session"
+run 2-dispatch.txt docket task list --pod myapp
+task_id="$(python3 -c 'import json,glob;print([t["id"] for t in json.load(open(glob.glob("'"$HOME"'/.docket/workspaces/projects/myapp-lead/TASK_LIST.json")[0]))["tasks"]][-1])')"
+run 2-dispatch.txt "docket task trace $task_id --pod myapp"
 
 worktree="$(ls -d "$HOME"/.docket/workspaces/projects/myapp-implementer/tasks/*/ | head -1)"
 worktree="${worktree%/}"
-run 3-isolation.txt docket info myapp-implementer
+run 3-isolation.txt docket pod show myapp-implementer --pod myapp
 run 3-isolation.txt docket setup sandbox
 run 3-isolation.txt git worktree list
 run 3-isolation.txt git status --short
 run 3-isolation.txt "git -C $worktree diff main"
 
-run 4-gate.txt "docket policies test pre_tool_call implementer 'git push origin production'"
-run 4-gate.txt 'docket pod myapp delegate "Publish the fix. Lead: never call the consult tool and do not ask questions, the operator already decided; hand this to the implementer as is. Implementer: run exactly this bash command once and report its output: git push origin production"'
+run 4-gate.txt "docket pod check 'git push origin production' --role implementer --pod myapp"
+run 4-gate.txt 'docket task add --pod myapp "Publish the fix. Lead: never call the consult tool and do not ask questions, the operator already decided; hand this to the implementer as is. Implementer: run exactly this bash command once and report its output: git push origin production"'
 run 4-gate.txt docket run --pod myapp
 run 4-gate.txt docket log
-run 4-gate.txt "docket trace export myapp | grep '\"deny\"'"
+run 4-gate.txt "docket task trace \$(docket task list --pod myapp --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"tasks\"][-1][\"id\"])') --export --pod myapp | grep '\"deny\"'"
 run 4-gate.txt docket log verify
 
 # 5-record: what the pod knows about itself after the run.
-run 5-record.txt docket config explain myapp-implementer
+run 5-record.txt docket pod show myapp-implementer --pod myapp
 run 5-record.txt docket log verify
 
 run 6-harness.txt "DOCKET_HOME=$HOME/hh DOCKET_LLM_BASE_URL=$ENDPOINT docket exec --workspace $HOME/code/svc --model local/local-model --task 'Run exactly this bash command: git push origin production' 2>/dev/null | tail -1 | python3 -m json.tool"

@@ -329,21 +329,6 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     assert {name for name in after if after[name] != before[name]} == {"starter-output.txt"}
     assert target.read_bytes() == APPROVED_BYTES
 
-    listed = _run(
-        str(docket),
-        "runs",
-        "list",
-        "--project",
-        PROJECT,
-        "--json",
-        cwd=copied_starter,
-        env=run_env,
-        timeout=_remaining(deadline),
-    )
-    _require_success(listed, "public run list")
-    list_payload = json.loads(listed.stdout)
-    runs = list_payload.get("runs", [])
-    assert isinstance(runs, list) and runs
     task_lists = list((run_home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
     assert len(task_lists) == 1, task_lists
     tasks_payload = _load_object(task_lists[0])
@@ -358,6 +343,25 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     done_tasks = [task for task in tasks if isinstance(task, dict) and task.get("status") == "done"]
     assert len(done_tasks) == 1
     done_task = done_tasks[0]
+
+    shown = _run(
+        str(docket),
+        "task",
+        "show",
+        str(done_task.get("id")),
+        "--pod",
+        PROJECT,
+        "--json",
+        cwd=copied_starter,
+        env=run_env,
+        timeout=_remaining(deadline),
+    )
+    _require_success(shown, "public task show")
+    show_payload = json.loads(shown.stdout)
+    assert show_payload.get("pod") == PROJECT
+    assert show_payload.get("task", {}).get("id") == done_task.get("id")
+    runs = show_payload.get("runs", [])
+    assert isinstance(runs, list) and runs
     successful = [
         run
         for run in runs
@@ -366,20 +370,6 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
         and done_task.get("id") in run.get("taskIds", [])
     ]
     assert successful, runs
-
-    shown = _run(
-        str(docket),
-        "runs",
-        "show",
-        str(successful[0]["id"]),
-        "--json",
-        cwd=copied_starter,
-        env=run_env,
-        timeout=_remaining(deadline),
-    )
-    _require_success(shown, "public run show")
-    assert json.loads(shown.stdout) == successful[0]
-    assert done_task.get("id") in successful[0]["taskIds"]
     hops = done_task.get("hops", [])
     assert isinstance(hops, list) and hops
     final_hop = hops[-1]
@@ -394,8 +384,11 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
 
     exported = _run(
         str(docket),
+        "task",
         "trace",
-        "export",
+        str(done_task.get("id")),
+        "--export",
+        "--pod",
         PROJECT,
         cwd=copied_starter,
         env=run_env,

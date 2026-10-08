@@ -144,7 +144,7 @@ _TEAM = [
     "  [add] member: security-vetter",
     "  [add] pipeline: pipeline.yaml",
     "✓ Applied 5 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
-    "$ docket pod myapp export                  # the team, written back next to the code",
+    "$ docket pod export --pod myapp            # the team, written back next to the code",
     "✓ Exported pod 'myapp' to ~/code/myapp/.docket.",
     "$ find .docket -type f | sort",
     ".docket/pipeline.yaml",
@@ -155,24 +155,24 @@ _TEAM = [
 ]
 
 _PLAN = [
-    "$ docket validate                          # every file starts with kind:",
+    "$ docket pod validate                      # every file starts with kind:",
     "ok ~/code/myapp/.docket/roles/security-vetter.yaml (role security-vetter)",
     "ok ~/code/myapp/.docket/policies/require-approval-secret-writes.yaml "
     "(policy secure-build-secret-writes)",
     "ok ~/code/myapp/.docket/pipeline.yaml (pipeline secure-build)",
     "ok ~/code/myapp/.docket/pod.yaml (pod myapp)",
-    "$ docket pipeline plan myapp",
+    "$ docket pod plan --pod myapp",
     "Pipeline plan — myapp",
     "Source: bound pipeline (hash 45f7aaf31d1f...)",
     "Pipeline: secure-build",
     "  [plan] role=lead -> myapp-lead [gate: none]",
     "  [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]",
     "  [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]",
-    "$ docket pod myapp set-verify myapp-implementer \\",
+    "$ docket pod set verify --member myapp-implementer --pod myapp \\",
     "    \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
     "✓ Set verify command for myapp-implementer: "
     "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
-    '$ docket pod myapp delegate "Fix calc.add so it returns the sum of a and b"',
+    '$ docket task add "Fix calc.add so it returns the sum of a and b" --pod myapp',
     "✓ Queued for pod 'myapp': [task-a36c9b20-2eb4-4b06-af17-79080473964e] Fix calc.add so it "
     "returns the sum of a and b",
 ]
@@ -181,7 +181,7 @@ _DISPATCH = [
     "$ docket run --pod myapp",
     "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
     "✓   [task-a36c9b20-2eb4-4b06-af17-79080473964e] done — 3 hop(s), $0.0000",
-    "$ docket trace agent:myapp:task-a36c9b20-2eb4-4b06-af17-79080473964e",
+    "$ docket task trace a36c9b20 --pod myapp",
     "  2026-10-05T15:08:52  session_start              (lead)",
     "  ⋯",
     "  2026-10-05T15:09:32  tool_result                (lead)  text=Found the bug. `calc.add` "
@@ -197,7 +197,7 @@ _DISPATCH = [
 ]
 
 _RECORD = [
-    "$ docket config explain myapp-implementer",
+    "$ docket pod show myapp-implementer --pod myapp",
     "Effective configuration — myapp-implementer",
     "  Role:            implementer",
     "  Pod:             myapp",
@@ -220,7 +220,7 @@ _RECORD = [
 ]
 
 _ISOLATION = [
-    "$ docket info myapp-implementer",
+    "$ docket pod show myapp-implementer --pod myapp",
     "Project: myapp implementer (myapp-implementer)",
     "  Workspace:         ~/.docket/workspaces/projects/myapp-implementer",
     "  Codebase:          ~/code/myapp",
@@ -249,11 +249,11 @@ _ISOLATION = [
 ]
 
 _GATE = [
-    "$ docket policies test pre_tool_call implementer 'git push origin production'",
+    "$ docket pod check 'git push origin production' --role implementer --pod myapp",
     "  Result: ask",
     "  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes",
     "  Policy: 'high-risk-deploy' -> require_approval",
-    "$ docket pod myapp delegate \\",
+    "$ docket task add --pod myapp \\",
     '    "Publish the fix. Lead: never call the consult tool and do not ask questions, the '
     "operator already decided; hand this to the implementer as is. Implementer: run exactly this "
     'bash command once and report its output: git push origin production"',
@@ -265,7 +265,7 @@ _GATE = [
     "  ⋯",
     "  2026-10-05T15:12:49.964Z  demo        tool.ask          tool=bash agent=myapp-implementer "
     "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
-    "$ docket trace export myapp | grep '\"deny\"'",
+    "$ docket task trace 31f81c52 --export --pod myapp | grep '\"deny\"'",
     '{"ts": "2026-10-05T15:12:49Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
     '"tool": "bash", ⋯ "decision": "deny", "ok": false, "executed": false, "denialKind": '
     '"approval_parked", "policyId": "high-risk-deploy", ⋯}}',

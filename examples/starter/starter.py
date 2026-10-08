@@ -296,13 +296,14 @@ def _delegate(docket: Path, *, cwd: Path, env: dict[str, str]) -> None:
     _command(
         [
             str(docket),
-            "pod",
-            PROJECT,
-            "delegate",
+            "task",
+            "add",
             (
                 f"Write {TARGET_NAME} with exactly 'docket starter approved' followed by one LF, "
                 "using Docket's write tool, then finish."
             ),
+            "--pod",
+            PROJECT,
         ],
         cwd=cwd,
         env=env,
@@ -366,36 +367,30 @@ def _inspect_public_cli(
     cwd: Path,
     env: dict[str, str],
 ) -> str:
-    listed = _command(
-        [str(docket), "runs", "list", "--project", PROJECT, "--json"],
+    task_id = str(done_task.get("id"))
+    shown = _command(
+        [str(docket), "task", "show", task_id, "--pod", PROJECT, "--json"],
         cwd=cwd,
         env=env,
-        label="public run list",
+        label="public task show",
     )
-    payload = json.loads(listed.stdout)
+    payload = json.loads(shown.stdout)
     runs = payload.get("runs") if isinstance(payload, dict) else None
     if not isinstance(runs, list):
-        raise StarterFailure("public run list returned no runs array")
+        raise StarterFailure("public task show returned no runs array")
     matching = [
         run
         for run in runs
         if isinstance(run, dict)
         and run.get("state") == "succeeded"
-        and done_task.get("id") in run.get("taskIds", [])
+        and task_id in run.get("taskIds", [])
     ]
-    _require(bool(matching), "public run list omitted the completed task")
+    _require(bool(matching), "public task show omitted the completed run")
     run = cast(dict[str, Any], matching[0])
     run_id = str(run["id"])
-    shown = _command(
-        [str(docket), "runs", "show", run_id, "--json"],
-        cwd=cwd,
-        env=env,
-        label="public run show",
-    )
-    _require(json.loads(shown.stdout) == run, "public run list/show disagreed")
 
     exported = _command(
-        [str(docket), "trace", "export", PROJECT],
+        [str(docket), "task", "trace", task_id, "--export", "--pod", PROJECT],
         cwd=cwd,
         env=env,
         label="public trace export",
@@ -461,7 +456,7 @@ def _run(workspace: Path) -> None:
         print(f"STARTER DENIAL PAUSED {first_token}", flush=True)
         _decision("deny")
         _command(
-            [str(docket), "deny", first_token],
+            [str(docket), "task", "deny", first_token],
             cwd=base,
             env=env,
             label="public approval denial",
@@ -475,7 +470,7 @@ def _run(workspace: Path) -> None:
         print(f"STARTER GRANT PAUSED {second_token}", flush=True)
         _decision("grant")
         _command(
-            [str(docket), "approve", second_token],
+            [str(docket), "task", "approve", second_token],
             cwd=base,
             env=env,
             label="public approval grant",
@@ -493,9 +488,10 @@ def _run(workspace: Path) -> None:
     print(f"Task list: {task_list}")
     print(f"Trace: {trace_dir}")
     print(f"Audit: {audit}")
-    print(f"Inspect: docket runs list --project {PROJECT} --json")
-    print(f"Inspect: docket runs show {run_id} --json")
-    print(f"Inspect: docket trace export {PROJECT}")
+    print(f"Inspect: docket task list --pod {PROJECT} --json")
+    print(f"Inspect: docket task show {done_task.get('id')} --pod {PROJECT} --json")
+    print(f"Inspect: docket task show {run_id} --pod {PROJECT} --json")
+    print(f"Inspect: docket task trace {done_task.get('id')} --export --pod {PROJECT}")
     print("Inspect: docket log verify")
     print("STARTER JOURNEY PASS", flush=True)
 

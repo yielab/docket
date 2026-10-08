@@ -455,14 +455,22 @@ def _verify_state(world: Path, executable: Path, env: dict[str, str]) -> None:
     _run_cli(executable, ["log", "verify"], cwd=world / "codebase", env=env, label="log verify")
     _run_cli(
         executable,
-        ["runs", "list", "--project", PROJECT, "--json"],
+        ["task", "list", "--pod", PROJECT, "--json"],
         cwd=world / "codebase",
         env=env,
-        label="public run inspection",
+        label="public task inspection",
     )
+    task_lists = sorted((home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    _require(bool(task_lists), "no task list was written")
+    done_ids = [
+        str(task.get("id"))
+        for task in json.loads(task_lists[0].read_text(encoding="utf-8")).get("tasks", [])
+        if task.get("status") == "done"
+    ]
+    _require(bool(done_ids), "no task reached done")
     _run_cli(
         executable,
-        ["trace", "export", PROJECT],
+        ["task", "trace", done_ids[0], "--export", "--pod", PROJECT],
         cwd=world / "codebase",
         env=env,
         label="public trace inspection",
@@ -508,13 +516,14 @@ def _run(world: Path, repo: Path, requested_endpoint: str | None) -> None:
         _run_cli(
             executable,
             [
-                "pod",
-                PROJECT,
-                "delegate",
+                "task",
+                "add",
                 (
                     "Create release-journey.txt with exactly 'docket release journey ok' followed "
                     "by one LF using Docket's write tool, then finish the turn."
                 ),
+                "--pod",
+                PROJECT,
             ],
             cwd=world / "outside-checkout",
             env=env,

@@ -136,7 +136,6 @@ def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
             "name": "demo-lead",
             "codebase": str(workspace),
             "model": "fixture/deterministic",
-            "modelSource": "policy",
             "sessionKey": "agent:demo:default",
             "projectKey": "default",
             "created": "2026-09-02T00:00:00+00:00",
@@ -236,7 +235,9 @@ def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
     if scenario_id == "corrupt-primary-recovery":
         _write_json(runs_path.with_suffix(".json.bak"), runs_doc)
         runs_path.write_bytes(MALFORMED_PRIMARY)
-        _public_cli(home, home.parent / "workspace", "runs", "list", "--json")
+        _public_cli(
+            home, home.parent / "workspace", "task", "show", "task-one", "--pod", "demo", "--json"
+        )
         malformed_hash = _sha256(MALFORMED_PRIMARY)
     else:
         _write_json(runs_path, runs_doc)
