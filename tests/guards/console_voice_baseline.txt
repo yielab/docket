@@ -5,9 +5,6 @@ cli/_channels.py 1
 cli/_config.py 21
 cli/_context.py 15
 cli/_conversations.py 4
-cli/_cost.py 15
-cli/_exporters.py 3
-cli/_metrics.py 1
 cli/_pipeline.py 1
 cli/_pod.py 11
 cli/_remove.py 28
@@ -15,5 +12,4 @@ cli/_roles.py 1
 cli/_runs.py 1
 cli/_setup_check.py 17
 cli/_setup_notify.py 1
-cli/_status.py 6
 cli/_validate.py 1

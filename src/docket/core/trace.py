@@ -656,3 +656,77 @@ def export_lines(project: str, since: str = "") -> list[str]:
                     pass
             out.append(line)
     return out
+
+
+#: A dispatch writes the task's own status on ``session_end``. ``None`` = not terminal.
+_TERMINAL_OUTCOME: dict[str, str] = {
+    "done": "success",
+    "success": "success",
+    "failed": "failure",
+    "failure": "failure",
+    "cancelled": "aborted",
+    "blocked": "aborted",
+    "aborted": "aborted",
+}
+
+
+@dataclass(frozen=True)
+class TerminalOutcomes:
+    """Counts of a pod's finished sessions and how long they took."""
+
+    success: int = 0
+    failure: int = 0
+    aborted: int = 0
+    durations_ms: tuple[int, ...] = ()
+
+    @property
+    def total(self) -> int:
+        return self.success + self.failure + self.aborted
+
+    @property
+    def mean_ms(self) -> int | None:
+        return round(sum(self.durations_ms) / len(self.durations_ms)) if self.durations_ms else None
+
+    @property
+    def p95_ms(self) -> int | None:
+        if not self.durations_ms:
+            return None
+        return sorted(self.durations_ms)[int(len(self.durations_ms) * 0.95)]
+
+
+def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes:
+    """Count the last *window* finished sessions of *project* from its trace files.
+
+    Open sessions and parked tasks (``waiting_*``) are not terminal and are skipped."""
+    sessions: list[tuple[str, int | None]] = []
+    for tf in sorted(project_trace_dir(project).glob("*.jsonl")):
+        start_ts = end_ts = outcome = None
+        for rec in read_trace(tf):
+            etype = rec.get("event_type")
+            if etype == "session_start":
+                start_ts = str(rec.get("ts") or "")
+            elif etype == "session_end":
+                payload = rec.get("payload")
+                raw = str(payload.get("status", "success")) if isinstance(payload, dict) else ""
+                outcome = _TERMINAL_OUTCOME.get(raw)
+                end_ts = str(rec.get("ts") or "")
+        if outcome is None:
+            continue
+        duration: int | None = None
+        if start_ts and end_ts:
+            try:
+                fmt = "%Y-%m-%dT%H:%M:%S"
+                delta = _dt.datetime.strptime(end_ts[:19], fmt) - _dt.datetime.strptime(
+                    start_ts[:19], fmt
+                )
+                duration = int(delta.total_seconds() * 1000)
+            except ValueError:
+                duration = None
+        sessions.append((outcome, duration))
+    recent = sessions[-window:] if window > 0 else sessions
+    return TerminalOutcomes(
+        success=sum(1 for o, _ in recent if o == "success"),
+        failure=sum(1 for o, _ in recent if o == "failure"),
+        aborted=sum(1 for o, _ in recent if o == "aborted"),
+        durations_ms=tuple(d for _, d in recent if d is not None),
+    )

@@ -1,6 +1,6 @@
 """``docket runs`` — inspect the dispatch run registry.
 
-One record per dispatch invocation — CLI (`docket pod <p> dispatch`), the serve
+One record per dispatch invocation — CLI (`docket run`), the serve
 webhook (`POST /dispatch/<project>`), a due schedule, or the periodic sweep
 loop (`docket serve --dispatch`) — see `core/runs.py`. This is the answer to
 "is it done, did it fail, or did it never run" for background dispatch — a

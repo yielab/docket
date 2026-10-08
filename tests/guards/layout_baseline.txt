@@ -5,16 +5,13 @@
 # integration suites. New entries require the module to already exist and already lack coverage.
 docket.cli._agents
 docket.cli._conversations
-docket.cli._cost
 docket.cli._help
 docket.cli._mcp
-docket.cli._metrics
 docket.cli._pipeline
 docket.cli._pod
 docket.cli._policies
 docket.cli._roles
 docket.cli._runs
-docket.cli._status
 docket.cli._trace
 docket.config
 docket.core.archetypes

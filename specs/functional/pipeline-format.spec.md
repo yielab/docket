@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.12.0
+**Version**: 2.13.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -12,10 +12,10 @@ and command steps" section below. **P27-5** removes this format's one remaining 
 `instructions` now overrides the Lead's hop message too, the same as any other role — see "Steps"
 Requirement 8 below and `role-archetypes.spec.md`'s "Hop instructions". The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a
-`PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan|run`
+`PipelineSpec` over the pod-dispatch state machine, and the `docket pipeline validate|plan` and `docket run --pipeline`
 CLI surface, now exist — see `pod-dispatch.spec.md` for execution semantics and
 `cli-interface.spec.md` for the CLI contract. `core.pipeline.resolve_variables` (W-4) resolves a
-caller-supplied `{name: value}` mapping (the serve webhook's JSON body, or `docket pipeline run
+caller-supplied `{name: value}` mapping (the serve webhook's JSON body, or `docket run
 --var`) against a spec's declared `variables` before dispatch. **P26-7** closes this format's last
 "not yet built" gap: a step's own `instructions` (see "Steps" below) may reference `${var}`-style
 placeholders, interpolated from that resolved namespace by `core/dispatch.py`'s hop-message
@@ -156,7 +156,7 @@ This specification does NOT cover:
      document shape itself, which is `extra="forbid"` throughout).
    This function itself does not interpolate anywhere — it only produces the *namespace* that
    "Step instruction interpolation" below, and a caller inspecting what a dispatch ran with, read
-   from. `docket pipeline run --var key=value` (repeatable; see `cli-interface.spec.md`) is the
+   from. `docket run --var key=value` (repeatable; see `cli-interface.spec.md`) is the
    CLI's own *provided* source, the same role a webhook's JSON body plays.
 5. **Step instruction interpolation (P26-7).** A step's own `instructions` (see "Steps"
    Requirement 8) may reference `${name}`-style placeholders — the exact `${name}` spelling only;
@@ -469,7 +469,7 @@ This specification does NOT cover:
 ## Interface Contracts
 
 This spec defines a Python data model and pure functions in `core/pipeline.py`. The CLI surface
-that reads it (`docket pipeline validate|plan|run`) is documented in `cli-interface.spec.md`; the
+that reads it (`docket pipeline validate|plan` and `docket run --pipeline`) is documented in `cli-interface.spec.md`; the
 executor that runs it (`core/orchestrator.py`, `core/dispatch.py`) is documented in
 `pod-dispatch.spec.md` (see "Does NOT cover"). A third caller validates a file for **storage**
 rather than one-off execution: `docket pod <project> config set pipeline <file>` calls
@@ -649,6 +649,10 @@ steps:
 
 ## Changelog
 
+### Version 2.13.0 (2026-10-07)
+
+- A pipeline file is run with `docket run --pipeline FILE`; `--var key=value` moves to `docket run`; `docket pipeline run` is gone.
+
 ### Version 2.12.0 (2026-10-05)
 
 Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
@@ -799,7 +803,7 @@ Waves 89-90 close (W89-10): the entries below were Unreleased and are now this v
     apply to a custom spec exactly as they always have to the built-in one. See
     `pod-dispatch.spec.md`'s new "Generalized gate execution", "Parallel step groups", and
     "Cancellation" sections for the executor's behavioral contract.
-  - `docket pipeline validate|plan|run` (see `cli-interface.spec.md`) is the first CLI surface to
+  - `docket pipeline validate|plan` and `docket run --pipeline` (see `cli-interface.spec.md`) is the first CLI surface to
     read this format. `plan` renders directly from `core.orchestrator.resolve_plan`/`render_plan`
     — the same function the real executor calls — never a second, drift-prone pretty-printer.
   - A step's `archetype` reference (W-6, shipped separately) is now load-bearing, not just

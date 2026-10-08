@@ -28,7 +28,7 @@ from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.serve as _serve
-from docket.cli import _pod
+from docket.cli import _pod, _run
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.edges import store as _store
@@ -307,7 +307,7 @@ class TestCliDispatchPath:
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
-        _pod.dispatch("demo", "dispatch", [])
+        _run._pod_dispatch("demo")
 
         records = _runs.list_runs("demo")
         assert len(records) == 1
@@ -329,7 +329,7 @@ class TestCliDispatchPath:
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
         with pytest.raises(typer.Exit) as excinfo:
-            _pod.dispatch("demo", "dispatch", [])
+            _run._pod_dispatch("demo")
         assert excinfo.value.exit_code == 1
         assert _runs.list_runs("demo")[0]["state"] == "failed"
         assert f"[task-x] failed — {reason}" in capsys.readouterr().err
@@ -351,7 +351,7 @@ class TestCliDispatchPath:
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
-        _pod.dispatch("demo", "dispatch", [])
+        _run._pod_dispatch("demo")
 
         assert f"[task-x] {status}" in capsys.readouterr().out
 
@@ -378,7 +378,7 @@ class TestCliDispatchPath:
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _boom)
 
         with pytest.raises(typer.Exit) as excinfo:
-            _pod.dispatch("demo", "dispatch", [])
+            _run._pod_dispatch("demo")
         assert excinfo.value.exit_code == 1
 
         records = _runs.list_runs("demo")

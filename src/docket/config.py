@@ -89,13 +89,12 @@ TOOL_APPROVAL_POLL_INTERVAL_S = float(os.environ.get("TOOL_APPROVAL_POLL_INTERVA
 # without finishing is presumed crashed — the dispatch sweep fails it with a
 # stale_claim trace event so it stops looking active forever.
 CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
-# METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
+# METRICS_WINDOW: rolling terminal-session count for `docket status`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
 # RUNAWAY_TURNS_THRESHOLD / RUNAWAY_COST_THRESHOLD: shared "this session looks
-# stuck" heuristic used by both `docket setup --fix` and `docket cost` -- one pair
-# of thresholds so the two commands never disagree about what counts as
-# runaway. 200 turns / $20 are round, deliberately generous defaults: past
+# stuck" heuristic used by `docket setup --fix` -- one pair
+# of thresholds defines what counts as runaway. 200 turns / $20 are round, deliberately generous defaults: past
 # either, a human should look, not assume the model is still making progress.
 RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
 RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
@@ -177,7 +176,7 @@ def _optional_int_env(name: str) -> int | None:
 #
 # Precedence is per-caller, because each passes its own value as dispatch's
 # `explicit` argument (see core/dispatch.py's _resolve_timeout):
-#   CLI    `docket pod <p> dispatch --timeout N` > Lead-meta turn/verifyTimeoutS > DEFAULT_TIMEOUT
+#   CLI    `docket run --timeout N`              > Lead-meta turn/verifyTimeoutS > DEFAULT_TIMEOUT
 #   serve  these envs (when set)                 > Lead-meta turn/verifyTimeoutS > DEFAULT_TIMEOUT
 #
 # Note the asymmetry: a set serve env knob *overrides* a pod's own Lead-meta

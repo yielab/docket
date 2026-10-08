@@ -177,11 +177,17 @@ of its own.
    since a task's ISO-with-offset timestamp and an approval's `Z`-suffixed one are not
    lexicographically comparable), or `None` when nothing was seen.
 6. `docket inbox [--json] [--since <iso>] [--peek]` (`cli/_inbox.py`) MUST render the four
-   sections, `needsYou` first. Without `--peek` and without an explicit `--since`, it MUST
-   advance a durable cursor (`config.INBOX_CURSOR_FILE`, written through `edges/store.py`) to
-   `InboxView.next` after rendering, so a later plain call's `doneSince` only shows tasks that
-   completed after the previous call. `--peek` and an explicit `--since` MUST NOT write the
-   cursor. `--json` MUST emit `InboxView.model_dump(by_alias=True, mode="json")`.
+   sections (`Needs you`, `Failed`, `Done`, `Running`), `Needs you` first. Without `--peek` and
+   without an explicit `--since`, it MUST advance a durable cursor (`config.INBOX_CURSOR_FILE`,
+   written through `edges/store.py`) to `InboxView.next` after rendering, so a later plain
+   call's `doneSince` only shows tasks that completed after the previous call. `--peek` and an
+   explicit `--since` MUST NOT write the cursor. An undeclared flag MUST exit 2. Every item MUST
+   print the exact command that moves it forward (`docket task approve|deny|answer <id>`,
+   `docket task retry <id>`, `docket run --pod <pod>`), a held command or question in full, never
+   truncated. A pending task whose approval was granted MUST appear under `Needs you` as
+   "approved, ready" (`state: "approved_ready"`) with the `docket run` command. `--json` MUST emit
+   `InboxView.model_dump(by_alias=True, mode="json")` with `state` and `command` added to each
+   item, and no escape codes.
 7. `GET /inbox?since=<iso>` (`serve.py`) MUST require the same `Authorization: Bearer <token>`
    as `GET /approvals` and return the identical JSON shape `docket inbox --json` prints for the
    same state.
@@ -327,8 +333,8 @@ in the derived inbox becomes an event on the wire.
     consume it, none MAY enable a channel on its own: `docket doctor`'s `Notifications:` block
     (counted as an issue when at least one project agent exists, informational otherwise;
     `--json` carries `checks.notifications {ok, delivering}`), `docket serve --dispatch` once
-    at startup, `docket init` after the created summary, and `docket pod <p> dispatch`'s
-    post-dispatch flush when that flush found events. One offer is allowed: `docket init` on a
+    at startup, `docket init` after the created summary, and `docket run`'s
+    post-run flush when that flush found events. One offer is allowed: `docket init` on a
     TTY where `edges.adapters.system.desktop_notifications_available()` holds MAY ask
     `Enable desktop notifications now? [Y/n]` and, only on a yes (the default), enable `desktop`
     and deliver one `channel.test` event through it so the operator sees it work; off a TTY
@@ -503,9 +509,9 @@ functions, every surface is transport"; this area is that transport.
    question has options and neither `--option` nor `--decline` was given, MUST exit 1 naming
    the option ids instead of sending an answer the contract would refuse. `docket inbox`'s
    human view MUST print a `waiting_input` task's question, its option ids and labels (the
-   recommended one marked `(recommended)`) and the `docket chat <task-id>` hint beneath the
+   recommended one marked `(recommended)`) and the `docket task answer <task-id>` command beneath the
    task line, and a `waiting_approval` task's held action (`asks: <approval.action>`) with the
-   `docket approve <token>` / `docket deny <token>` hint -- what the standalone approval line
+   `docket task approve <id>` / `docket task deny <id>` commands -- what the standalone approval line
    carried before inbox item 3 folded it into its task.
 3. `docket pod <p> delegate --brief FILE.json` (`cli/_pod.py::_pod_delegate`) MUST parse the
    file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
@@ -780,6 +786,7 @@ Each JSONL line is a JSON object with these fields:
 - Phase 39 (P39-13): the channel and flush commands live under `docket setup notify` (`channels`
   and `notify` are removed; `content` is `privacy`): `docket setup notify flush [--dry-run]` is the
   manual flush, and `enable telegram`/`enable --test` join `test` as the only senders.
+- `inbox` prints the `docket task approve|deny|answer <id>` line on every item, never truncates a held command, exits 2 on an unknown flag and lists a granted pending task as "approved, ready" (`state: "approved_ready"`); `--json` items carry `state` and `command`.
 
 ### Version 1.3.1 (2026-10-07)
 

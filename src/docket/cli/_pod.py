@@ -18,7 +18,7 @@ import getpass as _getpass
 import hashlib as _hashlib
 import json as _json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,7 +29,6 @@ from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
-from docket.cli import _progress
 from docket.cli._agents import _pick_agent
 from docket.core import answers as _answers
 from docket.core import archetypes as _arch
@@ -254,8 +253,6 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_pregrant(project, extra)
     elif action == "queue":
         _pod_queue(project, extra)
-    elif action == "dispatch":
-        _pod_dispatch(project, extra)
     elif action == "config":
         _pod_config(project, extra)
     elif action == "sync":
@@ -789,202 +786,6 @@ def _pod_queue(project: str, extra: list[str]) -> None:
             str(t.get("description", "")),
         )
     ui.console.print(table)
-
-
-@dataclass(frozen=True, slots=True)
-class DispatchArgs:
-    """Parsed ``docket pod <p> dispatch`` flags."""
-
-    resume: bool
-    timeout: int | None
-    progress: bool
-    no_prompt: bool
-
-
-def _parse_dispatch_args(extra: list[str]) -> DispatchArgs:
-    """Parse ``[--resume] [--timeout SECONDS] [--progress] [--no-prompt]``.
-    ``--timeout`` overrides the agent-turn/verifyCmd timeout over the pod's
-    persisted Lead-meta values. Raises ValueError on a bad ``--timeout``."""
-    resume = "--resume" in extra
-    progress = "--progress" in extra
-    no_prompt = "--no-prompt" in extra
-    timeout: int | None = None
-    if "--timeout" in extra:
-        i = extra.index("--timeout")
-        raw = extra[i + 1] if i + 1 < len(extra) else ""
-        timeout = int(raw)
-        if timeout <= 0:
-            raise ValueError(raw)
-    return DispatchArgs(resume, timeout, progress, no_prompt)
-
-
-def _flush_notify_after_dispatch() -> None:
-    """One `core.notify.flush` call over every catalog channel, after a CLI dispatch's own
-    summary has already printed (ADR 0016 SS7) -- the foreground half of delivery; the
-    background half is `serve.py`'s sweep. Prints nothing unless a delivery failed, or the
-    flush found events and nothing delivers beyond the console."""
-    import datetime as _dt
-
-    from docket.core import channel as _channel
-    from docket.core import notify as _notify
-    from docket.edges.adapters import channels as _channels
-
-    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    report = _notify.flush(
-        list(_channel.load_catalog().entries.values()), _channels.sink_for, now=now
-    )
-    if report.failed:
-        ui.warn(f"  notify: {report.failed} delivery failure(s) — see channels-health.json")
-    if report.events:
-        unreached = _channel.unreached_warning(_channel.load_catalog().delivering())
-        if unreached:
-            ui.warn(f"  {unreached}")
-
-
-def _pod_dispatch(
-    project: str,
-    extra: list[str],
-    *,
-    spec: _pipeline.PipelineSpec | None = None,
-    variables: dict[str, str] | None = None,
-) -> None:
-    """Drive the pod's pending tasks through the pipeline (one real turn per hop).
-    ``--resume``/``--timeout`` crash-recovery and override semantics: see
-    specs/functional/pod-dispatch.spec.md. Recorded in the run registry (source
-    ``"cli"``), so a failure is visible afterwards via ``docket runs show``. *spec*,
-    when given (by ``docket pipeline run``), is forwarded unchanged; ``None`` resolves
-    through ``effective_pipeline`` — the pod's blueprint pipeline, or the built-in
-    default — the one shared resolver both CLI surfaces drive, so the prologue names
-    the same roles the executor actually runs. *variables* (``docket pipeline run
-    --var``) is forwarded to ``dispatch_pod`` unchanged; it validates/resolves them and
-    refuses up front if any step's own ``instructions`` is left with an unresolved
-    ``${var}`` reference (pipeline-format.spec.md)."""
-    from docket.core import runs as _runs
-
-    try:
-        dispatch_args = _parse_dispatch_args(extra)
-    except ValueError:
-        ui.error("--timeout requires a positive integer number of seconds.")
-        raise typer.Exit(1) from None
-    resume = dispatch_args.resume
-    timeout_override = dispatch_args.timeout
-    try:
-        _dispatch.pod_pipeline(project)  # validates the pod exists and has a Lead
-    except _dispatch.DispatchError as ex:
-        ui.error(str(ex))
-        raise typer.Exit(1) from ex
-    tasks = _dispatch.read_tasks(project)
-    pending = [t for t in tasks if t.get("status") == "pending"]
-    resumable = (
-        [
-            t
-            for t in tasks
-            if t.get("status") == "failed"
-            and t.get("failureKind") in _dispatch.RESUMABLE_FAILURE_KINDS
-        ]
-        if resume
-        else []
-    )
-    # A crashed dispatcher leaves a task `running`, not `failed` -- it only becomes
-    # resumable once `dispatch_pod`'s own stale-claim sweep judges its claim too old
-    # (pod-dispatch.spec.md, "Claiming"/"Per-hop incremental persistence and crash
-    # recovery"). Re-checking that staleness here would duplicate the sweep's own
-    # CLAIM_STALE_TIMEOUT math; instead, under --resume, a `running` task is enough
-    # to let this call proceed into dispatch_pod at all, so its sweep can settle a
-    # genuinely stale one in the same call -- no decoy pending task, no timeout
-    # override needed just to unblock recovery.
-    running = [t for t in tasks if t.get("status") == "running"] if resume else []
-    if not pending and not resumable and not running:
-        ui.warn(f"No pending tasks for pod '{project}'. Queue one: docket pod {project} delegate")
-        return
-    count_label = f"{len(pending)} pending"
-    if resume:
-        count_label += f", {len(resumable)} resumable"
-        if running:
-            count_label += f", {len(running)} running (reclaimed only if the claim is stale)"
-    try:
-        if spec is not None:
-            ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
-        else:
-            roles = " → ".join(
-                step.role or step.agent or step.id
-                for step in _dispatch.effective_pipeline(project, None).steps
-            )
-            ui.info(f"Dispatching {count_label} task(s) through: {roles}")
-        cap = _dispatch.pod_budget(project)
-    except _dispatch.DispatchError as ex:
-        # An invalid stored setting (see core.pod.PodSettings) refuses here,
-        # before any task is claimed, rather than defaulting it away.
-        ui.error(str(ex))
-        raise typer.Exit(1) from ex
-    if cap:
-        ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
-
-    record = _runs.create_run("cli", project)
-
-    def _fn() -> list[Any]:
-        # An unset pod `approvalMode` resolves to "wait" on a real TTY (an
-        # operator watching this run can answer in place -- see
-        # cli/_progress.py) and to "park" otherwise (ADR 0016 SS2): a
-        # non-interactive foreground dispatch has nobody to answer an in-turn
-        # ask, so it must park rather than block for TOOL_APPROVAL_TIMEOUT.
-        approval_default: Literal["wait", "park"] = "wait" if sys.stdin.isatty() else "park"
-        return _dispatch.dispatch_pod(
-            project,
-            resume=resume,
-            turn_timeout=timeout_override,
-            verify_timeout=timeout_override,
-            spec=spec,
-            variables=variables,
-            approval_default=approval_default,
-        )
-
-    # No TTY and no --progress: the exact call this function has always made,
-    # so goldens stay byte-identical (specs/api/cli-interface.spec.md,
-    # "Foreground dispatch progress and in-place approval").
-    if _progress.should_render(progress_flag=dispatch_args.progress):
-        results = _progress.dispatch_with_progress(
-            record["id"],
-            _fn,
-            prompt=_progress.should_prompt(no_prompt_flag=dispatch_args.no_prompt, render=True),
-        )
-    else:
-        results = _runs.execute(record["id"], _fn)
-    if results is None:
-        rec = _runs.get_run(record["id"])
-        error = str(rec.get("error", "")) if rec else ""
-        ui.error(f"Dispatch failed: {error}")
-        ui.dim(f"  Details: docket runs show {record['id']}")
-        raise typer.Exit(1)
-    for res in results:
-        # `core/dispatch.py` never prints (a layering violation) -- it returns
-        # this as a typed `HopResult.verification_skipped` flag instead; this
-        # is the one place that renders it, before the task's own summary line.
-        for hop in res.hops:
-            if hop.verification_skipped:
-                ui.dim(
-                    escape(
-                        f"[dispatch] verification skipped — verifyCmd not set for {hop.member_id}"
-                    )
-                )
-        # Task ids and model-written reasons are data, never Rich markup.
-        if res.status == "done":
-            ui.success(
-                escape(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
-            )
-        elif res.status == "blocked":
-            ui.warn(escape(f"  [{res.task_id}] blocked — {res.reason}"))
-        elif res.status in ("waiting_approval", "waiting_input"):
-            # Waiting on a human decision is an expected pause, not a
-            # failure — same warn-not-error treatment as a budget block.
-            ui.warn(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
-        else:
-            ui.error(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
-    _flush_notify_after_dispatch()
-    final = _runs.get_run(record["id"])
-    if final is not None and final.get("state") == "failed":
-        ui.dim(f"  Details: docket runs show {record['id']}")
-        raise typer.Exit(1)
 
 
 def _pod_config(project: str, extra: list[str]) -> None:

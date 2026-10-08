@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.22.2
+**Version**: 1.23.0
 **Status**: Complete
 **Last Updated**: 2026-10-07
 
@@ -13,8 +13,8 @@ against that code.
 
 ## Scope
 
-Covers every command that supports `--json` output: `list`, `status`, `info`, `cost` (and
-`cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3),
+Covers every command that supports `--json` output: `list`, `status` (and
+`status --history`), `info`, `doctor`, `inbox`, `runs list`/`runs show <id>` (R-3),
 `pod <p> config get`, `config explain <agent>`, and the `serve` HTTP endpoints. `docket
 audit --json` is a raw JSONL passthrough, owned by audit.spec.md. It does **not** cover
 human-readable (Rich) output or third-party protocol payloads.
@@ -79,64 +79,6 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
 }
 ```
 
-### `docket cost --json`
-
-```json
-{
-  "agents": [
-    {
-      "id":        "string",
-      "model":     "string",
-      "input":     "number (tokens)",
-      "output":    "number (tokens)",
-      "costUsd":   "number",
-      "pricingKnown": "boolean (always true)",
-      "turns":     "number",
-      "budgetUsd": "number | null"
-    }
-  ],
-  "totalUsd": "number"
-}
-```
-
-### `docket cost <id> --json`
-
-A bare object in the same shape as one element of `docket cost --json`'s `agents` array --
-**not** wrapped in `{"agents": [...], "totalUsd": ...}`:
-
-```json
-{
-  "id":        "string",
-  "model":     "string",
-  "input":     "number (tokens)",
-  "output":    "number (tokens)",
-  "costUsd":   "number",
-  "pricingKnown": "boolean (always true)",
-  "turns":     "number",
-  "budgetUsd": "number | null"
-}
-```
-
-An unknown id prints an error to stderr and exits 1, with nothing on stdout -- the same contract
-`docket cost <id>` (without `--json`) already has.
-
-### `docket cost --history [<id>] --json`
-
-```json
-{
-  "scope": "string (agent id or 'all agents')",
-  "history": [
-    {
-      "date":    "string (YYYY-MM-DD)",
-      "turns":   "number",
-      "input":   "number (tokens)",
-      "output":  "number (tokens)",
-      "costUsd": "number"
-    }
-  ]
-}
-```
-
 ### `docket doctor --json`
 
 ```json
@@ -177,8 +119,8 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
 
 ### `docket status --json` / `docket status --all --json`
 
-`docket status --json` (run inside a project) emits one project object; `--all --json` emits
-`{"projects": [<project object>, ...]}`:
+`docket status --json` (run inside a pod, or with `--pod`) emits one pod object;
+`--all --json` emits `{"projects": [<pod object>, ...]}` plus the fleet inventory:
 
 ```json
 {
@@ -190,10 +132,52 @@ An unknown id prints an error to stderr and exits 1, with nothing on stdout -- t
   "members":     "array of { id, role, status: ready | missing }",
   "tasks": {
     "pending": "number", "running": "number", "waitingApproval": "number",
-    "failed": "number", "completed": "number"
-  }
+    "failed": "number", "completed": "number", "approvedReady": "number"
+  },
+  "usage":       "{ input, output (measured tokens), estimateUsd (a labelled estimate) }",
+  "outcomes":    "{ success, failure, aborted, meanMs | null, p95Ms | null }",
+  "lastRun":     "{ id, state, finishedAt } | null",
+  "running":     "boolean (docket start is running)"
 }
 ```
+
+`--all --json` also carries these top-level fields beside `projects`:
+
+```json
+{
+  "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
+  "channels":     "array of strings (channels present in Docket fleet bindings)",
+  "agents":       "array of agent objects (below)",
+  "totalCostUsd": "number"
+}
+```
+
+Each agent object:
+
+```json
+{
+  "id":           "string",
+  "name":         "string",
+  "kind":         "project",
+  "model":        "string",
+  "registered":   "boolean",
+  "bindings":     "array of {channel, peerId}",
+  "lastActivity": "string (YYYY-MM-DD) | \"never\"",
+  "costUsd":      "number"
+}
+```
+
+`status --history --json` emits `{"history": [{date, turns, input, output, costUsd}, ...]}`;
+the list is empty against the production driver (cost-tracking.spec.md, "Known gap").
+
+### `docket inbox --json`
+
+The `InboxView` shape `GET /inbox` returns (`needsYou`, `failed`, `doneSince`, `running`,
+`next`), except that every item also carries `state`
+(`needs_approval | needs_answer | blocked | failed | done | running | approved_ready`) and
+`command` (the one `docket ...` command that moves it forward). A pending task whose approval
+was granted is listed in `needsYou` with `state: "approved_ready"` and `command: "docket run
+--pod <pod>"`. The output is plain JSON with no escape codes.
 
 ### `docket runs list --json` (R-3)
 
@@ -384,47 +368,11 @@ one `Project instr.:` line reporting `projectInstructions` (`AGENTS.md (default)
 `Exporters:` block listing each `name dialect state (scope)` (or `none enabled`), and,
 when a source is recorded, one `Config source:` line carrying the digest prefix and `drift`.
 
-### `docket snapshot` (full output)
-
-The snapshot command writes to a file (or stdout). The outer shape:
-
-```json
-{
-  "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
-  "channels":     "array of strings (channels present in Docket fleet bindings)",
-  "agents":       "array of agent objects (see below)",
-  "totalCostUsd": "number"
-}
-```
-
-There is no top-level `version` or `bindings` field (a prior version of this spec documented
-both; neither is emitted — bindings, when present, are nested per-agent below, and no version
-string is included).
-
-Each agent object in the snapshot (project agents, then any specialists with a workspace):
-
-```json
-{
-  "id":           "string",
-  "name":         "string",
-  "kind":         "project | specialist",
-  "model":        "string",
-  "registered":   "boolean",
-  "bindings":     "array of {channel, peerId}",
-  "lastActivity": "string (YYYY-MM-DD) | \"never\"",
-  "costUsd":      "number"
-}
-```
-
-Note: the snapshot's agent object is intentionally leaner than `docket list --json`'s — it
-carries no `scope`, `role`, `pod`, `codebase`, `stack`, `budgetUsd`, or `paused`. Use `docket
-list --json` / `docket info <id> --json` for those.
-
 ### `docket serve` HTTP endpoints
 
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
-| `/status.json` | `application/json` | `docket snapshot`'s shape plus a top-level `apiVersion` and per-agent `scope`/`budgetUsd` (full schema: `specs/data/serve-read-api.spec.md`) |
+| `/status.json` | `application/json` | the `status --all --json` inventory shape plus a top-level `apiVersion` and per-agent `scope`/`budgetUsd` (full schema: `specs/data/serve-read-api.spec.md`) |
 | `/health` | `application/json` | `{"status":"ok"}` |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
 | `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
@@ -492,6 +440,10 @@ reflected in code fails CI.
 ```
 
 ## Changelog
+
+### Version 1.23.0 (2026-10-07)
+
+- `status --all --json` carries the inventory `snapshot` printed (`timestamp`, `channels`, `agents`, `totalCostUsd`); pod objects gain `usage`, `outcomes`, `lastRun`, `running` and `tasks.approvedReady`; `status --history --json` replaces `cost --history --json`; `inbox --json` items carry `state` and `command`. `cost --json`, `cost --history --json` and `snapshot` are removed.
 
 ### Version 1.22.2 (2026-10-07)
 

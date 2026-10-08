@@ -75,10 +75,8 @@ class TestCommandsPresent:
         "policies",
         "approve",
         "deny",
-        "metrics",
         "setup",
         "context",
-        "snapshot",
         "log",
         "trace",
     )

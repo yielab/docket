@@ -1794,14 +1794,7 @@ def _run(
 
         _delegate_smoke_task(run_cli, scenario)
         run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
-        first_run = [
-            "pipeline",
-            "run",
-            "smoke",
-            "--file",
-            str(pipeline),
-            "--follow",
-        ]
+        first_run = ["run", "--pod", "smoke", "--pipeline", str(pipeline)]
         if live is None:
             first_run.extend(["--timeout", "30"])
         approval_context: AbstractContextManager[_LiveApprovalState]
@@ -1824,14 +1817,7 @@ def _run(
             print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
 
             run_cli("approve", token)
-            second_run = [
-                "pipeline",
-                "run",
-                "smoke",
-                "--file",
-                str(pipeline),
-                "--follow",
-            ]
+            second_run = ["run", "--pod", "smoke", "--pipeline", str(pipeline)]
             if live is None:
                 second_run.extend(["--timeout", "30"])
             run_cli(*second_run, abort_event=canary_abort)
@@ -1844,7 +1830,7 @@ def _run(
         run_cli("pod", "smoke", "queue")
         run_cli("runs", "list", "--project", "smoke", "--json")
         run_cli("trace", "export", "smoke")
-        run_cli("cost", "smoke-implementer", "--json")
+        run_cli("status", "--pod", "smoke", "--json")
         run_cli("log", "verify")
 
     _verify_final_state(world, home, model, scenario)

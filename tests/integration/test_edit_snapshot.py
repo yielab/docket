@@ -1,4 +1,4 @@
-"""edit, snapshot commands.
+"""edit command and the `status --all --json` fleet inventory.
 
 All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
 config constant patched to a temp directory.
@@ -139,7 +139,7 @@ class TestCmdEdit:
 
     def test_json_output_has_required_keys(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         for key in ("timestamp", "channels", "agents", "totalCostUsd"):
@@ -147,7 +147,7 @@ class TestCmdEdit:
 
     def test_includes_project_agent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
@@ -155,7 +155,7 @@ class TestCmdEdit:
 
     def test_agent_entry_structure(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
@@ -175,7 +175,7 @@ class TestCmdEdit:
 
     def test_last_activity_is_never_when_no_logs(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
@@ -183,7 +183,7 @@ class TestCmdEdit:
 
     def test_bindings_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
@@ -193,33 +193,17 @@ class TestCmdEdit:
 
     def test_channels_list(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert "telegram" in data["channels"]
-
-    def test_output_to_file(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        out_file = tmp_path / "snap.json"
-        rc, stdout, _ = _run(["snapshot", "--output", str(out_file)], oc_dir)
-        assert rc == 0
-        assert "Snapshot written" in stdout
-        data = json.loads(out_file.read_text())
-        assert "agents" in data
-
-    def test_output_file_shorthand(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        out_file = tmp_path / "snap2.json"
-        rc, _, _ = _run(["snapshot", "-o", str(out_file)], oc_dir)
-        assert rc == 0
-        assert out_file.exists()
 
     def test_leftover_shared_directory_not_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         spec_ws = oc_dir / "workspaces" / "knowledge"
         spec_ws.mkdir(parents=True)
         (spec_ws / ".docket-meta.json").write_text(json.dumps({"kind": "project"}))
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
@@ -227,7 +211,7 @@ class TestCmdEdit:
 
     def test_total_cost_usd_is_float(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert isinstance(data["totalCostUsd"], float)
@@ -236,7 +220,7 @@ class TestCmdEdit:
         import re
 
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", data["timestamp"])
@@ -245,7 +229,7 @@ class TestCmdEdit:
         # No fleet.json at all -- channels, bindings, and agents must all default empty.
         oc_dir = tmp_path / ".docket"
         oc_dir.mkdir()
-        rc, out, _ = _run(["snapshot"], oc_dir)
+        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert data["agents"] == []
@@ -253,13 +237,13 @@ class TestCmdEdit:
 
 
 # ---------------------------------------------------------------------------
-# Confirm edit + snapshot are no longer in the 127-exit list
+# Confirm edit + status are no longer in the 127-exit list
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cmd", [["edit", "x"], ["snapshot"]])
+@pytest.mark.parametrize("cmd", [["edit", "x"], ["status", "--all"]])
 def test_wave3a_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
-    """edit and snapshot must NOT fall through to Bash (exit 127)."""
+    """edit and status must NOT fall through to Bash (exit 127)."""
     oc_dir = _setup_agent(tmp_path)
     rc, _, _ = _run(cmd, oc_dir, env={"EDITOR": "true"})
     assert rc != 127

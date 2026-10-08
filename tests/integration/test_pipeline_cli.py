@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 from tests.conftest import repoint_docket_home
-from tests.fakes import FakeDriver
 
 import docket.config as _cfg
 from docket.cli._pipeline import run_pipeline
@@ -232,42 +231,6 @@ class TestPipelinePlanCli:
             registry=_archetypes.load_registry(),
         )
         assert _orch.render_plan(expected_plan) in out
-
-
-class TestPipelineRunCli:
-    def test_missing_arg_is_an_error(self) -> None:
-        assert run_pipeline("run", []) == 1
-
-    def test_no_pending_tasks_is_a_warning_not_an_error(self) -> None:
-        _write_meta("demo-lead")
-        assert run_pipeline("run", ["demo"]) == 0
-
-    def test_invalid_custom_file_is_an_error(self, tmp_path: Path) -> None:
-        _write_meta("demo-lead")
-        f = tmp_path / "broken.pipeline.yaml"
-        f.write_text(_INVALID_PIPELINE)
-        assert run_pipeline("run", ["demo", "--file", str(f)]) == 1
-
-    def test_run_dispatches_through_the_default_pipeline(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        # `docket pipeline run`'s CLI dispatcher has no `runner=` injection
-        # point (unlike `core.dispatch.dispatch_pod`, called directly
-        # elsewhere with `runner=FakeDriver(...)`) -- it always resolves the
-        # production driver internally, so proving it wires through to a
-        # real dispatch means monkeypatching that resolution point itself.
-        # FakeDriver is the one supported test double for a RuntimeDriver
-        # (see fakes.py).
-        monkeypatch.setattr(
-            "docket.edges.adapters.docket_runtime.default_driver",
-            lambda: FakeDriver(ok=True, cost=0.0),
-        )
-
-        _write_meta("demo-lead")
-        _dispatch.enqueue_task("demo", "a task")
-        rc = run_pipeline("run", ["demo"])
-        assert rc == 0
-        assert _dispatch.read_tasks("demo")[0]["status"] == "done"
 
 
 class TestPipelineUnknownSubcommand:
