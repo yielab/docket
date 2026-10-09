@@ -26,11 +26,13 @@ from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.core import trace as _trace
+from docket.core.task_ref import short_id
 
 _POLL_TIMEOUT_S = 0.2
 _RENDERABLE_EVENT_TYPES = frozenset(
-    {"session_start", "approval_requested", "approval_required", "session_end"}
+    {"session_start", "tool_call", "approval_requested", "approval_required", "session_end"}
 )
+_HOP_MARKER_KEYS = frozenset({"hop", "agent"})
 _PROMPT_LINE = "  [a]pprove  [d]eny  [Enter] keep waiting"
 
 
@@ -75,20 +77,35 @@ def _seconds_remaining(record: dict[str, Any], *, now: float | None = None) -> i
     return max(0, int(_cfg.TOOL_APPROVAL_TIMEOUT - elapsed))
 
 
+def _session_label(record: dict[str, Any], role: str) -> str:
+    """The short id of the task a dispatch session id (``agent:<project>:<task-id>``)
+    names, else *role*."""
+    parts = str(record.get("session_id", "")).split(":")
+    if len(parts) == 3 and parts[0] == "agent" and parts[2]:
+        return short_id(parts[2])
+    return role
+
+
+def _is_hop_marker(payload: dict[str, Any]) -> bool:
+    return set(payload) == _HOP_MARKER_KEYS
+
+
 def render_event(record: dict[str, Any], *, now: float | None = None) -> str | None:
-    """The one stderr line for *record*, or None outside the four event types
-    the foreground view renders."""
+    """The one stderr line for *record*, or None for an event the foreground
+    view does not render."""
     event_type = str(record.get("event_type", ""))
     if event_type not in _RENDERABLE_EVENT_TYPES:
         return None
     role = str(record.get("agent_role", "?"))
     payload_raw = record.get("payload")
     payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+    if event_type == "tool_call":
+        return f"  ▶ {payload['hop']} …" if _is_hop_marker(payload) else None
     if event_type == "session_start":
-        return f"▶ {role} …"
+        return f"▶ {_session_label(record, role)} …"
     if event_type == "session_end":
         status = str(payload.get("status", "?"))
-        return f"■ {role} finished — status={status}"
+        return f"■ {_session_label(record, role)} finished — status={status}"
     token = str(payload.get("token", "?"))
     if event_type == "approval_required":
         return f"⏸ {role} hop needs approval · token {token} · docket task approve {token}"

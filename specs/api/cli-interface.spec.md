@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.1.1
+**Version**: 2.1.3
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -863,14 +863,20 @@ the contract-level summary follows.
 render one line per event on stderr while the dispatch runs, whenever stderr is a real TTY or
 `--progress` is given:
 
-- `session_start` → `▶ <role> …`
+- `session_start` → `▶ <task> …`, where `<task>` is the short id (the form `task list` prints)
+  of the task the session id names (`agent:<project>:<task-id>`), or the role when the session id
+  names no task
+- dispatch's hop marker (the `tool_call` event whose JSON payload has exactly the keys `hop` and
+  `agent`, written just before each hop runs) → `  ▶ <hop> …`, indented two spaces under the
+  task line
 - `approval_requested` → `⏸ <role> wants: <action> · token <token> · denies in <n>s · docket
   task approve <token>`, where `<n>` is `TOOL_APPROVAL_TIMEOUT` minus the elapsed time since the event
 - `approval_required` (the hop-level gate) → `⏸ <role> hop needs approval · token <token> ·
   docket task approve <token>`
-- `session_end` → `■ <role> finished — status=<status>`
+- `session_end` → `■ <task> finished — status=<status>`, `<task>` resolved as for `session_start`
 
-No other trace event type renders a line. Without a TTY and without `--progress`, no worker
+No other trace event renders a line; in particular the agent loop's own `tool_call` events do not.
+There is no hop-end line: nothing in the trace marks a hop's end without a new event type. Without a TTY and without `--progress`, no worker
 thread runs, no trace subscription opens, and stdout/stderr MUST stay byte-identical to a build
 with no progress view (the no-change oracle the golden suite pins).
 
@@ -933,6 +939,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.1.3 (2026-10-08)
+
+- The progress view names the task and the hop instead of printing `▶ lead …` for the whole run:
+  `session_start`/`session_end` render the task's short id from the session id (the role when it
+  names no task), and dispatch's hop marker (`tool_call` with payload keys exactly `hop` and
+  `agent`) renders `  ▶ <hop> …`. Approval lines are unchanged; no trace event type was added.
 
 ### Version 2.1.1 (2026-10-08)
 
