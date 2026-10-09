@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The public visuals are re-captured from a real run of the eleven-command CLI** (2026-10-09,
+  local 16k-context model, `scripts/maint/capture-doc-journey.sh`): `hero.gif`, `isolation.png`
+  and `governance.png` show the plain console voice a transcript carries (`ok`, `->`, `!`), the
+  new `pod show` and `log verify` output, and the gate scene shows the Lead's parked consultation
+  answered with `task answer` before the Implementer's push parks under `high-risk-deploy`.
+  The renderer colours the plain-voice prefixes; `docs/assets/README.md` records the run.
 - **Documentation describes the eleven-command surface in prose, not only in code spans.**
   `docs/AGENT-TEAMS.md`, `WORKFLOW-GUIDE.md`, `CONFIGURATION.md`, `DOCKET.md`,
   `SECURITY-SIMPLE.md`, `troubleshooting.md`, the docs index and one CONTRIBUTING line no

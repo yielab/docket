@@ -70,15 +70,15 @@ def _line_style(line: str) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.Imag
     stripped = line.lstrip()
     if stripped.startswith("$"):
         return BLUE, BOLD
-    if stripped.startswith("✓") or line.startswith("+"):
+    if stripped.startswith(("ok ", "✓")) or line.startswith("+"):
         return GREEN, BOLD
-    if stripped.startswith(("⚠", "Result:")):
+    if stripped.startswith(("! ", "⚠", "Result:")):
         return YELLOW, BOLD
-    if stripped.startswith(("✗", "ERROR")) or line.startswith("-"):
+    if stripped.startswith(("x ", "✗", "ERROR")) or line.startswith("-"):
         return RED, BOLD
-    if stripped.startswith(("Project:", "Pod —")):
+    if stripped.startswith(("docket - ", "Project:", "Pod —")):
         return TEXT, BOLD
-    if not stripped or stripped.startswith(("⋯", "→", "@@")):
+    if not stripped or stripped.startswith(("⋯", "->", "→", "@@")):
         return MUTED, REGULAR
     return TEXT, REGULAR
 
@@ -134,23 +134,23 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
 _TEAM = [
     "$ docket init --recipe secure-build",
     "⋯",
-    "→ Provisioning 'software' pod 'myapp' (lead, implementer)...",
-    "✓   myapp-lead  [lead]  local/local-model",
-    "✓   myapp-implementer  [implementer]  local/local-model",
-    "Apply plan — myapp <- ⋯/templates/recipes/secure-build",
+    "-> Provisioning 'software' pod 'myapp' (lead, implementer)...",
+    "ok   myapp-lead  [lead]  local/local-model",
+    "ok   myapp-implementer  [implementer]  local/local-model",
+    "docket - Apply plan myapp <- ⋯/templates/recipes/secure-build",
+    "⋯",
     "  [add] role: security-vetter",
     "  [add] policy: require-approval-secret-writes.yaml",
     "  [add] skill: security-review",
     "  [add] member: security-vetter",
     "  [add] pipeline: pipeline.yaml",
-    "✓ Applied 5 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
+    "ok Applied 5 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
     "$ docket pod export --pod myapp            # the team, written back next to the code",
-    "✓ Exported pod 'myapp' to ~/code/myapp/.docket.",
+    "ok Exported pod 'myapp' to ~/code/myapp/.docket",
     "$ find .docket -type f | sort",
     ".docket/pipeline.yaml",
     ".docket/pod.yaml",
     ".docket/policies/require-approval-secret-writes.yaml",
-    ".docket/roles/security-vetter.yaml",
     "⋯",
 ]
 
@@ -162,85 +162,87 @@ _PLAN = [
     "ok ~/code/myapp/.docket/pipeline.yaml (pipeline secure-build)",
     "ok ~/code/myapp/.docket/pod.yaml (pod myapp)",
     "$ docket pod plan --pod myapp",
-    "Pipeline plan — myapp",
-    "Source: bound pipeline (hash 45f7aaf31d1f...)",
+    "⋯",
     "Pipeline: secure-build",
     "  [plan] role=lead -> myapp-lead [gate: none]",
     "  [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]",
     "  [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]",
     "$ docket pod set verify --member myapp-implementer --pod myapp \\",
     "    \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
-    "✓ Set verify command for myapp-implementer: "
+    "ok Set verify command for myapp-implementer: "
     "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
     '$ docket task add "Fix calc.add so it returns the sum of a and b" --pod myapp',
-    "✓ Queued for pod 'myapp': [task-a36c9b20-2eb4-4b06-af17-79080473964e] Fix calc.add so it "
+    "ok Queued for pod 'myapp': [task-6e046891-e910-4778-92ce-4560364bfaa9] Fix calc.add so it "
     "returns the sum of a and b",
+    "  May ask you: 5 policies -- see: docket task show task-6e046891-e910",
 ]
 
 _DISPATCH = [
     "$ docket run --pod myapp",
-    "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
-    "✓   [task-a36c9b20-2eb4-4b06-af17-79080473964e] done — 3 hop(s), $0.0000",
-    "$ docket task trace a36c9b20 --pod myapp",
-    "  2026-10-05T15:08:52  session_start              (lead)",
+    "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
+    "ok   [task-6e046891-e910-4778-92ce-4560364bfaa9] done — 3 hop(s)",
+    "ok 1 done · 0 failed · 36.3k tokens (~$0.00 est.)",
+    "$ docket task trace task-6e046891-e910-4778-92ce-4560364bfaa9 --pod myapp",
+    "  2026-10-09T10:38:26  session_start              (lead)",
     "  ⋯",
-    "  2026-10-05T15:09:32  tool_result                (lead)  text=Found the bug. `calc.add` "
-    "subtracts `b` from `a` instead of adding them. Now I'll dispatch to the Implementer.",
+    "  2026-10-09T10:38:58  tool_result                (lead)  text=Here is the plan for the "
+    "**Implementer**.",
     "  ⋯",
-    "  2026-10-05T15:10:51  tool_result                (implementer)  text=`<promise>DONE</promise>`",
+    "  2026-10-09T10:39:46  tool_result                (implementer)  text=The verification gate "
+    "passes. The `calc.add` function has been corrected to return the sum `a + b` instead of the "
+    "difference `a - b`.",
     "  ⋯",
-    "  2026-10-05T15:12:01  tool_result                (security-vetter)  text=**Security Review "
-    "Report — calc.add fix**",
+    "  2026-10-09T10:40:32  tool_result                (security-vetter)  text=**Security Review: "
+    "`calc.add` fix**",
     "⋯",
     "APPROVE",
-    "  2026-10-05T15:12:01  session_end                (lead)  status=done",
+    "  2026-10-09T10:40:32  session_end                (lead)  status=done",
 ]
 
 _RECORD = [
     "$ docket pod show myapp-implementer --pod myapp",
-    "Effective configuration — myapp-implementer",
-    "  Role:            implementer",
-    "  Pod:             myapp",
-    "  Model:           local/local-model  (policy)",
-    "  Endpoint:        http://127.0.0.1:8081/v1  (ready)",
-    "  Provider:        local  (global, openai-chat)",
-    "  Credential:      (none)  (none)",
+    "⋯",
+    "docket - member myapp-implementer",
+    "⋯",
+    "  Model: local/local-model (policy)",
+    "  Endpoint: http://127.0.0.1:8081/v1 (ready)",
+    "  Provider: local (global, openai-chat)",
     "⋯",
     "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write",
     "⋯",
-    "│ secure-build-secret-writes │ pre_tool_call │ require_approval │",
+    "secure-build-secret-writes  pre_tool_call  require_approval",
     "⋯",
-    "  Pipeline:        bound pipeline (hash 45f7aaf31d1f...)",
-    "  Skills:          security-review (codebase)",
+    "  Skills: security-review (codebase)",
     "⋯",
-    "  Config source:   ⋯/templates/recipes/secure-build  (digest ec69082e5924..., drift: no)",
+    "  Pipeline: bound pipeline (hash 45f7aaf31d1f...)",
+    "  Network: open (default)",
+    "  Config source: ⋯/templates/recipes/secure-build (digest ec69082e5924..., drift: no)",
     "⋯",
     "$ docket log verify",
-    "✓ 7 chained line(s) verified clean.",
+    "ok 9 chained line(s) verified clean.",
 ]
 
 _ISOLATION = [
     "$ docket pod show myapp-implementer --pod myapp",
-    "Project: myapp implementer (myapp-implementer)",
-    "  Workspace:         ~/.docket/workspaces/projects/myapp-implementer",
-    "  Codebase:          ~/code/myapp",
-    "  Model:             local/local-model",
-    "  Session Key:       agent:myapp:default",
-    "  Project Scope:     default",
+    "⋯",
+    "docket - member myapp-implementer",
+    "  Role: implementer",
+    "  Pod: myapp",
+    "  Workspace: ~/.docket/workspaces/projects/myapp-implementer",
+    "  Model: local/local-model (policy)",
     "⋯",
     "$ docket setup sandbox",
-    "Sandbox",
-    "✓ Tool-call gate: always active (policy engine + high-risk command classifier)",
-    "✓ Isolation: non-main (backend bwrap); a turn refuses to run rather than fall back "
-    "unsandboxed",
+    "⋯",
+    "ok Tool-call gate: always active (policy engine + high-risk command classifier)",
+    "ok Isolation: on (backend bwrap); a turn refuses to run rather than fall back unsandboxed",
     "Network: open (a pod's network none still narrows it)",
     "$ git worktree list",
-    "~/code/myapp                                              0150f26 [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-a36c9b20-2eb4-4b06-af17-79080473964e  "
-    "38f4242 [docket/myapp/task-a36c9b20-2eb4-4b06-af17-79080473964e]",
+    "~/code/myapp  ⋯  0854d50 [main]",
+    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9  "
+    "0854d50 [docket/myapp/task-6e046891-e910-4778-92ce-4560364bfaa9]",
     "$ git status --short                       # your checkout: only the exported team",
     "?? .docket/",
-    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-a36c9b20-2eb4-4b06-af17-79080473964e diff main",
+    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9 diff main",
     "⋯",
     "@@ -1,2 +1,2 @@",
     " def add(a, b):",
@@ -250,6 +252,7 @@ _ISOLATION = [
 
 _GATE = [
     "$ docket pod check 'git push origin production' --role implementer --pod myapp",
+    "⋯",
     "  Result: ask",
     "  Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes",
     "  Policy: 'high-risk-deploy' -> require_approval",
@@ -257,20 +260,30 @@ _GATE = [
     '    "Publish the fix. Lead: never call the consult tool and do not ask questions, the '
     "operator already decided; hand this to the implementer as is. Implementer: run exactly this "
     'bash command once and report its output: git push origin production"',
+    "⋯",
     "$ docket run --pod myapp",
-    "→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter",
-    "⚠   [task-31f81c52-d1fd-481d-a679-6e315a587197] waiting_approval — implementer hop parked "
-    "for approval (token=apr-12f07fc8-d922-4958-9738-8bab58932c2e)",
+    "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
+    "!   [task-5dc8e4e7-6600-45ad-b08a-18c0396748e5] waiting_input — lead hop parked a "
+    "consultation (question=q-6fa9cac1dbae)",
+    "⋯",
+    "$ docket task answer task-5dc8e4e7-6600-45ad-b08a-18c0396748e5 --option run-push --pod myapp",
+    "ok Answered task task-5dc8e4e7-6600",
+    "$ docket run --pod myapp",
+    "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
+    "!   [task-5dc8e4e7-6600-45ad-b08a-18c0396748e5] waiting_approval — implementer hop parked "
+    "for approval (token=apr-6f40c76c-079c-43b2-858c-dbbb8f1b3d42)",
     "$ docket log",
     "  ⋯",
-    "  2026-10-05T15:12:49.964Z  demo        tool.ask          tool=bash agent=myapp-implementer "
+    "  2026-10-09T10:42:26.093Z  demo        tool.ask          tool=bash agent=myapp-implementer "
     "role=implementer project=myapp policy_id='high-risk-deploy' policy_action='require_approval' ⋯",
-    "$ docket task trace 31f81c52 --export --pod myapp | grep '\"deny\"'",
-    '{"ts": "2026-10-05T15:12:49Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
+    "$ docket task trace task-5dc8e4e7-6600-45ad-b08a-18c0396748e5 --export --pod myapp "
+    "| grep '\"deny\"'",
+    "⋯",
+    '{"ts": "2026-10-09T10:42:26Z", "project": "myapp", ⋯ "agent_role": "implementer", ⋯ '
     '"tool": "bash", ⋯ "decision": "deny", "ok": false, "executed": false, "denialKind": '
     '"approval_parked", "policyId": "high-risk-deploy", ⋯}}',
     "$ docket log verify",
-    "✓ 7 chained line(s) verified clean.",
+    "ok 9 chained line(s) verified clean.",
 ]
 
 

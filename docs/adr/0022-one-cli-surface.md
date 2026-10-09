@@ -268,8 +268,9 @@ Carried, by name:
   then that crate's harness tests. The contract itself did not change. Refused by the permission
   classifier of the session that integrated the phase; the maintainer applies it.
 - The live asset re-capture (`scripts/maint/capture-doc-journey.sh`, then
-  `scripts/render-doc-assets.py` re-transcribed): the committed visuals show the eleven-command
-  names, but their output lines were rewritten by name, not re-captured. Refused likewise.
+  `scripts/render-doc-assets.py` re-transcribed): the committed visuals showed the eleven-command
+  names with output lines rewritten by name. Re-captured for real on 2026-10-09 (two runs on the
+  local model; the gate scene's parked consultation answered with `task answer`).
 - The landing page, after the release that ships the names.
 - The eighteen locators of the live run, as a triage list; the six worth a card are named above.
   Triaged 2026-10-08 into five cards A–E; A (the approve-by-token hint and the deny reason that
