@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.36.2
+**Version**: 6.36.3
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -671,7 +671,8 @@ was seeded once at binding time.)*
    the same model (`core.pod.PodSettings.approval_mode`), writable through the same `show`/`set`/`unset`
    surface. A present-but-invalid stored value (anything other than the three
    literals) raises exactly like a malformed numeric setting — naming the key — and refuses
-   dispatch rather than defaulting to `"wait"`. "Unset" (no `approvalMode` key at all in the
+   dispatch rather than defaulting to `"wait"`. The read path's message says `invalid stored
+   value`; `PodSettings.coerce` (the `set` path) says `<key>: invalid value <v!r> (<rule>)`. "Unset" (no `approvalMode` key at all in the
    Lead's stored meta) is a distinct state from a stored `"wait"` — see "Parked approvals" below
    for what it resolves to. `approvalExpiryHours` (int `>= 1`, default `24`) and
    `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
@@ -2075,6 +2076,11 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.36.3 (2026-10-08)
+
+- `pod set` rejects a bad value as `<key>: invalid value <v!r> (<rule>)`; only reading a stored
+  value says `invalid stored value`, because only then was something stored.
 
 ### Version 6.36.2 (2026-10-08)
 

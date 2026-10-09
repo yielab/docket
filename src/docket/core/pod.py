@@ -576,16 +576,20 @@ class PodSettings(BaseModel):
 
     @classmethod
     def _validated(
-        cls, present: dict[str, str], *, project: str = "", mcp_extra: tuple[str, ...] = ()
+        cls,
+        present: dict[str, str],
+        *,
+        project: str = "",
+        mcp_extra: tuple[str, ...] = (),
+        stored: bool = True,
     ) -> PodSettings:
+        label = "invalid stored value" if stored else "invalid value"
         try:
             return cls.model_validate(present, context={"project": project, "mcp_extra": mcp_extra})
         except _PydanticValidationError as exc:
             first = exc.errors()[0]
             key = str(first["loc"][0]) if first["loc"] else "?"
-            raise PodSettingsError(
-                f"{key}: invalid stored value {present.get(key)!r} ({first['msg']})"
-            ) from exc
+            raise PodSettingsError(f"{key}: {label} {present.get(key)!r} ({first['msg']})") from exc
 
     @classmethod
     def load_for(cls, project: str) -> PodSettings:
@@ -607,7 +611,7 @@ class PodSettings(BaseModel):
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
-        settings = cls._validated({key: value}, project=project, mcp_extra=mcp_extra)
+        settings = cls._validated({key: value}, project=project, mcp_extra=mcp_extra, stored=False)
         return cast(
             "float | int | str", cls._stored_form(getattr(settings, _SETTING_FIELD_BY_ALIAS[key]))
         )

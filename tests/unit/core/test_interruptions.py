@@ -92,7 +92,31 @@ class TestForecast:
         policies = [i for i in items if i.kind == "policy"]
         assert len(policies) == 1
         assert policies[0].detail == "prod-approval-high-risk"
-        assert "terraform" in policies[0].description
+        assert "terraform" not in policies[0].description
+        assert "\\" not in policies[0].description
+        assert policies[0].description == (
+            "policy 'prod-approval-high-risk' asks on: tool bash, commands matching its pattern"
+        )
+
+    def test_a_structured_policy_is_described_by_its_predicate_kinds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        policies_dir.mkdir(parents=True)
+        (policies_dir / "src-edits.yaml").write_text(
+            "kind: policy\n"
+            "name: src-edits\n"
+            "appliesTo: [implementer]\n"
+            "when:\n"
+            "  tool: write\n"
+            "  path: 'src/**'\n"
+            "then: ask\n"
+        )
+
+        policies = [i for i in _interruptions.forecast("demo") if i.kind == "policy"]
+
+        assert policies[0].description == "policy 'src-edits' asks on: tool write on path src/**"
 
     def test_pipeline_approval_and_input_steps_are_forecast(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -47,14 +47,26 @@ class Interruption:
     detail: str = ""
 
 
-def _policy_pattern(doc: dict[str, Any]) -> str:
+def _policy_asks_on(doc: dict[str, Any]) -> str:
+    """The predicate kinds a policy asks on, in words; never the pattern text."""
     match = doc.get("match")
-    if isinstance(match, dict) and match.get("pattern"):
-        return str(match["pattern"])
     when = doc.get("when")
-    if isinstance(when, dict) and when.get("matches"):
-        return str(when["matches"])
-    return "(structured predicate)"
+    parts: list[str] = []
+    if isinstance(when, dict):
+        scope = f"tool {when['tool']}" if when.get("tool") else ""
+        if when.get("path"):
+            scope = f"{scope} on path {when['path']}".strip()
+        if when.get("branch"):
+            scope = f"{scope} on branch {when['branch']}".strip()
+        if scope:
+            parts.append(scope)
+        if when.get("matches"):
+            parts.append("commands matching its pattern")
+        if when.get("anyOf"):
+            parts.append("any of several conditions")
+    if not parts and isinstance(match, dict) and match.get("pattern"):
+        parts.append("commands matching its pattern")
+    return ", ".join(parts) if parts else "a structured predicate"
 
 
 def _iter_leaf_steps(steps: list[_pipeline.Step]) -> list[_pipeline.Step]:
@@ -99,7 +111,7 @@ def forecast(
         items.append(
             Interruption(
                 kind="policy",
-                description=f"policy '{policy_id}' asks on: {_policy_pattern(doc)}",
+                description=f"policy '{policy_id}' asks on: {_policy_asks_on(doc)}",
                 detail=policy_id,
             )
         )

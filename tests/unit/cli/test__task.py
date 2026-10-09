@@ -12,6 +12,7 @@ from tests.conftest import record_isolation_off, repoint_docket_home
 from tests.fakes import FakeDriver
 from typer.testing import CliRunner
 
+import docket.config as _cfg
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -317,6 +318,31 @@ class TestTaskAdd:
 
         assert "May ask you:" in result.output
         assert "docket task show" in result.output
+
+    def test_counts_are_pluralised(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        policies_dir = _cfg.pod_config_dir("demo") / "policies"
+        policies_dir.mkdir(parents=True)
+        for name in ("a", "b"):
+            (policies_dir / f"{name}.yaml").write_text(
+                f"kind: policy\nname: {name}\nappliesTo: [implementer]\n"
+                "when:\n  tool: bash\nthen: ask\n"
+            )
+        _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
+
+        result = _runner.invoke(app, ["task", "add", "x", "--pod", "demo"])
+
+        assert "May ask you: 2 policies, 1 role gate -- see" in result.output
+
+
+@pytest.mark.parametrize("verb", ["approve", "deny", "answer", "retry", "cancel"])
+def test_task_verb_help_example_uses_a_task_id(verb: str) -> None:
+    """The Example line of each task verb passes a task id, not a timestamp."""
+    result = _runner.invoke(app, ["task", verb, "--help"])
+
+    flat = " ".join(result.output.replace("\u2502", " ").split())
+    assert f"docket task {verb} task-04ff" in flat
+    assert "2026-10-08T10-00" not in flat
 
 
 class TestShowForecast:

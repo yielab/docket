@@ -130,7 +130,7 @@ Resolves the task's pending approval and grants it; with --task the same call is
 allowed for the rest of the task. --for records a single-use pre-grant for one exact
 command instead.
 
-Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
+Example: docket task approve task-04ff --reason "reviewed the diff"
 
 ### task deny
 
@@ -138,7 +138,7 @@ Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
 
 Deny what a task is waiting on; the task fails and nothing runs.
 
-Example: docket task deny 2026-10-08T10-00 --reason "touches production"
+Example: docket task deny task-04ff --reason "touches production"
 
 ### task answer
 
@@ -149,7 +149,7 @@ Answer the question a task is parked on and let it continue.
 On a terminal with no text or option it shows the question and prompts. Off a terminal
 pass text, --field name=value or --option <id>; a question with options needs --option.
 
-Example: docket task answer 2026-10-08T10-00 --option opt2
+Example: docket task answer task-04ff --option opt2
 
 ### task retry
 
@@ -157,7 +157,7 @@ Example: docket task answer 2026-10-08T10-00 --option opt2
 
 Put a failed or blocked task back on the queue, keeping the hops it finished.
 
-Example: docket task retry 2026-10-08T10-00
+Example: docket task retry task-04ff
 
 ### task cancel
 
@@ -168,7 +168,7 @@ Stop the run a task is in and settle a claim left behind by a dead dispatch.
 A live run is asked to stop and its processes are signalled. A task still marked running
 whose dispatcher is gone is settled as failed, ready for `docket task retry`.
 
-Example: docket task cancel 2026-10-08T10-00
+Example: docket task cancel task-04ff
 
 
 ---
