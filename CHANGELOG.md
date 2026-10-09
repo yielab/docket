@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`docket status` knows a parked question and the sandbox.** `status --json` carries
+  `tasks.waitingInput`, a pod holding a `waiting_input` task is `waiting` (it stayed `ready`
+  while `inbox` showed the question), the `Tasks:` line reads `N waiting input`, and the
+  `status --all` table's waiting column sums both kinds. The `Isolation:` line and the JSON
+  `isolation` value report the posture `docket setup sandbox` set (`on (bwrap, network open)`,
+  `off (default); bwrap found, network open`) instead of a fixed phrase.
+- **Help and messages tell the truth.** The `task approve|deny|answer|retry|cancel` examples
+  pass `task-04ff`, not a timestamp; `pod set <key> <bad>` says `invalid value` (only the read
+  of a bad stored value says `invalid stored value`); `task add`'s forecast pluralises
+  (`2 policies`, `1 role gate`); a policy interruption is described by its predicate kinds
+  (`tool bash on path src/**`, `commands matching its pattern`), never by the regex text.
+- **`setup provider add` records the model the endpoint advertises.** A custom endpoint added
+  without `--model` takes the first advertised id from the one registration probe instead of
+  `local-model`, and the success line names it; with nothing advertised, `local-model` stays
+  and the line says so. `--model` still wins; a catalog entry and a 401/404 are unchanged.
 - **The operator's decision reaches the record.** `docket task approve <apr-token>` (the form
   the progress view prints) now ends with the run hint like the task-ref form, its pod read from
   the approval record. `docket task deny --reason` puts the reason on the failed task
