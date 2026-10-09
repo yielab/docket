@@ -654,5 +654,13 @@
     "heading": "☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08)",
     "bytes": 3272,
     "sha256": "6b11cb747e4f494cf397bb506705be9490d05832b4a2308a7e63886f2f0ad7e5"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 97 COMPLETE — the live-run triage cards B–E, CLOSED 2026-10-08 (no phase; opened 2026-10-08)",
+    "bytes": 10834,
+    "sha256": "e101538228400ad43995ad884adcb1182907f9e2d96767039888318ed160589a"
   }
 ]

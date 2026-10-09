@@ -11,19 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 97 (no phase; the live-run triage cards B–E; opened 2026-10-08)
+> ## ◇ NO ACTIVE WAVE — Wave 97 closed 2026-10-08 (archived in docs/cycles-ended/)
 >
-> **Wave 97 opened 2026-10-08**: the four remaining cards of the live-run triage (B–E), one
-> worker per card in an isolated worktree under one integrator; the active section is at the end
-> of this file, packets in
+> **Wave 97 closed 2026-10-08** (no phase): the four remaining cards of the live-run triage (B–E),
+> one worker per card in an isolated worktree under one integrator, merged in the order E, B, C,
+> D; the section is archived verbatim in
+> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md), packets in
 > [.agents/handoffs/wave-97-worker-packets.md](.agents/handoffs/wave-97-worker-packets.md).
->
-> **Phase 39 opened 2026-10-07** (ROADMAP D-57, [ADR 0022](docs/adr/0022-one-cli-surface.md)):
-> twenty-six cards over Waves 91–95, the active section at the end of this file. The CLI becomes
-> one tree of thirty commands in five groups; the pod is resolved from the directory; every
-> redundant or agent-era command, the per-agent model pin, the persona layer and the never-run
-> org specialists are deleted outright with no alias or notice. Packets in
-> [.agents/handoffs/wave-91-worker-packets.md](.agents/handoffs/wave-91-worker-packets.md).
+> Nothing from the live-run triage is open. No phase is planned: the next step is triage.
 >
 > ## ☑ WAVE 89-90 COMPLETE — closed 2026-10-05 (archived in docs/cycles-ended/)
 >
@@ -315,175 +310,6 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ▶ WAVE 97 — the live-run triage cards B–E (no phase; opened 2026-10-08)
-
-**Trigger:** the operator asked on 2026-10-08 to close every pending item. The triage of the
-eighteen locators of the Phase 39 live run (gitignored `internal-docs/cli-ux-audit-2026-10-07/
-triage-2026-10-08.md`; the six worth a card are in ADR 0022 "Live run") proposed five cards; A
-closed in Wave 96 (`50da5d59`). B–E are the rest. One Sonnet or Opus worker per card in an
-isolated worktree based on the claim commit; the integrator merges in the order C, B, E, D and
-owns `CHANGELOG.md`, `specs/README.md`, `docs/commands.md`'s regeneration on `develop`, the
-CONTRIBUTING counts and this board. Packets:
-[.agents/handoffs/wave-97-worker-packets.md](.agents/handoffs/wave-97-worker-packets.md).
-
-### W97-B — `status` knows a parked question and the sandbox
-
-**Status:** TODO · **Size:** S · **Wave:** 97 · **Spec:** `cli-json-shapes.spec.md`
-(`docket status --json`), `cli-interface.spec.md` (`docket status`)
-
-**Today:** `cli/_status.py::_pod_status` counts pending/running/waiting_approval/failed/completed;
-a `waiting_input` task (a parked consult or `input` step, operator-loop) counts nowhere and the
-pod state stays `ready`, so `docket status` says nothing while `docket inbox` shows a question
-waiting (live run, locator #5). The `Isolation:` line is the static string `project workspaces;
-dispatch history scoped by step` (locator #14, the audit's P10) and says nothing about the
-sandbox posture the operator set with `docket setup sandbox`.
-
-**Goal:** `tasks.waitingInput` in the JSON object and `N waiting input` on the human `Tasks:`
-line; a pod with a `waiting_input` task is `waiting` (same bucket as `waiting_approval`, before
-`active`); the `Isolation:` line and the JSON `isolation` value report the sandbox state the
-`setup sandbox status` reader already computes (`cli/_setup_sandbox.py::sandbox_state`: on/off,
-backend, network mode), in one short phrase.
-
-**Non-goals:** a new state name; any change to `inbox`; any write.
-
-**Files:** `cli/_status.py` (`_pod_status`, the human renderer); `tests/unit/cli/test__status.py`;
-`tests/golden/cases/readonly/status_--all.golden` (deliberate, explained line by line).
-
-**Acceptance:**
-- A pod whose queue holds one `waiting_input` task: `docket status --json` carries
-  `tasks.waitingInput == 1` and `status == "waiting"`; the human output's `Tasks:` line contains
-  `1 waiting input`.
-- A fresh home with isolation off: the `Isolation:` line and JSON `isolation` read the same phrase
-  `sandbox_state` implies (off, with the backend found and the network mode); with isolation
-  recorded on, the phrase names `on` and the backend.
-- Oracle: two RED tests in `tests/unit/cli/test__status.py` fail on the base for exactly those
-  reasons; the golden diff shows only the new count and the new line.
-
-**Gates:** ruff, mypy, default lanes, goldens, `validate-specs.sh`, `comment_lint.py --check`,
-span check.
-
-### W97-C — help and messages tell the truth
-
-**Status:** TODO · **Size:** S · **Wave:** 97 · **Spec:** `operator-loop.spec.md` (the forecast
-line, item 11 area), `pod-dispatch.spec.md` (pod settings, "present-but-invalid")
-
-**Today:** five `Example:` lines in `cli/_task.py` (`approve`, `deny`, `answer`, `retry`,
-`cancel`) pass `2026-10-08T10-00`, which is not a task id, short id or run id (locator #10);
-`docket pod set budgetUsd notanumber` says `invalid stored value` though nothing was stored
-(`core/pod.py::PodSettings._validated` serves the read and the set path with one message,
-locator #11); `task add` prints `May ask you: 4 policy` and `task show` lists a policy by its raw
-regex (`cli/_task.py` forecast line; `core/interruptions.py::_policy_pattern`, locator #13).
-
-**Goal:** the five examples use `task-04ff` as the other verbs do; the set path says
-`<key>: invalid value <v> (<rule>)` and the read path keeps `invalid stored value`; the forecast
-line pluralises (`4 policies`, `1 policy`, `2 pipeline gates`); a policy interruption describes
-the policy by its id and what it asks on in words (the predicate kind, never the regex text).
-
-**Non-goals:** any behaviour change beyond text; a new interruption kind; validating operands in
-the invocation linter.
-
-**Files:** `cli/_task.py` (five docstrings, the forecast line), `core/pod.py::PodSettings`
-(`_validated` split or a message parameter), `core/interruptions.py::_policy_pattern`;
-`tests/unit/cli/test__task.py`, `tests/unit/core/test_pod.py`,
-`tests/unit/core/test_interruptions.py`; `docs/commands.md` regenerated.
-
-**Acceptance:**
-- `docket task approve --help` (and the four others) shows `Example: docket task approve
-  task-04ff ...`; `scripts/maint/lint_cli_invocations.py --self-check` and the invocation guard
-  stay green.
-- `PodSettings.coerce("budgetUsd", "notanumber")` raises `PodSettingsError` whose message starts
-  `budgetUsd: invalid value 'notanumber'` and does not contain `stored`; `load_for` on a bad
-  stored value still says `invalid stored value`.
-- A pod with two `require_approval` policies: the forecast line reads `May ask you: 2 policies`;
-  `task show` lists each as `policy '<id>' asks on: <words>` with no regex metacharacters.
-- Oracle: RED tests in the three unit files fail on the base for those reasons.
-
-**Gates:** ruff, mypy, default lanes, goldens, `validate-specs.sh`, `gen_cli_docs.py --check`
-(regenerate `docs/commands.md`), `lint_cli_invocations.py --self-check`, `comment_lint.py
---check`, span check.
-
-### W97-D — `--progress` names the hop
-
-**Status:** TODO · **Size:** M · **Wave:** 97 · **Spec:** `cli-interface.spec.md` ("Foreground
-dispatch progress and in-place approval" > "Rendering")
-
-**Today:** `cli/_progress.py::render_event` renders `session_start`/`session_end` as `▶ <role> …`
-and `■ <role> finished`; a pod dispatch opens one session per task with role `lead`
-(`core/dispatch.py` dispatch session events), so the view prints `▶ lead …` / `■ lead finished`
-for the whole run and never names the hop that is running or the one that parked (live run,
-locator #1). Spec and code agree, and the output misleads.
-
-**Decision (integrator, 2026-10-08):** the session lines name the task, the hop lines name the
-hop, nothing is added to the trace. `session_start` → `▶ <task> …` and `session_end` → `■ <task>
-finished — status=<status>`, where `<task>` is the short id (`task-04ff`) of the task the session
-id names (`agent:<project>:<task-id>`; fall back to the role when the session id names no task);
-dispatch's hop marker (the `tool_call` event whose JSON payload has exactly the keys `hop` and
-`agent`, `core/dispatch.py::_run_hop_turn` region) → `  ▶ <hop> …` (two-space indent under the
-task line). The approval lines are unchanged. No new trace event type; no core change.
-
-**Goal:** the view above, pinned by `render_event` unit tests and the thread-wiring test; the
-"Rendering" section amended (cli-interface 2.1.3; W97-B holds 2.1.2).
-
-**Non-goals:** a hop-end line (no distinguishable event exists without a new type); any change
-to `docket exec`; any stdout change (the golden no-change oracle stays).
-
-**Files:** `cli/_progress.py` (`render_event`, `_RENDERABLE_EVENT_TYPES`, a hop-marker
-predicate); `tests/unit/cli/test__progress.py`; `specs/api/cli-interface.spec.md`.
-
-**Acceptance:**
-- `render_event` on a `session_start` record whose `session_id` is `agent:demo:task-04ff…`
-  returns `▶ task-04ff …`; on the matching `session_end` with `{"status":"done"}` returns
-  `■ task-04ff finished — status=done`; on a `tool_call` with payload `{"hop":"implementer",
-  "agent":"demo-implementer"}` returns `  ▶ implementer …`; on a `tool_call` with any other
-  payload returns `None`.
-- The thread-wiring test (`TestDispatchWithProgress`) sees the task line, the hop line and the
-  approval line in order.
-- `bash tests/golden/run.sh verify-all` is byte-identical.
-- Oracle: the RED unit tests fail on the base for those reasons.
-
-**Gates:** ruff, mypy, default lanes, goldens, `validate-specs.sh`, `comment_lint.py --check`,
-span check.
-
-### W97-E — `setup provider add` records the advertised model
-
-**Status:** TODO · **Size:** S · **Wave:** 97 · **Spec:** `model-profiles.spec.md` ("Provider
-readiness" / registration)
-
-**Today:** `docket setup provider add <name> <url>` without `--model` records the row id
-`local-model` (`cli/_setup_model.py::_build_spec`), even when the probe the registration runs
-(`core/provider.py::register_provider` → `verify_endpoint`) came back 200 with advertised ids,
-which it only prints as a warning (`endpoint also advertises: ...`). A hosted endpoint then holds a
-model id it never served (live run, locator #8).
-
-**Goal:** when `--model` is absent, the endpoint is custom (no catalog entry) and the probe
-advertises at least one id, the registered row is the first advertised id (sorted, as
-`verify_endpoint` orders them) and the success line names it; when the probe advertises nothing,
-`local-model` stays and the line says so. One probe per `add` (if `register_provider` must probe
-before the row is known, pass the probe result through its `probe=` seam rather than probing
-twice).
-
-**Non-goals:** changing a catalog entry's rows; refusing a 401/404 (Phase 29's decision stands);
-any change to `--model`'s behaviour.
-
-**Files:** `cli/_setup_model.py` (`_build_spec`, `_register`, `add_provider`),
-`core/provider.py` only if the probe seam needs a pure helper; `tests/unit/cli/
-test__setup_model.py` (+ `tests/unit/core/test_provider.py` if touched).
-
-**Acceptance:**
-- A fake probe (`ProbeResult` status 200, `model_ids=("qwen-x","abc")`) and `add custom
-  http://127.0.0.1:1/v1` with no `--model`: the saved provider's first row id is `abc`, the
-  success output names it, no warning lists it as "also advertises".
-- Same with `model_ids=()`: the row is `local-model` and the output says the endpoint advertised
-  no model.
-- Same with `--model mine`: the row is `mine` whatever the probe advertised.
-- Oracle: RED tests in `tests/unit/cli/test__setup_model.py` fail on the base for those reasons;
-  `probe_models` is monkeypatched, no real host is called.
-
-**Gates:** ruff, mypy, default lanes, goldens, `validate-specs.sh`, `comment_lint.py --check`,
-span check.
-
----
-
 ## ◇ NO ACTIVE WAVE — Phase 39 closed 2026-10-08 (archived above in docs/cycles-ended/)
 
 No phase is planned. The next step is bounded triage or measurement, not a card mined from history.
@@ -500,8 +326,7 @@ Carried out of Phase 39 (ADR 0022 "Closed with, and carried"), maintainer-owned 
   that ships the names.
 - The eighteen locators of the live run (`internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`,
   last section; the six worth a card are in ADR 0022 "Live run"): a triage list, not cards.
-- The triage's cards B–E: card A closed in Wave 96 (`50da5d59`); B–E are scheduled as Wave 97
-  (the section above).
+- The triage's five cards are closed: A in Wave 96 (`50da5d59`), B–E in Wave 97 (archived).
 
 Deferred to named triggers: `kind: autonomy` (a verifier that emits one) and per-task credential
 minting (an issuer a pod needs).

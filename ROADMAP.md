@@ -12,7 +12,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-10-08.** **Phase 39 (one CLI surface, D-57) closed 2026-10-08** (paragraph below, after D-56), followed the same day by **Wave 96** (no phase: the live run's card A, `init` as a real Typer command, the linter gaps, the docs sweep); no phase is planned. Every numbered phase 0–39 is complete. **Phase 26 (the configuration contract, D-42) closed 2026-09-26** (Waves 38–40, 20/20 cards): governance fails closed, pod settings are typed and writable (nine `pod config` keys), pipelines and prompt budgets are configurable per pod, and three shipped recipes prove the surface end to end. **Wave 37 closed 2026-09-25** (D-41): a triage that ran the product on six surfaces found twelve defects, fixed by six cards in two batches — the worst stalled every unattended dispatch whose command began with `cd`, and the sixth unwired-machinery instance (the installed console script skipped aliases and removed-command notices) is closed. **Wave 36 closed 2026-09-21** (opened 2026-09-19, D-40): eleven cards for the code-side defects the documentation audit of `v0.2.0-beta.3` found, run as three batches of one-card Sonnet workers under one integrator; the fifth unwired-machinery instance (blueprint pipelines) is wired, `POST /pods` validates project ids, and `--debug` is retired. **Phase 25
+**Last updated: 2026-10-08.** **Phase 39 (one CLI surface, D-57) closed 2026-10-08** (paragraph below, after D-56), followed the same day by **Wave 96** (no phase: the live run's card A, `init` as a real Typer command, the linter gaps, the docs sweep) and **Wave 97** (the triage's cards B–E: `status` knows a parked question and the sandbox, help and messages tell the truth, the progress view names the hop, provider add records the advertised model); no phase is planned. Every numbered phase 0–39 is complete. **Phase 26 (the configuration contract, D-42) closed 2026-09-26** (Waves 38–40, 20/20 cards): governance fails closed, pod settings are typed and writable (nine `pod config` keys), pipelines and prompt budgets are configurable per pod, and three shipped recipes prove the surface end to end. **Wave 37 closed 2026-09-25** (D-41): a triage that ran the product on six surfaces found twelve defects, fixed by six cards in two batches — the worst stalled every unattended dispatch whose command began with `cd`, and the sixth unwired-machinery instance (the installed console script skipped aliases and removed-command notices) is closed. **Wave 36 closed 2026-09-21** (opened 2026-09-19, D-40): eleven cards for the code-side defects the documentation audit of `v0.2.0-beta.3` found, run as three batches of one-card Sonnet workers under one integrator; the fifth unwired-machinery instance (blueprint pipelines) is wired, `POST /pods` validates project ids, and `--debug` is retired. **Phase 25
 (human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
 first as Wave 31's thirteen cards and the second as Wave 30's five. **Wave 32 closed the same day** (2026-09-12): a
 documentation truth pass over the drift those two phases left, plus the two follow-ups Wave 31
@@ -295,7 +295,23 @@ task as `approval denied: <reason>` and the correction carries the task's id (op
 pod-dispatch 6.36.2, cli-interface 2.1.1). The same day, with no card: `docket init` became a real
 Typer command with a one-screen help (`a49abba0`, cli-interface 2.1.0), the invocation linter
 closed its two gaps (`ebbc7b64`) and six docs were swept of pre-Phase-39 names in prose
-(`d8be1e24`). B–E stay proposed, not scheduled; no phase is planned.
+(`d8be1e24`). B–E followed as Wave 97 (next paragraph).
+
+**Wave 97 (no phase, 2026-10-08): the live run's cards B–E, closed.** The operator asked to close
+every pending item; the four remaining triage cards ran as one worker each in isolated worktrees
+off the claim commit (`c540afcc`), packets in `.agents/handoffs/wave-97-worker-packets.md`,
+merged E, B, C, D. B (`48b10796`): `status` counts a `waiting_input` task (`tasks.waitingInput`,
+`N waiting input`, pod `waiting`) and its `Isolation:` line reports the sandbox posture from the
+`setup sandbox` reader instead of a fixed phrase (cli-json-shapes 1.27.0, cli-interface 2.1.2).
+C (`7b8b14ae`): the five task-verb examples pass a task id, `pod set` says `invalid value` for a
+rejected value, the forecast pluralises and a policy interruption is described by its predicate
+kinds, never the regex (operator-loop 1.5.3, pod-dispatch 6.36.3). D (`f99bbf9a`, decision on the
+card): the progress view names the task on its session lines and prints an indented `▶ <hop> …`
+as each hop starts, from dispatch's existing hop marker; no trace event was added (cli-interface
+2.1.3). E (`805b44fc`): `setup provider add` without `--model` records the first id the one
+registration probe advertises (model-profiles 3.3.0). Every gate green on the rollup. Nothing
+from the live-run triage is open; the two maintainer-owned items (Tack's string, the asset
+re-capture) stay with the maintainer; no phase is planned.
 
 Twenty-five cards over Waves 91–95 (P39-25, the invocation guard, was added in Wave 95 from a
 Wave 94 lesson: a rename guard proves the old names gone, and only a check against the live tree

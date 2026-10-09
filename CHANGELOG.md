@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without `--model` takes the first advertised id from the one registration probe instead of
   `local-model`, and the success line names it; with nothing advertised, `local-model` stays
   and the line says so. `--model` still wins; a catalog entry and a 401/404 are unchanged.
+- **`docket run`'s progress view names the task and the hop.** The session lines read
+  `▶ task-04ff… …` / `■ task-04ff… finished — status=<s>` (the task's short id from the session
+  id) and an indented `  ▶ <hop> …` line prints as each hop starts; it printed `▶ lead …` once
+  for the whole run and never named the hop that parked. Approval lines and stdout are unchanged.
 - **The operator's decision reaches the record.** `docket task approve <apr-token>` (the form
   the progress view prints) now ends with the run hint like the task-ref form, its pod read from
   the approval record. `docket task deny --reason` puts the reason on the failed task

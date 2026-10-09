@@ -273,8 +273,8 @@ Carried, by name:
 - The landing page, after the release that ships the names.
 - The eighteen locators of the live run, as a triage list; the six worth a card are named above.
   Triaged 2026-10-08 into five cards A–E; A (the approve-by-token hint and the deny reason that
-  never reached its task) closed the same day in Wave 96 (`50da5d59`); B–E are proposed, not
-  scheduled.
+  never reached its task) closed the same day in Wave 96 (`50da5d59`); B–E closed the same day
+  in Wave 97 (`48b10796`, `7b8b14ae`, `f99bbf9a`, `805b44fc`; the ROADMAP's Wave 97 paragraph).
 - Two gaps in `scripts/maint/lint_cli_invocations.py`: any upper-case word passes as a
   placeholder, and positional counts go unchecked after an `<a|b>` verb. Closed 2026-10-08
   (`ebbc7b64`), the same day `docket init` became a real Typer command (`a49abba0`, the P39-23
