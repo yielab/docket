@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.1.1
+**Version**: 2.1.2
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -208,7 +208,9 @@ provisioning belongs to `init`, including multi-project automation.
 **Behavior**:
 - With no flag, resolve the pod (`--pod`, `DOCKET_POD`, then the most-specific initialized pod
   whose `codebase`/`workDir` contains the current directory) and report its path, members, task
-  counts (including failed and "approved, ready"), measured tokens with a labelled dollar
+  counts (including waiting approval, waiting input, failed and "approved, ready"; a pod with a
+  `waiting_input` task is `waiting`), the `Isolation:` sandbox posture (the same string as JSON
+  `isolation`: `on (bwrap, network open)` or `off (default); bwrap found, network open`), measured tokens with a labelled dollar
   estimate, the success/failure/aborted counts and latency from trace `session_end` events, the
   last run, and whether `docket start` is running (its `serve.pid` names a live process).
 - `--all` reports the same summary for every registered pod, once per project rather than once
@@ -933,6 +935,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.1.2 (2026-10-08)
+
+- `docket status` counts `waiting_input` tasks (`N waiting input`, pod `waiting`) and its `Isolation:` line reports the sandbox posture.
 
 ### Version 2.1.1 (2026-10-08)
 

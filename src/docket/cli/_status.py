@@ -13,6 +13,7 @@ import typer
 import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
+from docket.cli._setup_sandbox import _off_label, sandbox_state
 from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -62,6 +63,16 @@ def _approved_ready(task: dict[str, Any]) -> bool:
     )
 
 
+def _isolation_phrase() -> str:
+    """The sandbox posture in one phrase, from the reader `setup sandbox status` uses."""
+    state = sandbox_state()
+    backend, network = str(state["backend"]), state["network"]
+    if state["isolation"] == "on":
+        return f"on ({backend}, network {network})"
+    found = "no backend found" if backend == "none" else f"{backend} found"
+    return f"{_off_label(str(state['isolation']))}; {found}, network {network}"
+
+
 def _usage(member_ids: list[str]) -> dict[str, Any]:
     tokens_in = tokens_out = 0
     estimate = 0.0
@@ -109,7 +120,7 @@ def _project_summary(project: str) -> dict[str, Any]:
     counts = Counter(str(task.get("status", "pending")) for task in tasks)
     if degraded or not members:
         state = "degraded"
-    elif counts["waiting_approval"]:
+    elif counts["waiting_approval"] or counts["waiting_input"]:
         state = "waiting"
     elif counts["running"]:
         state = "active"
@@ -124,12 +135,13 @@ def _project_summary(project: str) -> dict[str, Any]:
         "path": roots[0] if roots else "",
         "status": state,
         "memberCount": len(member_rows),
-        "isolation": "project workspaces; dispatch history scoped by step",
+        "isolation": _isolation_phrase(),
         "members": member_rows,
         "tasks": {
             "pending": counts["pending"],
             "running": counts["running"],
             "waitingApproval": counts["waiting_approval"],
+            "waitingInput": counts["waiting_input"],
             "failed": counts["failed"],
             "completed": counts["completed"] + counts["done"],
             "approvedReady": sum(1 for task in tasks if _approved_ready(task)),
@@ -228,7 +240,8 @@ def _render_current(summary: dict[str, Any]) -> None:
         (
             "Tasks",
             f"{tasks['pending']} pending · {tasks['running']} running · "
-            f"{tasks['waitingApproval']} waiting approval · {tasks['failed']} failed",
+            f"{tasks['waitingApproval']} waiting approval · {tasks['waitingInput']} waiting input"
+            f" · {tasks['failed']} failed",
         ),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
@@ -259,7 +272,7 @@ def _render_all(summaries: list[dict[str, Any]]) -> None:
                 s["status"],
                 str(s["memberCount"]),
                 f"{t['pending']} pending / {t['running']} running / "
-                f"{t['waitingApproval']} waiting / {t['failed']} failed",
+                f"{t['waitingApproval'] + t['waitingInput']} waiting / {t['failed']} failed",
                 s["path"] or "—",
             ]
         )
