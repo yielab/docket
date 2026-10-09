@@ -228,6 +228,12 @@ class TestPodSettings:
         with pytest.raises(pod.PodSettingsError, match="approvalMode"):
             pod.PodSettings.load_for("shop")
 
+    def test_coerce_names_a_rejected_value_not_a_stored_one(self) -> None:
+        with pytest.raises(pod.PodSettingsError) as err:
+            pod.PodSettings.coerce("budgetUsd", "notanumber")
+        assert str(err.value).startswith("budgetUsd: invalid value 'notanumber'")
+        assert "stored" not in str(err.value)
+
     def test_coerce_accepts_approval_mode(self) -> None:
         assert pod.PodSettings.coerce("approvalMode", "refuse") == "refuse"
 

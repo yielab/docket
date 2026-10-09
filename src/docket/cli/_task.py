@@ -106,6 +106,13 @@ def _caller_default() -> Literal["wait", "park"]:
     return "wait" if sys.stdin.isatty() else "park"
 
 
+def _ask_noun(kind: str, count: int) -> str:
+    noun = kind.replace("_", " ")
+    if count == 1:
+        return noun
+    return noun[:-1] + "ies" if noun.endswith("y") else noun + "s"
+
+
 def _interruption_summary(task_id: str, project: str) -> str:
     """One line for `task add`: what could pause this pod's next run before it starts."""
     items = _interruptions.forecast(project, caller_default=_caller_default())
@@ -115,7 +122,7 @@ def _interruption_summary(task_id: str, project: str) -> str:
     counts: dict[str, int] = {}
     for i in askers:
         counts[i.kind] = counts.get(i.kind, 0) + 1
-    parts = [f"{n} {kind.replace('_', ' ')}" for kind, n in sorted(counts.items())]
+    parts = [f"{n} {_ask_noun(kind, n)}" for kind, n in sorted(counts.items())]
     return f"May ask you: {', '.join(parts)} -- see: docket task show {short_id(task_id)}"
 
 
@@ -577,7 +584,7 @@ def _task_approve(
     allowed for the rest of the task. --for records a single-use pre-grant for one exact
     command instead.
 
-    Example: docket task approve 2026-10-08T10-00 --reason "reviewed the diff"
+    Example: docket task approve task-04ff --reason "reviewed the diff"
     """
     if once and task:
         ui.error("--once and --task conflict", "Pass one of them")
@@ -619,7 +626,7 @@ def _task_deny(
 ) -> None:
     """Deny what a task is waiting on; the task fails and nothing runs.
 
-    Example: docket task deny 2026-10-08T10-00 --reason "touches production"
+    Example: docket task deny task-04ff --reason "touches production"
     """
     token, _project, label = _pending_token(pod, ref)
     actor = _approval_actor(reason)
@@ -742,7 +749,7 @@ def _task_answer(
     On a terminal with no text or option it shows the question and prompts. Off a terminal
     pass text, --field name=value or --option <id>; a question with options needs --option.
 
-    Example: docket task answer 2026-10-08T10-00 --option opt2
+    Example: docket task answer task-04ff --option opt2
     """
     found = _resolve(pod, ref)
     question = _question_of(found)
@@ -774,7 +781,7 @@ def _task_retry(
 ) -> None:
     """Put a failed or blocked task back on the queue, keeping the hops it finished.
 
-    Example: docket task retry 2026-10-08T10-00
+    Example: docket task retry task-04ff
     """
     found = _resolve(pod, ref)
     if not _dispatch.retry_task(found.project, found.task_id):
@@ -823,7 +830,7 @@ def _task_cancel(
     A live run is asked to stop and its processes are signalled. A task still marked running
     whose dispatcher is gone is settled as failed, ready for `docket task retry`.
 
-    Example: docket task cancel 2026-10-08T10-00
+    Example: docket task cancel task-04ff
     """
     found = _resolve(pod, ref)
     cancelled = _cancel_live_runs(found, _task_record(found).get("status"))

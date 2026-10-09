@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 1.5.2
+**Version**: 1.5.3
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
 **Last Updated**: 2026-10-08
 
@@ -443,7 +443,10 @@ pause a task and wait on a human -- without ever running a live dispatch.
 4. `docket task add` MUST print one additional summary line after queuing:
    `Nothing in this pod will ask you.` when the same headline list is empty, else `May ask you:
    <n> <kind>, ... — see: docket task show <ref>` (kinds sorted, counts
-   grouped by kind with `_` rendered as a space, no further grammar).
+   grouped by kind with `_` rendered as a space and the noun pluralised by count: `1 policy`,
+   `2 policies`, `2 pipeline gates`). A `policy` interruption's description is
+   `policy '<id>' asks on: <words>`, naming the predicate kinds (`tool bash on path src/**`,
+   `commands matching its pattern`), never the pattern text.
 5. `docket task approve <ref> --for "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
    (body `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id,
    command, tool="bash")` MUST each call `core.interruptions.record_pregrant(project, task_id,
@@ -783,6 +786,11 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.5.3 (2026-10-08)
+
+- The `task add` summary pluralises its counts, and a policy interruption is described in words
+  (its predicate kinds) instead of its raw regex. Requirement 4 says what now holds.
 
 ### Version 1.5.2 (2026-10-08)
 
