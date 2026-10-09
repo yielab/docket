@@ -285,3 +285,71 @@ class TestProviderAdd:
         result = _runner.invoke(app, ["setup", "model", "set", "unicorn", "anthropic/claude-x"])
 
         assert result.exit_code == 1
+
+
+class TestProviderAddAdvertisedModel:
+    @staticmethod
+    def _probe(monkeypatch: pytest.MonkeyPatch, ids: tuple[str, ...]) -> list[int]:
+        from docket.edges.adapters import llm as _llm
+
+        calls: list[int] = []
+
+        def fake(*a: object, **k: object) -> _llm.ProbeResult:
+            calls.append(1)
+            return _llm.ProbeResult(status=200, model_ids=list(ids))
+
+        monkeypatch.setattr(_llm, "probe_models", fake)
+        return calls
+
+    @staticmethod
+    def _row(name: str) -> str:
+        spec = _prov.load_catalog().get(name)
+        assert spec is not None
+        return spec.models[0].id
+
+    def test_first_advertised_id_becomes_the_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No --model: the row is the first sorted advertised id, probed once."""
+        _home(tmp_path, monkeypatch)
+        calls = self._probe(monkeypatch, ("qwen-x", "abc"))
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", "custom", "http://127.0.0.1:1/v1"]
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert self._row("custom") == "abc"
+        assert "abc" in result.stdout
+        assert "also advertises: abc" not in result.stdout
+        assert len(calls) == 1
+
+    def test_no_advertised_id_keeps_local_model_and_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty advertisement leaves local-model and the output names that."""
+        _home(tmp_path, monkeypatch)
+        self._probe(monkeypatch, ())
+
+        result = _runner.invoke(
+            app, ["setup", "provider", "add", "custom", "http://127.0.0.1:1/v1"]
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert self._row("custom") == "local-model"
+        assert "no model advertised" in result.stdout
+
+    def test_explicit_model_wins_over_the_advertisement(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--model mine is recorded whatever the probe advertised."""
+        _home(tmp_path, monkeypatch)
+        self._probe(monkeypatch, ("qwen-x", "abc"))
+
+        result = _runner.invoke(
+            app,
+            ["setup", "provider", "add", "custom", "http://127.0.0.1:1/v1", "--model", "mine"],
+        )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert self._row("custom") == "mine"

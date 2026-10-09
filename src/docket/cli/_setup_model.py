@@ -262,18 +262,32 @@ def add_provider(
             ui.error(str(exc))
             return 1
         return _register(file_spec, credential, preset)
+    defaulted = model is None and url is not None and _prov.load_catalog().get(name) is None
     spec = _build_spec(
         name, url, credential_given=credential is not None, model=model, ctx=ctx, max_t=max_tokens
     )
     if spec is None:
         return 1
-    return _register(spec, credential, preset)
+    return _register(spec, credential, preset, defaulted=defaulted)
 
 
-def _register(spec: _prov.ProviderSpec, credential: str | None, preset: bool) -> int:
+def _register(
+    spec: _prov.ProviderSpec, credential: str | None, preset: bool, *, defaulted: bool = False
+) -> int:
     if not _supply_credential(spec, credential):
         return 1
-    reg = _prov.register_provider(spec)
+    probe = _prov.probe_spec(spec)
+    note = ""
+    if defaulted and probe.status == 200:
+        if probe.model_ids:
+            chosen_id = sorted(probe.model_ids)[0]
+            spec = spec.model_copy(
+                update={"models": [spec.models[0].model_copy(update={"id": chosen_id})]}
+            )
+            note = f" (model {chosen_id})"
+        else:
+            note = " (no model advertised; recorded local-model)"
+    reg = _prov.register_provider(spec, probe=probe)
     v = reg.verification
     if not v.reachable:
         detail = f": {v.warning}" if v.warning else ""
@@ -282,7 +296,9 @@ def _register(spec: _prov.ProviderSpec, credential: str | None, preset: bool) ->
             "Nothing was registered; fix the URL or start the server and retry",
         )
         return 1
-    ui.success(f"Provider {spec.name}: {spec.base_url}" + ("" if reg.changed else " (unchanged)"))
+    ui.success(
+        f"Provider {spec.name}: {spec.base_url}{note}" + ("" if reg.changed else " (unchanged)")
+    )
     from docket.cli import _setup
 
     _setup.step_security()
