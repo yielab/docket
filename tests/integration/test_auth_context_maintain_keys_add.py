@@ -254,7 +254,7 @@ class TestCmdAdd:
         assert str(repo) in out
         assert "lead" in out
         assert "implementer" in out
-        assert "dispatch history scoped by step" in out
+        assert "Isolation:" in out
 
     def test_status_all_summarizes_projects_not_agents(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)

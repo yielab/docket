@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.26.1
+**Version**: 1.27.0
 **Status**: Complete
 **Last Updated**: 2026-10-08
 
@@ -78,12 +78,13 @@ structural rules hold everywhere:
 {
   "id":          "string (pod id)",
   "path":        "string (codebase or workDir; may be empty)",
-  "status":      "ready | active | waiting | attention | degraded",
+  "status":      "ready | active | waiting | attention | degraded (waiting: a task is waiting_approval or waiting_input)",
   "memberCount": "number",
-  "isolation":   "string",
+  "isolation":   "string (the sandbox posture: 'on (<backend>, network <open|none>)' or '<off (default)|off>; <backend|no backend> found, network <open|none>')",
   "members":     "array of { id, role, status: ready | missing }",
   "tasks": {
     "pending": "number", "running": "number", "waitingApproval": "number",
+    "waitingInput": "number (parked consult or input-step questions)",
     "failed": "number", "completed": "number", "approvedReady": "number"
   },
   "usage":       "{ input, output (measured tokens), estimateUsd (a labelled estimate) }",
@@ -418,6 +419,10 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.27.0 (2026-10-08)
+
+- `docket status --json` `tasks.waitingInput` counts parked `waiting_input` tasks and a pod holding one is `waiting`; `isolation` reports the sandbox posture `setup sandbox status` reads instead of a static string.
 
 ### Version 1.26.1 (2026-10-08)
 

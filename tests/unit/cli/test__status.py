@@ -152,3 +152,41 @@ class TestRemovedCommands:
     @pytest.mark.parametrize("name", ["cost", "metrics", "snapshot", "dispatch"])
     def test_a_removed_name_is_an_unknown_command(self, name: str) -> None:
         assert runner.invoke(_app, [name]).exit_code == 2
+
+
+class TestParkedQuestionAndSandbox:
+    def test_a_waiting_input_task_is_counted_and_the_pod_is_waiting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A parked question shows in the JSON count, the pod state and the human Tasks line."""
+        _seed(tmp_path, monkeypatch)
+        _tasks("demo", "waiting_input", "pending")
+
+        body = _json("--pod", "demo")
+        out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+        assert body["tasks"]["waitingInput"] == 1
+        assert body["status"] == "waiting"
+        assert "1 waiting input" in out
+
+    def test_isolation_reports_the_sandbox_state_in_json_and_on_the_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """JSON and the human line carry the same phrase, built from sandbox_state."""
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            _status,
+            "sandbox_state",
+            lambda: {"isolation": "off (default)", "network": "open", "backend": "bwrap"},
+        )
+        phrase = "off (default); bwrap found, network open"
+
+        assert _json("--pod", "demo")["isolation"] == phrase
+        assert phrase in runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+        monkeypatch.setattr(
+            _status,
+            "sandbox_state",
+            lambda: {"isolation": "on", "network": "none", "backend": "docker"},
+        )
+        assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
