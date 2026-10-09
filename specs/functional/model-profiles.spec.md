@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 3.2.2
+**Version**: 3.3.0
 **Status**: Complete. **P30-3** (ADR 0012 §2 rule 6) adds a per-pipeline-step model override,
 above the policy, resolved once per hop and never persisted — see "Model intent per
 agent" requirement 4.
@@ -244,6 +244,10 @@ feasibility spike remains in ROADMAP and Git history.
    `/models` is not served (capability unverified), any other status carries the status, and a 200
    whose body advertises model ids absent from `models[]` prints them as a suggestion, never
    writes them. No `--no-verify` flag exists; the classification makes one unnecessary.
+   When `docket setup provider add` is given a custom endpoint (no catalog entry) and no
+   `--model`, it **MUST** probe once, record the first advertised id (sorted) as the row in place
+   of `local-model`, and name it in the success output; when a 200 advertises nothing the row stays
+   `local-model` and the output says no model was advertised. `--model` always wins.
 4. Workstation bootstrap **MUST NOT** print a ready heading or continue into project initialization
    when the selected model is unresolved. It **MUST** name the model, explain the missing endpoint
    or credential without exposing a secret, and give the exact public configuration sequence.
@@ -477,6 +481,11 @@ $ docket setup model
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 3.3.0 (2026-10-08)
+
+- "Provider readiness" 3: `setup provider add` on a custom endpoint without `--model` records the
+  first advertised model id instead of `local-model`, from the single registration probe.
 
 ### Version 3.2.2 (2026-10-08)
 

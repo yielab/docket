@@ -477,25 +477,30 @@ class Registration:
     changed: bool
 
 
+def probe_spec(spec: ProviderSpec) -> ProbeResult:
+    """Probe *spec*'s ``/models`` with its resolved credential; nothing is saved."""
+    from docket.core.llm import Endpoint
+    from docket.edges.adapters.llm import probe_models
+
+    credential_value, _source = resolve_credential(spec)
+    endpoint = Endpoint(
+        base_url=spec.base_url,
+        model_id="x",
+        api_key=credential_value,
+        provider=spec.name,
+        auth_type=spec.auth.type,
+        auth_header=spec.auth.header,
+        headers=tuple(spec.headers.items()),
+    )
+    return probe_models(endpoint)
+
+
 def register_provider(spec: ProviderSpec, *, probe: ProbeResult | None = None) -> Registration:
     """Verify *spec* with the resolved credential and classify the result; persist only when
     reachable (model-profiles.spec.md "Provider readiness" 3). The default probe builds an
     ``Endpoint`` straight from *spec*, never a saved entry, since nothing is written yet."""
     if probe is None:
-        from docket.core.llm import Endpoint
-        from docket.edges.adapters.llm import probe_models
-
-        credential_value, _source = resolve_credential(spec)
-        endpoint = Endpoint(
-            base_url=spec.base_url,
-            model_id="x",
-            api_key=credential_value,
-            provider=spec.name,
-            auth_type=spec.auth.type,
-            auth_header=spec.auth.header,
-            headers=tuple(spec.headers.items()),
-        )
-        probe = probe_models(endpoint)
+        probe = probe_spec(spec)
 
     verification = verify_endpoint(spec, probe)
     if not verification.reachable:
