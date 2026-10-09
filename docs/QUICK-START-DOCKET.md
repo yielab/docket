@@ -3,8 +3,9 @@
 docket runs a team of coding agents that you define in files: a `.docket/` directory next to
 your code names the roles, the order they work in, the gates between them and the rules they
 cannot cross. This page takes you from nothing to one governed run, then shows how to make the
-team yours. Everything below was captured from a real run against a local model; the terminal
-output shown is what docket printed.
+team yours. Everything below was captured from a real run against a local model on 2026-10-09;
+the terminal output shown is what docket printed. It was captured through a pipe, so it carries
+docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`, `→`, `⚠`.
 
 > [!WARNING]
 > **Beta / early-stage software.** The steps work and are test-backed, but expect rough edges
@@ -102,10 +103,11 @@ docket init --recipe secure-build
 ```
 
 ```text
-→ Provisioning 'software' pod 'myapp' (lead, implementer)...
-✓   myapp-lead  [lead]  local/local-model
-✓   myapp-implementer  [implementer]  local/local-model
-Apply plan — myapp <- .../templates/recipes/secure-build
+-> Provisioning 'software' pod 'myapp' (lead, implementer)...
+ok   myapp-lead  [lead]  local/local-model
+ok   myapp-implementer  [implementer]  local/local-model
+
+docket - Apply plan myapp <- .../templates/recipes/secure-build
 A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle.
   roles 1 · policies 1 · members 1 · pipeline secure-build · plugins 0 · skills 1 · settings 0
   [add] role: security-vetter
@@ -113,9 +115,9 @@ A read-only security vetter gates the Implementer's change behind an explicit AP
   [add] skill: security-review
   [add] member: security-vetter
   [add] pipeline: pipeline.yaml
-✓ Applied 5 change(s) to pod 'myapp' from .../templates/recipes/secure-build.
+ok Applied 5 change(s) to pod 'myapp' from .../templates/recipes/secure-build.
 
-✓ Pod 'myapp' created with 3 members!
+ok Pod 'myapp' created with 3 members!
   - myapp-lead
   - myapp-implementer
   - myapp-security-vetter
@@ -141,8 +143,9 @@ docket pod plan                       # what would run, resolved against the rea
 ```
 
 ```text
-Pipeline plan — myapp
+docket - Pipeline plan myapp
 Source: bound pipeline (hash 45f7aaf31d1f...)
+
 Pipeline: secure-build
   [plan] role=lead -> myapp-lead [gate: none]
   [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]
@@ -162,9 +165,21 @@ docket run
 ```
 
 ```text
-→ Dispatching 1 pending task(s) through: lead → implementer → security-vetter
-✓   [task-efbd46e7-...] done — 3 hop(s), $0.0000
+-> Running 1 pending task(s) through: lead → implementer → security-vetter
+ok   [task-6e046891-e910-4778-92ce-4560364bfaa9] done — 3 hop(s)
+ok 1 done · 0 failed · 36.3k tokens (~$0.00 est.)
+-> Next: docket status
+!   Only console is on, and console sends nothing.
+  A parked task waits unseen until you run docket inbox.
+  Before running unattended, enable a channel:
+    docket setup notify enable desktop                   # this machine
+    docket setup notify enable ntfy --set topic=<topic>  # your phone
 ```
+
+The token count is measured; the dollar figure is a labelled estimate, never a bill. The warning
+is step 7's subject: a small local model may also park a question before delegating (the Lead
+asks, the task waits as `waiting_input`); `docket inbox` shows it and `docket task answer <id>
+--option <id>` resumes the run.
 
 What happened, hop by hop:
 
@@ -182,6 +197,10 @@ The change lives only in the task's worktree until you merge its branch:
 docket task diff <id>                     # what the task changed, against the commit it started from
 git worktree list                         # the task's worktree, on its own branch
 ```
+
+<p align="center">
+  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's workspace and model, isolation on with bwrap, the task's git worktree on its own branch beside a clean main checkout, and the one-line fix living only in the worktree" width="760">
+</p>
 
 ---
 
@@ -201,8 +220,9 @@ docket pod show myapp-implementer         # the effective configuration, with wh
 `docket pod show` ends with the team's source of record:
 
 ```text
-  Pipeline:        bound pipeline (hash 45f7aaf31d1f...)
-  Config source:   .../templates/recipes/secure-build  (digest 441848f22bd2..., drift: no)
+  Pipeline: bound pipeline (hash 45f7aaf31d1f...)
+  Network: open (default)
+  Config source: .../templates/recipes/secure-build (digest ec69082e5924..., drift: no)
 ```
 
 This record stays on the machine. To read it in a tool you already run, such as Langfuse or an
@@ -227,14 +247,23 @@ docket pod check 'git push origin production' --role implementer
 ```
 
 ```text
+  Hook:   pre_tool_call
+  Role:   implementer
+  Text:   git push origin production
   Result: ask
   Reason: matches high-risk action class 'prod-deploy': Production deploys and release pushes
   Policy: 'high-risk-deploy' -> require_approval
 ```
 
-In a live run that call waits for `docket task approve <id>` (also over HTTP, MCP or Telegram) and
-is denied on timeout with an `approval.deny ... channel=timeout` audit line. The command never
-executes.
+In a live run from a terminal that call waits for `docket task approve <token>` (also over HTTP,
+MCP or Telegram) and is denied on timeout with an `approval.deny ... channel=timeout` audit
+line; unattended it parks the task as `waiting_approval` instead. Either way the command never
+executes, the audit log carries `tool.ask`, and the trace records the denial with
+`executed: false`:
+
+<p align="center">
+  <img src="assets/governance.png" alt="Real terminal output: the policy dry-run answers ask; the Lead parks a question that docket task answer resolves; the Implementer's git push origin production parks the task for approval under high-risk-deploy; the audit log shows tool.ask, the trace shows the denial with executed false, and the chain verifies clean" width="760">
+</p>
 
 ---
 

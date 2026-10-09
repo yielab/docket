@@ -40,6 +40,10 @@ log) — so **no role is ever shared between two projects.**
 The default pod is **lean — a Lead and an Implementer.** You add Reviewer, Tester, or extra
 Implementers when the work warrants it.
 
+<p align="center">
+  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on with bwrap, the task's git worktree on its own branch, the operator's main checkout clean, and the one-line fix living only in the worktree" width="760">
+</p>
+
 | Pod role | Edits code? | Responsibility | Default model class |
 |----------|:-----------:|----------------|---------------------|
 | **Lead** | **never** | Orchestrates the pod, owns its context and memory, decomposes work, dispatches to workers; surfaces architectural decisions and risky actions at the top of the plan with assumptions and open questions listed | cheap (coordination) |

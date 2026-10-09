@@ -154,16 +154,19 @@ Lead  →  Implementer  →  Reviewer  →  Tester
 ```
 
 ```
-→ Dispatching 2 pending task(s) through: lead → implementer → reviewer → tester
+→ Running 2 pending task(s) through: lead → implementer → reviewer → tester
   Pod budget cap: $5.00 (spent $0.00)
-[dispatch] verification skipped — verifyCmd not set for myapp-implementer
-✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s), $0.0000
-[dispatch] verification skipped — verifyCmd not set for myapp-implementer
-✓   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] done — 4 hop(s), $0.0000
+verification skipped — verifyCmd not set for myapp-implementer
+✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s)
+verification skipped — verifyCmd not set for myapp-implementer
+✓   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] done — 4 hop(s)
+✓ 2 done · 0 failed · <n>k tokens (~$0.00 est.)
+→ Next: docket status
 ```
 
-The per-task dollar figure is *recorded* cost, and docket's own driver never records one, so it
-reads `$0.0000`; the budget gate uses the labelled token estimate instead (Step 2). The command
+The summary line's token count is measured; its dollar figure is a labelled estimate, because
+docket's own driver never records spend, and the budget gate works on that estimate (Step 2).
+The command
 exits `1` when a task's run ends `failed`, so `docket run && …` stops there;
 `blocked`, `waiting_approval` and `waiting_input` are expected pauses and exit `0`. An unattended
 `ask` — under this same `docket run` off a TTY, or under `docket start --dispatch`'s sweep — resolves to
@@ -212,12 +215,15 @@ Each line is `timestamp  event_type  (role)` plus any status and cost/duration f
 example (abridged):
 
 ```
-  2026-09-18T12:01:04  session_start              (lead)
-  2026-09-18T12:01:05  tool_call                  (lead)
-  2026-09-18T12:01:05  tool_result                (lead)
-  2026-09-18T12:01:09  tool_call                  (implementer)
+  2026-10-09T10:38:26  session_start              (lead)
+  2026-10-09T10:38:26  tool_call                  (lead)  hop=lead
+  2026-10-09T10:38:41  llm_call                   (lead)  local-model  in=1900/out=36  [15246ms]
+  2026-10-09T10:38:41  tool_call                  (lead)  tool=glob
+  2026-10-09T10:38:41  tool_result                (lead)  tool=glob
   ...
-  2026-09-18T12:01:41  session_end                (lead)  status=done
+  2026-10-09T10:38:58  tool_call                  (implementer)  hop=implementer
+  ...
+  2026-10-09T10:40:32  session_end                (lead)  status=done
 ```
 
 The same session is what a trace exporter sends when you enable one: a `docket.session` span

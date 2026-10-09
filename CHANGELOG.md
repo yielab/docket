@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a finding (`docket task FOO`), not a placeholder, and the rest of a `<a|b>` line must fit at
   least one of the named verbs (`docket pod <apply|export> a b c` is a finding). `init` is no
   longer exempt: its options are on the live tree.
+  A header in the plain console voice (`docket - Apply plan myapp`, what a piped command prints)
+  is output, not an invocation, inside a fenced block too.
 
 ### Fixed
 
@@ -60,7 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `governance.png` show the plain console voice a transcript carries (`ok`, `->`, `!`), the
   new `pod show` and `log verify` output, and the gate scene shows the Lead's parked consultation
   answered with `task answer` before the Implementer's push parks under `high-risk-deploy`.
-  The renderer colours the plain-voice prefixes; `docs/assets/README.md` records the run.
+  The renderer colours the plain-voice prefixes; `docs/assets/README.md` records the run. The
+  quick start's output blocks are refreshed from the same run (plain voice, stated up front),
+  the workflow guide's dispatch and trace samples match the current lines, and the quick start,
+  agent-teams and security guides embed the two still images where they apply.
 - **Documentation describes the eleven-command surface in prose, not only in code spans.**
   `docs/AGENT-TEAMS.md`, `WORKFLOW-GUIDE.md`, `CONFIGURATION.md`, `DOCKET.md`,
   `SECURITY-SIMPLE.md`, `troubleshooting.md`, the docs index and one CONTRIBUTING line no

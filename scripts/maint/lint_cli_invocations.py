@@ -31,6 +31,7 @@ STOP_WORDS = {"|", "||", "&&", ";", "#", ">", ">>", "<", "2>", "2>&1", "\\"}
 HELP = {"-h", "--help"}
 # Printed output and quoted literals that open with the word docket, not commands.
 OUTPUT_LITERALS = (
+    "docket - ",  # a header in the plain console voice ("docket - Apply plan myapp")
     "docket smoke ok",
     "docket release journey ok",
     "docket starter approved",
@@ -41,6 +42,7 @@ OUTPUT_LITERALS = (
 RECORD_HEADING = "## Changelog"
 PLANTED = (
     ("docket task list --retry", True),
+    ("docket - Apply plan myapp <- .../templates/recipes/secure-build", False),
     ("docket status <agent>", True),
     ("docket setup sandbox isolate on", True),
     ("docket task FOO", True),
@@ -79,7 +81,7 @@ def invocations(line: str, in_fence: bool) -> list[str]:
         text = text[2:] if text.startswith("$ ") else text
         if text.startswith("docket ") or text == "docket":
             found.append(text)
-        return found
+        return [f for f in found if not f.startswith(OUTPUT_LITERALS)]
     for span in SPAN.findall(line):
         s = span.strip()
         if s.startswith("docket ") or s == "docket":

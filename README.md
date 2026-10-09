@@ -135,7 +135,7 @@ still varies run to run; a 16k-context endpoint is the honest integration test.
 ## The gate and the record
 
 <p align="center">
-  <img src="docs/assets/governance.png" alt="Real terminal output: an Implementer's git push origin production is held for approval by the high-risk-deploy policy, the hop parks for approval and nothing executes; the audit chain then verifies clean" width="820">
+  <img src="docs/assets/governance.png" alt="Real terminal output: the Lead parks a question and the operator answers it with docket task answer; then the Implementer's git push origin production is held by the high-risk-deploy policy, the hop parks for approval and nothing executes; the audit chain verifies clean" width="820">
 </p>
 
 Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
@@ -144,6 +144,8 @@ CLI, HTTP, MCP or Telegram; the budget is checked before every hop. An unattende
 `docket inbox` shows what needs you, and a `kind: channel` you enable (`desktop`, `ntfy`,
 `telegram`, a webhook) tells you; console alone tells nobody, and `docket setup` says so.
 Neither ever decides.
+The capture above shows both pauses from one real run: the Lead parked a question, answered
+with `docket task answer`; then the Implementer's push parked for approval.
 `docket log verify` checks the hash chain over every verdict, approval, execution.
 `docket task trace <id>` shows a run step-by-step; a `kind: exporter` sends it to OpenTelemetry or
 Langfuse, structure-only unless widened. `docket status` reports measured tokens and never a

@@ -274,6 +274,10 @@ stripped from their environment.
 
 ### The operator loop: how you find out, and how you answer (Phase 34, D-50)
 
+<p align="center">
+  <img src="assets/governance.png" alt="Real terminal output: the Lead parks a question that docket task answer resolves; the Implementer's git push origin production parks the task for approval under high-risk-deploy; the audit log shows tool.ask, the trace shows the denial with executed false, and the chain verifies clean" width="760">
+</p>
+
 - **A parked task is not a silent one.** `docket inbox` (also `GET /inbox`, the MCP `inbox`
   tool, and Telegram's `/status`) is a live, read-only view — every pod's tasks and pending
   approvals sorted into needs-you, failed, done-since-last-look and running — computed fresh each
