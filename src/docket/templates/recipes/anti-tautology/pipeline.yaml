@@ -17,9 +17,12 @@ steps:
       python3 -c '
       import fnmatch, os, shlex, shutil, subprocess, sys, tempfile
       base = os.environ.get("DOCKET_BASE_COMMIT", "")
-      head = os.environ.get("DOCKET_HEAD_COMMIT") or "HEAD"
+      head = os.environ.get("DOCKET_HEAD_COMMIT", "")
       if not base:
           print("anti-tautology: no base commit (the build step produced no evidence)")
+          sys.exit(1)
+      if not head:
+          print("anti-tautology: no head commit (the work of the build step was not pinned in a commit)")
           sys.exit(1)
       globs = os.environ.get("ANTI_TAUTOLOGY_GLOB", "test_*.py,*_test.py").split(",")
       runner = shlex.split(os.environ.get("ANTI_TAUTOLOGY_RUNNER", "python3 -m pytest -q"))

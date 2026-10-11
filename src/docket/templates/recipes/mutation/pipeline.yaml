@@ -18,9 +18,12 @@ steps:
       python3 -c '
       import fnmatch, json, os, shlex, shutil, subprocess, sys
       base = os.environ.get("DOCKET_BASE_COMMIT", "")
-      head = os.environ.get("DOCKET_HEAD_COMMIT") or "HEAD"
+      head = os.environ.get("DOCKET_HEAD_COMMIT", "")
       if not base:
           print("mutation: no base commit (the build step produced no evidence)")
+          sys.exit(1)
+      if not head:
+          print("mutation: no head commit (the work of the build step was not pinned in a commit)")
           sys.exit(1)
       threshold = float(os.environ.get("MUTATION_THRESHOLD", "80"))
       tool = shlex.split(os.environ.get("MUTATION_CMD", "mutmut"))

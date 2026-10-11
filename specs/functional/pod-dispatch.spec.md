@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.36.3
+**Version**: 6.37.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-10
 
 ## Purpose
 
@@ -1326,8 +1326,11 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 
 1. Before a top-level step's gate or hop runs, dispatch **MUST** evaluate its `when` (if any,
    `core/dispatch.py`'s `_step_skipped`), called ahead of `_execute_unit`: `changed` matches when
-   any path from `edges.adapters.system.git_changed_files` (of the latest successful
-   Implementer's worktree, or the pod Lead's own codebase when there is none) matches the glob;
+   any path matches the glob among the paths changed between the latest `ok` Implementer hop's
+   evidence `baseCommit` and `commit` (`edges.adapters.system.git_diff_names`) together with the
+   uncommitted paths `edges.adapters.system.git_changed_files` reports (of the latest successful
+   Implementer's worktree, or the pod Lead's own codebase when there is none), because the hop's
+   own work is committed by then ("Task worktrees" requirement 8);
    `var`/`is` compares this run's resolved pipeline variable namespace (stringified) against the
    given value; `memberPresent` checks the role against `pod_full_roster`. Every predicate set on
    the step **MUST** be ANDed. A false predicate **MUST** emit a `step_skipped` trace event
@@ -1590,8 +1593,11 @@ any CLI rendering of this evidence.*
    whose diff probe runs (`hop_ok` true), `_implementer_diff_probe` **MUST** always return an
    `evidence` dict with exactly these keys, each independently `None` rather than the whole dict
    collapsing to `None`:
-   - `commit` (`str | None`): the resolved working tree's HEAD sha (`edges/adapters/system.py`'s
-     `git_head_sha`), 40 hex characters when present.
+   - `commit` (`str | None`): the commit that holds the hop's work, pinned at the close of the
+     hop ("Task worktrees" requirement 8), 40 hex characters when present; `None` when pinning
+     failed. It is never the bare HEAD of a tree with uncommitted work: an Implementer normally
+     leaves its work uncommitted, and that HEAD is the base, so every check reading `commit`
+     would see no change.
    - `baseCommit` (`str | None`): for a task with a recorded worktree, the `baseCommit` recorded
      on `task["worktree"]` at claim (the codebase HEAD the task branch was created from), so a
      task's `diffStat` never includes another task's commits. For a task that runs in place, the
@@ -1599,8 +1605,9 @@ any CLI rendering of this evidence.*
      (`git_current_branch` on `codebase`, then `git_merge_base` on the resolved directory against
      that branch name).
    - `diffStat` (`dict | None`): `{"files": int, "insertions": int, "deletions": int}` from
-     `git_diff_stat(cwd, baseCommit)`, which diffs `baseCommit` against `cwd`'s current state
-     (`git diff --shortstat`), or `None` when `baseCommit` is `None`.
+     `git_diff_stat(cwd, baseCommit, commit)`, which diffs `baseCommit` against `commit` (`git
+     diff --shortstat`), so the stat and the commit describe the same change; `None` when either
+     is `None`.
    Each of `git_head_sha`/`git_merge_base`/`git_diff_stat` **MUST** degrade to `None` — never raise
    — on a missing `git` binary, a non-repository directory, an unresolvable ref, or a timeout, the
    same degrade-to-empty convention `git_changed_files`/`git_current_branch` already use for
@@ -1672,6 +1679,27 @@ any CLI rendering of this evidence.*
    `force` removes the worktree regardless, deletes the branch only when merged (an unmerged
    branch is kept and reported), and writes a `pod.worktrees.prune` audit entry. `dry_run` changes
    nothing. A removal records `worktree.prunedAt` through the task-list writer (`edges/store.py`).
+8. When an Implementer hop ends `ok`, dispatch **MUST** pin the hop's working tree in a commit
+   before reading its evidence (`core/dispatch.py::_implementer_diff_probe`), so the evidence
+   `commit`, `DOCKET_HEAD_COMMIT`, the `diffStat` and the task branch all hold the work the agent
+   left, committed or not. The paths `files_changed` reports are read before pinning.
+   - A task with a recorded worktree `dir`: every change in it, untracked files included and
+     `.gitignore` respected, **MUST** be committed on the task branch
+     (`edges.adapters.system.git_commit_all`), so `git merge <branch>` (the command `docket task
+     show` prints) brings the work and `docket task prune` keeps the worktree until that branch
+     is merged. The commit's subject is the task description's first line (else `docket task
+     <id>`),
+     its body names the task id and the hop; it runs with repository hooks and commit signing
+     disabled (bookkeeping, not a gate), as the operator's git identity, else `docket
+     <docket@localhost>`. A tree with nothing to commit **MUST NOT** get a commit; `commit` is
+     then its HEAD.
+   - A task that runs in place: the tree **MUST** be pinned in a snapshot commit parented on HEAD
+     through a temporary index (`edges.adapters.system.git_snapshot_commit`), leaving the index,
+     the branch and the working tree untouched; a tree equal to HEAD's yields HEAD itself.
+   - A failure of either **MUST** leave `commit` `None` (never the unpinned HEAD), so a check
+     step receives an empty `DOCKET_HEAD_COMMIT` and fails instead of comparing the base to
+     itself. The shipped `anti-tautology` and `mutation` recipes **MUST** fail on an empty
+     `DOCKET_HEAD_COMMIT`.
 
 ### Downstream worktree continuity
 
@@ -2076,6 +2104,17 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.37.0 (2026-10-10)
+
+- An `ok` Implementer hop's tree is pinned in a commit before its evidence is read ("Task
+  worktrees" 8): committed on the task branch in a worktree, a snapshot commit in place. Before
+  this, an Implementer that left its work uncommitted (the normal case, found in two real tasks)
+  recorded the base as `commit`: check recipes compared the base to itself and passed, `docket
+  task show`'s merge command was a no-op, and the COMMIT column contradicted `diffStat`.
+- `diffStat` diffs `baseCommit` against `commit`, not the working tree ("Hop evidence" 3); the
+  `changed` predicate reads that diff plus the uncommitted paths ("Conditional steps and command
+  steps" 1). The `anti-tautology` and `mutation` recipes fail on an empty `DOCKET_HEAD_COMMIT`.
 
 ### Version 6.36.3 (2026-10-08)
 

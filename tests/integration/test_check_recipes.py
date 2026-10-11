@@ -8,8 +8,10 @@ and commits files in the root it is handed, so the checks run against genuine gi
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,10 +51,11 @@ def _run_command(recipe: str) -> str:
 
 
 class _FilesRunner:
-    """The Implementer hop writes ``files`` into its root and commits them."""
+    """The Implementer hop writes ``files`` into its root and commits them unless told not to."""
 
-    def __init__(self, files: dict[str, str]) -> None:
+    def __init__(self, files: dict[str, str], *, commit: bool = True) -> None:
         self.files = files
+        self.commit = commit
 
     def __call__(
         self,
@@ -66,8 +69,9 @@ class _FilesRunner:
             root = Path((env or {})[PIPELINE_WORKTREE_ENV])
             for name, body in self.files.items():
                 (root / name).write_text(body)
-            _git(root, "add", ".")
-            _git(root, "commit", "-m", "implementer work")
+            if self.commit:
+                _git(root, "add", ".")
+                _git(root, "commit", "-m", "implementer work")
         return TurnResult(True, "done", 0.0, {})
 
 
@@ -112,6 +116,40 @@ def test_a_test_that_already_passes_on_the_base_fails_the_task(
     assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
 
 
+def test_an_uncommitted_test_that_already_passes_on_the_base_fails_the_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _repo_with_module(tmp_path, monkeypatch)
+    _bind_pipeline(_anti_tautology_with_this_interpreter())
+    _dispatch.enqueue_task("demo", "work")
+    runner = _FilesRunner(
+        {"test_mod.py": "from mod import f\n\n\ndef test_f():\n    assert f() == 1\n"},
+        commit=False,
+    )
+
+    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+
+    assert res.status == "failed"
+    hops = _dispatch.read_tasks("demo")[0]["hops"]
+    assert "do not test the change" in "".join(h.get("output", "") for h in hops)
+
+
+@pytest.mark.parametrize("recipe", ["anti-tautology", "mutation"])
+def test_the_recipe_fails_without_a_head_commit(
+    recipe: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo_with_module(tmp_path, monkeypatch)
+    base = _git(repo, "rev-parse", "HEAD")
+    env = {**os.environ, "DOCKET_BASE_COMMIT": base, "DOCKET_HEAD_COMMIT": ""}
+
+    done = subprocess.run(
+        _run_command(recipe), shell=True, cwd=repo, env=env, capture_output=True, text=True
+    )
+
+    assert done.returncode == 1
+    assert "no head commit" in done.stdout
+
+
 def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -150,8 +188,6 @@ def test_no_changed_test_file_passes_the_step_trivially(
 def test_the_mutation_step_scores_only_the_changed_source_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import os
-
     tool = os.environ.get("MUTATION_CMD", "mutmut")
     if shutil.which(shlex.split(tool)[0]) is None:
         pytest.skip("mutmut is not installed (pip install mutmut); the recipe needs it")

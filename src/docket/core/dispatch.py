@@ -934,7 +934,7 @@ def _implementer_diff_probe(
     independently ``None`` (never raising) when git is missing, the checkout is not a repo,
     or no base commit can be resolved. ``baseCommit`` is the task worktree's recorded creation
     commit; an in-place task falls back to the merge-base with the codebase's current branch.
-    See pod-dispatch.spec.md, "Hop evidence"."""
+    ``commit`` is ``_pin_implementer_tree``'s. See pod-dispatch.spec.md, "Hop evidence"."""
     if role != "implementer":
         return [], None, None
     task_dir = _task_worktree_dir(task)
@@ -944,7 +944,7 @@ def _implementer_diff_probe(
         return [], None, {"commit": None, "baseCommit": None, "diffStat": None}
     files_changed = _sys.git_changed_files(cwd)
     diff_ref = _sys.git_current_branch(cwd) or None
-    commit = _sys.git_head_sha(cwd)
+    commit = _pin_implementer_tree(cwd, task, in_worktree=bool(task_dir))
     recorded = task.get("worktree")
     base_commit: str | None = None
     if task_dir and isinstance(recorded, dict):
@@ -952,9 +952,22 @@ def _implementer_diff_probe(
     else:
         base_branch = _sys.git_current_branch(member_codebase or cwd) or None
         base_commit = _sys.git_merge_base(cwd, base_branch) if base_branch else None
-    diff_stat = _sys.git_diff_stat(cwd, base_commit) if base_commit else None
+    diff_stat = _sys.git_diff_stat(cwd, base_commit, commit) if base_commit and commit else None
     evidence = {"commit": commit, "baseCommit": base_commit, "diffStat": diff_stat}
     return files_changed, diff_ref, evidence
+
+
+def _pin_implementer_tree(cwd: str, task: dict[str, Any], *, in_worktree: bool) -> str | None:
+    """Pin the tree an Implementer hop left in a commit and return its sha, ``None`` on failure:
+    committed on the task branch in a task worktree, a branchless snapshot in place. An agent
+    normally leaves its work uncommitted, and HEAD alone would then be the base commit."""
+    task_id = str(task.get("id") or "")
+    first_line = str(task.get("description") or "").strip().split("\n", 1)[0].strip()
+    subject = first_line[:72] or f"docket task {task_id}"
+    message = f"{subject}\n\ndocket task {task_id}, implementer hop"
+    if in_worktree:
+        return _sys.git_commit_all(cwd, message)
+    return _sys.git_snapshot_commit(cwd, message)
 
 
 def _hop_record(h: HopResult) -> dict[str, Any]:
@@ -2232,6 +2245,10 @@ def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopRes
     if "changed" in when:
         cwd = _when_cwd(ctx, prior)
         changed_files = _sys.git_changed_files(cwd) if cwd else []
+        evidence = _latest_implementer_evidence(prior)
+        base, head = evidence.get("baseCommit"), evidence.get("commit")
+        if cwd and base and head:
+            changed_files += _sys.git_diff_names(cwd, str(base), str(head))
         pattern = str(when["changed"])
         matched = matched and any(_fnmatch.fnmatch(path, pattern) for path in changed_files)
     if "var" in when:
@@ -2251,17 +2268,21 @@ def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopRes
     return True
 
 
+def _latest_implementer_evidence(prior: list[HopResult]) -> dict[str, Any]:
+    """The evidence of the latest successful Implementer hop in *prior*, ``{}`` when none."""
+    for hop in reversed(prior):
+        if hop.role == "implementer" and hop.ok and hop.evidence is not None:
+            return hop.evidence
+    return {}
+
+
 def _task_command_env(
     ctx: _UnitContext, prior: list[HopResult], step_env: dict[str, str] | None = None
 ) -> dict[str, str]:
     """A command step's environment: the step's own ``env`` under the task's coordinates -- its
     id, and the base and head commits of the latest successful Implementer hop's evidence
     (empty strings when there is none). The coordinates always win."""
-    evidence: dict[str, Any] = {}
-    for hop in reversed(prior):
-        if hop.role == "implementer" and hop.ok and hop.evidence is not None:
-            evidence = hop.evidence
-            break
+    evidence = _latest_implementer_evidence(prior)
     return {
         **(step_env or {}),
         "DOCKET_TASK_ID": ctx.task_id,

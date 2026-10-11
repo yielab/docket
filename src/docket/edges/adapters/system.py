@@ -15,8 +15,10 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -910,15 +912,15 @@ _SHORTSTAT_INSERTIONS = re.compile(r"(\d+) insertions?\(\+\)")
 _SHORTSTAT_DELETIONS = re.compile(r"(\d+) deletions?\(-\)")
 
 
-def git_diff_stat(cwd: str, base: str) -> dict[str, int] | None:
-    """Return ``{"files", "insertions", "deletions"}`` diffing `base` against `cwd`'s current
-    state (``git diff --shortstat``), or ``None`` if not a repo, `base` is missing, or git is
-    unavailable; an empty summary (no changes) reports all-zero counts, not ``None``."""
+def git_diff_stat(cwd: str, base: str, head: str | None = None) -> dict[str, int] | None:
+    """Return ``{"files", "insertions", "deletions"}`` diffing `base` against `head`, else against
+    `cwd`'s current state (``git diff --shortstat``), or ``None`` if not a repo, a ref is missing,
+    or git is unavailable; an empty summary (no changes) reports all-zero counts, not ``None``."""
     if not git_available():
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", cwd, "diff", "--shortstat", base],
+            ["git", "-C", cwd, "diff", "--shortstat", base, *([head] if head else [])],
             capture_output=True,
             text=True,
             timeout=_QUERY_TIMEOUT,
@@ -953,3 +955,108 @@ def git_diff(path: str, base: str) -> str | None:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     return result.stdout if result.returncode == 0 else None
+
+
+def git_diff_names(cwd: str, base: str, head: str) -> list[str]:
+    """Paths changed between `base` and `head` (``git diff --name-only``), sorted; ``[]`` on a
+    missing binary, non-repo directory, unknown ref, or timeout."""
+    if not git_available():
+        return []
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "diff", "--name-only", base, head],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    return sorted(line for line in result.stdout.splitlines() if line.strip())
+
+
+_PIN_TIMEOUT = 60
+# Repository hooks and signing stay off: a pin is bookkeeping, and a hook is the codebase's own
+# code, which docket never runs on the host outside a gate.
+_PIN_CONFIG = ("-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false")
+
+
+def _pin_env(cwd: str) -> dict[str, str]:
+    """The environment for a pin commit: the operator's git identity, else ``docket``."""
+    identity = {
+        "GIT_AUTHOR_NAME": "docket",
+        "GIT_AUTHOR_EMAIL": "docket@localhost",
+        "GIT_COMMITTER_NAME": "docket",
+        "GIT_COMMITTER_EMAIL": "docket@localhost",
+    }
+    return {**os.environ, **identity, **git_identity_env(Path(cwd))}
+
+
+def _pin_git(
+    cwd: str, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", cwd, *_PIN_CONFIG, *args],
+            capture_output=True,
+            text=True,
+            timeout=_PIN_TIMEOUT,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def git_commit_all(cwd: str, message: str) -> str | None:
+    """Commit every change in `cwd`'s tree (``git add -A``, so untracked files too and
+    ``.gitignore`` respected) on its current branch and return the new HEAD sha; a tree with
+    nothing to commit returns HEAD unchanged. ``None`` on any failure, never raising."""
+    if not git_available():
+        return None
+    env = _pin_env(cwd)
+    added = _pin_git(cwd, "add", "-A", env=env)
+    if added is None or added.returncode != 0:
+        return None
+    staged = _pin_git(cwd, "diff", "--cached", "--quiet", env=env)
+    if staged is None or staged.returncode not in (0, 1):
+        return None
+    if staged.returncode == 1:
+        done = _pin_git(cwd, "commit", "--no-verify", "-q", "-m", message, env=env)
+        if done is None or done.returncode != 0:
+            return None
+    return git_head_sha(cwd)
+
+
+def git_snapshot_commit(cwd: str, message: str) -> str | None:
+    """Pin `cwd`'s whole tree (untracked too, ``.gitignore`` respected) in a branchless commit on
+    HEAD through a temporary index, leaving index, branch and working tree untouched; HEAD itself
+    when the tree is HEAD's, ``None`` on any failure."""
+    head = git_head_sha(cwd)
+    if head is None:
+        return None
+    env = _pin_env(cwd)
+    index_path = _pin_git(cwd, "rev-parse", "--path-format=absolute", "--git-path", "index")
+    with tempfile.TemporaryDirectory(prefix="docket-pin-") as tmp:
+        index = os.path.join(tmp, "index")
+        env["GIT_INDEX_FILE"] = index
+        real_index = index_path.stdout.strip() if index_path and index_path.returncode == 0 else ""
+        if real_index and os.path.isfile(real_index):
+            # A copy keeps the stat cache, so only files that changed are hashed again.
+            shutil.copyfile(real_index, index)
+        else:
+            read = _pin_git(cwd, "read-tree", "HEAD", env=env)
+            if read is None or read.returncode != 0:
+                return None
+        added = _pin_git(cwd, "add", "-A", ":/", env=env)
+        tree = _pin_git(cwd, "write-tree", env=env)
+        if added is None or added.returncode != 0 or tree is None or tree.returncode != 0:
+            return None
+    tree_sha = tree.stdout.strip()
+    head_tree = _pin_git(cwd, "rev-parse", "HEAD^{tree}")
+    if head_tree is not None and head_tree.stdout.strip() == tree_sha:
+        return head
+    done = _pin_git(cwd, "commit-tree", tree_sha, "-p", head, "-m", message, env=env)
+    if done is None or done.returncode != 0:
+        return None
+    return done.stdout.strip() or None

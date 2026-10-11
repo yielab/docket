@@ -51,6 +51,19 @@ steps:
     run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
 """
 
+_CHANGED_PIPELINE_YAML = """\
+name: changed
+steps:
+  - id: lead
+    role: lead
+  - id: implementer
+    role: implementer
+  - id: on-text
+    when:
+      changed: "*.txt"
+    run: 'echo ran'
+"""
+
 _NO_IMPLEMENTER_PIPELINE_YAML = """\
 name: no-implementer
 steps:
@@ -122,6 +135,33 @@ class _Runner:
             _git(root, "add", ".")
             _git(root, "commit", "-m", f"add {self.filename}")
         return TurnResult(True, "done", 0.0, {})
+
+
+class _UncommittedRunner:
+    """Implementer hops write files into their root and leave them uncommitted, as a real agent does."""
+
+    def __init__(self, files: dict[str, str]) -> None:
+        self.files = files
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> TurnResult:
+        if agent_id.endswith("-implementer"):
+            root = Path(
+                (env or {}).get(PIPELINE_WORKTREE_ENV) or _fleet.meta_get(agent_id, "codebase")
+            )
+            for name, body in self.files.items():
+                (root / name).write_text(body)
+        return TurnResult(True, "done", 0.0, {})
+
+
+def _implementer_hop(task: dict[str, Any]) -> dict[str, Any]:
+    return next(h for h in task["hops"] if h["role"] == "implementer")
 
 
 def _plain_runner(
@@ -324,3 +364,122 @@ def test_a_command_step_without_an_implementer_hop_gets_empty_commits(
     assert res.status == "done", res.reason
     command = next(h for h in _dispatch.read_tasks("demo")[0]["hops"] if h["role"] == "coordinates")
     assert command["output"].strip() == f"id={queued['id']} base= head="
+
+
+def test_uncommitted_work_is_committed_on_the_task_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _dispatch.enqueue_task("demo", "Add the notes file")
+
+    runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
+    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+
+    assert res.status == "done", res.reason
+    task = _dispatch.read_tasks("demo")[0]
+    record = task["worktree"]
+    hop = _implementer_hop(task)
+    evidence = hop["evidence"]
+    assert evidence["commit"] != evidence["baseCommit"] == record["baseCommit"]
+    assert evidence["commit"] == _git(repo, "rev-parse", record["branch"])
+    assert _git(repo, "log", "-1", "--format=%s", record["branch"]) == "Add the notes file"
+    assert evidence["diffStat"] == {"files": 2, "insertions": 2, "deletions": 1}
+    assert hop["artifact"]["files_changed"] == ["README.md", "notes.txt"]
+    assert _git(Path(record["dir"]), "status", "--porcelain") == ""
+    _git(repo, "merge", record["branch"])
+    assert (repo / "notes.txt").read_text() == "new\n"
+
+
+def test_an_unmerged_pinned_task_survives_prune_without_force(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _dispatch.enqueue_task("demo", "work")
+    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"only-new.txt": "x\n"}), max_tasks=1)
+
+    (entry,) = _pp.prune_task_worktrees("demo")
+
+    assert entry.action == "kept"
+    assert "not merged" in entry.reason
+    assert Path(_dispatch.read_tasks("demo")[0]["worktree"]["dir"], "only-new.txt").is_file()
+
+
+def test_a_hop_that_changed_nothing_adds_no_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _dispatch.enqueue_task("demo", "work")
+
+    _dispatch.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
+
+    task = _dispatch.read_tasks("demo")[0]
+    evidence = _implementer_hop(task)["evidence"]
+    assert evidence["commit"] == evidence["baseCommit"]
+    assert _git(repo, "rev-parse", task["worktree"]["branch"]) == evidence["baseCommit"]
+
+
+def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _fleet.meta_set("demo-implementer", "inPlace", True)
+    head = _git(repo, "rev-parse", "HEAD")
+    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+    _dispatch.enqueue_task("demo", "work")
+
+    runner = _UncommittedRunner({"README.md": "changed\n", "notes.txt": "new\n"})
+    (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
+
+    assert res.status == "done", res.reason
+    task = _dispatch.read_tasks("demo")[0]
+    evidence = _implementer_hop(task)["evidence"]
+    assert evidence["baseCommit"] == head != evidence["commit"]
+    assert _git(repo, "show", f"{evidence['commit']}:notes.txt") == "new"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert _git(repo, "diff", "--name-only") == "README.md"
+    assert _git(repo, "ls-files", "--others") == "notes.txt"
+    command = next(h for h in task["hops"] if h["role"] == "coordinates")
+    assert f"head={evidence['commit']}" in command["output"]
+
+
+def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _bind_pipeline(_CHANGED_PIPELINE_YAML)
+    _dispatch.enqueue_task("demo", "work")
+
+    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
+
+    assert [h["role"] for h in _dispatch.read_tasks("demo")[0]["hops"]][-1] == "on-text"
+
+
+def test_a_failed_pin_records_no_commit_and_an_empty_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _seed_pod(tmp_path, monkeypatch, repo)
+    _bind_pipeline(_COORDINATES_PIPELINE_YAML)
+    monkeypatch.setattr(_sys, "git_commit_all", lambda *_a, **_k: None)
+    queued = _dispatch.enqueue_task("demo", "work")
+
+    _dispatch.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
+
+    task = _dispatch.read_tasks("demo")[0]
+    evidence = _implementer_hop(task)["evidence"]
+    assert evidence["commit"] is None
+    assert evidence["diffStat"] is None
+    command = next(h for h in task["hops"] if h["role"] == "coordinates")
+    assert command["output"].strip() == (f"id={queued['id']} base={evidence['baseCommit']} head=")

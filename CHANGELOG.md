@@ -48,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowlist beside `python3`; the `allowCommands` examples now use `uv,tox`.
 - **`docket exec --model`** documents that `PROVIDER` selects no endpoint under
   `DOCKET_LLM_BASE_URL` and only names the `<PROVIDER>_API_KEY` fallback credential.
+- **An Implementer's uncommitted work is now what the checks and the merge see.** An agent
+  normally leaves its work uncommitted, and docket recorded the task worktree's HEAD -- the base
+  commit -- as the hop's `commit`. So the `anti-tautology` and `mutation` recipes diffed the base
+  against itself and passed ("nothing to check"), the `git merge <branch>` that `docket task
+  show` prints was "Already up to date", the COMMIT column contradicted `diffStat`, and `docket
+  task prune` removed (without `--force`) a worktree whose only work was new files. When an
+  Implementer hop ends ok, docket now commits its tree on the task branch (hooks and signing off,
+  the operator's identity else `docket`), or pins it in a branchless snapshot commit for an
+  in-place task; `diffStat` diffs the base against that commit, the `changed` predicate reads
+  it, and both recipes fail on an empty `DOCKET_HEAD_COMMIT` (pod-dispatch spec 6.37.0).
+
 - **`docket status` knows a parked question and the sandbox.** `status --json` carries
   `tasks.waitingInput`, a pod holding a `waiting_input` task is `waiting` (it stayed `ready`
   while `inbox` showed the question), the `Tasks:` line reads `N waiting input`, and the
