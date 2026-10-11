@@ -1958,7 +1958,7 @@ class TestAllowCommandsWiring:
 
     def test_a_pod_member_sees_its_leads_configured_setting(self) -> None:
         _write_meta("shop-implementer")
-        _write_meta("shop-lead", role="lead", allowCommands="pytest,uv")
+        _write_meta("shop-lead", role="lead", allowCommands="tox,uv")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend,
@@ -1969,11 +1969,11 @@ class TestAllowCommandsWiring:
 
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
-        assert tool_msg.content == "allow_commands=pytest,uv"
+        assert tool_msg.content == "allow_commands=tox,uv"
 
     def test_a_member_of_a_different_pod_sees_no_extra_bins(self) -> None:
         _write_meta("shop-implementer")
-        _write_meta("shop-lead", role="lead", allowCommands="pytest,uv")
+        _write_meta("shop-lead", role="lead", allowCommands="tox,uv")
         _write_meta("other-implementer")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
@@ -1999,7 +1999,7 @@ class TestAllowCommandsWiring:
             lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
         )
         _write_meta("shop-implementer")
-        _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="pytest")
+        _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="tox")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
         driver = DocketDriver(
             backend_factory=lambda model: backend,

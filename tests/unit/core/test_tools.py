@@ -9,6 +9,7 @@ containment holds at the handler as well as at the chokepoint.
 from __future__ import annotations
 
 import ast
+import json
 import time
 from pathlib import Path
 from typing import ClassVar
@@ -29,6 +30,7 @@ from docket.core.tools import (
     ToolResult,
     builtin_registry,
     dispatch_tool,
+    evaluate_tool_call,
 )
 from docket.edges.adapters import toolbox
 from docket.edges.adapters.toolbox import PathEscapeError, ToolOutcome, resolve_within
@@ -157,11 +159,88 @@ class TestCommandClassifierIsArgumentAware:
 
     def test_echo_redirect_verdict_is_not_weakened_by_the_allowlist_change(self) -> None:
         """Adding `echo` to SAFE_BINS must not turn a redirected invocation into an
-        unattended write: both targets still ask, for the identical reason."""
+        unattended write: with no workspace to contain it, both targets still ask."""
         for command in ("echo x > f", "echo x > /etc/passwd"):
             verdict = classify_command(command)
             assert verdict.action == "ask", command
             assert verdict.reason == "'echo' is not on the curated allowlist", command
+
+    @pytest.mark.parametrize(
+        "command", ["pytest -q", "pytest tests/unit -x", "python -m pytest", "python script.py"]
+    )
+    def test_the_test_runner_and_the_bare_interpreter_are_allowlisted(self, command: str) -> None:
+        """`pytest` runs the same code `python3 -m pytest` does, so both verdicts agree."""
+        assert classify_command(command).action == "allow"
+
+
+class TestRedirectsIntoTheWorkspace:
+    """A redirect-sensitive binary writing through `>`/`>>` to a path that resolves inside the
+    workspace is the `write` tool by another name; any target docket cannot place stays an ask."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "echo hello > notes.txt",
+            "echo hello >> notes.txt",
+            "echo hello > src/new.py",
+            "echo 'two words' > 'my notes.txt'",
+            "mkdir -p out && echo x > out/a.txt",
+        ],
+    )
+    def test_a_target_inside_the_workspace_is_allowed(self, workspace: Path, command: str) -> None:
+        verdict = classify_command(command, roots=(workspace,))
+        assert verdict.action == "allow", command
+
+    def test_an_absolute_target_inside_the_workspace_is_allowed(self, workspace: Path) -> None:
+        verdict = classify_command(f"echo x > {workspace / 'abs.txt'}", roots=(workspace,))
+        assert verdict.action == "allow"
+
+    @pytest.mark.parametrize(
+        "target", ["../escape.txt", "/etc/passwd", "~/x.txt", "$HOME/x.txt", "*.txt", "/dev/null"]
+    )
+    def test_a_target_outside_or_unresolvable_asks(self, workspace: Path, target: str) -> None:
+        verdict = classify_command(f"echo x > {target}", roots=(workspace,))
+        assert verdict.action == "ask", target
+        assert verdict.bin_name == "echo"
+
+    def test_a_symlink_that_leaves_the_workspace_asks(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
+        outside = tmp_path.parent / f"{tmp_path.name}-outside"
+        outside.mkdir()
+        (workspace / "link").symlink_to(outside)
+        assert classify_command("echo x > link/a.txt", roots=(workspace,)).action == "ask"
+
+    def test_an_earlier_cd_makes_a_relative_target_unplaceable(self, workspace: Path) -> None:
+        assert classify_command("cd src && echo x > a.txt", roots=(workspace,)).action == "ask"
+
+    def test_a_descriptor_copy_opens_no_file(self, workspace: Path) -> None:
+        assert classify_command("echo x > out.txt 2>&1", roots=(workspace,)).action == "allow"
+
+    @pytest.mark.parametrize(
+        "command", ["echo x >& ../a.txt", "echo x >| ../a.txt", "echo x &>> ../a"]
+    )
+    def test_every_output_redirect_spelling_is_seen(self, workspace: Path, command: str) -> None:
+        """`>&`, `>|` and `&>>` open a file like `>` does; before they were not recognised at
+        all, so a bare `echo x >& /etc/x` ran unattended."""
+        assert classify_command(command, roots=(workspace,)).action == "ask", command
+        assert classify_command(command).action == "ask", command
+
+    def test_without_roots_every_prior_verdict_stands(self) -> None:
+        assert classify_command("echo x > notes.txt").action == "ask"
+
+    def test_a_pod_extra_bin_gets_the_same_containment(self, workspace: Path) -> None:
+        extra = frozenset({"tox"})
+        assert classify_command("tox -q > out.txt", extra, roots=(workspace,)).action == "allow"
+        assert classify_command("tox -q > ../out.txt", extra, roots=(workspace,)).action == "ask"
+
+    def test_the_live_gate_passes_the_context_roots(self, ctx: ToolContext) -> None:
+        bash_tool = builtin_registry().get("bash")
+        assert bash_tool is not None
+        inside = evaluate_tool_call(bash_tool, {"command": "echo x > notes.txt"}, ctx)
+        assert inside.decision == "allow"
+        outside = evaluate_tool_call(bash_tool, {"command": "echo x > ../notes.txt"}, ctx)
+        assert outside.decision == "ask"
 
 
 class TestExtraBinsExtendTheAllowlist:
@@ -169,29 +248,29 @@ class TestExtraBinsExtendTheAllowlist:
     live path. Default empty leaves every prior verdict byte-identical."""
 
     def test_default_is_identical_to_omitting_the_argument(self) -> None:
-        assert classify_command("pytest -q") == classify_command("pytest -q", frozenset())
+        assert classify_command("tox -q") == classify_command("tox -q", frozenset())
 
     def test_without_the_setting_an_offlist_binary_still_asks(self) -> None:
-        assert classify_command("pytest -q").action == "ask"
+        assert classify_command("tox -q").action == "ask"
 
     def test_an_extra_bin_runs_unattended(self) -> None:
-        extra = frozenset({"pytest", "uv"})
-        assert classify_command("pytest -q", extra).action == "allow"
-        assert classify_command("uv run pytest", extra).action == "allow"
+        extra = frozenset({"tox", "uv"})
+        assert classify_command("tox -q", extra).action == "allow"
+        assert classify_command("uv run tox", extra).action == "allow"
 
     def test_a_high_risk_segment_still_asks_alongside_an_extra_bin(self) -> None:
-        extra = frozenset({"pytest", "uv"})
-        verdict = classify_command("uv run pytest && git push origin main", extra)
+        extra = frozenset({"tox", "uv"})
+        verdict = classify_command("uv run tox && git push origin main", extra)
         assert verdict.action == "ask"
         assert verdict.risk_class == "prod-deploy"
 
     def test_an_extra_bin_is_redirect_sensitive(self) -> None:
-        verdict = classify_command("pytest -q > out.txt", frozenset({"pytest"}))
+        verdict = classify_command("tox -q > out.txt", frozenset({"tox"}))
         assert verdict.action == "ask"
-        assert verdict.bin_name == "pytest"
+        assert verdict.bin_name == "tox"
 
     def test_an_extra_bin_does_not_cover_a_sibling_offlist_binary(self) -> None:
-        verdict = classify_command("pytest -q && rm -rf /tmp/x", frozenset({"pytest"}))
+        verdict = classify_command("tox -q && rm -rf /tmp/x", frozenset({"tox"}))
         assert verdict.action == "ask"
         assert verdict.bin_name == "rm"
 
@@ -430,13 +509,13 @@ class TestDispatchChokepoint:
 
     def test_ctx_allow_commands_reaches_the_live_gate(self, workspace: Path) -> None:
         extended = ToolContext(
-            agent_id="demo-implementer", roots=(workspace,), timeout=10, allow_commands=("pytest",)
+            agent_id="demo-implementer", roots=(workspace,), timeout=10, allow_commands=("tox",)
         )
-        res = dispatch_tool(_call("bash", '{"command": "pytest -q"}'), extended, builtin_registry())
+        res = dispatch_tool(_call("bash", '{"command": "tox -q"}'), extended, builtin_registry())
         assert res.executed and res.decision == "allow"
 
     def test_a_bare_ctx_without_allow_commands_still_asks(self, ctx: ToolContext) -> None:
-        res = dispatch_tool(_call("bash", '{"command": "pytest -q"}'), ctx, builtin_registry())
+        res = dispatch_tool(_call("bash", '{"command": "tox -q"}'), ctx, builtin_registry())
         assert res.denied and not res.executed
 
     def test_a_raising_handler_returns_a_result_instead_of_unwinding_the_turn(
@@ -522,6 +601,50 @@ class TestParkMode:
         res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
         record = core_approval.approval_get(res.approval_token)
         assert record["expiresAt"] == "2099-01-01T00:00:00Z"
+
+
+class TestAnswerStreamClosedInWaitMode:
+    """Once the answer stream is closed, a `wait` turn has nobody to ask: an ask verdict is
+    refused like `approval_mode="refuse"`, with no record and no wait."""
+
+    def test_an_ask_after_the_close_is_approval_unavailable_with_no_record(
+        self, ctx: ToolContext
+    ) -> None:
+        core_approval.close_answer_stream()
+        try:
+            res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        finally:
+            core_approval.open_answer_stream()
+        assert res.decision == "deny"
+        assert res.denial_kind == "approval_unavailable"
+        assert not res.executed
+        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
+
+    def test_a_wait_cut_short_by_the_close_is_approval_unavailable(
+        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 3600, raising=True)
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.01, raising=True)
+        real_sleep = core_approval._time.sleep
+        polls = 0
+
+        def _sleep(seconds: float) -> None:
+            nonlocal polls
+            polls += 1
+            if polls == 2:
+                core_approval.close_answer_stream()
+            real_sleep(seconds)
+
+        monkeypatch.setattr(core_approval._time, "sleep", _sleep)
+        try:
+            res = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
+        finally:
+            core_approval.open_answer_stream()
+        assert res.decision == "deny"
+        assert res.denial_kind == "approval_unavailable"
+        assert "answer stream closed" in res.reason
+        [record_path] = list(_cfg.APPROVALS_DIR.glob("*.json"))
+        assert json.loads(record_path.read_text())["state"] == "denied"
 
 
 class TestPreGrants:

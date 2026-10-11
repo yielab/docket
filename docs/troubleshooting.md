@@ -509,16 +509,23 @@ missing `--model` or a missing/duplicated `--task`/`--task-file` is refused the 
 a non-null `blocked` object naming a `tool`, `call_id`, `denial_kind` (`approval_unavailable`),
 `policy_id`, and `reason`.
 
-**Cause:** `docket exec` always runs with approvals forced to non-interactive refusal — there is no
-human on the other end of a caller-owned subprocess
-to approve a gated tool call, so a verdict of `ask` ends the run immediately instead of waiting.
-This is expected behavior, not a bug: it is the one thing an interactive dispatch would instead
-block on for up to two minutes.
+**Cause:** without `--answers stdin`, `docket exec` runs with approvals refused — there is no
+human on the other end of a caller-owned subprocess to approve a gated tool call, so a verdict of
+`ask` ends the run immediately instead of waiting. The result's `stop_reason` is
+`approval_unavailable`. With `--answers stdin` (contract 1.1) the same thing happens once stdin
+reaches end of file: the caller that could have answered is gone, so a waiting approval is denied
+at once and the run ends `blocked` rather than sitting until `--answer-timeout`.
 
-**Fix:** adjust the policy so the task's tool calls don't need approval (see
-[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action. There
-is no flag to make `docket exec` wait for a human — see
-[ADR 0001](adr/0001-harness-mode.md) for why that is a separate, unbuilt decision.
+A frequent trigger with a small local model is `echo "..." > file`: a redirected `echo` asks
+unless every target is inside the workspace. A redirect into the workspace is allowed (it is the
+`write` tool by another name); `echo` into `/tmp`, `~`, a `$VAR` path or after a `cd` still asks,
+and so does any binary off the allowlist (`uv`, `tox`, `rm`, ...). `pytest` and `python` are on
+it.
+
+**Fix:** pass `--contract 1.1 --answers stdin` and answer the `approval_requested` event, keep
+stdin open while the run is live, adjust the policy so the task's tool calls don't need approval
+(see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action.
+See [ADR 0001](adr/0001-harness-mode.md) for why refusal is the default.
 
 ### Distinguishing `failed`/`cancelled` from `blocked`/`refused`
 

@@ -352,7 +352,7 @@ that fail a task whose tests prove nothing, and a tool pack. `docket pod apply g
 `docket pod export --force` writes the merged team back to `.docket/` for the commit.
 
 Pod-level knobs are one command each: `docket pod set budgetUsd 5`,
-`docket pod set allowCommands pytest,uv`, `approvalMode refuse`, `maxReworkCycles 2`. Your own
+`docket pod set allowCommands uv,tox`, `approvalMode refuse`, `maxReworkCycles 2`. Your own
 words for one agent go in its operator-owned `INSTRUCTIONS.md`, in the workspace path
 `docket pod show myapp-implementer` prints; docket never regenerates it. The file-by-file reference, with what reads each file on the live path, is
 [Configuration](CONFIGURATION.md); the shipped recipes and every role are listed by

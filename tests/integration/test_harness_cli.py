@@ -1150,14 +1150,49 @@ class TestAnswersOnStdin:
             _answered_args(workspace, "--answer-timeout", "1"), env, tmp_path / "stderr.txt"
         )
         run.wait_for_event("approval_requested")
-        run.close_stdin()
+        # stdin stays open: the caller is present but silent, so the deadline decides.
         returncode, lines = run.finish()
+        run.close_stdin()
 
         assert returncode == 0
         assert lines[-1]["status"] == "ok"
         [record] = _approval_records(home)
         assert record["state"] == "denied"
         assert "timed out" in json.dumps(server.requests[-1]["messages"])
+
+    def test_closing_stdin_while_an_approval_waits_ends_the_run_blocked_at_once(
+        self, tmp_path: Path, llm_server: Any
+    ) -> None:
+        """A caller that goes away (end of stdin) can never answer: the paused run must not sit
+        until `--answer-timeout`, it ends `blocked` like a refuse-mode run would."""
+        server = llm_server([_tool_call_response("bash", _PUSH_CALL), _final_response("done")])
+        home = tmp_path / "home"
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        env = _child_env(home, server.base_url)
+
+        run = _AnsweredRun(
+            _answered_args(workspace, "--answer-timeout", "600"), env, tmp_path / "stderr.txt"
+        )
+        requested = run.wait_for_event("approval_requested")
+        started = time.monotonic()
+        run.close_stdin()
+        returncode, lines = run.finish(timeout=30)
+
+        assert time.monotonic() - started < 20
+        assert returncode == 1, (tmp_path / "stderr.txt").read_text(encoding="utf-8")
+        result = lines[-1]
+        assert result["status"] == "blocked"
+        assert result["stop_reason"] == "approval_unavailable"
+        assert result["blocked"]["tool"] == "bash"
+        assert result["blocked"]["call_id"] == "call-1"
+        assert result["blocked"]["denial_kind"] == "approval_unavailable"
+        [entry] = result["approvals"]
+        assert entry["token"] == requested["event"]["payload"]["token"]
+        assert entry["outcome"] == "unanswered"
+        [record] = _approval_records(home)
+        assert record["state"] == "denied"
+        assert len(server.requests) == 1
 
     def test_malformed_and_foreign_lines_are_ignored_and_never_echoed(
         self, tmp_path: Path, llm_server: Any
@@ -1249,8 +1284,8 @@ class TestAnswersOnStdin:
         requested = run.wait_for_event("approval_requested")
         question = {"questionId": "q-1", "action": "accept"}
         run.write_raw(json.dumps({"v": "1.1.0", "token": requested["token"], "answer": question}))
+        returncode, _ = run.finish()  # the deadline denies the approval; stdin stays open
         run.close_stdin()
-        returncode, _ = run.finish()
 
         assert returncode == 0
         assert "need --recipe" in (tmp_path / "stderr.txt").read_text(encoding="utf-8")
@@ -1593,8 +1628,8 @@ class TestApprovalsOnTheResult:
         )
         requested = run.wait_for_event("approval_requested")
         payload = requested["event"]["payload"]
+        returncode, lines = run.finish()  # stdin stays open: the deadline, not EOF, decides
         run.close_stdin()
-        returncode, lines = run.finish()
 
         assert returncode == 0
         result = lines[-1]

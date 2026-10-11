@@ -428,16 +428,16 @@ segment's binary (behind `;`, `&&`, `||` and pipes) is on a fixed list and no hi
 matches. Anything else asks a human.
 
 - **On the list:** `ls cat head tail wc sort uniq cut tr nl grep egrep rg fd find file stat tree
-  realpath dirname basename sed awk jq yq diff comm git node npm npx pnpm yarn python3 pip pip3 go
-  cargo rustc make cmake date env printf which xargs tee less mkdir touch cp mv ln`, plus the
-  side-effect-free builtins `cd pwd echo true false test [`. A redirected `echo` (`>`, `>>`, `&>`)
-  still asks.
-- **Not on the list,** so each one asks: `pytest`, `python`, `uv`, `bash`, `rm`, `export`,
-  `source`.
-- **Per-pod widening, scoped and audited:** `docket pod set allowCommands pytest,uv`
+  realpath dirname basename sed awk jq yq diff comm git node npm npx pnpm yarn python python3 pip
+  pip3 pytest go cargo rustc make cmake date env printf which xargs tee less mkdir touch cp mv ln`,
+  plus the side-effect-free builtins `cd pwd echo true false test [`. A redirected `echo` is
+  allowed when every target is inside the workspace (no `cd` before it, no `$`/`~`/glob in the
+  path); any other target still asks.
+- **Not on the list,** so each one asks: `uv`, `tox`, `bash`, `rm`, `export`, `source`.
+- **Per-pod widening, scoped and audited:** `docket pod set allowCommands uv,tox`
   adds exact binary basenames to the allowlist *for that pod's turns only*. Paths, shell
   metacharacters, opaque names (`eval`, `source`, …) and high-risk-class bins (`git`, `npm`) are
-  rejected at write time; a redirected call still asks. Policies remain stricter-only: an `allow`
+  rejected at write time; a redirected call still asks unless every target is inside the workspace. Policies remain stricter-only: an `allow`
   policy cannot loosen the classifier.
 - **In an unattended run today,** an ask does not block at all by default: `docket start --dispatch`'s
   sweep and a non-interactive `docket run` both resolve an unset `approvalMode` to
@@ -457,7 +457,7 @@ matches. Anything else asks a human.
 
 Three ways to avoid it:
 
-- **Allowlist the bins for that pod.** `docket pod set allowCommands pytest,uv`
+- **Allowlist the bins for that pod.** `docket pod set allowCommands uv,tox`
   (see above) is the direct fix for exactly this failure.
 
 - **Run checks through the verify gate.** Put them in the mechanical gate (`pod set verify`, or a
@@ -687,7 +687,7 @@ name: myapp
 members: [security-vetter]
 settings:
   budgetUsd: 5
-  allowCommands: pytest,uv
+  allowCommands: uv,tox
   approvalMode: refuse
 ```
 

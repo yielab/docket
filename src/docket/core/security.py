@@ -17,6 +17,7 @@ import os
 import re
 import shlex
 from dataclasses import dataclass
+from pathlib import Path
 
 from docket.core import fleet as _fleet
 
@@ -37,7 +38,7 @@ SAFE_BINS: tuple[str, ...] = (
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
     "dirname", "basename",
     "sed", "awk", "jq", "yq", "diff", "comm",
-    "git", "node", "npm", "npx", "pnpm", "yarn", "python3", "pip", "pip3",
+    "git", "node", "npm", "npx", "pnpm", "yarn", "python", "python3", "pip", "pip3", "pytest",
     "go", "cargo", "rustc", "make", "cmake",
     "date", "env", "printf", "which", "xargs", "tee", "less",
     "mkdir", "touch", "cp", "mv", "ln",
@@ -49,13 +50,29 @@ SAFE_BINS: tuple[str, ...] = (
 # Adding `echo` to SAFE_BINS above must not also unlock that -- a redirected
 # invocation of a bin in this set still asks, by the same generic "not on the
 # curated allowlist" path (`classify_command` below), verbatim identical to
-# the verdict `echo` got before it was ever added to SAFE_BINS. `cd`, `pwd` and
-# the rest do not take free-form model-composed content, so they are not here.
+# the verdict `echo` got before it was ever added to SAFE_BINS. The one
+# exception is a target `classify_command` can place inside the caller's
+# workspace roots (`_redirects_stay_inside`): that write is the `write` tool
+# by another name, and the file tools already confine to the same roots.
+# `cd`, `pwd` and the rest do not take free-form model-composed content, so
+# they are not here.
 _REDIRECT_SENSITIVE_BINS: frozenset[str] = frozenset({"echo"})
 
-# Output-writing redirects only -- `<` (input) and a bare `2>` (stderr) do not
-# let arbitrary content reach a file the way `>`/`>>`/`&>` do.
-_OUTPUT_REDIRECT_OPS: frozenset[str] = frozenset({">", ">>", "&>"})
+# Output-writing redirects only -- `<` (input) does not let arbitrary content
+# reach a file the way `>`/`>>`/`>|`/`&>`/`&>>`/`>&` do. A descriptor prefix
+# (`2>`) lexes as the digit then the operator, so it needs no entry. `>&` is
+# a file redirect unless its target is a descriptor number (`2>&1`), which
+# `_split_segments` tells apart.
+_OUTPUT_REDIRECT_OPS: frozenset[str] = frozenset({">", ">>", ">|", "&>", "&>>", ">&"})
+_INPUT_REDIRECT_OPS: frozenset[str] = frozenset({"<", "<<", "<<<", "<>"})
+
+# A redirect target the shell would expand before opening (a variable, a home
+# prefix, a glob) is not the path docket would resolve, so it cannot be placed.
+_UNPLACEABLE_TARGET_CHARS: frozenset[str] = frozenset("$~*?[{")
+
+# After one of these runs, a later relative redirect target no longer resolves
+# against the workspace root the `bash` tool started in.
+_DIRECTORY_CHANGERS: frozenset[str] = frozenset({"cd", "pushd", "popd"})
 
 
 @dataclass(frozen=True)
@@ -170,44 +187,96 @@ class CommandVerdict:
         return self.action != "allow"
 
 
-def _split_segments_with_redirect_flags(command: str) -> list[tuple[list[str], bool]]:
-    """Split a shell command into per-invocation token lists, plus whether an output redirect
-    attached to each segment -- kept internal, used only by ``classify_command``."""
+@dataclass(frozen=True)
+class _Segment:
+    """One binary invocation of a command line, with what its output redirects name."""
+
+    tokens: list[str]
+    redirects: int  # output redirect operators attached to this invocation
+    targets: tuple[str, ...]  # the token after each one; fewer than ``redirects`` when one had none
+
+    @property
+    def redirected(self) -> bool:
+        return self.redirects > 0
+
+
+def _split_segments(command: str) -> list[_Segment]:
+    """Split a shell command into per-invocation token lists, plus the output redirects attached
+    to each -- kept internal, used only by ``classify_command``."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     tokens = list(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
 
-    segments: list[tuple[list[str], bool]] = []
+    segments: list[_Segment] = []
     current: list[str] = []
-    redirected = False
+    redirects = 0
+    targets: list[str] = []
+    expecting_target = duplicating = False
     for token in tokens:
         if token in _COMMAND_SEPARATORS:
             if current:
-                segments.append((current, redirected))
-            current, redirected = [], False
+                segments.append(_Segment(current, redirects, tuple(targets)))
+            current, redirects, targets, expecting_target = [], 0, [], False
             continue
         # Redirections attach to the current invocation rather than starting a
-        # new one, but the target is not a binary — drop the operator and let
-        # the path stay as an argument.
-        if token in (">", ">>", "<", "2>", "&>"):
-            if token in _OUTPUT_REDIRECT_OPS:
-                redirected = True
+        # new one, but the target is not a binary -- drop the operator and let
+        # the path stay as an argument, recording it as the redirect's target.
+        if token in _OUTPUT_REDIRECT_OPS or token in _INPUT_REDIRECT_OPS:
+            expecting_target = token in _OUTPUT_REDIRECT_OPS
+            duplicating = token == ">&"
+            if expecting_target:
+                redirects += 1
             continue
+        if expecting_target:
+            expecting_target = False
+            if duplicating and (token.isdigit() or token == "-"):
+                redirects -= 1  # `2>&1` copies a descriptor; no file is opened
+            else:
+                targets.append(token)
         current.append(token)
     if current:
-        segments.append((current, redirected))
+        segments.append(_Segment(current, redirects, tuple(targets)))
 
-    cleaned: list[tuple[list[str], bool]] = []
-    for segment, flag in segments:
+    cleaned: list[_Segment] = []
+    for segment in segments:
         idx = 0
-        while idx < len(segment) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", segment[idx]):
+        while idx < len(segment.tokens) and re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*=.*", segment.tokens[idx]
+        ):
             idx += 1
-        if idx < len(segment):
-            cleaned.append((segment[idx:], flag))
+        if idx < len(segment.tokens):
+            cleaned.append(_Segment(segment.tokens[idx:], segment.redirects, segment.targets))
     return cleaned
 
 
-def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> CommandVerdict:
+def _redirects_stay_inside(
+    segment: _Segment, roots: tuple[Path, ...], changed_directory: bool
+) -> bool:
+    """True when every output redirect of *segment* names a path resolving inside *roots*
+    (relative to ``roots[0]``, the ``bash`` tool's cwd; symlinks followed). False for no roots,
+    a target the shell would rewrite, an operator without a target, or an earlier ``cd``."""
+    if not roots or changed_directory or len(segment.targets) != segment.redirects:
+        return False
+    try:
+        bounds = [root.resolve() for root in roots]
+    except OSError:
+        return False
+    for target in segment.targets:
+        if not target or _UNPLACEABLE_TARGET_CHARS & set(target):
+            return False
+        candidate = Path(target) if os.path.isabs(target) else roots[0] / target
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError):
+            return False
+        if not any(resolved.is_relative_to(bound) for bound in bounds):
+            return False
+    return True
+
+
+def classify_command(
+    command: str, extra_bins: frozenset[str] = frozenset(), roots: tuple[Path, ...] = ()
+) -> CommandVerdict:
     """Decide whether *command* may run unattended. First match wins: empty
     -> deny; opaque (command substitution/``eval``/``exec``) or
     untokenizable -> ask, since the binary that will run is not knowable; a
@@ -218,7 +287,9 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
     unsafe one in behind ``;``/``&&``); a redirect-sensitive SAFE_BINS entry
     (``echo``) used with an output redirect -> ask, by that same
     not-on-the-allowlist path, so adding it to SAFE_BINS did not also unlock
-    unattended arbitrary-path writes; otherwise -> allow.
+    unattended arbitrary-path writes -- unless every target resolves inside
+    *roots* (``_redirects_stay_inside``), the workspace the file tools are
+    already confined to; otherwise -> allow.
 
     *extra_bins* is a caller-supplied, per-pod extension of the membership
     check only (``core.pod.PodSettings.allow_commands``) -- it never widens
@@ -227,7 +298,8 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
     *extra_bins* is treated as redirect-sensitive, the same conservative rule
     ``echo`` gets, since docket cannot know whether a pod-supplied binary's
     argument is model-composed text. The default, empty *extra_bins* leaves
-    every prior verdict byte-identical.
+    every prior verdict byte-identical, as does the default, empty *roots*:
+    with nowhere to place a target, a sensitive redirect always asks.
 
     Does not catch: a safe binary used destructively within its own remit
     (``git reset --hard``), writes through a redirect outside the workspace
@@ -249,10 +321,10 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
             )
 
     try:
-        segment_pairs = _split_segments_with_redirect_flags(text)
+        segments = _split_segments(text)
     except ValueError as ex:
         return CommandVerdict("ask", f"command could not be parsed ({ex})")
-    if not segment_pairs:
+    if not segments:
         return CommandVerdict("deny", "no binary found in command")
 
     risk = match_high_risk(text)
@@ -260,26 +332,33 @@ def classify_command(command: str, extra_bins: frozenset[str] = frozenset()) -> 
         return CommandVerdict(
             "ask",
             f"matches high-risk action class {risk.name!r}: {risk.description}",
-            bin_name=os.path.basename(segment_pairs[0][0][0]),
+            bin_name=os.path.basename(segments[0].tokens[0]),
             risk_class=risk.name,
         )
 
-    for segment, redirected in segment_pairs:
-        bin_name = os.path.basename(segment[0])
+    changed_directory = False
+    for segment in segments:
+        bin_name = os.path.basename(segment.tokens[0])
         off_allowlist = bin_name not in SAFE_BINS and bin_name not in extra_bins
-        if not off_allowlist and redirected and bin_name in _REDIRECT_SENSITIVE_BINS:
-            off_allowlist = True
-        if not off_allowlist and redirected and bin_name in extra_bins:
+        redirect_sensitive = bin_name in _REDIRECT_SENSITIVE_BINS or bin_name in extra_bins
+        if (
+            not off_allowlist
+            and segment.redirected
+            and redirect_sensitive
+            and not _redirects_stay_inside(segment, roots, changed_directory)
+        ):
             off_allowlist = True
         if off_allowlist:
             return CommandVerdict(
                 "ask", f"{bin_name!r} is not on the curated allowlist", bin_name=bin_name
             )
+        if bin_name in _DIRECTORY_CHANGERS:
+            changed_directory = True
 
     return CommandVerdict(
         "allow",
         "all binaries allowlisted, no high-risk class matched",
-        bin_name=os.path.basename(segment_pairs[0][0][0]),
+        bin_name=os.path.basename(segments[0].tokens[0]),
     )
 
 

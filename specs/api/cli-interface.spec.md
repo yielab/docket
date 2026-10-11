@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.1.3
+**Version**: 2.2.0
 **Status**: Complete
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-10
 
 ## Purpose
 
@@ -31,7 +31,11 @@ docket [global-options] <command> [command-options] [arguments]
 The root `docket` distribution MUST build both a wheel and an sdist that install
 without a source checkout.  Each artifact MUST expose `docket` as the canonical
 console command; `docket --version`, `docket --help`, and `docket init --help`
-MUST run from an artifact-only installation.  Installed project metadata MUST
+MUST run from an artifact-only installation.  `docket --version` prints
+`docket <version>` from an artifact; from a git checkout (the package's source root holds
+`.git`) it appends ` (git <sha8>)`, and `, dirty` inside the parentheses when `git status`
+reports changes, so a tree ahead of its tag is told apart from the release that tag built.
+Installed project metadata MUST
 report a PEP 440-equivalent form of declared version `0.2.0-beta.4`, Python
 requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
 issues, and homepage URLs.  Uninstalling the
@@ -96,7 +100,7 @@ docket [global-options] <command> [command-options] [arguments]
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
 | --help | -h | Show help message | - |
-| --version | -V | Show version info | - |
+| --version | -V | Show version info: `docket <version>`, plus ` (git <sha8>[, dirty])` from a git checkout | - |
 
 These two are the whole global surface (`docket --help`); `-h` is declared once on the root
 and every child command inherits it, so `docket task show -h` equals `docket task show --help`.
@@ -941,6 +945,11 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.2.0 (2026-10-10)
+
+- `docket --version` names the source revision from a git checkout (`docket 0.2.0b4 (git
+  23591894, dirty)`); an artifact install prints the bare version as before.
 
 ### Version 2.1.3 (2026-10-08)
 

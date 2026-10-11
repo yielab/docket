@@ -142,6 +142,47 @@ class _Hit:
         self.policy_id = policy_id
 
 
+class TestServeAtEndOfStdin:
+    """End of stdin means no further answer can arrive: the reader marks the answer stream
+    closed for the rest of the run, and the ledger learns the moment."""
+
+    def test_eof_closes_the_stream_and_tells_the_ledger(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import io
+        import threading
+        import time
+
+        from docket.core import harness
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        ledger = harness.ApprovalLedger()
+        closed_calls: list[bool] = []
+        monkeypatch.setattr(ledger, "stream_closed", lambda: closed_calls.append(True))
+        assert approval.answer_stream_closed() is False
+        with _harness_answers.serve(RUN, threading.Event(), ledger=ledger):
+            deadline = time.monotonic() + 5
+            while not approval.answer_stream_closed() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert approval.answer_stream_closed() is True
+            assert closed_calls == [True]
+        assert approval.answer_stream_closed() is False
+
+    def test_a_stopped_reader_does_not_close_the_stream(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import io
+        import threading
+        import time
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("not an answer\n"))
+        stop = threading.Event()
+        stop.set()
+        with _harness_answers.serve(RUN, stop):
+            time.sleep(0.05)
+            assert approval.answer_stream_closed() is False
+
+
 class TestWaitBudget:
     def test_none_leaves_the_configured_wait_alone(self) -> None:
         import docket.config as cfg

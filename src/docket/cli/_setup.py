@@ -15,6 +15,7 @@ from docket import ui
 from docket.cli import _contract
 from docket.core import policy as _policy
 from docket.core import secrets as _secrets
+from docket.edges.adapters import system as _system
 
 setup_app = typer.Typer(
     name="setup",
@@ -131,17 +132,46 @@ def readiness() -> Readiness:
     )
 
 
-def _resolve_version() -> str:
-    """docket version — package metadata, falling back to the VERSION file."""
+def _source_root() -> Path:
+    """The directory a source checkout keeps ``VERSION`` and ``.git`` in (``src/docket/cli``'s
+    great-grandparent); under an installed wheel it is a site-packages ancestor with neither."""
+    return Path(__file__).resolve().parents[3]
+
+
+def _package_version() -> str | None:
     from importlib.metadata import PackageNotFoundError, version
 
     try:
         return version("docket")
     except PackageNotFoundError:
-        cand = Path(__file__).resolve().parents[3] / "VERSION"
-        if cand.is_file():
-            return cand.read_text(encoding="utf-8").strip()
-    return "unknown"
+        return None
+
+
+def _source_revision(root: Path) -> str:
+    """``git <sha8>[, dirty]`` when *root* is a git checkout whose ``git`` answers; ``""`` for
+    an installed wheel. The version alone cannot tell a tree ahead of its tag from the
+    release that tag built."""
+    if not (root / ".git").exists():
+        return ""
+    sha = _system.git_head_sha(str(root))
+    if not sha:
+        return ""
+    label = f"git {sha[:8]}"
+    if _system.git_worktree_changes(str(root)):
+        label += ", dirty"
+    return label
+
+
+def _resolve_version() -> str:
+    """docket version -- package metadata, falling back to the VERSION file, plus the source
+    revision when run from a git checkout."""
+    root = _source_root()
+    base = _package_version()
+    if base is None:
+        cand = root / "VERSION"
+        base = cand.read_text(encoding="utf-8").strip() if cand.is_file() else "unknown"
+    revision = _source_revision(root)
+    return f"{base} ({revision})" if revision else base
 
 
 def _version_callback(value: bool) -> None:

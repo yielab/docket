@@ -1,10 +1,10 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.7.1
+**Version**: 1.8.0
 **Status**: Implemented (`docket exec`). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-10
 
 ## Purpose
 
@@ -60,7 +60,7 @@ no line depends on another to parse.
 | `--workspace DIR` | required; must be an existing directory the caller owns -- never provisioned by this command |
 | `--task TEXT` | the message the agent's turn starts from; mutually exclusive with `--task-file` |
 | `--task-file PATH` | reads the task message from *PATH*; mutually exclusive with `--task` |
-| `--model PROVIDER/ID` | required; the model the caller asked for (`HarnessResult.model.requested`) |
+| `--model PROVIDER/ID` | required; the model the caller asked for (`HarnessResult.model.requested`). `ID` is what every request names at `DOCKET_LLM_BASE_URL`; `PROVIDER` selects no endpoint (ADR 0001 decision 7: the endpoint comes only from the environment, so the catalog is never consulted) and only names the fallback credential `<PROVIDER>_API_KEY` when `DOCKET_LLM_API_KEY` is unset. `local/x`, `docket/x` and `vercel-ai-gateway/x` therefore reach the same endpoint, and `model.served` reports what it answered with |
 
 Exactly one of `--task`/`--task-file` MUST be given. A missing `--workspace`/`--model`, or
 both/neither of `--task`/`--task-file`, is refused (exit 2) before `preflight` runs -- the
@@ -83,7 +83,7 @@ contract's fields below then take the place of these arguments for wire validati
 | `v` | string | same rule as above |
 | `token` | string | the run token (`""` for a `refused` result, since no run was created) |
 | `status` | enum | one of `ok`, `failed`, `blocked`, `cancelled`, `refused` |
-| `stop_reason` | string | the driver's `failure_kind`, or `""` when `status` is `ok` |
+| `stop_reason` | string | the turn loop's own stop reason (`TurnResult.stop_reason`: `approval_unavailable`, `max_iterations`, `timeout`, `run_cancelled`, ...), the driver's coarser `failure_kind` when the driver carried none, or `""` when `status` is `ok`. A `blocked` result's is `approval_unavailable`, never the class `invalid_output` the loop files it under |
 | `error` | string | the driver's error text, or `""` when `status` is `ok` |
 | `blocked` | object or null | `{tool, call_id, denial_kind, policy_id, reason}`; non-null only when `status` is `blocked` |
 | `model` | object | `{requested, served}` -- what was asked for versus what answered the last request |
@@ -338,6 +338,17 @@ elicitation result shape) to this process's stdin, while the run is live. The re
    unanswerable approval does, and the 1.1 result carries the typed `question` field (the
    `QuestionV11`); `question` is `null` otherwise and absent from 1.0. Pod-dispatch park and
    re-entry of a consultation arrive with P36-8.
+10. **End of stdin.** When stdin reaches end of file while the run is live, nobody can answer
+    any more (the caller exited, was killed, or closed the pipe). The reader closes the
+    process's answer stream (`core.approval.close_answer_stream`): an approval waiting at that
+    moment is denied at once (`channel=harness`, reason `answer stream closed`) and the call
+    ends the turn `blocked` with `denial_kind` `approval_unavailable` and `stop_reason`
+    `approval_unavailable`, exactly as a refuse-mode call does; a gated call made later in the
+    same run is refused the same way, with no record and no wait. The run therefore ends within
+    one poll interval of the close, not at `--answer-timeout`. Its `approvals` entry reads
+    `unanswered`, not `timed_out`. A caller that is present but silent keeps stdin open and
+    gets item 4's deadline instead. A waiting `consult` keeps its own end-of-stream rule (item
+    9: "no answer; decide yourself").
 
 Verified by `tests/integration/test_harness_cli.py::TestAnswersOnStdin` (granted, declined,
 timed out, a malformed or foreign line that is never echoed, a content line held by a
@@ -427,6 +438,18 @@ v1.1 file itself as JSON Schema, not only through the Pydantic models.
   (Section 6) and `null` otherwise, and `limits` changes only with `--max-tokens` (Section 4).
 
 ## Changelog
+
+### Version 1.8.0 (2026-10-10)
+
+- `stop_reason` is the turn loop's own reason: `TurnResult.stop_reason` (new, keyword-only)
+  carries `AgentLoopResult.stop_reason` through the driver, so a `blocked` result says
+  `approval_unavailable` where it said `invalid_output`; `failure_kind` remains the fallback
+  when a driver carries none. `tests/fixtures/harness-contract/v1/blocked.ndjson` follows.
+- Section 5 item 10: end of stdin under `--answers stdin` closes the answer stream; a pending
+  approval is denied at once and the run ends `blocked`, later asks are refused. A run whose
+  caller died no longer waits out `--answer-timeout`.
+- `--model`: `PROVIDER` selects no endpoint under `DOCKET_LLM_BASE_URL`; documented on the
+  argument.
 
 ### Version 1.7.1 (2026-10-08)
 

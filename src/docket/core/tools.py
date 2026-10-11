@@ -260,7 +260,9 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
     command_reason = ""
     if tool.kind == "exec":
         command = str(args.get("command") or "")
-        cmd_verdict = classify_command(command, extra_bins=frozenset(ctx.allow_commands))
+        cmd_verdict = classify_command(
+            command, extra_bins=frozenset(ctx.allow_commands), roots=tuple(ctx.roots)
+        )
         if cmd_verdict.action != "allow":
             command_decision = "ask" if cmd_verdict.action == "ask" else "deny"
             command_reason = cmd_verdict.reason
@@ -456,9 +458,12 @@ def _resolve_ask_verdict(
         result.approval_token = pregrant_token
         return False
 
-    if ctx.approval_mode == "refuse":
+    if ctx.approval_mode == "refuse" or (
+        ctx.approval_mode == "wait" and _approval.answer_stream_closed()
+    ):
         # No approval record, no wait: there is nobody on the other end of
-        # this call who could ever answer it. Reported distinctly from a
+        # this call who could ever answer it -- by posture, or because the
+        # harness answer stream already ended. Reported distinctly from a
         # timeout or an explicit denial so a caller can tell "nobody was
         # asked" apart from "someone was asked and said no" or "asked and
         # nobody answered in time" -- see docs/adr/0001-harness-mode.md
@@ -569,6 +574,10 @@ def _wait_for_ask_approval(
         if wait_outcome.cancelled:
             result.denial_kind = "run_cancelled"
             result.reason = "run cancellation requested before execution"
+        elif wait_outcome.unanswerable:
+            # Terminal like refuse mode: the answer stream ended mid-wait.
+            result.denial_kind = "approval_unavailable"
+            result.reason = "answer stream closed before a decision arrived"
         else:
             result.denial_kind = "approval_timeout" if wait_outcome.timed_out else "approval_denied"
             result.reason = (

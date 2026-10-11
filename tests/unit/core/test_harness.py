@@ -139,9 +139,12 @@ def test_result_from_maps_run_cancelled_failure_kind_to_cancelled() -> None:
 
 def test_result_from_maps_an_approval_unavailable_error_to_blocked_with_the_parsed_rule() -> None:
     error = "tool='bash' call_id='call-9' policy_id='block-destructive' reason='no' approval_unavailable"
-    turn = TurnResult(False, "", 0.0, {}, error, "invalid_output")
+    turn = TurnResult(
+        False, "", 0.0, {}, error, "invalid_output", stop_reason="approval_unavailable"
+    )
     result = harness.result_from(turn, _usage(), _run(state="failed"))
     assert result.status == "blocked"
+    assert result.stop_reason == "approval_unavailable"
     assert result.blocked is not None
     assert result.blocked.tool == "bash"
     assert result.blocked.call_id == "call-9"
@@ -155,6 +158,18 @@ def test_result_from_maps_any_other_failure_to_failed() -> None:
     assert result.status == "failed"
     assert result.stop_reason == "timeout"
     assert result.blocked is None
+
+
+def test_stop_reason_is_the_loops_own_reason_and_falls_back_to_the_failure_kind() -> None:
+    """The loop's stop reason names why the turn ended; `failure_kind` is only the coarse class."""
+    turn = TurnResult(
+        False, "", 0.0, {}, "no final message", "invalid_output", stop_reason="max_iterations"
+    )
+    assert harness.result_from(turn, _usage(), _run(state="failed")).stop_reason == "max_iterations"
+    bare = TurnResult(False, "", 0.0, {}, "boom", "daemon_error")
+    assert harness.result_from(bare, _usage(), _run(state="failed")).stop_reason == "daemon_error"
+    ok = TurnResult(True, "done", 0.0, {}, stop_reason="final_message")
+    assert harness.result_from(ok, _usage(), _run()).stop_reason == ""
 
 
 # ── agent_meta_for ────────────────────────────────────────────────────────────
@@ -350,6 +365,18 @@ def test_a_denial_no_answer_produced_is_timed_out_unless_the_run_was_cancelled()
     cancelled.observe(_trace_record("approval_denied", {"token": "apr-2"}))
     [entry] = cancelled.finish(cancelled=True)
     assert entry.outcome == "unanswered"
+
+
+def test_a_denial_after_the_answer_stream_closed_is_unanswered_not_timed_out() -> None:
+    ledger = harness.ApprovalLedger()
+    ledger.observe(_requested("apr-1"))
+    ledger.observe(_trace_record("approval_denied", {"token": "apr-1"}))
+    ledger.observe(_requested("apr-2"))
+    ledger.stream_closed()
+    ledger.observe(_trace_record("approval_denied", {"token": "apr-2"}))
+    before, after = ledger.finish(cancelled=False)
+    assert before.outcome == "timed_out"
+    assert after.outcome == "unanswered"
 
 
 def test_a_pending_approval_at_the_end_is_unanswered() -> None:

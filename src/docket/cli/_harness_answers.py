@@ -141,7 +141,8 @@ def serve(
     ledger: harness.ApprovalLedger | None = None,
 ) -> Iterator[None]:
     """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*. At EOF a
-    *questions* queue gets its ``None`` end marker, so a waiting question stops waiting."""
+    *questions* queue gets its ``None`` end marker and the approval answer stream is closed
+    (``core.approval.close_answer_stream``): nobody will answer, so nothing waits on them."""
 
     def _pump() -> None:
         for line in sys.stdin:
@@ -156,7 +157,16 @@ def serve(
         if questions is not None:
             questions.put(None)
         _consult.release_all()
+        if not stop.is_set():
+            # End of stdin: the caller is gone or done. An approval waiting now, or asked
+            # for later, has nobody to answer it -- the ledger learns the moment first so
+            # the denial that follows is reported ``unanswered``, not ``timed_out``.
+            if ledger is not None:
+                ledger.stream_closed()
+            _approval.close_answer_stream()
+            _say("answer stream closed; a gated call is now refused")
 
+    _approval.open_answer_stream()
     thread = threading.Thread(target=_pump, name="harness-answers", daemon=True)
     thread.start()
     try:
@@ -164,6 +174,7 @@ def serve(
             yield
     finally:
         stop.set()
+        _approval.open_answer_stream()
 
 
 @contextlib.contextmanager

@@ -213,7 +213,7 @@ configuration, never a fork:
 | Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files |
 | Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` (the Agent Skills shape) in `.docket/`, a recipe or `~/.docket/skills/`; the prompt lists them, the `skill` tool reads one through the chokepoint, deniable per role |
 | What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket pod check`/`validate`; hashed predicate plugins for the rare complex rule |
-| What one pod may run unattended | Pod settings | `docket pod set allowCommands pytest,uv` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
+| What one pod may run unattended | Pod settings | `docket pod set allowCommands uv,tox` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
 | Which model each role uses | Model policy | `docket setup model set <role> <provider/model>`; a role file or a pipeline step's `model:` overrides it for one role or one hop |
 | What a provider is: URL, dialect, model limits, credential by name | Provider catalog | `docket setup provider add <name> [url]`; `docket setup provider export <name>` prints the `kind: provider` document, and the key is stored by name with `--credential` |
 

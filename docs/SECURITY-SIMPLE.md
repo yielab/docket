@@ -175,10 +175,10 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
   `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials, policy and path confinement,
   not by a sandbox.
-- **A pod can widen its own allowlist** with `docket pod set allowCommands pytest,uv`
+- **A pod can widen its own allowlist** with `docket pod set allowCommands uv,tox`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
-  `pytest > /etc/passwd` still asks. **`approvalMode`** is how a pod chooses what an unattended
+  `tox > /etc/passwd` still asks. **`approvalMode`** is how a pod chooses what an unattended
   `ask` does: unset, it resolves per caller — `park` under `docket start --dispatch`'s sweep or a
   non-interactive `docket run`, `wait` under an interactive TTY. An explicit `wait` blocks the
   call for the usual 120-second in-turn timeout regardless of caller; `park` records the call and

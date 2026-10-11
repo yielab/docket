@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docket --version` names the commit from a checkout.** A source tree prints
+  `docket 0.2.0b4 (git 23591894, dirty)` -- the short HEAD sha, and `dirty` when `git status`
+  reports changes -- so a tree 96 commits past the tag is no longer indistinguishable from the
+  wheel the tag built. An installed wheel prints the bare version as before.
 - **`docket init` is a real Typer command.** Its two arguments (`[PROJECT] [LOCATION]`) and
   eight options (`--blueprint`, `--pod full`, `--with`, `--codebase`, `--name`, `--from`,
   `--recipe`, `--no-apply`) are declared on the command: `init --help` is one screen that lists
@@ -28,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A caller that dies no longer leaves `docket exec --answers stdin` waiting out its timeout.**
+  End of stdin closes the answer stream: an approval waiting at that moment is denied at once
+  and the run ends `blocked` (`approval_unavailable`), a later gated call is refused the same
+  way, and the result's `approvals` entry reads `unanswered`. A silent caller that keeps stdin
+  open still gets `--answer-timeout`. Harness-mode spec 1.8.0, security-gates 0.37.0.
+- **A `blocked` result's `stop_reason` says `approval_unavailable`, not `invalid_output`.**
+  `TurnResult` carries the turn loop's own stop reason through the driver; `failure_kind` stays
+  the fallback for a driver that gives none.
+- **`echo "..." > file` inside the workspace runs unattended.** The classifier receives the
+  turn's roots and allows a redirect-sensitive binary whose every redirect target resolves inside
+  them (relative to the workspace, symlinks followed, no earlier `cd`, no shell expansion); any
+  other target asks as before. `>|`, `&>>` and `>&`-to-a-path are now recognised as output
+  redirects (they were invisible to the classifier). `pytest` and `python` join the curated
+  allowlist beside `python3`; the `allowCommands` examples now use `uv,tox`.
+- **`docket exec --model`** documents that `PROVIDER` selects no endpoint under
+  `DOCKET_LLM_BASE_URL` and only names the `<PROVIDER>_API_KEY` fallback credential.
 - **`docket status` knows a parked question and the sandbox.** `status --json` carries
   `tasks.waitingInput`, a pod holding a `waiting_input` task is `waiting` (it stayed `ready`
   while `inbox` showed the question), the `Tasks:` line reads `N waiting input`, and the

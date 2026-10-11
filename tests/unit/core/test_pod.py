@@ -389,12 +389,12 @@ class TestPodSettingsAllowCommands:
         assert pod.PodSettings.load_for("shop").allow_commands == ()
 
     def test_parses_and_dedupes_a_comma_separated_list(self) -> None:
-        _write_lead_meta("shop", {"allowCommands": "pytest, uv, pytest"})
-        assert pod.PodSettings.load_for("shop").allow_commands == ("pytest", "uv")
+        _write_lead_meta("shop", {"allowCommands": "tox, uv, tox"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("tox", "uv")
 
     def test_a_bin_already_on_safe_bins_is_silently_dropped(self) -> None:
-        _write_lead_meta("shop", {"allowCommands": "pytest, ls"})
-        assert pod.PodSettings.load_for("shop").allow_commands == ("pytest",)
+        _write_lead_meta("shop", {"allowCommands": "tox, ls"})
+        assert pod.PodSettings.load_for("shop").allow_commands == ("tox",)
 
     def test_rejects_a_path(self) -> None:
         with pytest.raises(pod.PodSettingsError, match="allowCommands"):
@@ -414,12 +414,12 @@ class TestPodSettingsAllowCommands:
             pod.PodSettings.coerce("allowCommands", "git")
 
     def test_coerce_returns_the_canonical_comma_joined_form(self) -> None:
-        assert pod.PodSettings.coerce("allowCommands", "uv, pytest") == "uv,pytest"
+        assert pod.PodSettings.coerce("allowCommands", "uv, tox") == "uv,tox"
 
     def test_value_and_source_reports_the_joined_string(self) -> None:
-        _write_lead_meta("shop", {"allowCommands": "pytest,uv"})
+        _write_lead_meta("shop", {"allowCommands": "tox,uv"})
         settings = pod.PodSettings.load_for("shop")
-        assert settings.value_and_source("allowCommands", "shop") == ("pytest,uv", "set")
+        assert settings.value_and_source("allowCommands", "shop") == ("tox,uv", "set")
 
 
 class TestPodSettingsProjectInstructions:

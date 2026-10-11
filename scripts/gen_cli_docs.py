@@ -136,7 +136,7 @@ docket <command> --help
 
 ### --version / -V
 
-Show the installed docket version.
+Show the installed docket version; from a git checkout, also the commit (`git <sha>`) and `dirty` when the tree has uncommitted changes.
 
 **Syntax:**
 ```bash

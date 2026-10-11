@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 import docket.config as _cfg
 from docket.cli import _contract, _setup, app
 from docket.edges.adapters import llm as _llm
+from docket.edges.adapters import system as _system
 
 SUBJECT = "docket.cli._setup"
 
@@ -45,6 +46,47 @@ def _ready_optionals(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         piece = _setup.Piece(label, True, "ok", "")
         monkeypatch.setattr(_setup, name, lambda piece=piece: piece)
+
+
+class TestResolveVersion:
+    """`docket --version` names the commit when it runs from a git checkout, so a source tree
+    ahead of the last tag is told apart from the wheel that prints the same version."""
+
+    def test_a_wheel_install_prints_the_bare_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
+        monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
+        assert _setup._resolve_version() == "0.2.0b4"
+
+    def test_a_git_checkout_appends_the_commit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".git").mkdir()
+        monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
+        monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
+        monkeypatch.setattr(_system, "git_head_sha", lambda cwd: "2359189412ab" + "0" * 28)
+        monkeypatch.setattr(_system, "git_worktree_changes", lambda cwd: [])
+        assert _setup._resolve_version() == "0.2.0b4 (git 23591894)"
+
+    def test_uncommitted_changes_are_marked_dirty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".git").mkdir()
+        monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
+        monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
+        monkeypatch.setattr(_system, "git_head_sha", lambda cwd: "2359189412ab" + "0" * 28)
+        monkeypatch.setattr(_system, "git_worktree_changes", lambda cwd: [("M", "/x/a.py")])
+        assert _setup._resolve_version() == "0.2.0b4 (git 23591894, dirty)"
+
+    def test_a_checkout_without_git_on_the_path_prints_the_bare_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".git").mkdir()
+        monkeypatch.setattr(_setup, "_source_root", lambda: tmp_path)
+        monkeypatch.setattr(_setup, "_package_version", lambda: "0.2.0b4")
+        monkeypatch.setattr(_system, "git_head_sha", lambda cwd: None)
+        assert _setup._resolve_version() == "0.2.0b4"
 
 
 class TestPipedReport:

@@ -102,6 +102,9 @@ class TurnResult:
     # Measured endpoint token counts for this turn (never an estimate); ``None`` when the
     # driver reports none (evidence-v1 then records null usage for the hop).
     usage: TokenUsage | None = field(default=None, kw_only=True)
+    # The turn loop's own stop reason (``core.agent_loop.StopReason``: ``approval_unavailable``,
+    # ``max_iterations``, ...), finer than ``failure_kind``; ``""`` when the driver gave none.
+    stop_reason: str = field(default="", kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

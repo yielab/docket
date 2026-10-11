@@ -264,6 +264,7 @@ class ApprovalLedger:
         self._answers: dict[str, ApprovalOutcome] = {}
         self._granted: set[str] = set()
         self._denied: set[str] = set()
+        self._denied_before_close: set[str] | None = None
         self.last_question: QuestionV11 | None = None
 
     def observe(self, record: Mapping[str, Any]) -> None:
@@ -295,6 +296,13 @@ class ApprovalLedger:
         with self._lock:
             self._answers[token] = "accepted" if action == "accept" else "declined"
 
+    def stream_closed(self) -> None:
+        """Record that the answer stream ended: a denial from here on had nobody to answer it,
+        so it is ``unanswered``; one before this moment was the deadline's (``timed_out``)."""
+        with self._lock:
+            if self._denied_before_close is None:
+                self._denied_before_close = set(self._denied)
+
     def finish(self, *, cancelled: bool) -> list[ApprovalEntry]:
         """The entries for every approval the run requested, in request order."""
         with self._lock:
@@ -305,7 +313,11 @@ class ApprovalLedger:
                 elif token in self._granted:
                     outcome = "accepted"
                 elif token in self._denied:
-                    outcome = "unanswered" if cancelled else "timed_out"
+                    after_close = (
+                        self._denied_before_close is not None
+                        and token not in self._denied_before_close
+                    )
+                    outcome = "unanswered" if cancelled or after_close else "timed_out"
                 else:
                     outcome = "unanswered"
                 entries.append(
@@ -479,7 +491,9 @@ def result_from(turn: TurnResult, usage: UsageReport, run: dict[str, Any]) -> Ha
     return HarnessResult(
         token=str(run.get("id", "")),
         status=status,
-        stop_reason=turn.failure_kind or "",
+        # The loop's own reason (``approval_unavailable``, ``max_iterations``, ...) when the
+        # driver carried it; the coarser ``failure_kind`` otherwise.
+        stop_reason="" if turn.ok else (turn.stop_reason or turn.failure_kind or ""),
         error=turn.error or "",
         blocked=blocked,
         model=ModelInfo(

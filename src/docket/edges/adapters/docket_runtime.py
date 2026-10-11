@@ -318,6 +318,23 @@ def _build_on_process(
     return _on_process
 
 
+def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
+    """The loop outcome as the driver port's ``TurnResult``, field for field plus the loop's own
+    stop reason. ``cost_usd`` stays 0.0: tokens are measured, and turning them into dollars
+    here would silently convert an estimate into a billing claim."""
+    return TurnResult(
+        result.ok,
+        result.output,
+        0.0,
+        result.raw,
+        result.error,
+        failure_kind=result.failure_kind,
+        retry_after_s=result.retry_after_s,
+        usage=result.usage if result.usage.total_tokens else None,
+        stop_reason=result.stop_reason,
+    )
+
+
 @dataclass
 class DocketDriver:
     """The ``RuntimeDriver`` implementation. ``backend_factory``/``registry_factory``/
@@ -513,20 +530,7 @@ class DocketDriver:
             trace_task_id=trace_task_id or "",
         )
 
-        # cost_usd stays 0.0: real token counts are recorded (result.usage,
-        # folded into the session's MeasuredUsage by core/session.py), but
-        # turning tokens into dollars here would silently convert an estimate
-        # into a billing claim — the standing rule this driver does not cross.
-        return TurnResult(
-            result.ok,
-            result.output,
-            0.0,
-            result.raw,
-            result.error,
-            failure_kind=result.failure_kind,
-            retry_after_s=result.retry_after_s,
-            usage=result.usage if result.usage.total_tokens else None,
-        )
+        return _turn_result_from(result)
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         """Enumerate this agent's sessions. A directory name is the percent-encoded session KEY

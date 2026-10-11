@@ -560,7 +560,14 @@ def cmd_exec(
     task_file: str | None = typer.Option(
         None, "--task-file", help="Read the task text from a file"
     ),
-    model: str | None = typer.Option(None, "--model", help="PROVIDER/ID of the model to use"),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help=(
+            "PROVIDER/ID of the model to use. ID is sent to DOCKET_LLM_BASE_URL; PROVIDER only "
+            "names the fallback credential <PROVIDER>_API_KEY when DOCKET_LLM_API_KEY is unset"
+        ),
+    ),
     role: str | None = typer.Option(None, "--role", help="Role to run as (default implementer)"),
     timeout: str | None = typer.Option(None, "--timeout", help="Wall-clock limit in seconds"),
     agent_id: str | None = typer.Option(

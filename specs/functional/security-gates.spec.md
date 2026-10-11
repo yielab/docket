@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.36.1
+**Version**: 0.37.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-10
 
 ## Purpose
 
@@ -86,6 +86,18 @@ are owned here, not there.
    allowed, but `echo ... >`/`>>`/`&>` still asks by the same "not on the curated allowlist" path,
    because its argument is often model-composed text and an output redirect turns that into an
    unattended arbitrary-path write — adding `echo` to the allowlist **MUST NOT** also unlock that.
+   The one exception is a redirect docket can place: `classify_command` takes the turn's
+   `roots` (`core/tools.py::evaluate_tool_call` passes `ToolContext.roots`), and when every
+   output-redirect target of the segment resolves inside them — a relative target against
+   `roots[0]`, the `bash` tool's cwd, symlinks followed; no earlier `cd`/`pushd`/`popd` segment;
+   no `$`, `~`, glob or brace the shell would rewrite first; no operator without a target — the
+   redirect is the `write` tool by another name (the file tools are confined to the same roots,
+   and every role that may not write is denied `bash`) and **MUST** be allowed, for `echo` and
+   for a pod's extra bins alike. Without roots (`docket pod check`, dispatch's verify command)
+   every prior verdict stands. Every output-redirect spelling counts: `>`, `>>`, `>|`, `&>`,
+   `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. `pytest` and `python`
+   are on `SAFE_BINS` beside `python3`: the bare test runner runs the same code
+   `python3 -m pytest` does, so asking on one spelling only was a trap, not a gate.
    `docket pod check "<text>" --role <role>` **MUST** report the same verdict a live
    exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
    function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
@@ -96,8 +108,8 @@ are owned here, not there.
    an `extra_bins` parameter, default an empty `frozenset`, so every prior verdict in this spec is
    byte-identical when it is unset. A configured extra bin is folded into the `SAFE_BINS`
    membership check *only* — it does not widen the opaque-marker check or the high-risk-class
-   check, both of which still run against the full command line first, so `uv run pytest && git
-   push origin main` still asks even with `pytest`/`uv` allowlisted. Every extra bin is treated as
+   check, both of which still run against the full command line first, so `uv run tox && git
+   push origin main` still asks even with `tox`/`uv` allowlisted. Every extra bin is treated as
    redirect-sensitive, the same conservative rule `echo` gets, since docket cannot know whether a
    pod-supplied binary's argument is model-composed text. Write-time validation
    (`core.pod.PodSettings`) rejects a value containing a path separator or shell metacharacter, the
@@ -1098,6 +1110,14 @@ pre-grants", this section governs for `--answers stdin` only.
      new approval. It is single-use.
    - Harness contract 1.0 omits `rationale`, `options` and `rationaleBlocked` from the
      `approval_requested` event it relays; its stream is byte-identical to before.
+9. **End of stdin closes the channel.** When the reader reaches end of file, no answer can
+   arrive again: it calls `core.approval.close_answer_stream()`. `wait_for_approval` then
+   denies the token it is blocked on (`channel=harness`, reason `answer stream closed`) and
+   returns `unanswerable`, which `core/tools.py` reports as `approval_unavailable` (terminal,
+   agent-loop requirement 70); a later `ask` under mode `wait` is refused on the same branch
+   as mode `refuse`, with no record. The flag is process-wide and cleared when the reader
+   exits; no other producer (CLI, HTTP, MCP, Telegram) ever sets it, so a pod dispatch waits
+   exactly as before. harness-mode spec Section 5 item 10 states the caller's view.
 
 ### Credentials in task processes (implemented, ADR 0020 §8)
 
@@ -1562,6 +1582,16 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.37.0 (2026-10-10)
+
+- Tool-approval gates item 1: an output redirect whose every target resolves inside the turn's
+  `roots` is allowed for `echo` and for a pod's extra bins (`classify_command(roots=)`, passed
+  by `evaluate_tool_call`); `>|`, `&>>` and `>&`-to-a-path are now recognised as output
+  redirects (before, `echo x >& /etc/x` was not seen as a redirect at all); `pytest` and
+  `python` join `SAFE_BINS`.
+- The harness answer channel item 9: end of stdin closes the channel; a wait in progress is
+  denied at once and reported `approval_unavailable`, a later ask is refused.
 
 ### Version 0.36.1 (2026-10-08)
 
