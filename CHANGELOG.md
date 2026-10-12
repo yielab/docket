@@ -32,6 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Phase 40, Wave 98: the agent boundary (D-58, ADR 0023).** A file tool's path escape and a
+  `fetch` allowlist refusal are audited as `tool.refused` (tool, kind, attempted path or host,
+  never content), so `docket log` shows a repository trying to leave the workspace or reach an
+  unlisted host (security-gates 0.39.0). Every enqueue persists the `channel` it arrived by
+  (`cli`, `http`, `telegram`, `mcp`) beside the unchanged `source`, and audits `task.enqueue`;
+  `POST /dispatch/<project>` audits `run.dispatch` (pod-dispatch 6.38.0, serve-read-api 3.4.2).
+  `docket log verify` detects a truncated tail: each append writes a sibling `audit.head` with
+  the last `seq` and hash, and a log that ends below it is a break; deleting both files together
+  is still indistinguishable from a fresh install (audit 2.13.0). The repository's
+  `AGENTS.md` and skills index compose after the runtime contract, each behind a fixed frame
+  naming it untrusted repository text to follow for style only; a containment aid, not a
+  defence (agent-loop 1.34.0). The chat, model probe, OTLP exporter, ntfy and webhook requests
+  refuse a redirect to another scheme, host or port instead of re-sending their credential.
+  Supply chain: the `code-intel` recipe pins `ast-grep-mcp` to a commit and says it runs on
+  the host, `pyjwt` is 2.15.1, CI syncs with `--locked` and pins every action by commit.
 - **Security audit (2026-10-12), nine defects closed.** A newline inside a `bash` command now
   starts a new segment for the classifier (only the first line was classified; the shell ran
   both). `git -c k=v push origin main` and any global option between `git` and `push` match

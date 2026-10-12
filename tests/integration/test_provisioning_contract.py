@@ -24,9 +24,7 @@ class TestUxHelpers:
         assert _prov.slugify("  my-website  ") == "my-website"
 
     def test_suggest_project_name_is_codebase_dirname(self) -> None:
-        assert _prov.suggest_project_name("/home/user/work/my-website") == (
-            "my-website"
-        )
+        assert _prov.suggest_project_name("/home/user/work/my-website") == ("my-website")
 
     def test_default_codebase_is_cwd(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)

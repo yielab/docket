@@ -511,7 +511,9 @@ def test_ci_jobs_that_validate_pinned_provenance_checkout_complete_history() -> 
     shallow: list[str] = []
     for job_name in ("python", "floors", "macos"):
         checkout = next(
-            step for step in jobs[job_name]["steps"] if step.get("uses") == "actions/checkout@v4"
+            step
+            for step in jobs[job_name]["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout@")
         )
         if checkout.get("with", {}).get("fetch-depth") != 0:
             shallow.append(job_name)

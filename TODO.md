@@ -332,7 +332,7 @@ D-59** (a maintainer decision) and is in neither.
 
 ### P40-1 — audit every refused tool call
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-1`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("In-turn tool-call gate")
+**Status:** DONE (2026-10-12, merge `cbccb1b1`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("In-turn tool-call gate")
 
 **Trigger (audit finding L2):** a repository's five out-of-workspace `read` attempts and one
 refused `fetch` in the 2026-10-12 live run produced trace events only; `audit.log` held three
@@ -359,7 +359,7 @@ GREEN — each writes exactly one, with the tool and reason; an allowed call wri
 
 ### P40-2 — a channel on every enqueue and dispatch, in the audit
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-2`) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md
+**Status:** DONE (2026-10-12, merge `66215bc1`) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md
 
 **Trigger (audit finding C3):** `POST /tasks/<p>`, Telegram `/delegate` and `POST /dispatch/<p>`
 enqueue or start work with no audit entry; `core/dispatch.py::enqueue_task` hardcodes
@@ -384,7 +384,7 @@ GREEN — each path writes its channel-named entry, and an HTTP-enqueued task pe
 
 ### P40-3 — the audit chain detects tail truncation
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-3`) · **Size:** S · **Model:** Haiku · **Spec:** audit.spec.md
+**Status:** DONE (2026-10-12, merge `eac31f76`) · **Size:** S · **Model:** Haiku · **Spec:** audit.spec.md
 
 **Trigger (audit finding D4):** `docket log verify` walks the chain forward only; deleting the
 last line (or the last several) still verifies clean. CLAUDE.md's "erasure beyond one generation
@@ -479,7 +479,7 @@ parent's `/proc/<pid>/environ` and finds a seeded fake key on the base. GREEN �
 
 ### P40-7 — frame repository text as untrusted in the system prompt
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-7`) · **Size:** M · **Model:** Sonnet · **Spec:** agent-loop.spec.md
+**Status:** DONE (2026-10-12, merge `55e03f76`) · **Size:** M · **Model:** Sonnet · **Spec:** agent-loop.spec.md
 
 **Trigger (audit finding E5):** `core/identity.py` composes `## AGENTS.md`, `# Skills` and other
 repository text into the system prompt with the same authority as operator text; the only
@@ -503,7 +503,7 @@ unit test over `test_identity.py`.
 
 ### P40-8 — lock redirects on authenticated outbound requests
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-8`) · **Size:** S · **Model:** Haiku · **Spec:** none (a hardening fix; note in the module docstring)
+**Status:** DONE (2026-10-12, merge `ab86dfb5`) · **Size:** S · **Model:** Haiku · **Spec:** none (a hardening fix; note in the module docstring)
 
 **Trigger (audit finding A7):** `edges/adapters/llm.py`, `edges/adapters/exporters/otlp_http.py`,
 `channels/ntfy.py` and `channels/webhook.py` use the default `urllib` opener, which re-sends the
@@ -585,7 +585,7 @@ GREEN — all are 0700 / 0600. Oracle: `oct(os.stat(path).st_mode & 0o777)` in a
 
 ### P40-12 — supply-chain pins
 
-**Status:** IN PROGRESS (Wave 98, `w98-p40-12`) · **Size:** S · **Model:** Haiku · **Spec:** none
+**Status:** DONE (2026-10-12, merge `58f9f837`) · **Size:** S · **Model:** Haiku · **Spec:** none
 
 **Trigger (audit findings A2, A4, A8, A9):** the shipped `code-intel` recipe runs
 `uvx --from git+https://github.com/ast-grep/ast-grep-mcp` (unpinned default branch) with
