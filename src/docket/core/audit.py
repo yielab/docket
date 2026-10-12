@@ -53,6 +53,33 @@ def _audit_lock_path(logf: Path) -> Path:
     return logf.with_name(f".{logf.name}.lock")
 
 
+def _head_path(logf: Path) -> Path:
+    """Return the sibling sidecar holding the last appended ``seq`` and hash (Requirement 10)."""
+    return logf.with_name("audit.head")
+
+
+def _write_head(logf: Path, seq: int, entry_hash: str) -> None:
+    """Atomically replace the head sidecar (best effort: a stale head is only ever lower)."""
+    head = _head_path(logf)
+    tmp = head.with_name(head.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps({"seq": seq, "hash": entry_hash}), encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, head)
+    except OSError:
+        with suppress(OSError):
+            tmp.unlink(missing_ok=True)
+
+
+def _read_head(logf: Path) -> int | None:
+    """Return the ``seq`` the head sidecar records, or None if missing or unreadable."""
+    try:
+        data: dict[str, Any] = json.loads(_head_path(logf).read_text(encoding="utf-8"))
+        return int(data["seq"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
 def _rotation_marker_path(logf: Path) -> Path:
     """Return the short-lived marker that makes a failed rotation recoverable."""
     return logf.with_name(f".{logf.name}.rotation")
@@ -240,6 +267,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
                 "prev_hash": prev_hash,
             }
             if _append_entry(logf, json.dumps(entry)):
+                _write_head(logf, seq, _hash_entry(entry))
                 return AuditWriteResult("written")
     except (OSError, Timeout):
         pass
@@ -466,6 +494,17 @@ def _verify_chain_unlocked(logf: Path) -> VerifyResult:
         expected_seq = seq + 1
         expected_prev = _hash_entry(entry)
 
+    last_seq = 0 if expected_seq is None else expected_seq - 1
+    head_seq = _read_head(logf)
+    if head_seq is not None and head_seq > last_seq:
+        return VerifyResult(
+            True,
+            len(lines),
+            chained,
+            ChainBreak(len(lines) + 1, f"file ends at seq {last_seq} but head says {head_seq}"),
+            rotated,
+            continued_from_seq,
+        )
     return VerifyResult(True, len(lines), chained, None, rotated, continued_from_seq)
 
 
