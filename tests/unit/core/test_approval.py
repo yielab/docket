@@ -784,3 +784,26 @@ class TestApprovalReasonAndActor:
         last_line = grant_lines[-1]
         # The detail should have the exact format without actor/reason
         assert last_line["detail"] == f"token={token} project=proj channel=cli"
+
+
+class TestAuditFieldsAreBounded:
+    """Free-text approval fields reach the audit line capped at 512 characters."""
+
+    def test_a_long_deny_reason_is_capped_in_the_audit_detail(self) -> None:
+        token = _approval.approval_create("proj-cap-reason", "implementer", "deploy")
+        _approval.approval_deny(token, "cli", reason="r" * 50_000)
+        detail = str(_audit.read_audit()[-1]["detail"])
+        assert len(detail) < 700
+        assert "…" in detail
+
+    def test_a_long_actor_is_capped_in_the_audit_detail(self) -> None:
+        token = _approval.approval_create("proj-cap-actor", "implementer", "deploy")
+        _approval.approval_grant(token, "cli", actor="a" * 5_000)
+        detail = str(_audit.read_audit()[-1]["detail"])
+        assert len(detail) < 700
+        assert "…" in detail
+
+    def test_a_reason_under_the_cap_is_recorded_whole(self) -> None:
+        token = _approval.approval_create("proj-cap-short", "implementer", "deploy")
+        _approval.approval_deny(token, "cli", reason="not ready")
+        assert "reason=not ready" in str(_audit.read_audit()[-1]["detail"])

@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.13.0
+**Version**: 2.14.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -133,6 +133,11 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 5. The log file **MUST** live at `$DOCKET_HOME/audit.log` and **MUST** be created with mode
    `0600`.
 6. Recording **MUST** be best-effort: a write failure **MUST NOT** fail the calling command.
+7. A caller-supplied free-text field that reaches a detail (the approval `actor` and `reason`,
+   `core/approval.py`) **MUST** be bounded to 512 characters before it is written. The text is
+   redacted first, then cut at 512 characters and suffixed with `…`, so a secret is never left
+   half-visible. The `pre_input` screen runs on the full text before the cut, so a blocked reason
+   is still refused. One caller cannot grow the log without limit by sending a long reason.
    `audit_log()` returns a typed result whose status is exactly `"written"` or `"failed"`, so a
    caller that chooses to observe it can distinguish a durable event from a best-effort miss;
    existing callers may intentionally ignore it. A missing parent directory **MUST** be created
@@ -428,6 +433,12 @@ $ docket log verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.14.0 (2026-10-12)
+
+- Requirement 7 (P40-4): the approval `actor` and `reason` are redacted, then capped at 512
+  characters with a `…` marker before they reach the trace or the audit detail. A 50,000-character
+  deny reason previously wrote a line that size. The `pre_input` screen still sees the full reason.
 
 ### Version 2.13.0 (2026-10-12)
 

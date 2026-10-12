@@ -376,13 +376,17 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
     return TelegramActionResult(True, f"Answered task {task_id}.", True, "answer")
 
 
-def handle_message(msg: InboundMessage) -> TelegramActionResult:
-    """Route one inbound message to an action. The one entry point this
-    module exposes to a caller (the poll loop); enforces the module
-    docstring's security model."""
+def handle_message(
+    msg: InboundMessage, *, unauthorized: dict[str, list[int]] | None = None
+) -> TelegramActionResult:
+    """Route one inbound message; enforces the module's security model.
+    ``unauthorized`` collects refused update ids instead of auditing each one."""
     agent_id = _authorize(msg.chat_id)
     if agent_id is None:
-        audit_log("telegram.unauthorized", f"chat_id={msg.chat_id!r} update_id={msg.update_id}")
+        if unauthorized is not None:
+            unauthorized.setdefault(msg.chat_id, []).append(msg.update_id)
+        else:
+            audit_log("telegram.unauthorized", f"chat_id={msg.chat_id!r} update_id={msg.update_id}")
         return TelegramActionResult(
             False, "This chat is not wired to a docket agent.", False, "unauthorized"
         )
@@ -575,6 +579,7 @@ def poll_once(
 
     processed = 0
     max_update_id = offset - 1
+    unauthorized: dict[str, list[int]] = {}
     for update in result.updates:
         max_update_id = max(max_update_id, update.update_id)
         msg = InboundMessage(
@@ -584,7 +589,7 @@ def poll_once(
             update_id=update.update_id,
         )
         try:
-            outcome = handle_message(msg)
+            outcome = handle_message(msg, unauthorized=unauthorized)
             if outcome.reply:
                 send_message_fn(token, update.chat_id, outcome.reply)
         except Exception as exc:
@@ -595,6 +600,12 @@ def poll_once(
                 f"chat_id={update.chat_id} update_id={update.update_id} error={type(exc).__name__}",
             )
         processed += 1
+
+    for chat_id, update_ids in unauthorized.items():
+        audit_log(
+            "telegram.unauthorized",
+            f"chat_id={chat_id!r} update_id={update_ids[-1]} count={len(update_ids)}",
+        )
 
     if result.updates:
         _save_offset(max_update_id + 1)

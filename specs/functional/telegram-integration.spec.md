@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Implemented. Docket owns the whole channel: `docket setup notify enable telegram
 --chat <id>` connects it in one operation (token, allowed chats, a binding per pod Lead in
 `fleet.json`), `docket setup notify bind`/`unbind` handle the per-pod exception (guided
@@ -346,7 +346,22 @@ for it, and still advances the durable offset past the whole batch, so the next 
 replays it. Before this the serve loop re-polled the same offset every five seconds forever,
 and one message from a bound chat was enough to stop every later `/approve`.
 
+### Unbound chats in one batch
+
+An update from a chat id with no binding is refused with the same reply as before, but its audit
+entry is **coalesced**: `poll_once` writes one `telegram.unauthorized` entry per chat id per poll
+batch, with `chat_id`, `update_id` (the last one in the batch from that chat) and `count=<n>`,
+rather than one entry per message. A flood from one unbound chat therefore adds one line per batch,
+not one line per message. Each message still receives its own refusal reply. A batch holding one
+message from that chat writes one entry with `count=1`. `handle_message` called directly, outside
+`poll_once`, still audits each refusal it handles.
+
 ## Changelog
+
+### Version 2.7.0 (2026-10-12)
+
+- "Unbound chats in one batch": `telegram.unauthorized` is coalesced to one entry per chat id per
+  poll batch, with a count (security audit, P40-4).
 
 ### Version 2.6.0 (2026-10-12)
 
