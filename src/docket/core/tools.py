@@ -318,6 +318,16 @@ def _audit_tool_decision(
     )
 
 
+def _audit_refusal(tool: Tool, args: dict[str, Any], ctx: ToolContext, kind: str) -> None:
+    """Audit a refusal a handler made itself: tool, kind and the attempted path or host only."""
+    if kind == "fetch_not_allowed":
+        host = urllib.parse.urlsplit(_str_arg(args, "url")).hostname or "?"
+        target = f"host={host.lower()!r}"
+    else:
+        target = f"path={_str_arg(args, 'path')!r}"
+    _audit_tool_decision("tool.refused", tool.name, ctx, f"kind={kind} {target}")
+
+
 def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> ToolResult:
     """Run one tool call, or refuse it. The only path to tool execution."""
     result = ToolResult(ok=False, tool=call.name, call_id=call.id)
@@ -421,6 +431,8 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.error = f"{type(ex).__name__}: {ex}"
         return result
 
+    if outcome.refusal:
+        _audit_refusal(tool, args, ctx, outcome.refusal)
     result.executed = True
     result.ok = outcome.ok
     result.content = outcome.content
@@ -768,13 +780,14 @@ def screen_tool_result(
         return ToolOutcome(
             False,
             error=f"result from {source} blocked by policy {hit.policy_id!r} (action={hit.action})",
+            refusal=outcome.refusal,
         )
     if hit.action in ("warn", "redact"):
         audit_log(warn_action, audit_detail)
     if hit.action == "redact":
         if outcome.ok:
             return ToolOutcome(True, content=_redact(text))
-        return ToolOutcome(False, error=_redact(text))
+        return ToolOutcome(False, error=_redact(text), refusal=outcome.refusal)
     return outcome
 
 

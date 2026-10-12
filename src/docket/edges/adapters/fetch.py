@@ -108,6 +108,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
                 f"{host!r} is not on the fetch domain allowlist ({shown}); "
                 "add it to FETCH_ALLOWED_DOMAINS to permit it"
             ),
+            refusal="fetch_not_allowed",
         )
 
     effective_timeout = timeout if timeout > 0 else _cfg.FETCH_TIMEOUT_S
