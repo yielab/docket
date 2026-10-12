@@ -21,11 +21,11 @@ SUBJECT = "docket.core"
 class TestUxHelpers:
     def test_slugify(self) -> None:
         assert _prov.slugify("My Shop API") == "my-shop-api"
-        assert _prov.slugify("  ai-site-generator  ") == "ai-site-generator"
+        assert _prov.slugify("  my-website  ") == "my-website"
 
     def test_suggest_project_name_is_codebase_dirname(self) -> None:
-        assert _prov.suggest_project_name("/home/ox/Sites/ai-site-generator") == (
-            "ai-site-generator"
+        assert _prov.suggest_project_name("/home/user/work/my-website") == (
+            "my-website"
         )
 
     def test_default_codebase_is_cwd(self, tmp_path: Path, monkeypatch) -> None:

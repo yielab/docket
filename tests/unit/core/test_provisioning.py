@@ -48,7 +48,7 @@ class TestValidateProjectId:
 
     @pytest.mark.parametrize(
         "name",
-        ["My Shop API", "  ai-site-generator  ", "docket-dev", "Weird!!Name__2"],
+        ["My Shop API", "  my-website  ", "docket-dev", "Weird!!Name__2"],
     )
     def test_every_slugify_output_passes_validation(self, name: str) -> None:
         # Non-goal: no migration of existing pods -- every id `slugify` can

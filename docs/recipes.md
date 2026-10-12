@@ -127,7 +127,10 @@ runs until a turn loads them. Applying never installs the binaries below.
   (README: `uvx --from git+https://github.com/ast-grep/ast-grep-mcp ast-grep-server`; its
   `main.py` registers exactly four `@mcp.tool()` functions, none writing). The `ast-grep`
   binary it shells out to is npm `@ast-grep/cli` 0.45.3 (`npm view` checked). The server is not
-  on PyPI under that name, so it runs from the git URL; pin a commit there for reproducibility.
+  on PyPI under that name, so it runs from the git URL, pinned to commit
+  `149e20d47bb7125fb0c1451feea2f48a98742034` (the `HEAD` of 2026-10-12, which still registers the
+  four read tools and the `ast-grep-server` script). Moving the pin is a reviewed edit to
+  `mcp-servers/ast-grep.yaml`, never a floating ref.
 - `language-intel`: https://github.com/isaacphi/mcp-language-server (Go; install with
   `go install github.com/isaacphi/mcp-language-server@latest`; tool names read from its
   `tools.go`: `edit_file`, `definition`, `references`, `diagnostics`, `hover`,
@@ -142,8 +145,8 @@ A turn starts stdio servers in the same jail as `bash`. `ast-grep` declares `iso
 because, measured 2026-10-05 through `system.bwrap_command_argv` with a warm cache, `uvx` fails
 there with `Could not acquire lock ... Read-only file system (os error 30)` on its cache under
 `~/.cache/uv`. Applying prints `ast-grep: runs unjailed (isolate: false)`; the server starts on the
-host with your user's rights. `language-intel` stays jailed (its binary was not installed on the
-measuring host); if it cannot start in the jail, add `isolate: false` to its document.
+host with your user's rights: this is **host execution**, the pinned server code runs
+unsandboxed. `language-intel` stays jailed (its binary was not installed on the measuring host); if it cannot start in the jail, add `isolate: false` to its document.
 
 ### Make it yours
 
