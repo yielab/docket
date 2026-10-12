@@ -31,6 +31,7 @@ block.
 
 from __future__ import annotations
 
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -39,6 +40,9 @@ import docket.config as _cfg
 from docket.edges.adapters.toolbox import ToolOutcome
 
 _USER_AGENT = "docket-fetch/1"
+# A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
+FETCH_CLAMP_MULTIPLE = 4
+_READ_CHUNK = 8192
 
 
 class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -81,6 +85,27 @@ def _allowed_domains() -> frozenset[str]:
     return frozenset(_cfg.FETCH_ALLOWED_DOMAINS)
 
 
+def _effective_timeout(timeout: int) -> float:
+    """The caller's timeout bounded by the clamp; non-positive falls back to the default."""
+    if timeout > 0:
+        return min(timeout, FETCH_CLAMP_MULTIPLE * _cfg.FETCH_TIMEOUT_S)
+    return _cfg.FETCH_TIMEOUT_S
+
+
+def _read_until_deadline(resp: object, cap: int, deadline: float) -> bytes | None:
+    """Read up to *cap* + 1 bytes in chunks; None when the monotonic *deadline* passes first."""
+    read1 = getattr(resp, "read1", None) or resp.read  # type: ignore[attr-defined]
+    buf = bytearray()
+    while len(buf) <= cap:
+        chunk: bytes = read1(min(_READ_CHUNK, cap + 1 - len(buf)))
+        if not chunk:
+            break
+        buf += chunk
+        if time.monotonic() >= deadline:
+            return None
+    return bytes(buf)
+
+
 def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     """Fetch *url* over HTTP(S), refusing anything off the domain allowlist.
 
@@ -111,14 +136,20 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
             refusal="fetch_not_allowed",
         )
 
-    effective_timeout = timeout if timeout > 0 else _cfg.FETCH_TIMEOUT_S
+    effective_timeout = _effective_timeout(timeout)
+    deadline = time.monotonic() + effective_timeout
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     opener = urllib.request.build_opener(_DomainLockedRedirectHandler(allowed))
     try:
         with opener.open(request, timeout=effective_timeout) as resp:
-            raw = resp.read(_cfg.FETCH_MAX_RESPONSE_BYTES + 1)
             status = resp.status
             content_type = resp.headers.get("Content-Type", "")
+            read = _read_until_deadline(resp, _cfg.FETCH_MAX_RESPONSE_BYTES, deadline)
+            if read is None:
+                return ToolOutcome(
+                    False, error=f"timed out after {effective_timeout}s fetching {url}"
+                )
+            raw = read
     except urllib.error.HTTPError as ex:
         try:
             detail = ex.read(2000).decode("utf-8", errors="replace").strip()
