@@ -54,7 +54,7 @@ def default_codebase() -> Path:
 def suggest_project_name(codebase: Path | str) -> str:
     """Project display name suggested from the codebase directory name.
 
-    ``/home/ox/Sites/ai-site-generator`` -> ``ai-site-generator``.
+    ``/home/user/work/my-website`` -> ``my-website``.
     """
     return Path(codebase).expanduser().resolve().name or "project"
 
