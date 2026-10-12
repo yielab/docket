@@ -274,3 +274,48 @@ class TestInboxEndpoint:
         cli_body = json.loads(result.stdout)
 
         assert http_body == cli_body
+
+
+# ── TestStatusJsonPublishesNoPeerIds: the unauthenticated body, live over HTTP ─
+
+
+class TestStatusJsonPublishesNoPeerIds:
+    """The unauthenticated /status.json never carries a channel peer id."""
+
+    def test_unauthenticated_body_omits_peer_id(
+        self, api_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+        from http.server import ThreadingHTTPServer
+
+        from docket.serve import _DocketHandler
+
+        fleet = dict(FLEET_CONFIG)
+        fleet["bindings"] = [
+            {
+                "agentId": "apitest",
+                "channel": "telegram",
+                "peerKind": "group",
+                "peerId": "-100123",
+            }
+        ]
+        (api_home / "fleet.json").write_text(json.dumps(fleet))
+
+        class _Handler(_DocketHandler):
+            serve_token = "test-serve-token-p40-9"
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/status.json", timeout=5) as resp:
+                body = resp.read().decode()
+        finally:
+            srv.shutdown()
+
+        assert "peerId" not in body
+        assert "-100123" not in body
+        agent = json.loads(body)["agents"][0]
+        assert agent["bindings"] == [{"channel": "telegram"}]

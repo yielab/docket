@@ -98,7 +98,7 @@ class TestBuildStatus:
         assert a["kind"] == "project"
         assert a["registered"] is True
         assert a["lastActivity"] == "2026-06-20"
-        assert a["bindings"] == [{"channel": "telegram", "peerId": "-100123"}]
+        assert a["bindings"] == [{"channel": "telegram"}]
 
     def test_last_activity_never_when_empty(
         self, fake_home: Path, monkeypatch: pytest.MonkeyPatch

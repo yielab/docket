@@ -82,7 +82,7 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
         "scope": str(meta.get("scope", "project")),
         "model": str(meta.get("model", "")),
         "registered": agent_id in registered,
-        "bindings": fleet.agent_bindings(agent_id),
+        "bindings": [{"channel": b["channel"]} for b in fleet.agent_bindings(agent_id)],
         "lastActivity": _last_activity_or_never(agent_id),
         "costUsd": cost,
         "budgetUsd": budget,
