@@ -249,7 +249,7 @@ def audit_log(action: str, detail: str = "") -> AuditWriteResult:
     """
     logf = _cfg.AUDIT_LOG
     try:
-        logf.parent.mkdir(parents=True, exist_ok=True)
+        _cfg.mkdir_private(logf.parent)
     except OSError:
         return AuditWriteResult("failed")
 

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+import docket.config as _cfg
 from docket.cli import _agents, app
 
 SUBJECT = "docket.cli._agents"
@@ -103,3 +105,19 @@ class TestInitInstallsTheBaselinePolicies:
         installed = sorted(p.name for p in _cfg.POLICIES_DIR.glob("*.yaml"))
         assert "prompt-injection.yaml" in installed
         assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
+
+
+def test_a_new_workspace_and_its_memory_are_created_0700(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh projects directory, workspace and memory are private under a permissive umask."""
+    old = os.umask(0o002)
+    try:
+        monkeypatch.setattr(_cfg, "PROJECTS_DIR", tmp_path / "home" / "projects")
+        _agents._create_workspace("demo", "demo", "/tmp/x", "py", "", "m")
+    finally:
+        os.umask(old)
+    assert oct(os.stat(tmp_path / "home" / "projects").st_mode & 0o777) == "0o700"
+    ws = tmp_path / "home" / "projects" / "demo"
+    assert oct(os.stat(ws).st_mode & 0o777) == "0o700"
+    assert oct(os.stat(ws / "memory").st_mode & 0o777) == "0o700"

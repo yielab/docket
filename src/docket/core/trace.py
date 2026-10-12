@@ -188,7 +188,7 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
     if not records:
         return
     is_new = not tracefile.exists()
-    tracefile.parent.mkdir(parents=True, exist_ok=True)
+    _cfg.mkdir_private(tracefile.parent)
     with tracefile.open("a", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")
@@ -310,7 +310,7 @@ def trace_ingest(project: str) -> None:
 
     project_dir = _cfg.TRACES_DIR / project
     try:
-        project_dir.mkdir(parents=True, exist_ok=True)
+        _cfg.mkdir_private(project_dir)
         os.chmod(project_dir, 0o700)
     except OSError:
         return

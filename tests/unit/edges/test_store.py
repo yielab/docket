@@ -35,3 +35,15 @@ def test_a_symlinked_backup_name_is_replaced_not_followed(tmp_path: Path) -> Non
     bak = tmp_path / "fleet.json.bak"
     assert not bak.is_symlink()
     assert json.loads(bak.read_text()) == {"old": True}
+
+
+def test_a_backup_is_0600_even_when_the_original_is_world_readable(tmp_path: Path) -> None:
+    old = os.umask(0o022)
+    try:
+        target = tmp_path / "fleet.json"
+        target.write_text('{"old": true}')
+        os.chmod(target, 0o644)
+        store.write_json(target, {"new": True})
+    finally:
+        os.umask(old)
+    assert oct(os.stat(tmp_path / "fleet.json.bak").st_mode & 0o777) == "0o600"
