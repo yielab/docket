@@ -542,17 +542,19 @@ class TestSystemPromptForAgent:
 
 
 # An opt-in PodSettings.projectInstructions reads relative paths from the codebase
-# root (the AGENTS.md/CLAUDE.md convention) and composes them right after
-# INSTRUCTIONS.md, screened as untrusted input. Unset with no AGENTS.md at the root
+# root (the AGENTS.md/CLAUDE.md convention) and composes them after the
+# runtime contract, framed, screened as untrusted input. Unset with no AGENTS.md at the root
 # changes nothing; unset with one present composes it by default; an explicit setting
 # replaces that default entirely, never adds to it. See
 # specs/functional/agent-loop.spec.md requirement 30 and
 # tests/unit/core/test_pod.py::TestPodSettingsProjectInstructions for the setting's
 # own validation.
 class TestProjectInstructionsSection:
-    """Composes `PodSettings.projectInstructions` right after `INSTRUCTIONS.md`."""
+    """Composes `PodSettings.projectInstructions` after the runtime contract."""
 
-    def test_configured_file_reaches_the_prompt_after_instructions_md(self, tmp_path: Path) -> None:
+    def test_configured_file_reaches_the_prompt_after_the_runtime_contract(
+        self, tmp_path: Path
+    ) -> None:
         codebase = tmp_path / "repo"
         codebase.mkdir()
         (codebase / "AGENTS.md").write_text("PROJECT-CONVENTION-LINE\n")
@@ -566,8 +568,8 @@ class TestProjectInstructionsSection:
         assert composition.text.index("OPERATOR-OWNED-LINE") < composition.text.index(
             "PROJECT-CONVENTION-LINE"
         )
-        assert composition.text.index("PROJECT-CONVENTION-LINE") < composition.text.index(
-            "Docket live runtime contract"
+        assert composition.text.index("Docket live runtime contract") < composition.text.index(
+            "PROJECT-CONVENTION-LINE"
         )
         report = next(s for s in composition.sections if s.name == "projectInstructions")
         assert report.status == "full"
