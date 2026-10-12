@@ -89,6 +89,15 @@ def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
+@pytest.fixture(autouse=True)
+def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An in-process turn must not make the pytest process non-dumpable for every later test;
+    the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
+    from docket.edges.adapters import system as _system
+
+    monkeypatch.setattr(_system, "make_non_dumpable", lambda: None, raising=True)
+
+
 # Every ``DOCKET_HOME``-derived path, and the config attribute each is read
 # through at call time. Nothing under ``src/docket/`` binds these at import
 # (no ``from docket.config import TRACES_DIR`` etc.), so patching the config

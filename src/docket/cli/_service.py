@@ -86,6 +86,9 @@ def cmd_start(
 
     Example: docket start --dispatch
     """
+    from docket.edges.adapters.system import make_non_dumpable
+
+    make_non_dumpable()
     if mcp:
         if dispatch or telegram or token_file is not None:
             ui.error(

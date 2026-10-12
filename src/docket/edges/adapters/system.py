@@ -13,6 +13,7 @@ one belongs to ``core/tools.py``'s ``ToolContext.sandbox``).
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import os
 import re
 import shutil
@@ -595,6 +596,17 @@ def run_verify_cmd(
         return False, f"[verify error: {exc}]"
     combined = (stdout + stderr).strip()
     return proc.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
+
+
+def make_non_dumpable() -> None:
+    """Set PR_SET_DUMPABLE to 0 so a same-uid process cannot read this one's /proc environ or
+    mem. Linux only; a no-op elsewhere and on any failure. Reset by execve, so children are unaffected."""
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)
+    except (OSError, AttributeError):
+        return
 
 
 def process_alive(pid: int) -> bool:

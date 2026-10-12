@@ -1156,6 +1156,12 @@ pre-grants", this section governs for `--answers stdin` only.
 2. `run_verify_cmd` and `run_bash` with `sandbox="off"` both launch their child with this
    environment. The bwrap and docker paths are unchanged: they already forward no host environment.
 3. Reading the secret store and the catalog never creates `DOCKET_HOME`.
+4. `edges/adapters/system.py::make_non_dumpable()` calls `prctl(PR_SET_DUMPABLE, 0)` through
+   `ctypes` on Linux, so a same-uid process cannot read this process's `/proc/<pid>/environ` or
+   `mem` (`EACCES`). It is a no-op off Linux and on any failure, never raises, and the flag resets
+   across `execve`, so children stay debuggable. `docket exec`, `docket start` (before the
+   `--mcp` branch) and `DocketDriver.run_turn` call it before any task process is spawned;
+   `core/` never does. Hiding the environment from root is a non-goal.
 
 ## Interface Contracts
 
@@ -1617,6 +1623,11 @@ $ git clone https://anywhere.example/repo.git
   call, checked while the body is read in chunks (a server dripping one byte under the deadline
   now fails the call at the deadline). The per-call `timeout` argument is clamped to 4 times
   `FETCH_TIMEOUT_S`; an unbounded value is no longer accepted.
+
+### Version 0.40.0 (2026-10-12)
+
+- Credentials in task processes item 4: the docket process sets `PR_SET_DUMPABLE` to 0 so an
+  unjailed child cannot read the parent's `/proc/<pid>/environ`.
 
 ### Version 0.39.0 (2026-10-12)
 
