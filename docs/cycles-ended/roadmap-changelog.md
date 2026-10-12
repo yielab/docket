@@ -10,6 +10,14 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-12 (Phase 40 opened and run; Waves 98–99 closed) — eleven of twelve cards.** The
+  maintainer asked to start the phase with multiple agents. The audit's contained fixes shipped
+  first (`ee790446`), the phase opened at `cca88bef`, and eleven cards ran as one Sonnet or Haiku
+  worker each in two sub-waves split by file contention: Wave 98 (P40-1, -2, -3, -7, -8, -12,
+  rollup `8f62c97d`) and Wave 99 (P40-4, -6, -9, -10, -11). The integrator caught a scrub-list
+  name in a worker's placeholder, an agent-lane test that matched a CI action by tag, a dropped
+  `chmod` on an existing trace directory, and the pytest process inheriting the non-dumpable
+  flag from in-process turns. P40-5 stays blocked on D-59.
 - **2026-10-12 (Phase 40 planned / D-58 recorded / ADR 0023 / D-59 opened) — harden the agent
   boundary.** A five-lane security audit (gitignored `internal-docs/security-audit-2026-10-12.md`)
   ran docket against a hostile repository on the local model. Eleven contained defects were fixed

@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Phase 40, Wave 99: the agent boundary, continued.** The docket process marks itself
+  non-dumpable on Linux (`docket exec`, `docket start`, every turn), so an unjailed `bash` call,
+  verify command or `run:` step can no longer read docket's credentials from
+  `/proc/<pid>/environ`; the flag resets across `execve`, so children stay debuggable
+  (security-gates 0.40.0). `fetch`'s timeout is a wall-clock deadline over the body read, so a
+  server that drips bytes fails at the deadline, and the per-call timeout is clamped to four
+  times `FETCH_TIMEOUT_S` (0.41.0). An approval's actor and reason are capped at 512 characters
+  in the audit log and trace (audit 2.14.0), and refusals of unbound Telegram chats are one
+  audit entry per chat per poll batch with a count (telegram-integration 2.7.0), so neither can
+  rotate the audit log away. The unauthenticated `/status.json` carries each binding's channel
+  but no longer the Telegram chat id that is the bot's authorization boundary (serve-read-api
+  3.5.0; `apiVersion` unchanged). Directories docket creates are 0700 whatever the umask.
 - **Phase 40, Wave 98: the agent boundary (D-58, ADR 0023).** A file tool's path escape and a
   `fetch` allowlist refusal are audited as `tool.refused` (tool, kind, attempted path or host,
   never content), so `docket log` shows a repository trying to leave the workspace or reach an
