@@ -377,6 +377,7 @@ class DocketDriver:
         writes it back to ``.docket-meta.json``. Starts the observability export pipeline lazily
         before the turn and flushes it (recording ``telemetry.health()``) in a ``finally``, so
         both run on every return path -- see ``_run_turn_body`` for the turn itself."""
+        _system.make_non_dumpable()
         _telemetry.start(_telemetry.load_enabled_exporters(), _exporters.sink_for)
         try:
             return self._run_turn_body(

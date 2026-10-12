@@ -399,6 +399,7 @@ def _finish(
 
 def run_exec(opts: ExecOptions) -> int:
     """Run one agent turn (or one recipe task) for *opts* and return the process exit code."""
+    _system.make_non_dumpable()
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 
     workspace_raw = opts.workspace
