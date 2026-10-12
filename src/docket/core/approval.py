@@ -114,6 +114,15 @@ def _redact(text: str) -> str:
         return text
 
 
+_AUDIT_FIELD_MAX = 512
+
+
+def _audit_field(text: str) -> str:
+    """Redact, then cap at 512 characters with a visible marker (audit.spec.md Requirement 7)."""
+    clean = _redact(text)
+    return clean if len(clean) <= _AUDIT_FIELD_MAX else clean[:_AUDIT_FIELD_MAX] + "…"
+
+
 def _emit_trace(
     project: str,
     session: str,
@@ -386,18 +395,18 @@ def approval_grant(
     # Build trace payload with actor and reason only when non-empty
     trace_payload: dict[str, Any] = {"token": token}
     if actor:
-        trace_payload["actor"] = actor
+        trace_payload["actor"] = _audit_field(actor)
     if reason:
-        trace_payload["reason"] = _redact(reason)
+        trace_payload["reason"] = _audit_field(reason)
 
     _emit_trace(project, f"{project}-approval", role, "approval_granted", trace_payload)
 
     # Build audit detail with actor and reason only when non-empty
     audit_detail = f"token={token} project={project} channel={channel}"
     if actor:
-        audit_detail += f" actor={_redact(actor)}"
+        audit_detail += f" actor={_audit_field(actor)}"
     if reason:
-        audit_detail += f" reason={_redact(reason)}"
+        audit_detail += f" reason={_audit_field(reason)}"
     audit_log("approval.grant", audit_detail)
 
 
@@ -421,18 +430,18 @@ def approval_deny(
     # Build trace payload with actor and reason only when non-empty
     trace_payload: dict[str, Any] = {"token": token}
     if actor:
-        trace_payload["actor"] = actor
+        trace_payload["actor"] = _audit_field(actor)
     if reason:
-        trace_payload["reason"] = _redact(reason)
+        trace_payload["reason"] = _audit_field(reason)
 
     _emit_trace(project, f"{project}-approval", role, "approval_denied", trace_payload)
 
     # Build audit detail with actor and reason only when non-empty
     audit_detail = f"token={token} project={project} channel={channel}"
     if actor:
-        audit_detail += f" actor={_redact(actor)}"
+        audit_detail += f" actor={_audit_field(actor)}"
     if reason:
-        audit_detail += f" reason={_redact(reason)}"
+        audit_detail += f" reason={_audit_field(reason)}"
     audit_log("approval.deny", audit_detail)
 
     # The denial reason joins the corrections ledger under the task the gate named (dispatch

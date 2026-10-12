@@ -237,7 +237,9 @@ class TestPoisonUpdateDoesNotWedgeThePoller:
         )
         seen: list[int] = []
 
-        def _handle(msg: _core_tg.InboundMessage) -> _core_tg.TelegramActionResult:
+        def _handle(
+            msg: _core_tg.InboundMessage, **_kwargs: object
+        ) -> _core_tg.TelegramActionResult:
             seen.append(msg.update_id)
             if msg.update_id == 50:
                 raise RuntimeError("poison")

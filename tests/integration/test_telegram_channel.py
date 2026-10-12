@@ -925,3 +925,61 @@ class TestOutboundOnlyThroughTheChannel:
         assert result.ok
         assert "task-abc123" in result.reply
         assert "do the thing" not in result.reply
+
+
+class TestUnauthorizedBatchIsCoalesced:
+    """One batch from an unbound chat writes one audit entry per chat id."""
+
+    @staticmethod
+    def _updates(chat_id: str, count: int) -> _tg.GetUpdatesFn:
+        from docket.edges.adapters.telegram import GetUpdatesResult
+
+        updates = tuple(
+            TelegramUpdate(update_id=i, chat_id=chat_id, user_id="9", text="/status")
+            for i in range(1, count + 1)
+        )
+
+        def _fake(token: str, **_: object) -> GetUpdatesResult:
+            return GetUpdatesResult(True, updates=updates)
+
+        return _fake
+
+    def test_ten_messages_from_one_unbound_chat_write_one_entry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ten refusals in one batch audit as one telegram.unauthorized line with count=10."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        replies: list[str] = []
+        summary = _tg.poll_once(
+            get_updates=self._updates("-999999", 10),
+            send_message=lambda _t, _c, text: replies.append(text) or True,
+        )
+        assert summary.processed == 10
+        assert len(replies) == 10
+        entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
+        assert len(entries) == 1
+        assert "count=10" in str(entries[0]["detail"])
+        assert "-999999" in str(entries[0]["detail"])
+
+    def test_two_unbound_chats_in_one_batch_write_one_entry_each(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Coalescing is per chat id, so two chats in one batch keep two entries."""
+        from docket.edges.adapters.telegram import GetUpdatesResult
+
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        updates = (
+            TelegramUpdate(update_id=1, chat_id="-111", user_id="9", text="/status"),
+            TelegramUpdate(update_id=2, chat_id="-222", user_id="9", text="/status"),
+            TelegramUpdate(update_id=3, chat_id="-111", user_id="9", text="/status"),
+        )
+        _tg.poll_once(
+            get_updates=lambda _t, **_: GetUpdatesResult(True, updates=updates),
+            send_message=lambda *a: True,
+        )
+        entries = [e for e in _read_audit() if e.get("action") == "telegram.unauthorized"]
+        assert len(entries) == 2
+        assert sorted(str(e["detail"]).count("count=") for e in entries) == [1, 1]
+        assert any("count=2" in str(e["detail"]) for e in entries)
