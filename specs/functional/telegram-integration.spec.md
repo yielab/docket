@@ -1,6 +1,6 @@
 # Telegram Integration Specification
 
-**Version**: 2.5.1
+**Version**: 2.6.0
 **Status**: Implemented. Docket owns the whole channel: `docket setup notify enable telegram
 --chat <id>` connects it in one operation (token, allowed chats, a binding per pod Lead in
 `fleet.json`), `docket setup notify bind`/`unbind` handle the per-pod exception (guided
@@ -10,7 +10,7 @@ new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
 fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny through it writes an
 `audit_log()` entry tagged `channel="telegram"`, exactly like the other three.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -338,7 +338,20 @@ entry `docket task approve`/`POST /approvals/<token>` would write for the CLI/HT
 - Message bodies **MUST NOT** be logged beyond what a human already sees in the reply; audit
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
+### Poison updates
+
+One update whose handling raises **MUST NOT** pin the poller on its batch: `poll_once` records
+it (`telegram.update_failed chat_id=… update_id=… error=<type>`), skips it, replies to nothing
+for it, and still advances the durable offset past the whole batch, so the next poll never
+replays it. Before this the serve loop re-polled the same offset every five seconds forever,
+and one message from a bound chat was enough to stop every later `/approve`.
+
 ## Changelog
+
+### Version 2.6.0 (2026-10-12)
+
+- "Poison updates": a raising update is audited, skipped, and the offset still advances
+  (security audit).
 
 ### Version 2.5.1 (2026-10-08)
 

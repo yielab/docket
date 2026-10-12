@@ -159,6 +159,7 @@ def _recover_from_backup(path: Path, malformed_bytes: bytes) -> dict[str, Any]:
 
 def _write_quarantine(path: Path, malformed_bytes: bytes) -> None:
     quarantine = path.with_suffix(path.suffix + ".corrupt")
+    _unlink_if_symlink(quarantine)
     _replace_bytes(quarantine, malformed_bytes)
 
 
@@ -193,7 +194,7 @@ def _atomic_write(path: Path, content: str, *, rotate_backup: bool = True) -> No
             current_bytes = path.read_bytes()
         except OSError:
             with contextlib.suppress(OSError):
-                shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+                _copy_backup(path)
         else:
             try:
                 _parse_json_object(current_bytes)
@@ -201,18 +202,35 @@ def _atomic_write(path: Path, content: str, *, rotate_backup: bool = True) -> No
                 _write_quarantine(path, current_bytes)
             else:
                 with contextlib.suppress(OSError):
-                    shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+                    _copy_backup(path)
 
     _replace_bytes(path, content.encode("utf-8"))
 
 
+def _unlink_if_symlink(sibling: Path) -> None:
+    """A planted symlink on a sibling name (`.tmp`, `.bak`, `.corrupt`) would redirect the
+    write to wherever it points; remove the link itself, never its target."""
+    if sibling.is_symlink():
+        sibling.unlink()
+
+
+def _copy_backup(path: Path) -> None:
+    backup = path.with_suffix(path.suffix + ".bak")
+    _unlink_if_symlink(backup)
+    shutil.copy2(path, backup)
+    os.chmod(backup, 0o600)
+
+
 def _replace_bytes(path: Path, content: bytes) -> None:
-    """Atomically replace one owned file with mode 0600."""
+    """Atomically replace one owned file with mode 0600. The temporary file is created
+    exclusively, 0600 from the first byte, and never through a symlink."""
 
     tmp = path.with_suffix(path.suffix + ".tmp")
+    _unlink_if_symlink(tmp)
     try:
-        tmp.write_bytes(content)
-        os.chmod(tmp, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
         os.replace(tmp, path)
     except Exception:
         tmp.unlink(missing_ok=True)

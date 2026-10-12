@@ -430,6 +430,50 @@ class TestApprovalChannel:
 # ── expiry still fail-closes ──────────────────────────────────────────────────
 
 
+class TestApprovalTokenIsNotAPath:
+    """Every channel hands caller text to `_approval_path`; only a minted `apr-<uuid4>` token
+    may name a record, so caller text can never leave the approvals directory."""
+
+    @pytest.mark.parametrize("token", ["../../x", "/etc/passwd", "apr-1", "", "apr-" + "z" * 36])
+    def test_a_malformed_token_is_not_found(self, approvals_dir: Path, token: str) -> None:
+        with pytest.raises(_approval.ApprovalError):
+            _approval.approval_get(token)
+        with pytest.raises(_approval.ApprovalError):
+            _approval.approval_grant(token, channel="cli")
+
+    def test_a_minted_token_still_resolves(self, approvals_dir: Path) -> None:
+        token = _approval.approval_create("pod", "implementer", "tool call 'bash'", context={})
+        assert _approval.approval_get(token)["state"] == "pending"
+
+    def test_the_http_route_cannot_reach_a_file_outside_the_directory(
+        self, live_server: tuple[str, str], approvals_dir: Path
+    ) -> None:
+        url, token = live_server
+        outside = approvals_dir.parent / "outside"
+        outside.mkdir()
+        victim = outside / "victim.json"
+        victim.write_text('{"state": "pending", "project": "demo", "role": "implementer"}')
+        before = victim.read_text()
+        status, body = _post(f"{url}/approvals/../outside/victim", {"action": "grant"}, token)
+        assert status == 404, body
+        assert victim.read_text() == before
+        assert not (outside / "victim.json.bak").exists()
+
+    def test_a_non_object_body_is_a_400_not_a_dropped_connection(
+        self, live_server: tuple[str, str], approvals_dir: Path
+    ) -> None:
+        url, token = live_server
+        pending = _approval.approval_create("pod", "implementer", "tool call 'bash'", context={})
+        data = b"[]"
+        req = urllib.request.Request(f"{url}/approvals/{pending}", data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Authorization", f"Bearer {token}")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc.value.code == 400
+        assert _approval.approval_get(pending)["state"] == "pending"
+
+
 class TestAnswerStreamClosed:
     """`close_answer_stream` says nobody will answer again: a wait in progress ends at once,
     denied, and reports itself unanswerable rather than timed out."""

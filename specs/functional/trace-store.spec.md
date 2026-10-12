@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 1.6.1
+**Version**: 1.7.0
 **Status**: Implemented and live. `core/trace.py` is the durable per-session JSONL trace store
 every trace-emitting module writes through: `core/agent_loop.py` (tool and model-call events),
 `core/dispatch.py` (pod-dispatch verdict/approval/run events), `core/approval.py`,
@@ -8,7 +8,7 @@ every trace-emitting module writes through: `core/agent_loop.py` (tool and model
 the store had callers and consumers (`pod-dispatch.spec.md`, `serve-read-api.spec.md`,
 `harness-mode.spec.md`) but no spec of its own defining the record shape, `EVENT_TYPES`, or the
 subscriber/retention machinery; this specification is that owner.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -85,14 +85,19 @@ This specification does NOT cover:
 
 7. `redact` **MUST** run before a record's payload is stored, applying every pattern in
    `_REDACT_PATTERNS` (key-shaped assignments, vendor-prefixed env-var names, a generic
-   `NAME_API_KEY`/`_SECRET`/`_TOKEN` shape, and email addresses) and replacing each match with
+   `NAME_API_KEY`/`_SECRET`/`_TOKEN` shape, bare vendor tokens with no prefix at all --
+   `sk-`/`sk-ant-`/`sk-proj-`, `ghp_`/`gho_`/`ghs_`, `xox[abp]-`, and a Telegram bot token
+   `<8-10 digits>:<35 chars>` -- and email addresses) and replacing each match with
    the literal `[REDACTED]`. The key-shaped pattern's labels (`sk`, `pk`, `api`, `key`, `tok`,
    `secret`, `bearer`, `auth`, `Basic`) **MUST** match only where no letter or digit precedes
    them, so `task=<id>` and `risk=<value>` pass unchanged while `api_key=<value>` (the `_` is a
    boundary) is still redacted.
 8. `redact` **MUST** additionally replace the exact value of any secret currently held in
-   `core/secrets.py`'s store (values longer than 8 characters), after the regex pass, so a
-   stored credential that does not match any generic shape is still scrubbed by its own value.
+   `core/secrets.py`'s store, and of every credential-shaped variable in the process
+   environment (`DOCKET_LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, any name ending in `_API_KEY`,
+   `_TOKEN`, `_SECRET` or `_PASSWORD`; values longer than 8 characters), after the regex pass,
+   so a credential that does not match any generic shape -- stored, or exported in the shell and
+   never stored -- is still scrubbed by its own value.
 9. `redact` **MUST NOT** raise for any input, including a secrets-store read failure — a
    redaction fault degrades to "no stored-value scrubbing this call", never a lost or blocked
    trace write.
@@ -326,6 +331,11 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   NEVER** delete a file a live turn could still be appending to.
 
 ## Changelog
+
+### Version 1.7.0 (2026-10-12)
+
+- Requirements 7-8: `redact` scrubs env-sourced credential values and bare vendor tokens; a
+  real trace write carried an exported `DOCKET_LLM_API_KEY` value before this (security audit).
 
 ### Version 1.6.1 (2026-10-08)
 

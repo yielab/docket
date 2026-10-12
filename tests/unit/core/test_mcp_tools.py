@@ -192,6 +192,7 @@ class TestPodScopedMcpServerSelection:
             list_tools: Any = None,
             call_tool: Any = None,
             role: str = "",
+            project: str = "",
         ) -> list[Any]:
             captured["names"] = tuple(s.name for s in (servers or []))
             return []
@@ -526,3 +527,33 @@ class TestResultsPassPreInput:
 
         assert result.ok is False and _INJECTION not in result.error
         assert "prompt-injection" in result.error
+
+
+_POD_INPUT_BLOCK = """kind: policy
+name: block-canary
+appliesTo: ["*"]
+on: input
+when:
+  matches: 'CANARY-PHRASE'
+then: block
+message: canary
+"""
+
+
+@pytest.fixture()
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
+    from tests.conftest import repoint_docket_home
+
+    home = tmp_path / "home"
+    repoint_docket_home(monkeypatch, home)
+    policies = _cfg.pod_config_dir("mypod") / "policies"
+    policies.mkdir(parents=True)
+    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+def test_the_description_screen_sees_the_pod_policy(pod_input_policy: Path) -> None:
+    remote = _mt.McpRemoteTool(name="t", description="CANARY-PHRASE")
+    assert _mt._screen_description("implementer", "srv", remote, project="mypod") is not None

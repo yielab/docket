@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -78,3 +80,26 @@ class TestUsageErrors:
     def test_a_third_positional_is_a_usage_error(self, requests: list) -> None:
         assert runner.invoke(app, ["init", "a", "/b", "c"]).exit_code == 2
         assert requests == []
+
+
+class TestInitInstallsTheBaselinePolicies:
+    """security-gates spec: on the first run `docket init` installs the shipped policy
+    templates, so the `pre_input`/`pre_tool_call` screens are not no-ops in a fresh home."""
+
+    def test_a_fresh_home_gets_the_shipped_policies(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.conftest import repoint_docket_home
+
+        import docket.config as _cfg
+
+        home = tmp_path / "home"
+        repoint_docket_home(monkeypatch, home)
+        code = tmp_path / "code"
+        code.mkdir()
+        (code / "README.md").write_text("# x\n")
+        rc = _agents.run_init(_agents.InitRequest(name="demo", location=str(code)))
+        assert rc == 0
+        installed = sorted(p.name for p in _cfg.POLICIES_DIR.glob("*.yaml"))
+        assert "prompt-injection.yaml" in installed
+        assert "block-destructive.yaml" in installed or "block-destructive.json" in installed

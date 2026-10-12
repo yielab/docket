@@ -17,6 +17,7 @@ import contextlib
 import datetime as _dt
 import json
 import os
+import re
 import threading
 import time as _time
 import uuid
@@ -130,7 +131,15 @@ def _emit_trace(
         return None
 
 
+# Every approval and pre-grant token is minted below as ``apr-<uuid4>``. The HTTP route,
+# Telegram, MCP and the CLI all hand caller text to ``_approval_path``, so the form is
+# checked here, at the one place a token becomes a filename, rather than per channel.
+APPROVAL_TOKEN_RE = re.compile(r"apr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
 def _approval_path(token: str) -> Path:
+    if not APPROVAL_TOKEN_RE.fullmatch(token):
+        raise ApprovalError("Approval not found")
     return _cfg.APPROVALS_DIR / f"{token}.json"
 
 
@@ -322,7 +331,10 @@ def consume_pregrant(token: str) -> bool:
     is a safe ``False`` no-op. Atomic, so a concurrent caller can never spend it twice."""
     if not token:
         return False
-    path = _approval_path(token)
+    try:
+        path = _approval_path(token)
+    except ApprovalError:
+        return False  # a token of the wrong form never names a pre-grant
     consumed = False
 
     def transition(data: dict[str, Any]) -> dict[str, Any] | None:

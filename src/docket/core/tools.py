@@ -653,7 +653,18 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     if skill is None:
         known = ", ".join(sorted(discovered)) or "(none)"
         return ToolOutcome(False, error=f"unknown skill {name!r}; known skills: {known}")
-    return toolbox.read_file((skill.directory,), _str_arg(args, "path", "SKILL.md"))
+    outcome = toolbox.read_file((skill.directory,), _str_arg(args, "path", "SKILL.md"))
+    # A skill body is repository prose, the same trust class as a fetched page or an MCP
+    # result: screened as untrusted input before the model reads it.
+    return screen_tool_result(
+        ctx.role,
+        outcome,
+        source=f"skill {name!r}",
+        detail=f"skill={name!r}",
+        blocked_action="skills.body_blocked",
+        warn_action="skills.body_warn",
+        project=ctx.project,
+    )
 
 
 def _skill_tool() -> Tool:
@@ -742,14 +753,15 @@ def screen_tool_result(
     detail: str,
     blocked_action: str,
     warn_action: str,
+    project: str = "",
 ) -> ToolOutcome:
-    """Screen a remote tool result as untrusted `pre_input`: block refuses, redact strips,
-    warn passes; each non-allow hit is audited under the caller's action names.
-    *source* names the origin in the refusal, *detail* prefixes the audit detail."""
+    """Screen a remote tool result as untrusted `pre_input` (the calling pod's policies
+    included): block refuses, redact strips, warn passes; each non-allow hit is audited under
+    the caller's action names; *source* names the origin, *detail* prefixes the audit."""
     text = outcome.content if outcome.ok else outcome.error
     if not text:
         return outcome
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
     audit_detail = f"{detail} policy={hit.policy_id!r} action={hit.action}"
     if hit.action in ("block", "require_approval"):
         audit_log(blocked_action, audit_detail)
@@ -780,6 +792,7 @@ def _fetch_tool(fetch_url: Any) -> Tool:
             detail=f"host={host!r} url={url!r}",
             blocked_action="fetch.result_blocked",
             warn_action="fetch.result_warn",
+            project=ctx.project,
         )
 
     return Tool(

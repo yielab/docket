@@ -129,8 +129,8 @@ def _load_mcp_tools(
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
     if launch is None:
-        return _mcp.load_mcp_tools(registry, servers=servers, role=role)
-    return _mcp.load_mcp_tools(registry, servers=servers, role=role, launch=launch)
+        return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project)
+    return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project, launch=launch)
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:

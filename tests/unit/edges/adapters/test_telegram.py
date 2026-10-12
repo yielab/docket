@@ -18,6 +18,7 @@ import threading
 import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -213,3 +214,46 @@ class TestSendMessage:
 
     def test_empty_token_is_refused_before_any_request(self) -> None:
         assert _tg.send_message("", "-100123", "hello") is False
+
+
+class TestPoisonUpdateDoesNotWedgeThePoller:
+    """One update whose handling raises must be skipped and audited; the offset still advances
+    past the whole batch, so the next poll does not replay it forever."""
+
+    def test_offset_advances_past_a_raising_update(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.conftest import repoint_docket_home
+
+        from docket.core import audit as _audit
+        from docket.core import telegram as _core_tg
+        from docket.edges.adapters.telegram import GetUpdatesResult, TelegramUpdate
+
+        repoint_docket_home(monkeypatch, tmp_path / "home")
+        monkeypatch.setattr(_core_tg, "_load_token", lambda: "123:token")
+        updates = (
+            TelegramUpdate(update_id=50, chat_id="1", user_id="1", text="/status"),
+            TelegramUpdate(update_id=51, chat_id="1", user_id="1", text="/status"),
+        )
+        seen: list[int] = []
+
+        def _handle(msg: _core_tg.InboundMessage) -> _core_tg.TelegramActionResult:
+            seen.append(msg.update_id)
+            if msg.update_id == 50:
+                raise RuntimeError("poison")
+            return _core_tg.TelegramActionResult(
+                ok=True, reply="ok", authorized=True, action="status"
+            )
+
+        monkeypatch.setattr(_core_tg, "handle_message", _handle)
+        sent: list[str] = []
+        summary = _core_tg.poll_once(
+            get_updates=lambda *a, **k: GetUpdatesResult(ok=True, updates=updates),
+            send_message=lambda token, chat_id, text: sent.append(text) or True,
+        )
+        assert summary.ok
+        assert seen == [50, 51]
+        assert _core_tg._load_offset() == 52
+        assert sent == ["ok"]
+        actions = [e.get("action") for e in _audit.read_audit()]
+        assert "telegram.update_failed" in actions

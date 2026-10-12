@@ -145,7 +145,7 @@ def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
 
 
 def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
-    token = "apr-c4-deterministic-fixture"
+    token = "apr-00000000-0000-4000-8000-0000000000c4"
     approval_path = home / "approvals" / f"{token}.json"
     _write_json(
         approval_path,

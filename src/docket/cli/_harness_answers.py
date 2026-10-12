@@ -14,7 +14,6 @@ from __future__ import annotations
 import contextlib
 import json
 import queue
-import re
 import sys
 import threading
 from collections.abc import Iterator
@@ -27,10 +26,8 @@ from docket.core import consult as _consult
 from docket.core import harness
 from docket.core.policy import policy_eval_detail
 
-# Approval tokens are minted as ``apr-<uuid4>`` by core/approval.py. An answer's
-# token becomes a path under the approvals directory, so anything else is refused
-# before it is used.
-_APPROVAL_TOKEN = re.compile(r"apr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+# Approval tokens are minted as ``apr-<uuid4>`` by core/approval.py, which owns the form.
+_APPROVAL_TOKEN = _approval.APPROVAL_TOKEN_RE
 
 # A content hit with either of these actions holds the answer, as /delegate does.
 _HOLD_ACTIONS = ("block", "require_approval")

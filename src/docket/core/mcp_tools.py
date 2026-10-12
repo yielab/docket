@@ -349,12 +349,14 @@ def _default_call_tool() -> CallToolFn:
 # ── screening a remote tool's description before it reaches a model ────────
 
 
-def _screen_description(role: str, server_name: str, remote: McpRemoteTool) -> str | None:
-    """Run one remote tool's name+description through the `pre_input` policy hook. Returns a
-    skip reason if the tool must not be registered, else ``None``. See
-    specs/functional/mcp-client.spec.md's "Untrusted tool descriptions" section."""
+def _screen_description(
+    role: str, server_name: str, remote: McpRemoteTool, *, project: str = ""
+) -> str | None:
+    """Run one remote tool's name+description through the `pre_input` policy hook (the calling
+    pod's policies included); returns a skip reason if the tool must not be registered, else
+    ``None``. See specs/functional/mcp-client.spec.md "Untrusted tool descriptions"."""
     text = f"{remote.name}: {remote.description}"
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "mcp_client.tool_description_blocked",
@@ -372,7 +374,7 @@ def _screen_description(role: str, server_name: str, remote: McpRemoteTool) -> s
 
 
 def _screen_result(
-    role: str, server_name: str, tool_name: str, outcome: ToolOutcome
+    role: str, server_name: str, tool_name: str, outcome: ToolOutcome, *, project: str = ""
 ) -> ToolOutcome:
     """Screen one remote tool result as untrusted input through the `pre_input` hook: block
     refuses, redact strips secrets, warn passes; each non-allow hit is audited. See the spec's
@@ -384,6 +386,7 @@ def _screen_result(
         detail=f"server={server_name!r} tool={tool_name!r}",
         blocked_action="mcp_client.tool_result_blocked",
         warn_action="mcp_client.tool_result_warn",
+        project=project,
     )
 
 
@@ -411,7 +414,7 @@ def _build_tool(
         # dispatch_tool has already gated the call; this runs the protocol exchange, then
         # screens what the remote server sent back, which is untrusted like its description.
         outcome = call_tool(config, remote.name, args, timeout)
-        return _screen_result(ctx.role, config.name, remote.name, outcome)
+        return _screen_result(ctx.role, config.name, remote.name, outcome, project=ctx.project)
 
     description = f"[MCP:{config.name}] {remote.description}".strip()
     return Tool(
@@ -454,6 +457,7 @@ def load_mcp_tools(
     list_tools: ListToolsFn | None = None,
     call_tool: CallToolFn | None = None,
     role: str = "",
+    project: str = "",
     launch: StdioLaunch | None = None,
 ) -> list[McpServerLoadResult]:
     """Connect to every configured MCP server, enumerate its tools, and register each as a
@@ -507,7 +511,7 @@ def load_mcp_tools(
                 skipped.append(McpToolSkip(name, "not in the server's `tools` list"))
                 continue
 
-            skip_reason = _screen_description(role, config.name, remote)
+            skip_reason = _screen_description(role, config.name, remote, project=project)
             if skip_reason is not None:
                 skipped.append(McpToolSkip(name, skip_reason))
                 continue

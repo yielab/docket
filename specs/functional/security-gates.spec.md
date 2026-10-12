@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.37.0
+**Version**: 0.38.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-10
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -81,7 +81,10 @@ are owned here, not there.
    and `echo` **MUST NOT** force approval merely because they lead a segment — since W37-C1 they
    are on `SAFE_BINS` too, so `cd <path> && git status` reads as `cd` (allowed) then `git status`
    (allowed), not as an unclassifiable prefix; `export`, `source`, `.`, `eval` and `exec` stay OFF
-   the allowlist because they change what a later segment resolves to. `echo` is
+   the allowlist because they change what a later segment resolves to. An unquoted, unescaped
+   newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since `/bin/sh` starts
+   a new command there (`core/security.py::_logical_lines`); a newline inside quotes stays text
+   and a backslash-newline is a continuation. `echo` is
    redirect-sensitive (`core/security.py`'s `_REDIRECT_SENSITIVE_BINS`): a bare `echo hi` is
    allowed, but `echo ... >`/`>>`/`&>` still asks by the same "not on the curated allowlist" path,
    because its argument is often model-composed text and an output redirect turns that into an
@@ -817,9 +820,13 @@ either.
    in fleet-wide with `docket setup sandbox on` — the same "opt in, verify, then adopt" path Docker
    workspace isolation already used before it, too, was wired live (W18-3; see requirement 9).
 3. **The jail is additive to `resolve_within`, never a replacement.** A `bwrap` jail binds the whole
-   host filesystem read-only over itself, then re-binds each of `ToolContext.roots` read-write on
-   top — the same "contain to a known set of roots" shape `resolve_within` already uses for file
-   tools, extended to the exec surface. A `docker` jail is stronger still: nothing outside the
+   host filesystem read-only over itself, masks `DOCKET_HOME` with an empty tmpfs (the store
+   holds `secrets.json`, every pod's sessions and traces, and the audit log; a host-readable
+   bind would hand all of it to the jailed command), then re-binds each of `ToolContext.roots`
+   read-write on top, so a task worktree under `DOCKET_HOME` stays reachable — the same
+   "contain to a known set of roots" shape `resolve_within` already uses for file tools,
+   extended to the exec surface. The rest of the host (the operator's `$HOME` included) stays
+   readable inside a `bwrap` jail; the jail protects host integrity, not host confidentiality. A `docker` jail is stronger still: nothing outside the
    mounted roots exists inside the container's filesystem at all. Both **MUST** hold at the same
    time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
    NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
@@ -1078,7 +1085,10 @@ pre-grants", this section governs for `--answers stdin` only.
    effect on an approval.
 3. **Tokens are validated before use.** An answer's `approvalToken` must match the minted form
    `apr-<uuid4>`. A token of any other shape is refused, so no path under the approvals directory
-   is ever built from caller text.
+   is ever built from caller text. The same check lives in `core/approval.py::_approval_path`
+   (`APPROVAL_TOKEN_RE`), the one place a token becomes a filename, so the HTTP route, Telegram,
+   MCP and the CLI are covered without each validating on its own: a malformed token is
+   `ApprovalError("Approval not found")`, never a path.
 4. **Content is screened as input.** A `content` value is serialised and evaluated with
    `policy_eval_detail("lead", "pre_input", text, trusted=False)`, the same evaluation `/delegate`
    applies. A `block` or `require_approval` hit leaves the approval **pending**; the decision is
@@ -1582,6 +1592,19 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.38.0 (2026-10-12)
+
+- Security audit fixes. Tool-approval gates item 1: an unquoted newline is a command separator
+  for the classifier (it was swallowed as whitespace, so only the first line was classified);
+  `prod-deploy` matches `git -c k=v push origin main` and any other global option between
+  `git` and `push`, in the classifier and in `high-risk-deploy.yaml`. The harness answer channel
+  item 3: the approval-token form is checked in `_approval_path` for every channel. Exec sandbox
+  item 3: the bwrap jail masks `DOCKET_HOME`. `docket init` installs the shipped policy
+  templates (the MUST in "Policy engine on the live path" was unmet: only the bare `docket
+  setup` callback installed them). Every untrusted-text screen (project instructions, skill
+  descriptions, MCP tool descriptions, tool results) evaluates the calling pod's own `on: input`
+  policies, and a skill's body is screened like a fetched page (`skills.body_blocked`/`_warn`).
 
 ### Version 0.37.0 (2026-10-10)
 

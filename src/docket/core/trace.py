@@ -124,6 +124,12 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
     re.compile(r"[A-Z][A-Z0-9_]{5,40}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+", re.IGNORECASE),
+    # Bare vendor tokens with no `key=` prefix: OpenAI/Anthropic `sk-...`, GitHub `gh?_...`,
+    # Slack `xox?-...`, and a Telegram bot token (`<digits>:<35 chars>`).
+    re.compile(
+        r"(?<![A-Za-z0-9])(?:sk-ant-|sk-proj-|sk-|ghp_|gho_|ghs_|xox[abp]-)[A-Za-z0-9_\-]{20,}"
+    ),
+    re.compile(r"(?<![A-Za-z0-9])\d{8,10}:[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"),
     re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
 )
 
@@ -132,16 +138,27 @@ def _now_iso() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_ENV_CREDENTIAL_NAMES = ("DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN")
+_ENV_CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
+
+
 def _stored_secret_values() -> list[str]:
-    """Stored secret values longer than 8 chars (redact.sh's >8 filter).
-    Best-effort: reads docket's own secrets store (``core/secrets.py``) and
-    returns [] on any error, so redaction never fails a trace write."""
+    """Secret values longer than 8 chars (redact.sh's >8 filter): docket's own store plus every
+    credential-shaped variable in this process's environment, since a key exported in the shell
+    never rests in the store. Best-effort, so redaction never fails a trace write."""
+    values: list[str] = []
     try:
         from docket.core import secrets as _secrets
 
-        return [v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8]
+        values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
     except Exception:
-        return []
+        pass
+    for name, raw in os.environ.items():
+        if name in _ENV_CREDENTIAL_NAMES or name.endswith(_ENV_CREDENTIAL_SUFFIXES):
+            value = raw.strip()
+            if len(value) > 8:
+                values.append(value)
+    return values
 
 
 def redact(text: str) -> str:

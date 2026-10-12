@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.9.2
+**Version**: 1.10.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -39,7 +39,7 @@ role that denies `write` gets zero tools from a mixed server exactly as before, 
 cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
 endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -166,8 +166,9 @@ This specification does NOT cover:
 ### Untrusted tool descriptions
 
 14. Before registration, every remote tool's `"<name>: <description>"` text **MUST** be evaluated
-    through `core.policy.policy_eval_detail(role, "pre_input", text, trusted=False)` — the same
-    evaluator (and the same shipped `prompt-injection` policy) that already screens task text.
+    through `core.policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=<the
+    calling pod>)` — the same evaluator (and the same shipped `prompt-injection` policy) that
+    already screens task text, the pod's own `on: input` policies included.
 15. A `block` or `require_approval` result **MUST** prevent that tool from being registered at
     all, and **MUST** be audited (`mcp_client.tool_description_blocked`). `require_approval` is
     deliberately folded into the same refusal as `block` — there is no per-tool human-approval
@@ -330,7 +331,8 @@ This specification does NOT cover:
 ### Untrusted tool results
 
 35. The text of a remote tool's result **MUST** be evaluated, inside the adapted tool's handler,
-    through `core.policy.policy_eval_detail(ctx.role, "pre_input", text, trusted=False)`; *text*
+    through `core.policy.policy_eval_detail(ctx.role, "pre_input", text, trusted=False,
+    project=ctx.project)`, the pod's own `on: input` policies included; *text*
     is the outcome's `content` when it succeeded and its `error` when it did not. A result with
     no text **MUST** pass unchanged and unaudited.
 36. A `block` or `require_approval` result **MUST** replace the outcome with `ok=False` whose
@@ -612,6 +614,11 @@ dispatch_tool(
   never as an ordinary turn outcome.
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-12)
+
+- Requirements 14 and 35: the description and result screens pass the calling pod, so a
+  pod-scoped `on: input` policy applies (it was silently ignored by every screen; security audit).
 
 ### Version 1.9.2 (2026-10-08)
 

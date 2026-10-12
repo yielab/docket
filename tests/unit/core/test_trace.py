@@ -21,6 +21,31 @@ class TestRedactPerformance:
         assert elapsed < 0.5, f"redact() took {elapsed:.2f}s on a 40,000-char alnum run"
 
 
+def test_an_env_sourced_credential_value_is_redacted(monkeypatch) -> None:
+    """A key exported in the shell never rests in `secrets.json`, so the value itself must be
+    on the redaction list, not only the `NAME=value` shape."""
+    monkeypatch.setenv("DOCKET_LLM_API_KEY", "envsourcedvalue0123456789")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456789:AAbbccddeeffgghhiijjkkllmmnnooppqqrrss1")
+    out = trace.redact(
+        "the key was envsourcedvalue0123456789 and 123456789:AAbbccddeeffgghhiijjkkllmmnnooppqqrrss1"
+    )
+    assert "envsourcedvalue0123456789" not in out
+    assert "AAbbccddeeffgghh" not in out
+
+
+@pytest.mark.parametrize(
+    "bare",
+    [
+        "sk-ant-api03-" + "A" * 40,
+        "sk-proj-" + "b" * 40,
+        "ghp_" + "C" * 36,
+        "987654321:AAzz" + "q" * 31,
+    ],
+)
+def test_a_bare_vendor_token_is_redacted_without_a_prefix(bare: str) -> None:
+    assert bare not in trace.redact(f"saw {bare} in output")
+
+
 @pytest.mark.parametrize(
     ("text", "leaked"),
     [

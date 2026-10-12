@@ -8,6 +8,7 @@ unresolvable ref. `subprocess.run` is monkeypatched throughout, mirroring
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -182,3 +183,43 @@ class TestDesktopNotificationsAvailable:
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.setattr(_sys, "_which", lambda binary: binary == "osascript")
         assert _sys.desktop_notifications_available() is True
+
+
+class TestBwrapHidesDocketHome:
+    """The jail binds the host read-only, which would expose docket's own store (secrets,
+    sessions, traces of every pod); DOCKET_HOME is masked before the roots are bound."""
+
+    def test_the_argv_masks_docket_home_before_binding_the_roots(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.conftest import repoint_docket_home
+
+        home = tmp_path / "home"
+        repoint_docket_home(monkeypatch, home)
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        assert "--tmpfs" not in _sys.bwrap_argv((ws,), "true")  # no home yet: nothing to hide
+        home.mkdir()
+        argv = _sys.bwrap_argv((ws,), "true")
+        assert "--tmpfs" in argv
+        mask = argv.index("--tmpfs")
+        assert argv[mask + 1] == str(home)
+        assert argv.index("--ro-bind") < mask < argv.index("--bind")
+
+    @pytest.mark.skipif(not _sys.bwrap_available(), reason="bwrap not usable here")
+    def test_a_jailed_command_cannot_read_the_secret_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.conftest import repoint_docket_home
+
+        from docket.edges.adapters import toolbox
+
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "secrets.json").write_text('{"K": "SECRET-VALUE-0b3e7"}')
+        repoint_docket_home(monkeypatch, home)
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        out = toolbox.run_bash((ws,), f"cat {home / 'secrets.json'}; ls {home}", sandbox="auto")
+        assert "SECRET-VALUE-0b3e7" not in (out.content or "")

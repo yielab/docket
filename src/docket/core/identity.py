@@ -367,11 +367,12 @@ def _runtime_workspace_context(
 # unlike operator-authored INSTRUCTIONS.md, file content came from the codebase, not
 # the operator typing at docket directly.
 def _screen_project_instructions_file(
-    role: str, name: str, text: str
+    role: str, name: str, text: str, *, project: str = ""
 ) -> tuple[str, PromptSectionStatus]:
     """Screen one project-instructions file's content through the `pre_input` policy
-    hook; returns the text to compose (or an audited marker) and its status."""
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
+    hook, the calling pod's own policies included; returns the text to compose (or an
+    audited marker) and its status."""
+    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "identity.project_instructions_blocked",
@@ -433,7 +434,9 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
         if not path.is_file():
             parts.append(f"[... {rel} not found ...]")
             continue
-        screened, status = _screen_project_instructions_file(role, rel, _read_workspace_text(path))
+        screened, status = _screen_project_instructions_file(
+            role, rel, _read_workspace_text(path), project=project
+        )
         parts.append(screened if status == "omitted" else f"## {rel}\n{screened}")
     return "\n\n".join(parts)
 
@@ -443,11 +446,11 @@ def _project_instructions_raw(agent_id: str, project_roots: tuple[Path, ...]) ->
 # directly -- always trusted=False), kept as its own function so an audited skill-description
 # hit is never confused with a project-instructions one in the audit log.
 def _screen_skill_description(
-    role: str, name: str, description: str
+    role: str, name: str, description: str, *, project: str = ""
 ) -> tuple[str, PromptSectionStatus]:
-    """Screen one skill's description through the `pre_input` policy hook; returns the text to
-    compose (or an audited marker) and its status."""
-    hit = _policy.policy_eval_detail(role, "pre_input", description, trusted=False)
+    """Screen one skill's description through the `pre_input` policy hook, the calling pod's
+    own policies included; returns the text to compose (or an audited marker) and its status."""
+    hit = _policy.policy_eval_detail(role, "pre_input", description, trusted=False, project=project)
     if hit.action in ("block", "require_approval"):
         audit_log(
             "identity.skill_blocked",
@@ -477,7 +480,9 @@ def _skills_raw(agent_id: str, project_roots: tuple[Path, ...]) -> str:
     role = _fleet.meta_get(agent_id, "role", "")
     lines = ["# Skills"]
     for name in sorted(discovered):
-        description, _status = _screen_skill_description(role, name, discovered[name].description)
+        description, _status = _screen_skill_description(
+            role, name, discovered[name].description, project=project
+        )
         lines.append(f"- {name}: {description}")
     lines.append(
         "Call the `skill` tool with `name` set to one of the names above to read that "

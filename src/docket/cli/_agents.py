@@ -28,6 +28,7 @@ from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod_apply as _pod_apply
 from docket.core import pod_provisioning as _pp
+from docket.core import policy as _policy
 from docket.core import provisioning as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
@@ -171,6 +172,10 @@ def run_init(req: InitRequest) -> int:
                 f"--pod/--with only apply to the 'software' blueprint — ignoring for '{blueprint.name}'."
             )
         roles = blueprint.roles
+
+    # The shipped guardrail policies are what make the `pre_input` and `pre_tool_call`
+    # screens say anything in a fresh home; idempotent, never overwrites an operator's file.
+    _policy.install_policies()
 
     ui.console.print()
     ui.info(f"Provisioning '{blueprint.name}' pod '{aid}' ({', '.join(roles)})...")

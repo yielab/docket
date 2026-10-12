@@ -298,3 +298,46 @@ class TestSkillsSection:
 
         assert "# Skills" not in composition.text
         assert not any(s.name == I.SKILLS_LABEL for s in composition.sections)
+
+
+_POD_INPUT_BLOCK = """kind: policy
+name: block-canary
+appliesTo: ["*"]
+on: input
+when:
+  matches: 'CANARY-PHRASE'
+then: block
+message: canary
+"""
+
+
+@pytest.fixture()
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
+    from tests.conftest import repoint_docket_home
+
+    home = tmp_path / "home"
+    repoint_docket_home(monkeypatch, home)
+    policies = _cfg.pod_config_dir("mypod") / "policies"
+    policies.mkdir(parents=True)
+    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+class TestScreensSeeThePodPolicy:
+    """The project-instructions and skill-description screens evaluate the calling pod's own
+    `on: input` policies, not only the global set."""
+
+    def test_project_instructions(self, pod_input_policy: Path) -> None:
+        text, status = I._screen_project_instructions_file(
+            "implementer", "AGENTS.md", "hello CANARY-PHRASE", project="mypod"
+        )
+        assert status == "omitted"
+        assert "CANARY-PHRASE" not in text
+
+    def test_skill_descriptions(self, pod_input_policy: Path) -> None:
+        _text, status = I._screen_skill_description(
+            "implementer", "deploy", "CANARY-PHRASE here", project="mypod"
+        )
+        assert status == "omitted"

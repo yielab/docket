@@ -813,7 +813,7 @@ def _trace_line_ts(line: str) -> str:
     the filter it compensates for. Returns "" when unkeyable."""
     try:
         parsed = json.loads(line)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return ""
     if not isinstance(parsed, dict):
         return ""
@@ -1120,7 +1120,10 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             req_body: dict[str, object] = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(req_body, dict):
             self._send_json_error("Invalid JSON body", 400)
             return
         action = str(req_body.get("action", ""))
@@ -1211,7 +1214,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             task_body: Any = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(task_body, dict):
@@ -1291,7 +1294,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             body: Any = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(body, dict):
@@ -1356,7 +1359,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             body: Any = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(body, dict):
@@ -1416,7 +1419,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             params: Any = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(params, dict):
@@ -1465,7 +1468,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return
         try:
             body: Any = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             self._send_json_error("Invalid JSON body", 400)
             return
         if not isinstance(body, dict):

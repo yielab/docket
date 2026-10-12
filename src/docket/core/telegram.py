@@ -583,10 +583,18 @@ def poll_once(
             text=update.text,
             update_id=update.update_id,
         )
-        outcome = handle_message(msg)
+        try:
+            outcome = handle_message(msg)
+            if outcome.reply:
+                send_message_fn(token, update.chat_id, outcome.reply)
+        except Exception as exc:
+            # One update that raises must not pin the poller on this batch forever:
+            # record it, skip it, and let the offset move past it.
+            audit_log(
+                "telegram.update_failed",
+                f"chat_id={update.chat_id} update_id={update.update_id} error={type(exc).__name__}",
+            )
         processed += 1
-        if outcome.reply:
-            send_message_fn(token, update.chat_id, outcome.reply)
 
     if result.updates:
         _save_offset(max_update_id + 1)

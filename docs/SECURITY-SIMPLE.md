@@ -172,6 +172,8 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   process started outside docket's turn loop is outside this gate entirely.
 - **Only `bash` is jailed, and only with isolation on.** The command gate above applies to every
   `bash` call; the opt-in bwrap/Docker isolation (next section) jails `bash` and stdio MCP servers.
+  The jail protects the host from writes: bwrap binds the host read-only (docket's own home is
+  masked, your `$HOME` is still readable from inside), Docker mounts only the workspace.
   The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
   `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials, policy and path confinement,
   not by a sandbox.

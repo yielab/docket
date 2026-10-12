@@ -406,6 +406,13 @@ def _bwrap_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
         "--dev",
         "/dev",
     ]
+    if _cfg.DOCKET_HOME.is_dir():
+        # The host is bound read-only above, which would hand the jail docket's own store:
+        # secrets.json, every pod's sessions and traces, the audit log. Mask it; the roots
+        # bound below sit on top, so a task worktree under DOCKET_HOME stays reachable. A
+        # home that does not exist yet has nothing to hide, and bwrap could not create the
+        # mount point under the read-only root anyway.
+        argv += ["--tmpfs", str(_cfg.DOCKET_HOME)]
     rw, ro = _mount_dirs(roots)
     for resolved in rw:
         argv += ["--bind", resolved, resolved]

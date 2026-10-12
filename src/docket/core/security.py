@@ -113,7 +113,8 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         name="prod-deploy",
         description="Production deploys and release pushes",
         pattern=(
-            r"git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish"
+            r"git\s+(?:-{1,2}[A-Za-z][\w.-]*(?:=\S*)?(?:\s+[^-\s]\S*)?\s+)*push\s+"
+            r".*\b(main|master|production|prod)\b|npm\s+publish"
             r"|docker\s+(push|stop)\b|terraform\s+apply|kubectl\s+(apply|delete|rollout)"
             r"|helm\s+upgrade"
         ),
@@ -200,12 +201,54 @@ class _Segment:
         return self.redirects > 0
 
 
+def _logical_lines(command: str) -> list[str]:
+    """Split *command* at every unquoted, unescaped newline, where the shell starts a new
+    command (a quoted newline stays text, a backslash-newline continues the line); ``shlex``
+    with ``whitespace_split`` swallows a newline as whitespace and never yields it."""
+    lines: list[str] = []
+    current: list[str] = []
+    quote = ""
+    escaped = False
+    for ch in command:
+        if escaped:
+            escaped = False
+            if ch in "\r\n":
+                current.pop()  # drop the backslash: the two lines are one command
+                current.append(" ")
+            else:
+                current.append(ch)
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            current.append(ch)
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            current.append(ch)
+            continue
+        if ch in "'\"":
+            quote = ch
+            current.append(ch)
+            continue
+        if ch in "\r\n":
+            lines.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    lines.append("".join(current))
+    return [line for line in lines if line.strip()]
+
+
 def _split_segments(command: str) -> list[_Segment]:
     """Split a shell command into per-invocation token lists, plus the output redirects attached
     to each -- kept internal, used only by ``classify_command``."""
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    tokens = list(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
+    tokens: list[str] = []
+    for line in _logical_lines(command):
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens.extend(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
+        tokens.append("\n")  # a line boundary is a command separator, below
 
     segments: list[_Segment] = []
     current: list[str] = []

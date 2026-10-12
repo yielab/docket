@@ -150,7 +150,9 @@ def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(
     assert "docket setup" in captured.err
     assert (home / "workspaces" / "projects" / "demo-lead").is_dir()
     assert not (home / "docket-models.json").exists()
-    assert not (home / "policies").exists()
+    # The guardrail policies are installed by init itself (security-gates "Policy engine on
+    # the live path" 1), not deferred to setup: a fresh home must not screen nothing.
+    assert (home / "policies" / "prompt-injection.yaml").is_file()
 
 
 def test_init_with_an_endpoint_does_not_mention_setup(

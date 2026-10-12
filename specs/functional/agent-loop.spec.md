@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.32.1
+**Version**: 1.33.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -27,7 +27,7 @@ Requirement 30 now bounds an oversized `SOUL.md` before the private-workspace se
 so it can never crowd the runtime contract, `HEARTBEAT.md`, or `TOOLS.md` out of the composed
 prompt entirely; every truncated or omitted section leaves a visible marker, and each composition
 emits one `prompt_composed` trace event naming every section's fit outcome.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -242,8 +242,11 @@ This specification does NOT cover:
     instructions. No discovered skill composes to no section at all, byte-identical to before
     skills existed. The `skill` tool (`kind="read"`, parameters `name` required, `path` optional)
     resolves *name* through the same `discover_skills` call and returns the named file (default
-    `SKILL.md`) read from within that skill's own directory only; an unknown name is a failed
-    call naming the known names, never a raise, and the tool is denied like any other
+    `SKILL.md`) read from within that skill's own directory only, screened as untrusted input
+    exactly like a fetched page or an MCP result (`core/tools.py::screen_tool_result`, audited
+    `skills.body_blocked`/`skills.body_warn`, the calling pod's `on: input` policies included);
+    an unknown name is a failed call naming the known names, never a raise, and the tool is
+    denied like any other
     (`deniedTools: [skill]`) after per-role narrowing (requirement 28 above).
     The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
     to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
@@ -806,6 +809,11 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.33.0 (2026-10-12)
+
+- The `skill` tool's body is screened as untrusted input (it reached the model unscreened while
+  ADR 0013 and CONFIGURATION.md said otherwise; security audit).
 
 ### Version 1.32.1 (2026-10-08)
 

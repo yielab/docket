@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Security audit (2026-10-12), nine defects closed.** A newline inside a `bash` command now
+  starts a new segment for the classifier (only the first line was classified; the shell ran
+  both). `git -c k=v push origin main` and any global option between `git` and `push` match
+  `prod-deploy` in the classifier and the shipped policy. An approval token from HTTP, Telegram,
+  MCP or the CLI is checked against the minted `apr-<uuid4>` form before it becomes a path
+  (a bearer holder or bound chat could grant and rewrite a pending-shaped JSON file anywhere on
+  disk). The bwrap jail masks `DOCKET_HOME` (a jailed `bash` could read `secrets.json`, every
+  pod's sessions and traces). `edges/store.py` creates its temp file exclusively, 0600 from the
+  first byte, and never follows a planted symlink on the `.tmp`/`.bak`/`.corrupt` names. One
+  raising Telegram update no longer wedges the poller on its batch. A non-object or deeply
+  nested JSON body on the control plane is a 400, not a dropped connection. Trace redaction
+  scrubs env-sourced credential values and bare vendor tokens. `docket init` installs the
+  shipped policy templates (a fresh home had none, so every screen was a no-op); every
+  untrusted-text screen evaluates the calling pod's own `on: input` policies; a skill's body is
+  screened like a fetched page. security-gates 0.38.0, trace-store 1.7.0, mcp-client 1.10.0,
+  agent-loop 1.33.0, telegram-integration 2.6.0.
 - **A caller that dies no longer leaves `docket exec --answers stdin` waiting out its timeout.**
   End of stdin closes the answer stream: an approval waiting at that moment is denied at once
   and the run ends `blocked` (`approval_unavailable`), a later gated call is refused the same

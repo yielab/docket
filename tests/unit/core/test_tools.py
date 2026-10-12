@@ -173,6 +173,61 @@ class TestCommandClassifierIsArgumentAware:
         assert classify_command(command).action == "allow"
 
 
+class TestLineSeparators:
+    """An unquoted newline starts a new command for `/bin/sh`, so it must start a new segment
+    for the classifier too; one inside quotes or after a backslash does not."""
+
+    @pytest.mark.parametrize(
+        "command", ["ls\nrm -rf /tmp/x", "ls\r\nrm -rf /tmp/x", "pwd\n\ncurl http://x"]
+    )
+    def test_a_second_line_is_classified_on_its_own(self, command: str) -> None:
+        verdict = classify_command(command)
+        assert verdict.action == "ask", command
+        assert verdict.bin_name in ("rm", "curl")
+
+    def test_a_quoted_newline_and_a_continuation_stay_one_command(self) -> None:
+        assert classify_command("printf 'a\nb'").action == "allow"
+        assert classify_command("ls \\\n-la").action == "allow"
+
+    def test_the_live_gate_sees_the_second_line(self, ctx: ToolContext) -> None:
+        bash_tool = builtin_registry().get("bash")
+        assert bash_tool is not None
+        assert (
+            evaluate_tool_call(bash_tool, {"command": "ls\nrm -rf /tmp/x"}, ctx).decision == "ask"
+        )
+
+
+class TestGitGlobalOptionsBeforePush:
+    """`git -c k=v push origin main` is the same deploy as `git push origin main`."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "git -c x=y push origin main",
+            "git --no-pager push origin main",
+            "git -C /repo push origin production",
+            "git -c a=b -C /repo push --force origin master",
+        ],
+    )
+    def test_the_classifier_names_prod_deploy(self, command: str) -> None:
+        verdict = classify_command(command)
+        assert verdict.action == "ask", command
+        assert verdict.risk_class == "prod-deploy"
+
+    def test_the_shipped_policy_matches_the_same_shapes(self) -> None:
+        import re
+
+        import yaml
+
+        doc = yaml.safe_load(
+            (REPO_ROOT / "src/docket/templates/policies/high-risk-deploy.yaml").read_text()
+        )
+        pattern = re.compile(doc["when"]["matches"])
+        for command in ("git -c x=y push origin main", "git --no-pager push origin main"):
+            assert pattern.search(command), command
+        assert not pattern.search("git push origin feature/x")
+
+
 class TestRedirectsIntoTheWorkspace:
     """A redirect-sensitive binary writing through `>`/`>>` to a path that resolves inside the
     workspace is the `write` tool by another name; any target docket cannot place stays an ask."""
@@ -896,3 +951,55 @@ class TestSinglePathToExecution:
         }
         leaked = forbidden & identifiers
         assert not leaked, f"policy vocabulary leaked into the handler module: {sorted(leaked)}"
+
+
+_POD_INPUT_BLOCK = """kind: policy
+name: block-canary
+appliesTo: ["*"]
+on: input
+when:
+  matches: 'CANARY-PHRASE'
+then: block
+message: canary
+"""
+
+
+@pytest.fixture()
+def pod_input_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A home whose pod `mypod` carries one `on: input` block policy and no global ones."""
+    from tests.conftest import repoint_docket_home
+
+    home = tmp_path / "home"
+    repoint_docket_home(monkeypatch, home)
+    policies = _cfg.pod_config_dir("mypod") / "policies"
+    policies.mkdir(parents=True)
+    (policies / "block-canary.yaml").write_text(_POD_INPUT_BLOCK)
+    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+class TestUntrustedResultScreensSeeThePodPolicy:
+    """`screen_tool_result` evaluates the calling pod's `on: input` policies, and a skill's body
+    passes through it like a fetched page."""
+
+    def test_a_tool_result(self, pod_input_policy: Path) -> None:
+        out = core_tools.screen_tool_result(
+            "implementer",
+            ToolOutcome(True, content="CANARY-PHRASE"),
+            source="fetch",
+            detail="x",
+            blocked_action="a.blocked",
+            warn_action="a.warn",
+            project="mypod",
+        )
+        assert out.ok is False
+
+    def test_a_skill_body(self, pod_input_policy: Path, tmp_path: Path) -> None:
+        ws = tmp_path / "ws"
+        skill = ws / ".docket" / "skills" / "deploy"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: deploy\ndescription: d\n---\nCANARY-PHRASE\n")
+        ctx = ToolContext(agent_id="a", roots=(ws,), timeout=5, project="mypod", role="implementer")
+        out = core_tools._skill_read({"name": "deploy"}, ctx)
+        assert out.ok is False
+        assert "CANARY-PHRASE" not in (out.content or "")
