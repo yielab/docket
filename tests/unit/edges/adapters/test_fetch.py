@@ -59,6 +59,18 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/slow":
             time.sleep(2)
             self._reply(200, b"too late")
+        elif self.path == "/drip":
+            # Headers, then one byte every 0.4s: each read returns before a socket timeout.
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            try:
+                for _ in range(10):
+                    self.wfile.write(b"x")
+                    self.wfile.flush()
+                    time.sleep(0.4)
+            except OSError:
+                pass
         elif self.path == "/missing":
             self._reply(404, b"not found")
         elif self.path == "/redirect-allowed":
@@ -148,6 +160,41 @@ class TestResponseSizeCap:
 
 
 class TestTimeout:
+    def test_a_dripping_response_fails_at_the_deadline(
+        self, server: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _allow(monkeypatch, server)
+        started = time.monotonic()
+        out = _fetch.fetch_url(f"{server}/drip", timeout=1)
+        elapsed = time.monotonic() - started
+        assert not out.ok
+        assert "timed out after 1s" in out.error
+        assert elapsed < 3.0
+
+    def test_an_oversized_timeout_is_clamped_to_a_multiple_of_the_default(
+        self, server: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _allow(monkeypatch, server)
+        monkeypatch.setattr(_cfg, "FETCH_TIMEOUT_S", 1.0, raising=True)
+        seen: list[float] = []
+        real_build = _fetch.urllib.request.build_opener
+
+        def _record(*handlers: object) -> object:
+            opener = real_build(*handlers)
+            real_open = opener.open
+
+            def _open(req: object, data: object = None, timeout: float = 0) -> object:
+                seen.append(timeout)
+                return real_open(req, data, timeout=timeout)
+
+            opener.open = _open  # type: ignore[method-assign]
+            return opener
+
+        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _record)
+        out = _fetch.fetch_url(f"{server}/ok", timeout=99999999)
+        assert out.ok
+        assert seen == [4.0]  # FETCH_TIMEOUT_S times the clamp multiple
+
     def test_a_slow_response_times_out(self, server: str, monkeypatch: pytest.MonkeyPatch) -> None:
         _allow(monkeypatch, server)
         out = _fetch.fetch_url(f"{server}/slow", timeout=1)

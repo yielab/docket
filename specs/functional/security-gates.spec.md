@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.39.0
+**Version**: 0.41.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -969,8 +969,14 @@ otherwise.
      response over the cap **MUST** be truncated with the truncation announced in the returned
      text, matching `toolbox.MAX_OUTPUT_CHARS`'s existing announced-truncation contract for every
      other built-in.
-   - **A timeout** (`config.FETCH_TIMEOUT_S`, default 15s, overridable per call up to the same
-     order of magnitude via the tool's own `timeout` argument).
+   - **A wall-clock deadline** (`config.FETCH_TIMEOUT_S`, default 15s). The timeout bounds the
+     whole call, not each socket operation: the body is read in chunks and the call fails with a
+     timed-out verdict once the monotonic deadline passes, so a server dripping bytes slower than
+     the deadline cannot hold the call open. The deadline is checked between chunks; a single
+     blocked read ends at the socket timeout, so the call returns at most one socket timeout past
+     the deadline. The tool's own `timeout` argument is clamped to `FETCH_CLAMP_MULTIPLE` (4) times
+     `FETCH_TIMEOUT_S` (60s by default); a larger value is silently bounded to that, never
+     accepted as-is, and a non-positive value falls back to `FETCH_TIMEOUT_S`.
    - **A redirect guard.** A redirect off the domain allowlist **MUST** be refused, not silently
      followed — otherwise the allowlist would be decorative (an allowlisted host could simply
      redirect anywhere). `edges/adapters/fetch.py`'s `_DomainLockedRedirectHandler` intercepts
@@ -1604,6 +1610,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.41.0 (2026-10-12)
+
+- Network egress and the `fetch` tool, item 2: the timeout is a wall-clock deadline over the whole
+  call, checked while the body is read in chunks (a server dripping one byte under the deadline
+  now fails the call at the deadline). The per-call `timeout` argument is clamped to 4 times
+  `FETCH_TIMEOUT_S`; an unbounded value is no longer accepted.
 
 ### Version 0.39.0 (2026-10-12)
 
