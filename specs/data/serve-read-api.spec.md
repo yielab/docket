@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 3.4.2
+**Version**: 3.5.0
 **Status**: Stable
 **Last Updated**: 2026-10-12
 
@@ -90,7 +90,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
       "scope":        "project",
       "model":        "anthropic/claude-haiku-4-5-20251001",
       "registered":   true,
-      "bindings":     [{"channel": "telegram", "peerId": "-100123"}],
+      "bindings":     [{"channel": "telegram"}],
       "lastActivity": "2026-06-25 | never",
       "costUsd":      0.012345,
       "budgetUsd":    10.0
@@ -106,6 +106,7 @@ version 3). Keys are **stable**; additional keys may be added in minor versions.
 |---|---|---|
 | `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"4"`. |
 | `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
+| `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here** (3.5.0): a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
 | `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
 | `agents[*].lastActivity` | date string \| `"never"` | Date of the newest memory log file, or `"never"`. |
@@ -771,6 +772,15 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.5.0 (2026-10-12)
+
+- `GET /status.json` no longer publishes peer ids. Each `agents[*].bindings` entry is now
+  `{"channel": ...}` only; the `peerId` field is removed (P40-9, audit A5/C6). The unauthenticated
+  body is the Telegram allowlist's only public copy, so it must not carry the chat ids. The
+  `channels` array and the key set of the agent record are unchanged, so `apiVersion` stays `"4"`
+  (the pinned keys in `TestApiContract` do not move). A consumer that read `peerId` from this
+  endpoint loses it; no authenticated route serves per-agent peer ids today.
 
 ### Version 3.4.2 (2026-10-12)
 
