@@ -10,6 +10,16 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-12 (Phase 40 planned / D-58 recorded / ADR 0023 / D-59 opened) — harden the agent
+  boundary.** A five-lane security audit (gitignored `internal-docs/security-audit-2026-10-12.md`)
+  ran docket against a hostile repository on the local model. Eleven contained defects were fixed
+  in the working tree the same session (specs security-gates 0.38.0, trace-store 1.7.0,
+  mcp-client 1.10.0, agent-loop 1.33.0, telegram-integration 2.6.0). The open items are scheduled
+  as Phase 40's twelve cards (TODO.md "PLANNED — PHASE 40"). The one behaviour change that narrows
+  ADR 0012 — confirming before `docket init` applies a cloned `.docket/` — is D-59 in §6 and
+  blocks P40-5. The isolation-default and broad argument-path-containment questions stay deferred
+  (ADR 0020/0021, D-56). The phase is planned, not active; a coordinator activates the wave.
+
 - **2026-10-07 (Phase 39 opened / D-57 recorded / ADR 0022) — one CLI surface, and nothing kept
   for the past.** A read-only audit of the CLI on `2a245cac` (every command and action
   inventoried; six journeys run live in a throwaway home; clig.dev, gh, docker, kubectl, fly,
