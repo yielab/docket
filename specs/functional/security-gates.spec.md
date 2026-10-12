@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.38.0
+**Version**: 0.39.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -754,6 +754,18 @@ tool call to take.**
     (fail closed to the unmodified `SAFE_BINS` allowlist) rather than raise out of `run_turn` or
     grant anything wider. An agent belonging to a different pod **MUST NOT** observe another pod's
     `allowCommands` — the setting is read from that turn's own agent's pod only.
+
+14. **Every refusal inside a handler is audited as `tool.refused`.** A file tool's
+    `PathEscapeError` and a `fetch` allowlist refusal are returned by the handler as a failed
+    `ToolOutcome`, so the gate verdict never saw them. `ToolOutcome` carries a typed
+    `refusal` (`""`, `path_escape` or `fetch_not_allowed`); `dispatch_tool` **MUST** write exactly
+    one `audit_log("tool.refused", ...)` entry for an outcome whose `refusal` is set, naming
+    `tool`, `agent`, `role`, `project`, `kind` and, for a path tool, the attempted `path`
+    argument (for `fetch`, the host). The entry **MUST NOT** carry any file content, command
+    output or URL query, and the free text passes through the redactor. An allowed call and an
+    ordinary failure (file not found, HTTP error) **MUST NOT** write one. The containment
+    branch of `classify_command` needs no entry here: it returns `ask` or `deny`, which the
+    existing `tool.ask`/`tool.deny` entries already record. Verdicts are unchanged.
 
 ### File-tool containment — symlinks (implemented, ROADMAP Phase 38 D-55)
 
@@ -1592,6 +1604,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.39.0 (2026-10-12)
+
+- In-turn tool-call gate item 14: a path escape from a file tool and a `fetch` allowlist
+  refusal write one `tool.refused` audit entry (tool, agent, role, project, kind, attempted path
+  or host, no content). `ToolOutcome` gains a typed `refusal` marker.
 
 ### Version 0.38.0 (2026-10-12)
 

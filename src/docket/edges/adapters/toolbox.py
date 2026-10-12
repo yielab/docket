@@ -58,6 +58,7 @@ class ToolOutcome:
     ok: bool
     content: str = ""
     error: str = ""
+    refusal: str = ""
 
 
 def _truncate(text: str, limit: int | None = None) -> str:
@@ -98,7 +99,7 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex))
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
     if not target.is_file():
         return ToolOutcome(False, error=f"not a file: {path}")
     try:
@@ -119,7 +120,7 @@ def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex))
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
@@ -142,7 +143,7 @@ def edit_file(
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
-        return ToolOutcome(False, error=str(ex))
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
     if not target.is_file():
         return ToolOutcome(False, error=f"not a file: {path}")
     if not old_string:
@@ -190,7 +191,7 @@ def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOut
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
-        return ToolOutcome(False, error=str(ex))
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
     if not base.is_dir():
         return ToolOutcome(False, error=f"not a directory: {path or base}")
     try:
@@ -217,7 +218,7 @@ def grep_files(
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
-        return ToolOutcome(False, error=str(ex))
+        return ToolOutcome(False, error=str(ex), refusal="path_escape")
     try:
         regex = re.compile(pattern)
     except re.error as ex:
