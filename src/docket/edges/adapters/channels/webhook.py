@@ -21,6 +21,7 @@ from typing import Any
 
 from docket.core.channel import ChannelSpec
 from docket.core.operator_contract import CloudEvent
+from docket.edges.adapters.redirects import open_same_origin
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ def deliver(
     *,
     secret: str | None,
     timeout: float,
-    opener: Any = urllib.request.urlopen,
+    opener: Any = open_same_origin,
 ) -> DeliveryResult:
     """POST *event* to `spec.config["url"]`. Never raises -- a missing URL, a transport
     failure or a non-2xx response all return `ok=False`."""

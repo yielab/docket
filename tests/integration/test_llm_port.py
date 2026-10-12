@@ -54,7 +54,7 @@ def _http_error(
 
 
 def _stub_urlopen(monkeypatch: pytest.MonkeyPatch, body: str, captured: dict[str, Any]) -> None:
-    """Replace the adapter's urlopen with one that records the request."""
+    """Replace the adapter's open_same_origin with one that records the request."""
 
     class _Resp:
         def read(self) -> bytes:
@@ -73,14 +73,14 @@ def _stub_urlopen(monkeypatch: pytest.MonkeyPatch, body: str, captured: dict[str
         captured["payload"] = json.loads(request.data.decode())
         return _Resp()
 
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", _fake)
+    monkeypatch.setattr(adapter, "open_same_origin", _fake)
 
 
 def _raising_urlopen(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
     def _fake(request: Any, timeout: int = 0) -> Any:
         raise exc
 
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", _fake)
+    monkeypatch.setattr(adapter, "open_same_origin", _fake)
 
 
 class TestToolCallArguments:

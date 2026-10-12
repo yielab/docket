@@ -11,6 +11,7 @@ from typing import Any
 from docket.core.channel import ChannelSpec
 from docket.core.notify import render_text
 from docket.core.operator_contract import CloudEvent
+from docket.edges.adapters.redirects import open_same_origin
 
 from .webhook import DeliveryResult
 
@@ -21,7 +22,7 @@ def deliver(
     *,
     secret: str | None,
     timeout: float,
-    opener: Any = urllib.request.urlopen,
+    opener: Any = open_same_origin,
 ) -> DeliveryResult:
     """POST the event to an ntfy.sh server. Never raises."""
     url = (

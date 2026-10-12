@@ -21,6 +21,7 @@ from typing import Any
 from docket import __version__
 from docket.config import DISPATCH_RETRY_MAX_WAIT_S
 from docket.core.telemetry import AttrValue, Span, SpanEvent
+from docket.edges.adapters.redirects import open_same_origin
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
 _STATUS_CODES: dict[str, int] = {"ok": 1, "error": 2}
@@ -184,7 +185,7 @@ class OtlpHttpSink:
         timeout_s: float = 5.0,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
-        opener: Callable[..., Any] = urllib.request.urlopen,
+        opener: Callable[..., Any] = open_same_origin,
     ) -> None:
         self._endpoint = endpoint
         self._auth_header = auth_header
@@ -227,7 +228,7 @@ def probe(
     auth_header: AuthHeader,
     headers: Mapping[str, str],
     timeout_s: float = 5.0,
-    opener: Callable[..., Any] = urllib.request.urlopen,
+    opener: Callable[..., Any] = open_same_origin,
 ) -> ProbeResult:
     """POST an empty ``resourceSpans`` document; never raises."""
     body = json.dumps({"resourceSpans": []}).encode()

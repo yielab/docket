@@ -43,6 +43,7 @@ from docket.core.llm import (
     ToolSpec,
 )
 from docket.core.runtime_driver import FailureKind
+from docket.edges.adapters.redirects import open_same_origin
 
 # Endpoints that return one of these are worth trying again: an overloaded or
 # briefly-unreachable server is not an answer. Everything else in the 4xx range
@@ -358,7 +359,7 @@ class OpenAIChatClient:
             self.url, data=body, headers=self._headers(), method="POST"
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
+            with open_same_origin(request, timeout=timeout) as resp:
                 raw_body = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as ex:
             # The body of an error response is where the useful message lives
@@ -484,7 +485,7 @@ def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
     url = f"{endpoint.base_url.rstrip('/')}/models"
     request = urllib.request.Request(url, headers=OpenAIChatClient(endpoint)._headers())
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
+        with open_same_origin(request, timeout=timeout) as resp:
             status = resp.status
             raw_body = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as ex:

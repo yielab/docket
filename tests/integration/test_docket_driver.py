@@ -249,7 +249,7 @@ class TestRunTurn:
             requests.append(json.loads(request.data.decode()))
             return _Response(responses.pop(0))
 
-        monkeypatch.setattr(_llm_adapter.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
 
         result = DocketDriver().run_turn(
             "local-agent", "agent:local-agent:default", "Read marker.txt with the tool.", 60
@@ -335,7 +335,7 @@ class TestRunTurn:
             captured["payload"] = json.loads(request.data.decode())
             return _Response()
 
-        monkeypatch.setattr(_llm_adapter.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(_llm_adapter, "open_same_origin", fake_urlopen)
 
         result = DocketDriver().run_turn(
             "gateway-agent", "agent:gateway-agent:default", "Use the available tools if needed.", 60
