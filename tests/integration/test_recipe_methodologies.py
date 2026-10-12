@@ -237,7 +237,7 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(
     result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
     assert result.spec is not None, result.errors
 
-    _dispatch.enqueue_task(project, "harden the login handler")
+    _dispatch.enqueue_task(project, "harden the login handler", channel="cli")
     runner = _ReflexionRunner(project)
     results = _dispatch.dispatch_pod(project, runner=runner, spec=result.spec)
 

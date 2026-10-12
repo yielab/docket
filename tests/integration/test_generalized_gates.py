@@ -226,7 +226,7 @@ class TestPipelineApprovalStepGatesGenuinely:
     def test_gate_stops_before_the_gated_hop_runs(self) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RoleRunner({})
         results = _dispatch.dispatch_pod("myapp", runner=runner, spec=self._spec())
         assert len(results) == 1
@@ -243,7 +243,7 @@ class TestPipelineApprovalStepGatesGenuinely:
         fires purely from the pipeline step's own resolved gate."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
         token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
@@ -262,7 +262,7 @@ class TestPipelineApprovalStepGatesGenuinely:
     def test_deny_fails_the_task_terminally(self) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
         token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
@@ -302,7 +302,7 @@ class TestParallelGroupThroughDispatch:
                 ),
             ],
         )
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RoleRunner({"tester": "PASS\nall good"})
         results = _dispatch.dispatch_pod("myapp", runner=runner, spec=spec)
         assert results[0].status == "done"
@@ -345,7 +345,7 @@ class TestParallelGroupThroughDispatch:
                 ),
             ],
         )
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         results = _dispatch.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
         assert results[0].status == "failed"
         # Both children still ran (and persisted) despite one failing.

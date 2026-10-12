@@ -1256,7 +1256,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
         try:
             task = _dispatch.enqueue_task(
-                project, description, priority, trusted=trusted, brief=brief
+                project, description, priority, channel="http", trusted=trusted, brief=brief
             )
         except _dispatch.DispatchError as exc:
             msg = str(exc)
@@ -1438,6 +1438,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
         # agent turn), but its outcome always lands in the run registry
         # instead of vanishing behind a fire-and-forget thread.
         record = _runs.create_run("webhook", project, variables=variables)
+        _audit.audit_log("run.dispatch", f"run={record['id']} project={project} channel=http")
 
         def _run(proj: str = project, run_id: str = record["id"]) -> None:
             _runs.execute(

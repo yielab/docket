@@ -144,7 +144,7 @@ class TestAutoPauseDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Too expensive")
+        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
 
@@ -160,8 +160,8 @@ class TestAutoPauseDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "One")
-        _dispatch.enqueue_task("demo", "Two")
+        _dispatch.enqueue_task("demo", "One", channel="cli")
+        _dispatch.enqueue_task("demo", "Two", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
         _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
@@ -229,7 +229,7 @@ class TestEstimateFallback:
         _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
         _fleet.meta_set(lead_id, "budgetUsd", "1")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-        _dispatch.enqueue_task("demo", "Too expensive")
+        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
 
         results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
         assert results[0].status == "blocked"

@@ -391,7 +391,7 @@ class TestReviewerReworkLoop:
 
     def test_rework_hops_appear_in_persisted_queue(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _ReworkRunner(request_changes_count=1)
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -480,7 +480,7 @@ class TestReviewerReworkResume:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_full_pod()
-        _dispatch.enqueue_task("myapp", "Resume me mid-rework")
+        _dispatch.enqueue_task("myapp", "Resume me mid-rework", channel="cli")
 
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError, match="simulated crash mid-rework"):
@@ -527,7 +527,7 @@ class TestReviewerReworkResume:
     ) -> None:
         """The rework note must survive a crash+resume, not just a live run."""
         _seed_full_pod()
-        _dispatch.enqueue_task("myapp", "Resume me mid-rework")
+        _dispatch.enqueue_task("myapp", "Resume me mid-rework", channel="cli")
 
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError):

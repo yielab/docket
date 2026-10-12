@@ -63,7 +63,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "Track me")
+        task = _dispatch.enqueue_task("demo", "Track me", channel="cli")
         ws = _lead_ws()
         seen_mid_flight: list[list[str]] = []
 
@@ -82,7 +82,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
-        _dispatch.enqueue_task("demo", "Will fail")
+        _dispatch.enqueue_task("demo", "Will fail", channel="cli")
         ws = _lead_ws()
         res = _dispatch.dispatch_pod("demo", runner=FakeDriver(fail_role="implementer"))[0]
         assert res.status == "failed"
@@ -92,7 +92,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Too expensive")
+        _dispatch.enqueue_task("demo", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
         ws = _lead_ws()
@@ -106,7 +106,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
-        _dispatch.enqueue_task("demo", "multi hop task")
+        _dispatch.enqueue_task("demo", "multi hop task", channel="cli")
         ws = _lead_ws()
         seen: list[str] = []
 
@@ -134,7 +134,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "retry me")
+        _dispatch.enqueue_task("demo", "retry me", channel="cli")
         claim = _dispatch._claim_next_task("demo", resume=False)
         assert claim is not None
         task, _hops = claim
@@ -150,7 +150,7 @@ class TestHeartbeatLedgerLifecycle:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "never claimed")
+        _dispatch.enqueue_task("demo", "never claimed", channel="cli")
         ws = _lead_ws()
         # Task is still 'pending' -- never claimed -- so touching an unrelated
         # id must not put anything in the ledger.
@@ -164,8 +164,8 @@ class TestHeartbeatLedgerLifecycle:
         calls) at once; the ledger must show both, not just the most recently
         claimed one."""
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "first")
-        _dispatch.enqueue_task("demo", "second")
+        _dispatch.enqueue_task("demo", "first", channel="cli")
+        _dispatch.enqueue_task("demo", "second", channel="cli")
         claim1 = _dispatch._claim_next_task("demo", resume=False)
         claim2 = _dispatch._claim_next_task("demo", resume=False)
         assert claim1 is not None and claim2 is not None
@@ -187,7 +187,7 @@ class TestHeartbeatLedgerLifecycle:
         )
         hb.write_text(text, encoding="utf-8")
 
-        _dispatch.enqueue_task("demo", "Ship it")
+        _dispatch.enqueue_task("demo", "Ship it", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
         final = hb.read_text(encoding="utf-8")
@@ -206,7 +206,7 @@ class TestConversationAutoPopulation:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         self._seed_conversation("demo-lead")
-        task = _dispatch.enqueue_task("demo", "Update my conversation")
+        task = _dispatch.enqueue_task("demo", "Update my conversation", channel="cli")
 
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
@@ -223,7 +223,7 @@ class TestConversationAutoPopulation:
         _seed_pod(tmp_path, monkeypatch)
         self._seed_conversation("demo-lead")
         self._seed_conversation("demo-implementer", peer_id="-200")
-        task = _dispatch.enqueue_task("demo", "two wired members")
+        task = _dispatch.enqueue_task("demo", "two wired members", channel="cli")
 
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
@@ -243,7 +243,7 @@ class TestConversationAutoPopulation:
         _seed_pod(tmp_path, monkeypatch)
         self._seed_conversation("demo-lead")
         self._seed_conversation("demo-implementer", peer_id="-200")
-        task = _dispatch.enqueue_task("demo", "concurrent conversation updates")
+        task = _dispatch.enqueue_task("demo", "concurrent conversation updates", channel="cli")
 
         original_load = _conv.load
         both_stale = Barrier(2)
@@ -279,7 +279,7 @@ class TestConversationAutoPopulation:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         # No conversation seeded for anyone.
-        _dispatch.enqueue_task("demo", "nobody is watching")
+        _dispatch.enqueue_task("demo", "nobody is watching", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         reg = _conv.load()
         assert reg.conversations == []
@@ -289,7 +289,7 @@ class TestConversationAutoPopulation:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         self._seed_conversation("demo-lead")
-        _dispatch.enqueue_task("demo", "only lead is wired")
+        _dispatch.enqueue_task("demo", "only lead is wired", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         reg = _conv.load()
         assert [c.agent_id for c in reg.conversations] == ["demo-lead"]
@@ -306,7 +306,7 @@ class TestConversationAutoPopulation:
             status=_conv.ConversationStatus.waiting,
         )
 
-        _dispatch.enqueue_task("demo", "keep my topic")
+        _dispatch.enqueue_task("demo", "keep my topic", channel="cli")
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
         reg2 = _conv.load()

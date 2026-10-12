@@ -92,7 +92,7 @@ def run_recipe_task(
     _fleet.meta_set(lead_id, "approvalMode", approval_value)
     _fleet.meta_set(lead_id, "requireVerify", pod.PodSettings.coerce("requireVerify", "true"))
 
-    queued = _dispatch.enqueue_task(project, task)
+    queued = _dispatch.enqueue_task(project, task, channel="cli")
     task_id = str(queued["id"])
     _dispatch.dispatch_pod(project, turn_timeout=timeout, max_tasks=1)
     record = _task_record(project, task_id)

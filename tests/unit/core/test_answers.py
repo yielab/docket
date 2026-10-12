@@ -55,7 +55,7 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     position are exactly what ``answer_task`` expects."""
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision")
+    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -81,7 +81,7 @@ class TestAnswerTaskValidation:
 
     def test_answering_a_task_that_is_not_waiting_input_raises(self) -> None:
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "plain task")
+        task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
 
         with pytest.raises(_answers.AnswerError):
             _answers.answer_task(

@@ -58,7 +58,7 @@ def _seed_parked_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
     ``input`` step."""
     _seed_pod(tmp_path, monkeypatch)
     _bind_ask_pipeline("demo")
-    _dispatch.enqueue_task("demo", "needs a decision")
+    _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
     _dispatch.dispatch_pod("demo", runner=FakeDriver())
     return _dispatch.read_tasks("demo")[0]
 
@@ -95,7 +95,7 @@ def _seed_worktree_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
     wt = tmp_path / "wt"
     wt.mkdir()
     base = "0123abc"
-    task = _dispatch.enqueue_task("demo", "bump x")
+    task = _dispatch.enqueue_task("demo", "bump x", channel="cli")
     path = _dispatch.pod_task_list_path("demo")
     from docket.edges import store as _store
 
@@ -124,7 +124,7 @@ class TestTaskShow:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "plain")
+        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
 
@@ -146,8 +146,8 @@ class TestTaskShow:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        first = _dispatch.enqueue_task("demo", "one")
-        second = _dispatch.enqueue_task("demo", "two")
+        first = _dispatch.enqueue_task("demo", "one", channel="cli")
+        second = _dispatch.enqueue_task("demo", "two", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", "task-"])
 
@@ -166,7 +166,7 @@ class TestShowRunExitCode:
     def _run_for(self, status: str) -> str:
         from docket.core import runs as _runs
 
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
 
         class _Result:
             task_id = task["id"]
@@ -200,7 +200,7 @@ class TestTaskList:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seeded = _seed_worktree_task(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "second")
+        _dispatch.enqueue_task("demo", "second", channel="cli")
 
         result = _runner.invoke(app, ["task", "list", "--json", "--pod", "demo"])
 
@@ -211,7 +211,7 @@ class TestTaskList:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "visible")
+        task = _dispatch.enqueue_task("demo", "visible", channel="cli")
 
         result = _runner.invoke(app, ["task", "list", "--pod", "demo"])
 
@@ -232,7 +232,7 @@ class TestTaskDiff:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "plain")
+        task = _dispatch.enqueue_task("demo", "plain", channel="cli")
         assert _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"]).exit_code == 1
 
 
@@ -351,7 +351,7 @@ class TestShowForecast:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
 
@@ -363,7 +363,7 @@ class TestShowForecast:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _fleet.meta_set("demo-lead", "requireApprovalRoles", "implementer")
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
 
         result = _runner.invoke(app, ["task", "show", task["id"], "--json", "--pod", "demo"])
 
@@ -383,7 +383,7 @@ class TestTaskTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         _write_trace(task["id"], ("tool_call", {"tool": "grep", "callId": "c1"}))
 
         result = _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"])
@@ -395,7 +395,7 @@ class TestTaskTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         text = "ok [/bold] then [red]x[/red] for [task-1]"
         _write_trace(task["id"], ("tool_result", {"text": text}))
 
@@ -407,7 +407,7 @@ class TestTaskTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         _write_trace(task["id"], ("session_start", {}), ("session_end", {"status": "done"}))
 
         result = _runner.invoke(app, ["task", "trace", task["id"], "--tail", "--pod", "demo"])
@@ -417,7 +417,7 @@ class TestTaskTrace:
 
     def test_export_is_the_raw_jsonl(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         _write_trace(task["id"], ("session_start", {}))
 
         result = _runner.invoke(app, ["task", "trace", task["id"], "--export", "--pod", "demo"])
@@ -426,7 +426,7 @@ class TestTaskTrace:
 
     def test_json_lists_the_events(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         _write_trace(task["id"], ("session_start", {}))
 
         result = _runner.invoke(app, ["task", "trace", task["id"], "--json", "--pod", "demo"])
@@ -437,7 +437,7 @@ class TestTaskTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         assert _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"]).exit_code == 1
 
 
@@ -498,7 +498,7 @@ class TestTaskApprove:
         from docket.core import approval as _ap
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         token = _park_on_approval("demo", task["id"])
 
         result = _task("approve", task["id"][:18])
@@ -513,7 +513,7 @@ class TestTaskApprove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         result = _task("approve", task["id"])
 
@@ -526,7 +526,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _park_on_approval("demo", task["id"])
         monkeypatch.setattr(_service, "is_running", lambda: False)
 
@@ -540,7 +540,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _park_on_approval("demo", task["id"])
         monkeypatch.setattr(_service, "is_running", lambda: True)
 
@@ -555,7 +555,7 @@ class TestTaskApprove:
         from docket.cli import _service
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         token = _park_on_approval("demo", task["id"])
         monkeypatch.setattr(_service, "is_running", lambda: False)
 
@@ -569,7 +569,7 @@ class TestTaskApprove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         result = _task("approve", task["id"], "--for", "git push origin main")
 
@@ -582,7 +582,7 @@ class TestTaskApprove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         _task("approve", task["id"], "--for", "some content", "--tool", "write")
 
@@ -597,7 +597,7 @@ class TestTaskApprove:
 
     def test_task_and_once_conflict(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         assert _task("approve", task["id"], "--once", "--task").exit_code == 2
 
@@ -613,7 +613,7 @@ class TestTaskDeny:
         from docket.core import approval as _ap
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         token = _park_on_approval("demo", task["id"])
 
         result = _task("deny", task["id"], "--reason", "too risky")
@@ -626,7 +626,7 @@ class TestTaskDeny:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _park_on_approval("demo", task["id"])
 
         assert _task("deny", task["id"], "--reason", "too risky").exit_code == 0
@@ -644,7 +644,7 @@ class TestTaskDeny:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         assert _task("deny", task["id"]).exit_code == 1
 
@@ -730,7 +730,7 @@ class TestTaskAnswer:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "plain task")
+        task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
 
         result = _task("answer", task["id"], "x")
 
@@ -785,7 +785,7 @@ class TestTaskRetry:
         from docket.edges import store as _store
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         def _fail(doc: dict[str, Any]) -> dict[str, Any]:
             for t in doc["tasks"]:
@@ -804,7 +804,7 @@ class TestTaskRetry:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         result = _task("retry", task["id"])
 
@@ -833,7 +833,7 @@ class TestTaskCancel:
         from docket.core import runs as _runs
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _set_status("demo", task["id"], "running")
         run = _runs.create_run("cli", "demo")
         _runs.mark_running(run["id"])
@@ -849,7 +849,7 @@ class TestTaskCancel:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _set_status(
             "demo",
             task["id"],
@@ -870,7 +870,7 @@ class TestTaskCancel:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         result = _task("cancel", task["id"])
 
@@ -883,7 +883,7 @@ class TestTaskCancel:
         from docket.core import runs as _runs
 
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _set_status("demo", task["id"], "running")
         run = _runs.create_run("cli", "demo")
         _runs.mark_running(run["id"])

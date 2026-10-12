@@ -158,7 +158,7 @@ def cmd_add(
         ui.error(f"Description too long ({len(text)} chars)", f"Limit: {MAX_DESCRIPTION}")
         raise typer.Exit(1)
     try:
-        task = _dispatch.enqueue_task(project, text, priority.value, brief=loaded)
+        task = _dispatch.enqueue_task(project, text, priority.value, brief=loaded, channel="cli")
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex

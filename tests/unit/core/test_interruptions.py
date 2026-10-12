@@ -183,7 +183,7 @@ class TestRecordPregrant:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         token = _interruptions.record_pregrant(
             "demo", task["id"], "git push origin main", channel="cli", actor="tester"
@@ -199,7 +199,7 @@ class TestRecordPregrant:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         _interruptions.record_pregrant(
             "demo", task["id"], "git   push  origin\tmain", channel="cli"
@@ -213,7 +213,7 @@ class TestRecordPregrant:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         _interruptions.record_pregrant("demo", task["id"], "hello", tool="write", channel="cli")
 
@@ -242,7 +242,7 @@ class TestPregrantAtTheChokepoint:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
         _interruptions.record_pregrant("demo", task["id"], "git push origin main", channel="cli")
         stored = _dispatch.read_tasks("demo")[0]
         ctx = core_tools.ToolContext(

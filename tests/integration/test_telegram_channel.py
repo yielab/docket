@@ -90,7 +90,7 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     reached by actually dispatching through an ``input`` step."""
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision")
+    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -303,7 +303,7 @@ class TestStatus:
     def test_status_shows_a_blocked_task_scoped_to_this_pod(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _dispatch.enqueue_task("demo", "Do the thing")
+        _dispatch.enqueue_task("demo", "Do the thing", channel="cli")
         tasks = _dispatch.read_tasks("demo")
         tasks[0]["status"] = "blocked"
         tasks[0]["blockedReason"] = "budget"
@@ -515,7 +515,7 @@ class TestAnswer:
 def _park_consult(project: str = "demo") -> dict[str, Any]:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _dispatch.enqueue_task(project, "pick a design")
+    _dispatch.enqueue_task(project, "pick a design", channel="cli")
     tasks = _dispatch.read_tasks(project)
     question = QuestionV11.model_validate(
         {

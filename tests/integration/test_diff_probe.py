@@ -218,7 +218,7 @@ class TestDispatchPopulatesRealDiff:
         _init_git_repo(repo_dir)
         _seed_pod(tmp_path, monkeypatch, "demo", codebase=str(repo_dir))
 
-        _dispatch.enqueue_task("demo", "add a feature")
+        _dispatch.enqueue_task("demo", "add a feature", channel="cli")
         runner = _ImplementerWritesFile()
         (res,) = _dispatch.dispatch_pod("demo", runner=runner, max_tasks=1)
         recorded = _dispatch.read_tasks("demo")[0]["worktree"]
@@ -297,7 +297,7 @@ class TestDegradePaths:
         implementer_id = "flatpod-implementer"
         assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
-        _dispatch.enqueue_task("flatpod", "work")
+        _dispatch.enqueue_task("flatpod", "work", channel="cli")
         (res,) = _dispatch.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
         assert "not a git repo" in _dispatch.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
 
@@ -326,7 +326,7 @@ class TestDegradePaths:
         # pod was already provisioned (with real git) above.
         monkeypatch.setattr(_sys, "git_available", lambda: False)
 
-        _dispatch.enqueue_task("gitless", "work")
+        _dispatch.enqueue_task("gitless", "work", channel="cli")
         (res,) = _dispatch.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
         assert _dispatch.read_tasks("gitless")[0]["worktree"]["dir"] == ""
 

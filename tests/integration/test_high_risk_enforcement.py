@@ -174,7 +174,7 @@ class _RecordingRunner:
 class TestPreOutputHighRiskClassification:
     def test_secret_access_output_gets_warn_classification(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Rotate the deploy key")
+        _dispatch.enqueue_task("myapp", "Rotate the deploy key", channel="cli")
         runner = _RecordingRunner({"lead": "ran ssh-keygen -t ed25519 to rotate the deploy key"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -194,7 +194,7 @@ class TestPreOutputHighRiskClassification:
 
     def test_money_movement_output_gets_warn_classification(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Process the refund")
+        _dispatch.enqueue_task("myapp", "Process the refund", channel="cli")
         runner = _RecordingRunner({"lead": "stripe charge customer for the annual invoice"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -212,7 +212,7 @@ class TestPreOutputHighRiskClassification:
         only ever raises a bare allow to warn, never overrides a stronger hit."""
         _seed_lean_pod()
         _write_policy("forbidden-marker", "pre_output", "FORBIDDEN_TOKEN", "block")
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "FORBIDDEN_TOKEN: also ran stripe charge customer here"})
         results = _dispatch.dispatch_pod("myapp", runner=runner)
 
@@ -226,7 +226,7 @@ class TestPreOutputHighRiskClassification:
 
     def test_non_matching_output_still_silent(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner({"lead": "nothing interesting here"})
         _dispatch.dispatch_pod("myapp", runner=runner)
 

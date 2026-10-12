@@ -342,12 +342,13 @@ def enqueue_task(
     description: str,
     priority: str = "normal",
     *,
+    channel: str,
     trusted: bool | None = None,
     brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Locked read-modify-write, so concurrent ``delegate`` calls cannot clobber each other's
-    task. Raises DispatchError with no Lead workspace, an invalid *brief*, or a blocked
-    ``pre_input`` (nothing persisted). ``trusted`` never overrides the persisted ``source``."""
+    """Locked read-modify-write; raises DispatchError (nothing persisted) on no Lead, an invalid
+    *brief* or a blocked ``pre_input``. ``trusted`` never overrides ``source``; *channel*
+    (cli|http|telegram|mcp) is recorded and audited, never trusted."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
@@ -388,6 +389,7 @@ def enqueue_task(
         "startedAt": None,
         "completedAt": None,
         "source": source,
+        "channel": channel,
         "hops": [],
         "reason": "",
         "costUsd": 0.0,
@@ -426,6 +428,7 @@ def enqueue_task(
         return {"tasks": tasks}
 
     _store.read_modify_write(path, _fn)
+    _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
     return task
 
 

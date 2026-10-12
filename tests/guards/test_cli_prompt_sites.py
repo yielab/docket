@@ -102,7 +102,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     code.mkdir()
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
     register_local_provider(root, "loopback", [{"id": "tiny"}])
-    _dispatch.enqueue_task("demo", "a queued task")
+    _dispatch.enqueue_task("demo", "a queued task", channel="cli")
     _fleet.upsert_binding("demo-lead", "-1001")
     _mp.write_registry({"lead": "loopback/tiny"})
     _seed_documents(tmp_path)

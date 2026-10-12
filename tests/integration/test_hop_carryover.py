@@ -206,7 +206,7 @@ class TestContextComposedTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Trace the context")
+        _dispatch.enqueue_task("demo", "Trace the context", channel="cli")
         _dispatch.dispatch_pod("demo", runner=_BigOutputRunner())
 
         trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -236,7 +236,7 @@ class TestContextComposedTrace:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "Small trace")
+        _dispatch.enqueue_task("demo", "Small trace", channel="cli")
 
         class _SmallRunner:
             def __call__(

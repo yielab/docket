@@ -81,7 +81,7 @@ def _prep_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _register_security_reviewer()
     _pod.build_pod("proj", pod.DEFAULT_POD_ROLES, codebase="/src/proj")
     _pod.add_members("proj", "security-reviewer")
-    _dispatch.enqueue_task("proj", "ship the security review")
+    _dispatch.enqueue_task("proj", "ship the security review", channel="cli")
 
 
 class TestCustomRoleGeneratedHopInstruction:

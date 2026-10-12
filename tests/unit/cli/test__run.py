@@ -132,7 +132,7 @@ class TestForegroundApprovalPrompt:
         driver = DocketDriver(backend_factory=lambda model: backend)
         monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "push the release")
+        _dispatch.enqueue_task("demo", "push the release", channel="cli")
         _run._pod_dispatch("demo")
 
         tasks = _dispatch.read_tasks("demo")
@@ -154,7 +154,7 @@ class TestForegroundApprovalPrompt:
         driver = DocketDriver(backend_factory=lambda model: backend)
         monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
-        _dispatch.enqueue_task("demo", "push the release")
+        _dispatch.enqueue_task("demo", "push the release", channel="cli")
         _run._pod_dispatch("demo")
 
         tasks = _dispatch.read_tasks("demo")
@@ -185,7 +185,7 @@ class TestNoTtyNoChangePath:
         monkeypatch.setattr(_progress, "dispatch_with_progress", _boom)
         monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
-        _dispatch.enqueue_task("demo", "quiet path")
+        _dispatch.enqueue_task("demo", "quiet path", channel="cli")
         _run._pod_dispatch("demo")  # must not raise
 
 
@@ -204,7 +204,7 @@ class TestWaitingStatesAreNotErrors:
         monkeypatch.setattr(_run.ui, "warn", lambda msg: calls.append("warn"))
         monkeypatch.setattr(_run.ui, "error", lambda msg: calls.append("error"))
 
-        _dispatch.enqueue_task("demo", "ask first")
+        _dispatch.enqueue_task("demo", "ask first", channel="cli")
         _run._pod_dispatch("demo")
 
         assert calls == ["warn"]
@@ -221,7 +221,7 @@ class TestDryRun:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         before_runs, before_tasks = _runs_file(), _dispatch.read_tasks("demo")
 
         result = runner.invoke(_app, ["run", "--dry-run", "--pod", "demo"])
@@ -250,7 +250,7 @@ class TestEndpointGate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         _endpoint(monkeypatch, ok=False)
 
         result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -266,7 +266,7 @@ class TestEndpointGate:
         """The seam: no stand-in for ``readiness()``; a fresh home resolves to a hosted model
         with no credential, so the real report says the endpoint is missing."""
         _seed_pod(tmp_path, monkeypatch)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -301,7 +301,7 @@ class TestRun:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _endpoint(monkeypatch, ok=True)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
         result = runner.invoke(_app, ["run", "--pod", "demo"])
@@ -315,7 +315,7 @@ class TestRun:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _endpoint(monkeypatch, ok=True)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         seen: dict[str, Any] = {}
 
         def _fake(project: str, **kw: Any) -> list[Any]:
@@ -341,7 +341,7 @@ class TestRun:
         _endpoint(monkeypatch, ok=True)
         _fleet.meta_set("demo-lead", "paused", True)
         _fleet.meta_set("demo-lead", "pausedReason", "budget")
-        task = _dispatch.enqueue_task("demo", "held")
+        task = _dispatch.enqueue_task("demo", "held", channel="cli")
         monkeypatch.setattr(_dispatch, "unblock_pod", lambda project: 1)
         monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
         assert task["status"] == "pending"
@@ -357,7 +357,7 @@ class TestRun:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _endpoint(monkeypatch, ok=True)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         bad = tmp_path / "broken.pipeline.yaml"
         bad.write_text("name: broken\nsteps:\n  - id: build\n    role: implementer\n    nope: x\n")
 
@@ -374,7 +374,7 @@ class TestRun:
         _seed_pod(tmp_path, monkeypatch)
         _endpoint(monkeypatch, ok=True)
         monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
 
         result = runner.invoke(_app, ["run", "--pod", "demo"])
 
@@ -397,7 +397,7 @@ class TestRun:
 
         _seed_pod(tmp_path, monkeypatch)
         _endpoint(monkeypatch, ok=True)
-        _dispatch.enqueue_task("demo", "a task")
+        _dispatch.enqueue_task("demo", "a task", channel="cli")
         failed = TaskResult(task_id="t1", status="failed", hops=[], reason="verify failed")
         monkeypatch.setattr(_dispatch, "dispatch_pod", lambda *a, **k: [failed])
 

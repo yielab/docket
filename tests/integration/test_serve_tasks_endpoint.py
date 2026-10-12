@@ -129,8 +129,8 @@ class TestQueueShapeMatchesReadTasks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
-        _dispatch.enqueue_task("demo", "Ship the read API")
-        _dispatch.enqueue_task("demo", "Add a second task")
+        _dispatch.enqueue_task("demo", "Ship the read API", channel="cli")
+        _dispatch.enqueue_task("demo", "Add a second task", channel="cli")
 
         expected = _dispatch.read_tasks("demo")
         assert len(expected) == 2

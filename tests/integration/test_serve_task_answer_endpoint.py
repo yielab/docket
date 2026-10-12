@@ -108,7 +108,7 @@ def _seed_parked_task(project: str = "demo") -> dict[str, Any]:
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     _bind_pipeline(project, _ASK_PIPELINE_YAML)
-    _dispatch.enqueue_task(project, "needs a decision")
+    _dispatch.enqueue_task(project, "needs a decision", channel="cli")
     _dispatch.dispatch_pod(project, runner=FakeDriver())
     return _dispatch.read_tasks(project)[0]
 
@@ -212,7 +212,7 @@ class TestErrorMapping:
     def test_not_waiting_input_is_409(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        plain_task = _dispatch.enqueue_task("demo", "plain task")
+        plain_task = _dispatch.enqueue_task("demo", "plain task", channel="cli")
         status, body = _post(
             f"{url}/tasks/{plain_task['id']}/answer",
             {"pod": "demo", "action": "accept", "content": {"answer": "x"}},
