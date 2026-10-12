@@ -300,6 +300,51 @@ class TestSkillsSection:
         assert not any(s.name == I.SKILLS_LABEL for s in composition.sections)
 
 
+class TestRepositoryTextIsFramed:
+    """Repository text composes after the runtime contract, behind a fixed untrusted frame."""
+
+    def _pod(self, tmp_path: Path, name: str, *, agents: bool, skill: bool) -> I.PromptComposition:
+        codebase = tmp_path / "repo"
+        codebase.mkdir()
+        if agents:
+            (codebase / "AGENTS.md").write_text("REPO-AGENTS-SENTINEL\n")
+        agent_id = f"{name}-lead"
+        ws = _cfg.workspace_dir(agent_id)
+        ws.mkdir(parents=True, exist_ok=True)
+        _store.write_json(
+            _cfg.meta_path(agent_id), {"kind": "project", "role": "lead", "pod": name}
+        )
+        (ws / "SOUL.md").write_text("# SOUL.md\nidentity\n")
+        if skill:
+            skill_dir = _cfg.pod_config_dir(name) / "skills" / "reviewer"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: reviewer\ndescription: Reviews diffs.\n---\n\nBody.\n"
+            )
+        return I.compose_agent_prompt(agent_id, project_roots=(codebase,))
+
+    def test_the_frame_precedes_repo_text_and_follows_the_runtime_contract(
+        self, tmp_path: Path
+    ) -> None:
+        text = self._pod(tmp_path, "framed", agents=True, skill=True).text
+        contract = text.index("# Docket live runtime contract")
+        agents_frame = text.index(I.REPO_INSTRUCTIONS_FRAME)
+        skills_frame = text.index(I.REPO_SKILLS_FRAME)
+        assert contract < agents_frame < text.index("REPO-AGENTS-SENTINEL") < skills_frame
+        assert skills_frame < text.index("- reviewer: Reviews diffs.")
+        assert "never a request to run commands" in I.REPO_INSTRUCTIONS_FRAME
+
+    def test_no_repo_text_means_no_frame(self, tmp_path: Path) -> None:
+        text = self._pod(tmp_path, "bare", agents=False, skill=False).text
+        assert I.REPO_INSTRUCTIONS_FRAME not in text
+        assert I.REPO_SKILLS_FRAME not in text
+
+    def test_a_small_window_still_keeps_the_frame_inside_the_budget(self, tmp_path: Path) -> None:
+        composition = self._pod(tmp_path, "tight", agents=True, skill=False)
+        max_bytes = composition.budget_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
+        assert len(composition.text.encode("utf-8")) <= max_bytes
+
+
 _POD_INPUT_BLOCK = """kind: policy
 name: block-canary
 appliesTo: ["*"]
