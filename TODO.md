@@ -11,13 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 98 (Phase 40, harden the agent boundary; opened 2026-10-12)
+> ## ▶ ACTIVE BOARD — WAVE 99 (Phase 40, harden the agent boundary; opened 2026-10-12)
 >
 > **Phase 40 opened 2026-10-12** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)):
 > the open items of the 2026-10-12 security audit, twelve cards over Waves 98–99, the active
-> section at the end of this file. **Wave 98** runs six of them, one worker per card in an
-> isolated worktree under one integrator; packets in
-> [.agents/handoffs/wave-98-worker-packets.md](.agents/handoffs/wave-98-worker-packets.md).
+> section at the end of this file. **Wave 98 closed 2026-10-12** (six cards, rollup `8f62c97d`).
+> **Wave 99** runs the other five, one worker per card in an isolated worktree under one
+> integrator; packets in
+> [.agents/handoffs/wave-99-worker-packets.md](.agents/handoffs/wave-99-worker-packets.md).
 > P40-5 waits on D-59.
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
@@ -313,7 +314,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ▶ WAVE 98 — ACTIVE: Phase 40, harden the agent boundary (D-58, ADR 0023; opened 2026-10-12)
+## ▶ WAVE 99 — ACTIVE: Phase 40, harden the agent boundary (D-58, ADR 0023; opened 2026-10-12)
 
 **Trigger:** the 2026-10-12 security audit (`internal-docs/security-audit-2026-10-12.md`, the
 consolidated table and the fix-status section). Its eleven contained defects shipped in the
@@ -406,7 +407,7 @@ rotation, both still verify. Oracle: `verify_chain()` / `docket log verify` exit
 
 ### P40-4 — bound audit-log volume from caller-controlled inputs
 
-**Status:** TODO (Wave 99) · **Size:** S · **Model:** Haiku · **Spec:** audit.spec.md / telegram-integration.spec.md
+**Status:** IN PROGRESS (Wave 99, `w99-p40-4`) · **Size:** S · **Model:** Haiku · **Spec:** audit.spec.md / telegram-integration.spec.md
 
 **Trigger (audit finding C5):** two caller-controlled inputs can rotate the audit log out of
 existence within one generation — a `telegram.unauthorized` entry per message from any unbound
@@ -455,7 +456,7 @@ code, the printed items, the audit entry. **Do not start until D-59 is answered.
 
 ### P40-6 — the docket process is non-dumpable so an unjailed child cannot read its credentials
 
-**Status:** TODO (Wave 99) · **Size:** S · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Credentials in task processes")
+**Status:** IN PROGRESS (Wave 99, `w99-p40-6`) · **Size:** S · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Credentials in task processes")
 
 **Trigger (audit finding D2):** an unjailed `bash` tool call read docket's exported
 `DOCKET_LLM_API_KEY` and `TELEGRAM_BOT_TOKEN` from `/proc/$PPID/environ` (same uid); the bwrap
@@ -526,7 +527,7 @@ headers.
 
 ### P40-9 — the unauthenticated `/status.json` does not publish the Telegram allowlist
 
-**Status:** TODO (Wave 99) · **Size:** S · **Model:** Haiku · **Spec:** data/serve-read-api.spec.md
+**Status:** IN PROGRESS (Wave 99, `w99-p40-9`) · **Size:** S · **Model:** Haiku · **Spec:** data/serve-read-api.spec.md
 
 **Trigger (audit finding A5/C6):** `serve.py:85` serves `bindings` (`{channel, peerId}`) on the
 unauthenticated `/status.json`; a Telegram `peerId` is the chat id that is the whole Telegram
@@ -545,7 +546,7 @@ unauthenticated response body in a live-server test.
 
 ### P40-10 — a real `fetch` deadline and a timeout clamp
 
-**Status:** TODO (Wave 99) · **Size:** S · **Model:** Haiku · **Spec:** security-gates.spec.md ("Network egress and the `fetch` tool")
+**Status:** IN PROGRESS (Wave 99, `w99-p40-10`) · **Size:** S · **Model:** Haiku · **Spec:** security-gates.spec.md ("Network egress and the `fetch` tool")
 
 **Trigger (audit finding D7):** `fetch`'s timeout is per socket operation, so a server dripping
 one byte every 0.4 s held the call for 4 s under `timeout=1`; and the per-call `timeout` argument
@@ -566,7 +567,7 @@ bound. Oracle: elapsed time and the returned verdict in a `test_fetch.py` case.
 
 ### P40-11 — docket-owned directories are 0700 and backups keep 0600
 
-**Status:** TODO (Wave 99) · **Size:** S · **Model:** Haiku · **Spec:** none (hygiene; a note in the store/trace docstrings)
+**Status:** IN PROGRESS (Wave 99, `w99-p40-11`) · **Size:** S · **Model:** Haiku · **Spec:** none (hygiene; a note in the store/trace docstrings)
 
 **Trigger (audit finding D8):** `DOCKET_HOME` and `traces/<project>/` are created under the umask
 (0775 on the audit host); a `.bak` written by `shutil.copy2` keeps a loose pre-existing mode.
