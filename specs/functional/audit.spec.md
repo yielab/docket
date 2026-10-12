@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.12.1
+**Version**: 2.13.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket log verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -296,6 +296,18 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      "continued, unverifiable" state).
    The first line of a genuine genesis chain **MUST NOT** be reported as a
    break.
+   A log whose last entry is at a `seq` lower than the head sidecar says
+   (Viewing Requirement 6) **MUST** be reported as a break, reason `file ends at seq
+   <last> but head says <head>`, with the line number one past the last line.
+6. **Tail truncation (P40-3).** Every successful append **MUST** also write
+   `audit.head` (sibling of `audit.log`, 0600, written atomically) holding the
+   `seq` and `hash` of the entry just appended. `docket log verify` **MUST**
+   report a break when the current file's last `seq` is lower than the head's
+   `seq`: deleting the final line, or several, is detected. The head is best
+   effort and never fails a recording; a stale head can only be lower than the
+   file, so it never produces a false break. A missing head is not a break
+   (logs written before 2.13.0). This does not stop an attacker who deletes
+   `audit.log` and `audit.head` together, the same limit as Requirement 9c.
 
 ## Interface Contracts
 
@@ -416,6 +428,13 @@ $ docket log verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.13.0 (2026-10-12)
+
+- Requirement 10 (P40-3): `audit.head` records the last `seq` and hash on each append, and
+  `docket log verify` reports a break when the current file ends at a `seq` lower than the head
+  says. Tail truncation (the last line or lines deleted) was previously reported clean. Editing,
+  middle or first-line deletion and backup tampering are unchanged.
 
 ### Version 2.12.1 (2026-10-08)
 

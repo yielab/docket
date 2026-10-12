@@ -379,6 +379,16 @@ class TestChainVerify:
         assert result.chained == 5
         assert result.total_lines == 5
 
+    def test_deleting_the_last_line_is_detected_as_tail_truncation(self, audit_home: Path) -> None:
+        for i in range(5):
+            _audit.audit_log("keys.add", f"KEY_{i}")
+        logf = audit_home / "audit.log"
+        lines = logf.read_text(encoding="utf-8").splitlines()
+        logf.write_text("\n".join(lines[:4]) + "\n", encoding="utf-8")
+        result = _audit.verify_chain()
+        assert result.break_at is not None
+        assert "file ends at seq 4 but head says 5" in result.break_at.reason
+
     def test_tampered_middle_line_detected_at_right_position(self, audit_home: Path) -> None:
         for i in range(5):
             _audit.audit_log("keys.add", f"KEY_{i}")
