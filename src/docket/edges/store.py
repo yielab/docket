@@ -215,6 +215,7 @@ def _unlink_if_symlink(sibling: Path) -> None:
 
 
 def _copy_backup(path: Path) -> None:
+    """Copy *path* to its `.bak` at 0600: copy2 keeps the original's mode, which may be looser."""
     backup = path.with_suffix(path.suffix + ".bak")
     _unlink_if_symlink(backup)
     shutil.copy2(path, backup)

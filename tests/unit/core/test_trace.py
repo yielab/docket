@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import os
 import re
 import time
 
 import pytest
 
 from docket.core import trace
+
+
+@pytest.fixture
+def permissive_umask():
+    old = os.umask(0o002)
+    yield
+    os.umask(old)
+
 
 SUBJECT = "docket.core.trace"
 
@@ -243,3 +252,11 @@ class TestTerminalOutcomes:
 
     def test_an_unknown_project_is_all_zero(self) -> None:
         assert trace.terminal_outcomes("nobody", window=50).total == 0
+
+
+def test_a_new_trace_project_directory_is_created_0700(tmp_path, permissive_umask) -> None:
+    """A trace append creates its project directory private under a permissive umask."""
+    tracefile = tmp_path / "traces" / "newproj" / "sess.jsonl"
+    trace._append(tracefile, [{"kind": "x"}])
+    assert oct(os.stat(tracefile.parent).st_mode & 0o777) == "0o700"
+    assert oct(os.stat(tracefile).st_mode & 0o777) == "0o600"

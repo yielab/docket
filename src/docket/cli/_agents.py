@@ -111,7 +111,7 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
-    _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    _cfg.mkdir_private(_cfg.PROJECTS_DIR)
 
     if req.from_file is not None:
         return _cmd_add_declarative(req.from_file)
@@ -403,8 +403,8 @@ def _create_workspace(
 ) -> None:
     """Create a single project agent's workspace directory and template files."""
     ws = _cfg.PROJECTS_DIR / agent_id
-    ws.mkdir(parents=True, exist_ok=True)
-    (ws / "memory").mkdir(exist_ok=True)
+    _cfg.mkdir_private(ws)
+    _cfg.mkdir_private(ws / "memory")
 
     session_key = f"agent:{agent_id}:default"
 

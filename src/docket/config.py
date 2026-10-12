@@ -200,6 +200,19 @@ META_FILE = ".docket-meta.json"
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
 
+def mkdir_private(path: Path) -> None:
+    """Create *path* and any missing parents; every directory this call creates is 0700,
+    whatever the umask. An existing directory's mode is never changed."""
+    missing: list[Path] = []
+    current = path
+    while not current.exists() and current != current.parent:
+        missing.append(current)
+        current = current.parent
+    path.mkdir(parents=True, exist_ok=True)
+    for made in missing:
+        os.chmod(made, 0o700)
+
+
 def workspace_dir(agent_id: str) -> Path:
     """Resolve the workspace path for a pod member."""
     return PROJECTS_DIR / agent_id
