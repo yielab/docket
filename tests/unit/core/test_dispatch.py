@@ -680,7 +680,7 @@ class TestEffectivePipelineBlueprint:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
 
-        _dispatch.enqueue_task("myapp", "roll it out")
+        _dispatch.enqueue_task("myapp", "roll it out", channel="cli")
         results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
 
         assert len(results) == 1
@@ -744,7 +744,7 @@ class TestBoundPipeline:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
 
-        _dispatch.enqueue_task("myapp", "ship it")
+        _dispatch.enqueue_task("myapp", "ship it", channel="cli")
         results = _dispatch.dispatch_pod("myapp", runner=_run, spec=None)
 
         assert len(results) == 1

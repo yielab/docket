@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.37.0
+**Version**: 6.38.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-10
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -205,6 +205,16 @@ requirement. `_pod_delegate` **MUST** remove a well-formed `--priority`/`-p` opt
 remaining task positional with one space, and apply the existing empty and 500-character checks to
 that reconstructed description before calling `enqueue_task`. A missing or invalid priority
 **MUST** fail without enqueueing.
+
+#### Enqueue channel
+
+`enqueue_task` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
+`mcp` (`docket exec` is `cli`), persist it on the task as `channel` beside `source`, and append
+`task.enqueue` to the audit log naming the project, the task and the channel. `source` stays the
+origin class (`operator`, `reviewer` for a rework task) and alone drives the `pre_input` trust
+default; `channel` never changes trust. The detail names no description text. A task persisted
+before this version has no `channel`. `POST /dispatch/<project>` **MUST** append `run.dispatch`
+naming the run, the project and `channel=http` beside its `create_run`.
 
 ### Task references
 
@@ -2104,6 +2114,12 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.38.0 (2026-10-12)
+
+- "Enqueue channel": every enqueue persists a `channel` and audits `task.enqueue`; the dispatch
+  route audits `run.dispatch`. Before this, `POST /tasks`, Telegram `/delegate` and `POST
+  /dispatch` left no audit entry and every task read `source=operator` whatever its origin.
 
 ### Version 6.37.0 (2026-10-10)
 

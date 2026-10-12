@@ -418,7 +418,7 @@ class TestDispatchBuildsTypedArtifacts:
         thread the *persisted artifact* into later hops' prompts, not just
         raw text -- proving --resume recovers the structured record."""
         _seed_pod(tmp_path, monkeypatch, full=True)
-        task = _dispatch.enqueue_task("demo", "work")
+        task = _dispatch.enqueue_task("demo", "work", channel="cli")
 
         from docket.core.runtime_driver import TurnResult
 

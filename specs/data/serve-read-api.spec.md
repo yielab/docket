@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 3.4.1
+**Version**: 3.4.2
 **Status**: Stable
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -301,6 +301,7 @@ project with no pod is `read_tasks`' own `[]`, not an error.
       "priority": "normal",
       "status": "pending",
       "source": "operator",
+      "channel": "http",
       "created": "2026-08-04T12:00:00Z",
       "hops": []
     }
@@ -770,6 +771,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### Version 3.4.2 (2026-10-12)
+
+- The task example carries `channel` (how the task arrived; `pod-dispatch.spec.md` "Enqueue
+  channel"). `POST /tasks/<project>` and `POST /dispatch/<project>` now write `task.enqueue` and
+  `run.dispatch` audit entries with `channel=http`.
 
 ### Version 3.4.1 (2026-10-08)
 

@@ -84,7 +84,7 @@ class TestHappyPath:
     def test_records_a_pregrant_and_returns_a_token(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         status, body = _post(
             f"{url}/tasks/{task['id']}/pregrants",
@@ -102,7 +102,7 @@ class TestHappyPath:
     def test_custom_tool_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        task = _dispatch.enqueue_task("demo", "ship it")
+        task = _dispatch.enqueue_task("demo", "ship it", channel="cli")
 
         status, _body = _post(
             f"{url}/tasks/{task['id']}/pregrants",

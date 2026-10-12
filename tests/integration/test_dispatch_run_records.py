@@ -300,7 +300,7 @@ class TestCliDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
-        _dispatch.enqueue_task("demo", "do the thing")
+        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
 
         def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
             return [_dispatch.TaskResult(task_id="task-x", status="done")]
@@ -320,7 +320,7 @@ class TestCliDispatchPath:
     ) -> None:
         """A failed task exits 1, matching its failed run record, and prints its id and reason."""
         _seed_pod(tmp_path, monkeypatch, project="demo")
-        _dispatch.enqueue_task("demo", "do the thing")
+        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
         reason = "reviewer hop failed: model wrote [/bold] then [red]stopped"
 
         def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
@@ -344,7 +344,7 @@ class TestCliDispatchPath:
     ) -> None:
         """Success and expected pauses exit 0 and keep the bracketed task id visible."""
         _seed_pod(tmp_path, monkeypatch, project="demo")
-        _dispatch.enqueue_task("demo", "do the thing")
+        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
 
         def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
             return [_dispatch.TaskResult(task_id="task-x", status=status, reason="paused")]
@@ -376,7 +376,7 @@ class TestCliDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, project="demo")
-        _dispatch.enqueue_task("demo", "do the thing")
+        _dispatch.enqueue_task("demo", "do the thing", channel="cli")
 
         def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
             raise RuntimeError("daemon exploded")

@@ -50,7 +50,7 @@ def _lead(project: str) -> None:
 def _task(project: str, task_id: str) -> None:
     if not (_cfg.PROJECTS_DIR / f"{project}-lead").exists():
         _lead(project)
-    _dispatch.enqueue_task(project, f"work {task_id}")
+    _dispatch.enqueue_task(project, f"work {task_id}", channel="cli")
     path = _dispatch.pod_task_list_path(project)
     doc = json.loads(path.read_text())
     doc["tasks"][-1]["id"] = task_id

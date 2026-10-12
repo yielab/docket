@@ -304,7 +304,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
         )
 
     try:
-        task = _dispatch.enqueue_task(project, text, "normal")
+        task = _dispatch.enqueue_task(project, text, "normal", channel="telegram")
     except _dispatch.DispatchError as exc:
         return TelegramActionResult(False, str(exc), True, "delegate")
 

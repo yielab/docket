@@ -92,7 +92,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
         raise AssertionError("a cancellation race loser dispatched a tool")
 
     monkeypatch.setattr(_agent_loop, "dispatch_tool", _unexpected_dispatch)
-    task = _dispatch.enqueue_task("demo", "cancel this live turn")
+    task = _dispatch.enqueue_task("demo", "cancel this live turn", channel="cli")
     run = _runs.create_run("cli", "demo")
     returned: list[object] = []
 
@@ -244,7 +244,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(
     codebase.mkdir()
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
     agent_id = _pod.pod.member_id("demo", "implementer")
-    task = _dispatch.enqueue_task("demo", "sleep in bash")
+    task = _dispatch.enqueue_task("demo", "sleep in bash", channel="cli")
     _mark_running("demo", task["id"])
 
     # `python3` is on the command classifier's curated allowlist, so this

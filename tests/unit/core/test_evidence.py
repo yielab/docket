@@ -62,7 +62,7 @@ def _run_three_hops(monkeypatch: pytest.MonkeyPatch) -> str:
     backend = _Backend(["lead plan", "implementer done", "fine\nAPPROVE"])
     driver = DocketDriver(backend_factory=lambda model: backend)
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
-    task = _dispatch.enqueue_task("demo", "evidence please")
+    task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
     results = _dispatch.dispatch_pod("demo")
     assert results[0].status == "done"
     return str(task["id"])
@@ -115,7 +115,7 @@ class TestTaskEvidence:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "x")
+        task = _dispatch.enqueue_task("demo", "x", channel="cli")
         rec = _dispatch._hop_record(
             _dispatch.HopResult(
                 role="implementer",
@@ -139,7 +139,7 @@ class TestTaskEvidence:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        task = _dispatch.enqueue_task("demo", "old")
+        task = _dispatch.enqueue_task("demo", "old", channel="cli")
         _seed_task(task["id"], [{"role": "lead", "member": "demo-lead", "ok": True}])
         ev = _ev.task_evidence("demo", task["id"])
         hop = ev.hops[0]

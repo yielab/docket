@@ -18,7 +18,6 @@ from typer.testing import CliRunner
 
 from docket.cli import _pod, app
 from docket.core import dispatch as _dispatch
-from docket.core.audit import audit_log
 
 _runner = CliRunner()
 
@@ -87,8 +86,9 @@ def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     code.mkdir()
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
     register_local_provider(home, "loopback", [{"id": "tiny"}])
-    audit_log("pod.create", "demo")
-    task = _dispatch.enqueue_task("demo", "a queued task")
+    task = _dispatch.enqueue_task(
+        "demo", "a queued task", channel="cli"
+    )  # also the one audit entry
     monkeypatch.setenv("DOCKET_POD", "demo")
     monkeypatch.setenv("DOCKET_NO_HINTS", "1")
     monkeypatch.chdir(code)

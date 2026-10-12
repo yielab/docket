@@ -53,7 +53,7 @@ def _seed_parked_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[s
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     _seed_pod(tmp_path, monkeypatch)
     _bind_ask_pipeline("demo")
-    _dispatch.enqueue_task("demo", "needs a decision")
+    _dispatch.enqueue_task("demo", "needs a decision", channel="cli")
     _dispatch.dispatch_pod("demo", runner=FakeDriver())
     return _dispatch.read_tasks("demo")[0]
 

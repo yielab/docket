@@ -39,7 +39,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     approvals.mkdir()
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals, raising=True)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-    task = _dispatch.enqueue_task("demo", "evidence please")
+    task = _dispatch.enqueue_task("demo", "evidence please", channel="cli")
     hop = _dispatch._hop_record(
         _dispatch.HopResult(
             role="implementer",

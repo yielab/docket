@@ -246,7 +246,7 @@ class TestGateSources:
 class TestGateFiresPreHop:
     def test_gate_stops_before_the_gated_hop_runs(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner()
         results = _dispatch.dispatch_pod("myapp", runner=runner)
         assert len(results) == 1
@@ -256,7 +256,7 @@ class TestGateFiresPreHop:
 
     def test_waiting_approval_persists_token_and_pipeline_position(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
         task = _dispatch.read_tasks("myapp")[0]
@@ -271,7 +271,7 @@ class TestGateFiresPreHop:
 
     def test_gate_creates_a_real_approval_record(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        task = _dispatch.enqueue_task("myapp", "Ship it")
+        task = _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
         stored = _dispatch.read_tasks("myapp")[0]
@@ -286,7 +286,7 @@ class TestGateFiresPreHop:
 
     def test_approval_required_trace_event_emitted(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
         events = _trace_events("myapp")
@@ -296,7 +296,7 @@ class TestGateFiresPreHop:
 
     def test_pod_with_no_gated_roles_is_unaffected(self) -> None:
         _seed_lean_pod()
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         runner = _RecordingRunner()
         results = _dispatch.dispatch_pod("myapp", runner=runner)
         assert results[0].status == "done"
@@ -309,7 +309,7 @@ class TestGateFiresPreHop:
 class TestNotClaimableConcurrently:
     def test_second_dispatch_pod_call_does_not_reclaim_it(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         assert _dispatch.read_tasks("myapp")[0]["status"] == "waiting_approval"
 
@@ -321,7 +321,7 @@ class TestNotClaimableConcurrently:
 
     def test_claim_next_task_directly_returns_none(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
         assert _dispatch._claim_next_task("myapp", resume=False) is None
@@ -333,7 +333,7 @@ class TestNotClaimableConcurrently:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
 
         # Even if the stale-claim clock were somehow tripped, a
@@ -350,7 +350,7 @@ class TestNotClaimableConcurrently:
 class TestGrantResumesAtHop:
     def _gate_then_grant(self) -> str:
         _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = _dispatch.read_tasks("myapp")[0]["approvalToken"]
         return token
@@ -421,7 +421,7 @@ class TestGrantResumesAtHop:
 class TestDenyFailsTerminally:
     def _gate(self) -> str:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         return str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
 
@@ -504,7 +504,7 @@ class TestExpirySweepDenies:
 
     def test_sweep_fails_the_waiting_dispatch_task(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
 
@@ -553,7 +553,7 @@ def _post(url: str, body: dict[str, Any], token: str) -> tuple[int, dict[str, An
 class TestHttpApprovalEndpoint:
     def test_post_grant_resumes_the_dispatch_task(self, live_server: str) -> None:
         _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
 
@@ -572,7 +572,7 @@ class TestHttpApprovalEndpoint:
 
     def test_post_deny_fails_the_dispatch_task(self, live_server: str) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
 
@@ -591,7 +591,7 @@ class TestHttpApprovalEndpoint:
 class TestReworkReGatesAfterResume:
     def test_rework_cycle_re_gates_the_second_implementer_hop(self) -> None:
         _seed_full_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Ship it")
+        _dispatch.enqueue_task("myapp", "Ship it", channel="cli")
         _dispatch.dispatch_pod("myapp", runner=_RecordingRunner())
         first_token = str(_dispatch.read_tasks("myapp")[0]["approvalToken"])
         assert first_token
@@ -631,7 +631,7 @@ class TestBudgetGateTakesPrecedence:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        _dispatch.enqueue_task("myapp", "Too expensive")
+        _dispatch.enqueue_task("myapp", "Too expensive", channel="cli")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
 
