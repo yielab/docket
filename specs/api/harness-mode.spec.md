@@ -582,7 +582,7 @@ result whose `error` begins `--contract must be one of`. No model is called eith
 - Section 5 item 2: the wait bound travels through the run, not the process. `docket exec` puts
   `DOCKET_APPROVAL_TIMEOUT` (seconds) in the env `run_turn` receives; the driver pops it into
   `ToolContext.approval_timeout`, which the in-turn approval wait and a `consult` wait read.
-  Nothing mutates `config.TOOL_APPROVAL_TIMEOUT`. An absent or non-positive value keeps the
+  Under `--recipe` with `--answers stdin`, the bound reaches every hop the same way: `run_recipe_task(approval_timeout=)` -> dispatch context -> the hop's env. Nothing mutates `config.TOOL_APPROVAL_TIMEOUT`. An absent or non-positive value keeps the
   configured default.
 - Section 5 item 10: the stdin reader polls the descriptor with a short timeout, stops when the run
   ends and is joined before `docket exec` returns; no reader thread outlives the run.

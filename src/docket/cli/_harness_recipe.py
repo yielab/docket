@@ -221,6 +221,7 @@ def run_recipe(
                 model=model,
                 approval_mode="wait" if stdin_answers else "refuse",
                 timeout=timeout,
+                approval_timeout=answer_timeout if stdin_answers else None,
                 verify_cmd=verify_cmd,
                 next_answer=_answer_source(questions, answer_timeout) if stdin_answers else None,
             )

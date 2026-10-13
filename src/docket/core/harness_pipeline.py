@@ -66,6 +66,7 @@ def run_recipe_task(
     timeout: int,
     verify_cmd: str = "",
     next_answer: AnswerSource | None = None,
+    approval_timeout: int | None = None,
 ) -> RecipeRun:
     """Provision an in-place pod on *workspace*, apply *recipe*, and run *task* to settled."""
     # Bad inputs refuse before any pod exists (RecipeRunError, PodSettingsError,
@@ -94,7 +95,9 @@ def run_recipe_task(
 
     queued = _dispatch.enqueue_task(project, task, channel="cli")
     task_id = str(queued["id"])
-    _dispatch.dispatch_pod(project, turn_timeout=timeout, max_tasks=1)
+    _dispatch.dispatch_pod(
+        project, turn_timeout=timeout, max_tasks=1, approval_timeout=approval_timeout
+    )
     record = _task_record(project, task_id)
     while next_answer is not None and record.get("status") == "waiting_input":
         answer = next_answer(record.get("question") or {})
@@ -106,7 +109,9 @@ def run_recipe_task(
             )
         except (_answers.AnswerError, _answers.AnswerRejected):
             break
-        _dispatch.dispatch_pod(project, turn_timeout=timeout, max_tasks=1)
+        _dispatch.dispatch_pod(
+            project, turn_timeout=timeout, max_tasks=1, approval_timeout=approval_timeout
+        )
         record = _task_record(project, task_id)
     hops = [dict(h) for h in record.get("hops", [])]
     return RecipeRun(project=project, task=record, hops=hops)
