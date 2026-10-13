@@ -1,0 +1,320 @@
+{
+  "$defs": {
+    "DiffStat": {
+      "additionalProperties": false,
+      "properties": {
+        "deletions": {
+          "title": "Deletions",
+          "type": "integer"
+        },
+        "files": {
+          "title": "Files",
+          "type": "integer"
+        },
+        "insertions": {
+          "title": "Insertions",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "insertions",
+        "deletions"
+      ],
+      "title": "DiffStat",
+      "type": "object"
+    },
+    "DirectiveEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "DirectiveEvidence",
+      "type": "object"
+    },
+    "GateEvidence": {
+      "additionalProperties": false,
+      "description": "The label and raw exit of an external gate; no verdict about the work is added.",
+      "properties": {
+        "exitCode": {
+          "title": "Exitcode",
+          "type": "integer"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "reasonsInvalid": {
+          "title": "Reasonsinvalid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "label",
+        "exitCode",
+        "reasonsInvalid"
+      ],
+      "title": "GateEvidence",
+      "type": "object"
+    },
+    "HopEvidence11": {
+      "additionalProperties": false,
+      "description": "``gate`` is absent, never ``null``, on a hop that ran no external gate.",
+      "properties": {
+        "baseCommit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basecommit"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        },
+        "diffStat": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffStat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "gate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GateEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "stepId": {
+          "title": "Stepid",
+          "type": "string"
+        },
+        "trace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TraceLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verdict"
+        },
+        "verify": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifyEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "role",
+        "stepId",
+        "ok"
+      ],
+      "title": "HopEvidence11",
+      "type": "object"
+    },
+    "TraceLink": {
+      "additionalProperties": false,
+      "description": "``session`` is the identifier ``docket task trace <ref>`` and the trace reader accept;\n``project`` is the identifier ``GET /traces/<project>`` accepts. ``firstTs``/``lastTs`` are\nthe second-resolution window of this hop's events within that session's file.",
+      "properties": {
+        "firstTs": {
+          "title": "Firstts",
+          "type": "string"
+        },
+        "lastTs": {
+          "title": "Lastts",
+          "type": "string"
+        },
+        "project": {
+          "title": "Project",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "session",
+        "firstTs",
+        "lastTs"
+      ],
+      "title": "TraceLink",
+      "type": "object"
+    },
+    "UsageEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "title": "Input",
+          "type": "integer"
+        },
+        "output": {
+          "title": "Output",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input",
+        "output"
+      ],
+      "title": "UsageEvidence",
+      "type": "object"
+    },
+    "VerifyEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "title": "Cmd",
+          "type": "string"
+        },
+        "durationS": {
+          "title": "Durations",
+          "type": "number"
+        },
+        "exitCode": {
+          "title": "Exitcode",
+          "type": "integer"
+        },
+        "outputTail": {
+          "title": "Outputtail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cmd",
+        "exitCode",
+        "durationS",
+        "outputTail"
+      ],
+      "title": "VerifyEvidence",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``directives`` is absent, never ``null``, when no hop composed a repository file.",
+  "properties": {
+    "directives": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/DirectiveEvidence"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Directives"
+    },
+    "hops": {
+      "items": {
+        "$ref": "#/$defs/HopEvidence11"
+      },
+      "title": "Hops",
+      "type": "array"
+    },
+    "pod": {
+      "title": "Pod",
+      "type": "string"
+    },
+    "status": {
+      "title": "Status",
+      "type": "string"
+    },
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "v": {
+      "const": "1.1.0",
+      "default": "1.1.0",
+      "title": "V",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pod",
+    "taskId",
+    "status",
+    "hops"
+  ],
+  "title": "TaskEvidence11",
+  "type": "object",
+  "version": "1.1.0"
+}

@@ -338,7 +338,7 @@ def cmd_show(
     found = _resolve(pod, ref)
     task = _task_record(found)
     try:
-        ev = _evidence.task_evidence(found.project, found.task_id)
+        ev = _evidence.task_evidence(found.project, found.task_id, "1.1.0")
     except _evidence.EvidenceNotFound as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc

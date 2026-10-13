@@ -79,4 +79,6 @@ def test_harness_recipe_task_evidence_equals_the_cli_json_of_the_same_home(
         check=False,
     )
     assert cli.returncode == 0, cli.stderr
-    assert json.loads(cli.stdout)["evidence"] == harness_doc
+    shown = json.loads(cli.stdout)["evidence"]
+    assert harness_doc["v"] == "1.0.0" and shown["v"] == "1.1.0"
+    assert {**shown, "v": "1.0.0"} == harness_doc

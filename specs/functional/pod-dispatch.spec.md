@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.42.0
+**Version**: 6.43.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1927,6 +1927,21 @@ card), scores nothing, and carries no dollar figure.*
    group share a file and may overlap in time.
 6. A record written before these fields existed **MUST** still build: `usage`, `trace`, `verify`,
    `commit`, `baseCommit` and `diffStat` are `null`.
+7. **Evidence 1.1.0** (ADR 0025 D4 as amended) adds exactly two optional fields and nothing
+   else. `task_evidence(project, task_id, version)` **MUST** take the version, `"1.0.0"` or
+   `"1.1.0"`; `"1.0.0"` **MUST** produce the same document as before this requirement, byte for
+   byte, and **MUST** carry neither new field. The published harness result
+   (`cli/_harness_recipe.py`) **MUST** embed `"1.0.0"` (the harness contract does not move);
+   `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
+8. Under `"1.1.0"`, `HopEvidence.gate` is `{label, exitCode, reasonsInvalid}`, copied from the hop's
+   `verify` and present only when that `verify` carries a `label` (a hop that ran an external gate);
+   it adds no verdict about the work. `TaskEvidence.directives` is a list of `{path, sha256}`: the
+   distinct pairs over the task's hops, in first-seen order, read from each hop record's persisted
+   `repoFiles` (the `TurnResult.repo_files` the turn composed from the task's base commit; dispatch
+   copies it onto the hop, evidence never recomputes it). A field with nothing to say **MUST** be
+   absent from the document, not `null`. The 1.1.0 schema is generated into
+   `docs/contracts/evidence-v1.1/schema.json`; `docs/contracts/evidence-v1/schema.json` stays
+   byte-identical.
 
 ### Sweep workers
 
@@ -2172,6 +2187,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.43.0 (2026-10-13)
+
+- "Evidence v1" 7-8: evidence `1.1.0` (`gate` per hop, `directives` per task, `HopResult.repo_files` persisted as `repoFiles`); `task_evidence` takes the version and the harness result keeps `1.0.0` (P42-5).
 
 ### Version 6.42.0 (2026-10-13)
 

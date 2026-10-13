@@ -97,8 +97,15 @@ class TestSurfacesAgree:
         assert status == 200
         run = _hp.RecipeRun(project="demo", task={"id": task_id}, hops=[])
         harness_doc = _harness_recipe._task_evidence(run)
-        assert cli_doc == json.loads(http_body) == harness_doc
-        assert cli_doc == _ev.task_evidence("demo", task_id).model_dump(by_alias=True, mode="json")
+        assert cli_doc == json.loads(http_body)
+        assert cli_doc == _ev.task_evidence("demo", task_id, "1.1.0").model_dump(
+            by_alias=True, mode="json"
+        )
+        assert harness_doc == _ev.task_evidence("demo", task_id, "1.0.0").model_dump(
+            by_alias=True, mode="json"
+        )
+        assert cli_doc["v"] == "1.1.0" and harness_doc["v"] == "1.0.0"
+        assert {**cli_doc, "v": "1.0.0"} == harness_doc
 
     def test_harness_block_is_none_without_a_run(self) -> None:
         assert _harness_recipe._task_evidence(None) is None
