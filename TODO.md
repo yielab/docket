@@ -315,7 +315,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A active in Wave 104
+## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104
 
 > **Opened 2026-10-13.** ADR 0025 was accepted with amendments (its last section): the external
 > gate is a command plus an exit map whose four labels route through the existing `on:` map; a
@@ -328,10 +328,19 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 > plus its owning spec section; `README.md`, `docs/SECURITY-SIMPLE.md`, `docs/CONFIGURATION.md`,
 > CLAUDE.md's limits and this board are the integrator's, rewritten as each card merges (D-37).
 > Packets in [.agents/handoffs/phase-42-worker-packets.md](.agents/handoffs/phase-42-worker-packets.md).
+>
+> **Wave 104 closed sub-wave A (2026-10-13).** Integration findings: P42-3's base-commit view
+> lived in a module-global registry keyed by the worktree, and the children of a `parallel` group
+> share one worktree on separate threads, so a sibling that ended first cleared the view of one
+> still running (reproduced; now a `ContextVar`, `tests/unit/core/test_repo_view.py`). P42-1
+> carried a "GATE FAILED" section for a backward route taken on `pass` (now gated on the verify
+> label or exit code, one owner `_is_gate_failure_carryover`). Known gap for P42-2: an `input`
+> step's answer resumes behind a synthetic operator hop with no `verify`, so the reasons must be
+> carried across it.
 
 ### P42-1 — a backward route carries the gate's output into the rework hop
 
-**Status:** IN PROGRESS (Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Outcome routing"), pod-dispatch.spec.md ("Bounded hop prompts")
+**Status:** DONE (2026-10-13, merge `5498d4b1`, Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Outcome routing"), pod-dispatch.spec.md ("Bounded hop prompts")
 
 **Trigger (code reading, 2026-10-13, ADR 0025 amendments):** `core/dispatch.py::_run_pipeline`
 fills `pending_rework_by_index` only for `kind == "rework"` (a verdict gate's edge). A `routed`
@@ -359,7 +368,7 @@ byte-identical to today (goldens unchanged). Lane: integration. Oracle: the reco
 
 ### P42-3 — repository instructions and skills come from the task's base commit
 
-**Status:** IN PROGRESS (Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** agent-loop.spec.md (project instructions, the `project_roots[0]` paragraph), role-archetypes.spec.md (skills scopes)
+**Status:** DONE (2026-10-13, merge `a0d58ede`, Wave 104) · **Size:** S · **Model:** Sonnet · **Spec:** agent-loop.spec.md (project instructions, the `project_roots[0]` paragraph), role-archetypes.spec.md (skills scopes)
 
 **Trigger (ADR 0025 evidence row "the project-instructions root is the task worktree"):**
 `edges/adapters/docket_runtime.py` passes `roots=(Path(pipeline_worktree),)` and

@@ -22,10 +22,18 @@ Common to every worker:
   `scripts/maint/comment_lint.py --check <touched files>`.
 - Final gates: `uv run pytest -q`, `bash tests/golden/run.sh verify-all` and
   `bash scripts/validate-specs.sh`. Never regenerate a golden to make it pass.
+- Before `mypy`, run `env -u VIRTUAL_ENV uv sync --all-extras` once. Without the `mcp` extra,
+  mypy reports three phantom `anyio` errors in `edges/adapters/mcp_client.py` (Wave 104).
+- `comment_lint.py --check` counts per file. Compare your files' totals with the same files on
+  the base; a new `long-def-doc` (a docstring over three lines) is a finding, and it is yours.
+- Any module-level mutable state that a turn writes must be safe when the children of a
+  `parallel` group run concurrently in one worktree (`orchestrator.run_group`, one copied
+  context per child). Prefer a `ContextVar`. Wave 104 found and fixed a module-global registry
+  that a finishing sibling cleared under a running one.
 - Return the "Worker return" shape of
   `.agents/skills/docket-roadmap/references/multi-agent-delivery.md`, in 1,500 to 3,000 characters.
 
-## Wave 104: Phase 42 sub-wave A (base `BASE_COMMIT`)
+## Wave 104: Phase 42 sub-wave A (base `e8774fad`)
 
 The two cards are disjoint:
 - **P42-1** owns `core/dispatch.py` and, if needed, `core/context.py`.
@@ -36,7 +44,7 @@ Neither edits the other's files. They merge in either order; P42-2 (sub-wave B) 
 
 ### P42-1: a backward route carries the gate's output into the rework hop
 
-- **Worktree / branch:** `../rack-cli-wt/p42-1`, `phase-42/p42-1`, at `BASE_COMMIT`.
+- **Worktree / branch:** `../rack-cli-wt/p42-1`, `phase-42/p42-1`, at `e8774fad`.
 - **Trigger locators:**
   - `core/dispatch.py::_run_pipeline`: the `outcome.kind == "routed"` branch versus
     `kind == "rework"`, which is the only one that sets `pending_rework_by_index`.
@@ -64,7 +72,7 @@ Neither edits the other's files. They merge in either order; P42-2 (sub-wave B) 
 
 ### P42-3: repository instructions and skills come from the task's base commit
 
-- **Worktree / branch:** `../rack-cli-wt/p42-3`, `phase-42/p42-3`, at `BASE_COMMIT`.
+- **Worktree / branch:** `../rack-cli-wt/p42-3`, `phase-42/p42-3`, at `e8774fad`.
 - **Trigger locators:**
   - `edges/adapters/docket_runtime.py` (`roots=(Path(pipeline_worktree),)`).
   - `core/identity.py::_project_instructions_raw` (`project_roots[0]`) and
@@ -98,3 +106,72 @@ Neither edits the other's files. They merge in either order; P42-2 (sub-wave B) 
   `.docket/skills/`. Both fail on the base.
 - **Measure:** time one git read on this host and report the number.
 - **Mutable state:** temp git repos only.
+
+## Wave 105: Phase 42 sub-wave B (base: the Wave 104 rollup on `develop`)
+
+One card, alone, because it owns the `core/dispatch.py` and `core/pipeline.py` hotspot.
+
+### P42-2: the external gate
+
+- **Worktree / branch:** `../rack-cli-wt/p42-2`, `phase-42/p42-2`, at the base named in the
+  spawn prompt.
+- **Decision:** read ADR 0025 D1 and its "Accepted with amendments" table. Where they disagree,
+  the amendments win.
+- **What P42-1 left you:**
+  - `core/dispatch.py::_gate_failed_section(step_id, output_tail)` is the one owner of the
+    `--- GATE FAILED ---` text. Extend it to take the reasons; do not write a second one.
+  - `_is_gate_failure_carryover` already reads `verify.label` when present. Record `label` on
+    `hop.verify`, and every backward route out of an external gate that did not pass carries
+    automatically.
+- **Allowed:**
+  - `core/pipeline.py`: `ExternalGate` and the `Gate` union, the short form
+    `gate: {external: CMD}` and its export back to the short form, the `on:` key validation
+    for an external-gated step (`pass|fail|needs_human|error`), `_default_edge_reachable`.
+  - `core/dispatch.py`:
+    - a helper extracted from `_evaluate_mechanical_gate` that both gates call (envelope,
+      fingerprint, redaction, `hop.verify`);
+    - `_evaluate_external_gate`, and the site that picks an evaluator by gate type;
+    - `_gate_failed_section`;
+    - the failure kinds `gate_failed`, `gate_needs_human` and `gate_error` (see
+      `_ROUTE_FAILURE_KINDS`).
+  - `core/orchestrator.py`: the plan label (`external(<command>)`), next to `mechanical(...)`.
+  - The regenerated `docs/contracts/config-v1/pipeline.schema.json`, via
+    `scripts/gen_config_schemas.py`, never edited by hand.
+- **Not yours:**
+  - `core/archetypes.py::GATE_KINDS`: a role's default gate stays as it is, and the external
+    gate is a pipeline-step gate only.
+  - `core/answers.py`: the `input` step already routes answers, so do not add a continuation.
+  - The `exec` flags.
+- **The reasons file:**
+  - Its path is `DOCKET_GATE_REASONS_FILE`, under the pod cache dir (see
+    `edges/adapters/docket_runtime.py::_pod_cache_dir`; it is a read-write root of the jail
+    since P41-5). Pass it through `_run_in_envelope(..., env=)`.
+  - Delete it before the command runs. Read it after: UTF-8 JSON of at most 64 KiB, shaped
+    `{"reasons": [{"summary": str, ...}]}`.
+  - Anything else sets `reasonsInvalid: true`, and the output tail stands in.
+  - Reasons are untrusted text: redact them, and screen them the way an MCP result is screened
+    (find the existing screen with `rg -n "def screen_tool_result" src/docket/core/tools.py`
+    and reuse it, do not write a second one). No reason field drives control flow.
+  - When the pod has no cache dir, the gate still runs and the output tail is the reasons.
+- **Exit mapping:** `exitMap` defaults to `{pass: [0], fail: [1], needs_human: [2]}`. `error`
+  is any of: an unmapped code, a timeout, a jail refusal (`_run_in_envelope` returns its
+  `[verify not run: ...]` text), or an empty command. `hop.verify` keeps `cmd`, `durationS`,
+  `outputTail` and `touched`, gains `label` and `reasonsInvalid`, and its `exitCode` is the real
+  code. A mechanical gate's `exitCode` stays 0 or 1.
+- **Spec:**
+  - `specs/functional/pipeline-format.spec.md`: "Gates" (the new kind) and "Outcome routing"
+    (its four labels).
+  - `specs/functional/pod-dispatch.spec.md`: gate evaluation, "Hop evidence" (`verify` fields)
+    and the failure kinds.
+  - `specs/functional/config-format.spec.md`, if it lists gate kinds.
+- **RED:** unit tests for parsing, the short form and its round-trip export, and validation
+  errors. Then an integration test with a fake verifier script that exits 0, 1 (writing
+  reasons), 2 and 7, and one that sleeps past its timeout. Cover reasons that are too large,
+  not JSON, and pre-existing (planted before the run; they must not be read).
+- **Seam test (real code on both sides):** a pipeline whose external gate exits 2, with
+  `on: {fail: {goto: build, max: 2}, needs_human: ask}`, and `ask` an `input` step with
+  `on: {answered: {goto: build, max: 1}, declined: fail}`. Dispatch parks the task
+  `waiting_input`. `core.answers.answer_task(..., "accept", ...)` reopens it. Dispatch again:
+  the Implementer's message carries the reasons under `GATE FAILED`. If the resume path loses
+  the reasons, that is this card's defect to fix.
+- **Unchanged:** a pipeline without an external gate is byte-identical (goldens untouched).

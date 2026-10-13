@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A gate that sends a task back says why (Phase 42, P42-1).** A backward `on:` route out of a
+  gate that did not pass (for example `until: verify`) now gives the target's next hop a
+  `--- GATE FAILED: <step id> ---` section with the gate's redacted output tail. Before, the
+  Implementer retried without seeing why its verify command failed. A forward route, a backward
+  `pass` route and a verdict rework compose the same messages as before.
+- **Repository instructions come from the task's base commit (Phase 42, P42-3).** In a task
+  worktree, the codebase's `AGENTS.md`, every `projectInstructions` file and the skills under
+  `.docket/skills/` are read with host-side git from the commit the worktree was created from,
+  not from the agent-writable worktree, so an Implementer can no longer rewrite what the
+  Reviewer and Tester are told in the same task. A file added by the task is not read until it
+  is merged. Without a task worktree nothing changes. The turn result carries the path and
+  sha256 of each file served (`TurnResult.repo_files`).
+
 ## [0.2.0-beta.5] - 2026-10-13
 
 Harness contract 1.2: a program that runs docket through `docket exec` no longer needs to hold a
