@@ -11,13 +11,14 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 105 (Phase 42's sub-wave B, P42-2; opened 2026-10-13)
+> ## ▶ ACTIVE BOARD — WAVE 106 (Phase 42's sub-wave C, P42-4 ∥ P42-5; opened 2026-10-13)
 >
 > **Phase 42** (lights-out profile and external gate, D-61,
 > [ADR 0025](docs/adr/0025-lights-out-profile-and-external-gate.md), accepted with amendments)
-> opened 2026-10-13; sub-wave A (P42-1, P42-3) closed in Wave 104 (rollup `5cee0640`).
-> **Wave 105** runs sub-wave B alone: **P42-2** (the external gate), one Sonnet worker in an
-> isolated worktree at `5cee0640`, packet in
+> opened 2026-10-13; sub-wave A closed in Wave 104, sub-wave B (the external gate) in Wave 105
+> (rollup `96e580ad`). **Wave 106** runs sub-wave C: **P42-4** (the `lights-out` profile) and
+> **P42-5** (evidence 1.1.0), one Sonnet worker each in an isolated worktree at `96e580ad`,
+> function-level ownership of `core/dispatch.py`, merge P42-5 then P42-4; packets in
 > [.agents/handoffs/phase-42-worker-packets.md](.agents/handoffs/phase-42-worker-packets.md).
 > **Phase 41** (D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed 2026-10-13,
 > archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -315,7 +316,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104, sub-wave B active in Wave 105
+## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104, sub-wave B closed in Wave 105, sub-wave C active in Wave 106
 
 > **Opened 2026-10-13.** ADR 0025 was accepted with amendments (its last section): the external
 > gate is a command plus an exit map whose four labels route through the existing `on:` map; a
@@ -434,7 +435,7 @@ A pipeline without an external gate is byte-identical (goldens unchanged).
 
 ### P42-4 — the `lights-out` profile
 
-**Status:** TODO (sub-wave C) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (new "Profiles" section), cli-interface.spec.md (`setup profile`), operator-loop.spec.md (doctor/status lines)
+**Status:** IN PROGRESS (Wave 106) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (new "Profiles" section), cli-interface.spec.md (`setup profile`), operator-loop.spec.md (doctor/status lines)
 
 **Goal:** `core/profile.py::lights_out_violations(project) -> list[Violation]`, pure, each with
 its fix: isolation on with a usable backend; network `none` enforced by the jail (recorded or
@@ -455,7 +456,7 @@ are byte-identical to today (goldens unchanged except the new `setup profile` su
 
 ### P42-5 — evidence 1.1.0: `gate` and `directives`
 
-**Status:** TODO (sub-wave C) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md ("Evidence v1"), cli-json-shapes.spec.md
+**Status:** IN PROGRESS (Wave 106) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md ("Evidence v1"), cli-json-shapes.spec.md
 
 **Goal:** `core/evidence.py` emits `v: "1.1.0"`: `HopEvidence.gate {label, exitCode,
 reasonsInvalid}` only on a hop that ran an external gate; `TaskEvidence.directives [{path,
