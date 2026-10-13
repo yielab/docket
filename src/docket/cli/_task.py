@@ -91,12 +91,16 @@ def _worktree(project: str, task: dict[str, Any]) -> dict[str, str] | None:
     root = f"git -C {codebase} " if codebase else "git "
     git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
     _sys.trust_worktree(path, git_dir, common_dir)
-    where = f"--git-dir={git_dir} --work-tree={path}" if git_dir and common_dir else f"-C {path}"
+    where = (
+        f"GIT_DIR={git_dir} GIT_COMMON_DIR={common_dir} GIT_WORK_TREE={path} git"
+        if git_dir and common_dir
+        else f"git -C {path}"
+    )
     return {
         "path": path,
         "branch": branch,
         "baseCommit": base,
-        "diff": f"git {where} diff {base}",
+        "diff": f"{where} diff {base}",
         "merge": f"{root}merge {branch}",
     }
 

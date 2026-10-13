@@ -278,7 +278,7 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   `requireApprovalRoles`, the resolved `approvalMode`, the always-on high-risk classes, notifying
   channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
   and the exact diff and merge commands (`git -C <path> diff <base>`, or, when the task record
-  holds the git dirs docket recorded, `git --git-dir=<gitDir> --work-tree=<path> diff <base>`, so
+  holds the git dirs docket recorded, `GIT_DIR=<gitDir> GIT_COMMON_DIR=<commonDir> GIT_WORK_TREE=<path> git diff <base>` (naming the common dir too, because the worktree's own `commondir` file is agent-writable), so
   the hint never reads the `.git` file the agent could rewrite); a task that ran in place prints no
   worktree block. A `run-` ref resolves its task and exits 1 when the run failed
 - `diff <ref> [--pod <p>]`: Print `git diff <base>` of the task's worktree
