@@ -505,18 +505,44 @@ class TestLandlockGitMounts:
     def _values(self, argv: list[str], flag: str) -> list[str]:
         return [argv[i + 1] for i, a in enumerate(argv) if a == flag]
 
-    def test_a_linked_worktree_gets_the_writable_parts_not_the_git_dir(
-        self, tmp_path: Path
-    ) -> None:
+    def _linked(self, tmp_path: Path, head: str) -> tuple[Path, Path, Path]:
         wt, common = tmp_path / "wt", tmp_path / "main" / ".git"
         gitdir = common / "worktrees" / "wt"
         for d in (wt, gitdir, common / "objects", common / "refs"):
             d.mkdir(parents=True)
-        argv = self._argv(wt, [gitdir, common])
-        rw = self._values(argv, "--rw")
+        (gitdir / "HEAD").write_text(head)
+        return wt, common, gitdir
+
+    def test_a_task_worktree_gets_only_its_branch_ref_directory(self, tmp_path: Path) -> None:
+        wt, common, gitdir = self._linked(tmp_path, "ref: refs/heads/docket/pod/wt\n")
+        rw = self._values(self._argv(wt, [gitdir, common]), "--rw")
         assert str(common) not in rw and str(common / "hooks") not in rw
-        assert {str(common / "objects"), str(common / "refs"), str(gitdir)} <= set(rw)
-        assert self._values(argv, "--ro") == [str(common)]
+        assert str(common / "refs") not in rw and str(common / "logs") not in rw
+        assert {
+            str(common / "objects"),
+            str(common / "refs" / "heads" / "docket" / "pod"),
+            str(common / "logs" / "refs" / "heads" / "docket" / "pod"),
+            str(gitdir),
+        } <= set(rw)
+
+    @pytest.mark.parametrize(
+        "head",
+        [
+            "ref: refs/heads/main\n",
+            "ref: refs/heads/docket/pod/other\n",
+            "ref: refs/heads/docket/wt\n",
+            "ref: refs/heads/docket/../wt\n",
+            "ref: refs/tags/docket/pod/wt\n",
+            "0123456789abcdef0123456789abcdef01234567\n",
+        ],
+    )
+    def test_a_worktree_not_on_its_own_task_branch_gets_no_ref_grant(
+        self, tmp_path: Path, head: str
+    ) -> None:
+        wt, common, gitdir = self._linked(tmp_path, head)
+        rw = self._values(self._argv(wt, [gitdir, common]), "--rw")
+        assert not [p for p in rw if p.startswith(str(common / "refs")) or "/logs" in p]
+        assert self._values(self._argv(wt, [gitdir, common]), "--ro") == [str(common)]
 
     def test_a_root_with_a_git_directory_is_refused(self, tmp_path: Path) -> None:
         (tmp_path / ".git").mkdir()

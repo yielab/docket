@@ -161,8 +161,6 @@ class TestArgvShape:
         assert grants == [
             str(wt.resolve()),
             str(common / "objects"),
-            str(common / "refs"),
-            str(common / "logs"),
             str(gitdir),
         ]
         assert [landlock[i + 1] for i, a in enumerate(landlock) if a == "--ro"] == [str(common)]

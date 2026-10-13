@@ -213,11 +213,66 @@ def test_a_commit_inside_the_jailed_task_worktree_succeeds(
         backend,
         wt,
         "echo x > f.txt && git add f.txt && git commit -q -m jailed-commit && "
-        "git branch side && git log -1 --format=%s",
+        "git log -1 --format=%s",
     )
     assert done.returncode == 0, done.stderr
     assert "jailed-commit" in _git(wt, "log", "--format=%s", "-1")
-    assert _git(wt, "rev-parse", "--verify", "side")
+
+
+@pytest.fixture
+def landlock(backend: str) -> str:
+    """The backend fixture narrowed to landlock; the ref grants are Landlock-specific."""
+    if backend != "landlock":
+        pytest.skip("the ref narrowing is a Landlock grant")
+    return backend
+
+
+def _ref_attack(backend: str, tree: TaskTree, command: str) -> subprocess.CompletedProcess[str]:
+    sha = _git(tree.wt, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "planted")
+    return _run(backend, tree.wt, command.format(sha=sha))
+
+
+def test_the_main_branch_ref_cannot_be_moved(landlock: str, task_tree: TaskTree) -> None:
+    before = _git(task_tree.main, "rev-parse", "main")
+    done = _ref_attack(landlock, task_tree, "git update-ref refs/heads/main {sha}")
+    assert _git(task_tree.main, "rev-parse", "main") == before, "the jail moved main"
+    assert done.returncode != 0
+
+
+def test_a_tag_cannot_be_written(landlock: str, task_tree: TaskTree) -> None:
+    done = _ref_attack(landlock, task_tree, "git update-ref refs/tags/x {sha}")
+    assert not (task_tree.common / "refs" / "tags" / "x").exists()
+    assert done.returncode != 0
+
+
+def test_a_branch_outside_the_pod_namespace_cannot_be_created(
+    landlock: str, task_tree: TaskTree
+) -> None:
+    done = _ref_attack(landlock, task_tree, "git update-ref refs/heads/other {sha}")
+    assert not (task_tree.common / "refs" / "heads" / "other").exists()
+    assert done.returncode != 0
+
+
+def test_a_sibling_task_branch_of_the_pod_is_the_accepted_residue(
+    landlock: str, task_tree: TaskTree
+) -> None:
+    done = _ref_attack(landlock, task_tree, "git update-ref refs/heads/docket/proj/t2 {sha}")
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_linked_worktree_that_is_not_a_task_gets_no_ref_grant(landlock: str, arena: Path) -> None:
+    main = arena / "m2"
+    main.mkdir()
+    _git(main, "init", "-q", "-b", "main")
+    (main / "a").write_text("a\n")
+    _git(main, "add", "a")
+    _git(main, "commit", "-q", "-m", "i")
+    linked = arena / "linked"
+    _git(main, "worktree", "add", "-q", "-b", "feature", str(linked))
+    sha = _git(main, "rev-parse", "HEAD")
+    done = _run(landlock, linked, f"git update-ref refs/heads/feature2 {sha}")
+    assert done.returncode != 0
+    assert not (main / ".git" / "refs" / "heads" / "feature2").exists()
 
 
 # -- negative rows ------------------------------------------------------------------------------

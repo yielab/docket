@@ -528,6 +528,7 @@ def landlock_command_argv(
 
 
 _GIT_WRITABLE_PARTS = ("objects", "refs", "logs")
+_TASK_BRANCH_PREFIX = "refs/heads/docket/"
 _GIT_DIR_IN_ROOT = (
     "{root} holds a .git directory, and Landlock cannot keep its hooks and config read-only "
     "inside a writable root; use a git worktree as the root, or choose docker with "
@@ -535,15 +536,37 @@ _GIT_DIR_IN_ROOT = (
 )
 
 
+def _task_ref_dirs(common: Path, gitdir: Path) -> list[Path]:
+    """The ref and reflog directories holding the task branch the linked worktree *gitdir* is on:
+    ``HEAD`` must name ``refs/heads/docket/<pod>/<name>`` with ``<name>`` equal to the git dir's
+    own name. Anything else (not a linked worktree, another branch) yields no grant."""
+    try:
+        head = (gitdir / "HEAD").read_text().strip()
+    except OSError:
+        return []
+    ref = head.removeprefix("ref: ")
+    parts = ref.split("/")
+    if ref == head or not ref.startswith(_TASK_BRANCH_PREFIX) or len(parts) != 5:
+        return []
+    if gitdir == common or parts[-1] != gitdir.name or ".." in parts:
+        return []
+    out: list[Path] = []
+    for root in (common / "refs" / "heads", common / "logs" / "refs" / "heads"):
+        branch_dir = root.joinpath(*parts[2:-1])
+        with contextlib.suppress(OSError):
+            branch_dir.mkdir(parents=True, exist_ok=True)
+        out.append(branch_dir)
+    return out
+
+
 def _landlock_git_mounts(root: Path, dirs: list[Path]) -> tuple[list[str], list[str]]:
-    """``(rw, ro)`` for a root's git dirs: the common dir read-only but ``objects``, ``refs`` and
-    ``logs``, plus a linked worktree's own git dir; never hooks or config (Landlock has no
-    sub-path override). A commit from a root whose git dir is not its own fails closed."""
+    """``(rw, ro)`` for a root's git dirs: the common dir read-only but ``objects``, the task
+    branch's ref and reflog dirs and submodule git dirs, plus a linked worktree's own git dir;
+    never hooks, config or ``packed-refs``."""
     gitdir, common = dirs[0], dirs[-1]
-    rw: list[str] = []
+    rw = [str(common / "objects"), *map(str, _task_ref_dirs(common, gitdir))]
     ro = [str(common)]
-    bases = [common, *_submodule_git_dirs(common)]
-    for base in bases:
+    for base in _submodule_git_dirs(common):
         with contextlib.suppress(OSError):
             (base / "logs").mkdir(exist_ok=True)
         rw += [str(base / part) for part in _GIT_WRITABLE_PARTS]
