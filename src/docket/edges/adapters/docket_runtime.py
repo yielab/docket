@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
+    DOCKET_APPROVAL_TIMEOUT,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TASK_ID,
@@ -159,10 +161,40 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     return (_cfg.workspace_dir(agent_id),)
 
 
-def _pod_cache_dir(agent_id: str) -> Path | None:
-    """The agent's pod cache dir, created 0700 if a pod provisioned before it existed lacks one."""
+def _pod_cache_dir(agent_id: str, workspace: Path | None = None) -> Path | None:
+    """The agent's pod cache dir, created 0700 if a pod provisioned before it existed lacks one.
+    A ``harness-`` agent has no pod: it gets a per-workspace dir under ``DOCKET_HOME`` instead."""
     project = _pod.pod_of(agent_id)
-    return None if project is None else _ensure_pod_cache(project)
+    if project is None:
+        if agent_id.startswith("harness-") and workspace is not None:
+            return _harness_cache_dir(workspace)
+        return None
+    return _ensure_pod_cache(project)
+
+
+def _harness_cache_dir(workspace: Path) -> Path | None:
+    """The cache dir shared by every ``docket exec`` run of *workspace*, created 0700."""
+    digest = hashlib.sha256(str(workspace.resolve()).encode()).hexdigest()[:16]
+    cache = _cfg.DOCKET_HOME / "cache" / "harness" / digest
+    try:
+        cache.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return None
+    return cache
+
+
+def _jail_cache_dir(agent_id: str, roots: tuple[Path, ...], want_sandbox: bool) -> Path | None:
+    """The jail's cache dir for this turn; ``None`` when isolation is off."""
+    return _pod_cache_dir(agent_id, roots[0] if roots else None) if want_sandbox else None
+
+
+def _approval_timeout(raw: str | None) -> int | None:
+    """A positive whole number of seconds from the env coordinate, else ``None``."""
+    try:
+        seconds = int(raw) if raw else 0
+    except ValueError:
+        return None
+    return seconds if seconds > 0 else None
 
 
 def _ensure_pod_cache(project: str) -> Path | None:
@@ -516,6 +548,7 @@ class DocketDriver:
             if approval_mode_raw == "park"
             else "wait"
         )
+        approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
@@ -531,12 +564,13 @@ class DocketDriver:
         resolved_project = trace_project or _pod.pod_of(agent_id) or agent_id
         resolved_session_key = trace_session_key or session_key
 
+        ctx_roots = (
+            (Path(pipeline_worktree),) if pipeline_worktree else _resolve_roots(meta, agent_id)
+        )
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
-            roots=(Path(pipeline_worktree),)
-            if pipeline_worktree
-            else _resolve_roots(meta, agent_id),
+            roots=ctx_roots,
             timeout=timeout,
             env=tool_env,
             role=meta.role,
@@ -560,7 +594,8 @@ class DocketDriver:
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
-            cache_dir=_pod_cache_dir(agent_id) if want_sandbox else None,
+            approval_timeout=approval_timeout,
+            cache_dir=_jail_cache_dir(agent_id, ctx_roots, want_sandbox),
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role

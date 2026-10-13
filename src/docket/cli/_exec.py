@@ -38,6 +38,7 @@ from docket.core.models import AgentMeta
 from docket.core.operator_contract import QuestionV11
 from docket.core.runtime_driver import (
     DOCKET_APPROVAL_MODE,
+    DOCKET_APPROVAL_TIMEOUT,
     DOCKET_TASK_ID,
     DOCKET_TURN_TOKEN_BUDGET,
     TurnResult,
@@ -332,9 +333,7 @@ def _execute_turn(
     """Run the turn with the stdout relay and the written-files and approvals trackers subscribed,
     bracketed by the session's start and end trace events."""
     with (
-        _answers.guard(
-            answers_raw, answer_timeout_raw, token, ledger=approvals, version=contract_version
-        ),
+        _answers.guard(answers_raw, token, ledger=approvals, version=contract_version),
         _trace.subscribe(emit),
         _trace.subscribe(written.observe),
         _trace.subscribe(approvals.observe),
@@ -563,6 +562,8 @@ def run_exec(opts: ExecOptions) -> int:
     # --answers stdin waits for the caller's answer line; otherwise nobody can answer.
     env = {DOCKET_APPROVAL_MODE: "wait" if answers_raw == "stdin" else "refuse"}
     env[DOCKET_TASK_ID] = token
+    if answers_raw == "stdin" and answer_timeout_raw is not None:
+        env[DOCKET_APPROVAL_TIMEOUT] = str(int(answer_timeout_raw))
     if max_tokens is not None:
         env[DOCKET_TURN_TOKEN_BUDGET] = str(max_tokens)
     written = harness.WrittenFiles()

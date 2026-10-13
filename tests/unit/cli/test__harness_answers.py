@@ -9,6 +9,7 @@ run resolved over a real pipe) is covered in
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,18 @@ from docket.cli import _harness_answers
 from docket.core import approval
 
 SUBJECT = "docket.cli._harness_answers"
+
+
+def _pipe_stdin(monkeypatch: pytest.MonkeyPatch, data: bytes | None) -> int:
+    """Make ``sys.stdin`` a real pipe holding *data*; ``None`` leaves it open. Returns the write fd."""
+    read_fd, write_fd = os.pipe()
+    if data is not None:
+        os.write(write_fd, data)
+        os.close(write_fd)
+        write_fd = -1
+    monkeypatch.setattr("sys.stdin", os.fdopen(read_fd, "r"))
+    return write_fd
+
 
 RUN = "run-abc"
 
@@ -149,13 +162,12 @@ class TestServeAtEndOfStdin:
     def test_eof_closes_the_stream_and_tells_the_ledger(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import io
         import threading
         import time
 
         from docket.core import harness
 
-        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        _pipe_stdin(monkeypatch, b"")
         ledger = harness.ApprovalLedger()
         closed_calls: list[bool] = []
         monkeypatch.setattr(ledger, "stream_closed", lambda: closed_calls.append(True))
@@ -171,11 +183,10 @@ class TestServeAtEndOfStdin:
     def test_a_stopped_reader_does_not_close_the_stream(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import io
         import threading
         import time
 
-        monkeypatch.setattr("sys.stdin", io.StringIO("not an answer\n"))
+        _pipe_stdin(monkeypatch, b"not an answer\n")
         stop = threading.Event()
         stop.set()
         with _harness_answers.serve(RUN, stop):
@@ -183,23 +194,39 @@ class TestServeAtEndOfStdin:
             assert approval.answer_stream_closed() is False
 
 
-class TestWaitBudget:
-    def test_none_leaves_the_configured_wait_alone(self) -> None:
-        import docket.config as cfg
+class TestReader:
+    def test_a_run_ending_with_stdin_open_leaves_no_reader_thread(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
 
-        before = cfg.TOOL_APPROVAL_TIMEOUT
-        with _harness_answers.wait_budget(None):
-            assert before == cfg.TOOL_APPROVAL_TIMEOUT
-        assert before == cfg.TOOL_APPROVAL_TIMEOUT
+        write_fd = _pipe_stdin(monkeypatch, None)
+        try:
+            with _harness_answers.serve(RUN, threading.Event()):
+                assert any(t.name == "harness-answers" for t in threading.enumerate())
+            assert not any(t.name == "harness-answers" for t in threading.enumerate())
+        finally:
+            os.close(write_fd)
 
-    def test_a_value_applies_inside_the_block_and_is_restored_after(self) -> None:
-        import docket.config as cfg
+    def test_a_line_arriving_while_the_run_is_live_is_applied(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+        import time
 
-        before = cfg.TOOL_APPROVAL_TIMEOUT
-        with _harness_answers.wait_budget(7):
-            inside = cfg.TOOL_APPROVAL_TIMEOUT
-            assert inside == 7
-        assert before == cfg.TOOL_APPROVAL_TIMEOUT
+        token = _pending(home)
+        write_fd = _pipe_stdin(monkeypatch, None)
+        try:
+            with _harness_answers.serve(RUN, threading.Event()):
+                os.write(
+                    write_fd, _line({"approvalToken": token, "action": "accept"}).encode() + b"\n"
+                )
+                deadline = time.monotonic() + 5
+                while _state(token) != "granted" and time.monotonic() < deadline:
+                    time.sleep(0.01)
+        finally:
+            os.close(write_fd)
+        assert _state(token) == "granted"
 
 
 class TestOptionIds:

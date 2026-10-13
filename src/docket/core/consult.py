@@ -232,7 +232,8 @@ def _wait(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
         _WAITING[question.id] = waiter
     try:
         _trace_question(question, ctx)
-        deadline = time.monotonic() + max(0, _cfg.TOOL_APPROVAL_TIMEOUT)
+        bound = _cfg.TOOL_APPROVAL_TIMEOUT if ctx.approval_timeout is None else ctx.approval_timeout
+        deadline = time.monotonic() + max(0, bound)
         while True:
             if ctx.cancellation_check is not None and ctx.cancellation_check():
                 return ConsultOutcome(False, error="run cancellation requested")

@@ -2154,3 +2154,65 @@ class TestConsultBudgetReachesTheTurn:
         )
         assert _docket_runtime._max_consultations("shop-lead", None) == 2
         assert _docket_runtime._max_consultations("shop-lead", "0") == 0
+
+
+def _exec_probe_registry() -> ToolRegistry:
+    """A one-tool registry reporting the approval wait and cache dir `run_turn` built."""
+    registry = ToolRegistry()
+
+    def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+        return ToolOutcome(True, content=f"timeout={ctx.approval_timeout} cache={ctx.cache_dir}")
+
+    registry.register(
+        Tool(
+            name="probe",
+            description="reports ctx.approval_timeout and ctx.cache_dir",
+            parameters={"type": "object", "properties": {}},
+            handler=_probe,
+            kind="read",
+        )
+    )
+    return registry
+
+
+class TestExecRunWiring:
+    """What a `docket exec` run (agent `harness-<hex>`, no pod) hands its tool context."""
+
+    def _run(self, agent_id: str, workspace: Path, env: dict[str, str] | None = None) -> str:
+        _write_meta(agent_id, codebase=str(workspace))
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_exec_probe_registry
+        )
+        result = driver.run_turn(agent_id, f"agent:{agent_id}:default", "go", 30, env)
+        assert result.ok is True
+        return str(next(m for m in backend.calls[1] if m.role == "tool").content)
+
+    def test_the_approval_wait_travels_in_the_env_and_leaves_the_global_alone(
+        self, tmp_path: Path
+    ) -> None:
+        before = _cfg.TOOL_APPROVAL_TIMEOUT
+        out = self._run("harness-aaa111", tmp_path, {"DOCKET_APPROVAL_TIMEOUT": "7"})
+        assert out.startswith("timeout=7 ")
+        assert before == _cfg.TOOL_APPROVAL_TIMEOUT
+
+    def test_an_absent_or_bad_wait_keeps_the_default(self, tmp_path: Path) -> None:
+        assert self._run("harness-aaa222", tmp_path).startswith("timeout=None ")
+        bad = self._run("harness-aaa333", tmp_path, {"DOCKET_APPROVAL_TIMEOUT": "-3"})
+        assert bad.startswith("timeout=None ")
+
+    def test_a_jailed_exec_run_gets_a_cache_dir_under_the_callers_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="docker", docker=True),
+        )
+        _fleet.set_sandbox_isolation(mode="non-main")
+        first = self._run("harness-bbb111", tmp_path)
+        second = self._run("harness-bbb222", tmp_path)
+        cache = Path(first.split("cache=", 1)[1])
+        assert cache.is_dir() and cache.is_relative_to(_cfg.DOCKET_HOME / "cache" / "harness")
+        assert oct(cache.stat().st_mode & 0o777) == "0o700"
+        assert second.split("cache=", 1)[1] == str(cache)

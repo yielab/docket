@@ -1,6 +1,6 @@
 # Harness Mode Contract Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Implemented (`docket exec`). Contract 1.1
 (P35-2 through P35-11, Phase 35, closed 2026-10-04) is opt-in and fully implemented -- see
 "Contract 1.1" below. Contract 1.2 (ADR 0026, D-62, docket 0.2.0-beta.5) is opt-in and
@@ -300,8 +300,9 @@ elicitation result shape) to this process's stdin, while the run is live. The re
    contains "conflicts".
 2. **Mode.** Under `--answers stdin` the run's approval mode is `wait`, so an approval-gated call
    blocks until answered; otherwise the mode stays `refuse`, unchanged. The wait bound is
-   `--answer-timeout` when given, else `TOOL_APPROVAL_TIMEOUT`. The harness is its own process, so
-   it sets that config attribute for the run and restores it afterwards.
+   `--answer-timeout` when given, else `TOOL_APPROVAL_TIMEOUT`. The bound reaches the wait through
+   the run's env (`DOCKET_APPROVAL_TIMEOUT` -> `ToolContext.approval_timeout`); the config
+   attribute is never mutated.
 3. **Reading.** One `AnswerLine` per stdin line. A line that does not validate, or that names a
    different run's token, is ignored with one stderr line that never echoes the line's contents.
    A `questionId` answer is routed to a recipe run's open question (Section 6); outside a recipe
@@ -575,6 +576,20 @@ result whose `error` begins `--contract must be one of`. No model is called eith
   call, and a seeded credential value MUST appear in neither its stdout nor its stderr.
 
 ## Changelog
+
+### Version 1.10.0 (2026-10-13)
+
+- Section 5 item 2: the wait bound travels through the run, not the process. `docket exec` puts
+  `DOCKET_APPROVAL_TIMEOUT` (seconds) in the env `run_turn` receives; the driver pops it into
+  `ToolContext.approval_timeout`, which the in-turn approval wait and a `consult` wait read.
+  Under `--recipe` with `--answers stdin`, the bound reaches every hop the same way: `run_recipe_task(approval_timeout=)` -> dispatch context -> the hop's env. Nothing mutates `config.TOOL_APPROVAL_TIMEOUT`. An absent or non-positive value keeps the
+  configured default.
+- Section 5 item 10: the stdin reader polls the descriptor with a short timeout, stops when the run
+  ends and is joined before `docket exec` returns; no reader thread outlives the run.
+- A jailed `docket exec` run (isolation on) gets a cache dir (the jail's home and caches) under the
+  caller's `DOCKET_HOME`: `cache/harness/<digest of the workspace path>`, created 0700. It is keyed
+  by workspace, not agent id (ids are fresh per run), so a uv or pip cache is reused across runs
+  of one workspace. Never under the setup home. Wire contract unchanged.
 
 ### Version 1.9.0 (2026-10-13)
 

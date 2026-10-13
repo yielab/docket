@@ -80,6 +80,8 @@ class ToolContext:
     allow_commands: tuple[str, ...] = ()
     pregrants: tuple[Pregrant, ...] = ()
     approval_expires_at: str | None = None
+    # Seconds an in-turn approval or consult wait may last; None keeps config.TOOL_APPROVAL_TIMEOUT.
+    approval_timeout: int | None = None
     # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
     cache_dir: Path | None = None
     on_process: Callable[[str, dict[str, Any]], None] | None = None
@@ -575,15 +577,13 @@ def _wait_for_ask_approval(
 ) -> None:
     """Block on *token* (the ``wait`` posture, the pre-existing in-turn gate) and fill
     *result* with the outcome, mutating it in place."""
-    if ctx.cancellation_check is None:
-        # Preserve the public embeddable runtime's one-argument approval
-        # stub when this call is not owned by a cancellable run.
-        wait_outcome = _approval.wait_for_approval(token)
-    else:
-        wait_outcome = _approval.wait_for_approval(
-            token,
-            cancellation_check=ctx.cancellation_check,
-        )
+    kwargs: dict[str, Any] = {}
+    if ctx.approval_timeout is not None:
+        kwargs["timeout"] = ctx.approval_timeout
+    if ctx.cancellation_check is not None:
+        kwargs["cancellation_check"] = ctx.cancellation_check
+    # A run without cancellation or a bound keeps the embeddable runtime's one-argument stub.
+    wait_outcome = _approval.wait_for_approval(token, **kwargs)
     if ctx.cancellation_check is not None and ctx.cancellation_check():
         result.decision = "deny"
         result.denial_kind = "run_cancelled"

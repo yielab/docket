@@ -1395,6 +1395,8 @@ class _UnitContext:
     # non-TTY foreground dispatch. An explicit pod value always wins over this (see
     # `pod_approval_mode`). Defaulted for the same reason as `step_instructions` above.
     approval_default: Literal["wait", "park"] = "wait"
+    # Seconds an in-turn approval or consult wait may last for every hop; None keeps the default.
+    approval_timeout: int | None = None
 
 
 def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
@@ -1575,6 +1577,9 @@ def _compose_hop(
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours
             deadline = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=expiry_hours)
             env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
+    if ctx.approval_timeout is not None:
+        env = dict(env or {})
+        env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
     env = _consult_budget_env(ctx, env)
     pregrants_raw = ctx.task.get("pregrants")
     pregrants_raw = [
@@ -3039,6 +3044,7 @@ def dispatch_task(
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
+    approval_timeout: int | None = None,
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop. Full contract: pod-dispatch.spec.md
     ("Pipeline order and participation", "Per-hop incremental persistence and crash recovery",
@@ -3128,6 +3134,7 @@ def dispatch_task(
             variables={k: str(v) for k, v in resolved_vars.items()},
             route_counts=route_counts,
             approval_default=approval_default,
+            approval_timeout=approval_timeout,
         )
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
@@ -3773,6 +3780,7 @@ def dispatch_pod(
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
+    approval_timeout: int | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first), looping
     ``dispatch_task`` over locked claims until none remain or *max_tasks* is hit --
@@ -3829,6 +3837,7 @@ def dispatch_pod(
             spec=spec,
             variables=resolved_vars,
             approval_default=approval_default,
+            approval_timeout=approval_timeout,
         )
         _finalize_task(project, task_id, res)
         results.append(res)

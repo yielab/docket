@@ -290,6 +290,34 @@ class TestPipeline:
         assert len(calls) == 2
         assert all(env is None or _rd.DOCKET_APPROVAL_MODE not in env for _agent_id, env in calls)
 
+    def test_approval_timeout_threads_into_every_hop_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A caller's approval wait bound reaches every hop's env, and is absent when unset."""
+        _seed_pod(tmp_path, monkeypatch)
+        calls: list[dict[str, str] | None] = []
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            calls.append(env)
+            return _rd.TurnResult(True, "done", 0.0, {})
+
+        task: dict[str, Any] = {"id": "at1", "description": "work", "status": "pending"}
+        result = _dispatch.dispatch_task("demo", task, runner=runner, approval_timeout=9)
+
+        assert result.status == "done", result.reason
+        assert len(calls) == 2
+        assert all(env is not None and env[_rd.DOCKET_APPROVAL_TIMEOUT] == "9" for env in calls)
+        calls.clear()
+        again: dict[str, Any] = {"id": "at2", "description": "work", "status": "pending"}
+        _dispatch.dispatch_task("demo", again, runner=runner)
+        assert all(env is None or _rd.DOCKET_APPROVAL_TIMEOUT not in env for env in calls)
+
     def test_refuse_approval_mode_threads_into_every_hop_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

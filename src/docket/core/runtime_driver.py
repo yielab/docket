@@ -62,6 +62,10 @@ DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
 # ToolContext.pregrants.
 DOCKET_PREGRANTS = "DOCKET_PREGRANTS"
 
+# Same route again: the seconds an in-turn approval or consult wait may last for this one run,
+# popped by DocketDriver into ToolContext.approval_timeout.
+DOCKET_APPROVAL_TIMEOUT = "DOCKET_APPROVAL_TIMEOUT"
+
 # Same route again: the ISO UTC deadline a ``park``-mode call's approval
 # record should carry as its own ``expiresAt``. Popped by DocketDriver into
 # ToolContext.approval_expires_at.
