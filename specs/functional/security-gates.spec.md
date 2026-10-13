@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.51.0
+**Version**: 0.52.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -230,11 +230,23 @@ are owned here, not there.
    The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
    are re-bound read-only on top (docker `:ro`, a seatbelt deny rule), after the read-write mounts they
    shadow. Landlock cannot take a right from a sub-path of a granted root, so it grants the git
-   dir's writable parts instead of the git dir: the common dir is read-only except its `objects`,
-   `refs` and `logs` (and those of each submodule git dir under `modules/`), and in a linked
+   dir's writable parts instead of the git dir: the common dir is read-only except its `objects`
+   and the task branch's own ref directory (below), plus `objects`, `refs` and `logs` of each
+   submodule git dir under `modules/`, and in a linked
    worktree the worktree's own git dir (`<common>/worktrees/<name>`, holding the index, `HEAD`
    and `logs`) is read-write. `hooks`, `config`, `info/attributes` and `packed-refs` are never writable
-   there. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
+   there. Refs: the jail grants write only to `refs/heads/<branch-parent>/` and
+   `logs/refs/heads/<branch-parent>/` of the common dir, where `<branch-parent>` is the parent
+   directory of the task branch (`docket/<pod>/<task-id>`, so `docket/<pod>/`, which holds the ref
+   and the lock file git creates beside it). The branch is read from the worktree git dir's `HEAD`
+   at launch and accepted only when it is `refs/heads/docket/<pod>/<name>` and `<name>` equals the
+   worktree git dir's own directory name; otherwise, and for any root that is not a linked task
+   worktree, no ref is writable. So a jailed `git update-ref refs/heads/main`, a tag, or any
+   branch outside `docket/<pod>/` fails; the sibling task branches of the same pod stay writable
+   (accepted residue: Landlock cannot grant one file plus its lock). `packed-refs` is read-only: a
+   git operation that must rewrite it (pack-refs, deleting a packed branch) fails inside the jail.
+   Docker and seatbelt keep whole git dirs read-write, so they have the same ref gap; this
+   requirement narrows Landlock only. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
    worktree git dir's `config.worktree`, `gitdir` and `commondir` (see Exec sandbox item 13). A root that holds a `.git`
    **directory** (a main checkout used in place) cannot be guarded by Landlock at all, since the
    directory is inside a writable root, so the Landlock jail refuses to run there: exit 125, the
@@ -1783,6 +1795,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.52.0 (2026-10-13)
+
+- The Landlock jail no longer grants the common dir's whole `refs` and `logs`; only the
+  task branch's parent ref and reflog directories are writable, and none outside a task worktree
+  (Enablement requirement 3).
 
 ### Version 0.51.0 (2026-10-13)
 
