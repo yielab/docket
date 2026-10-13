@@ -83,7 +83,7 @@ class PipelineDocument(BaseModel):
     name: str
     description: str | None = None
     variables: dict[str, Any] | None = None
-    steps: list[dict[str, Any]]
+    steps: list[dict[Any, Any]]  # a bare YAML `on:` key loads as True
 
 
 class PolicyWhen(BaseModel):
@@ -174,9 +174,13 @@ def _refine_with_model(
 ) -> ConfigDocError:
     """When *doc* is short form and also fails its kind's model, prefer the model's field name
     and valid values over *fallback*'s plain message; otherwise fall back to it unchanged."""
+    if isinstance(fallback, ConfigDocError):
+        plain = fallback  # already names the path; wrapping it again would print it twice
+    else:
+        plain = ConfigDocError(path, str(fallback))
     model = _MODEL_FOR_KIND.get(kind)
     if model is None or not _is_short_form(kind, doc):
-        return ConfigDocError(path, str(fallback))
+        return plain
     try:
         model.model_validate(doc)
     except ValidationError as exc:
@@ -189,7 +193,7 @@ def _refine_with_model(
                 v.strip("'\" ") for v in re.split(r"\s+or\s+|,\s*", expected) if v.strip("'\" ")
             )
         return ConfigDocError(path, first["msg"], field=field, valid=valid)
-    return ConfigDocError(path, str(fallback))
+    return plain
 
 
 @dataclass(frozen=True)

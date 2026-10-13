@@ -30,11 +30,7 @@ steps:
       READY: build
       NEEDS-INPUT: ask
       REJECT: fail
-  # Canonical form (an explicit `id:`), not the `- ask: {input: {...}}` short-form sugar --
-  # PyYAML's default resolver reads a bare, *nested* `on:` key as the boolean `True`, which
-  # the input short-form normaliser does not correct for (only a top-level `on:` does, via
-  # `_fix_on_key`); this step's own `on:` needs the operator's exact `answered`/`declined`
-  # routing, so it is written the form that resolves it correctly.
+  # The operator's answer, either way, goes back to the Lead with the answers attached.
   - id: ask
     input:
       from: lead

@@ -117,3 +117,18 @@ def test_generated_schemas_are_pinned_validate_every_recipe_and_reject_a_bad_pol
         validators["policy"].iter_errors({"kind": "policy", "name": "x", "then": "bogus"})
     )
     assert errors and list(errors[0].path) == ["then"]
+
+
+def test_a_pipeline_error_is_not_masked_by_an_unquoted_on_key(tmp_path: Path) -> None:
+    # YAML reads a bare `on:` as the key True; the envelope model must not turn that into the
+    # reported error and hide the pipeline's own.
+    path = tmp_path / "p.yaml"
+    path.write_text(
+        "kind: pipeline\nname: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "    on:\n      fail: {goto: nowhere, max: 1}\n",
+        encoding="utf-8",
+    )
+    (result,) = config_docs.validate_path(path)
+    assert result.error is not None
+    message = str(result.error)
+    assert "nowhere" in message and message.count(str(path)) == 1, message

@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A verifier that asks for a human is now answerable (Phase 42 live run).** The parked
+  question shows the gate's reasons, the operator's answer reaches the Implementer it sends the
+  task back to, and `validate` refuses a gated step that routes to the `input` step right after
+  it without routing `pass`, which re-parked the task after a passing retry.
+- **`docket pod validate` shows a pipeline's real error.** With an unquoted `on:` key anywhere,
+  every error was reported as "Input should be a valid string", and the path was printed twice.
 - **A short-form `input` step keeps an unquoted `on:` map.** YAML reads a bare `on:` as the
   boolean `True`; the input short form dropped it, so `- ask: {input: ..., on: ...}` loaded with
   no routes.

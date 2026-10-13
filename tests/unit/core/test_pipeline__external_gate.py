@@ -36,6 +36,7 @@ steps:
   - build: implementer
     gate: {external: "verify.sh --strict"}
     on:
+      pass: stop
       fail: {goto: build, max: 2}
       needs_human: ask
   - id: ask
@@ -176,8 +177,27 @@ def test_a_short_form_input_step_keeps_an_unquoted_on_map() -> None:
     # YAML reads a bare `on:` key as the boolean True; the input short form must still route.
     spec = _load(
         "name: p\nsteps:\n  - id: build\n    role: implementer\n"
-        "    gate: {external: verify}\n    on: {needs_human: ask}\n"
+        "    gate: {external: verify}\n    on: {pass: stop, needs_human: ask}\n"
         "  - ask:\n      input: {from: build}\n      on: {answered: {goto: build, max: 1}}\n"
     )
     ask = next(s for s in spec.steps if s.id == "ask")
     assert ask.on == {"answered": {"goto": "build", "max": 1}}
+
+
+def test_routing_a_label_to_the_next_input_step_requires_routing_pass() -> None:
+    # Without `pass:`, a passing gate takes the default edge into the input step and parks again.
+    body = (
+        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "    gate: {external: verify}\n    on: {needs_human: ask}\n"
+        "  - id: ask\n    input: {from: build}\n    on: {answered: {goto: build, max: 1}}\n"
+    )
+    errors = _errors(body)
+    assert "build" in errors and "pass" in errors and "ask" in errors
+
+
+def test_routing_pass_explicitly_satisfies_the_input_step_rule() -> None:
+    _load(
+        "name: p\nsteps:\n  - id: build\n    role: implementer\n"
+        "    gate: {external: verify}\n    on: {pass: stop, needs_human: ask}\n"
+        "  - id: ask\n    input: {from: build}\n    on: {answered: {goto: build, max: 1}}\n"
+    )

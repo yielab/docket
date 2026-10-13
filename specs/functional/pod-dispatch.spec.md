@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.43.0
+**Version**: 6.44.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -923,7 +923,10 @@ was seeded once at binding time.)*
    step's `from:` source, traces `input_requested`, and returns a `waiting_input` outcome. No
    hop is persisted for this attempt -- the same posture the pre-hop `require_approval` gate's
    `waiting_approval` already has (see "Parked approvals" above). The task's `question` field
-   carries the minted `Question`, dumped by alias.
+   carries the minted `Question`, dumped by alias. When the `from` step's latest hop holds a gate that did not
+   pass, the question's message **MUST** append that gate's report (its screened reasons, else
+   its redacted output tail) under `The gate on step '<from>' reported:`, so the operator decides
+   on what the verifier saw.
 2. **The question's schema.** A generic `input` step (no Lead intake brief attached) asks a
    single free-text property: `{"type": "object", "properties": {"answer": {"type": "string"}},
    "required": ["answer"]}`. A richer, per-question schema derived from the Lead's typed intake
@@ -1360,9 +1363,9 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    is dropped and sets `reasonsInvalid`, and no reason field drives control flow. A routed outcome
    (`on` names the label) **MUST** persist `hop.verify` with the label and route; an unrouted
    `fail`, `needs_human` or `error` **MUST** fail the task with failure kind `gate_failed`,
-   `gate_needs_human` or `gate_error`; an unrouted `pass` advances. A pod without a cache dir
-   still runs the gate; its exit code is then the pass/fail projection and the output tail is the
-   reasons.
+   `gate_needs_human` or `gate_error`; an unrouted `pass` advances. The exit status is always the
+   process's own (`system.run_command`), never a value the command wrote; a pod without a cache
+   dir still runs the gate, with no reasons file, so the output tail is the reasons.
 
 ### Conditional steps and command steps
 
@@ -1847,7 +1850,9 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    of the output tail, which stands in only when there are none; and when the gate's routed hop
    went forward to an `input` step, the operator's `answered` route back to the gated step
    (`core.answers.answer_task`) carries the same section into that retry: replay hands the
-   gate-failed hop to the target of the operator hop that follows it. A forward route, a backward `pass` route, an
+   gate-failed hop to the target of the operator hop that follows it. That retry's section **MUST** also
+   carry the operator's latest answer (`Operator answer:`), rendered like the Lead's operator
+   answers, because it is what the human decided. A forward route, a backward `pass` route, an
    unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
 
 ### Task status vocabulary
@@ -2187,6 +2192,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.44.0 (2026-10-13)
+
+- Operator input steps: a question minted after a failed gate carries the gate's report. "Bounded hop prompts" item 9: the retry behind an `input` answer carries the operator's answer. "Generalized gate execution" item 6: the exit status is the process's own; the stale cache-dir projection sentence is gone (found by the Phase 42 live run).
 
 ### Version 6.43.0 (2026-10-13)
 

@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.16.0
+**Version**: 2.17.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -439,6 +439,11 @@ This specification does NOT cover:
    "Generalized gate execution" item 6). `on: {needs_human: <input step>}` parks the task on an
    existing `input` step whose `answered`/`declined` route on; the reasons survive that detour
    (`pod-dispatch.spec.md`, "Bounded hop prompts" item 9).
+7. A step with a `mechanical` or `external` gate that routes any outcome to the `input` step
+   immediately after it **MUST** also route `pass` (for example `pass: stop`, or the step that should follow), or `validate`
+   and `load_pipeline` **MUST** refuse the pipeline: otherwise a pass takes the default edge into
+   that `input` step and parks the task again. A `verdict` gate names its own passing values and
+   is not held to this rule.
 
 ### Conditional steps and command steps
 
@@ -672,6 +677,10 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.17.0 (2026-10-13)
+
+- "Outcome routing" item 7: a mechanical- or external-gated step that routes an outcome to the `input` step right after it must route `pass` too (found by the Phase 42 live run).
 
 ### Version 2.16.0 (2026-10-13)
 

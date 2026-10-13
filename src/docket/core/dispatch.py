@@ -715,14 +715,19 @@ def _resolve_hop_instructions(
     return _archetypes.resolve_hop_instruction(archetype) if archetype else ""
 
 
-def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
-    """Whether *hop* is a routed gate hop whose gate did not pass: a resolved ``next_step`` plus
-    ``verify`` evidence with a non-``pass`` label (or a nonzero exit). A verdict rework hop never
-    has ``next_step``, and a backward ``pass`` route carries no failure."""
-    if hop is None or hop.next_step is None or hop.verify is None:
+def _gate_did_not_pass(verify: dict[str, Any] | None) -> bool:
+    """Whether *verify* evidence records a gate that did not pass: a non-``pass`` label, or, for
+    a mechanical gate (no label), a nonzero exit."""
+    if verify is None:
         return False
-    label = hop.verify.get("label") or ("pass" if hop.verify.get("exitCode") == 0 else "fail")
+    label = verify.get("label") or ("pass" if verify.get("exitCode") == 0 else "fail")
     return str(label).lower() != "pass"
+
+
+def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
+    """Whether *hop* is a routed gate hop whose gate did not pass. A verdict rework hop never has
+    ``next_step``, and a backward ``pass`` route carries no failure."""
+    return hop is not None and hop.next_step is not None and _gate_did_not_pass(hop.verify)
 
 
 def _render_gate_reasons(reasons: list[dict[str, Any]]) -> str:
@@ -740,14 +745,34 @@ def _render_gate_reasons(reasons: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _gate_failed_section(step_id: str, output_tail: str, reasons: str = "") -> str:
-    """The one place the ``--- GATE FAILED: <step id> ---`` section is written: the header, then
-    the external gate's rendered *reasons* if any, else the routed hop's redacted output tail.
-    Ends with a newline like the other carryover sections."""
-    return f"--- GATE FAILED: {step_id} ---\n{reasons or output_tail}\n"
+def _gate_failed_section(
+    step_id: str, output_tail: str, reasons: str = "", operator_answer: str = ""
+) -> str:
+    """The one place the ``--- GATE FAILED: <step id> ---`` section is written: the header, the
+    external gate's rendered *reasons* if any, else the routed hop's redacted output tail, then
+    the operator's answer when a human sent the task back. Ends with a newline."""
+    answer = f"Operator answer:\n{operator_answer}\n" if operator_answer else ""
+    return f"--- GATE FAILED: {step_id} ---\n{reasons or output_tail}\n{answer}"
 
 
-def _compose_gate_failed(hop: HopResult, budget_tokens: int, comp: _HopComposition) -> str:
+def _gate_report(prior: list[HopResult], step_id: str) -> str:
+    """What the latest gate on *step_id* reported when it did not pass: its rendered reasons,
+    else its redacted output tail; empty when that gate passed or never ran."""
+    for h in reversed(prior):
+        if (h.step_id or h.role) != step_id:
+            continue
+        if h.verify is None or not _gate_did_not_pass(h.verify):
+            return ""
+        reasons = h.verify.get("reasons")
+        if isinstance(reasons, list) and reasons:
+            return _render_gate_reasons(reasons)
+        return str(h.verify.get("outputTail", ""))
+    return ""
+
+
+def _compose_gate_failed(
+    hop: HopResult, budget_tokens: int, comp: _HopComposition, operator_answer: str = ""
+) -> str:
     """The ``GATE FAILED`` section for *hop*: its persisted, redacted external reasons, else
     its ``verify.outputTail`` (never raw output), fit to *budget_tokens* and recorded in *comp*
     as role ``gate_failed``. Unlike a verdict rework hop, *hop* stays in the generic carryover
@@ -770,9 +795,9 @@ def _compose_gate_failed(hop: HopResult, budget_tokens: int, comp: _HopCompositi
     )
     comp.truncated = comp.truncated or truncated
     step_id = hop.step_id or hop.role
-    return (
-        _gate_failed_section(step_id, "", tail) if rendered else _gate_failed_section(step_id, tail)
-    )
+    if rendered:
+        return _gate_failed_section(step_id, "", tail, operator_answer)
+    return _gate_failed_section(step_id, tail, operator_answer=operator_answer)
 
 
 def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
@@ -850,7 +875,12 @@ def _hop_message(
 
     gate_failed_hop = rework_hop if _is_gate_failure_carryover(rework_hop) else None
     if gate_failed_hop is not None:
-        lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp))
+        # Resumed right behind an operator's answer: that answer is what the human decided.
+        answered = bool(prior) and prior[-1].role == "operator"
+        answer = (
+            _render_operator_answers({"answers": task.get("answers", [])[-1:]}) if answered else ""
+        )
+        lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp, answer))
     elif rework_hop is not None and rework_hop.output:
         # Rendered from the hop's *artifact*, not its raw output, so this
         # reflects the same structured content (see `render()`'s own
@@ -2732,6 +2762,9 @@ def _run_input_step(
     else:
         message = spec.message.strip() or f"Operator input requested (from step {spec.from_!r})."
         requested_schema = dict(_DEFAULT_INPUT_SCHEMA)
+    report = _gate_report(prior, spec.from_)
+    if report:
+        message = f"{message}\n\nThe gate on step {spec.from_!r} reported:\n{report}"
     expires_at: str | None = None
     if spec.expires_hours is not None:
         expires_at = (

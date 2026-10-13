@@ -631,6 +631,21 @@ class PipelineSpec(BaseModel):
                     raise ValueError(
                         f"step {s.id!r}: backward or self route to {target!r} requires 'max' >= 1"
                     )
+                nxt = self.steps[i + 1] if i + 1 < len(self.steps) else None
+                # Only where `pass` is the gate's ordinary success; a verdict gate names its
+                # passing values itself and may route every real one.
+                if (
+                    nxt is not None
+                    and nxt.input is not None
+                    and target == nxt.id
+                    and isinstance(s.gate, (MechanicalGate, ExternalGate))
+                    and "pass" not in {str(k).lower() for k in s.on}
+                ):
+                    raise ValueError(
+                        f"step {s.id!r} routes {label!r} to the input step {target!r} right after "
+                        "it, so a passing outcome would enter it too; route 'pass' explicitly "
+                        "(for example 'pass: stop', or the step that should follow)"
+                    )
 
         reachable = {0}
         frontier = [0]

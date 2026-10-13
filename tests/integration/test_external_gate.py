@@ -359,6 +359,31 @@ class TestNeedsHumanSeam:
         assert REASON in section
         assert "x.py:3" in section
 
+    def test_the_question_shows_the_gate_reasons_and_the_answer_reaches_the_retry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        flag = tmp_path / "flag"
+        payload = json.dumps({"reasons": [{"summary": REASON}]})
+        script = _script(
+            tmp_path, f"test -f {flag} && exit 0\ntouch {flag}\n" + _reasons_script(payload, 2)
+        )
+        _bind("demo", _SEAM.format(script=script))
+        task = _dispatch.enqueue_task("demo", "Ship it", channel="cli")
+        driver = FakeDriver()
+
+        _dispatch.dispatch_pod("demo", runner=driver)
+        question = _dispatch.read_tasks("demo")[0]["question"]
+        assert REASON in question["message"], "the operator must see why the verifier asked"
+
+        note = "zz-operator-note-8812"
+        _answers.answer_task(
+            "demo", task["id"], "accept", {"answer": note}, channel="cli", actor="op"
+        )
+        _dispatch.dispatch_pod("demo", runner=driver)
+        retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
+        assert note in retry, "the answer must reach the hop it routes back to"
+
     def test_a_declined_answer_fails_the_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
