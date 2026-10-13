@@ -234,8 +234,9 @@ _ISOLATION = [
     "$ docket setup sandbox",
     "⋯",
     "ok Tool-call gate: always active (policy engine + high-risk command classifier)",
-    "ok Isolation: on (backend bwrap); a turn refuses to run rather than fall back unsandboxed",
-    "Network: open (a pod's network none still narrows it)",
+    "Backend: landlock (kernel 6.14)",
+    "Sandbox   on (landlock, network none)",
+    "ok Network: none (default); jailed tool calls have no network",
     "$ git worktree list",
     "~/code/myapp  ⋯  0854d50 [main]",
     "~/.docket/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9  "
