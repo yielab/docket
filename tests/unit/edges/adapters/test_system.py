@@ -491,3 +491,81 @@ class TestSeatbeltBackend:
         assert _sys.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "seatbelt")
         assert _sys.sandbox_availability().backend == "seatbelt"
+
+
+# the Landlock git-dir grants and host-side git trust
+
+
+class TestLandlockGitMounts:
+    def _argv(self, root: Path, dirs: list[Path]) -> list[str]:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_sys, "git_dirs", lambda r: dirs)
+            return _sys.landlock_argv((root,), "true")
+
+    def _values(self, argv: list[str], flag: str) -> list[str]:
+        return [argv[i + 1] for i, a in enumerate(argv) if a == flag]
+
+    def test_a_linked_worktree_gets_the_writable_parts_not_the_git_dir(
+        self, tmp_path: Path
+    ) -> None:
+        wt, common = tmp_path / "wt", tmp_path / "main" / ".git"
+        gitdir = common / "worktrees" / "wt"
+        for d in (wt, gitdir, common / "objects", common / "refs"):
+            d.mkdir(parents=True)
+        argv = self._argv(wt, [gitdir, common])
+        rw = self._values(argv, "--rw")
+        assert str(common) not in rw and str(common / "hooks") not in rw
+        assert {str(common / "objects"), str(common / "refs"), str(gitdir)} <= set(rw)
+        assert self._values(argv, "--ro") == [str(common)]
+
+    def test_a_root_with_a_git_directory_is_refused(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").mkdir()
+        argv = self._argv(tmp_path, [tmp_path / ".git"])
+        assert ".git directory" in self._values(argv, "--refuse")[0]
+
+    def test_a_root_with_a_git_file_is_not_refused(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").write_text("gitdir: elsewhere\n")
+        assert self._values(self._argv(tmp_path, []), "--refuse") == []
+
+
+class TestTrustedWorktree:
+    def test_git_dirs_answers_from_the_record(self, tmp_path: Path) -> None:
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        gitdir, common = tmp_path / "c" / "worktrees" / "wt", tmp_path / "c"
+        _sys.trust_worktree(str(wt), str(gitdir), str(common))
+        assert _sys.git_dirs(wt) == [gitdir.resolve(), common.resolve()]
+
+    def test_host_git_names_the_recorded_dirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        wt = tmp_path / "wt2"
+        wt.mkdir()
+        seen: dict[str, Any] = {}
+
+        def fake(argv: list[str], **kw: Any) -> _FakeCompleted:
+            seen.update(kw)
+            return _FakeCompleted(0, "main\n")
+
+        monkeypatch.setattr(_sys.subprocess, "run", fake)
+        _sys.trust_worktree(str(wt), str(tmp_path / "g"), str(tmp_path / "c"))
+        _sys._git_run(str(wt), ["status"], 5)
+        env = seen["env"]
+        assert env["GIT_DIR"] == str(tmp_path / "g") and env["GIT_COMMON_DIR"] == str(
+            tmp_path / "c"
+        )
+        assert env["GIT_WORK_TREE"] == str(wt.resolve())
+
+    def test_a_poisoned_worktree_config_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        wt, gitdir, common = tmp_path / "wt3", tmp_path / "g3", tmp_path / "c3"
+        for d in (wt, gitdir, common):
+            d.mkdir()
+        (gitdir / "config.worktree").write_text("[core]\n")
+        (common / "config").write_text("[extensions]\n\tworktreeConfig = true\n")
+        ran: list[object] = []
+        monkeypatch.setattr(_sys.subprocess, "run", lambda *a, **k: ran.append(a))
+        _sys.trust_worktree(str(wt), str(gitdir), str(common))
+        out = _sys._git_run(str(wt), ["status"], 5)
+        assert out.returncode == 1 and ran == []

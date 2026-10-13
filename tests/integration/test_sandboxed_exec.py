@@ -145,7 +145,9 @@ class TestArgvShape:
         assert rw == [str(workspace.resolve()), str(second.resolve())]
         assert argv[-3:] == ["/bin/sh", "-c", "echo hi"]
 
-    def test_a_git_worktree_root_also_mounts_its_git_and_common_dirs(self, tmp_path: Path) -> None:
+    def test_a_git_worktree_root_mounts_its_git_dirs_without_hooks_or_config_writable(
+        self, tmp_path: Path
+    ) -> None:
         main = tmp_path / "main"
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
@@ -156,7 +158,15 @@ class TestArgvShape:
         assert gitdir != common
         landlock = system.landlock_argv((wt,), "true")
         grants = [landlock[i + 1] for i, a in enumerate(landlock) if a == "--rw"]
-        assert grants == [str(wt.resolve()), str(gitdir), str(common)]
+        assert grants == [
+            str(wt.resolve()),
+            str(common / "objects"),
+            str(common / "refs"),
+            str(common / "logs"),
+            str(gitdir),
+        ]
+        assert [landlock[i + 1] for i, a in enumerate(landlock) if a == "--ro"] == [str(common)]
+        assert str(common) not in grants and str(common / "hooks") not in grants
         docker = system.docker_run_argv("c", (wt,), "true", None)
         mounts = [docker[i + 1] for i, a in enumerate(docker) if a == "-v"]
         assert f"{gitdir}:{gitdir}" in mounts and f"{common}:{common}" in mounts

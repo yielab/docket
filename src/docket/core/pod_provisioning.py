@@ -156,7 +156,11 @@ def provision_task_worktree(
     if not ok:
         return {}, f"git worktree add failed ({err}) -- running in place"
     base = _sys.git_head_sha(wt_path) or ""
-    return {"dir": wt_path, "branch": branch, "baseCommit": base}, ""
+    record = {"dir": wt_path, "branch": branch, "baseCommit": base}
+    dirs = _sys.worktree_git_dirs(wt_path)
+    if dirs is not None:
+        record["gitDir"], record["commonDir"] = dirs
+    return record, ""
 
 
 def _render_context(
