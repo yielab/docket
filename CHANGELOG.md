@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded on the hop and shown to the retried Implementer under `GATE FAILED`, including after
   a human answers an `input` step the gate routed to. docket never names a verifier and reads no
   verdict beyond the exit status.
+- **The `lights-out` profile (Phase 42, P42-4, ADR 0025).** `docket setup profile lights-out`
+  (fleet-wide) or `docket pod set profile lights-out` (one pod; a pod may only be stricter than
+  the fleet) makes every dispatch refuse a task before its first hop unless isolation is on with
+  a usable backend, the jail's network is a recorded `none`, every Implementer step has an
+  external gate, and no variable docket injects for the pod is named in the secret store. A
+  refusal is audited (`profile.refused`), names each fix, and settles `dispatch_refused`, so the
+  task can be retried once the fix is in. `status` and `doctor` show the profile and what it
+  lacks. Nothing changes until an operator records the profile; `attended` is the default.
+- **Evidence 1.1.0 (Phase 42, P42-5).** `docket task show --json` and serve's evidence route
+  report `v: "1.1.0"`, adding `gate` (label, exit code, reasonsInvalid) to a hop that ran an
+  external gate and `directives` (path and sha256 of each repository file composed from the
+  base commit) to the task. The evidence embedded in a harness result stays `1.0.0`, byte for
+  byte.
 
 ### Changed
 

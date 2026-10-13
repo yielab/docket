@@ -378,7 +378,7 @@ class TestNeedsHumanSeam:
 def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Seam: P42-2 writes hop.verify, P42-5's evidence 1.1.0 reads it; real code on both sides.
+    # Seam: dispatch writes hop.verify, evidence 1.1.0 reads it back; real code on both sides.
     from docket.core import evidence as _evidence
 
     res, _ = _run(tmp_path, monkeypatch, "echo broke\nexit 1\n")

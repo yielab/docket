@@ -347,6 +347,13 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 > `needs_human` pattern (fixed through `_get_on`). Found for sub-wave C: MCP servers are stdio
 > only, so the profile's "no HTTP MCP server" check is dropped; evidence embedded in the harness
 > result stays `1.0.0` (a published contract), `1.1.0` is for `task show` and serve.
+>
+> **Wave 106 closed sub-wave C (2026-10-13).** P42-5 merged first (`44fe0a2e`), then P42-4
+> (`30f56be3`); `core/dispatch.py` auto-merged on the function-level split. The integrator added
+> the seam test the two cards could not own alone (`6d83f79b`: a dispatched external gate read
+> back as evidence 1.1.0's `gate`). P42-4 dropped the HTTP-MCP requirement (stdio only) and
+> counts the Implementer's `DOCKET_PORT_*`/`DOCKET_SCRATCH_DIR` and the pod's MCP server env as
+> injected variables. The two `setup shell` goldens gained the new `profile` verb, deliberately.
 
 ### P42-1 — a backward route carries the gate's output into the rework hop
 
@@ -435,7 +442,7 @@ A pipeline without an external gate is byte-identical (goldens unchanged).
 
 ### P42-4 — the `lights-out` profile
 
-**Status:** IN PROGRESS (Wave 106) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (new "Profiles" section), cli-interface.spec.md (`setup profile`), operator-loop.spec.md (doctor/status lines)
+**Status:** DONE (2026-10-13, merge `30f56be3`, Wave 106) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (new "Profiles" section), cli-interface.spec.md (`setup profile`), operator-loop.spec.md (doctor/status lines)
 
 **Goal:** `core/profile.py::lights_out_violations(project) -> list[Violation]`, pure, each with
 its fix: isolation on with a usable backend; network `none` enforced by the jail (recorded or
@@ -456,7 +463,7 @@ are byte-identical to today (goldens unchanged except the new `setup profile` su
 
 ### P42-5 — evidence 1.1.0: `gate` and `directives`
 
-**Status:** IN PROGRESS (Wave 106) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md ("Evidence v1"), cli-json-shapes.spec.md
+**Status:** DONE (2026-10-13, merge `44fe0a2e`, Wave 106) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md ("Evidence v1"), cli-json-shapes.spec.md
 
 **Goal:** `core/evidence.py` emits `v: "1.1.0"`: `HopEvidence.gate {label, exitCode,
 reasonsInvalid}` only on a hop that ran an external gate; `TaskEvidence.directives [{path,
