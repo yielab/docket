@@ -11,15 +11,19 @@
 >
 > ---
 >
-> ## ◇ NO ACTIVE WAVE — Phase 40: Waves 98–99 closed 2026-10-12; P40-5 waits on D-59
+> ## ▶ ACTIVE BOARD — WAVE 100 (Phase 40's P40-5 and Phase 41's sub-wave A; opened 2026-10-12)
 >
 > **Phase 40** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)): eleven of
-> its twelve cards closed 2026-10-12 over **Wave 98** (six cards, rollup `8f62c97d`) and **Wave
-> 99** (five cards), one Sonnet or Haiku worker per card in an isolated worktree under one
-> integrator; packets in [.agents/handoffs/wave-98-worker-packets.md](.agents/handoffs/wave-98-worker-packets.md)
-> and [wave-99-worker-packets.md](.agents/handoffs/wave-99-worker-packets.md). The section stays
-> below until **P40-5** closes: it is blocked on the maintainer's decision D-59 and is the only
-> open card. Nothing else is queued.
+> its thirteen cards closed 2026-10-12 over **Wave 98** (rollup `8f62c97d`) and **Wave 99**
+> (rollup `89eb2114`). D-59 was answered the same day (ADR 0024 §6). **Phase 41** (one execution
+> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) opened beside it.
+> **Wave 100** runs three cards, one Sonnet worker per card in an isolated worktree under one
+> integrator: **P40-5** (packets in
+> [.agents/handoffs/wave-100-worker-packets.md](.agents/handoffs/wave-100-worker-packets.md)) and
+> Phase 41's sub-wave A, **P41-1 ∥ P41-6** (packets in
+> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md)).
+> They share only `security-gates.spec.md`, whose versions are assigned (0.42.0, 0.43.0, 0.44.0).
+> Merge order: P40-5, P41-6, P41-1. P40-13 starts from P40-5's merge.
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -314,7 +318,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 40 — harden the agent boundary (D-58, ADR 0023): eleven of twelve cards closed 2026-10-12; P40-5 waits on D-59
+## ▶ WAVE 100 — ACTIVE: Phase 40, harden the agent boundary (D-58, ADR 0023): eleven of thirteen cards closed 2026-10-12; P40-5 in Wave 100, P40-13 after it
 
 **Trigger:** the 2026-10-12 security audit (`internal-docs/security-audit-2026-10-12.md`, the
 consolidated table and the fix-status section). Its eleven contained defects shipped in the
@@ -426,33 +430,77 @@ unauthorized branch of `poll_once`/`handle_message`).
 from one unbound chat in a batch write ten entries. GREEN — the reason is truncated; the batch
 writes one. Oracle: the audit line length and count in an isolated home.
 
-### P40-5 — confirm before applying a cloned repository's `.docket/` (BLOCKED on D-59)
+### P40-5 — a repository's commands need the operator's OK before `init` applies them
 
-**Status:** BLOCKED (D-59, ADR 0023 §3) · **Size:** M · **Model:** Sonnet · **Spec:** pod-blueprints.spec.md / security-gates.spec.md
+**Status:** IN PROGRESS (Wave 100, `w100-p40-5`) · **Size:** M · **Model:** Sonnet · **Spec:** pod-blueprints.spec.md ("Pod manifests: apply"), security-gates.spec.md (Tool-approval gates item 1)
 
 **Trigger (audit finding A1/E3, confirmed live 2026-10-12):** `docket init` applied a repo's
-`.docket/pipeline.yaml` `run:` step that executed on the host at `docket run`, with no prompt and
-no audit line for the command. `cli/_agents.py::_apply_repo_config` prints the plan and applies it
-at once; `cli/_pod_config.py::_render_items` prints `[add] setting: allowCommands` without the
-value; `core/pod.py` accepts `bash`/`sh`/`curl`/`ssh` in `allowCommands`.
+`.docket/pipeline.yaml` `run:` step that executed on the host at `docket run`, with no prompt.
+`cli/_agents.py::_apply_repo_config` prints the plan and applies it at once.
 
-**Goal (proposed default, pending D-59):** `init`/`pod apply` require `--yes`/`--confirm init` or a
-TTY confirmation, printing the value of every executable item (a plugin, an `isolate: false` MCP
-server's `command`, a `run:`/`verify` command, `allowCommands`, `approvalMode`, `deniedTools`,
-`mcpServers`) and every role overlay that removes a built-in's denials; refuse a shell in
-`allowCommands`; off a TTY without the flag, exit 2 listing the items.
+**Goal:** `core/pod_apply.py` classifies a plan's items into *adds* (roles, policies, skills,
+prompts, settings that restrict) and *runs on this machine* (pipeline `run:` steps, verify
+commands, MCP server commands, plugins, `allowCommands`, `network: open`, a role overlay that
+removes a built-in denial). `init` prints the two groups under those headings with each run
+item's exact command. On a TTY the second group asks `[y/N]` once; the answer is remembered in
+`~/.docket/reviewed-repos.json` (through `edges/store`, 0600; repository root -> review code =
+digest of exactly those items, date, items) and audited as `repo.allow`. Off a TTY nothing is
+created: exit 2 lists the items, the review code and the three ways on (`docket init` on a
+terminal; `docket init --accept <code>`; `docket init --no-apply`). `--accept` matches the exact
+code; a mismatch exits 2 showing before/now **without** printing the new code. `--json` gives
+`{"status": "needs_review", "reviewCode", "items"}`. A repository's `allowCommands` naming
+`sh`/`bash`/`zsh`/`dash`/`sudo`/`ssh`/`nc`/`socat` is refused (exit 2, names the shell and the
+alternative); `pod set allowCommands` by the operator is unchanged. Shipped recipes by name are
+exempt; a recipe given as a directory is not. Console copy: ADR 0024 §6 and the mockups in
+`internal-docs/d-59-config-trust-research.md` §6 (the integrator holds them).
 
-**Non-goals:** changing what `.docket/` can express; the live path (dispatch never re-reads
-`.docket/`, ADR 0012 — that holds); classifying the whole pipeline.
+**Non-goals:** `docket run` picking changes up and the `apply` -> `update` rename (P40-13);
+the sandbox line at the end of `init` (P41-7); `pod apply` itself asking (it is renamed in
+P40-13, which then routes it through the same check).
 
-**Live path:** `cli/_agents.py::_apply_repo_config`, `run_init`; `cli/_pod_config.py::_render_items`;
-`core/pod.py` allowCommands validator; `core/dispatch.py` verify-gate command (classify it like a
-`run:` step).
+**Live path:** `core/pod_apply.py::plan_apply` (+ a `classify_plan(plan) -> PlanReview`),
+new `core/reviewed_repos.py` (load/remember/lookup, `config.py` path constant),
+`cli/_agents.py::_apply_repo_config`/`run_init` (+ `--accept`, `InitRequest` field),
+`cli/_pod_config.py::render_apply_plan` (the two groups), `cli/_init.py` or wherever
+`cmd_init` declares options.
 
-**Acceptance:** RED — a repo whose `.docket/` brings a `run:` step and `allowCommands: bash`
-applies silently off a TTY. GREEN — it exits 2 off a TTY, lists the command and the shell; with
-`--yes` it applies and audits; a shell in `allowCommands` is refused at apply time. Oracle: exit
-code, the printed items, the audit entry. **Do not start until D-59 is answered.**
+**Acceptance:** RED — a repo whose `.docket/` brings a `run:` step applies with no TTY on the
+base. GREEN — exit 2, no pod created, the item and a code printed; `--accept <code>` creates
+the pod and writes `repo.allow`; a wrong code exits 2 and the output carries no code; a TTY
+`y` (CliRunner input) creates the pod and a second `init` in a fresh home with the same items
+asks again while the same home does not; `allowCommands: bash` from the repo exits 2; a shipped
+recipe by name never asks. Oracle: exit codes, `read_audit()`, the store file, the pod's
+workspace existing or not, in an isolated home.
+
+### P40-13 — `docket run` picks the repository's changes up; `pod apply` becomes `pod update`
+
+**Status:** READY (after P40-5) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`pod` group, `run`), pod-blueprints.spec.md
+
+**Trigger (D-59, ADR 0024 §6):** after a `git pull` the pod keeps the old configuration until
+the operator remembers a command whose name (`apply`) does not say what it does, and nothing
+tells them the repository changed.
+
+**Goal:** before dispatching, `cli/_run.py::cmd_run` compares the repository's `.docket/`
+digest with the pod's `configDigest`: unchanged, run; only *adds* changed, apply them and print
+`-> Updated from the repository: <items>`; a *runs on this machine* item changed, on a TTY show
+before/now and ask (`n` runs the allowed version), off a TTY run the allowed version and print
+the one-line warning. `docket start` and `dispatch_pod` never read `.docket/` (ADR 0012).
+`docket pod apply` is renamed `docket pod update` with no alias (D-57; `apply` is an unknown
+verb, exit 2) and goes through P40-5's review. `docket status` prints, per pod, `Commands N
+allowed on <date> (code X)` and `N changed in the repository, waiting for your OK`.
+
+**Non-goals:** a background watcher; changing the apply plan's semantics; the sandbox line.
+
+**Live path:** `cli/_run.py::cmd_run`, `cli/_pod_config.py::cmd_apply` -> `cmd_update`,
+`cli/__init__.py` registration, `cli/_status.py::_pod_status`, `core/pod_apply.py` (the digest
+compare P40-5 adds), `docs/commands.md` regenerated, goldens that print `pod --help` or
+`status` recaptured with every changed line explained.
+
+**Acceptance:** RED — edit a skill in `.docket/`, `docket run` dispatches the old skill;
+`docket pod apply` exists. GREEN — `run` applies the skill and prints the line; a changed `run:`
+step off a TTY runs the allowed version and warns; `pod apply` exits 2 unknown; `pod update`
+works; `status` shows the two lines. Oracle: the pod's config files, exit codes, captured
+output (CliRunner, monkeypatched dispatch) in an isolated home.
 
 ### P40-6 — the docket process is non-dumpable so an unjailed child cannot read its credentials
 
@@ -608,6 +656,177 @@ SHA-pin the actions; replace the developer home path in those two files with a p
 **Acceptance:** `pip-audit` on the lock shows no `pyjwt` advisory; the recipe names a pinned ref;
 CI jobs carry `--locked` and SHA-pinned actions; the scrub grep from the public-repo-privacy memory finds no developer home path in a tracked file.
 Oracle: the commands above and the scrub grep from the privacy memory.
+
+## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-wave A in Wave 100
+
+> **Opened 2026-10-12; sub-wave A runs in Wave 100.** The maintainer's 2026-10-12 decisions (ADR 0024): one jail for
+> everything the project runs, Landlock + seccomp on Linux, Seatbelt on macOS, Docker when
+> chosen, bwrap and `isolate: false` deleted, the gate lenient inside the envelope and strict
+> outside, sandbox off by default and visible, network `none` by default. A coordinator activates
+> each sub-wave with the `ACTIVE BOARD` banner and a base commit.
+>
+> **Sub-waves, by contention on `edges/adapters/system.py`:** **A** P41-1 ∥ P41-6 ·
+> **B** (on A's rollup) P41-2 ∥ P41-4 ∥ P41-5 · **C** P41-3 ∥ P41-7 · **D** P41-8. Each worker
+> owns its card's files plus its owning spec section; `README.md`, `docs/SECURITY-SIMPLE.md`,
+> the quick start, CLAUDE.md's limits and this board are the integrator's, rewritten as each
+> card merges (D-37).
+
+### P41-1 — a Landlock + seccomp jail for Linux
+
+**Status:** IN PROGRESS (Wave 100, `w100-p41-1`) · **Size:** L · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
+
+**Trigger (D-60):** bwrap is a system package that needs user namespaces (absent in most CI
+containers) and its profile `--ro-bind / /` lets the agent read the whole disk.
+
+**Goal:** `src/docket/jail.py`, an entry run as `python -m docket.jail --rw <dir>... --ro
+<dir>... --net none|open -- <argv...>`: sets `PR_SET_NO_NEW_PRIVS`, builds a Landlock ruleset
+(ABI probed; rw: the given roots and `$TMPDIR`; ro: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`,
+`/etc`, `/opt`, `sys.prefix`, `/dev/null|zero|urandom|tty`; nothing else, so the home is
+denied), adds Landlock TCP rules when ABI >= 4, installs a seccomp BPF filter (via `prctl`,
+no libseccomp) that denies `socket(AF_INET|AF_INET6)` when `--net none`, then `execvp`s.
+`edges/adapters/landlock.py` holds the `ctypes` layer (`landlock_create_ruleset`,
+`landlock_add_rule` with `O_PATH` fds, `landlock_restrict_self`, the BPF program).
+`edges/adapters/system.py` gains `landlock_available()` (ABI version probe) and
+`landlock_argv(roots, command, network)`; `sandbox_availability` prefers `landlock` over
+`bwrap` and `docker`; `DOCKET_SANDBOX_BACKEND=landlock` is accepted. bwrap stays until P41-3.
+
+**Non-goals:** deleting bwrap (P41-3); jailing verify/`run:` (P41-4); the cache dir (P41-5);
+macOS (P41-2).
+
+**Acceptance:** RED (integration, real kernel, skip when ABI < 1) — on the base a subprocess
+under the only Linux backend reads a seeded file under a fake home. GREEN — under
+`python -m docket.jail --rw <root> --net none -- python3 -c ...`: reading that file raises
+`PermissionError`, writing outside the root raises, writing inside works, `socket.connect` to a
+local listener fails; `--net open` connects. Unit: argv and ruleset construction, no syscalls.
+Oracle: the child's exit code and captured errors. Note: this host runs kernel 6.14.
+
+### P41-2 — a Seatbelt backend for macOS
+
+**Status:** TODO (sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
+
+**Trigger (D-60):** on macOS the only backend is Docker Desktop, which most operators do not
+run; Claude Code and Codex use the OS's `sandbox-exec`.
+
+**Goal:** `system.py::seatbelt_available()` (darwin and `/usr/bin/sandbox-exec` exists) and
+`seatbelt_argv(roots, command, network)`: `sandbox-exec -p <profile> /bin/sh -c <command>` with
+one fixed profile template: `(version 1) (deny default) (allow process-exec* process-fork
+sysctl-read mach-lookup ...)`, `(allow file-read* (subpath "/usr") ...)` for the system paths
+P41-1 lists, `(allow file-read* file-write* (subpath "<root>"))` per root and `$TMPDIR`,
+`(deny network*)` or `(allow network*)`. `sandbox_availability` prefers it on darwin. The
+deprecation of `sandbox-exec` is noted in the module docstring.
+
+**Acceptance:** unit — the profile text for two roots and both network modes, byte-exact; the
+backend order on a monkeypatched darwin platform. The live run is P41-8's macOS CI job; this
+card cannot run it on Linux and says so.
+
+### P41-3 — delete bwrap and `isolate: false`; Docker is a chosen backend
+
+**Status:** TODO (sub-wave C) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
+
+**Goal:** delete `_bwrap_prefix`, `bwrap_argv`, `bwrap_available`, the `bwrap` backend value
+and its tests; delete the `isolate` field from `kind: mcp-server` documents (schema regenerated
+by `scripts/gen_operator_schemas.py`, `code-intel`'s `ast-grep.yaml` and README, recipe docs
+regenerated), its loader branch in `core/mcp_tools.py` and `mcp_client.py`; Docker is used only
+when `docket setup sandbox backend docker` was set (fleet.json key read by
+`sandbox_availability`; `auto` means landlock/seatbelt). `scripts/maint/pytest-without-sandbox.sh`
+exports `DOCKET_SANDBOX_PROBE=none`, a variable only the availability probe reads and no
+fixture touches, instead of stripping binaries from `PATH`. `CHANGELOG.md` line in the return.
+
+**Acceptance:** `rg -n 'bwrap|isolate' src tests docs specs` finds only the CHANGELOG and
+`docs/cycles-ended/`; the no-backend script passes; with `backend docker` unset and Docker
+running, a turn uses landlock.
+
+### P41-4 — verify, `run:` steps and MCP servers run inside the envelope
+
+**Status:** TODO (sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (verify gate), security-gates.spec.md ("Credentials in task processes")
+
+**Trigger (D-60, measured 2026-10-12):** `core/dispatch.py` calls `system.run_verify_cmd` on
+the host, so a test file the agent writes runs with the operator's rights even with the sandbox
+on; `run:` steps and stdio MCP servers likewise.
+
+**Goal:** `run_verify_cmd` and the `run:` executor take the same jail decision `toolbox.run_bash`
+takes (`sandbox_availability` + the isolation flag + the pod's network) and wrap the command with
+the backend argv, cwd the task worktree; stdio MCP servers always start jailed. With the sandbox
+off: unchanged. The classification of the verify command (`classify_command` fail-closed) stays.
+
+**Acceptance:** RED — with `DOCKET_SANDBOX_BACKEND=landlock` and isolation on, a `verifyCmd`
+that writes a file outside the worktree succeeds on the base. GREEN — it fails and the task
+ends `verification_failed`; a `run:` step the same; a verify that writes inside passes; sandbox
+off still runs on the host. Oracle: the file outside not existing, the task record, in an
+isolated home (integration lane).
+
+### P41-5 — a per-pod cache directory and a hidden home
+
+**Status:** TODO (sub-wave B) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (task environment)
+
+**Trigger (D-60):** `isolate: false` existed because `uv`'s cache under the home was read-only
+in the jail; with the home denied, every tool that writes `~/.cache`, `~/.npm` breaks.
+
+**Goal:** provisioning creates `<lead workspace>/cache/` (0700); `system.task_environment` sets,
+for a jailed command, `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `UV_CACHE_DIR`,
+`PIP_CACHE_DIR`, `npm_config_cache` to it, and the jail gets that directory as a rw root.
+Git identity keeps coming from the `GIT_*` variables dispatch already sets (the existing
+"commits with the operator's identity" tests must stay green).
+
+**Acceptance:** RED — a jailed `uv --version`-style command that writes its cache fails on the
+base with the home denied. GREEN — it writes under the pod cache; the env carries the six
+variables; the cache dir is 0700. Oracle: files under the cache dir, `oct(mode)`.
+
+### P41-6 — the gate rule: allowed inside the envelope, the allowlist outside; network `none`
+
+**Status:** IN PROGRESS (Wave 100, `w100-p41-6`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Tool-approval gates item 1, Network egress)
+
+**Trigger (D-60 §2):** inside a jail the allowlist only produces approval noise (`bash -c`,
+`curl`), while high-risk classes are the real question; and `network: open` by default lets a
+jailed agent exfiltrate the repository's own secrets.
+
+**Goal:** `classify_command(..., jailed: bool = False)`: when jailed, a binary off the allowlist
+is `allow` unless a high-risk class matches (still `ask`) or the command is not statically
+analysable (still `ask`); `core/tools.py::evaluate_tool_call` passes `jailed` from the turn's
+sandbox decision. `core/pod.py` network default and `fleet.get_network_mode` default become
+`none`; `effective_network` unchanged (narrowing only). `docket setup sandbox` prints the
+network mode's new default.
+
+**Acceptance:** RED — `curl https://x` jailed is `ask` on the base; a fresh home reports
+`network open`. GREEN — jailed `curl` is `allow`, unjailed `ask`, jailed `git push origin
+production` `ask`, jailed `$(...)` `ask`; a fresh home reports `network none`. Goldens that
+print the network mode recaptured with the diff explained. Oracle: `classify_command` verdicts;
+`setup sandbox --json`.
+
+### P41-7 — the sandbox is visible: probe, platform lines, backend choice
+
+**Status:** TODO (sub-wave C) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
+
+**Trigger (D-60 §4-5):** `docket init` says nothing about the sandbox; only `status` has an
+`Isolation:` line; nobody installing learns whether a backend exists or what to install.
+
+**Goal:** `docket setup sandbox` (and `--json`) reports per platform: backend found (`landlock
+(kernel 6.14)`, `seatbelt`, `docker`), or what is missing (`Linux: a kernel with Landlock
+(>= 5.13)`; `Windows: use WSL2; native runs without a sandbox`); `docket setup sandbox backend
+auto|docker`; `init` ends with a `This machine / Sandbox` line (`off. The agent's commands run
+with your user's permissions. Turn it on: docket setup sandbox on`, or `on (landlock)`), `status`
+opens with it, `doctor` counts a home with pods and no backend as an issue; `install.sh` prints
+the probe's one line. Copy per ADR 0024 §4-5.
+
+**Acceptance:** RED — `init` output on the base has no sandbox line. GREEN — the line in each
+state (monkeypatched availability); `setup sandbox backend docker` persists and the probe
+honours it; goldens (`status`, `setup sandbox`) recaptured with the diff explained. Oracle:
+captured output, fleet.json.
+
+### P41-8 — the escape matrix as a release gate
+
+**Status:** TODO (sub-wave D) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Validation)
+
+**Goal:** `tests/integration/test_escape_matrix.py` (SUBJECT `docket.jail`), parametrized over
+the backends available on the host (landlock; docker when the daemon answers; seatbelt on
+darwin): read a seeded `~/.ssh/id` under a fake home, write outside the roots, write
+`.git/hooks/pre-commit` in the worktree, connect to a local listener under `network none`, read
+`/proc/<ppid>/environ` with a seeded key, a `verifyCmd` that writes outside the worktree; every
+row must fail, and one positive row (write inside the root) proves the jail was on. The macOS
+CI job (`release-journey`, macos-latest) runs it; `ci.yml` is in this card's files.
+
+**Acceptance:** the matrix passes on this host (landlock, docker) and in the macOS job;
+security-gates "Validation" lists the rows. Oracle: pytest on each backend.
 
 ## ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)
 

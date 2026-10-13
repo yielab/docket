@@ -1,0 +1,135 @@
+# Phase 41 worker packets — one execution envelope (D-60, ADR 0024)
+
+Coordinator: the session that planned Phase 41 on 2026-10-12. Four sub-waves; **each sub-wave's
+base commit is the commit that activates it on `develop`** (the coordinator records it here when
+claiming). One card, one worker, one isolated worktree each. The card (`python3
+.agents/skills/docket-roadmap/scripts/card_packet.py P41-<N>`) is the contract; this file is the
+map. Symbols drift; re-locate every one with `rg -n` before editing.
+
+| Sub-wave | Cards (parallel) | Merge order | Spec versions |
+| --- | --- | --- | --- |
+| A | P41-1 ∥ P41-6 | P41-6, P41-1 | security-gates 0.43.0 (P41-6), 0.44.0 (P41-1) |
+| B | P41-2 ∥ P41-4 ∥ P41-5 | P41-5, P41-4, P41-2 | pod-dispatch minor (P41-5), minor (P41-4); security-gates 0.45.0 (P41-4), 0.46.0 (P41-2) |
+| C | P41-3 ∥ P41-7 | P41-3, P41-7 | mcp-client minor (P41-3); cli-interface minor, cli-json-shapes if needed (P41-7) |
+| D | P41-8 | — | security-gates 0.47.0 |
+
+**Sub-wave A runs inside Wave 100**, beside P40-5 (security-gates 0.42.0 is P40-5's). Its base
+commit is the Wave 100 claim commit (`git log -1 --format=%h -- .agents/handoffs/wave-100-worker-packets.md`
+on `develop` before any Wave 100 merge); worktrees and branches are `w100-p41-<n>`.
+
+## 0. Rules for every worker
+
+**Exactly §0 of [wave-98-worker-packets.md](wave-98-worker-packets.md)**, with the sub-wave's
+wave prefix (`w100` for sub-wave A) in place of `w98` in the worktree and branch names, and the
+sub-wave's base commit. Read that section and your
+own packet only. Two additions:
+- **Real-kernel tests go in `tests/integration/`** with a `SUBJECT`, skip cleanly when the
+  backend is absent (`landlock_available()` false, no docker daemon, not darwin), and never
+  touch `~/.docket`. A unit test never makes a Landlock or seccomp syscall.
+- **This host:** Linux kernel 6.14 (Landlock ABI >= 5), bwrap and docker present. The
+  no-backend check is `scripts/maint/pytest-without-sandbox.sh` until P41-3 changes it.
+
+## P41-1 — a Landlock + seccomp jail for Linux (Sonnet, sub-wave A)
+
+- Read ADR 0024 §3-4. Files: new `src/docket/jail.py` (the entry; argparse; no docket imports
+  beyond `edges/adapters/landlock`), new `src/docket/edges/adapters/landlock.py` (ctypes), unit
+  test files named for them, `src/docket/edges/adapters/system.py` (`landlock_available`,
+  `landlock_argv`, the probe order in `sandbox_availability`, the backend literal type),
+  `tests/unit/edges/adapters/test_system.py`, one integration file `tests/integration/
+  test_jail_landlock.py`.
+- ctypes facts: syscall numbers 444/445/446 are the same on every arch; `landlock_create_ruleset(
+  NULL, 0, LANDLOCK_CREATE_RULESET_VERSION)` returns the ABI; `struct landlock_ruleset_attr {u64
+  handled_access_fs; u64 handled_access_net}` (net field only when ABI >= 4; pass the smaller
+  size otherwise); `struct landlock_path_beneath_attr {u64 allowed_access; s32 parent_fd}`
+  packed; `struct landlock_net_port_attr {u64 allowed_access; u64 port}`. Handle every fs access
+  right the ABI knows; grant read rights on ro roots, read+write+make-* on rw roots. The
+  pure-Python `landlock` package on PyPI is a layout reference, not a dependency.
+- seccomp without libseccomp: `prctl(PR_SET_NO_NEW_PRIVS, 1)`, then `prctl(PR_SET_SECCOMP,
+  SECCOMP_MODE_FILTER, &sock_fprog)` with a BPF program: load `arch`, check `AUDIT_ARCH_X86_64`
+  (and aarch64), load `nr`, if `socket` then load `args[0]`, return `EPERM` when `AF_INET` or
+  `AF_INET6`, else `ALLOW`. Install it only under `--net none`; Landlock TCP rules too when
+  ABI >= 4 (belt and braces).
+- `landlock_argv` returns `[sys.executable, "-m", "docket.jail", "--rw", root, ..., "--net",
+  mode, "--", "/bin/sh", "-c", command]`, cwd the first root. Keep `bwrap_argv`'s shape so
+  `toolbox.run_bash` needs no change beyond the backend name.
+- Do not touch `run_verify_cmd`, `task_environment` (P41-4, P41-5) or the macOS branch (P41-2).
+
+## P41-6 — the gate rule and network `none` (Sonnet, sub-wave A)
+
+- Files: `core/security.py::classify_command` (+ `jailed`), `core/tools.py::evaluate_tool_call`
+  (+ the call; find the sandbox decision on `ToolContext`), `core/pod.py` (network default),
+  `core/fleet.py::get_network_mode` default, `cli/_setup_sandbox.py` only where it prints the
+  default, their unit tests, goldens that print the network mode (recapture; explain).
+- Keep: high-risk classes `ask` in both modes; redirect containment to roots; `allowCommands`
+  semantics outside the jail; the not-statically-analysable `ask`.
+- Report every README / QUICK-START / SECURITY-SIMPLE sentence that says "network open by
+  default" or "allowlist" in a way that is now false (file:line) for the integrator.
+
+## P41-2 — Seatbelt backend for macOS (Sonnet, sub-wave B)
+
+- Files: `edges/adapters/system.py` (`seatbelt_available`, `seatbelt_argv`, probe order on
+  darwin), its unit tests (monkeypatch `sys.platform`; assert the profile byte-exact), the spec.
+- Profile template facts: `(version 1)`, `(deny default)`, allow `process-exec*`, `process-fork`,
+  `sysctl-read`, `mach-lookup` for the system services a shell needs, `(allow file-read*
+  (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/etc") (subpath "/private/etc")
+  (subpath "/System/Library") (subpath "/Library") (subpath "<sys.prefix>"))`, `(allow
+  file-read* file-write* (subpath "<root>"))` per rw root and `$TMPDIR`, `(allow file-read*
+  file-write* (literal "/dev/null"))` and friends, `(deny network*)` or `(allow network*)`.
+  Quote paths for the profile language. No live test on Linux; say so in the return.
+
+## P41-4 — verify, `run:` steps and MCP servers inside the envelope (Sonnet, sub-wave B)
+
+- Files: `core/dispatch.py` (the two `run_verify_cmd` call sites and `_run_pipeline`'s `run:`
+  executor), `edges/adapters/system.py::run_verify_cmd` (+ `sandbox` decision, reuse the helper
+  `toolbox.run_bash` uses to pick the backend argv; move it into `system.py` if it lives in
+  `toolbox.py`), `edges/adapters/mcp_client.py` (the stdio spawn always jailed when isolation is
+  on), their tests, `tests/integration/test_sandboxed_exec.py` (+ verify and `run:` rows),
+  `pod-dispatch.spec.md`, `security-gates.spec.md`.
+- With the sandbox off nothing changes. The verify command's `classify_command` fail-closed check
+  stays before the subprocess. The jail's cwd is the task worktree; rw roots: the worktree and
+  the pod cache dir (P41-5; if not merged yet, the worktree alone).
+
+## P41-5 — a per-pod cache directory and a hidden home (Sonnet, sub-wave B)
+
+- Files: `core/pod_provisioning.py` or `core/resources.py` (where the Lead workspace's dirs are
+  created; `rg -n "scratch"`), `edges/adapters/system.py::task_environment` (+ `cache_dir`
+  argument; sets `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`,
+  `npm_config_cache`), the caller that passes it (dispatch's hop env; `rg -n task_environment`),
+  tests, `pod-dispatch.spec.md` (task environment section).
+- Keep the `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity path and its tests green.
+
+## P41-3 — delete bwrap and `isolate: false`; Docker chosen (Haiku, sub-wave C)
+
+- Files: `edges/adapters/system.py` (delete the bwrap functions and literal), `core/mcp_tools.py`
+  and `edges/adapters/mcp_client.py` (the `isolate` field and branch), `docs/contracts/config-v1/
+  mcp-server.schema.json` via `scripts/gen_operator_schemas.py`, `templates/recipes/code-intel/
+  mcp-servers/ast-grep.yaml` + its README, `docs/recipes.md` via `scripts/gen_recipe_docs.py`,
+  `core/fleet.py` (a `sandboxBackend: auto|docker` key with reader/writer), `cli/_setup_sandbox.py`
+  (`backend` verb), `scripts/maint/pytest-without-sandbox.sh` (`DOCKET_SANDBOX_PROBE=none` read
+  only by `sandbox_availability`), every test that names bwrap or isolate, `mcp-client.spec.md`
+  (requirement 40 deleted), `security-gates.spec.md` (the backend list).
+- Deletion means deletion (D-57): no notice, no alias, CHANGELOG line in the return.
+
+## P41-7 — the sandbox is visible (Sonnet, sub-wave C)
+
+- Files: `cli/_setup_sandbox.py` (the probe report per platform, `--json`), `cli/_agents.py::
+  run_init` (the closing `This machine / Sandbox` lines), `cli/_status.py` (the opening block),
+  `cli/_doctor.py` or wherever doctor's checks live (`rg -n "def run_doctor"`), `install.sh`
+  (one probe line via `docket setup sandbox --json`), goldens (`status`, `setup sandbox`),
+  `cli-interface.spec.md`, `cli-json-shapes.spec.md` if a JSON field is added.
+- Copy, exact: `Sandbox   off. The agent's commands run with your user's permissions.` +
+  `          Turn it on: docket setup sandbox on` / `Sandbox   on (landlock, network none)` /
+  `Sandbox   not available: Linux needs a kernel with Landlock (5.13 or newer).` /
+  `Sandbox   not available on native Windows; use WSL2.`
+
+## P41-8 — the escape matrix (Sonnet, sub-wave D)
+
+- Files: new `tests/integration/test_escape_matrix.py`, `.github/workflows/ci.yml` (the macOS
+  job runs it), `security-gates.spec.md` Validation section.
+- Rows per backend available on the host: read a seeded file under a fake home outside the
+  roots; write outside the roots; write `.git/hooks/pre-commit` inside the worktree; `connect`
+  to a local listener under network `none`; read `/proc/<ppid>/environ` with a seeded key
+  (Linux); a `verifyCmd` that writes outside the worktree through the real dispatch verify call;
+  one positive row (write inside the root succeeds). Every negative row must fail with the
+  backend on, and the test must fail if the backend silently ran nothing (assert the positive
+  row and a marker file the jailed command writes).

@@ -36,10 +36,10 @@ can implement.
    an unjailed MCP server, a `run:`/verify command, `allowCommands`, `approvalMode`,
    `deniedTools`, `mcpServers`) or loosens a built-in role's denials. ADR 0012's "operator
    command or nothing" is working as designed; `git clone && docket init` makes the repository
-   author the effective operator, which is the gap. The card (P40-5) stays `BLOCKED` until D-59
-   is answered; its proposed default is to require `--yes`/`--confirm init` or a TTY
-   confirmation that prints the value of every executable item, and to refuse a shell
-   (`sh`/`bash`/`zsh`/`dash`/`sudo`/`ssh`/`nc`/`socat`) in `allowCommands`.
+   author the effective operator, which is the gap. **D-59 was answered the same day
+   ([ADR 0024](0024-one-execution-envelope.md) §6):** the commands a repository brings need the
+   operator's OK once, remembered until they change, with `--accept <code>` for scripts; P40-5
+   and P40-13 ship it.
 
 4. **The isolation-default and broad argument-path-containment questions stay out of this
    phase.** They are the documented "the gate is a gate, not a sandbox" boundary (ADR 0020,

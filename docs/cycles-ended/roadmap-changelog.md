@@ -10,6 +10,16 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-12 (D-59 answered, D-60 recorded, ADR 0024, Phase 41 planned) — one execution
+  envelope.** After Waves 98–99 the maintainer asked for the sandbox and command-permission
+  architecture to be rethought against Claude Code, Codex CLI and OpenHands: one jail for
+  everything the project runs (verify and `run:` steps included), Landlock + seccomp on Linux so
+  nothing is a package dependency, Seatbelt on macOS, Docker when chosen, bwrap and
+  `isolate: false` deleted, the gate lenient inside the envelope and strict outside, sandbox off
+  by default (D-56 stands) but visible, network `none` by default. D-59: a repository's commands
+  need the operator's OK once, remembered until they change, `--accept <code>` for scripts,
+  `docket run` picks changes up, `pod apply` becomes `pod update`. P40-5 and P40-13 are Wave
+  100; Phase 41 is eight cards in four sub-waves.
 - **2026-10-12 (Phase 40 opened and run; Waves 98–99 closed) — eleven of twelve cards.** The
   maintainer asked to start the phase with multiple agents. The audit's contained fixes shipped
   first (`ee790446`), the phase opened at `cca88bef`, and eleven cards ran as one Sonnet or Haiku
