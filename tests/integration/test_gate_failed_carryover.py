@@ -153,3 +153,19 @@ def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(
     assert index == 1
     assert routes == {("build", "fail"): 1}
     assert pending == {1: gated}
+
+
+def test_a_backward_route_out_of_a_passing_gate_carries_no_gate_failure() -> None:
+    passed = {"cmd": "x", "exitCode": 0, "durationS": 0.1, "outputTail": MARKER, "touched": []}
+    hop = _dispatch.HopResult(
+        role="implementer",
+        member_id="demo-implementer",
+        ok=True,
+        output="built",
+        cost_usd=0.0,
+        step_id="build",
+        next_step="plan",
+        verify=passed,
+    )
+    message, _ = _dispatch._hop_message({"description": "d"}, "implementer", [hop], rework_hop=hop)
+    assert "GATE FAILED" not in message

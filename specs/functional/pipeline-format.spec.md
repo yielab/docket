@@ -415,10 +415,10 @@ This specification does NOT cover:
 4. The one recognized single-bounded-backward-edge shorthand (see "Short form" above) **MUST**
    keep normalizing to the canonical `rework:` edge, never to `on`, so every existing rework-based
    document and the three shipped recipes stay byte-identical.
-5. A backward or self route out of a `mechanical` gate (for example `until: verify`) **MUST**
-   tell the target's next hop why the gate failed: dispatch adds a `--- GATE FAILED: <step id> ---`
+5. A backward or self route out of a `mechanical` gate that did not pass (for example
+   `until: verify`) **MUST** tell the target's next hop why the gate failed: dispatch adds a `--- GATE FAILED: <step id> ---`
    section carrying the routed hop's redacted verify output (`pod-dispatch.spec.md`, "Bounded hop
-   prompts" item 9). A forward route and a verdict gate's route add no such section.
+   prompts" item 9). A forward route, a backward `pass` route and a verdict gate's route add no such section.
 
 ### Conditional steps and command steps
 

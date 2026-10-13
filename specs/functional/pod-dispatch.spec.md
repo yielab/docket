@@ -1809,7 +1809,8 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    description, not the Lead's budget-free composition path.
 9. A **backward `on:` route out of a mechanical gate** (P42-1; the target is at or before the routed
    step, e.g. `until: verify`) **MUST** carry the gate's output into the target's next hop. When
-   the routed hop holds `verify` evidence, dispatch **MUST** hand that hop to the target's next
+   the routed hop holds `verify` evidence of a gate that did not pass (exit code nonzero, or a
+   label other than `pass`), dispatch **MUST** hand that hop to the target's next
    hop as its carryover, and `_hop_message` **MUST** render a section
    `--- GATE FAILED: <step id> ---` followed by the hop's persisted, redacted
    `verify.outputTail` (never raw output), fit to the carryover budget with the usual visible
@@ -1817,8 +1818,8 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    `_gate_failed_section` is the one function that writes this text. The routed hop's own output
    stays in the generic carryover, and the Implementer instruction is the ordinary one, not the
    reviewer-rework text. A resume rebuilds the carryover from the last routed hop the way it
-   rebuilds a rework hop (`_replay_pipeline_position`). A forward route, an unrouted gate and a
-   verdict rework **MUST** compose byte-identical messages to before.
+   rebuilds a rework hop (`_replay_pipeline_position`). A forward route, a backward `pass` route, an
+   unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
 
 ### Task status vocabulary
 

@@ -712,10 +712,13 @@ def _resolve_hop_instructions(
 
 
 def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
-    """Whether *hop* is a routed mechanical-gate hop being carried back to its route's
-    target: it holds the route's resolved ``next_step`` and real ``verify`` evidence. A
-    verdict rework hop never has ``next_step``, so the two carryovers cannot be confused."""
-    return hop is not None and hop.next_step is not None and hop.verify is not None
+    """Whether *hop* is a routed gate hop whose gate did not pass: a resolved ``next_step`` plus
+    ``verify`` evidence with a non-``pass`` label (or a nonzero exit). A verdict rework hop never
+    has ``next_step``, and a backward ``pass`` route carries no failure."""
+    if hop is None or hop.next_step is None or hop.verify is None:
+        return False
+    label = hop.verify.get("label") or ("pass" if hop.verify.get("exitCode") == 0 else "fail")
+    return str(label).lower() != "pass"
 
 
 def _gate_failed_section(step_id: str, output_tail: str) -> str:
@@ -1146,7 +1149,7 @@ def _replay_pipeline_position(
                     )
                     key = (step_id, label)
                     route_counts[key] = route_counts.get(key, 0) + 1
-                    rework_hop = hop if hop.verify is not None else None
+                    rework_hop = hop if _is_gate_failure_carryover(hop) else None
                 else:
                     rework_hop = None
                 pi = target_index
@@ -2728,7 +2731,7 @@ def _run_pipeline(
                 break
             if _block_on_missing_resources(ctx, outcome, result):
                 break
-            if next_index <= pipeline_index and outcome.hops[0].verify is not None:
+            if next_index <= pipeline_index and _is_gate_failure_carryover(outcome.hops[0]):
                 # A backward route out of a mechanical gate: the target's next hop is told
                 # why the gate failed (see `_gate_failed_section`).
                 pending_rework_by_index[next_index] = outcome.hops[0]
