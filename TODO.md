@@ -11,13 +11,13 @@
 >
 > ---
 >
-> ## ▶ ACTIVE BOARD — WAVE 104 (Phase 42's sub-wave A, P42-1 ∥ P42-3; opened 2026-10-13)
+> ## ▶ ACTIVE BOARD — WAVE 105 (Phase 42's sub-wave B, P42-2; opened 2026-10-13)
 >
 > **Phase 42** (lights-out profile and external gate, D-61,
 > [ADR 0025](docs/adr/0025-lights-out-profile-and-external-gate.md), accepted with amendments)
-> opened 2026-10-13. **Wave 104** runs sub-wave A: **P42-1** (the gate's output reaches the rework
-> hop) and **P42-3** (repository instructions from the base commit), one Sonnet worker each in an
-> isolated worktree, packets in
+> opened 2026-10-13; sub-wave A (P42-1, P42-3) closed in Wave 104 (rollup `5cee0640`).
+> **Wave 105** runs sub-wave B alone: **P42-2** (the external gate), one Sonnet worker in an
+> isolated worktree at `5cee0640`, packet in
 > [.agents/handoffs/phase-42-worker-packets.md](.agents/handoffs/phase-42-worker-packets.md).
 > **Phase 41** (D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed 2026-10-13,
 > archived in [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -315,7 +315,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104
+## ◇ PHASE 42 — lights-out profile and external gate (D-61, ADR 0025): opened 2026-10-13, sub-wave A closed in Wave 104, sub-wave B active in Wave 105
 
 > **Opened 2026-10-13.** ADR 0025 was accepted with amendments (its last section): the external
 > gate is a command plus an exit map whose four labels route through the existing `on:` map; a
@@ -397,7 +397,7 @@ composed prompt.
 
 ### P42-2 — the external gate
 
-**Status:** TODO (sub-wave B, after A's rollup) · **Size:** M · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Gates", "Outcome routing"), pod-dispatch.spec.md (gate evaluation, "Hop evidence")
+**Status:** IN PROGRESS (Wave 105) · **Size:** M · **Model:** Sonnet · **Spec:** pipeline-format.spec.md ("Gates", "Outcome routing"), pod-dispatch.spec.md (gate evaluation, "Hop evidence")
 
 **Trigger:** ADR 0025 D1 as amended.
 
