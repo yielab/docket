@@ -162,3 +162,39 @@ the text cannot disagree; add the missing checks to the JSON under stable keys (
 `cli-json-shapes.spec.md`, minor bump; W108-1 may take 1.32.0 — use 1.33.0). RED: a home with a
 broken pod config overlay where the text report counts an issue and the JSON says healthy.
 Keep each function under the 150-line span ceiling.
+
+## Third batch — W108-7 (base: the commit that adds this section)
+
+Same §0 rules. Owns `src/docket/core/security.py` (`SAFE_BINS` neighbours, `classify_command` and
+its helpers) and `tests/unit/core/test_security.py`. Spec: `security-gates.spec.md` — W108-2 takes
+0.51.0, you take 0.52.0 (the integrator renumbers if you merge first).
+
+## W108-7 — the classifier sees through wrappers and deleting flags (Sonnet)
+
+Measured 2026-10-13 at `ad2172f5`: with isolation off, `rm` asks (not on `SAFE_BINS`), but
+`env rm -rf x` and `echo x | xargs rm` are classified by `env`/`xargs` and **allowed**, and
+`find . -delete`, `find . -exec rm {} +` and `awk 'BEGIN{system("rm -rf x")}'` are allowed because
+`find`/`awk` are allowlisted. The docs promise a dangerous operation not on the allowlist asks; these
+are that operation behind an allowlisted name.
+1. **Wrappers.** For a segment whose binary is a command wrapper (`env` after its `VAR=value` and
+   option arguments, `xargs` after its options, plus `nice`, `nohup`, `timeout <dur>`, `time`,
+   `command`, `stdbuf`, `setsid` if present — list what you handle), classify the wrapped command
+   exactly as if it were the segment (recursively, bounded). `env` alone or `env VAR=x` with no
+   command stays allowed. `xargs` with no command runs `echo`: allowed.
+2. **Deleting or executing flags of allowlisted bins.** `find` with `-delete`, `-exec`, `-execdir`,
+   `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf`, `-fls` asks (or, for `-exec`/`-execdir`,
+   classify the embedded command like a wrapper if that is simple and bounded; asking is acceptable).
+   `awk`/`gawk` program text containing `system(` or a `|` pipe to a command or `print >`/`>>` to a
+   file asks. `sed` with `e` command or `-i` outside the workspace roots: measure; if handling it is
+   not bounded, leave it and list it.
+3. Keep: interpreters (`python3`, `node`, `make`, …) stay allowlisted — the allowlist is not a
+   containment boundary and the spec says so (add that sentence to the requirement text: without
+   the sandbox, an allowlisted interpreter can write or delete anything the operator can; the
+   sandbox is the boundary). `tee`, `cp`, `mv`, `mkdir`, `touch`, `ln` stay allowed (ordinary
+   development writes); say so in the same spec sentence.
+4. Inside a working jail the allowlist stands down except for high-risk classes (P41-6): check
+   your change does not make a jailed `find -delete` inside the roots ask (it must not; the jail is
+   the boundary there). RED on the base: `env rm -rf x`, `echo a | xargs rm`, `find . -delete`,
+   `awk 'BEGIN{system("rm x")}'` each currently `allow` unjailed; after: `ask`. Plus green rows that
+   `env FOO=1 pytest`, `xargs grep foo`, `find . -name '*.py'` stay `allow`.
+List every now-false prose sentence (`docs/SECURITY-SIMPLE.md`, README known limits) as file:line.
