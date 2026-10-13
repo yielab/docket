@@ -111,6 +111,14 @@ echo "  Venv:    $VENV_DIR"
 echo "  Version: $("$BIN_DIR/docket" --version 2>/dev/null || echo 'n/a')"
 echo ""
 
+sandbox_line="$("$BIN_DIR/docket" setup sandbox --json 2>/dev/null \
+  | "$VENV_DIR/bin/python" -c 'import json, sys; print(json.load(sys.stdin)["line"])' 2>/dev/null)" \
+  || sandbox_line=""
+if [[ -n "$sandbox_line" ]]; then
+  echo "  $sandbox_line"
+  echo ""
+fi
+
 if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
   echo "Add ${BIN_DIR} to your PATH (if not already):"
   echo "  echo 'export PATH=\"${BIN_DIR}:\$PATH\"' >> ~/.bashrc  # or ~/.zshrc"

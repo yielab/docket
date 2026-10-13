@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -71,3 +72,96 @@ def test_isolate_on_without_a_backend_fails_and_writes_nothing(
 
     assert _setup_sandbox.isolate("on") == 1
     assert _bytes(_cfg.FLEET_FILE) == fleet_before
+
+
+def _probe(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    *,
+    landlock: bool = False,
+    seatbelt: bool = False,
+    docker: bool = False,
+) -> None:
+    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+    monkeypatch.setattr(_setup_sandbox.sys, "platform", platform)
+    syst = _setup_sandbox._sys
+    monkeypatch.setattr(syst, "landlock_available", lambda: landlock)
+    monkeypatch.setattr(syst, "seatbelt_available", lambda: seatbelt)
+    monkeypatch.setattr(syst, "docker_daemon_reachable", lambda: docker)
+
+
+class TestTheProbeReport:
+    def test_landlock_on_linux_names_the_kernel(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "linux", landlock=True)
+        monkeypatch.setattr(_setup_sandbox.platform, "release", lambda: "6.14.0-37-generic")
+
+        out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+
+        assert "Backend: landlock (kernel 6.14)" in out
+        assert "Sandbox   off. The agent's commands run with your user's permissions." in out
+        assert "Turn it on: docket setup sandbox on" in out
+
+    def test_a_chosen_docker_says_it_was_chosen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "linux", landlock=True, docker=True)
+        assert _runner.invoke(app, ["setup", "sandbox", "backend", "docker"]).exit_code == 0
+
+        out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+
+        assert "Backend: docker (chosen; docket setup sandbox backend auto to go back)" in out
+
+    def test_seatbelt_on_macos(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "darwin", seatbelt=True)
+
+        assert "Backend: seatbelt" in _runner.invoke(app, ["setup", "sandbox"]).stdout
+
+    def test_linux_without_landlock_says_what_to_install(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "linux")
+
+        out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+
+        assert "Linux: a kernel with Landlock (>= 5.13)" in out
+        assert "Sandbox   not available: Linux needs a kernel with Landlock (5.13 or newer)." in out
+
+    def test_native_windows_gets_the_wsl2_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "win32")
+
+        out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+
+        assert "Windows: use WSL2; native runs without a sandbox" in out
+        assert "Sandbox   not available on native Windows; use WSL2." in out
+
+    def test_on_with_a_backend_reads_on_and_the_network(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "linux", landlock=True)
+        assert _setup_sandbox.isolate("on") == 0
+
+        assert _setup_sandbox.sandbox_lines() == ["Sandbox   on (landlock, network none)"]
+
+    def test_json_carries_the_platform_report(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _fresh_home(tmp_path, monkeypatch)
+        _probe(monkeypatch, "linux")
+
+        body = json.loads(_runner.invoke(app, ["setup", "sandbox", "--json"]).stdout)
+
+        assert body["platform"] == "linux"
+        assert body["available"] == []
+        assert body["missing"] == "Linux: a kernel with Landlock (>= 5.13)"
+        assert body["line"].startswith("Sandbox   not available: Linux needs")
+        assert body["backend"] == "none"

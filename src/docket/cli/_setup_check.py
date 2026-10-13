@@ -425,7 +425,7 @@ def _docker_image_has_git() -> bool | None:
     return _sys.docker_image_has_git()
 
 
-def _check_security_gates() -> int:
+def _check_security_gates(ids: list[str] | None = None) -> int:
     """Isolation posture + the always-on tool-call gate.
 
     The gate itself is unconditionally active on every tool call docket dispatches (see
@@ -457,6 +457,15 @@ def _check_security_gates() -> int:
                     "commit will fail. Set DOCKET_SANDBOX_IMAGE=<an image with git>"
                 )
 
+    issues = 0
+    if ids and _sys.sandbox_availability().backend == "none":
+        ui.console.print(
+            "✗   Sandbox: no usable sandbox backend on this machine -- "
+            "docket setup sandbox shows what is missing",
+            markup=False,
+        )
+        issues = 1
+
     net_mode = _fleet.get_network_mode()
     if net_mode == "none":
         if not _fleet.network_mode_recorded():
@@ -476,7 +485,7 @@ def _check_security_gates() -> int:
             "  Network: open (granted) -- docket setup sandbox network none to cut the sandbox's network"
         )
 
-    return 0
+    return issues
 
 
 def _check_policies() -> int:
@@ -811,10 +820,12 @@ def _check_json_key_hygiene(
 
 def _check_json_security() -> dict[str, Any]:
     """Gate/isolation posture, JSON shape of `_check_security_gates`."""
+    backend = _sys.sandbox_availability().backend
     return {
         "toolCallGate": "always-on",
         "isolation": _fleet.get_isolation_state(),
-        "sandboxBackend": _sys.sandbox_availability().backend,
+        "sandboxBackend": backend,
+        "sandboxUsable": backend != "none",
         "dockerImageHasGit": _docker_image_has_git(),
         "network": _fleet.get_network_mode(),
     }
@@ -888,6 +899,8 @@ def _check_json() -> dict[str, Any]:
     issues += notify_issues
 
     security = _check_json_security()
+    if ids and not security["sandboxUsable"]:
+        issues += 1
     tmpl_results = _check_json_template_drift(ids)
 
     return {
@@ -943,7 +956,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_provider_catalog()
     _check_exporters()
     _check_notifications(ids)
-    _check_security_gates()
+    _check_security_gates(ids)
     _check_policies()
     _check_pod_config_overlays()
     _check_template_version(ids)

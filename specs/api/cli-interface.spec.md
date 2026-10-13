@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Complete
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -197,7 +197,12 @@ the apply step, so a member a present `.docket/` or `--recipe` added is counted 
 When no enabled channel delivers beyond the console, the summary ends with
 `core.channel.unreached_warning`'s text; on a TTY with a desktop session it then asks
 `Enable desktop notifications now? [Y/n]` and, on yes, enables `desktop` and sends one test
-notification (operator-loop.spec.md Notifications 17). Off a TTY it only warns
+notification (operator-loop.spec.md Notifications 17). Off a TTY it only warns. The output
+closes with a `This machine` block whose `Sandbox` line is the sandbox posture (the lines
+below, shared with `status` and `setup sandbox --json`): `Sandbox   off. The agent's commands run
+with your user's permissions.` then `Turn it on: docket setup sandbox on`; `Sandbox   on
+(landlock, network none)`; or `Sandbox   not available: Linux needs a kernel with Landlock (5.13
+or newer).` / `Sandbox   not available on native Windows; use WSL2.` when no backend exists
 **Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
 or provisioning registered no member — docket's flat convention, see Return Code Convention below)
 
@@ -210,11 +215,12 @@ provisioning belongs to `init`, including multi-project automation.
 **Purpose**: Show where a pod stands — tasks, tokens, outcomes, the last run — or every pod.
 **Syntax**: `docket status [--all] [--json] [--history] [--days N] [--pod <name>]`
 **Behavior**:
-- With no flag, resolve the pod (`--pod`, `DOCKET_POD`, then the most-specific initialized pod
+- Output opens with the `Sandbox` line (the `init` closing lines; JSON `isolation` keeps the
+  string `on (<backend>, network <open|none>)` or `off (default); <backend|no backend> found,
+  network <open|none>`). With no flag, resolve the pod (`--pod`, `DOCKET_POD`, then the most-specific initialized pod
   whose `codebase`/`workDir` contains the current directory) and report its path, members, task
   counts (including waiting approval, waiting input, failed and "approved, ready"; a pod with a
-  `waiting_input` task is `waiting`), the `Isolation:` sandbox posture (the same string as JSON
-  `isolation`: `on (bwrap, network open)` or `off (default); bwrap found, network open`), measured tokens with a labelled dollar
+  `waiting_input` task is `waiting`), measured tokens with a labelled dollar
   estimate, the success/failure/aborted counts and latency from trace `session_end` events, the
   last run, and whether `docket start` is running (its `serve.pid` names a live process).
   When the operator has allowed a repository's commands (`reviewed-repos.json`), a `Commands`
@@ -563,10 +569,14 @@ preset unless `--no-preset` and print which role resolves to what. `add <file.ya
 source, why); `set <role|default> <provider/model>`; `preset [name]` lists or applies a provider
 preset to every role; `reset [--yes]` restores the built-in policy.
 **`setup sandbox`** — bare or `status [--json]` is a read: the gate is always active, plus the
-isolation state, the network mode and the backend found. `on` needs a usable backend (landlock on Linux 5.13+, seatbelt on macOS, or a chosen reachable
-docker; exit 1 naming the fixes otherwise), `off`, `backend auto|docker` (records the choice in
-fleet.json; `auto` is landlock or seatbelt, `docker` is docker only; any other word is a usage
-error, exit 2), `network none|open` (any other word is a usage error,
+isolation state, the network mode and a per-platform probe report: the backend found
+(`landlock (kernel 6.14)`, `seatbelt`, `docker`) or what is missing (`Linux: a kernel with
+Landlock (>= 5.13)`; `macOS: /usr/bin/sandbox-exec`; `Windows: use WSL2; native runs without a
+sandbox`), then the `Sandbox` line. `--json` adds `platform`, `kernel`, `available`, `missing`,
+`line` and `hint`. `on` needs a usable backend (landlock on Linux 5.13+, seatbelt on macOS, or a
+chosen reachable docker; exit 1 naming the fixes otherwise), `off`, `backend auto|docker` (records
+the choice in fleet.json; `auto` is landlock or seatbelt, `docker` is docker only; any other word
+is a usage error, exit 2), `network none|open` (any other word is a usage error,
 exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate`, `gates.backend` and
 `gates.network`. See security-gates.spec.md.
 **`setup shell <bash|zsh>`** — prints the completion script generated from the live command tree;
@@ -968,6 +978,15 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.4.0 (2026-10-13)
+- The sandbox is visible: `init` closes with a `This machine` / `Sandbox` block, `status` opens
+  with the `Sandbox` line (replacing the `Isolation` row), `setup sandbox` prints a per-platform
+  probe report and its `--json` gains `platform`, `kernel`, `available`, `missing`, `line`,
+  `hint`; `doctor` counts a home with pods and no usable backend as an issue.
+- `setup sandbox backend auto|docker` (audited `gates.backend`); `setup mcp add --no-isolate`,
+  `doctor`'s unjailed-MCP warning, `config explain`'s `isolate` and the recipes' unjailed-server
+  note are deleted with the `isolate` field (P41-3); no backend message names bubblewrap.
 
 ### Version 2.3.0 (2026-10-12)
 

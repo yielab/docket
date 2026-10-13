@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.27.1
+**Version**: 1.28.0
 **Status**: Complete
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -60,6 +60,7 @@ structural rules hold everywhere:
       "toolCallGate": "always-on",
       "isolation": "string ('off (default)' | 'on' | 'off')",
       "sandboxBackend": "string ('landlock' | 'seatbelt' | 'docker' | 'none')",
+      "sandboxUsable": "boolean (false when the backend is 'none'; with at least one project agent it adds one to `issues`)",
       "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is on; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
       "network": "string ('open' | 'none'; the global mode)"
     },
@@ -419,6 +420,13 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.28.0 (2026-10-13)
+- `doctor --json` `securityGates.sandboxUsable`; a home with pods and no usable backend counts as
+  an issue. `setup sandbox --json` carries `platform`, `kernel`, `available`, `missing`, `line`
+  and `hint` beside the existing state fields. `sandboxBackend` is `landlock|seatbelt|docker|none`;
+  `securityGates.unjailedMcpServers`, `config explain`'s `isolate` and `recipes`'
+  `unjailed_mcp_servers` are deleted with the `isolate` field.
 
 ### Version 1.27.1 (2026-10-12)
 

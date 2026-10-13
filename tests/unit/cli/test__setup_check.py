@@ -120,6 +120,7 @@ def _seed(
         sfile.chmod(0o600)
 
     _point_config_at(home, monkeypatch)
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     if notify:
         _channel.enable_channel("desktop")
     return home
@@ -466,6 +467,20 @@ class TestChecks:
         assert "turns will be refused" not in out
         assert _setup_check._check_json_security()["isolation"] == "off (default)"
 
+    def test_pods_and_no_usable_backend_is_an_issue(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        base = _setup_check._check_json()["issues"]
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        usable = _setup_check._check_json()
+        assert base == usable["issues"] + 1
+        assert usable["checks"]["securityGates"]["sandboxUsable"] is True
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        assert _setup_check._check_security_gates(["myshop"]) == 1
+        assert "no usable sandbox backend" in capsys.readouterr().out
+
     def test_security_gates_names_the_backend_a_turn_would_use(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -478,6 +493,7 @@ class TestChecks:
             "toolCallGate": "always-on",
             "isolation": "on",
             "sandboxBackend": "landlock",
+            "sandboxUsable": True,
             "dockerImageHasGit": None,
             "network": "none",
         }

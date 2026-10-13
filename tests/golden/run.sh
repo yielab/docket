@@ -90,6 +90,7 @@ run_docket() {
   DOCKET_HOME="$fake_home/.docket" \
   DOCKET_FAKE_HOME="$fake_home" \
   DOCKET_NO_COLOR=1 \
+  DOCKET_SANDBOX_BACKEND=docker \
   NO_COLOR=1 \
     bash "$DOCKET_BIN" "$@" \
       >"$stdout_file" 2>"$stderr_file" \

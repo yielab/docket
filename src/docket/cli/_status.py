@@ -13,7 +13,7 @@ import typer
 import docket.config as _cfg
 from docket import ui
 from docket.cli import _contract
-from docket.cli._setup_sandbox import _off_label, sandbox_state
+from docket.cli._setup_sandbox import _off_label, print_sandbox_block, sandbox_state
 from docket.cli._target import TargetError, pod_option, resolve_pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -271,7 +271,6 @@ def _render_current(summary: dict[str, Any]) -> None:
         ("Path", summary["path"] or "—"),
         ("Status", summary["status"]),
         ("Members", f"{summary['memberCount']} ({roles})"),
-        ("Isolation", summary["isolation"]),
         (
             "Tasks",
             f"{tasks['pending']} pending · {tasks['running']} running · "
@@ -289,6 +288,8 @@ def _render_current(summary: dict[str, Any]) -> None:
         ("Last run", f"{run['id']} {run['state']}" if run else "none"),
         ("docket start", "running" if summary["running"] else "not running"),
     ]
+    print_sandbox_block()
+    ui.console.print()
     ui.header("Pod", summary["id"])
     ui.console.print()
     for label, value in rows:
@@ -296,6 +297,8 @@ def _render_current(summary: dict[str, Any]) -> None:
 
 
 def _render_all(summaries: list[dict[str, Any]]) -> None:
+    print_sandbox_block()
+    ui.console.print()
     if not summaries:
         ui.warn("No initialized projects. Run docket init inside a project directory.")
         return
