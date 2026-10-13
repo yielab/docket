@@ -380,6 +380,14 @@ model endpoint is missing. --fix repairs detected drift.
 
 Example: docket setup
 
+### setup profile
+
+**Usage:** `docket setup profile`
+
+Show or set the profile: lights-out refuses tasks until isolation, no network and a gate hold.
+
+Example: docket setup profile lights-out
+
 ### setup shell
 
 **Usage:** `docket setup shell`

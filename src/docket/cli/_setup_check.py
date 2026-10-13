@@ -24,6 +24,7 @@ from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _pol
+from docket.core import profile as _profile
 from docket.core import secrets as _secrets
 from docket.core.utils import aggregate_cost, gating_cost, project_ids
 from docket.edges import store
@@ -488,6 +489,21 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
     return issues
 
 
+def _check_profiles() -> None:
+    """Under ``lights-out``, each pod's profile and unmet requirements; silent otherwise."""
+    report = _profile.lights_out_report()
+    if not report:
+        return
+    ui.section("Profile:")
+    for project, violations in report.items():
+        if not violations:
+            ui.success(f"  {project}: lights-out, all requirements met")
+            continue
+        ui.warn(f"  {project}: lights-out, tasks are refused until fixed")
+        for v in violations:
+            ui.console.print(f"    {v.requirement}: {v.detail}. Fix: {v.fix}", markup=False)
+
+
 def _check_policies() -> int:
     """Guardrail policy store integrity: flags any file the evaluator would fail closed on,
     through the same ``core.policy`` validation, so doctor can never call a store healthy that
@@ -899,6 +915,8 @@ def _check_json() -> dict[str, Any]:
     issues += notify_issues
 
     security = _check_json_security()
+    if report := _profile.lights_out_report():
+        security["profile"] = {p: _profile.as_json(v) for p, v in report.items()}
     if ids and not security["sandboxUsable"]:
         issues += 1
     tmpl_results = _check_json_template_drift(ids)
@@ -957,6 +975,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_exporters()
     _check_notifications(ids)
     _check_security_gates(ids)
+    _check_profiles()
     _check_policies()
     _check_pod_config_overlays()
     _check_template_version(ids)

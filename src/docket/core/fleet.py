@@ -66,6 +66,8 @@ class FleetSecurity(BaseModel):
     network_mode: str = Field("unset", alias="networkMode")
     # 'auto' (landlock on Linux, seatbelt on macOS) | 'docker' (docker only, once chosen).
     sandbox_backend: str = Field("auto", alias="sandboxBackend")
+    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; core/profile.py).
+    profile: str = Field("unset", alias="profile")
 
 
 class FleetConfig(BaseModel):
@@ -267,6 +269,21 @@ def set_network_mode(mode: str) -> None:
         raise ValueError(f"network mode must be 'none' or 'open', not {mode!r}")
     cfg = load_fleet()
     cfg.security.network_mode = mode
+    _save_fleet(cfg)
+
+
+def get_profile(cfg: FleetConfig | None = None) -> str:
+    """'lights-out' only when the operator recorded it; unset or a stray value reads as 'attended'."""
+    mode = (cfg or load_fleet()).security.profile
+    return "lights-out" if mode == "lights-out" else "attended"
+
+
+def set_profile(profile: str) -> None:
+    """Record the fleet's profile: 'lights-out', or 'attended' (which clears the record)."""
+    if profile not in ("lights-out", "attended"):
+        raise ValueError(f"profile must be 'lights-out' or 'attended', not {profile!r}")
+    cfg = load_fleet()
+    cfg.security.profile = "lights-out" if profile == "lights-out" else "unset"
     _save_fleet(cfg)
 
 

@@ -47,6 +47,7 @@ from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
 from docket.core import pod_provisioning as _pp
 from docket.core import policy as _policy
+from docket.core import profile as _profile
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
 from docket.core import secrets as _secrets
@@ -2967,6 +2968,22 @@ def _run_pipeline(
         pipeline_index += 1
 
 
+def _refuse_unmet_profile(
+    project: str, task_id: str, runtime_steps: tuple[_orch.PlannedNode, ...]
+) -> None:
+    """Under the ``lights-out`` profile, refuse the task before its first hop when a requirement
+    is unmet: audit ``profile.refused`` and raise ``DispatchError`` naming each fix."""
+    violations = _profile.project_violations(project, runtime_steps)
+    if not violations:
+        return
+    _audit.audit_log(
+        "profile.refused",
+        f"pod={project} task={task_id} requirements={','.join(v.requirement for v in violations)}",
+    )
+    lines = "; ".join(f"{v.requirement}: {v.detail} ({v.fix})" for v in violations)
+    raise DispatchError(f"lights-out profile not met -- {lines}")
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -3074,6 +3091,7 @@ def dispatch_task(
 
         result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
+        _refuse_unmet_profile(project, task_id, runtime_steps)
         _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
     except DispatchError as exc:
         result.status = "failed"
