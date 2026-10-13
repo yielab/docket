@@ -17,6 +17,18 @@ map. Symbols drift; re-locate every one with `rg -n` before editing.
 commit is the Wave 100 claim commit (`git log -1 --format=%h -- .agents/handoffs/wave-100-worker-packets.md`
 on `develop` before any Wave 100 merge); worktrees and branches are `w100-p41-<n>`.
 
+**Sub-wave B runs as Wave 101** (opened 2026-10-13). Its base commit is the Wave 101 claim
+commit (`git log -1 --format=%h -- TODO.md` on `develop` before any Wave 101 merge); worktrees
+and branches are `w101-p41-<n>`. The seam between P41-4 and P41-5, decided by the coordinator:
+- **P41-5** adds `config.pod_cache_dir(project)` beside `pod_scratch_dir` (created 0700 where the
+  scratch dir is created; "<lead workspace>/cache/" in the card means "per pod") and gives
+  `system.task_environment` a `cache_dir: Path | None = None` argument that sets the six
+  variables. Jailed `bash` gets the cache dir as an extra rw root and the six variables; the
+  file tools' roots do not change.
+- **P41-4** builds the jail through one `system.py` function that takes `roots` plus
+  `extra_rw: tuple[Path, ...] = ()` and is reused by `run_bash`, verify and `run:`; it does not
+  depend on P41-5. The integrator passes the cache dir through `extra_rw` after both merge.
+
 ## 0. Rules for every worker
 
 **Exactly §0 of [wave-98-worker-packets.md](wave-98-worker-packets.md)**, with the sub-wave's

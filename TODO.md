@@ -11,15 +11,18 @@
 >
 > ---
 >
-> ## ◇ NO ACTIVE WAVE — Wave 100 closed 2026-10-12: Phase 40 complete; Phase 41 sub-wave B next
+> ## ▶ ACTIVE BOARD — WAVE 101 (Phase 41's sub-wave B; opened 2026-10-13)
 >
 > **Phase 40** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)) closed
-> 2026-10-12: thirteen cards over Waves 98–100, archived in
-> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). **Wave 100** ran P40-5 and
-> P40-13 (the D-59 flow) beside Phase 41's sub-wave A (P41-1, P41-6), one Sonnet worker per card.
-> **Phase 41** (one execution envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md))
-> continues below: sub-wave B (P41-2 ∥ P41-4 ∥ P41-5) is ready on the Wave 100 rollup, packets in
+> 2026-10-12 over Waves 98–100, archived in
+> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). **Phase 41** (one execution
+> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed its sub-wave A in
+> Wave 100. **Wave 101** runs sub-wave B, **P41-5 ∥ P41-4 ∥ P41-2**, one Sonnet worker per card in
+> an isolated worktree under one integrator, packets in
 > [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md).
+> They share `edges/adapters/system.py` (different functions) and two specs whose versions are
+> assigned. Merge order: P41-5, P41-4, P41-2; the integrator wires P41-5's cache dir into
+> P41-4's jail roots and owns the test that crosses that seam.
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -314,7 +317,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-wave A closed in Wave 100; sub-wave B next
+## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-wave A closed in Wave 100; sub-wave B active in Wave 101
 
 > **Opened 2026-10-12; sub-wave A (P41-1, P41-6) closed in Wave 100.** Sub-wave B bases on the
 > Wave 100 rollup. The integrator added at the close: a sandboxed `bash` call with no usable
@@ -362,7 +365,7 @@ Oracle: the child's exit code and captured errors. Note: this host runs kernel 6
 
 ### P41-2 — a Seatbelt backend for macOS
 
-**Status:** TODO (sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
+**Status:** IN PROGRESS (Wave 101, sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
 
 **Trigger (D-60):** on macOS the only backend is Docker Desktop, which most operators do not
 run; Claude Code and Codex use the OS's `sandbox-exec`.
@@ -398,7 +401,7 @@ running, a turn uses landlock.
 
 ### P41-4 — verify, `run:` steps and MCP servers run inside the envelope
 
-**Status:** TODO (sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (verify gate), security-gates.spec.md ("Credentials in task processes")
+**Status:** IN PROGRESS (Wave 101, sub-wave B) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (verify gate), security-gates.spec.md ("Credentials in task processes")
 
 **Trigger (D-60, measured 2026-10-12):** `core/dispatch.py` calls `system.run_verify_cmd` on
 the host, so a test file the agent writes runs with the operator's rights even with the sandbox
@@ -417,7 +420,7 @@ isolated home (integration lane).
 
 ### P41-5 — a per-pod cache directory and a hidden home
 
-**Status:** TODO (sub-wave B) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (task environment)
+**Status:** IN PROGRESS (Wave 101, sub-wave B) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (task environment)
 
 **Trigger (D-60):** `isolate: false` existed because `uv`'s cache under the home was read-only
 in the jail; with the home denied, every tool that writes `~/.cache`, `~/.npm` breaks.
