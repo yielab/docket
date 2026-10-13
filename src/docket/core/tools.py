@@ -76,6 +76,8 @@ class ToolContext:
     allow_commands: tuple[str, ...] = ()
     pregrants: tuple[Pregrant, ...] = ()
     approval_expires_at: str | None = None
+    # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
+    cache_dir: Path | None = None
     on_process: Callable[[str, dict[str, Any]], None] | None = None
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
@@ -850,6 +852,7 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         ctx.cancellation_check,
         _tag_bash_process_events(ctx.on_process),
         ctx.network,
+        ctx.cache_dir,
     )
 
 

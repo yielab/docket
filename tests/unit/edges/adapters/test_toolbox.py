@@ -133,3 +133,59 @@ class TestOnProcessLifecycle:
 
         real_pid = int(pidfile.read_text().strip())
         assert recorder.events[0][1]["pgid"] == real_pid
+
+
+class TestJailedCacheDir:
+    def _capture(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        seen: dict[str, object] = {}
+
+        def _popen(argv: object, **kwargs: object) -> None:
+            seen["argv"] = argv
+            seen["env"] = kwargs["env"]
+            raise OSError("stop")
+
+        monkeypatch.setattr(toolbox.subprocess, "Popen", _popen)
+        monkeypatch.setattr(toolbox._system, "git_identity_env", lambda _root: {})
+        monkeypatch.setattr(toolbox._system, "git_dirs", lambda _root: [])
+        monkeypatch.setattr(
+            toolbox._system,
+            "sandbox_availability",
+            lambda: toolbox._system.SandboxAvailability("landlock", False, False, True),
+        )
+        return seen
+
+    def test_a_jailed_command_gets_the_cache_variables_and_a_rw_root(
+        self, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._capture(monkeypatch)
+        cache = tmp_path / "cache"
+        cache.mkdir()
+
+        toolbox.run_bash((workspace,), "true", sandbox="auto", cache_dir=cache)
+
+        env = seen["env"]
+        assert isinstance(env, dict)
+        for name in (
+            "HOME",
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "UV_CACHE_DIR",
+            "PIP_CACHE_DIR",
+            "npm_config_cache",
+        ):
+            assert env[name] == str(cache)
+        argv = seen["argv"]
+        assert isinstance(argv, list)
+        assert str(cache.resolve()) in argv
+
+    def test_without_a_cache_dir_home_is_not_redirected(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._capture(monkeypatch)
+
+        toolbox.run_bash((workspace,), "true", sandbox="auto")
+
+        env = seen["env"]
+        assert isinstance(env, dict)
+        assert "HOME" not in env
+        assert "XDG_CACHE_HOME" not in env

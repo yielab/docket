@@ -565,11 +565,30 @@ def credential_names() -> set[str]:
     return names
 
 
-def task_environment(overlay: dict[str, str] | None = None) -> dict[str, str]:
-    """The host environment minus docket's credentials (``credential_names``), with *overlay*
-    applied last."""
+_CACHE_ENV_VARS = (
+    "HOME",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "UV_CACHE_DIR",
+    "PIP_CACHE_DIR",
+    "npm_config_cache",
+)
+
+
+def cache_environment(cache_dir: Path) -> dict[str, str]:
+    """The six variables that point a tool's home and caches at *cache_dir*."""
+    return {name: str(cache_dir) for name in _CACHE_ENV_VARS}
+
+
+def task_environment(
+    overlay: dict[str, str] | None = None, cache_dir: Path | None = None
+) -> dict[str, str]:
+    """The host environment minus docket's credentials (``credential_names``), with the pod
+    cache variables (when *cache_dir* is given) and then *overlay* applied last."""
     names = credential_names()
     merged = {k: v for k, v in os.environ.items() if k not in names}
+    if cache_dir is not None:
+        merged.update(cache_environment(cache_dir))
     if overlay:
         merged.update(overlay)
     return merged

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.38.0
+**Version**: 6.39.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -65,7 +65,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -549,6 +549,14 @@ was seeded once at binding time.)*
    (Lead, Reviewer, Tester, or an Implementer with no allocation) **MUST** receive no environment
    override — today's inherit-the-parent-env behavior. See `docket-meta.spec.md` for the fields
    themselves.
+   A hop's **jailed** `bash` (a sandbox backend resolved for the call) **MUST** additionally
+   run with `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `UV_CACHE_DIR`, `PIP_CACHE_DIR` and
+   `npm_config_cache` all set to the pod's cache directory (`config.pod_cache_dir`, mode 0700,
+   created beside the scratch directory at provisioning), and that directory **MUST** be a
+   read-write root of the jail; the file tools' roots are unchanged. `system.task_environment`
+   sets those six variables when given a `cache_dir`, and an unjailed command never has its
+   `HOME` redirected. The `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity still comes from the
+   variables dispatch sets, not from `HOME`.
 4. Every hop **MUST** emit a `context_composed` event (the composed prompt's byte accounting —
    see "Bounded hop prompts") and a `tool_call` trace event before the turn, and a `tool_result`
    (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST** additionally
@@ -2114,6 +2122,13 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.39.0 (2026-10-13)
+
+- "Task environment": a pod has a cache directory (0700) and a jailed `bash` runs with `HOME`,
+  the XDG cache and config dirs and the `uv`, `pip` and `npm` cache variables pointing at it, with
+  the directory as a read-write jail root. Before this, a jail with the home denied broke every
+  tool that writes `~/.cache` or `~/.npm`.
 
 ### Version 6.38.0 (2026-10-12)
 

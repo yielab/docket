@@ -158,6 +158,19 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     return (_cfg.workspace_dir(agent_id),)
 
 
+def _pod_cache_dir(agent_id: str) -> Path | None:
+    """The agent's pod cache dir, created 0700 if a pod provisioned before it existed lacks one."""
+    project = _pod.pod_of(agent_id)
+    if project is None:
+        return None
+    cache = _cfg.pod_cache_dir(project)
+    try:
+        cache.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return None
+    return cache
+
+
 def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> str:
     """Accept a task root only when it is a directory under a same-pod Implementer's
     ``tasks/`` worktree directory."""
@@ -495,6 +508,7 @@ class DocketDriver:
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
+            cache_dir=_pod_cache_dir(agent_id) if want_sandbox else None,
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role

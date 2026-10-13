@@ -292,6 +292,13 @@ def pod_scratch_dir(project: str) -> Path:
     return PODS_DIR / project / ".scratch"
 
 
+def pod_cache_dir(project: str) -> Path:
+    """The pod's cache and hidden home for jailed commands (``HOME``, ``XDG_*``, ``UV_CACHE_DIR``).
+
+    Created 0700 beside the scratch directory at provisioning; removed with the pod."""
+    return PODS_DIR / project / "cache"
+
+
 def pod_config_dir(project: str) -> Path:
     """Per-pod configuration overlay directory (roles, and future policies), resolved
     above the global overlay for that pod alone -- see `core/archetypes.py::load_registry`.
