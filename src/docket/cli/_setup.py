@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -84,10 +83,9 @@ def _notify_piece() -> Piece:
 
 
 def _backend_found() -> str:
-    for name in ("bwrap", "docker"):
-        if shutil.which(name):
-            return name
-    return "none"
+    from docket.edges.adapters import system as _system
+
+    return _system.sandbox_availability().backend
 
 
 def _sandbox_piece() -> Piece:

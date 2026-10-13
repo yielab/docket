@@ -98,13 +98,12 @@ def _mcp_servers_report(
                 "name": s.name,
                 "kind": s.kind,
                 "scope": "pod" if s.name in own else "global",
-                "isolate": s.isolate,
             }
             for s in catalog
         ]
     by_name = {s.name: s for s in catalog}
     return [
-        {"name": name, "kind": by_name[name].kind, "scope": "pod", "isolate": by_name[name].isolate}
+        {"name": name, "kind": by_name[name].kind, "scope": "pod"}
         for name in sorted(selected)
         if name in by_name
     ]
@@ -424,10 +423,7 @@ def _render_endpoint(report: dict[str, Any]) -> None:
 
 def _render_tools(report: dict[str, Any]) -> None:
     tools = report["tools"]
-    mcp = [
-        m["name"] if m.get("isolate", True) else f"{m['name']} (unjailed)"
-        for m in tools["mcpServers"]
-    ]
+    mcp = [m["name"] for m in tools["mcpServers"]]
     ui.section("Tools")
     _kv("Tools allowed:", ", ".join(tools["allowed"]) or "(none)")
     _kv("Tools denied: ", ", ".join(d["name"] for d in tools["denied"]) or "(none)")

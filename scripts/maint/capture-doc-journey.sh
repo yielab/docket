@@ -41,7 +41,7 @@ seed_repo "$ROOT/code/svc"
 cd "$ROOT/code/myapp" || exit 1
 docket setup provider add local "$ENDPOINT" --model local-model --ctx 16384 --max-tokens 4096 \
     >/dev/null 2>&1
-# Isolation is opt-in; the visuals show the jailed path, so this host needs bwrap or docker.
+# Isolation is opt-in; the visuals show the jailed path, so this host needs landlock (Linux 5.13+), seatbelt, or a chosen docker.
 docket setup sandbox on >/dev/null 2>&1 || exit 1
 
 # 1-team: the team comes from a shipped recipe, is written back to .docket/, validated, planned.

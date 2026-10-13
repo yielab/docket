@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.46.0
+**Version**: 0.47.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -43,7 +43,7 @@ This specification covers:
   (`core/approval.py`'s `wait_for_approval`), and the audit trail it leaves (ROADMAP Phase 19
   P19-3) — scoped strictly to calls made through that one dispatcher, not to the daemon
 - The exec sandbox for the `bash` tool (ROADMAP Phase 19 P19-9): backend detection
-  (`edges.adapters.system.sandbox_availability`), the docker/bwrap jails it can build, and the
+  (`edges.adapters.system.sandbox_availability`), the landlock, seatbelt and docker jails it can build, and the
   honest reporting contract that keeps "a jail is available" and "this call ran in one" distinct
   — a mechanism layered *underneath* the gate above, never a substitute for it
 
@@ -197,12 +197,16 @@ are owned here, not there.
    an explicit off does. `docket setup sandbox on` records on and succeeds only when
    `sandbox_availability()` finds a backend; `setup sandbox off` records an explicit off; both are
    audited (`gates.isolate`). `docket setup sandbox` and `docket setup` show `off (default)`, `on`
-   or `off`. The requirement a host must meet to turn it on is one backend: bubblewrap (`bwrap`,
-   Linux only) or a reachable docker daemon (the only backend on macOS). No backend is ever needed
-   while isolation is off.
-4. `sandbox_availability()` tries bwrap first, then docker; `DOCKET_SANDBOX_BACKEND` still forces
-   the choice. The jail mounts the git dir and common dir of every root that is inside a git
-   repository or linked worktree read-write (bwrap `--bind`, docker `-v`), so a jailed
+   or `off`. The requirement a host must meet to turn it on is one backend: Landlock (Linux 5.13+),
+   Seatbelt (macOS), or a reachable docker daemon once the operator chose it. No backend is ever
+   needed while isolation is off.
+4. `sandbox_availability()` reads the fleet's `sandboxBackend` (`FleetSecurity.sandbox_backend`,
+   `auto` by default, written by `docket setup sandbox backend auto|docker`, audited
+   `gates.backend`). `auto` is landlock on Linux and seatbelt on macOS and nothing else; `docker`
+   is docker only (a reachable daemon) and the only case docker is probed; a host with neither
+   resolves to `none`. `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) still
+   forces the choice. The jail mounts the git dir and common dir of every root that is inside a git
+   repository or linked worktree read-write (landlock `--rw`, docker `-v`), so a jailed
    `git add` + `git commit` succeeds there while a write to a host path outside the roots fails.
    The docker jail is only as capable as `DOCKET_SANDBOX_IMAGE` (default `alpine:3.20`, which docket
    does not ship an image for): a jailed `git commit` needs an image with `git`, and python-based
@@ -211,8 +215,8 @@ are owned here, not there.
    `FROM alpine:3.20` + `apk add --no-cache git` image to prove a jailed commit in a linked worktree
    and `network none` against a host-side listener.
    The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
-   are re-bound read-only on top (bwrap `--ro-bind`, docker `:ro`), after the read-write mounts they
-   shadow: a writable hook or config (`core.hooksPath`, `core.fsmonitor`) would run attacker-chosen
+   are re-bound read-only on top (docker `:ro`, a seatbelt deny rule), after the read-write mounts they
+   shadow; Landlock cannot take a right from a sub-path of a granted root, so under landlock they stay writable: a writable hook or config (`core.hooksPath`, `core.fsmonitor`) would run attacker-chosen
    code on the operator's next unjailed git command. The same applies, only when present, to every
    submodule git dir under `modules/` of the git dir and common dir (any depth, found by walking
    for a directory holding `HEAD`, never by running git): its `hooks`, `config`, `config.worktree`
@@ -824,43 +828,37 @@ either.
      Requires a real ABI probe (`landlock_available`: `landlock_create_ruleset` with the VERSION
      flag returns >= 1); a kernel without Landlock, or one whose seccomp policy blocks the
      syscall, is `false`, never assumed.
-   - **`docker`** — a container. Requires not just the binary (`docker_available`) but a reachable
+   - **`docker`** — a container, used only when the operator chose it (`sandboxBackend: docker`);
+     never probed or picked under `auto`. Requires not just the binary (`docker_available`) but a reachable
      daemon (`docker_daemon_reachable`, a real `docker info` probe) — a binary with no running or
      reachable daemon is common enough (rootless setups, a freshly installed package whose service
      was never started) that "installed" **MUST NOT** be treated as "usable".
-   - **`bwrap`** — a namespace jail (mount/pid/ipc/uts, via `--unshare-all`). Requires not just the
-     binary but a real, harmless smoke test actually building a sandbox (`bwrap_available`) — a
-     kernel with unprivileged user namespaces disabled (hardened hosts, some already-containerized
-     CI runners) makes the binary present but the capability absent, and detection **MUST** observe
-     that, not trust `which`.
    - **`none`** — neither is usable. The command still runs (subject to the gate above and to
      `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
      caller (requirement 4).
-   - **`seatbelt`** — macOS `sandbox-exec` (requirement 11), between `landlock` and `bwrap`; usable
+   - **`seatbelt`** — macOS `sandbox-exec` (requirement 11), the macOS counterpart of `landlock`; usable
      when the host is darwin and `/usr/bin/sandbox-exec` exists.
-   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
+   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`none`) **MUST** override the automatic choice —
      for tests and for an operator who wants to force or disable a backend regardless of what is installed.
 2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
    `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
    handler **MUST NOT** ask for a jail unless the caller explicitly sets `sandbox="auto"`. This
    mirrors the existing Docker workspace isolation posture (`docket setup sandbox on|off`, also opt-in) for
-   the same reason: docker is not installed on every developer machine, bwrap is a Linux-only
-   binary docket has never previously depended on, and turning a jail on by default for a codebase
+   the same reason: docker is not installed on every developer machine, landlock needs a recent
+   Linux kernel, and turning a jail on by default for a codebase
    that does not have Rack CLI's own testing behind it risks breaking ordinary tool calls in ways
    the gate never does (the P19-3 gate only ever narrows *which* commands need a human; a
    filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
    path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
-   `"off"` until an operator has verified docker or bwrap works on their fleet's hosts**, then opt
+   `"off"` until an operator has verified a backend works on their fleet's hosts**, then opt
    in fleet-wide with `docket setup sandbox on` — the same "opt in, verify, then adopt" path Docker
    workspace isolation already used before it, too, was wired live (W18-3; see requirement 9).
-3. **The jail is additive to `resolve_within`, never a replacement.** A `bwrap` jail binds the whole
-   host filesystem read-only over itself, masks `DOCKET_HOME` with an empty tmpfs (the store
-   holds `secrets.json`, every pod's sessions and traces, and the audit log; a host-readable
-   bind would hand all of it to the jailed command), then re-binds each of `ToolContext.roots`
-   read-write on top, so a task worktree under `DOCKET_HOME` stays reachable — the same
+3. **The jail is additive to `resolve_within`, never a replacement.** A `landlock` jail grants each of
+   `ToolContext.roots` read-write and the system directories read-only, and nothing else: the
+   operator's `$HOME` and `DOCKET_HOME` (`secrets.json`, every pod's sessions and traces, the
+   audit log) are denied for read as well as write (requirement 10) — the same
    "contain to a known set of roots" shape `resolve_within` already uses for file tools,
-   extended to the exec surface. The rest of the host (the operator's `$HOME` included) stays
-   readable inside a `bwrap` jail; the jail protects host integrity, not host confidentiality. A `docker` jail is stronger still: nothing outside the
+   extended to the exec surface. A `docker` jail is stronger still: nothing outside the
    mounted roots exists inside the container's filesystem at all. Both **MUST** hold at the same
    time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
    NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
@@ -883,14 +881,14 @@ either.
      in a jail" anywhere this is surfaced. Requirement 5 covers the specific failure mode this rule
      exists to prevent.
 5. **A jail that fails to start MUST fail closed, not fall back to unsandboxed.** If `sandbox="auto"`
-   resolves to a real backend (`sandbox_availability()` said `docker` or `bwrap`) but the actual
+   resolves to a real backend (`sandbox_availability()` said `landlock`, `seatbelt` or `docker`) but the actual
    subprocess launch raises (`OSError` — the binary vanished, permissions changed, the daemon died
    between the probe and the call), `run_bash` **MUST** return a failure naming the backend that
    failed to start (`"sandbox (<backend>) failed to start: <error>"`) and **MUST NOT** silently retry
    the command unsandboxed. A jail that is claimed and absent is worse than no jail at all, because
    it is trusted; a refusal is honest.
 6. **Environment is minimized inside a real jail, never inherited wholesale.** When an actual
-   backend (`docker` or `bwrap`) is in effect, the jailed process **MUST NOT** receive the full host
+   backend (`landlock`, `seatbelt` or `docker`) is in effect, the jailed process **MUST NOT** receive the full host
    environment `run_bash`'s unsandboxed path uses — only `PATH`, the operator's git identity
    (`system.git_identity_env`: the four `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variables when set, else
    `user.name`/`user.email` as host git resolves them in the root, so a jailed commit carries the
@@ -905,12 +903,11 @@ either.
    `edges/adapters/toolbox.py`'s existing timeout contract — start the command in its own session so
    a hang with forked children can still be killed as a whole (`_kill_group`) — **MUST** continue to
    leave no orphan under a real jail:
-   - **bwrap**: `_kill_group`'s existing process-group `SIGKILL` **MUST** suffice on its own. bwrap
-     does not detach into a new session, so it and everything it forks stay in the same host process
-     group `_kill_group` already signals; Linux additionally tears down bwrap's entire pid namespace
-     the moment its first process dies, so a command inside it cannot escape by detaching even if it
-     tried. Verified empirically (see `test_sandboxed_exec.py`'s bwrap orphan test): a command
-     that forks two background `sleep`s and hangs leaves zero matching processes after a timeout.
+   - **landlock** (and seatbelt): `_kill_group`'s existing process-group `SIGKILL` **MUST** suffice
+     on its own. The jail entry `exec`s the command in place, so it and everything it forks stay in
+     the same host process group `_kill_group` already signals. Verified empirically (see
+     `test_sandboxed_exec.py`'s landlock orphan test): a command that forks two background
+     `sleep`s and hangs leaves zero matching processes after a timeout.
    - **docker**: `_kill_group` alone **MUST NOT** be relied on — `docker run`'s own CLI process is a
      thin client, and the real command runs under `dockerd`, a separate process tree the CLI's
      process group never covers. Killing only the CLI's process group leaves the container running
@@ -923,8 +920,8 @@ either.
      and verified red during this card's development by temporarily removing the `docker_kill` call
      from the timeout handler — the container was still `docker ps`-visible after the call returned;
      reverted, it is not (see `test_sandboxed_exec.py::TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`).
-8. **Network is left reachable inside a real jail, on both backends, by deliberate choice, not
-   oversight.** `bwrap_argv` passes `--share-net` (overriding `--unshare-all`'s default); the docker
+8. **Network is left reachable inside a real jail, under the open mode, by deliberate choice, not
+   oversight.** `landlock_argv` passes `--net open` (no network rule); the docker
    backend leaves the image's default bridge network untouched. Most legitimate `bash`-tool work
    (`git fetch`/`push`, package installs) needs network access, and cutting it off is a materially
    larger, separate decision this card does not make — a network-isolated mode is a natural future
@@ -951,8 +948,8 @@ either.
      `toolbox.run_bash` and letting each `bash` call fail individually (requirement 4): a
      per-call failure only an operator reading raw tool output would ever see is not an acceptable
      substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
-     before any call gets the chance to fail. The refusal text names both fixes: install
-     bubblewrap (or start docker), or run `docket setup sandbox off`.
+     before any call gets the chance to fail. The refusal text names the fixes: use Linux 5.13+ (landlock) or macOS (seatbelt), choose docker
+     with `docket setup sandbox backend docker`, or run `docket setup sandbox off`.
    - `docket setup` probes `sandbox_availability()` and reports the backend a turn would use, or
      that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
      (`off (default)` | `on` | `off`) and `sandboxBackend`. `docket setup sandbox` reports the
@@ -978,7 +975,7 @@ either.
     closed: if the ruleset cannot be enforced, or `--net none` can be enforced by neither layer, it
     exits 125 naming the reason and runs nothing. It does not hide `/proc`. A Landlock rule cannot
     take a right away from a sub-path of a granted root, so a root's `.git/hooks` and `config` are
-    writable inside this jail (the bwrap read-only overlays have no Landlock equivalent). Pinned by
+    writable inside this jail (only the docker and seatbelt jails guard them). Pinned by
     unit tests over the ruleset plan, the argv and the BPF program (no syscall) and by
     `tests/integration/test_jail_landlock.py` on a real kernel.
 11. **One jail builder for every command docket launches.** `edges/adapters/system.py::jail_launch(roots,
@@ -1090,8 +1087,7 @@ otherwise.
    the pod setting `network` (`none`|`open`; `open` means follow the global mode) resolve through
    `core.pod.effective_network`: `none` when either says `none`, so a pod's `open` never widens a
    global `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed
-   to `none`. Under `none`, `system.bwrap_argv(..., network=False)` omits `--share-net` (the
-   `--unshare-all` network namespace stays empty) and `system.docker_run_argv(..., network=False)`
+   to `none`. Under `none`, `system.landlock_argv(..., network=False)` passes `--net none` and `system.docker_run_argv(..., network=False)`
    adds `--network none`; `ToolContext.network` carries it to `toolbox.run_bash`. Only the sandbox
    can enforce it, so a turn whose effective mode is `none` with isolation off **MUST** be refused
    before any model call (`DispatchError`, as for the isolation refusal: one attempt, one
@@ -1224,7 +1220,7 @@ pre-grants", this section governs for `--answers stdin` only.
    (built-in or global) declares in `auth.credentials`, and every name in the secret store, then
    applies `overlay` last, so an explicit value (`DOCKET_TASK_ID`) always arrives.
 2. `run_verify_cmd` and `run_bash` with `sandbox="off"` both launch their child with this
-   environment. The bwrap and docker paths are unchanged: they already forward no host environment.
+   environment. The jailed paths are unchanged: they already forward no host environment.
 3. Reading the secret store and the catalog never creates `DOCKET_HOME`.
 4. `edges/adapters/system.py::make_non_dumpable()` calls `prctl(PR_SET_DUMPABLE, 0)` through
    `ctypes` on Linux, so a same-uid process cannot read this process's `/proc/<pid>/environ` or
@@ -1246,10 +1242,12 @@ docket setup sandbox <other>           # any other subcommand (enable/disable in
                                 #   unknown-subcommand error plus usage and exit 2
 docket setup sandbox on|off           # MUST record on/off explicitly; bare (or any other word) is a read: print the
                                 #   isolation posture plus usage, write and audit nothing, exit 2 (on requires a usable backend per
-                                #   sandbox_availability(), bwrap or docker). Consumed on the live path: DocketDriver.run_turn
+                                #   sandbox_availability(): landlock, seatbelt or a chosen docker). Consumed on the live path: DocketDriver.run_turn
                                 #   runs tools with sandbox="auto" while it is on, and refuses the
-                                #   turn (audited isolation.refused) when no docker/bwrap backend is
+                                #   turn (audited isolation.refused) when no backend is
                                 #   usable -- see Exec sandbox requirement 9
+docket setup sandbox backend auto|docker # MUST record the backend choice in fleet.json (audited
+                                #   gates.backend); anything else: usage, exit 2. auto = landlock/seatbelt
 docket setup sandbox network none|open # MUST record the global network mode (audited gates.network);
                                 #   anything else: usage, exit 2. See Network egress requirement 7
 docket setup sandbox classes           # MUST list the documented high-risk action classes, read-only
@@ -1485,7 +1483,7 @@ top of (not instead of) the gate that already let it through:
 ```text
 >>> toolbox.run_bash((workspace,), 'echo breached > /etc/should-not-write; echo rc=$?', sandbox="auto")
 ToolOutcome(ok=True,
-            content='/bin/sh: 1: cannot create /etc/should-not-write: Read-only file system\nrc=2\n\n[sandbox: bwrap]',
+            content='/bin/sh: 1: cannot create /etc/should-not-write: Permission denied\nrc=2\n\n[sandbox: landlock]',
             error='')
 ```
 
@@ -1494,15 +1492,15 @@ promise of a jail:
 
 ```text
 >>> toolbox.run_bash((workspace,), "printf %s hi", sandbox="auto")
-ToolOutcome(ok=False, content='', error='not run: no sandbox backend is usable [sandbox: none (landlock unavailable, docker unavailable, bwrap unavailable)]')
+ToolOutcome(ok=False, content='', error='not run: no sandbox backend is usable [sandbox: none (landlock unavailable, docker not chosen or unreachable)]')
 ```
 
 A jail that was asked for but fails to actually start is a reported failure, not a silent
 unsandboxed run:
 
 ```text
->>> toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")   # bwrap vanishes mid-launch
-ToolOutcome(ok=False, content='', error='sandbox (bwrap) failed to start: [Errno 2] ...')
+>>> toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")   # the jail entry vanishes mid-launch
+ToolOutcome(ok=False, content='', error='sandbox (landlock) failed to start: [Errno 2] ...')
 ```
 
 In a linked task worktree, git metadata the host would later trust is read-only while a commit
@@ -1653,14 +1651,14 @@ $ git clone https://anywhere.example/repo.git
   naming the backend. `TestHonestReportingIsDeterministic::test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback`
   proves this by forcing the launch to raise and asserting the command's own side effect (a marker
   it would otherwise have printed) never happens.
-- A real exec jail (docker or bwrap) **MUST NOT** weaken `resolve_within`'s containment for
+- A real exec jail (landlock, seatbelt or docker) **MUST NOT** weaken `resolve_within`'s containment for
   `read`/`write`/`edit`/`glob`/`grep` calls, and `resolve_within`'s containment **MUST NOT** be
   read as covering `bash` — the two are independent and both apply at once.
   `TestChokepointWiring::test_file_tool_containment_is_unaffected_by_ctx_sandbox` and the real-jail
-  write-outside-roots tests in `TestRealBwrapJail` each prove one direction; neither implies the
+  write-outside-roots tests in `TestRealLandlockJail` each prove one direction; neither implies the
   other.
 - A timed-out `bash` call running under a real backend **MUST NOT** leave an orphan: no surviving
-  process for bwrap (`TestRealBwrapJail::test_timeout_leaves_no_orphaned_children`, a host-wide
+  process for landlock (`TestRealLandlockJail::test_timeout_leaves_no_orphaned_children`, a host-wide
   `pgrep` check), no surviving container for docker
   (`TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`, a `docker ps`
   check) — both skipped, with an explicit reason, on a host lacking the relevant backend, never
@@ -1686,6 +1684,19 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.47.0 (2026-10-13)
+
+- P41-3 (ADR 0024 section 3): the `bwrap` backend is deleted (`bwrap_available`, `bwrap_argv`,
+  `bwrap_command_argv`, the `bwrap` literal, the `SandboxAvailability.bwrap` field), with no alias.
+  `sandbox_availability()` reads the new fleet key `sandboxBackend` (`auto` | `docker`, written by
+  `docket setup sandbox backend`, audited `gates.backend`): `auto` is landlock on Linux and
+  seatbelt on macOS only, `docker` is docker only and the only case docker is probed. Enablement
+  requirements 3-4 and Exec sandbox requirements 1-3, 5-8 and the network example name landlock,
+  seatbelt and the chosen docker; the `isolation.refused` detail names `seatbelt=` in place of
+  `bwrap=`; `sandbox: none (...)` reasons are `landlock unavailable` (`seatbelt unavailable` on
+  macOS) and `docker not chosen or unreachable`. Landlock does not guard a repository's `hooks`
+  and `config` (requirement 10), so on Linux only the chosen docker jail does.
 
 ### Version 0.46.0 (2026-10-13)
 

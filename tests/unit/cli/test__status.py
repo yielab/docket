@@ -177,9 +177,9 @@ class TestParkedQuestionAndSandbox:
         monkeypatch.setattr(
             _status,
             "sandbox_state",
-            lambda: {"isolation": "off (default)", "network": "open", "backend": "bwrap"},
+            lambda: {"isolation": "off (default)", "network": "open", "backend": "landlock"},
         )
-        phrase = "off (default); bwrap found, network open"
+        phrase = "off (default); landlock found, network open"
 
         assert _json("--pod", "demo")["isolation"] == phrase
         assert phrase in runner.invoke(_app, ["status", "--pod", "demo"]).output

@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -263,14 +264,17 @@ def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None)
     reasons = [
         reason
         for ok, reason in (
-            (availability.landlock, "landlock unavailable"),
-            (availability.docker, "docker unavailable"),
-            (availability.bwrap, "bwrap unavailable"),
+            (
+                (availability.seatbelt, "seatbelt unavailable")
+                if sys.platform == "darwin"
+                else (availability.landlock, "landlock unavailable")
+            ),
+            (availability.docker, "docker not chosen or unreachable"),
         )
         if not ok
     ]
     if not reasons:
-        # Both backends actually checked out usable -- "none" here can only
+        # Every backend actually checked out usable -- "none" here can only
         # mean DOCKET_SANDBOX_BACKEND=none forced it. Say that plainly rather
         # than print an empty, unexplained "()".
         reasons = ["forced off via DOCKET_SANDBOX_BACKEND"]
@@ -330,7 +334,7 @@ def run_bash(
 
     popen_env: dict[str, str] | None
     container_name = ""
-    if backend in ("docker", "bwrap", "landlock", "seatbelt"):
+    if backend in ("docker", "landlock", "seatbelt"):
         launch = _system.jail_launch(
             roots, command, backend, network=network, env=env, cache_dir=cache_dir
         )
@@ -460,10 +464,8 @@ def _wait_cancellable(
 def _kill_group(proc: subprocess.Popen[str]) -> None:
     """Kill a timed-out command's whole process group, then reap it.
 
-    Holds under every sandbox backend: bwrap's own process stays in the same process group
-    (``start_new_session=True``), so this reaches it and everything it forked, and Linux tears
-    down bwrap's pid namespace when its first process dies, so nothing inside can escape by
-    detaching. Docker is the one shape not covered on its own -- ``docker run``'s CLI is a thin
+    Holds under every in-process sandbox backend: the jailed process stays in the same process
+    group (``start_new_session=True``), so this reaches it and everything it forked. Docker is the one shape not covered on its own -- ``docker run``'s CLI is a thin
     client the daemon runs the container under, so killing its process group alone leaves the
     container running; ``run_bash``'s timeout handler calls ``system.docker_kill`` first for
     that reason."""

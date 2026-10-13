@@ -54,9 +54,6 @@ class PodApplyError(ValueError):
     ``plan_apply``, before anything is written."""
 
 
-UNJAILED_NOTE = "runs unjailed (isolate: false)"
-
-
 @dataclass(frozen=True)
 class ApplyItem:
     """One planned change: ``kind`` (role/policy/plugin/member/pipeline/setting), the thing
@@ -242,7 +239,6 @@ class RecipeSummary:
     description: str
     exporters: tuple[str, ...] = ()
     mcp_servers: tuple[str, ...] = ()
-    unjailed_mcp_servers: tuple[str, ...] = ()
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
@@ -256,8 +252,6 @@ class RecipeSummary:
             line += f" · exporters {', '.join(self.exporters)}"
         if self.mcp_servers:
             line += f" · mcp-servers {', '.join(self.mcp_servers)}"
-        if self.unjailed_mcp_servers:
-            line += f" · unjailed {', '.join(self.unjailed_mcp_servers)}"
         return line
 
 
@@ -359,7 +353,6 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     servers = _declared_servers(directory)
     return RecipeSummary(
         mcp_servers=tuple(s.name for s in servers),
-        unjailed_mcp_servers=tuple(s.name for s in servers if not s.isolate),
         roles=roles,
         policies=policies,
         plugins=plugins,
@@ -584,8 +577,7 @@ def _plan_mcp_servers(
         else:
             action = "replace" if name in current else "add"
             changed = True
-        note = UNJAILED_NOTE if not config.isolate else ""
-        items.append(ApplyItem(kind="mcp-server", name=name, action=action, note=note))
+        items.append(ApplyItem(kind="mcp-server", name=name, action=action))
     if not changed:
         return items, None
     return items, _McpServerWrite(servers=tuple({**current, **declared}.values()))

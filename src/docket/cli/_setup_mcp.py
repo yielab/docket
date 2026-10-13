@@ -56,11 +56,10 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
                 cfg.kind,
                 ", ".join(cfg.tools) if cfg.tools else "all",
                 f"{cfg.timeout:.0f}s" if cfg.timeout > 0 else "default",
-                "jail" if cfg.isolate else "host",
                 env,
             ]
         )
-    ui.table(rows, ["NAME", "COMMAND", "KIND", "TOOLS", "TIMEOUT", "RUNS ON", "ENV"])
+    ui.table(rows, ["NAME", "COMMAND", "KIND", "TOOLS", "TIMEOUT", "ENV"])
     ui.dim(f"  Config file: {_cfg.MCP_SERVERS_FILE}")
 
 
@@ -72,7 +71,6 @@ def cmd_add(
     timeout: float = typer.Option(0.0, "--timeout", help="Seconds before a call gives up"),
     kind: str = typer.Option("write", "--kind", help="read or write: the server's trust level"),
     tools: str = typer.Option("", "--tools", help="Allow-list of the server's tool names"),
-    no_isolate: bool = typer.Option(False, "--no-isolate", help="Start on the host, not the jail"),
 ) -> None:
     """Configure a server; everything after -- is its launch command, verbatim.
 
@@ -92,7 +90,6 @@ def cmd_add(
                 timeout=timeout,
                 kind=kind,  # type: ignore[arg-type]  # validated above
                 tools=allow,
-                isolate=not no_isolate,
             )
         )
     except ValueError as exc:
@@ -100,7 +97,7 @@ def cmd_add(
         raise typer.Exit(1) from exc
     audit_log(
         "mcp_servers.add",
-        f"name={name!r} command={command[0]!r} kind={kind} isolate={'no' if no_isolate else 'yes'}",
+        f"name={name!r} command={command[0]!r} kind={kind}",
     )
     ui.success(f"MCP server '{name}' added ({' '.join(command)}).")
     ui.dim(f"  Its tools register as mcp__{name}__<tool>, gated like a built-in tool.")

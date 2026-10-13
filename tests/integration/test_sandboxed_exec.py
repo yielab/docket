@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 import docket.config as _cfg
+from docket.core import fleet as _fleet
 from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import system, toolbox
@@ -30,13 +31,13 @@ from docket.edges.adapters import system, toolbox
 SUBJECT = "docket.core.tools"
 
 DOCKER_UP = system.docker_daemon_reachable()
-BWRAP_UP = system.bwrap_available()
+LANDLOCK_UP = system.landlock_available()
 
 needs_docker = pytest.mark.skipif(
     not DOCKER_UP, reason="docker not installed or its daemon is not reachable on this host"
 )
-needs_bwrap = pytest.mark.skipif(
-    not BWRAP_UP, reason="bwrap not installed, or this host disallows unprivileged user namespaces"
+needs_landlock = pytest.mark.skipif(
+    not LANDLOCK_UP, reason="landlock is not available on this host"
 )
 
 
@@ -72,8 +73,8 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _pgrep_count(marker: str) -> int:
-    """Count host processes whose command line contains *marker* -- the orphan check for bwrap
-    timeout tests. Not used for docker: its processes aren't visible to a host-level `pgrep`,
+    """Count host processes whose command line contains *marker* -- the orphan check for the
+    landlock timeout tests. Not used for docker: its processes aren't visible to a host-level `pgrep`,
     hence docker's own `docker ps`-based check."""
     result = subprocess.run(["pgrep", "-fc", marker], capture_output=True, text=True)
     return int((result.stdout or "0").strip() or "0")
@@ -86,46 +87,37 @@ class TestSandboxAvailabilityDetection:
     def test_env_override_wins_over_real_probes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(system, "landlock_available", lambda: True)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        availability = system.sandbox_availability()
+        availability = system.sandbox_availability("docker")
         assert availability.backend == "none"
         # The override forces the *choice*; it does not fake the underlying probes.
         assert availability.docker is True
-        assert availability.bwrap is True
+        assert availability.landlock is True
 
-    def test_bwrap_preferred_over_docker_when_both_usable(
+    def test_landlock_is_used_when_docker_is_also_up_and_not_chosen(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: True)
+        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        assert system.sandbox_availability("auto").backend == "landlock"
+
+    def test_docker_is_used_when_chosen(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: True)
+        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
+        assert system.sandbox_availability("docker").backend == "docker"
+
+    def test_none_when_nothing_usable_and_docker_is_not_probed_unless_chosen(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(system, "landlock_available", lambda: False)
+        monkeypatch.setattr(system, "seatbelt_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(system, "bwrap_available", lambda: True)
-        assert system.sandbox_availability().backend == "bwrap"
-
-    def test_docker_used_when_bwrap_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: False)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(system, "bwrap_available", lambda: False)
-        assert system.sandbox_availability().backend == "docker"
-
-    def test_bwrap_used_when_docker_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: False)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
-        monkeypatch.setattr(system, "bwrap_available", lambda: True)
-        assert system.sandbox_availability().backend == "bwrap"
-
-    def test_none_when_neither_usable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
-        monkeypatch.setattr(system, "landlock_available", lambda: False)
-        monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
-        monkeypatch.setattr(system, "bwrap_available", lambda: False)
-        availability = system.sandbox_availability()
+        availability = system.sandbox_availability("auto")
         assert availability.backend == "none"
         assert availability.docker is False
-        assert availability.bwrap is False
 
     def test_docker_binary_present_but_daemon_down_is_still_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
@@ -140,49 +132,18 @@ class TestSandboxAvailabilityDetection:
         )
         assert system.docker_daemon_reachable() is False
 
-    def test_bwrap_binary_present_but_smoke_test_fails_is_still_unavailable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Mirrors the docker case: a kernel that refuses unprivileged user
-        namespaces makes the *binary* present but the *capability* absent —
-        `bwrap_available` must observe the real failure, not just `which`."""
-        monkeypatch.setattr(system, "_which", lambda b: True)
-        monkeypatch.setattr(
-            subprocess,
-            "run",
-            lambda *a, **k: subprocess.CompletedProcess(a, returncode=1),
-        )
-        assert system.bwrap_available() is False
-
-    def test_missing_binary_degrades_to_false_not_a_crash(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(system, "_which", lambda b: False)
-        assert system.bwrap_available() is False
-
 
 # ── argv construction: mechanism, no execution ──────────────────────────────
 
 
 class TestArgvShape:
-    def test_bwrap_binds_each_root_read_write_over_a_read_only_host(self, workspace: Path) -> None:
-        argv = system.bwrap_argv((workspace,), "echo hi")
-        assert argv[:2] == ["bwrap", "--unshare-all"]
-        assert "--share-net" in argv  # network stays reachable; see module docstring
-        ro_index = argv.index("--ro-bind")
-        assert argv[ro_index : ro_index + 3] == ["--ro-bind", "/", "/"]
-        bind_index = argv.index("--bind")
-        resolved = str(workspace.resolve())
-        assert argv[bind_index : bind_index + 3] == ["--bind", resolved, resolved]
-        assert argv[-3:] == ["/bin/sh", "-c", "echo hi"]
-
-    def test_bwrap_binds_every_root_when_there_are_several(
-        self, workspace: Path, tmp_path: Path
-    ) -> None:
+    def test_landlock_grants_each_root_read_write(self, workspace: Path, tmp_path: Path) -> None:
         second = tmp_path / "codebase"
         second.mkdir()
-        argv = system.bwrap_argv((workspace, second), "echo hi")
-        assert argv.count("--bind") == 2
+        argv = system.landlock_argv((workspace, second), "echo hi")
+        rw = [argv[i + 1] for i, a in enumerate(argv) if a == "--rw"]
+        assert rw == [str(workspace.resolve()), str(second.resolve())]
+        assert argv[-3:] == ["/bin/sh", "-c", "echo hi"]
 
     def test_a_git_worktree_root_also_mounts_its_git_and_common_dirs(self, tmp_path: Path) -> None:
         main = tmp_path / "main"
@@ -193,9 +154,9 @@ class TestArgvShape:
         gitdir = Path(_git(wt, "rev-parse", "--absolute-git-dir")).resolve()
         common = (main / ".git").resolve()
         assert gitdir != common
-        bwrap = system.bwrap_argv((wt,), "true")
-        binds = [bwrap[i + 1] for i, a in enumerate(bwrap) if a == "--bind"]
-        assert binds == [str(wt.resolve()), str(gitdir), str(common)]
+        landlock = system.landlock_argv((wt,), "true")
+        grants = [landlock[i + 1] for i, a in enumerate(landlock) if a == "--rw"]
+        assert grants == [str(wt.resolve()), str(gitdir), str(common)]
         docker = system.docker_run_argv("c", (wt,), "true", None)
         mounts = [docker[i + 1] for i, a in enumerate(docker) if a == "-v"]
         assert f"{gitdir}:{gitdir}" in mounts and f"{common}:{common}" in mounts
@@ -207,8 +168,12 @@ class TestArgvShape:
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
         _git(main, "worktree", "add", "-q", str(wt))
         common = (main / ".git").resolve()
-        argv = system.bwrap_argv((wt,), "true")
-        ro = [argv[i + 1] for i, a in enumerate(argv) if a == "--ro-bind"][1:]
+        docker = system.docker_run_argv("c", (wt,), "true", None)
+        ro = [
+            docker[i + 1][: -len(":ro")].split(":")[0]
+            for i, a in enumerate(docker)
+            if a == "-v" and docker[i + 1].endswith(":ro")
+        ]
         admin = common / "worktrees" / "wt"
         assert ro == [
             str(common / "hooks"),
@@ -218,16 +183,16 @@ class TestArgvShape:
             str(admin / "gitdir"),
             str(admin / "commondir"),
         ]
-        last_rw = max(i for i, a in enumerate(argv) if a == "--bind")
-        first_ro = [i for i, a in enumerate(argv) if a == "--ro-bind"][1]
-        assert first_ro > last_rw
-        docker = system.docker_run_argv("c", (wt,), "true", None)
+        mounts = [i for i, a in enumerate(docker) if a == "-v"]
+        rw_last = max(i for i in mounts if not docker[i + 1].endswith(":ro"))
+        ro_first = min(i for i in mounts if docker[i + 1].endswith(":ro"))
+        assert ro_first > rw_last
         assert f"{common}/hooks:{common}/hooks:ro" in docker
         assert f"{wt.resolve()}/.git:{wt.resolve()}/.git:ro" in docker
 
     def test_a_root_outside_any_repo_gains_no_extra_mounts(self, workspace: Path) -> None:
-        argv = system.bwrap_argv((workspace,), "true")
-        assert argv.count("--bind") == 1
+        argv = system.landlock_argv((workspace,), "true")
+        assert argv.count("--rw") == 1
 
     def test_docker_run_mounts_each_root_and_runs_as_the_caller(self, workspace: Path) -> None:
         argv = system.docker_run_argv("my-container", (workspace,), "echo hi", None)
@@ -272,7 +237,6 @@ class TestSandboxOffIsUnchanged:
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(system, "bwrap_available", lambda: True)
         out = toolbox.run_bash((workspace,), "echo hi")  # sandbox left at the "off" default
         assert out.content == "hi"
         assert "sandbox" not in out.content
@@ -288,13 +252,11 @@ class TestHonestReportingIsDeterministic:
         """The gate allowed the command on the promise of a jail, so no jail means no run."""
         monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
-        monkeypatch.setattr(system, "bwrap_available", lambda: False)
         out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
         assert not out.ok and not (workspace / "ran").exists()
         assert out.error.startswith("not run: no sandbox backend is usable")
         assert (
-            "[sandbox: none (landlock unavailable, docker unavailable, bwrap unavailable)]"
-            in out.error
+            "[sandbox: none (landlock unavailable, docker not chosen or unreachable)]" in out.error
         )
 
     def test_auto_forced_to_none_when_both_are_actually_available_says_so_too(
@@ -304,7 +266,7 @@ class TestHonestReportingIsDeterministic:
         possible is exactly the failure this card exists to prevent."""
         monkeypatch.setattr(system, "landlock_available", lambda: True)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(system, "bwrap_available", lambda: True)
+        _fleet.set_sandbox_backend("docker")
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
         assert not out.ok
@@ -316,15 +278,15 @@ class TestHonestReportingIsDeterministic:
         """If `sandbox="auto"` resolves to a real backend but the subprocess launch fails, the
         command MUST NOT run unsandboxed instead -- that silent substitution is the failure mode
         this test guards against."""
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
 
         def _raise(*_args: object, **_kwargs: object) -> subprocess.Popen[str]:
-            raise OSError("bwrap vanished mid-flight")
+            raise OSError("landlock vanished mid-flight")
 
         monkeypatch.setattr(subprocess, "Popen", _raise)
         out = toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")
         assert not out.ok
-        assert "sandbox (bwrap) failed to start" in out.error
+        assert "sandbox (landlock) failed to start" in out.error
 
 
 # ── the chokepoint still owns this: dispatch_tool wiring ────────────────────
@@ -368,19 +330,18 @@ class TestChokepointWiring:
         assert "outside the allowed roots" in res.error
 
 
-# ── real backend: bwrap (skipped, with an explicit reason, if unavailable) ──
+# ── real backend: landlock (skipped, with an explicit reason, if unavailable) ──
 
 
-@needs_bwrap
-class TestRealBwrapJail:
+@needs_landlock
+class TestRealLandlockJail:
     def test_blocks_writes_outside_the_allowed_roots(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`resolve_within` never inspects a bash command's shell text, so only the jail stops
-        this. Verified red by temporarily swapping bwrap_argv's `--ro-bind` for `--bind`: the
-        canary then landed on the real host filesystem; reverted, it does not."""
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        canary = Path(f"/tmp/p19-9-canary-{uuid.uuid4().hex[:8]}")
+        this. The canary sits outside every root and outside the temp dir the jail grants."""
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        canary = Path(__file__).parent / f".p19-9-canary-{uuid.uuid4().hex[:8]}"
         try:
             out = toolbox.run_bash(
                 (workspace,), f"echo breached > {canary} 2>&1; echo rc=$?", sandbox="auto"
@@ -395,7 +356,7 @@ class TestRealBwrapJail:
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The jail must not be so wide it breaks legitimate work either."""
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         out = toolbox.run_bash(
             (workspace,), "echo inside > local.txt; cat local.txt", sandbox="auto"
         )
@@ -407,9 +368,9 @@ class TestRealBwrapJail:
     ) -> None:
         """A command that forks children and hangs is the normal case, not
         the exotic one (see toolbox.run_bash's docstring) — this must hold
-        under bwrap the same way it already does unsandboxed."""
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        marker = f"p19-9-bwrap-marker-{uuid.uuid4().hex[:8]}"
+        under landlock the same way it already does unsandboxed."""
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        marker = f"p19-9-landlock-marker-{uuid.uuid4().hex[:8]}"
         out = toolbox.run_bash(
             (workspace,), f"echo {marker}; sleep 20 & sleep 20 & wait", timeout=1, sandbox="auto"
         )
@@ -420,7 +381,7 @@ class TestRealBwrapJail:
     def test_minimizes_env_a_host_secret_does_not_leak_in(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         monkeypatch.setenv("DOCKET_TEST_HOST_SECRET", "top-secret")
         out = toolbox.run_bash((workspace,), "echo VAL=$DOCKET_TEST_HOST_SECRET", sandbox="auto")
         assert "VAL=\n" in out.content or out.content.startswith("VAL=\n\n[sandbox")
@@ -428,7 +389,7 @@ class TestRealBwrapJail:
     def test_explicit_ctx_env_still_reaches_the_jailed_command(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         out = toolbox.run_bash(
             (workspace,),
             "echo VAL=$DOCKET_SCRATCH_DIR",
@@ -486,11 +447,11 @@ class TestRealDockerJail:
 
 
 class TestJailedCommit:
-    @needs_bwrap
+    @needs_docker
     def test_a_jailed_command_commits_in_a_linked_worktree_but_cannot_write_elsewhere(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         main = tmp_path / "main"
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
@@ -518,12 +479,12 @@ class TestJailedCommit:
         assert not denied.ok
         assert not (outside / "leak").exists()
 
-    @needs_bwrap
+    @needs_docker
     @pytest.mark.parametrize("source", ["environment", "global-config"])
     def test_a_jailed_commit_uses_the_operators_git_identity(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str, source: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         home = tmp_path / "home"
         home.mkdir()
         monkeypatch.setenv("HOME", str(home))
@@ -558,11 +519,11 @@ class TestJailedCommit:
         assert outcome.ok, outcome.error or outcome.content
         assert _git(wt, "log", "--format=%an <%ae>", "-1").strip() == "Op <op@example.com>"
 
-    @needs_bwrap
+    @needs_docker
     def test_the_jail_cannot_plant_a_hook_or_a_config_the_host_would_run(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         main = tmp_path / "main"
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
@@ -641,11 +602,11 @@ class TestGitMetadataTheHostLaterRuns:
         _, ro = system._mount_dirs((sup,))
         assert str(deep / "hooks") in ro and str(deep / "config") in ro
 
-    @needs_bwrap
+    @needs_docker
     def test_an_absent_hooks_dir_cannot_be_created_from_the_jail(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         repo = tmp_path / "repo"
         repo.mkdir()
         _git(repo, "init", "-q")
@@ -661,11 +622,11 @@ class TestGitMetadataTheHostLaterRuns:
         assert not (repo / ".git" / "hooks" / "post-commit").exists()
         assert (repo / ".git" / "info" / "attributes").read_text() == ""
 
-    @needs_bwrap
+    @needs_docker
     def test_the_jail_cannot_plant_a_submodule_hook_or_config(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         sup, subgit = _super_with_submodule(tmp_path)
 
         hook = toolbox.run_bash((sup,), f"echo x > {subgit}/hooks/post-commit", sandbox="auto")
@@ -686,11 +647,11 @@ class TestGitMetadataTheHostLaterRuns:
         assert not redirect.ok
         assert (sup / "sub" / ".git").read_text() == before
 
-    @needs_bwrap
+    @needs_docker
     def test_the_jail_cannot_repoint_a_linked_worktrees_git_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, docker_git_image: str
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        _use_docker(monkeypatch, docker_git_image)
         main = tmp_path / "main"
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
@@ -726,6 +687,11 @@ class TestGitMetadataTheHostLaterRuns:
             (wt,), "echo x > f && git add f && git commit -q -m still", env=ident, sandbox="auto"
         )
         assert commit.ok, commit.error or commit.content
+
+
+def _use_docker(monkeypatch: pytest.MonkeyPatch, image: str) -> None:
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
+    monkeypatch.setattr(_cfg, "SANDBOX_DOCKER_IMAGE", image)
 
 
 @pytest.fixture(scope="session")

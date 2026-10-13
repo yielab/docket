@@ -94,10 +94,6 @@ class McpServerConfig(BaseModel):
     # in McpServerLoadResult.skipped), never silently dropped. Empty (the
     # default) means "register everything advertised" -- today's behavior.
     tools: list[str] = Field(default_factory=list)
-    # Operator assertion: False starts this stdio server on the host even when the turn is
-    # isolated (specs/functional/mcp-client.spec.md Requirement 40). True, the default, jails it
-    # like `bash`.
-    isolate: bool = True
 
     def resolved_timeout(self) -> float:
         """The actual per-call bound this server's calls will honor.
@@ -176,7 +172,6 @@ class McpServerDocument(BaseModel):
     timeout: float = 0.0
     access: Literal["read", "write"] = "write"
     tools: list[str] = Field(default_factory=list)
-    isolate: bool = True
 
     def to_config(self) -> McpServerConfig:
         return McpServerConfig(
@@ -187,7 +182,6 @@ class McpServerDocument(BaseModel):
             timeout=self.timeout,
             kind=self.access,
             tools=self.tools,
-            isolate=self.isolate,
         )
 
 
@@ -203,8 +197,6 @@ def mcp_server_document(config: McpServerConfig) -> dict[str, Any]:
     doc["access"] = config.kind
     if config.tools:
         doc["tools"] = list(config.tools)
-    if not config.isolate:
-        doc["isolate"] = False
     return doc
 
 

@@ -1,6 +1,6 @@
 """A stdio MCP server starts in the turn's jail (`edges/adapters/mcp_client.py::_stdio_params`):
-the turn's backend, roots and network mode, unless the operator declared the server
-`isolate: false`; with isolation off the server's own argv is untouched."""
+the turn's backend, roots and network mode, with no per-server opt-out; with isolation off the
+server's own argv is untouched."""
 
 from __future__ import annotations
 
@@ -26,9 +26,8 @@ pytest.importorskip("mcp")
 _needs_sdk = pytest.mark.skipif(
     not _client._sdk_available(), reason="the optional mcp SDK is absent"
 )
-_needs_bwrap = pytest.mark.skipif(
-    not system.bwrap_available(),
-    reason="bwrap not installed, or this host disallows unprivileged user namespaces",
+_needs_landlock = pytest.mark.skipif(
+    not system.landlock_available(), reason="landlock is not available on this host"
 )
 
 _SERVER = textwrap.dedent(
@@ -46,14 +45,12 @@ _SERVER = textwrap.dedent(
 
     @app.tool()
     def dial() -> str:
-        s = socket.socket()
-        s.settimeout(2)
         try:
+            s = socket.socket()
+            s.settimeout(2)
             s.connect(("1.1.1.1", 53))
         except OSError as ex:
             return f"network-error {ex.errno}"
-        finally:
-            s.close()
         return "connected"
 
     app.run("stdio")
@@ -82,12 +79,15 @@ def root(tmp_path: Path) -> Path:
     return path
 
 
-def _launch(root: Path, network: bool = True, sandbox: str = "auto") -> _mt.StdioLaunch:
+def _launch(
+    root: Path, network: bool = True, sandbox: str = "auto", runtime: bool = False
+) -> _mt.StdioLaunch:
+    extra = (Path(sys.prefix), Path(sys.base_prefix)) if runtime else ()
     return _mt.StdioLaunch(
         cwd=str(root),
         sandbox=sandbox,  # type: ignore[arg-type]
         network=network,
-        roots=(root,),
+        roots=(root, *extra),
     )
 
 
@@ -98,26 +98,17 @@ def test_isolation_off_leaves_the_servers_own_argv_byte_identical(root: Path) ->
         assert (params.command, params.args) == ("npx", ["-y", "srv", "--flag"])
 
 
-def test_an_isolate_false_server_is_never_wrapped(
+def test_a_jailed_server_is_wrapped_by_landlock_with_the_turns_roots_and_network(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-    config = _mt.McpServerConfig(name="s", command="npx", args=["a"], isolate=False)
-    params = _client._stdio_params(config, _launch(root))
-    assert (params.command, params.args) == ("npx", ["a"])
-
-
-def test_a_jailed_server_is_wrapped_by_bwrap_with_the_turns_roots_and_network(
-    root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     config = _mt.McpServerConfig(name="s", command="npx", args=["a", "b"])
     open_net = _client._stdio_params(config, _launch(root))
     cut_net = _client._stdio_params(config, _launch(root, network=False))
-    assert open_net.command == "bwrap"
+    assert open_net.command == sys.executable
     assert open_net.args[-3:] == ["npx", "a", "b"]
-    assert "--share-net" in open_net.args
-    assert "--share-net" not in cut_net.args
+    assert open_net.args[open_net.args.index("--net") + 1] == "open"
+    assert cut_net.args[cut_net.args.index("--net") + 1] == "none"
     assert str(root.resolve()) in open_net.args
 
 
@@ -144,61 +135,57 @@ def test_isolation_on_with_no_backend_refuses_rather_than_starting_unjailed(
 
 
 @_needs_sdk
-@_needs_bwrap
-def test_a_jailed_server_cannot_write_outside_the_roots_and_an_unjailed_one_can(
+@_needs_landlock
+def test_a_jailed_server_cannot_write_outside_the_roots(
     tmp_path: Path, root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     inside = root / "in.txt"
-    outside = tmp_path / "out.txt"
+    outside = Path(sys.prefix).parent / f".jail-probe-{tmp_path.name}"
 
-    ok = _client.call_remote_tool(server, "write", {"path": str(inside)}, 30.0, _launch(root))
+    ok = _client.call_remote_tool(
+        server, "write", {"path": str(inside)}, 30.0, _launch(root, runtime=True)
+    )
     assert ok.ok and inside.exists(), ok.error
-    jailed = _client.call_remote_tool(server, "write", {"path": str(outside)}, 30.0, _launch(root))
-    assert not (jailed.ok and outside.exists())
-
-    free = server.model_copy(update={"isolate": False})
-    unjailed = _client.call_remote_tool(free, "write", {"path": str(outside)}, 30.0, _launch(root))
-    assert unjailed.ok and outside.exists(), unjailed.error
+    try:
+        jailed = _client.call_remote_tool(
+            server, "write", {"path": str(outside)}, 30.0, _launch(root, runtime=True)
+        )
+        assert not (jailed.ok and outside.exists())
+    finally:
+        outside.unlink(missing_ok=True)
 
 
 @_needs_sdk
-@_needs_bwrap
+@_needs_landlock
 def test_under_network_none_a_jailed_server_cannot_open_a_socket(
     root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-    out = _client.call_remote_tool(server, "dial", {}, 30.0, _launch(root, network=False))
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    out = _client.call_remote_tool(
+        server, "dial", {}, 30.0, _launch(root, network=False, runtime=True)
+    )
     assert out.ok, out.error
     assert out.content.startswith("network-error"), out.content
 
 
 @_needs_sdk
-@_needs_bwrap
+@_needs_landlock
 def test_listing_works_through_the_jail(
     root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-    listing = _client.list_remote_tools(server, 30.0, _launch(root))
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    listing = _client.list_remote_tools(server, 30.0, _launch(root, runtime=True))
     assert listing.ok, listing.error
     assert {t.name for t in listing.tools} == {"write", "dial"}
 
 
-def test_no_isolate_flag_is_stored_audited_and_shown() -> None:
+def test_the_no_isolate_flag_and_field_are_gone() -> None:
     runner = CliRunner()
-    free = runner.invoke(app, ["setup", "mcp", "add", "free", "--no-isolate", "--", "srv", "x"])
-    assert free.exit_code == 0
+    refused = runner.invoke(app, ["setup", "mcp", "add", "free", "--no-isolate", "--", "srv", "x"])
+    assert refused.exit_code == 2
+    assert "isolate" not in _mt.McpServerConfig.model_fields
     assert runner.invoke(app, ["setup", "mcp", "add", "caged", "--", "srv"]).exit_code == 0
-    by_name = {s.name: s for s in _mt.load_mcp_servers()}
-    assert by_name["free"].isolate is False
-    assert by_name["caged"].isolate is True
     details = [e["detail"] for e in _audit.read_audit() if e["action"] == "mcp_servers.add"]
-    assert any("name='free'" in d and "isolate=no" in d for d in details)
-    assert any("name='caged'" in d and "isolate=yes" in d for d in details)
-    listed = runner.invoke(app, ["setup", "mcp", "list"]).output
-    assert listed.count("host") == 1
-
-
-def test_a_config_written_before_the_field_existed_loads_as_isolated() -> None:
-    config = _mt.McpServerConfig.model_validate({"name": "old", "command": "srv"})
-    assert config.isolate is True
+    assert any("name='caged'" in d and "isolate" not in d for d in details)
+    assert "host" not in runner.invoke(app, ["setup", "mcp", "list"]).output

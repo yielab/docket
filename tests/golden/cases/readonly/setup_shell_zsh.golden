@@ -11,7 +11,7 @@ _docket_verbs() {
     "setup") echo "shell provider model sandbox notify export mcp" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
-    "setup sandbox") echo "status on off network classes" ;;
+    "setup sandbox") echo "status on off backend network classes" ;;
     "setup notify") echo "list show enable disable add remove export privacy test bind unbind flush" ;;
     "setup export") echo "list show enable disable test add remove export privacy preview" ;;
     "setup mcp") echo "list add remove" ;;
@@ -76,6 +76,7 @@ _docket_options() {
     "setup sandbox status") echo "--json --help" ;;
     "setup sandbox on") echo "--help" ;;
     "setup sandbox off") echo "--help" ;;
+    "setup sandbox backend") echo "--help" ;;
     "setup sandbox network") echo "--help" ;;
     "setup sandbox classes") echo "--help" ;;
     "setup notify") echo "--help" ;;
@@ -104,7 +105,7 @@ _docket_options() {
     "setup export preview") echo "--session --level --share --json --help" ;;
     "setup mcp") echo "--help" ;;
     "setup mcp list") echo "--json --help" ;;
-    "setup mcp add") echo "--env --timeout --kind --tools --no-isolate --help" ;;
+    "setup mcp add") echo "--env --timeout --kind --tools --help" ;;
     "setup mcp remove") echo "--help" ;;
   esac
 }

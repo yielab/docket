@@ -258,7 +258,7 @@ def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
 def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     """Fail-closed go/no-go for this turn's isolation posture. Returns ``(want_sandbox,
     refusal)``; a non-``None`` refusal message means isolation is on but no backend
-    (docker/bwrap) is usable, so the turn is refused up front and audited (``isolation.refused``)
+    is usable, so the turn is refused up front and audited (``isolation.refused``)
     rather than letting ``toolbox.run_bash`` silently degrade per call. See
     specs/functional/security-gates.spec.md ("Fail closed, not fail open, when isolation is on
     and no backend is usable")."""
@@ -269,14 +269,15 @@ def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
         return True, None
     detail = (
         f"agent={agent_id} role={role or '?'} "
-        f"landlock={availability.landlock} docker={availability.docker} bwrap={availability.bwrap}"
+        f"landlock={availability.landlock} docker={availability.docker} seatbelt={availability.seatbelt}"
     )
     audit_log("isolation.refused", detail)
     return False, (
-        "isolation is on ('docket setup sandbox on') but no sandbox backend (bubblewrap or docker) is "
-        "usable on this host -- refusing to run this turn unsandboxed rather than silently "
-        "downgrading it. Fix one of two ways: install bubblewrap (bwrap) or start docker, "
-        "or record an explicit opt-out with 'docket setup sandbox off'."
+        "isolation is on ('docket setup sandbox on') but no sandbox backend is usable on this "
+        "host -- refusing to run this turn unsandboxed rather than silently downgrading it. "
+        "Fix one of two ways: use Linux 5.13+ (landlock) or macOS (seatbelt), or choose docker "
+        "with 'docket setup sandbox backend docker'; or record an explicit opt-out with "
+        "'docket setup sandbox off'."
     )
 
 

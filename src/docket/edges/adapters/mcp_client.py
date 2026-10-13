@@ -76,7 +76,7 @@ def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) ->
     from mcp.client.stdio import StdioServerParameters
 
     command, args = config.command, list(config.args)
-    if launch is not None and launch.sandbox == "auto" and config.isolate:
+    if launch is not None and launch.sandbox == "auto":
         command, args = _jailed_command(config, launch)
     return StdioServerParameters(
         command=command,
@@ -98,15 +98,13 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
         argv = _system.landlock_command_argv(roots, server, launch.network)
     elif backend == "seatbelt":
         argv = _system.seatbelt_command_argv(roots, server, launch.network)
-    elif backend == "bwrap":
-        argv = _system.bwrap_command_argv(roots, server, launch.network)
     elif backend == "docker":
         name = f"docket-mcp-{uuid.uuid4().hex[:12]}"
         argv = _system.docker_command_argv(name, roots, server, dict(config.env), launch.network)
     else:
         raise RuntimeError(
-            "isolation is on but no sandbox backend is usable; install bubblewrap or start "
-            "docker, or declare this server isolate: false"
+            "isolation is on but no sandbox backend is usable; use Linux 5.13+ (landlock) or "
+            "macOS (seatbelt), or choose docker with 'docket setup sandbox backend docker'"
         )
     return argv[0], argv[1:]
 

@@ -8,7 +8,7 @@ group actually gone (not just at the tool's own timeout); a real turn dispatchin
 call through `run_agent_turn` stops with `stop_reason="run_cancelled"`, with the assistant call
 and its cancelled tool result persisted as one atomic session unit and the backend called
 exactly once; with no callback, timeout behaviour -- including the exact message -- is
-untouched byte for byte; and the same holds under the bwrap sandbox backend, when available.
+untouched byte for byte; and the same holds under the landlock sandbox backend, when available.
 """
 
 from __future__ import annotations
@@ -35,9 +35,8 @@ from docket.edges.adapters import toolbox
 
 SUBJECT = "docket.edges.adapters.toolbox"
 
-BWRAP_UP = _system.bwrap_available()
-needs_bwrap = pytest.mark.skipif(
-    not BWRAP_UP, reason="bwrap not installed, or this host disallows unprivileged user namespaces"
+needs_landlock = pytest.mark.skipif(
+    not _system.landlock_available(), reason="landlock is not available on this host"
 )
 
 # A command whose binary (`python3`) is on `SAFE_BINS`, so it reaches
@@ -126,12 +125,12 @@ class TestRunBashCancellation:
         assert out.content == baseline.content
         assert len(out.content) > 30_000
 
-    @needs_bwrap
-    def test_bwrap_variant_leaves_no_orphan(
+    @needs_landlock
+    def test_landlock_variant_leaves_no_orphan(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        marker = f"w30c1-bwrap-{uuid.uuid4().hex[:8]}"
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        marker = f"w30c1-landlock-{uuid.uuid4().hex[:8]}"
         cancelled = _DelayedFlip(0.2)
 
         started = time.monotonic()

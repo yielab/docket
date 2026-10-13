@@ -482,7 +482,7 @@ summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+
 (`pod-blueprints.spec.md` 1.14.0), one line per exporter its `pod.yaml` names — the same state
 lines `docket pod update` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
 present. `--json` prints a list of objects carrying `name`, `scope`, `brings`, `directory`,
-`description`, `unjailed_mcp_servers` and every `core.pod_apply.RecipeSummary` count; with an
+`description` and every `core.pod_apply.RecipeSummary` count; with an
 argument one such object plus a `readme` field
 **Return**: `0` on success, `1` on an unresolvable name, `2` on an unrecognized flag
 
@@ -530,7 +530,7 @@ catalog, idempotent, in two modes chosen by the terminal (the interaction contra
 **Bare `setup`** always starts with a report: one line per piece with its state and the exact
 command that fixes it — the model endpoint (the only required piece: a provider, its credential,
 and `lead`/`implementer` resolving to a model), notifications (`console only (nobody is told)` is
-a warning), the sandbox (state and whether bwrap or docker was found), shell completion and the
+a warning), the sandbox (state and the backend found: landlock, seatbelt or a chosen docker), shell completion and the
 background service. The report is computed by `cli/_setup.py::readiness()`, which prints and
 writes nothing; `init` and `run` read it.
 - **On a terminal** it continues by asking only for what is missing, required first: choose a
@@ -563,9 +563,11 @@ preset unless `--no-preset` and print which role resolves to what. `add <file.ya
 source, why); `set <role|default> <provider/model>`; `preset [name]` lists or applies a provider
 preset to every role; `reset [--yes]` restores the built-in policy.
 **`setup sandbox`** — bare or `status [--json]` is a read: the gate is always active, plus the
-isolation state, the network mode and the backend found. `on` needs bwrap or a reachable docker
-(exit 1 naming both otherwise), `off`, `network none|open` (any other word is a usage error,
-exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate` and
+isolation state, the network mode and the backend found. `on` needs a usable backend (landlock on Linux 5.13+, seatbelt on macOS, or a chosen reachable
+docker; exit 1 naming the fixes otherwise), `off`, `backend auto|docker` (records the choice in
+fleet.json; `auto` is landlock or seatbelt, `docker` is docker only; any other word is a usage
+error, exit 2), `network none|open` (any other word is a usage error,
+exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate`, `gates.backend` and
 `gates.network`. See security-gates.spec.md.
 **`setup shell <bash|zsh>`** — prints the completion script generated from the live command tree;
 any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup shell bash)"`.
@@ -686,11 +688,10 @@ tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client
 **Syntax**: `docket setup mcp <list|add|remove>` (a real sub-app of `setup`)
 **Subcommands**:
 - `list`: Every configured server's name, launch command, `kind`, `tools` allow-list (empty =
-  all), timeout and whether it runs in the jail or on the host; `env` values are masked
-- `add <name> [--env K=V ...] [--timeout S] [--kind read|write] [--tools NAME,...] [--no-isolate]
+  all) and timeout; `env` values are masked
+- `add <name> [--env K=V ...] [--timeout S] [--kind read|write] [--tools NAME,...]
   -- <command> [args]`: Everything after `--` is the launch command, verbatim. `--kind` declares
-  the server's trust level (default `write`); `--no-isolate` starts the server on the host
-  instead of in the turn's jail (audited, shown by `list`). A bad `--kind`, a malformed `--env`,
+  the server's trust level (default `write`). A bad `--kind`, a malformed `--env`,
   a bad or duplicate name exits 1 writing nothing; a missing command exits 2
 - `remove <name>`: Remove a configured server; an unknown name exits 1
 **Return**: 0 on success, 1 on a refused value, 2 on a usage error

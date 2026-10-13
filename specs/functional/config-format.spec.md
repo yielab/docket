@@ -72,8 +72,7 @@ This specification does NOT cover:
    `core.channel.load_channel_document`), plus `mcp-server` (ADR 0019 §5,
    `core.mcp_tools.load_mcp_server_document`). An `mcp-server` document is `name`, `command`,
    `args`, `env`, `timeout`, `access` (`read`|`write`, the server's declared kind; the key is not
-   `kind` because `kind:` is the envelope) and `tools` and `isolate` (default `true`; `false` starts the server on the host, outside the turn's jail,
-   and `pod update` and its dry run print that the server runs unjailed); it lives under a recipe's `mcp-servers/`,
+   `kind` because `kind:` is the envelope) and `tools` (an `isolate:` key is an unknown-key error: every stdio server starts in the turn's jail); it lives under a recipe's `mcp-servers/`,
    which `discover_config_paths` lists after `policies/`.
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is close enough
