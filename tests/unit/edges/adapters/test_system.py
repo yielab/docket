@@ -554,6 +554,64 @@ class TestLandlockGitMounts:
         assert self._values(self._argv(tmp_path, []), "--refuse") == []
 
 
+class TestRefNarrowingOnDockerAndSeatbelt:
+    def _linked(self, tmp_path: Path, head: str) -> tuple[Path, Path, Path]:
+        wt, common = tmp_path / "wt", tmp_path / "main" / ".git"
+        gitdir = common / "worktrees" / "wt"
+        for d in (wt, gitdir, common / "objects", common / "refs", common / "logs" / "refs"):
+            d.mkdir(parents=True)
+        (gitdir / "HEAD").write_text(head)
+        return wt, common, gitdir
+
+    def _docker(self, root: Path, dirs: list[Path]) -> list[str]:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_sys, "git_dirs", lambda r: dirs)
+            mp.setattr(_sys.os, "getuid", lambda: 1000)
+            mp.setattr(_sys.os, "getgid", lambda: 1000)
+            return _sys._docker_prefix("c", (root,), None, True)
+
+    def _mounts(self, argv: list[str]) -> list[str]:
+        return [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+
+    def test_docker_binds_the_refs_read_only_then_reopens_the_task_branch_dirs(
+        self, tmp_path: Path
+    ) -> None:
+        wt, common, gitdir = self._linked(tmp_path, "ref: refs/heads/docket/pod/wt\n")
+        mounts = self._mounts(self._docker(wt, [gitdir, common]))
+        refs = f"{common / 'refs'}:{common / 'refs'}:ro"
+        branch = common / "refs" / "heads" / "docket" / "pod"
+        reflog = common / "logs" / "refs" / "heads" / "docket" / "pod"
+        assert refs in mounts
+        assert f"{common / 'logs' / 'refs'}:{common / 'logs' / 'refs'}:ro" in mounts
+        assert f"{common / 'packed-refs'}:{common / 'packed-refs'}:ro" in mounts
+        assert mounts.index(f"{branch}:{branch}") > mounts.index(refs)
+        assert mounts.index(f"{reflog}:{reflog}") > mounts.index(refs)
+
+    def test_a_linked_worktree_that_is_not_a_task_reopens_nothing(self, tmp_path: Path) -> None:
+        wt, common, gitdir = self._linked(tmp_path, "ref: refs/heads/feature\n")
+        mounts = self._mounts(self._docker(wt, [gitdir, common]))
+        assert f"{common / 'refs'}:{common / 'refs'}:ro" in mounts
+        assert not [m for m in mounts if "heads" in m]
+
+    def test_a_main_checkout_keeps_its_refs_writable(self, tmp_path: Path) -> None:
+        common = tmp_path / ".git"
+        (common / "refs").mkdir(parents=True)
+        mounts = self._mounts(self._docker(tmp_path, [common]))
+        assert not [m for m in mounts if m.endswith(":ro") and "refs" in m]
+
+    def test_seatbelt_allows_the_task_branch_dirs_after_the_ref_denies(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        wt, common, gitdir = self._linked(tmp_path, "ref: refs/heads/docket/pod/wt\n")
+        monkeypatch.setattr(_sys, "git_dirs", lambda r: [gitdir, common])
+        lines = _sys.seatbelt_profile((wt,), False).splitlines()
+        deny = lines.index(f'(deny file-write* (subpath "{common / "refs"}"))')
+        branch = common / "refs" / "heads" / "docket" / "pod"
+        allow = lines.index(f'(allow file-read* file-write* (subpath "{branch}"))')
+        assert allow > deny
+        assert f'(deny file-write* (subpath "{common / "packed-refs"}"))' in lines
+
+
 class TestTrustedWorktree:
     def test_git_dirs_answers_from_the_record(self, tmp_path: Path) -> None:
         wt = tmp_path / "wt"

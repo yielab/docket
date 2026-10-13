@@ -190,6 +190,9 @@ class TestArgvShape:
             str(wt.resolve() / ".git"),
             str(admin / "gitdir"),
             str(admin / "commondir"),
+            str(common / "refs"),
+            str(common / "logs" / "refs"),
+            str(common / "packed-refs"),
         ]
         mounts = [i for i, a in enumerate(docker) if a == "-v"]
         rw_last = max(i for i in mounts if not docker[i + 1].endswith(":ro"))
@@ -464,7 +467,7 @@ class TestJailedCommit:
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", str(wt))
+        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
         outside = tmp_path / "outside"
         outside.mkdir()
         ident = {
@@ -521,7 +524,7 @@ class TestJailedCommit:
             "-m",
             "i",
         )
-        _git(main, "worktree", "add", "-q", str(wt))
+        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
 
         outcome = toolbox.run_bash((wt,), "git commit -q --allow-empty -m jailed", sandbox="auto")
         assert outcome.ok, outcome.error or outcome.content
@@ -536,7 +539,7 @@ class TestJailedCommit:
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", str(wt))
+        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
         common = main / ".git"
         ident = {
             "GIT_AUTHOR_NAME": "t",
@@ -664,7 +667,7 @@ class TestGitMetadataTheHostLaterRuns:
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", str(wt))
+        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
         (main / ".git" / "info").mkdir(exist_ok=True)
         (main / ".git" / "info" / "attributes").write_text("* -diff\n")
         before = _git(wt, "rev-parse", "--absolute-git-dir")
@@ -732,7 +735,7 @@ class TestDockerJailedCommit:
         wt = tmp_path / "wt"
         _git(tmp_path, "init", "-q", str(main))
         _git(main, "commit", "-q", "--allow-empty", "-m", "init")
-        _git(main, "worktree", "add", "-q", str(wt))
+        _git(main, "worktree", "add", "-q", "-b", "docket/pod/wt", str(wt))
 
         outcome = toolbox.run_bash(
             (wt,),
