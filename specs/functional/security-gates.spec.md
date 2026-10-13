@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.44.0
+**Version**: 0.45.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -20,7 +20,7 @@ and can only ever add a restriction, never override a global `block`/`require_ap
 `when` predicate can also name an operator-applied Python plugin (`when.plugin`), loaded only
 from `$PLUGINS_DIR` or a pod's own `config/plugins/`, never a codebase — see "Predicate plugins"
 below.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -979,6 +979,21 @@ either.
     writable inside this jail (the bwrap read-only overlays have no Landlock equivalent). Pinned by
     unit tests over the ruleset plan, the argv and the BPF program (no syscall) and by
     `tests/integration/test_jail_landlock.py` on a real kernel.
+11. **One jail builder for every command docket launches.** `edges/adapters/system.py::jail_launch(roots,
+    command, backend, network, env, extra_rw)` is the only place that turns a backend, the roots
+    and an optional `extra_rw: tuple[Path, ...]` (read-write beside the roots, never the cwd) into an
+    argv, a child environment (PATH plus the explicit overlay plus the operator's git identity; no
+    host environment) and, for docker, a container name. `toolbox.run_bash`, `run_verify_cmd` and the
+    `run:` executor all call it, so a `verifyCmd` or a `run:` command runs under exactly the jail a
+    `bash` call of the same pod would. The decision is the turn's own: isolation recorded on and a
+    usable backend (`docket_runtime._resolve_sandbox`), the pod's network
+    (`docket_runtime._resolve_network`). **Fail closed**: with isolation on and no usable backend
+    the command is not run and the verify gate fails (`[verify not run: ...]`) and the `run:` step
+    fails; a jail that cannot start is a failure, never a retry on the host. With isolation off both
+    run on the host as before, byte for byte, still with `task_environment`. The
+    `classify_command`/`match_high_risk` refusal of the verify command stays ahead of any
+    subprocess. Stdio MCP servers are jailed by the same backends in `mcp_client._jailed_command`
+    whenever the turn is isolated and the server does not declare `isolate: false`.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1657,6 +1672,10 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.45.0 (2026-10-13)
+
+- Exec sandbox new item 11: `system.jail_launch` is the one jail builder; `run_verify_cmd` and the `run:` executor run inside the jail when isolation is on and fail closed when no backend is usable. Isolation off is unchanged.
 
 ### Version 0.44.0 (2026-10-12)
 

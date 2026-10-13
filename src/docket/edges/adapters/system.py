@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -594,8 +595,69 @@ def task_environment(
     return merged
 
 
+@dataclass(frozen=True)
+class JailLaunch:
+    """What to hand ``Popen`` for a jailed command: the argv, the child environment (``None``
+    for docker, whose container gets its variables through ``-e`` flags) and the container name."""
+
+    argv: list[str]
+    env: dict[str, str] | None
+    container: str = ""
+
+
+@dataclass(frozen=True)
+class JailPolicy:
+    """The jail a docket-launched command must run in: the pod's network, extra rw roots and
+    the pod cache dir."""
+
+    network: bool = True
+    extra_rw: tuple[Path, ...] = ()
+    cache_dir: Path | None = None
+
+
+def jailed_env(env: dict[str, str] | None) -> dict[str, str]:
+    """PATH plus the explicit overlay: never the host environment, so a jailed command cannot
+    inherit a credential the unjailed path would."""
+    minimal = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    if env:
+        minimal.update(env)
+    return minimal
+
+
+def jail_launch(
+    roots: tuple[Path, ...],
+    command: str,
+    backend: SandboxBackend,
+    *,
+    network: bool = True,
+    env: dict[str, str] | None = None,
+    extra_rw: tuple[Path, ...] = (),
+    cache_dir: Path | None = None,
+) -> JailLaunch:
+    """The one place a backend, the roots and *extra_rw* become a jailed shell command. The first
+    root is the cwd; *extra_rw* and *cache_dir* (home and caches) are writable beside the roots.
+    Raises ``ValueError`` for ``none``."""
+    all_roots = (*roots, *extra_rw)
+    merged = {**git_identity_env(roots[0].resolve()), **(env or {})}
+    if cache_dir is not None:
+        all_roots = (*all_roots, cache_dir.resolve())
+        merged = {**cache_environment(cache_dir), **merged}
+    if backend == "docker":
+        name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
+        return JailLaunch(docker_run_argv(name, all_roots, command, merged, network), None, name)
+    if backend == "bwrap":
+        return JailLaunch(bwrap_argv(all_roots, command, network), jailed_env(merged))
+    if backend == "landlock":
+        return JailLaunch(landlock_argv(all_roots, command, network), jailed_env(merged))
+    raise ValueError(f"no sandbox backend to launch under: {backend}")
+
+
 def run_verify_cmd(
-    cmd: str, cwd: str, timeout: int = 120, env: dict[str, str] | None = None
+    cmd: str,
+    cwd: str,
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    jail: JailPolicy | None = None,
 ) -> tuple[bool, str]:
     """Run a user-supplied verification command in *cwd*. Returns
     ``(passed, combined_output)`` capped at _VERIFY_MAX_OUTPUT; the caller
@@ -617,24 +679,56 @@ def run_verify_cmd(
     leaves orphans behind every time it is killed on timeout. The pid is never
     registered anywhere, so this group is reachable only from inside this function;
     ``docket task cancel`` cannot interrupt an in-flight verify command (see
-    ``specs/functional/pod-dispatch.spec.md``'s Cancellation requirement 2)."""
+    ``specs/functional/pod-dispatch.spec.md``'s Cancellation requirement 2).
+
+    With *jail* the command runs under the strongest sandbox backend, rooted at *cwd*, and never
+    on the host: no usable backend means it is not run. See specs/functional/security-gates.spec.md."""
     risk_cls = _sec.match_high_risk(cmd)
     if risk_cls is not None:
         return False, (
             f"[verify command refused: matches high-risk class '{risk_cls.name}' "
             f"({risk_cls.description}) -- see `docket setup sandbox classes`]"
         )
+    container = ""
     try:
-        proc = subprocess.Popen(
-            cmd,
-            shell=True,
-            cwd=cwd or None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-            env=task_environment(env),
-        )
+        if jail is None:
+            proc = subprocess.Popen(
+                cmd,
+                shell=True,
+                cwd=cwd or None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+                env=task_environment(env),
+            )
+        else:
+            backend = sandbox_availability().backend
+            if backend == "none" or not cwd:
+                return (
+                    False,
+                    "[verify not run: no sandbox backend is usable or no working directory]",
+                )
+            launch = jail_launch(
+                (Path(cwd),),
+                cmd,
+                backend,
+                network=jail.network,
+                env=env,
+                extra_rw=jail.extra_rw,
+                cache_dir=jail.cache_dir,
+            )
+            container = launch.container
+            proc = subprocess.Popen(
+                launch.argv,
+                shell=False,
+                cwd=str(Path(cwd).resolve()),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+                env=launch.env,
+            )
     except (FileNotFoundError, OSError) as exc:
         return False, f"[verify error: {exc}]"
     try:
@@ -643,6 +737,8 @@ def run_verify_cmd(
         import contextlib
         import signal as _signal
 
+        if container:
+            docker_kill(container)
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, _signal.SIGKILL)
         with contextlib.suppress(subprocess.SubprocessError, OSError):

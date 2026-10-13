@@ -1903,7 +1903,7 @@ def _evaluate_mechanical_gate(
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
     before_verify = _sys.git_worktree_fingerprint(cwd)
     verify_start = _time.monotonic()
-    passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
+    passed, raw_output = _run_in_envelope(ctx.project, "verify", verify_cmd, cwd, mech_timeout)
     duration_s = _time.monotonic() - verify_start
     after_verify = _sys.git_worktree_fingerprint(cwd)
     produced = sorted(p for p, fp in after_verify.items() if before_verify.get(p) != fp)
@@ -2294,6 +2294,26 @@ def _task_command_env(
     }
 
 
+def _run_in_envelope(
+    project: str,
+    label: str,
+    cmd: str,
+    cwd: str,
+    timeout: int,
+    env: dict[str, str] | None = None,
+) -> tuple[bool, str]:
+    """Run a verify or ``run:`` command under the pod's isolation posture: in the jail when
+    isolation is on, refused when it is on with no usable backend, on the host otherwise."""
+    jail, refusal = _dr.resolve_command_jail(project, label)
+    if refusal is not None:
+        return False, f"[{label} not run: {refusal}]"
+    if jail is not None:
+        return _sys.run_verify_cmd(cmd, cwd, timeout, env=env, jail=jail)
+    if env is None:
+        return _sys.run_verify_cmd(cmd, cwd, timeout)
+    return _sys.run_verify_cmd(cmd, cwd, timeout, env=env)
+
+
 def _run_command_step(
     ctx: _UnitContext,
     node: _orch.PlannedUnit,
@@ -2345,8 +2365,8 @@ def _run_command_step(
 
     cwd = _when_cwd(ctx, prior)
     timeout = node.timeout or ctx.resolved_verify_timeout
-    passed, raw_output = _sys.run_verify_cmd(
-        cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)
+    passed, raw_output = _run_in_envelope(
+        ctx.project, "run", cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)
     )
     redacted = _trace.redact(raw_output)
     _trace_locked(
