@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.14.1
+**Version**: 2.15.0
 **Status**: Implemented — format, executor, variable resolution, and step-instruction
 interpolation. **P30-3** adds a per-step `model` override (ADR 0012 §2 rule 6): a unit step may
 declare `model: cheap|strong|<provider>/<id>`, resolved for that hop only — see "Steps"
@@ -415,6 +415,10 @@ This specification does NOT cover:
 4. The one recognized single-bounded-backward-edge shorthand (see "Short form" above) **MUST**
    keep normalizing to the canonical `rework:` edge, never to `on`, so every existing rework-based
    document and the three shipped recipes stay byte-identical.
+5. A backward or self route out of a `mechanical` gate that did not pass (for example
+   `until: verify`) **MUST** tell the target's next hop why the gate failed: dispatch adds a `--- GATE FAILED: <step id> ---`
+   section carrying the routed hop's redacted verify output (`pod-dispatch.spec.md`, "Bounded hop
+   prompts" item 9). A forward route, a backward `pass` route and a verdict gate's route add no such section.
 
 ### Conditional steps and command steps
 
@@ -648,6 +652,10 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.15.0 (2026-10-13)
+
+- "Outcome routing" item 5: a backward route out of a mechanical gate carries the gate's output into the retry (P42-1).
 
 ### Version 2.14.1 (2026-10-08)
 

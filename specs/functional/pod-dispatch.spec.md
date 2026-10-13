@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.40.1
+**Version**: 6.41.0
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1807,6 +1807,19 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    **MUST** still return before any token-budgeting in requirements 1-2 above (it carries no prior-
    hop carryover) — this requirement changes only which instruction text is prepended to the task
    description, not the Lead's budget-free composition path.
+9. A **backward `on:` route out of a mechanical gate** (P42-1; the target is at or before the routed
+   step, e.g. `until: verify`) **MUST** carry the gate's output into the target's next hop. When
+   the routed hop holds `verify` evidence of a gate that did not pass (exit code nonzero, or a
+   label other than `pass`), dispatch **MUST** hand that hop to the target's next
+   hop as its carryover, and `_hop_message` **MUST** render a section
+   `--- GATE FAILED: <step id> ---` followed by the hop's persisted, redacted
+   `verify.outputTail` (never raw output), fit to the carryover budget with the usual visible
+   truncation marker and recorded in the `context_composed` sections as role `gate_failed`.
+   `_gate_failed_section` is the one function that writes this text. The routed hop's own output
+   stays in the generic carryover, and the Implementer instruction is the ordinary one, not the
+   reviewer-rework text. A resume rebuilds the carryover from the last routed hop the way it
+   rebuilds a rework hop (`_replay_pipeline_position`). A forward route, a backward `pass` route, an
+   unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
 
 ### Task status vocabulary
 
@@ -2130,6 +2143,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.41.0 (2026-10-13)
+
+- "Bounded hop prompts" item 9: a backward route out of a mechanical gate carries the gate's redacted output tail into the target's next hop under `--- GATE FAILED: <step id> ---` (P42-1).
 
 ### Version 6.40.1 (2026-10-13)
 
