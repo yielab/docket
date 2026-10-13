@@ -450,10 +450,35 @@ def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
             if str(path) not in rw:
                 rw.append(str(path))
         if dirs:
-            for guarded in _guarded_paths(resolved_root, dirs):
+            for guarded in [*_guarded_paths(resolved_root, dirs), *_linked_ref_overlays(dirs)]:
                 if str(guarded) not in ro:
                     ro.append(str(guarded))
     return rw, ro
+
+
+def _linked_ref_overlays(dirs: list[Path]) -> list[Path]:
+    """A linked worktree's shared ``refs``, ``logs/refs`` and ``packed-refs``, read-only. A main
+    checkout (git dir equal to common dir) keeps them writable."""
+    gitdir, common = dirs[0], dirs[-1]
+    if gitdir == common:
+        return []
+    packed = common / "packed-refs"
+    if not packed.exists():
+        with contextlib.suppress(OSError):
+            packed.touch()
+    paths = [common / "refs", common / "logs" / "refs", packed]
+    return [p for p in paths if p.exists()]
+
+
+def _mount_reopened(roots: tuple[Path, ...]) -> list[str]:
+    """The task branch's ref and reflog dirs of each task worktree root, to grant read-write
+    after the read-only ref overlays."""
+    out: list[str] = []
+    for root in roots:
+        dirs = git_dirs(root)
+        if dirs and dirs[0] != dirs[-1]:
+            out += [str(d) for d in _task_ref_dirs(dirs[-1], dirs[0]) if str(d) not in out]
+    return out
 
 
 def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
@@ -504,6 +529,9 @@ def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
     ]
     lines += [f"(allow file-read* file-write* (subpath {_sbpl(p)}))" for p in rw]
     lines += [f"(deny file-write* (subpath {_sbpl(p)}))" for p in ro]
+    lines += [
+        f"(allow file-read* file-write* (subpath {_sbpl(p)}))" for p in _mount_reopened(roots)
+    ]
     lines.append("(allow network*)" if network else "(deny network*)")
     return "\n".join(lines) + "\n"
 
@@ -682,6 +710,8 @@ def _docker_prefix(
         argv += ["-v", f"{resolved}:{resolved}"]
     for guarded in ro:
         argv += ["-v", f"{guarded}:{guarded}:ro"]
+    for reopened in _mount_reopened(roots):
+        argv += ["-v", f"{reopened}:{reopened}"]
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]

@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.52.0
+**Version**: 0.53.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -245,8 +245,14 @@ are owned here, not there.
    branch outside `docket/<pod>/` fails; the sibling task branches of the same pod stay writable
    (accepted residue: Landlock cannot grant one file plus its lock). `packed-refs` is read-only: a
    git operation that must rewrite it (pack-refs, deleting a packed branch) fails inside the jail.
-   Docker and seatbelt keep whole git dirs read-write, so they have the same ref gap; this
-   requirement narrows Landlock only. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
+   Docker and seatbelt narrow the same way for a **linked worktree** root: the common dir's `refs`,
+   `logs/refs` and `packed-refs` are overlaid read-only (an absent `packed-refs` is created empty
+   first), then the task branch's ref and reflog directories are re-opened read-write after the
+   overlays (a later `-v` bind in docker, a later `(allow file-read* file-write* ...)` rule in
+   the seatbelt profile, where the last matching rule wins). A linked worktree that is not a task
+   worktree reopens nothing. A **main checkout** root (a `.git` directory, which Landlock refuses
+   and docker/seatbelt run in) is unchanged: its refs stay writable, since it is the operator's own
+   checkout and the agent commits on its branch. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
    worktree git dir's `config.worktree`, `gitdir` and `commondir` (see Exec sandbox item 13). A root that holds a `.git`
    **directory** (a main checkout used in place) cannot be guarded by Landlock at all, since the
    directory is inside a writable root, so the Landlock jail refuses to run there: exit 125, the
@@ -1795,6 +1801,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.53.0 (2026-10-13)
+
+- Docker and Seatbelt narrow ref writes for a linked worktree root as Landlock does: refs,
+  reflogs and `packed-refs` read-only, the task branch's ref directories re-opened last
+  (Enablement requirement 3).
 
 ### Version 0.52.0 (2026-10-13)
 
