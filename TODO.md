@@ -11,15 +11,16 @@
 >
 > ---
 >
-> ## ◇ NO ACTIVE WAVE — Wave 101 closed 2026-10-13: Phase 41 sub-wave B done; sub-wave C next
+> ## ▶ ACTIVE BOARD — WAVE 102 (Phase 41's sub-wave C; opened 2026-10-13)
 >
 > **Phase 40** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)) closed
 > 2026-10-12 over Waves 98–100, archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). **Phase 41** (one execution
-> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed sub-wave A in Wave
-> 100 and sub-wave B (P41-5, P41-4, P41-2) in **Wave 101**, one Sonnet worker per card. Sub-wave C
-> (P41-3 ∥ P41-7) is ready on the Wave 101 rollup, packets in
-> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md).
+> envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed sub-waves A and B in
+> Waves 100–101 (rollup `bcc64595`). **Wave 102** runs sub-wave C, **P41-3 ∥ P41-7**, one Sonnet
+> worker per card in an isolated worktree under one integrator, packets in
+> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md)
+> (ownership of `cli/_setup_sandbox.py` split there). Merge order: P41-3, P41-7.
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -314,7 +315,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A and B closed (Waves 100–101); sub-wave C next
+## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A and B closed (Waves 100–101); sub-wave C active in Wave 102
 
 > **Opened 2026-10-12; sub-wave A (P41-1, P41-6) closed in Wave 100, sub-wave B (P41-5, P41-4,
 > P41-2) in Wave 101.** Sub-wave C bases on the Wave 101 rollup. Integrator notes from B:
@@ -383,7 +384,7 @@ card cannot run it on Linux and says so.
 
 ### P41-3 — delete bwrap and `isolate: false`; Docker is a chosen backend
 
-**Status:** TODO (sub-wave C) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
+**Status:** IN PROGRESS (Wave 102, sub-wave C) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
 
 **Goal:** delete `_bwrap_prefix`, `bwrap_argv`, `bwrap_available`, the `bwrap` backend value
 and its tests; delete the `isolate` field from `kind: mcp-server` documents (schema regenerated
@@ -457,7 +458,7 @@ print the network mode recaptured with the diff explained. Oracle: `classify_com
 
 ### P41-7 — the sandbox is visible: probe, platform lines, backend choice
 
-**Status:** TODO (sub-wave C) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
+**Status:** IN PROGRESS (Wave 102, sub-wave C) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
 
 **Trigger (D-60 §4-5):** `docket init` says nothing about the sandbox; only `status` has an
 `Isolation:` line; nobody installing learns whether a backend exists or what to install.
