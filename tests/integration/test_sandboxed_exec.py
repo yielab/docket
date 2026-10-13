@@ -84,6 +84,7 @@ def _pgrep_count(marker: str) -> int:
 
 class TestSandboxAvailabilityDetection:
     def test_env_override_wins_over_real_probes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(system, "landlock_available", lambda: True)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
@@ -97,24 +98,28 @@ class TestSandboxAvailabilityDetection:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
         assert system.sandbox_availability().backend == "bwrap"
 
     def test_docker_used_when_bwrap_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(system, "bwrap_available", lambda: False)
         assert system.sandbox_availability().backend == "docker"
 
     def test_bwrap_used_when_docker_is_not(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
         assert system.sandbox_availability().backend == "bwrap"
 
     def test_none_when_neither_usable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
         monkeypatch.setattr(system, "bwrap_available", lambda: False)
         availability = system.sandbox_availability()
@@ -280,17 +285,22 @@ class TestHonestReportingIsDeterministic:
     def test_auto_with_neither_backend_reports_none_and_says_why(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
         monkeypatch.setattr(system, "bwrap_available", lambda: False)
         out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
         assert out.ok
-        assert "[sandbox: none (docker unavailable, bwrap unavailable)]" in out.content
+        assert (
+            "[sandbox: none (landlock unavailable, docker unavailable, bwrap unavailable)]"
+            in out.content
+        )
 
     def test_auto_forced_to_none_when_both_are_actually_available_says_so_too(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A silent 'none' that looks identical whether or not a jail was
         possible is exactly the failure this card exists to prevent."""
+        monkeypatch.setattr(system, "landlock_available", lambda: True)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: True)
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")

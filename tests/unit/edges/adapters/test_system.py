@@ -223,3 +223,41 @@ class TestBwrapHidesDocketHome:
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         out = toolbox.run_bash((ws,), f"cat {home / 'secrets.json'}; ls {home}", sandbox="auto")
         assert "SECRET-VALUE-0b3e7" not in (out.content or "")
+
+
+# ── landlock backend ──────────────────────────────────────────────────────────
+
+
+class TestLandlockBackend:
+    def test_argv_runs_the_jail_entry_with_the_roots_and_network_mode(self, tmp_path: Path) -> None:
+        argv = _sys.landlock_argv((tmp_path,), "echo hi", network=False)
+        assert argv[:3] == [_sys.sys.executable, "-m", "docket.jail"]
+        assert argv[argv.index("--rw") + 1] == str(tmp_path.resolve())
+        assert argv[argv.index("--net") + 1] == "none"
+        assert argv[-4:] == ["--", "/bin/sh", "-c", "echo hi"]
+        assert _sys.landlock_argv((tmp_path,), "x")[argv.index("--net") + 1] == "open"
+
+    def test_command_argv_passes_the_argv_through(self, tmp_path: Path) -> None:
+        argv = _sys.landlock_command_argv((tmp_path,), ["srv", "--x"], network=True)
+        assert argv[-3:] == ["--", "srv", "--x"]
+
+    def test_landlock_is_probed_first_and_overridable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(_sys, "landlock_available", lambda: True)
+        monkeypatch.setattr(_sys, "bwrap_available", lambda: True)
+        monkeypatch.setattr(_sys, "docker_daemon_reachable", lambda: True)
+        assert _sys.sandbox_availability().backend == "landlock"
+        monkeypatch.setattr(_sys, "landlock_available", lambda: False)
+        assert _sys.sandbox_availability().backend == "bwrap"
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        assert _sys.sandbox_availability().backend == "landlock"
+
+    def test_availability_follows_the_abi_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from docket.edges.adapters import landlock
+
+        monkeypatch.setattr(landlock, "abi_version", lambda: 0)
+        assert _sys.landlock_available() is False
+        monkeypatch.setattr(landlock, "abi_version", lambda: 3)
+        assert _sys.landlock_available() is True

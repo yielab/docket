@@ -275,6 +275,7 @@ def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None)
     reasons = [
         reason
         for ok, reason in (
+            (availability.landlock, "landlock unavailable"),
             (availability.docker, "docker unavailable"),
             (availability.bwrap, "bwrap unavailable"),
         )
@@ -338,7 +339,7 @@ def run_bash(
 
     popen_env: dict[str, str] | None
     container_name = ""
-    if backend in ("docker", "bwrap"):
+    if backend in ("docker", "bwrap", "landlock"):
         env = {**_system.git_identity_env(cwd), **(env or {})}
     if backend == "docker":
         container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
@@ -349,6 +350,10 @@ def run_bash(
         popen_env = None  # the CLI inherits; the container gets only `env`, via -e flags in argv
     elif backend == "bwrap":
         popen_arg = _system.bwrap_argv(roots, command, network)
+        shell = False
+        popen_env = _jailed_env(env)
+    elif backend == "landlock":
+        popen_arg = _system.landlock_argv(roots, command, network)
         shell = False
         popen_env = _jailed_env(env)
     else:
