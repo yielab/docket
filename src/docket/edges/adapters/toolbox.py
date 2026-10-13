@@ -341,7 +341,7 @@ def run_bash(
 
     popen_env: dict[str, str] | None
     container_name = ""
-    if backend in ("docker", "bwrap", "landlock"):
+    if backend in ("docker", "bwrap", "landlock", "seatbelt"):
         env = {**_system.git_identity_env(cwd), **(env or {})}
     if backend == "docker":
         container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
@@ -356,6 +356,10 @@ def run_bash(
         popen_env = _jailed_env(env)
     elif backend == "landlock":
         popen_arg = _system.landlock_argv(roots, command, network)
+        shell = False
+        popen_env = _jailed_env(env)
+    elif backend == "seatbelt":
+        popen_arg = _system.seatbelt_argv(roots, command, network)
         shell = False
         popen_env = _jailed_env(env)
     else:

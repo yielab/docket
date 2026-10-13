@@ -272,3 +272,111 @@ class TestLandlockBackend:
         monkeypatch.setattr(landlock, "abi_version", lambda: 5)
         monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
         assert _sys.landlock_available() is False
+
+
+# ── seatbelt backend ──────────────────────────────────────────────────────────
+
+
+def _pin_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_sys.sys, "prefix", "/opt/py")
+    monkeypatch.setattr(_sys.os.path, "realpath", lambda p: str(p))
+    monkeypatch.setattr(_sys, "_mount_dirs", lambda roots: ([str(r) for r in roots], []))
+    monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: "/var/tmp/x")
+
+
+_PROFILE_HEAD = (
+    "(version 1)\n"
+    "(deny default)\n"
+    "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata)\n"
+    "(allow signal (target self))\n"
+    '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/etc")'
+    ' (subpath "/private/etc") (subpath "/System/Library") (subpath "/Library")'
+    ' (subpath "/opt/py"))\n'
+    '(allow file-read* (literal "/dev/random") (literal "/dev/urandom"))\n'
+    '(allow file-read* file-write* (literal "/dev/null") (literal "/dev/zero")'
+    ' (literal "/dev/tty") (literal "/dev/dtracehelper"))\n'
+)
+
+
+class TestSeatbeltBackend:
+    def test_profile_is_byte_exact_for_two_roots_under_both_network_modes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        roots = (Path("/w/a"), Path("/w/b"))
+        body = (
+            '(allow file-read* file-write* (subpath "/w/a"))\n'
+            '(allow file-read* file-write* (subpath "/w/b"))\n'
+            '(allow file-read* file-write* (subpath "/var/tmp/x"))\n'
+        )
+        assert _sys.seatbelt_profile(roots, False) == (_PROFILE_HEAD + body + "(deny network*)\n")
+        assert _sys.seatbelt_profile(roots, True) == (_PROFILE_HEAD + body + "(allow network*)\n")
+
+    def test_paths_are_quoted_for_the_profile_language(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: '/w/a"b\\c')
+        profile = _sys.seatbelt_profile((Path('/w/a"b\\c'),), True)
+        assert '(subpath "/w/a\\"b\\\\c"))\n(allow network*)\n' in profile
+
+    def test_guarded_git_paths_are_denied_after_the_grant(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        monkeypatch.setattr(_sys.tempfile, "gettempdir", lambda: "/w/a")
+        monkeypatch.setattr(_sys, "_mount_dirs", lambda roots: (["/w/a"], ["/w/a/.git/hooks"]))
+        profile = _sys.seatbelt_profile((Path("/w/a"),), False)
+        assert profile.endswith(
+            '(allow file-read* file-write* (subpath "/w/a"))\n'
+            '(deny file-write* (subpath "/w/a/.git/hooks"))\n(deny network*)\n'
+        )
+
+    def test_argv_runs_sandbox_exec_with_the_profile_and_a_shell(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_profile_env(monkeypatch)
+        argv = _sys.seatbelt_argv((Path("/w/a"),), "echo hi", network=False)
+        assert argv == [
+            "/usr/bin/sandbox-exec",
+            "-p",
+            _sys.seatbelt_profile((Path("/w/a"),), False),
+            "/bin/sh",
+            "-c",
+            "echo hi",
+        ]
+
+    def test_available_only_on_darwin_with_sandbox_exec(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
+        monkeypatch.setattr(_sys.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
+        monkeypatch.setattr(_sys.sys, "platform", "linux")
+        assert _sys.seatbelt_available() is False
+        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        assert _sys.seatbelt_available() is True
+        monkeypatch.setattr(_sys.os.path, "exists", lambda p: False)
+        assert _sys.seatbelt_available() is False
+
+    def test_the_probe_override_hides_seatbelt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        monkeypatch.setattr(_sys.os.path, "exists", lambda p: True)
+        monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
+        assert _sys.seatbelt_available() is False
+
+    def test_darwin_prefers_seatbelt_over_docker_and_is_overridable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
+        monkeypatch.setattr(_sys.sys, "platform", "darwin")
+        monkeypatch.setattr(_sys.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
+        monkeypatch.setattr(_sys, "bwrap_available", lambda: False)
+        monkeypatch.setattr(_sys, "docker_daemon_reachable", lambda: True)
+        availability = _sys.sandbox_availability()
+        assert availability.backend == "seatbelt"
+        assert availability.landlock is False
+        monkeypatch.setattr(_sys.os.path, "exists", lambda p: False)
+        assert _sys.sandbox_availability().backend == "docker"
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "seatbelt")
+        assert _sys.sandbox_availability().backend == "seatbelt"

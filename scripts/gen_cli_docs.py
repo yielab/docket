@@ -619,8 +619,8 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DOCKET_SANDBOX_BACKEND",),
-        "Force or disable the sandbox backend (`landlock`/`docker`/`bwrap`/`none`) regardless of what is actually installed",
-        "auto-detected (landlock > bwrap > docker > none)",
+        "Force or disable the sandbox backend (`landlock`/`seatbelt`/`docker`/`bwrap`/`none`) regardless of what is actually installed",
+        "auto-detected (landlock > seatbelt > bwrap > docker > none)",
     ),
     (
         ("DOCKET_SANDBOX_PROBE",),
