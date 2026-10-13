@@ -928,3 +928,92 @@ class TestSummaryCountsOnlyCrosses:
         crosses = sum(1 for ln in out.splitlines() if "✗" in ln)
         assert f"{crosses} critical issue(s) found" in out
         assert "docket setup --fix" in out
+
+
+class TestJsonCoversEveryTextCheck:
+    """The JSON report and the text report derive the verdict from the same check data."""
+
+    def _pod_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from docket.cli import _pod
+
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_config_at(home, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        _channel.enable_channel("desktop")
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        return home
+
+    def _json(self, capsys: pytest.CaptureFixture[str]) -> dict[str, Any]:
+        capsys.readouterr()
+        _setup_check.run_check(json_out=True)
+        return json.loads(capsys.readouterr().out)
+
+    def test_broken_pod_overlay_is_unhealthy_in_both_reports(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._pod_home(tmp_path, monkeypatch)
+        roles = _cfg.pod_config_dir("demo") / "roles.json"
+        roles.parent.mkdir(parents=True, exist_ok=True)
+        roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+        data = self._json(capsys)
+        assert data["healthy"] is False
+        overlays = data["checks"]["podConfigOverlays"]
+        assert overlays["ok"] is False
+        assert overlays["problems"][0]["pod"] == "demo"
+        assert _setup_check.run_check(json_out=False) == 1
+
+    def test_no_delivering_channel_with_a_pod_is_an_issue_in_both_reports(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._pod_home(tmp_path, monkeypatch)
+        _channel.disable_channel("desktop")
+        assert self._json(capsys)["healthy"] is False
+        warning = _channel.unreached_warning(_channel.load_catalog().delivering())
+        assert warning is not None
+        _setup_check.run_check(json_out=False)
+        lines = capsys.readouterr().out.splitlines()
+        assert any("✗" in ln and warning.splitlines()[0] in ln for ln in lines)
+
+    def test_global_config_problems_are_reported_under_stable_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "test-key"})
+        _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"shop": "@every 3x"}}))
+        _cfg.MODEL_REGISTRY_FILE.write_text(json.dumps({"default": "not-a-model-id"}))
+        _cfg.ARCHETYPE_REGISTRY_FILE.write_text(
+            json.dumps({"roles": {"broken-role": {"name": "broken-role"}}})
+        )
+        data = self._json(capsys)
+        checks = data["checks"]
+        assert data["healthy"] is False
+        assert checks["modelRegistry"]["problems"][0]["key"]
+        assert checks["archetypeOverlay"]["problems"][0]["role"] == "broken-role"
+        assert checks["schedules"]["problems"][0]["key"] == "shop"
+
+    def test_a_clean_home_reports_every_new_check_ok(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._pod_home(tmp_path, monkeypatch)
+        checks = self._json(capsys)["checks"]
+        for key in (
+            "modelRegistry",
+            "archetypeOverlay",
+            "schedules",
+            "exporters",
+            "guardrailPolicies",
+            "podConfigOverlays",
+            "podSync",
+            "runtimeContract",
+        ):
+            assert checks[key]["ok"] is True, key
+
+    def test_a_stale_pod_member_counts_in_the_json_verdict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        home = self._pod_home(tmp_path, monkeypatch)
+        (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text("STALE\n")
+        data = self._json(capsys)
+        assert data["checks"]["podSync"]["stale"][0]["id"] == "demo-lead"
+        assert data["healthy"] is False

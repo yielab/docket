@@ -306,18 +306,23 @@ def _check_key_hygiene() -> int:
     return 0
 
 
-def _check_provider_coverage(ids: list[str]) -> int:
-    """Warn (and count) when an agent's model provider has no stored key."""
+def _missing_provider_keys(ids: list[str]) -> list[tuple[str, str, str]]:
+    """(agent, model, credential) for every agent whose provider has no stored key; the one
+    reader behind the text and JSON reports."""
     stored = _secrets.secrets_keys()
     missing: list[tuple[str, str, str]] = []
     for aid in ids:
         model = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
         provider = model.split("/")[0] if "/" in model else ""
         expected = _expected_credential(provider)
-        if not expected:
-            continue
-        if expected not in stored:
+        if expected and expected not in stored:
             missing.append((aid, model, expected))
+    return missing
+
+
+def _check_provider_coverage(ids: list[str]) -> int:
+    """Warn (and count) when an agent's model provider has no stored key."""
+    missing = _missing_provider_keys(ids)
     if not missing:
         return 0
     ui.section("Provider key coverage:")
@@ -373,31 +378,47 @@ def _check_provider_catalog() -> int:
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
+def _exporter_report() -> list[dict[str, Any]]:
+    """One row per enabled exporter: name, failed exports since last success, privacy label and
+    the non-loopback host receiving content (else None)."""
+    catalog = _exporter.load_catalog()
+    health = _exporter.read_health()
+    rows: list[dict[str, Any]] = []
+    for name in sorted(n for n, spec in catalog.entries.items() if spec.enabled):
+        spec = catalog.entries[name]
+        host: str | None = None
+        if spec.privacy_label in ("conversation", "full"):
+            h = urlsplit(spec.endpoint).hostname or spec.endpoint
+            host = h if h not in _LOOPBACK_HOSTS else None
+        rows.append(
+            {
+                "name": name,
+                "failed": int(health.get(name, {}).get("failed") or 0),
+                "privacy": spec.privacy_label,
+                "host": host,
+            }
+        )
+    return rows
+
+
 def _check_exporters() -> int:
     """Warn for every enabled exporter whose health shows a failure since its last success,
     plus informational lines (not counted as issues) for a `conversation`/`full` exporter
     reaching a non-loopback host."""
     ui.section("Exporters:")
-    catalog = _exporter.load_catalog()
-    enabled = sorted(name for name, spec in catalog.entries.items() if spec.enabled)
+    rows = _exporter_report()
     issues = 0
-    if not enabled:
+    if not rows:
         ui.dim("  No exporters enabled")
-    else:
-        health = _exporter.read_health()
-        for name in enabled:
-            spec = catalog.entries[name]
-            record = health.get(name, {})
-            failed = int(record.get("failed") or 0)
-            if failed > 0:
-                ui.warn(f"  {name}: {failed} failed export(s) — docket setup export test {name}")
-                issues += 1
-            else:
-                ui.success(f"  {name}: healthy")
-            if spec.privacy_label in ("conversation", "full"):
-                host = urlsplit(spec.endpoint).hostname or spec.endpoint
-                if host not in _LOOPBACK_HOSTS:
-                    ui.info(f"  {name}: privacy '{spec.privacy_label}' shares content with {host}")
+    for row in rows:
+        name = row["name"]
+        if row["failed"] > 0:
+            ui.warn(f"  {name}: {row['failed']} failed export(s) — docket setup export test {name}")
+            issues += 1
+        else:
+            ui.success(f"  {name}: healthy")
+        if row["host"]:
+            ui.info(f"  {name}: privacy '{row['privacy']}' shares content with {row['host']}")
     return issues
 
 
@@ -411,7 +432,7 @@ def _check_notifications(ids: list[str]) -> int:
         ui.success(f"  Delivering: {', '.join(delivering)}")
         return 0
     if ids:
-        ui.warn(f"  {text}")
+        ui.console.print(f"[red]✗[/red]   {text}")
         return 1
     ui.dim(f"  {text}")
     return 0
@@ -501,67 +522,67 @@ def _check_profiles() -> None:
             ui.console.print(f"    {v.requirement}: {v.detail}. Fix: {v.fix}", markup=False)
 
 
+def _policy_problems() -> tuple[list[Any], list[tuple[str, str]]]:
+    """(installed policy files, (file name, error) for each the evaluator fails closed on)."""
+    files = _pol.policy_files()
+    problems = [(f.name, err) for f in files if (err := _pol.validate_policy(f))]
+    return files, problems
+
+
 def _check_policies() -> int:
     """Guardrail policy store integrity: flags any file the evaluator would fail closed on,
     through the same ``core.policy`` validation, so doctor can never call a store healthy that
     a live turn would block on (security-gates.spec.md, policy engine requirement 7)."""
     ui.section("Guardrail policies:")
-    files = _pol.policy_files()
+    files, problems = _policy_problems()
     if not files:
         ui.dim("  No policies installed — docket setup")
         return 0
-    broken = 0
-    for f in files:
-        err = _pol.validate_policy(f)
-        if err:
-            broken += 1
-            ui.console.print(f"[red]✗[/red]   {f.name}: broken — every matching call fails closed")
-            ui.console.print(f"    {err}")
-    if broken:
+    for name, err in problems:
+        ui.console.print(f"[red]✗[/red]   {name}: broken — every matching call fails closed")
+        ui.console.print(f"    {err}")
+    if problems:
         ui.console.print("  Fix or remove the file(s); check with: docket pod validate")
-        return broken
+        return len(problems)
     ui.success(f"  {len(files)} policy file(s) valid")
     return 0
+
+
+def _pod_overlay_problems() -> list[tuple[str, str, str, str]]:
+    """(pod, kind, name, reason) for each malformed pod role overlay or invalid pod policy file,
+    excluding problems already reported for the global files."""
+    from docket.core import archetypes as _arch
+    from docket.core import dispatch as _dispatch
+
+    global_role_problems = set(_arch.find_overlay_problems())
+    global_policy_files = set(_pol.policy_files())
+    found: list[tuple[str, str, str, str]] = []
+    for project in _dispatch.dispatchable_pods():
+        for role, reason in _arch.find_overlay_problems(project):
+            if (role, reason) not in global_role_problems:
+                found.append((project, "role", role, reason))
+        for f in _pol.policy_files(project):
+            if f not in global_policy_files and (err := _pol.validate_policy(f)):
+                found.append((project, "policy", f.name, err))
+    return found
 
 
 def _check_pod_config_overlays() -> int:
     """Every pod's own config overlay (``<pod>/config/``) -- the layer
     ``_check_archetype_overlay``/``_check_policies`` never look at. Names the pod plus
     the role/file and reason for a malformed role overlay or invalid policy file."""
-    from docket.core import archetypes as _arch
     from docket.core import dispatch as _dispatch
 
     ui.section("Pod config overlays (<pod>/config/):")
-    pods = _dispatch.dispatchable_pods()
-    if not pods:
+    if not _dispatch.dispatchable_pods():
         ui.dim("  No pods provisioned")
         return 0
-
-    # Subtract the global-file problems so a pre-existing global overlay/policy
-    # problem (already reported above) is never re-counted once per pod.
-    global_role_problems = set(_arch.find_overlay_problems())
-    global_policy_files = set(_pol.policy_files())
-
-    broken = 0
-    for project in pods:
-        pod_role_problems = [
-            p for p in _arch.find_overlay_problems(project) if p not in global_role_problems
-        ]
-        for role, reason in pod_role_problems:
-            broken += 1
-            ui.console.print(f"[red]✗[/red]   {project}: role {role}: {reason}")
-
-        for f in _pol.policy_files(project):
-            if f in global_policy_files:
-                continue
-            err = _pol.validate_policy(f)
-            if err:
-                broken += 1
-                ui.console.print(f"[red]✗[/red]   {project}: policy {f.name}: {err}")
-
-    if broken == 0:
+    problems = _pod_overlay_problems()
+    for project, kind, name, reason in problems:
+        ui.console.print(f"[red]✗[/red]   {project}: {kind} {name}: {reason}")
+    if not problems:
         ui.success("  All pod overlay entries and policy files are well-formed")
-    return broken
+    return len(problems)
 
 
 def _check_template_version(ids: list[str]) -> int:
@@ -591,6 +612,21 @@ def _check_template_version(ids: list[str]) -> int:
     return 0
 
 
+def _pod_member_sync(ids: list[str]) -> list[tuple[str, Any]]:
+    """(member id, sync status) for each pod member whose status can be read."""
+    from docket.core import pod as _pod
+    from docket.core import pod_provisioning as _pp
+
+    out: list[tuple[str, Any]] = []
+    for aid in ids:
+        if _pod.pod_of(aid) is None:
+            continue
+        status = _pp.member_sync_status(aid)
+        if status is not None:
+            out.append((aid, status))
+    return out
+
+
 def _check_pod_sync(ids: list[str]) -> int:
     """Flag pod members whose managed files drifted from the current archetype +
     metadata -- the pod counterpart of ``_check_template_version``, which skips pod
@@ -598,15 +634,11 @@ def _check_pod_sync(ids: list[str]) -> int:
     from docket.core import pod as _pod
     from docket.core import pod_provisioning as _pp
 
-    member_ids = [aid for aid in ids if _pod.pod_of(aid) is not None]
-    if not member_ids:
+    if not any(_pod.pod_of(aid) is not None for aid in ids):
         return 0
     ui.section("Pod member templates:")
     stale = 0
-    for aid in member_ids:
-        status = _pp.member_sync_status(aid)
-        if status is None:
-            continue
+    for aid, status in _pod_member_sync(ids):
         if status.stale:
             stale += 1
             ui.console.print(
@@ -620,22 +652,22 @@ def _check_pod_sync(ids: list[str]) -> int:
     return 0
 
 
+def _agents_missing_contract(ids: list[str]) -> list[str]:
+    """Agents with a workspace but no current durability contract (``WORKFLOW_AUTO.md``)."""
+    return [
+        aid
+        for aid in ids
+        if _cfg.workspace_dir(aid).is_dir() and not _mem.contract_ok(_cfg.workspace_dir(aid))
+    ]
+
+
 def _check_runtime_contract(ids: list[str]) -> int:
-    """Ensure each managed workspace has a current durability contract (``WORKFLOW_AUTO.md``,
-    composed into the system prompt every turn).
-
-    Heals a missing or stale/legacy contract (version-marker detected): otherwise the loop
-    composes a stale/absent resume contract and a weak model loops offering to create it instead
-    of working. Idempotent re-seed from the agent's stored codebase/stack. Advisory — never fails
-    the run."""
-    from docket.core import memory as _mem
-
+    """Re-seed each missing or stale ``WORKFLOW_AUTO.md`` from the agent's stored codebase and
+    stack. Advisory -- never fails the run."""
     ui.section("Runtime startup contract:")
-    healed = 0
-    for aid in ids:
+    missing = _agents_missing_contract(ids)
+    for aid in missing:
         ws = _cfg.workspace_dir(aid)
-        if not ws.is_dir() or _mem.contract_ok(ws):
-            continue
         meta = store.read_json(_cfg.meta_path(aid))
         codebase = str(meta.get("codebase", ""))
         stack = str(meta.get("stack", ""))
@@ -643,8 +675,7 @@ def _check_runtime_contract(ids: list[str]) -> int:
         _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
         where = f" (codebase {codebase})" if codebase else " (no codebase in meta)"
         ui.success(f"  {aid}: seeded {_mem.REQUIRED_STARTUP_FILE}{where}")
-        healed += 1
-    if healed == 0:
+    if not missing:
         ui.success(f"  All agents have a current {_mem.REQUIRED_STARTUP_FILE}")
     return 0
 
@@ -818,17 +849,11 @@ def _check_json_key_hygiene(
     `_check_provider_coverage`."""
     keys_list = [{"name": n, "state": s, "detail": d} for s, n, d in _keys_age_report()]
 
-    issues = 0
-    stored = _secrets.secrets_keys()
-    missing_keys: list[dict[str, str]] = []
-    for aid in ids:
-        model = str(store.read_json(_cfg.meta_path(aid)).get("model", ""))
-        provider = model.split("/")[0] if "/" in model else ""
-        expected = _expected_credential(provider)
-        if expected and expected not in stored:
-            missing_keys.append({"agent": aid, "model": model, "needsKey": expected})
-            issues += 1
-    return issues, keys_list, missing_keys
+    missing_keys = [
+        {"agent": aid, "model": model, "needsKey": expected}
+        for aid, model, expected in _missing_provider_keys(ids)
+    ]
+    return len(missing_keys), keys_list, missing_keys
 
 
 def _check_json_security() -> dict[str, Any]:
@@ -881,6 +906,72 @@ def _check_json_template_drift(ids: list[str]) -> list[dict[str, Any]]:
     return tmpl_results
 
 
+def _check_json_config_files(ids: list[str]) -> tuple[int, dict[str, Any]]:
+    """Registry, overlay, schedule, policy and pod-overlay problems: JSON shape of the text
+    checks of the same names. Returns the issue count and the keys to merge under `checks`."""
+    from docket.core import archetypes as _arch
+    from docket.core import schedule as _sched
+
+    registry = _mp.find_registry_problems()
+    overlay = _arch.find_overlay_problems()
+    schedules = _sched.find_schedule_problems(_cfg.SCHEDULE_FILE)
+    _files, policies = _policy_problems()
+    pod_overlays = _pod_overlay_problems()
+    stale = [
+        {
+            "id": aid,
+            "storedVersion": st.stored_template_version or None,
+            "currentVersion": _pp_version(),
+        }
+        for aid, st in _pod_member_sync(ids)
+        if st.stale
+    ]
+    exporters = _exporter_report()
+    contract = _agents_missing_contract(ids)
+    checks: dict[str, Any] = {
+        "modelRegistry": {
+            "ok": not registry,
+            "problems": [{"key": k, "reason": r} for k, r in registry],
+        },
+        "archetypeOverlay": {
+            "ok": not overlay,
+            "problems": [{"role": k, "reason": r} for k, r in overlay],
+        },
+        "schedules": {
+            "ok": not schedules,
+            "problems": [{"key": k, "reason": r} for k, r in schedules],
+        },
+        "exporters": {
+            "ok": all(row["failed"] == 0 for row in exporters),
+            "enabled": [
+                {"name": r["name"], "failed": r["failed"], "sharesContentWith": r["host"]}
+                for r in exporters
+            ],
+        },
+        "guardrailPolicies": {
+            "ok": not policies,
+            "problems": [{"file": n, "reason": r} for n, r in policies],
+        },
+        "podConfigOverlays": {
+            "ok": not pod_overlays,
+            "problems": [
+                {"pod": p, "kind": k, "name": n, "reason": r} for p, k, n, r in pod_overlays
+            ],
+        },
+        "podSync": {"ok": not stale, "stale": stale},
+        "runtimeContract": {"ok": not contract, "missing": contract},
+    }
+    issues = len(registry) + len(overlay) + len(schedules) + len(policies)
+    issues += len(pod_overlays) + len(stale)
+    return issues, checks
+
+
+def _pp_version() -> int:
+    from docket.core import pod_provisioning as _pp
+
+    return int(_pp.POD_TEMPLATE_VERSION)
+
+
 def _check_json() -> dict[str, Any]:
     """Assemble the machine-readable health report; channel-binding presence is
     covered per agent below."""
@@ -918,6 +1009,8 @@ def _check_json() -> dict[str, Any]:
     if ids and not security["sandboxUsable"]:
         issues += 1
     tmpl_results = _check_json_template_drift(ids)
+    config_issues, config_checks = _check_json_config_files(ids)
+    issues += config_issues
 
     return {
         "healthy": issues == 0,
@@ -937,6 +1030,7 @@ def _check_json() -> dict[str, Any]:
             "notifications": notifications,
             "securityGates": security,
             "templateDrift": tmpl_results,
+            **config_checks,
         },
     }
 

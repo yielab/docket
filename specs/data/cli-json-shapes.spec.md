@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.31.0
+**Version**: 1.32.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -65,10 +65,24 @@ structural rules hold everywhere:
       "network": "string ('open' | 'none'; the global mode)",
       "networkEnforced": "boolean (true only when isolation is on and the mode is 'none'; false means egress is open)"
     },
-    "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
+    "templateDrift": "array of { id, agentVersion, currentVersion, ok }",
+    "modelRegistry":     "{ ok, problems: array of { key, reason } } (malformed docket-models.json entries)",
+    "archetypeOverlay":  "{ ok, problems: array of { role, reason } } (malformed docket-roles.json entries)",
+    "schedules":         "{ ok, problems: array of { key, reason } } (entries that would never fire)",
+    "exporters":         "{ ok, enabled: array of { name, failed, sharesContentWith: string | null } } (advisory: a failing exporter sets ok false and never adds to `issues`)",
+    "guardrailPolicies": "{ ok, problems: array of { file, reason } } (policy files that fail closed)",
+    "podConfigOverlays": "{ ok, problems: array of { pod, kind: 'role' | 'policy', name, reason } }",
+    "podSync":           "{ ok, stale: array of { id, storedVersion, currentVersion } } (a stale member adds one to `issues`)",
+    "runtimeContract":   "{ ok, missing: array of agent ids with no current WORKFLOW_AUTO.md } (advisory, read-only here; the text report re-seeds it)"
   }
 }
 ```
+
+`healthy` is false exactly when the text report ends with critical issues: every check the text
+report runs is also under `checks`, both renderers read the same per-check data, and each of
+`modelRegistry`, `archetypeOverlay`, `schedules`, `guardrailPolicies`, `podConfigOverlays` and
+`podSync` adds its problem count to `issues`. `keyHygiene.missingForAgents` uses the agent's
+resolved model (the default when the metadata names none), as the text report does.
 
 ### `docket status --json` / `docket status --all --json`
 
@@ -428,6 +442,11 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.32.0 (2026-10-13)
+- `doctor --json` / `setup --fix --json` gain `modelRegistry`, `archetypeOverlay`, `schedules`,
+  `exporters`, `guardrailPolicies`, `podConfigOverlays`, `podSync` and `runtimeContract`, so the
+  JSON verdict covers every check the text report runs.
 
 ### Version 1.31.0 (2026-10-13)
 - `doctor --json` `securityGates` and `setup sandbox --json` gain `networkEnforced`; `status` `isolation` says `network none (not enforced: isolation off)` when isolation is off.
