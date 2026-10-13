@@ -96,6 +96,8 @@ def _jailed_command(config: McpServerConfig, launch: StdioLaunch) -> tuple[str, 
     server = [config.command, *config.args]
     if backend == "landlock":
         argv = _system.landlock_command_argv(roots, server, launch.network)
+    elif backend == "seatbelt":
+        argv = _system.seatbelt_command_argv(roots, server, launch.network)
     elif backend == "bwrap":
         argv = _system.bwrap_command_argv(roots, server, launch.network)
     elif backend == "docker":

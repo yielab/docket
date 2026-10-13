@@ -330,7 +330,7 @@ def run_bash(
 
     popen_env: dict[str, str] | None
     container_name = ""
-    if backend in ("docker", "bwrap", "landlock"):
+    if backend in ("docker", "bwrap", "landlock", "seatbelt"):
         launch = _system.jail_launch(
             roots, command, backend, network=network, env=env, cache_dir=cache_dir
         )

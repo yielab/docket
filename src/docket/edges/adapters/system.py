@@ -1,4 +1,4 @@
-"""System adapter: typed wrappers over docker, bwrap, and git.
+"""System adapter: typed wrappers over docker, bwrap, sandbox-exec, and git.
 
 Every shell-out to a container runtime, sandbox tool, or git lives here. Every subprocess call
 catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully so a missing binary
@@ -133,7 +133,7 @@ def docker_available() -> bool:
 # module never decides, only detects and constructs, matching the existing
 # split with `core.security`'s classifier.
 
-SandboxBackend = Literal["landlock", "docker", "bwrap", "none"]
+SandboxBackend = Literal["landlock", "seatbelt", "docker", "bwrap", "none"]
 
 # Detection probes must be fast (they run on every "auto" call) and must
 # never hang a tool call over a jail that turns out to be unusable.
@@ -165,6 +165,17 @@ def landlock_available() -> bool:
     from docket.edges.adapters import landlock
 
     return landlock.abi_version() >= 1
+
+
+_SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+
+
+def seatbelt_available() -> bool:
+    """True on macOS when ``/usr/bin/sandbox-exec`` exists. ``DOCKET_SANDBOX_PROBE=none`` reports
+    false. Apple deprecates ``sandbox-exec`` but still ships it; Claude Code and Codex rely on it."""
+    if os.environ.get("DOCKET_SANDBOX_PROBE") == "none":
+        return False
+    return sys.platform == "darwin" and os.path.exists(_SANDBOX_EXEC)
 
 
 def bwrap_available() -> bool:
@@ -203,21 +214,25 @@ class SandboxAvailability:
     docker: bool
     bwrap: bool
     landlock: bool = False
+    seatbelt: bool = False
 
 
 def sandbox_availability() -> SandboxAvailability:
     """Probe the backends once; report the first usable one: landlock (kernel ABI probe)
-    beats bwrap (smoke test passes) beats docker (daemon reachable) beats none.
+    beats seatbelt (macOS sandbox-exec) beats bwrap (smoke test passes) beats docker (daemon reachable) beats none.
     `DOCKET_SANDBOX_BACKEND` overrides this for tests or an operator."""
     landlock_ok = landlock_available()
+    seatbelt_ok = seatbelt_available()
     docker_ok = docker_daemon_reachable()
     bwrap_ok = bwrap_available()
     override = os.environ.get("DOCKET_SANDBOX_BACKEND")
     backend: SandboxBackend
-    if override in ("landlock", "docker", "bwrap", "none"):
+    if override in ("landlock", "seatbelt", "docker", "bwrap", "none"):
         backend = override  # type: ignore[assignment]
     elif landlock_ok:
         backend = "landlock"
+    elif seatbelt_ok:
+        backend = "seatbelt"
     elif bwrap_ok:
         backend = "bwrap"
     elif docker_ok:
@@ -225,7 +240,11 @@ def sandbox_availability() -> SandboxAvailability:
     else:
         backend = "none"
     return SandboxAvailability(
-        backend=backend, docker=docker_ok, bwrap=bwrap_ok, landlock=landlock_ok
+        backend=backend,
+        docker=docker_ok,
+        bwrap=bwrap_ok,
+        landlock=landlock_ok,
+        seatbelt=seatbelt_ok,
     )
 
 
@@ -374,6 +393,64 @@ def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -
     """The argv running *command* under ``python -m docket.jail``: the roots (and their repository
     dirs) read-write, nothing else of the host writable, the home unreadable. The first root is the cwd."""
     return [*_landlock_prefix(roots, network), "/bin/sh", "-c", command]
+
+
+_SEATBELT_READ = (
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/etc",
+    "/private/etc",
+    "/System/Library",
+    "/Library",
+)
+_SEATBELT_READ_DEVICES = ("/dev/random", "/dev/urandom")
+_SEATBELT_WRITE_DEVICES = ("/dev/null", "/dev/zero", "/dev/tty", "/dev/dtracehelper")
+
+
+def _sbpl(path: str) -> str:
+    """Quote *path* as a Seatbelt profile string literal."""
+    escaped = path.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def seatbelt_profile(roots: tuple[Path, ...], network: bool = True) -> str:
+    """The fixed Seatbelt profile: deny by default, system paths and ``sys.prefix`` readable, the
+    roots (with their repository dirs) and ``$TMPDIR`` read-write, guarded git paths not writable."""
+    rw, ro = _mount_dirs(roots)
+    real = os.path.realpath(tempfile.gettempdir())
+    if real not in rw:
+        rw.append(real)
+    read = [*_SEATBELT_READ, os.path.realpath(sys.prefix)]
+    lines = [
+        "(version 1)",
+        "(deny default)",
+        "(allow process-exec* process-fork sysctl-read mach-lookup file-read-metadata)",
+        "(allow signal (target self))",
+        "(allow file-read* " + " ".join(f"(subpath {_sbpl(p)})" for p in read) + ")",
+        "(allow file-read* "
+        + " ".join(f"(literal {_sbpl(p)})" for p in _SEATBELT_READ_DEVICES)
+        + ")",
+        "(allow file-read* file-write* "
+        + " ".join(f"(literal {_sbpl(p)})" for p in _SEATBELT_WRITE_DEVICES)
+        + ")",
+    ]
+    lines += [f"(allow file-read* file-write* (subpath {_sbpl(p)}))" for p in rw]
+    lines += [f"(deny file-write* (subpath {_sbpl(p)}))" for p in ro]
+    lines.append("(allow network*)" if network else "(deny network*)")
+    return "\n".join(lines) + "\n"
+
+
+def seatbelt_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
+    """The argv running *command* under ``sandbox-exec -p <profile>``; the first root is the cwd."""
+    return [_SANDBOX_EXEC, "-p", seatbelt_profile(roots, network), "/bin/sh", "-c", command]
+
+
+def seatbelt_command_argv(
+    roots: tuple[Path, ...], argv: list[str], network: bool = True
+) -> list[str]:
+    """The same jail as :func:`seatbelt_argv`, running *argv* directly (no shell)."""
+    return [_SANDBOX_EXEC, "-p", seatbelt_profile(roots, network), *argv]
 
 
 def landlock_command_argv(
@@ -649,6 +726,8 @@ def jail_launch(
         return JailLaunch(bwrap_argv(all_roots, command, network), jailed_env(merged))
     if backend == "landlock":
         return JailLaunch(landlock_argv(all_roots, command, network), jailed_env(merged))
+    if backend == "seatbelt":
+        return JailLaunch(seatbelt_argv(all_roots, command, network), jailed_env(merged))
     raise ValueError(f"no sandbox backend to launch under: {backend}")
 
 

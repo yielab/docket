@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.45.0
+**Version**: 0.46.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -836,7 +836,9 @@ either.
    - **`none`** — neither is usable. The command still runs (subject to the gate above and to
      `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
      caller (requirement 4).
-   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
+   - **`seatbelt`** — macOS `sandbox-exec` (requirement 11), between `landlock` and `bwrap`; usable
+     when the host is darwin and `/usr/bin/sandbox-exec` exists.
+   - `DOCKET_SANDBOX_BACKEND` (`landlock`|`seatbelt`|`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
      for tests and for an operator who wants to force or disable a backend regardless of what is installed.
 2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
    `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
@@ -994,6 +996,18 @@ either.
     `classify_command`/`match_high_risk` refusal of the verify command stays ahead of any
     subprocess. Stdio MCP servers are jailed by the same backends in `mcp_client._jailed_command`
     whenever the turn is isolated and the server does not declare `isolate: false`.
+12. **The Seatbelt jail (`system.seatbelt_argv`).** `seatbelt_argv(roots, command, network)` returns
+    `["/usr/bin/sandbox-exec", "-p", <profile>, "/bin/sh", "-c", command]`. The profile is one fixed
+    template: `(version 1)`, `(deny default)`, `process-exec*`, `process-fork`, `sysctl-read`,
+    `mach-lookup`, `file-read-metadata` and signals to self allowed; read-only `subpath` rules for
+    `/usr`, `/bin`, `/sbin`, `/etc`, `/private/etc`, `/System/Library`, `/Library` and `sys.prefix`;
+    read of `/dev/random|urandom`, read-write of `/dev/null|zero|tty|dtracehelper`; read-write
+    `subpath` rules for each root, its repository dirs and the real path of `$TMPDIR`; a
+    `(deny file-write* ...)` for each guarded git path (hooks, config) after the grants; then
+    `(deny network*)` or `(allow network*)`. Paths are quoted for the profile language (`\` and `"`
+    escaped). The operator's home and `DOCKET_HOME` are unreadable. `sandbox-exec` is deprecated by
+    Apple but still ships. `jail_launch` (item 11) builds it like the `landlock` argv, so `bash`,
+    verify and `run:` all reach it.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1672,6 +1686,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.46.0 (2026-10-13)
+
+- Exec sandbox item 1 and new item 12: a `seatbelt` backend for macOS (`/usr/bin/sandbox-exec -p
+  <profile> /bin/sh -c <command>`), probed after `landlock` and before `bwrap` and `docker`
+  (`seatbelt_available`: darwin and `/usr/bin/sandbox-exec` exists; `DOCKET_SANDBOX_PROBE=none`
+  reports false), accepted by `DOCKET_SANDBOX_BACKEND`. Landlock stays Linux-only. Unit-pinned
+  only: no macOS host ran it; the live run belongs to P41-8's macOS CI job.
 
 ### Version 0.45.0 (2026-10-13)
 
