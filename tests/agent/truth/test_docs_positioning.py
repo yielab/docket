@@ -44,14 +44,8 @@ FORBIDDEN_SELF_DESCRIPTIONS = (
     r"\bcost optimi[sz]ation\b",
 )
 # Frames the front door must not re-grow: each one is a docs guide's job.
-STACKED_FRAMES = (
-    "## Features",
-    "## Core guarantees",
-    "## Command reference",
-    "## What's next",
-    "## Also shipped",
-    "## Everything is configuration",
-)
+STACKED_FRAMES = ("## Features", "## Core guarantees", "## Command reference", "## What's next")
+STACKED_FRAMES += ("## Also shipped", "## Everything is configuration")
 
 
 def _readme() -> str:
@@ -90,13 +84,8 @@ class TestFrontDoor:
 
     def test_quick_start_registers_a_model_before_creating_the_team(self) -> None:
         body = dict(_sections(_readme()))["## Quick start"]
-        order = (
-            "docket setup\n",
-            "docket init ",
-            "docket init --recipe",
-            "docket task add",
-            "docket run\n",
-        )
+        order = ("docket setup\n", "docket init ", "docket init --recipe", "docket task add")
+        order += ("docket run\n",)
         positions = [body.find(step) for step in order]
         assert -1 not in positions and positions == sorted(positions), positions
 
@@ -104,12 +93,8 @@ class TestFrontDoor:
         body = dict(_sections(_readme()))["## Make the team yours"]
         for kind in ("kind: pod", "kind: role", "kind: pipeline", "kind: policy"):
             assert kind in body, f"Make the team yours must name {kind}"
-        for command in (
-            "docket pod export",
-            "docket pod validate",
-            "docket pod plan",
-            "docket pod update",
-        ):
+        for verb in ("export", "validate", "plan", "update"):
+            command = f"docket pod {verb}"
             assert f"`{command}" in body or f"{command}\n" in body, f"missing {command}"
 
     def test_known_limits_are_short_here_and_complete_in_the_docs(self) -> None:
