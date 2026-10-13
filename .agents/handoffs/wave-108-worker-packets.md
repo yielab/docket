@@ -117,3 +117,48 @@ Spec: `harness-mode.spec.md` 1.10.0. Do not change the wire contract (schemas, f
    three-line question asserting every line is indented. If a golden changes, explain it.
 Spec: `operator-loop.spec.md` 1.7.0 (or the spec that owns the inbox view — check
 `specs/README.md`).
+
+## Second batch (opened after a second verification of the items parked at the Phase 26 close)
+
+Base: the commit that adds this section (`git log -1 --format=%h -- .agents/handoffs/wave-108-worker-packets.md`).
+Same §0 rules. Ownership: W108-5 owns `serve.py::_handle_post_dispatch`, `cli/_agents.py::_create_workspace`
+text, `scripts/smoke_workflow.py`, `core/runs.py::prune_terminal` and its one caller in the `task prune`
+command (W108-1 owns the rest of `cli/_task.py`; touch only the prune function). W108-6 owns
+`cli/_setup_check.py`.
+
+| Card | Owns | Spec versions |
+| --- | --- | --- |
+| W108-5 | the four small fixes below | http-api / control-plane spec minor for (1); cli-interface 2.7.1 for (4) (W108-1 takes 2.7.0; if yours merges first the integrator renumbers) |
+| W108-6 | `docket setup --fix --json` parity | the spec that owns `setup --fix` / doctor (check `specs/README.md`), minor |
+
+## W108-5 — four small parked fixes (Sonnet)
+
+1. **Webhook and a broken bound pipeline.** `POST /dispatch/<project>` (`serve.py::_handle_post_dispatch`)
+   calls `effective_pipeline`/`resolve_variables` and catches only `VariableError`; a `DispatchError`
+   from `_pod_settings`/`_bound_pipeline` escapes, so the client gets a dropped connection and the
+   server a traceback. Map it like `POST /tasks/<p>` does (`serve.py`, the `DispatchError` -> 404/400
+   mapping there): no pod -> 404, otherwise 400 with the error text. RED: an HTTP test against a pod
+   whose bound pipeline file is missing.
+2. **Retired HEARTBEAT instruction.** `cli/_agents.py::_create_workspace` writes into AGENTS.md
+   "Before starting multi-step work, write it to {HEARTBEAT_FILE} ...". Dispatch maintains the
+   ledger mechanically and the pod templates dropped this line (`core/pod_provisioning.py`
+   `POD_TEMPLATE_VERSION` comment). Delete it; if a template/contract version gates existing
+   workspaces, bump it the way the pod templates did. Golden diffs must be explained line by line.
+3. **Smoke script.** `scripts/smoke_workflow.py` still runs `pod <p> set-verify ...`, a removed
+   command. Use the current verb (`docket pod set ...` / `pod update` — check `docket pod --help`).
+4. **`task prune --traces --pod X` deletes every pod's run records.** `core/runs.py::prune_terminal`
+   takes no project. Scope it to the pod when one is given (and say what an unscoped call does —
+   keep it fleet-wide only if the spec says so). RED: two pods' terminal runs, prune one, the
+   other's survive.
+
+## W108-6 — `setup --fix --json` reports every check the text report runs (Sonnet)
+
+`docket setup --fix` (`cli/_setup_check.py::run_check`) runs ~20 checks for the text report;
+`_check_json` builds the JSON from a subset and leaves out nine (model registry entries, archetype
+overlay, schedule config, provider coverage, exporters, guardrail policies, pod config overlays, pod
+sync, runtime contract), so `healthy: true` can coexist with text issues. Make each check one
+function returning data (name, status, issues, fixed) that both renderers consume, so the JSON and
+the text cannot disagree; add the missing checks to the JSON under stable keys (document them in
+`cli-json-shapes.spec.md`, minor bump; W108-1 may take 1.32.0 — use 1.33.0). RED: a home with a
+broken pod config overlay where the text report counts an issue and the JSON says healthy.
+Keep each function under the 150-line span ceiling.
