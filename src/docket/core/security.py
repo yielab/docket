@@ -41,6 +41,7 @@ SAFE_BINS: tuple[str, ...] = (
     "git", "node", "npm", "npx", "pnpm", "yarn", "python", "python3", "pip", "pip3", "pytest",
     "go", "cargo", "rustc", "make", "cmake",
     "date", "env", "printf", "which", "xargs", "tee", "less",
+    "nice", "nohup", "timeout", "time", "command", "stdbuf",
     "mkdir", "touch", "cp", "mv", "ln",
     "cd", "pwd", "echo", "true", "false", "test", "[",
 )  # fmt: skip
@@ -317,6 +318,99 @@ def _redirects_stay_inside(
     return True
 
 
+# Command wrappers: the wrapper is allowlisted, the command it runs is what gets classified.
+# `setsid` is not one: a new session leaves the process group that cancellation kills.
+# Value is the set of options that consume the next token when written without `=`/attached value.
+_WRAPPER_ARG_OPTS: dict[str, frozenset[str]] = {
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}),
+    "xargs": frozenset(
+        {"-I", "-n", "-L", "-P", "-s", "-d", "-E", "-a", "-e", "-l", "--max-args", "--max-procs",
+         "--delimiter", "--arg-file", "--max-lines", "--max-chars", "--eof", "--replace"}
+    ),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "nohup": frozenset(),
+    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
+    "time": frozenset(),
+    "command": frozenset(),
+    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
+}  # fmt: skip
+_MAX_WRAPPER_DEPTH = 8
+_FIND_ACTION_FLAGS: frozenset[str] = frozenset(
+    {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+)
+_AWK_BINS: frozenset[str] = frozenset({"awk", "gawk", "mawk", "nawk"})
+_AWK_WRITE_RE = re.compile(r"\bprintf?\b[^;{}]*?>")
+_ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+
+
+def _wrapped_command(bin_name: str, tokens: list[str]) -> list[str] | None:
+    """The command *tokens* (after the wrapper's own arguments) hand to the shell, ``[]`` when the
+    wrapper runs nothing (or only echoes), ``None`` when its options cannot be read safely."""
+    takes_arg = _WRAPPER_ARG_OPTS[bin_name]
+    idx = 0
+    while idx < len(tokens):
+        tok = tokens[idx]
+        if tok == "--":
+            idx += 1
+            break
+        if bin_name == "env" and _ENV_ASSIGN_RE.fullmatch(tok):
+            idx += 1
+            continue
+        if not tok.startswith("-") or tok == "-":
+            break
+        if bin_name == "time" and tok not in ("-p", "--portability"):
+            return None
+        if bin_name == "command" and tok in ("-v", "-V"):
+            return []
+        if tok in takes_arg:
+            idx += 2
+            continue
+        if bin_name == "env" and (tok.startswith("-S") or tok.startswith("--split-string")):
+            return None
+        idx += 1
+    rest = tokens[idx:]
+    if bin_name == "timeout" and rest:
+        rest = rest[1:]  # the DURATION operand
+    return rest
+
+
+def _unwrap(tokens: list[str]) -> list[str] | None:
+    """Peel command wrappers off *tokens* and return the command that really runs (the last
+    wrapper's own tokens when it runs nothing); ``None`` when too deep or unreadable."""
+    for _ in range(_MAX_WRAPPER_DEPTH):
+        bin_name = os.path.basename(tokens[0])
+        if bin_name not in _WRAPPER_ARG_OPTS:
+            return tokens
+        inner = _wrapped_command(bin_name, tokens[1:])
+        if inner is None:
+            return None
+        if not inner:
+            return tokens
+        tokens = inner
+    return None
+
+
+def _executes_or_writes(bin_name: str, tokens: list[str]) -> str | None:
+    """Why an allowlisted ``find``/``awk`` invocation deletes, executes or writes, else ``None``."""
+    args = tokens[1:]
+    if bin_name == "find":
+        hit = sorted(_FIND_ACTION_FLAGS.intersection(args))
+        return f"find {hit[0]}" if hit else None
+    if bin_name in _AWK_BINS:
+        program = " ".join(
+            tok
+            for i, tok in enumerate(args)
+            if not (tok.startswith("-F") or args[i - 1 : i] == ["-F"])
+        )
+        if (
+            "system(" in program
+            or "|" in program.replace("||", "")
+            or _AWK_WRITE_RE.search(program)
+        ):
+            return f"{bin_name} program that runs a command or writes a file"
+    return None
+
+
 def classify_command(
     command: str,
     extra_bins: frozenset[str] = frozenset(),
@@ -389,7 +483,18 @@ def classify_command(
 
     changed_directory = False
     for segment in segments:
-        bin_name = os.path.basename(segment.tokens[0])
+        effective = _unwrap(segment.tokens)
+        if effective is None:
+            return CommandVerdict(
+                "ask", "command wrapper could not be read", bin_name=segment.tokens[0]
+            )
+        bin_name = os.path.basename(effective[0])
+        if not jailed:
+            reason = _executes_or_writes(bin_name, effective)
+            if reason is not None:
+                return CommandVerdict(
+                    "ask", f"{reason} is not safe to run unattended", bin_name=bin_name
+                )
         off_allowlist = bin_name not in SAFE_BINS and bin_name not in extra_bins
         redirect_sensitive = (
             jailed or bin_name in _REDIRECT_SENSITIVE_BINS or bin_name in extra_bins

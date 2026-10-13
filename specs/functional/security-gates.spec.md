@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.50.0
+**Version**: 0.51.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -101,6 +101,19 @@ are owned here, not there.
    `&>>` and `>&` to a path; `2>&1` copies a descriptor and opens nothing. `pytest` and `python`
    are on `SAFE_BINS` beside `python3`: the bare test runner runs the same code
    `python3 -m pytest` does, so asking on one spelling only was a trap, not a gate.
+   **The classifier sees through command wrappers and deleting flags of allowlisted bins.** A
+   segment led by `env` (after its `VAR=value` and option arguments), `xargs` (after its options),
+   `nice`, `nohup`, `timeout <duration>`, `time`, `command` or `stdbuf` is classified by
+   the command it runs, recursively to a bounded depth (eight; deeper, or options it cannot read,
+   asks), so `env rm -rf x` and `echo x | xargs rm` ask exactly as `rm` does; a wrapper that runs
+   nothing (`env`, `env FOO=1`, `xargs`, which echoes, `command -v x`) is allowed. `find` with
+   `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprint0`, `-fprintf` or `-fls`
+   asks, and so does an `awk`/`gawk` program containing `system(`, a `|` or an unparenthesised
+   `print`/`printf` redirect. These checks stand down inside a working jail like the allowlist
+   itself. They are not a containment boundary: without the sandbox an allowlisted interpreter
+   (`python3`, `node`, `make`, `sed -i` and the like) can write or delete anything the operator
+   can, and `tee`, `cp`, `mv`, `mkdir`, `touch` and `ln` stay allowed as ordinary development
+   writes; the sandbox is the boundary.
    `docket pod check "<text>" --role <role>` **MUST** report the same verdict a live
    exec tool call would: it evaluates through `core/tools.py::evaluate_tool_call` (the same
    function `dispatch_tool` calls), not a second copy of the classifier+policy merge, so a
@@ -1770,6 +1783,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.51.0 (2026-10-13)
+
+- Tool-approval gates item 1: `classify_command` unwraps `env`/`xargs`/`nice`/`nohup`/`timeout`/
+  `time`/`command`/`stdbuf` and classifies the wrapped command (`setsid` stays off the allowlist: a new session escapes the process group a cancel kills); `find` deleting or
+  executing flags and `awk` programs that run a command or write a file ask. Allowlisted
+  interpreters and `tee`/`cp`/`mv` stay allowed; the sandbox is the boundary.
 
 ### Version 0.50.0 (2026-10-13)
 
