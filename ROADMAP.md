@@ -12,7 +12,8 @@ phase records, wave narratives and this file's older sections are archived verba
 **Last updated: 2026-10-13.** Every phase 0–42 is complete. No phase is planned and no item is
 carried: Wave 108 (no phase, closed 2026-10-13) closed the last carried items of every phase — a
 parked task can be cancelled, host-side git trusts only the recorded git dirs, every jail narrows
-ref writes to the task's branch, the classifier sees through `env`/`xargs`/`find -delete`, `exec`
+ref writes to the task's branch and gives each launch a private temp dir (the close's live run
+found the shared `/tmp` writable), the classifier sees through `env`/`xargs`/`find -delete`, `exec`
 gets a cache dir and a per-run approval wait, `setup --fix --json` matches the text report. A new
 phase starts from a measured trigger or an operator request, never from this file.
 

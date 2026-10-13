@@ -246,8 +246,9 @@ Under Docker the jail is only as capable as its image, `DOCKET_SANDBOX_IMAGE` (d
 `DOCKET_SANDBOX_BACKEND=landlock|seatbelt|docker|none` forces one backend. Nothing here is needed while isolation is off.
 
 **What it covers, once on.**
-- Every `bash` call runs in the jail. Only the agent's workspace and the task's worktree are
-  writable; the rest of the host is read-only or absent. The task worktree's git directories are
+- Every `bash` call runs in the jail. Only the agent's workspace, the task's worktree and a
+  private temp dir (exported as `TMPDIR`; the shared `/tmp` is not writable) are writable; the
+  rest of the host is read-only or absent. The task worktree's git directories are
   writable only where git needs it: `objects`, the linked worktree's own git dir, and the ref
   and reflog directory of the task's own branch (`refs/heads/docket/<pod>/`), so the agent can
   commit on its branch and read the log, but cannot move `main`, a tag or another pod's branch

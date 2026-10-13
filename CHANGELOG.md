@@ -66,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write fails while a commit on the task's branch works. A linked worktree that is not a docket
   task gets no ref write; a main checkout under Docker or Seatbelt is unchanged
   (security-gates 0.52.0, 0.53.0).
+- **The jail no longer writes the shared temp dir (Wave 108).** Landlock and Seatbelt granted
+  the system temp dir (`/tmp` on Linux) read-write, so a jailed command could write anything
+  under it, a repository there included. Each jailed launch now gets a private 0700 temp dir
+  (`<cache dir>/tmp`, else `DOCKET_HOME/jail-tmp/<hash>`) exported as `TMPDIR`/`TMP`/`TEMP`,
+  stdio MCP servers included; Docker keeps the container's own `/tmp` (security-gates 0.54.0).
 - **A parked task can be cancelled (Wave 108).** `docket task cancel` ends a task waiting for
   an answer or an approval as `cancelled`, takes it out of the inbox, denies a pending approval
   and audits `task.cancel`; before, the only exit was `task answer --decline`.
