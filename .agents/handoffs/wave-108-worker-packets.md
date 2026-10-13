@@ -198,3 +198,33 @@ are that operation behind an allowlisted name.
    `awk 'BEGIN{system("rm x")}'` each currently `allow` unjailed; after: `ask`. Plus green rows that
    `env FOO=1 pytest`, `xargs grep foo`, `find . -name '*.py'` stay `allow`.
 List every now-false prose sentence (`docs/SECURITY-SIMPLE.md`, README known limits) as file:line.
+
+## Fourth batch — W108-8 (base: the commit that adds this section)
+
+Same §0 rules. Owns `edges/adapters/system.py::_mount_dirs`, `seatbelt_profile`, `_docker_prefix`
+(and a helper beside `_task_ref_dirs`, which it reuses unchanged), `tests/unit/edges/adapters/test_system.py`
+rows for those, and `tests/integration/test_escape_matrix.py` docker/seatbelt rows. Spec:
+`security-gates.spec.md` 0.53.0.
+
+## W108-8 — Docker and Seatbelt narrow ref writes the way Landlock does (Sonnet)
+
+W108-2 (merged, security-gates 0.52.0) made the Landlock jail grant ref/reflog writes only under
+`refs/heads/docket/<pod>/` of a linked task worktree (`_task_ref_dirs`). Docker and Seatbelt build
+their mounts from `_mount_dirs` (rw roots + git dirs, then read-only guarded overlays), so a
+jailed agent there can still `git update-ref refs/heads/main <sha>` or write a tag.
+1. For a root that is a **linked task worktree** (the same test `_task_ref_dirs` applies: it
+   returns a non-empty list), add the common dir's `refs`, `logs/refs` and `packed-refs` to the
+   read-only overlays, and re-open the task's ref dirs (`_task_ref_dirs(common, gitdir)`)
+   read-write **after** them: `_mount_dirs` grows a third list (e.g. `reopen`) emitted last.
+   Seatbelt: SBPL's last matching rule wins, so emit `(allow file-read* file-write* (subpath …))`
+   for each reopened dir after the `(deny file-write* …)` lines. Docker: a nested bind mount
+   listed after its parent overrides it, so `-v ref_dir:ref_dir` after `-v refs:refs:ro`.
+2. A linked worktree that is **not** a task worktree: refs read-only, nothing reopened (as in
+   Landlock). A **main checkout** root (a `.git` directory — Landlock refuses it, Docker and
+   Seatbelt run there and are the documented way out): unchanged, refs stay writable; say so in
+   the spec (the operator's own checkout, the agent commits on its branch).
+3. Tests: unit rows for the argv/profile ordering (no docker or sandbox-exec needed). Escape
+   matrix rows for docker (this host has docker; skip cleanly without a daemon or without git
+   in the image — see how existing docker rows skip): jailed `git update-ref refs/heads/main`
+   and `refs/tags/x` fail; a commit on the task's own branch succeeds. Seatbelt rows the same
+   way, skipped off darwin (they run in macOS CI). RED on the base for the docker main/tag rows.
