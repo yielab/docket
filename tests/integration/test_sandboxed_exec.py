@@ -282,17 +282,19 @@ class TestSandboxOffIsUnchanged:
 
 
 class TestHonestReportingIsDeterministic:
-    def test_auto_with_neither_backend_reports_none_and_says_why(
+    def test_auto_with_no_backend_runs_nothing_and_says_why(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """The gate allowed the command on the promise of a jail, so no jail means no run."""
         monkeypatch.setattr(system, "landlock_available", lambda: False)
         monkeypatch.setattr(system, "docker_daemon_reachable", lambda: False)
         monkeypatch.setattr(system, "bwrap_available", lambda: False)
-        out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
-        assert out.ok
+        out = toolbox.run_bash((workspace,), "touch ran", sandbox="auto")
+        assert not out.ok and not (workspace / "ran").exists()
+        assert out.error.startswith("not run: no sandbox backend is usable")
         assert (
             "[sandbox: none (landlock unavailable, docker unavailable, bwrap unavailable)]"
-            in out.content
+            in out.error
         )
 
     def test_auto_forced_to_none_when_both_are_actually_available_says_so_too(
@@ -305,7 +307,8 @@ class TestHonestReportingIsDeterministic:
         monkeypatch.setattr(system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
-        assert "[sandbox: none (forced off via DOCKET_SANDBOX_BACKEND)]" in out.content
+        assert not out.ok
+        assert "[sandbox: none (forced off via DOCKET_SANDBOX_BACKEND)]" in out.error
 
     def test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
@@ -322,16 +325,6 @@ class TestHonestReportingIsDeterministic:
         out = toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")
         assert not out.ok
         assert "sandbox (bwrap) failed to start" in out.error
-
-    def test_auto_reports_which_real_backend_ran(
-        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-        # backend forced to "none" here only to keep this specific assertion
-        # host-independent; the "real backend" classes below exercise docker
-        # and bwrap for real when present.
-        out = toolbox.run_bash((workspace,), "echo hi", sandbox="auto")
-        assert "sandbox: none" in out.content
 
 
 # ── the chokepoint still owns this: dispatch_tool wiring ────────────────────
@@ -353,8 +346,8 @@ class TestChokepointWiring:
         # allowlist, so the command classifier allows it outright and this
         # test is exercising the sandbox wiring, not the tool-call gate.
         res = dispatch_tool(self._call('{"command": "printf hi"}'), ctx, builtin_registry())
-        assert res.ok and res.executed
-        assert "[sandbox: none" in res.content
+        assert not res.ok
+        assert "not run: no sandbox backend is usable [sandbox: none" in res.error
 
     def test_default_context_through_the_chokepoint_reports_nothing(self, workspace: Path) -> None:
         ctx = ToolContext(roots=(workspace,))  # sandbox defaults to "off"

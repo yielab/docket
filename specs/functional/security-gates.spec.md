@@ -871,8 +871,10 @@ either.
      split).
    - *"Did **this** command run in a jail?"* — a per-call answer. `toolbox.run_bash` **MUST** report
      the backend actually used whenever `sandbox="auto"` was asked for, as a trailing
-     `[sandbox: <backend>]` marker on the result — including `[sandbox: none (...)]`, with the real
-     reason, when neither backend panned out. `sandbox="off"` (the default) **MUST NOT** emit this
+     `[sandbox: <backend>]` marker on the result. When no backend is usable at call time (forced
+     `none` included), `sandbox="auto"` **MUST NOT** run the command: it returns a failure
+     `not run: no sandbox backend is usable [sandbox: none (...)]` with the real reason, because
+     the gate allowed the command on the promise of a jail (Tool-approval gates item 1). `sandbox="off"` (the default) **MUST NOT** emit this
      marker at all, and **MUST NOT** change `run_bash`'s output in any other way — the unsandboxed
      path is byte-for-byte the function that shipped in P19-2.
    - A boolean meaning "sandboxing is configured" **MUST NOT** be conflated with "this command ran
@@ -944,11 +946,10 @@ either.
      task `failed`/`dispatch_refused` after one attempt instead of retrying) and the refusal is
      audited once (`audit_log("isolation.refused", ...)`) — no LLM call is made and no tool executes.
      This is deliberately *not* the same behaviour as handing `sandbox="auto"` straight to
-     `toolbox.run_bash` and letting each `bash` call degrade individually to an honest
-     `[sandbox: none (...)]`-tagged unsandboxed run (requirement 4's per-call reporting): a
-     per-call marker only an operator reading raw tool output would ever see is not an acceptable
+     `toolbox.run_bash` and letting each `bash` call fail individually (requirement 4): a
+     per-call failure only an operator reading raw tool output would ever see is not an acceptable
      substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
-     before any call gets the chance to degrade. The refusal text names both fixes: install
+     before any call gets the chance to fail. The refusal text names both fixes: install
      bubblewrap (or start docker), or run `docket setup sandbox off`.
    - `docket setup` probes `sandbox_availability()` and reports the backend a turn would use, or
      that turns will be refused and the two fixes; its JSON `securityGates` carries `isolation`
@@ -1459,12 +1460,12 @@ ToolOutcome(ok=True,
             error='')
 ```
 
-On a host with neither docker nor bwrap usable, the same call still runs — the gate above already
-decided it may — but says so honestly instead of looking identical to a jailed result:
+On a host with no usable backend the same call runs nothing, because the gate allowed it on the
+promise of a jail:
 
 ```text
 >>> toolbox.run_bash((workspace,), "printf %s hi", sandbox="auto")
-ToolOutcome(ok=True, content='hi\n\n[sandbox: none (docker unavailable, bwrap unavailable)]', error='')
+ToolOutcome(ok=False, content='', error='not run: no sandbox backend is usable [sandbox: none (landlock unavailable, docker unavailable, bwrap unavailable)]')
 ```
 
 A jail that was asked for but fails to actually start is a reported failure, not a silent
@@ -1659,6 +1660,7 @@ $ git clone https://anywhere.example/repo.git
 
 ### Version 0.44.0 (2026-10-12)
 
+- Exec sandbox requirement 4: `sandbox="auto"` with no usable backend at call time runs nothing (`not run: no sandbox backend is usable [...]`); since 0.43.0 the gate allows off-allowlist binaries on the promise of a jail, so a per-call fallback to the host would run them unjailed. `DOCKET_SANDBOX_PROBE=none` makes `landlock_available()` report false, the kernel-backend counterpart of removing bwrap and docker from `PATH` (`scripts/maint/pytest-without-sandbox.sh`).
 - Exec sandbox item 1 and new item 10: a `landlock` backend (`python -m docket.jail`, Landlock
   filesystem rules, Landlock TCP rules at ABI >= 4, a seccomp socket filter under `--net none`),
   probed first, accepted by `DOCKET_SANDBOX_BACKEND`. bwrap and docker remain.

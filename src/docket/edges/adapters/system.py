@@ -157,7 +157,10 @@ def docker_daemon_reachable() -> bool:
 
 
 def landlock_available() -> bool:
-    """True on Linux when the kernel reports a Landlock ABI of at least 1 (a probe that restricts nothing)."""
+    """True on Linux when the kernel reports a Landlock ABI of at least 1 (a probe that restricts
+    nothing). ``DOCKET_SANDBOX_PROBE=none`` reports false, as a host without the kernel feature."""
+    if os.environ.get("DOCKET_SANDBOX_PROBE") == "none":
+        return False
     from docket.edges.adapters import landlock
 
     return landlock.abi_version() >= 1

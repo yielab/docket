@@ -309,8 +309,8 @@ def run_bash(
     ``sandbox`` defaults to ``"off"`` (behaviour unchanged, byte for byte); ``"auto"`` asks for
     the strongest exec jail available right now (resolved fresh per call) and reports what it
     got, including ``"none"``, as a trailing marker. **Never decides whether to jail, only
-    reports what happened once asked**, and a jail that fails to start is reported as a failure,
-    never silently retried unsandboxed. See specs/functional/security-gates.spec.md.
+    reports what happened once asked**; ``"auto"`` with no usable backend runs nothing, and a jail
+    that fails to start is reported as a failure, never silently retried unsandboxed. See specs/functional/security-gates.spec.md.
 
     ``network=False`` cuts the jail's network (both backends); it has no effect unsandboxed.
 
@@ -336,6 +336,8 @@ def run_bash(
     availability = _system.sandbox_availability() if sandbox == "auto" else None
     backend: SandboxBackend = availability.backend if availability else "none"
     tag = _sandbox_tag(sandbox, availability)
+    if sandbox == "auto" and backend == "none":
+        return ToolOutcome(False, error=f"not run: no sandbox backend is usable [{tag}]")
 
     popen_env: dict[str, str] | None
     container_name = ""
