@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wave 101: verify commands and `run:` steps run inside the sandbox (P41-4, ADR 0024).** With
+  isolation on, a pod's `verifyCmd` and a pipeline `run:` step run in the same jail as the agent's
+  `bash` (the task worktree writable, the pod's network) instead of on the host, and fail closed
+  when no backend is usable (`[verify not run: ...]`). One function, `system.jail_launch`, builds
+  every jailed command. Isolation off is unchanged.
+- **Wave 101: a per-pod cache directory and a hidden home (P41-5).** Each pod has a cache directory
+  (0700) beside its scratch directory; a jailed command runs with `HOME`, `XDG_CACHE_HOME`,
+  `XDG_CONFIG_HOME`, `UV_CACHE_DIR`, `PIP_CACHE_DIR` and `npm_config_cache` pointing at it, and
+  the directory is writable in the jail, so `uv`, `pip` and `npm` work with the real home denied.
+- **Wave 101: a Seatbelt sandbox for macOS (P41-2).** On macOS `/usr/bin/sandbox-exec` with one
+  fixed deny-by-default profile (system paths readable, the roots and the temp dir writable, git
+  hooks and config not writable, network cut under `none`) is probed after Landlock and before
+  bwrap and docker, for `bash`, verify, `run:` steps and stdio MCP servers;
+  `DOCKET_SANDBOX_BACKEND=seatbelt` selects it. Not yet run on a real Mac (P41-8's CI job will).
 - **Wave 100: a Linux sandbox that needs no package (P41-1, ADR 0024).** `python -m docket.jail`
   confines a command with Landlock (the roots and the temp dir writable, system paths readable,
   the home and `DOCKET_HOME` unreadable) and, under network `none`, a seccomp filter that refuses
