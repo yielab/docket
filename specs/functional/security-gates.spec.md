@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.49.0
+**Version**: 0.50.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1117,6 +1117,16 @@ otherwise.
    `network.refused` audit entry, task `dispatch_refused`), naming both settings. `fetch` runs in
    docket's own process and is untouched: its domain allowlist stays the inspectable path.
    `docket setup sandbox`, `docket setup` and `docket pod show` report the mode and scope.
+   **Reporting the mode (one owner).** Only the sandbox cuts the network, so every surface that
+   prints the global mode (`docket setup sandbox` and its `--json`, the `docket setup sandbox network`
+   confirmation, `docket status`'s sandbox phrase, `docket setup` and its `--json`) **MUST**
+   take its wording from `core.network_posture.global_posture` and **MUST NOT** claim the network
+   is cut unless isolation is on. With isolation off and mode `none` the line reads `none (<scope>),
+   not enforced: isolation off, egress is open`, carries no `ok` marker, and the status phrase reads
+   `network none (not enforced: isolation off)`. With isolation on the line is unchanged
+   (`none (<scope>); jailed tool calls have no network`). The JSON surfaces gain `networkEnforced`
+   (true only when isolation is on and the mode is `none`). `core.pod.effective_network` is not
+   changed by reporting.
 
 ### Parked calls and single-use pre-grants (implemented, ADR 0016 §2)
 
@@ -1759,6 +1769,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.50.0 (2026-10-13)
+
+- P42-7: network egress requirement 7 gains "Reporting the mode": one core function owns the
+  network line, and with isolation off it says `not enforced` instead of claiming the network is
+  cut; `networkEnforced` joins `setup sandbox --json` and `setup --json`.
 
 ### Version 0.49.0 (2026-10-13)
 

@@ -213,6 +213,17 @@ class TestParkedQuestionAndSandbox:
         )
         assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
 
+    def test_isolation_off_says_the_network_is_not_enforced(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fresh home has isolation off, so `network none` would read as a cut it is not."""
+        _seed(tmp_path, monkeypatch)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+
+        phrase = _json("--pod", "demo")["isolation"]
+
+        assert phrase.endswith("network none (not enforced: isolation off)")
+
 
 class TestCommandsRows:
     """`status` names the commands the operator allowed and any the repository since changed."""

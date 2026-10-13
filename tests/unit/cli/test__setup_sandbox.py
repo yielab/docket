@@ -165,3 +165,45 @@ class TestTheProbeReport:
         assert body["missing"] == "Linux: a kernel with Landlock (>= 5.13)"
         assert body["line"].startswith("Sandbox   not available: Linux needs")
         assert body["backend"] == "none"
+
+
+def test_a_fresh_home_does_not_claim_the_network_is_cut(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fresh_home(tmp_path, monkeypatch)
+
+    out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+    line = next(ln for ln in out.splitlines() if "Network:" in ln)
+
+    assert "not enforced: isolation off" in line
+    assert "no network" not in line
+    assert not line.startswith("ok")
+    body = json.loads(_runner.invoke(app, ["setup", "sandbox", "status", "--json"]).stdout)
+    assert body["networkEnforced"] is False
+
+
+def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docket.core import fleet as _fleet
+
+    _fresh_home(tmp_path, monkeypatch)
+    _fleet.set_sandbox_isolation()
+
+    out = _runner.invoke(app, ["setup", "sandbox"]).stdout
+    line = next(ln for ln in out.splitlines() if "Network:" in ln)
+
+    assert line == "ok Network: none (default); jailed tool calls have no network"
+    body = json.loads(_runner.invoke(app, ["setup", "sandbox", "status", "--json"]).stdout)
+    assert body["networkEnforced"] is True
+
+
+def test_recording_none_with_isolation_off_does_not_say_ok_for_a_cut_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fresh_home(tmp_path, monkeypatch)
+
+    out = _runner.invoke(app, ["setup", "sandbox", "network", "none"]).stdout
+
+    assert "jailed tool calls have no network" not in out
+    assert "not enforced: isolation off" in out

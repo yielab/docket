@@ -12,6 +12,7 @@ import typer
 from docket import ui
 from docket.cli import _contract
 from docket.core import fleet as _fleet
+from docket.core import network_posture as _np
 from docket.core import profile as _profile
 from docket.core import security as _sec
 from docket.core.audit import audit_log
@@ -116,6 +117,7 @@ def sandbox_state() -> dict[str, object]:
         "isolation": _fleet.get_isolation_state(),
         "isolationEnabled": _fleet.get_isolation_enabled(),
         "network": _fleet.get_network_mode(),
+        "networkEnforced": _np.global_posture().enforced,
         "backend": avail.backend,
         "platform": plat,
         "kernel": _kernel() if avail.landlock else None,
@@ -147,11 +149,14 @@ def status(json_out: bool = False) -> int:
     ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
     ui.dim(_backend_report(state))
     print_sandbox_block()
-    if state["network"] == "none":
-        default = "" if _fleet.network_mode_recorded() else " (default)"
-        ui.success(f"Network: none{default}; jailed tool calls have no network")
+    posture = _np.global_posture()
+    if posture.enforced:
+        ui.success(f"Network: {posture.line}")
+    elif posture.mode == "none":
+        report = ui.warn if posture.scope == "global" else ui.dim
+        report(f"Network: {posture.line}")
     else:
-        ui.dim("Network: open (a pod's network none still narrows it)")
+        ui.dim(f"Network: {posture.line} (a pod's network none still narrows it)")
     return 0
 
 
@@ -180,7 +185,11 @@ def network(want: str) -> int:
     if want == "open":
         ui.success("Sandbox network open; a pod's network none still narrows it")
         return 0
-    ui.success("Sandbox network none; jailed tool calls have no network")
+    posture = _np.global_posture()
+    if posture.enforced:
+        ui.success(f"Sandbox network {posture.line}")
+    else:
+        ui.dim(f"Sandbox network {posture.line}")
     ui.dim("fetch runs in docket's own process and keeps its domain allowlist.")
     if not _fleet.get_isolation_enabled():
         ui.warn("Isolation is off: turns are refused until docket setup sandbox on")
