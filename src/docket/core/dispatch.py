@@ -721,22 +721,39 @@ def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
     return str(label).lower() != "pass"
 
 
-def _gate_failed_section(step_id: str, output_tail: str) -> str:
-    """The one place the ``--- GATE FAILED: <step id> ---`` carryover section is written:
-    the header, then the routed hop's already-redacted verify output tail. Ends with a newline
-    like the other carryover sections."""
-    return f"--- GATE FAILED: {step_id} ---\n{output_tail}\n"
+def _render_gate_reasons(reasons: list[dict[str, Any]]) -> str:
+    """An external gate's screened reasons, one block per reason: ``- [severity] path:line
+    summary`` and an indented ``detail`` line when there is one."""
+    lines: list[str] = []
+    for r in reasons:
+        where = str(r.get("path") or "")
+        if where and r.get("line") is not None:
+            where = f"{where}:{r['line']}"
+        head = " ".join(p for p in (f"[{r['severity']}]" if r.get("severity") else "", where) if p)
+        lines.append(f"- {head} {r['summary']}" if head else f"- {r['summary']}")
+        if r.get("detail"):
+            lines.append(f"  {r['detail']}")
+    return "\n".join(lines)
+
+
+def _gate_failed_section(step_id: str, output_tail: str, reasons: str = "") -> str:
+    """The one place the ``--- GATE FAILED: <step id> ---`` section is written: the header, then
+    the external gate's rendered *reasons* if any, else the routed hop's redacted output tail.
+    Ends with a newline like the other carryover sections."""
+    return f"--- GATE FAILED: {step_id} ---\n{reasons or output_tail}\n"
 
 
 def _compose_gate_failed(hop: HopResult, budget_tokens: int, comp: _HopComposition) -> str:
-    """The ``GATE FAILED`` section for *hop*, its persisted redacted ``verify.outputTail``
-    (never raw output) fit to *budget_tokens*, recorded in *comp* as role ``gate_failed``.
-    Unlike a verdict rework hop, *hop* stays in the generic carryover loop: its own output
-    is still prior context and only the gate's failure is new."""
+    """The ``GATE FAILED`` section for *hop*: its persisted, redacted external reasons, else
+    its ``verify.outputTail`` (never raw output), fit to *budget_tokens* and recorded in *comp*
+    as role ``gate_failed``. Unlike a verdict rework hop, *hop* stays in the generic carryover
+    loop: its own output is still prior context and only the gate's failure is new."""
     from docket.core import context as _ctx
 
     assert hop.verify is not None
-    raw_tail = str(hop.verify.get("outputTail", ""))
+    reasons = hop.verify.get("reasons")
+    rendered = _render_gate_reasons(reasons) if isinstance(reasons, list) and reasons else ""
+    raw_tail = rendered or str(hop.verify.get("outputTail", ""))
     tail, truncated = _ctx._truncate_summary(raw_tail, budget_tokens)
     comp.sections.append(
         {
@@ -748,7 +765,10 @@ def _compose_gate_failed(hop: HopResult, budget_tokens: int, comp: _HopCompositi
         }
     )
     comp.truncated = comp.truncated or truncated
-    return _gate_failed_section(hop.step_id or hop.role, tail)
+    step_id = hop.step_id or hop.role
+    return (
+        _gate_failed_section(step_id, "", tail) if rendered else _gate_failed_section(step_id, tail)
+    )
 
 
 def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
@@ -1120,12 +1140,16 @@ def _replay_pipeline_position(
     rework_counts: dict[str, int] = {}
     route_counts: dict[tuple[str, str], int] = {}
     rework_hop: HopResult | None = None
+    # A failing gate hop routed forward to an `input` step: the operator's answer routes back
+    # to the gated step, and that retry must still be told why the gate failed.
+    parked_gate_failure: HopResult | None = None
     for hop in prior:
         step_id = hop.step_id or hop.role
         idx = id_to_index.get(step_id)
         if idx is None:
             continue  # a parallel-group child's hop — handled by the trailing check below
         node = runtime_steps[idx]
+        carried_failure, parked_gate_failure = parked_gate_failure, None
         if hop.parked:
             # An in-turn tool call parked mid-hop (ADR 0016 SS2): the hop was
             # attempted, not decided -- it never reached a gate or a route, so
@@ -1145,13 +1169,23 @@ def _replay_pipeline_position(
                     label = (
                         hop.artifact.verdict
                         if hop.artifact is not None and hop.artifact.verdict is not None
-                        else "fail"
+                        else str((hop.verify or {}).get("label") or "fail")
                     )
                     key = (step_id, label)
                     route_counts[key] = route_counts.get(key, 0) + 1
                     rework_hop = hop if _is_gate_failure_carryover(hop) else None
+                    if (
+                        rework_hop is None
+                        and carried_failure is not None
+                        and isinstance(node, _orch.PlannedUnit)
+                        and node.input is not None
+                        and node.input.from_ == carried_failure.step_id
+                    ):
+                        rework_hop = carried_failure
                 else:
                     rework_hop = None
+                    if _is_gate_failure_carryover(hop):
+                        parked_gate_failure = hop
                 pi = target_index
                 continue
         gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
@@ -1277,6 +1311,8 @@ class _UnitOutcome:
     label: str = ""
     # Only set for kind == "waiting_input" -- the minted Question, dumped by alias.
     question: dict[str, Any] | None = None
+    # Only set for an external gate's unrouted failure (``gate_failed`` and its siblings).
+    failure_kind: str = ""
 
 
 @dataclass
@@ -1907,6 +1943,53 @@ def _match_on_route(on: dict[str, Any] | None, label: str) -> Any:
     return None
 
 
+@dataclass
+class _GateRun:
+    """One gate command's result: pass/fail, redacted output, wall clock and the paths it
+    touched. ``code`` is the real exit code (``-1`` when none exists), set by the external
+    gate only."""
+
+    passed: bool
+    redacted: str
+    duration_s: float
+    touched: list[str]
+    code: int = -1
+
+
+def _gate_cwd(ctx: _UnitContext, member_id: str) -> str:
+    """The directory a gate command runs in: the member's, worktree-aware (shared with
+    cli/_pod.py through ``core.pod.resolve_member_cwd`` so the two never disagree)."""
+    member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
+    return _pod.resolve_member_cwd(member_id, _task_worktree_dir(ctx.task), member_codebase)
+
+
+def _run_gate_command(
+    ctx: _UnitContext, cmd: str, cwd: str, timeout: int, env: dict[str, str] | None = None
+) -> _GateRun:
+    """Run a gate command in the pod's envelope and fingerprint the worktree around it. The
+    output is redacted here, once, so no caller can persist the raw string."""
+    before = _sys.git_worktree_fingerprint(cwd)
+    start = _time.monotonic()
+    passed, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
+    duration_s = _time.monotonic() - start
+    after = _sys.git_worktree_fingerprint(cwd)
+    produced = sorted(p for p, fp in after.items() if before.get(p) != fp)
+    return _GateRun(passed, _trace.redact(raw_output), duration_s, produced)
+
+
+def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
+    """The hop's ``verify`` evidence, persisted regardless of pass/fail/route -- see
+    HopResult.verify. ``outputTail`` is the redacted string's own tail (never the raw one), so
+    a secret is never one truncation away from surviving into the persisted record."""
+    return {
+        "cmd": cmd,
+        "exitCode": exit_code,
+        "durationS": round(run.duration_s, 3),
+        "outputTail": run.redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
+        "touched": run.touched,
+    }
+
+
 def _evaluate_mechanical_gate(
     ctx: _UnitContext,
     gate: _pipeline.MechanicalGate,
@@ -1950,29 +2033,14 @@ def _evaluate_mechanical_gate(
         hop.verification_skipped = True
         return _UnitOutcome(kind="advance", hops=[hop])
 
-    member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-    cwd = _pod.resolve_member_cwd(member_id, _task_worktree_dir(ctx.task), member_codebase)
+    cwd = _gate_cwd(ctx, member_id)
     # The verify command gets its own timeout, decoupled from the agent-turn
     # timeout above — a 20-minute test suite and a hung LLM turn are no longer
     # forced to share one budget.
     mech_timeout = gate.timeout or ctx.resolved_verify_timeout
-    before_verify = _sys.git_worktree_fingerprint(cwd)
-    verify_start = _time.monotonic()
-    passed, raw_output = _run_in_envelope(ctx.project, "verify", verify_cmd, cwd, mech_timeout)
-    duration_s = _time.monotonic() - verify_start
-    after_verify = _sys.git_worktree_fingerprint(cwd)
-    produced = sorted(p for p, fp in after_verify.items() if before_verify.get(p) != fp)
-    redacted = _trace.redact(raw_output)
-    # Persisted regardless of pass/fail/route -- see HopResult.verify. `outputTail` is the
-    # redacted string's own tail (never the raw one), so a secret is never one truncation
-    # away from surviving into the persisted record.
-    hop.verify = {
-        "cmd": verify_cmd,
-        "exitCode": 0 if passed else 1,
-        "durationS": round(duration_s, 3),
-        "outputTail": redacted[-_cfg.VERIFY_EVIDENCE_TAIL_CHARS :],
-        "touched": produced,
-    }
+    run = _run_gate_command(ctx, verify_cmd, cwd, mech_timeout)
+    passed, redacted = run.passed, run.redacted
+    hop.verify = _gate_evidence(verify_cmd, 0 if passed else 1, run)
     label = "pass" if passed else "fail"
     if _match_on_route(node.on, label) is not None:
         return _UnitOutcome(kind="routed", hops=[hop], label=label)
@@ -1997,6 +2065,178 @@ def _evaluate_mechanical_gate(
         _json.dumps({"verification": "passed", "cmd": verify_cmd}),
     )
     return _UnitOutcome(kind="advance", hops=[hop], label=label)
+
+
+_GATE_REASONS_MAX_BYTES = 64 * 1024
+_GATE_REASON_TEXT_FIELDS = ("summary", "id", "path", "severity", "detail")
+_GATE_FAILURE_KINDS = {
+    "fail": "gate_failed",
+    "needs_human": "gate_needs_human",
+    "error": "gate_error",
+}
+
+
+def _gate_file_stem(task_id: str, step_id: str) -> str:
+    return _re.sub(r"[^A-Za-z0-9_.-]", "_", f"{task_id}-{step_id}")
+
+
+def _gate_reasons_path(project: str, task_id: str, step_id: str) -> Path:
+    """Where an external gate's verifier writes its reasons: under the pod cache dir (a
+    read-write jail root), one file per task and step. Deleted before every run."""
+    return (
+        _cfg.pod_cache_dir(project) / "gate" / f"{_gate_file_stem(task_id, step_id)}.reasons.json"
+    )
+
+
+def _external_failure_kind(outcome: _UnitOutcome) -> str:
+    """The failure kind of an external gate hop routed straight to ``fail``, else ``""``."""
+    verify = outcome.hops[0].verify if outcome.hops else None
+    label = verify.get("label") if verify else None
+    return _GATE_FAILURE_KINDS.get(str(label), "") if label else ""
+
+
+def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
+    """*text* as untrusted ``pre_input`` content, the way an MCP result is screened
+    (``tools.screen_tool_result``), then redacted; ``None`` when policy blocks it."""
+    from docket.core import tools as _tools
+
+    screened = _tools.screen_tool_result(
+        role,
+        # `tools` imports ToolOutcome but does not re-export it; the handler module itself is
+        # the chokepoint's alone to import (test_only_the_chokepoint_imports_the_handler_module).
+        _tools.ToolOutcome(True, content=text),  # type: ignore[attr-defined]
+        source="an external gate",
+        detail=f"task={ctx.task_id!r}",
+        blocked_action="gate.reasons_blocked",
+        warn_action="gate.reasons_warn",
+        project=ctx.project,
+    )
+    return _trace.redact(screened.content) if screened.ok else None
+
+
+def _parse_gate_reasons(
+    ctx: _UnitContext, role: str, path: Path
+) -> tuple[list[dict[str, Any]], bool]:
+    """The verifier's reasons file as ``(screened reasons, invalid)``: UTF-8 JSON of at most 64 KiB,
+    ``{"reasons": [{"summary": str, ...}]}``. Anything else, or a policy block, is invalid;
+    no field is read for control flow."""
+    try:
+        if not path.is_file():
+            return [], False
+        if path.stat().st_size > _GATE_REASONS_MAX_BYTES:
+            return [], True
+        doc = _json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, ValueError):
+        return [], True
+    raw = doc.get("reasons") if isinstance(doc, dict) else None
+    if not isinstance(raw, list):
+        return [], True
+    reasons: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("summary"), str):
+            return [], True
+        clean: dict[str, Any] = {}
+        for key in _GATE_REASON_TEXT_FIELDS:
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                screened = _screen_gate_text(ctx, role, value)
+                if screened is None:
+                    return [], True
+                clean[key] = screened
+        if isinstance(entry.get("line"), int) and not isinstance(entry.get("line"), bool):
+            clean["line"] = entry["line"]
+        if "summary" not in clean:
+            return [], True
+        reasons.append(clean)
+    return reasons, False
+
+
+def _wrap_exit_capture(cmd: str) -> str:
+    """*cmd* in a subshell whose exit code is written to ``$DOCKET_GATE_EXIT_FILE``:
+    ``run_verify_cmd`` reports only pass/fail, and an exit map needs the real code."""
+    return (
+        f"( {cmd}\n); __docket_rc=$?; "
+        'printf %s "$__docket_rc" > "$DOCKET_GATE_EXIT_FILE"; exit "$__docket_rc"'
+    )
+
+
+def _read_exit_code(path: Path | None) -> int | None:
+    try:
+        return int(path.read_text(encoding="utf-8").strip()) if path is not None else None
+    except (OSError, ValueError):
+        return None
+
+
+def _evaluate_external_gate(
+    ctx: _UnitContext,
+    gate: _pipeline.ExternalGate,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    hop: HopResult,
+    prior: list[HopResult],
+) -> _UnitOutcome:
+    """An ``ExternalGate``: run the operator's command, never the member's ``verifyCmd``; map
+    its exit through ``exitMap`` and read its reasons file. The step's ``on`` map routes the
+    label, else ``pass`` advances and the rest fail with their kind (pod-dispatch.spec.md)."""
+    cmd = gate.command.strip()
+    cwd = _gate_cwd(ctx, member_id)
+    stem = _gate_file_stem(ctx.task_id, node.step_id)
+    reasons_path = _gate_reasons_path(ctx.project, ctx.task_id, node.step_id)
+    exit_path = reasons_path.with_name(f"{stem}.exit")
+    usable = True
+    try:
+        reasons_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        for stale in (reasons_path, exit_path):
+            stale.unlink(missing_ok=True)
+    except OSError:
+        usable = False
+    env = {
+        **_task_command_env(ctx, [*prior, hop]),
+        "DOCKET_GATE_REASONS_FILE": str(reasons_path),
+        "DOCKET_GATE_EXIT_FILE": str(exit_path),
+    }
+    run = _run_gate_command(
+        ctx, _wrap_exit_capture(cmd), cwd, gate.timeout or ctx.resolved_verify_timeout, env
+    )
+    code = _read_exit_code(exit_path if usable else None)
+    if code is None:
+        # No code: the command never finished (timeout, refusal, missing cache dir). With no
+        # cache dir the pass/fail projection is all there is; otherwise it is an error.
+        code = (0 if run.passed else 1) if not usable else -1
+    run.code = code
+    label = gate.label_for(code)
+    reasons, invalid = _parse_gate_reasons(ctx, role, reasons_path) if usable else ([], False)
+    evidence = _gate_evidence(cmd, code, run)
+    evidence["label"] = label
+    if reasons:
+        evidence["reasons"] = reasons
+    evidence["reasonsInvalid"] = invalid
+    hop.verify = evidence
+    if _match_on_route(node.on, label) is not None:
+        return _UnitOutcome(kind="routed", hops=[hop], label=label)
+    if label == "pass":
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "tool_result",
+            _json.dumps({"verification": "passed", "cmd": cmd}),
+        )
+        return _UnitOutcome(kind="advance", hops=[hop], label=label)
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "verification_failed",
+        _json.dumps({"cmd": cmd, "output": run.redacted, "label": label}),
+    )
+    return _UnitOutcome(
+        kind="failed",
+        hops=[hop],
+        reason=f"external gate {label}: {cmd!r}",
+        failure_kind=_GATE_FAILURE_KINDS[label],
+    )
 
 
 def _evaluate_verdict_gate(
@@ -2107,6 +2347,7 @@ def _evaluate_post_hop_gate(
     role: str,
     member_id: str,
     hop: HopResult,
+    prior: list[HopResult],
     *,
     check_approval: bool,
 ) -> _UnitOutcome:
@@ -2119,6 +2360,9 @@ def _evaluate_post_hop_gate(
 
     if isinstance(gate, _pipeline.MechanicalGate):
         return _evaluate_mechanical_gate(ctx, gate, node, role, member_id, hop)
+
+    if isinstance(gate, _pipeline.ExternalGate):
+        return _evaluate_external_gate(ctx, gate, node, role, member_id, hop, prior)
 
     if isinstance(gate, _pipeline.VerdictGate):
         return _evaluate_verdict_gate(ctx, gate, node, role, hop)
@@ -2186,7 +2430,9 @@ def _execute_unit(
     if early_outcome is not None:
         return early_outcome
 
-    return _evaluate_post_hop_gate(ctx, node, role, member_id, hop, check_approval=check_approval)
+    return _evaluate_post_hop_gate(
+        ctx, node, role, member_id, hop, prior_snapshot, check_approval=check_approval
+    )
 
 
 def _run_group_node(
@@ -2707,6 +2953,8 @@ def _run_pipeline(
         if outcome.kind == "failed":
             result.status = "failed"
             result.reason = outcome.reason
+            if outcome.failure_kind:
+                result.failure_kind = outcome.failure_kind
             break
         if outcome.kind == "cancelled":
             result.status = "cancelled"
@@ -2727,7 +2975,9 @@ def _run_pipeline(
             if next_index < 0:
                 result.status = "failed"
                 result.reason = reason
-                result.failure_kind = _ROUTE_FAILURE_KINDS.get(outcome.label.upper(), "")
+                result.failure_kind = _ROUTE_FAILURE_KINDS.get(
+                    outcome.label.upper(), ""
+                ) or _external_failure_kind(outcome)
                 break
             if _block_on_missing_resources(ctx, outcome, result):
                 break
