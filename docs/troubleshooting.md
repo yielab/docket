@@ -125,7 +125,7 @@ docket status --all  # Every pod
 ```
 Token counts here are real and measured; the dollar column is not — docket's own turn loop
 reports no billed spend today. See
-[Cost reporting and its limits](../README.md#the-gate-and-the-record).
+[Cost reporting and its limits](README.md#known-limits).
 
 #### 4. **Check the per-turn context footprint**
 `docket setup --fix` estimates the tokens re-sent every turn from the files that

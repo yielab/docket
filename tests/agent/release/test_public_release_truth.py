@@ -88,12 +88,10 @@ def test_public_front_door_has_its_sections_and_visuals_are_reproducible() -> No
 
     readme = README.read_text(encoding="utf-8")
     required_headings = (
+        "## How it works",
+        "## Install",
         "## Quick start",
-        "## Your first team",
-        "## The run",
-        "## The gate and the record",
-        "## Make it yours",
-        "## Everything is configuration",
+        "## Make the team yours",
         "## Known limits",
         "## Documentation",
         "## Contributing",
@@ -186,8 +184,10 @@ def test_public_commands_and_claims_match_shipped_boundaries() -> None:
     readme = re.sub(r"\s+", " ", README.read_text(encoding="utf-8").lower())
     if "not published to any index" not in readme:
         offenders.append("README.md: runtime package publication limit is missing")
-    if "cancel requested" not in readme or "safe checkpoint" not in readme:
-        offenders.append("README.md: cooperative cancellation limit is incomplete")
+    # The full limit list lives in the docs index; the README links it.
+    limits = re.sub(r"\s+", " ", (ROOT / "docs" / "README.md").read_text(encoding="utf-8").lower())
+    if "cancel requested" not in limits or "safe checkpoint" not in limits:
+        offenders.append("docs/README.md: cooperative cancellation limit is incomplete")
 
     assert offenders == [], "stale or missing public truth:\n" + "\n".join(offenders)
 

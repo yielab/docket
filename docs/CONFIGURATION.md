@@ -198,6 +198,26 @@ outside a docket turn. **You** are the one who edits these files.
 
 ## 3. Customizing: recipes by use case
 
+Every layer has a working default and one place to change it, so a custom setup is configuration,
+never a fork. Find what you want to change, then read its section:
+
+| You want to change… | Layer | How |
+| --- | --- | --- |
+| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/recipes/<name>/`, used by name like the shipped eighteen ([3.10](#310-start-from-a-recipe)) |
+| The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
+| Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
+| What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` ([3.4](#34-define-a-custom-role)) |
+| Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files ([3.2](#32-change-what-an-agent-is-told), [3.12](#312-agentsmd-the-instructions-your-repository-already-keeps)) |
+| Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` in `.docket/`, a recipe or `~/.docket/skills/`; the prompt lists them, the `skill` tool reads one through the chokepoint, deniable per role ([3.13](#313-skills-instructions-an-agent-pulls-on-demand)) |
+| What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket pod check`/`validate`; hashed predicate plugins for the rare complex rule ([3.6](#36-govern-what-agents-may-do)) |
+| What one pod may run unattended | Pod settings | `docket pod set allowCommands uv,tox` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` ([3.3](#33-configure-a-pod-verify-gate-budget-rework-timeouts), [3.8](#38-run-unattended)) |
+| Which model each role uses | Model policy | `docket setup model set <role> <provider/model>`; a role file or a pipeline step's `model:` overrides it for one role or one hop ([3.1](#31-choose-which-model-each-agent-runs-on)) |
+| What a provider is: URL, dialect, model limits, credential by name | Provider catalog | `docket setup provider add <name> [url]`; `docket setup provider export <name>` prints the `kind: provider` document, and the key is stored by name with `--credential` ([3.1](#31-choose-which-model-each-agent-runs-on)) |
+
+One rule keeps the map honest: a guarantee is a docket-managed registry evaluated by code and
+audited when it fires; a file the agent merely reads is advice. Every setting has one writer, is
+validated when written, and is refused loudly when broken.
+
 ### 3.1 Choose which model each agent runs on
 
 Three layers, from broad to narrow:
@@ -534,8 +554,9 @@ by default, leaving `fetch` as the only path; `docket setup sandbox network open
 `network` setting) grants it.
 
 **Isolation (opt-in).** Off by default: tools run on the host. `docket setup sandbox on` jails
-`bash` and stdio MCP servers in bwrap (Linux) or Docker (Linux or macOS), and refuses to record
-on when neither is usable; once on, a turn is refused rather than run unjailed if the backend
+`bash`, stdio MCP servers, verify commands and `run:` steps with Landlock (Linux) or seatbelt
+(macOS), or Docker when chosen with `docket setup sandbox backend docker`, and refuses to record
+on when no backend is usable; once on, a turn is refused rather than run unjailed if the backend
 disappears. The Docker image is `DOCKET_SANDBOX_IMAGE`. The choice is `isolationMode` in
 `fleet.json`; `networkMode` (`docket setup sandbox network`) is the other `security` flag the live path
 enforces. Requirements and coverage:

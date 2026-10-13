@@ -16,7 +16,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 > automated-test-backed, but not QA-hardened in production. Expect rough edges and breaking
 > changes between versions, and **verify anything important against your own install**. Every
 > cost or dollar figure is an accounting estimate, never your provider's bill; see
-> [Known limits](../README.md#known-limits).
+> [Known limits](#known-limits) below.
 
 ## Start here
 
@@ -144,6 +144,60 @@ in your repository:
 
 Pod members each get an isolated workspace; no role is ever shared between projects. Which of these files reach a model, and which only look like settings, is the subject
 of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
+
+---
+
+## Known limits
+
+Read these before trusting docket with anything consequential. The reproducible results behind
+the rest are in [Adoption evidence](ADOPTION-EVIDENCE.md).
+
+**Scope**
+
+- **Beta, single-operator software.** One machine, one operator: no tenant axis, hosted
+  scheduler, worker queue, quota system, or large-deployment claim. If you need hosted,
+  multi-tenant execution, docket is the wrong tool; if you want a board or a UI, point Tack (or
+  your own consumer) at docket's read API, because docket does not ship one.
+- **A pipeline is linear with bounded routes** (`on`, `until`, `when`, `run`), not a DAG. The five
+  blueprints are code, so a new team shape is a recipe, and a recipe against a real model is
+  proven by running it. Nothing in `.docket/` is applied without an operator command.
+
+**Models**
+
+- **Compatible HTTP, not provider SDK parity.** docket speaks non-streaming `/chat/completions`
+  with function tools. A text-only endpoint can answer text turns but cannot complete
+  tool-dependent work. Anthropic documents its OpenAI-compatibility layer as intended for
+  evaluation (no prompt caching) and Google documents its Gemini layer as beta; the built-in
+  provider documents say so in their preset notes.
+- **Small models vary.** A small local model still varies run to run; a 16k-context endpoint is
+  the honest integration test.
+
+**Isolation and the record**
+
+- **Network egress is open until you close it.** `fetch` is deny-by-default, but with isolation
+  off (the default) `bash` runs on the host and reaches the network. Once isolation is on
+  (`docket setup sandbox on`), the jail has no network unless `docket setup sandbox network open`
+  grants it; verify commands and pipeline `run:` steps run in the same jail.
+- **The audit log is tamper-evident, not tamper-proof.** One predecessor link survives rotation,
+  so deleting the log is visible, not impossible.
+- **MCP tools are writes unless the operator says otherwise.** Nothing can prove a remote tool is
+  read-only, so a server left at the default reaches no read-only role. `--kind read` is an
+  operator assertion. Stdio servers re-spawn per turn, always jailed while isolation is on.
+- **Telegram is not a chat.** Five verbs, no free-text conversation, and a notification never
+  carries a control that decides.
+
+**Costs and counters**
+
+- **Tokens are measured; dollars are not.** `docket status` reports measured tokens and never a
+  dollar figure it did not record. The budget gate (`budgetUsd`) works on a labelled estimate.
+- **Metrics counters are not monotonic.** They count what current storage holds, so audit rotation
+  and trace retention can drop them. Do not alert on `rate()` over them.
+- **Cancellation is cooperative.** `cancel requested` is durable immediately and a running `bash`
+  command is killed, but a tool handler already executing may finish before its result is
+  discarded at the next safe checkpoint.
+
+Read [SECURITY.md](../SECURITY.md) before exposing a service, and
+[COMPATIBILITY.md](../COMPATIBILITY.md) before relying on a model endpoint or MCP server.
 
 ---
 

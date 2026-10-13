@@ -41,7 +41,7 @@ The default pod is **lean — a Lead and an Implementer.** You add Reviewer, Tes
 Implementers when the work warrants it.
 
 <p align="center">
-  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on with bwrap, the task's git worktree on its own branch, the operator's main checkout clean, and the one-line fix living only in the worktree" width="760">
+  <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on, the task's git worktree on its own branch, the operator's main checkout clean, and the one-line fix living only in the worktree" width="760">
 </p>
 
 | Pod role | Edits code? | Responsibility | Default model class |
@@ -242,6 +242,19 @@ Three guarantees hold on every dispatch:
 > Each hop is a real, costed LLM turn. That is why dispatch is explicit (`docket run`)
 > or opt-in (`docket start --dispatch`) — never silent. The read-only `docket start` monitor does
 > not dispatch.
+
+
+**Where the change lands.** The Lead plans without a write tool; the Implementer edits in a git
+worktree made for each task, on its own branch, its shell and verify command jailed once you run
+`docket setup sandbox on` (`docket setup sandbox status` names the backend). Your main checkout stays clean, and the change stays in the
+worktree until you merge it. The capture at the top of this guide is one real run.
+
+**What starts a run.** Nothing runs on its own. The same pipeline runs from `docket run`, a
+schedule (`@every 30m`, cron), an authenticated `POST /dispatch/<project>`, the MCP `dispatch`
+tool, or `docket start --dispatch`. `docket pod set approvalMode refuse` fails an unattended pod
+fast instead of parking it. For an external orchestrator, `docket exec` runs one agent turn, or
+one `--recipe` task under `--contract 1.1`, with exit codes 0 / 1 / 2, stdin answers, written
+files and evidence (see [Architecture](DOCKET.md#docket-exec-one-agent-one-turn-for-an-external-caller)).
 
 **A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
 `requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all

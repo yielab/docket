@@ -10,7 +10,7 @@ memory, security and cost.
 > but has not been QA-hardened in production. "Validated" in the Implementation Status section
 > means *covered by the automated suite*, not field-proven — verify behavior against your own
 > install. All cost figures are accounting estimates, not provider bills (see the
-> [README's cost limits](../README.md#the-gate-and-the-record)).
+> [cost limits](README.md#known-limits)).
 
 ---
 
@@ -104,7 +104,7 @@ cli/  ->  core/  ->  edges/
   typed result for `cli/` to render.
 - **`edges/`** (the only side-effecting layer) — `edges/store.py` is the single chokepoint for
   every docket-owned JSON read/write (atomic, filelocked, 0600 permissions, `.bak` rotation);
-  `edges/adapters/system.py` wraps every shell-out to `docker`/`bwrap`/`git`, degrading
+  `edges/adapters/system.py` wraps every shell-out to `docker`/`git` and the jail, degrading
   gracefully when a binary is missing.
 
 This is not a style preference — it is enforced by what each layer is allowed to import, and a
@@ -156,7 +156,7 @@ driver still needs a real trigger (a paying user who needs a different runtime),
 of the port itself; adding driver discovery, entry points, or a config-selectable backend ahead of
 that would be scope creep, not follow-through. One consequence worth stating plainly: `DocketDriver`
 never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
-[Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#the-gate-and-the-record).
+[Cost Optimization](#cost-optimization) and the [cost limits](README.md#known-limits).
 
 ### docket exec: one agent, one turn, for an external caller
 
@@ -653,8 +653,8 @@ instruction), the Reviewer's 6-point checklist (prompt-injection patterns, hardc
 SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-only veto, and a
 final human `git diff` review. The enforced tool-call gate (policy engine plus argument-aware
 high-risk command classifier) is always active and cannot be turned off, and an `ask` verdict can
-be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). bwrap/Docker workspace
-isolation is **opt-in** (`docket setup sandbox on`, which needs bubblewrap or Docker on the host;
+be answered from any of four approval channels (CLI, HTTP, MCP, Telegram). Workspace
+isolation is **opt-in** (`docket setup sandbox on`: Landlock on Linux, seatbelt on macOS, Docker when chosen;
 `docket setup sandbox network none` then cuts the jail's network). Since Phase 34 (D-50), an unattended pod's
 in-turn `ask` **parks** the task (`waiting_approval`) rather than blocking the turn, and a
 separate, opt-in notification layer (`docket setup notify`, off by default except `console`) is what
@@ -1033,7 +1033,7 @@ refreshed by `docket setup --fix`. A member's isolation:
 ### Q: How much will I save?
 
 **A:** See [Cost Optimization](#cost-optimization) above and
-[Cost reporting and its limits](../README.md#the-gate-and-the-record) — the short version
+[Cost reporting and its limits](README.md#known-limits) — the short version
 is: token reduction from isolation is real and measured, but docket reports **measured tokens;
 dollar figures are labelled estimates, never recorded spend**, and never a savings promise.
 

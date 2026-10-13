@@ -5,25 +5,60 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green.svg)](https://www.python.org/)
 [![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
 
-**docket gives a repository a team of coding agents and governs what they are allowed to do.**
-One command creates the team from working defaults or a shipped recipe, ready for its first task.
-When the defaults stop fitting, the team is YAML next to your code: which roles, in what order,
-behind which gates, under which policies, on which models. Changing it is editing a file.
+**docket is a command-line tool that puts a team of AI coding agents to work on a git repository,
+under rules you write and a gate they cannot skip.**
 
-The daily loop is five commands, and this page follows it: `init` creates the team, `task add`
-queues a task, `run` works the queue, `status` and `inbox` show where it stands and what needs you,
-and `task approve` answers what it is holding.
+You describe a task in plain words. A Lead agent plans it, an Implementer makes the change on its
+own git branch, and, if your team has them, a reviewer and a tester check the result before you
+merge anything. Every action an agent takes (reading a file, editing one, running a shell command)
+passes one checkpoint that applies your rules: `git status` runs, `git push origin production`
+waits for your approval, and anything a policy forbids is refused. Every decision is written to a
+tamper-evident log you can verify.
 
-Open source, one CLI, any OpenAI-compatible model (hosted or a local llama.cpp), no dashboard of
-its own, no dollar figure it cannot measure. docket is not a framework you program an agent loop
-with and not an interactive pair-programming harness: it runs the team your files describe.
+The team itself is a few YAML files in your repository, so changing who does what is editing a
+file and committing it. docket works with any OpenAI-compatible model, hosted or running on your
+own machine.
+
+[Website](https://yielab.com/docket) · [Documentation](docs/README.md) ·
+[Quick start](docs/QUICK-START-DOCKET.md) · [Recipes](docs/recipes.md) ·
+[Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 > [!WARNING]
 > docket is beta software (`v0.2.0-beta.4`). Core contracts are spec-first and test-backed, but the
 > project has not been hardened against large deployments or adversarial public-host workloads.
 > Expect breaking changes between beta releases and verify consequential outcomes yourself.
 
-## Quick start
+## How it works
+
+<p align="center">
+  <img src="docs/assets/hero.gif" alt="Animated docket terminal journey captured from a real run against a local model: provision a pod from a recipe, validate and plan the team, dispatch a fix through Lead, Implementer and a read-only vetter with a verify gate, and verify the audit chain" width="820">
+</p>
+
+Five ideas cover everything docket does:
+
+- **Pod.** A **pod** is the team of agents attached to one repository: its members, its rules, its
+  task queue and the git worktrees its agents work in. `docket init` creates one; inside the
+  repository you never type its name.
+- **Role.** What an agent is (Lead, Implementer, Reviewer, Tester, or one you define), what it is
+  told, and which tools it lacks. A reviewer without a write tool *cannot* write; it is not merely
+  asked not to.
+- **Pipeline.** The order in which roles work a task and the gate after each step: the exit code of
+  your verify command, a reviewer's `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`.
+- **Policy.** A rule checked on every tool call, by every agent: allow it, ask a human, or deny it.
+- **Recipe.** A ready-made team, policy pack or working method you add with one command. Eighteen
+  ship with docket.
+
+Day to day you use a handful of commands: `init` creates the team, `task add` queues work, `run`
+takes the next task through the pipeline, `status` and `inbox` show where things stand and what
+needs you, and `task approve` answers what the gate is holding.
+
+docket is not an agent framework you program and not an interactive pair-programming assistant:
+it runs the team your files describe. It has no web UI of its own; `/status.json` and `/metrics`
+feed your own board, and docket does not ship one.
+
+## Install
+
+With Homebrew (macOS and Linux):
 
 ```bash
 brew tap yielab/docket-cli https://github.com/yielab/docket
@@ -31,7 +66,7 @@ brew trust yielab/docket-cli            # Homebrew 7 loads a third-party tap onl
 brew install docket-cli
 ```
 
-Or a version-pinned installer that needs no `sudo`:
+Or with the version-pinned installer, which needs no `sudo`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.4/install.sh \
@@ -39,262 +74,105 @@ curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.4/install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Requires Python 3.11+, Git, Bash, and a non-streaming OpenAI-compatible chat-completions endpoint
-with function-tool support — hosted (Anthropic, OpenAI, Google, OpenRouter, Vercel AI Gateway and
-others) or local (llama.cpp, vLLM, LM Studio, Ollama). Fourteen providers ship as readable
-`kind: provider` documents (`docket setup provider list`); any other endpoint is registered
-explicitly, and nothing is guessed. Run `docket setup`: it prints what is configured and what is
-missing, and on a terminal asks for the missing model endpoint first.
+You need Python 3.11+, Git, Bash, and a chat-completions endpoint that speaks the OpenAI format
+with function tools. Hosted providers (Anthropic, OpenAI, Google, OpenRouter, Vercel AI Gateway
+and others) and local servers (llama.cpp, vLLM, LM Studio, Ollama) both work.
 
-```text
-$ docket setup
-PIECE               STATE     DETAIL                              COMMAND
-model endpoint      missing   lead ->                             docket setup provider add <name>
-                              anthropic/claude-haiku-4-5:
-                              ANTHROPIC_API_KEY is required for
-                              the resolved endpoint
-notifications       optional  console only (nobody is told)       docket setup notify enable desktop
-sandbox             optional  off; backend found: bwrap           docket setup sandbox on
-shell completion    optional  not enabled                         docket setup shell zsh
-background service  optional  not installed                       docket start
-Provider [local]: local
-```
+## Quick start
 
-Answer `local` for a server on this machine, or name a hosted provider and give its key. Without
-a terminal, register it in one command, which also points every role at it:
+**1. Connect a model.** `docket setup` shows what is configured and what is missing, and on a
+terminal asks for the model endpoint first. To register a local server in one command:
 
 ```bash
+docket setup
 docket setup provider add local http://127.0.0.1:8081/v1 \
   --model local-model --ctx 32768 --max-tokens 4096
 ```
 
-Registering applies the provider's preset to every role. Without it the built-in role policy
-would still route the Lead and Implementer to a hosted model you have no key for (`--no-preset`
-leaves the roles alone, `docket setup model preset <name>` applies one later).
+**2. Create the team.** Inside your repository:
 
-## Your first team
+```bash
+cd ~/code/myapp
+docket init                               # a Lead that plans + an Implementer that edits
+docket init --recipe secure-build         # or: that team plus a read-only security vetter
+```
 
-<p align="center">
-  <img src="docs/assets/hero.gif" alt="Animated docket terminal journey captured from a real run against a local model: provision a pod from a recipe, validate and plan the team, dispatch a fix through Lead, Implementer and a read-only vetter with a verify gate, and verify the audit chain" width="820">
-</p>
-
-In a repository (`cd ~/code/myapp`), create the team from whatever you have:
-
-| You have | Run | You get |
-| --- | --- | --- |
-| nothing yet | `docket init` | the lean default: a Lead that plans and an Implementer that edits in a git worktree per task |
-| a known shape in mind | `docket init --recipe secure-build` | the default team plus the recipe: here a read-only security vetter, its pipeline and a policy |
-| a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned; any command it would run on this machine waits for your OK |
-
-Eighteen recipes ship: teams (`secure-build`, `research-review`, `ops-approval`, `intake`), policy
-packs (`git-safety`, `no-egress`, `secrets-guard`, `prod-approval`), methodology pipelines (`tdd`,
-`spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
-that fail a task whose tests prove nothing (`anti-tautology`, `mutation`) and a tool pack
-(`code-intel`). A **pod** is the team of agents attached to one repository: its members, its rules, its queue,
-its ports and worktrees; a recipe is a team that can be installed, a pod is that team living in a
-repo. `docket pod recipes` shows what each recipe brings; `docket pod update tdd` adds one to the
-pod you are standing in. You never type the pod's name inside its repository.
-
-Then give the team work and read what it did:
+**3. Give it a task and run it.**
 
 ```bash
 docket task add "Create FIRST_TURN.md containing: governed first turn"
 docket run
-
-docket status                             # the pod: queue, last run, measured tokens, what needs you
-docket task list                          # the queue, one row per task
-docket task trace <id> --tail             # what it did, step by step (Ctrl-C to stop)
-docket log verify                         # tamper-evident confirmation of the decision chain
 ```
 
-What follows explains that run, what held it in check, and then how to change the team. The
+**4. See what happened.**
+
+```bash
+docket status                             # the queue, the last run, tokens used, what needs you
+docket task trace <id>                    # every step the agents took
+docket log verify                         # check the hash chain over every decision
+```
+
+The change stays in the Implementer's worktree until you merge it. The
 [ten-minute quick start](docs/QUICK-START-DOCKET.md) walks the same path with real output.
 
-## The run
+## Make the team yours
 
-<p align="center">
-  <img src="docs/assets/isolation.png" alt="Real terminal output: the Implementer's dedicated workspace, codebase and session key, a separate git worktree on its own branch, isolation on, a clean main checkout, and the one-line fix living only in the worktree" width="820">
-</p>
-
-`docket run` takes the next queued task through the team's pipeline, one real model turn per step. The
-Lead plans without a write tool; the Implementer edits in a git worktree made for each task, on its
-own branch, its shell jailed by bwrap or Docker once you run `docket setup sandbox on`. Then whatever gates the team has decide: the verify
-command's exit code, a reviewer's `APPROVE` or `REQUEST-CHANGES`, a tester's `PASS`. Rework is
-counted, not hoped, and the change stays in the worktree until you merge it.
-
-Nothing runs on its own. The same pipeline runs from a schedule (`@every 30m`, cron), an
-authenticated `POST /dispatch/<project>`, the MCP `dispatch` tool, or `docket start --dispatch`.
-`docket pod set approvalMode refuse` fails an unattended pod fast; `budgetUsd` pauses it on a
-labelled estimate.
-`docket exec` gives your orchestrator one agent turn, or one `--recipe` task under
-`--contract 1.1`: exit codes 0 / 1 / 2, stdin answers, written files and evidence.
-
-*Limit:* one machine, one operator, no queue of workers and no tenant axis. A small local model
-still varies run to run; a 16k-context endpoint is the honest integration test.
-
-## The gate and the record
-
-<p align="center">
-  <img src="docs/assets/governance.png" alt="Real terminal output: the Lead parks a question and the operator answers it with docket task answer; then the Implementer's git push origin production is held by the high-risk-deploy policy, the hop parks for approval and nothing executes; the audit chain verifies clean" width="820">
-</p>
-
-Every tool call, built-in or MCP, passes one chokepoint: policy, then a classifier that reads the
-whole command line (`git status` passes, `git push origin production` asks), then approval over
-CLI, HTTP, MCP or Telegram; the budget is checked before every hop. An unattended pod **parks** instead of blocking:
-`docket inbox` shows what needs you, and a `kind: channel` you enable (`desktop`, `ntfy`,
-`telegram`, a webhook) tells you; console alone tells nobody, and `docket setup` says so.
-Neither ever decides.
-The capture above shows both pauses from one real run: the Lead parked a question, answered
-with `docket task answer`; then the Implementer's push parked for approval.
-`docket log verify` checks the hash chain over every verdict, approval, execution.
-`docket task trace <id>` shows a run step-by-step; a `kind: exporter` sends it to OpenTelemetry or
-Langfuse, structure-only unless widened. `docket status` reports measured tokens and never a
-dollar figure it did not record; the budget gate works on a labelled estimate. `/status.json` and `/metrics` feed your own board — docket does not ship one.
-
-*Limit:* the audit log is tamper-evident, not tamper-proof (one predecessor link survives
-rotation). `fetch` is deny-by-default, but with isolation off (the default) `bash` runs on the host and
-reaches the network; once isolation is on the jail has no network unless `docket setup sandbox
-network open` grants it. Verify commands still run unjailed.
-
-## Make it yours
-
-When the defaults stop fitting, write the team down: `docket pod export` turns the pod into
-files under `.docket/`. Each YAML file starts with `kind:`, reads as data and has a consumer on
-the live path:
+When the defaults stop fitting, `docket pod export` writes the team into your repository:
 
 ```text
 .docket/
   pod.yaml            kind: pod       who is on the team, the pod's settings
-  roles/vetter.yaml   kind: role      what a role may not do, how it is gated, its model
-  roles/vetter.md                     what it is told, in plain Markdown
+  roles/*.yaml        kind: role      what a role may not do, how it is gated, its model
   pipeline.yaml       kind: pipeline  who works a task, in what order, behind which gates
-  policies/*.yaml     kind: policy    what always needs a human, everywhere
+  policies/*.yaml     kind: policy    what always needs a human
   skills/<name>/      SKILL.md        instructions an agent reads on demand
 ```
 
-```yaml
-# roles/security-vetter.yaml          # pipeline.yaml
-kind: role                             kind: pipeline
-name: security-vetter                  name: secure-build
-model: strong                          steps:
-cannot: [write, edit, bash]              - plan: lead
-verdict: [APPROVE, REQUEST-CHANGES]      - build: implementer
-instructions: security-vetter.md           verify: true
-                                         - vet: security-vetter
-                                           verdict: [APPROVE, REQUEST-CHANGES]
-                                           on: {REQUEST-CHANGES: {goto: build, max: 1}}
-```
-
-`cannot` removes the tool from the role's registry before the model sees it. `verify: true` runs
-the member's verify command and a nonzero exit fails the task. `verdict` gates on one
-unambiguous marker at the start of a line; `on` is a bounded route, never an expression.
-
-Edit, then `docket pod validate` checks the directory against published schemas, `docket pod plan`
-shows the run before it happens, and `docket pod update .docket` puts the change on the pod;
-`docket run` picks it up on its own. Commit the directory and a plain `docket init` builds the
-same team on any machine. `docket pod show`
-prints every effective value, the layer that set it, the provider it resolved to, and
-whether `.docket/` has drifted since it was applied.
-
-*Limit:* a pipeline is linear with bounded routes (`on`, `until`, `when`, `run`), not a DAG; the
-five blueprints are code, so a new team shape is a recipe; and a recipe against a real model is
-proven by running it. Nothing in `.docket/` is applied without an operator command.
-
-## Everything is configuration
-
-The whole map. Every layer has a working default and one place to change it, so a custom setup is
-configuration, never a fork:
-
-| You want to change… | Layer | How |
-| --- | --- | --- |
-| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/recipes/<name>/`, used by name like the shipped eighteen |
-| The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` |
-| Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` |
-| What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` |
-| Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files |
-| Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` (the Agent Skills shape) in `.docket/`, a recipe or `~/.docket/skills/`; the prompt lists them, the `skill` tool reads one through the chokepoint, deniable per role |
-| What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket pod check`/`validate`; hashed predicate plugins for the rare complex rule |
-| What one pod may run unattended | Pod settings | `docket pod set allowCommands uv,tox` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` |
-| Which model each role uses | Model policy | `docket setup model set <role> <provider/model>`; a role file or a pipeline step's `model:` overrides it for one role or one hop |
-| What a provider is: URL, dialect, model limits, credential by name | Provider catalog | `docket setup provider add <name> [url]`; `docket setup provider export <name>` prints the `kind: provider` document, and the key is stored by name with `--credential` |
-
-One rule keeps the map honest: a guarantee is a docket-managed registry evaluated by code and
-audited when it fires; a file the agent merely reads is advice. Every setting has one writer, is
-validated when written, and is refused loudly when broken. File by file:
-[Configuration](docs/CONFIGURATION.md).
-
-## Also shipped
-
-- **MCP in both directions**: `docket start --mcp` exposes the control surface; `docket setup mcp`
-  wires external servers into the same chokepoint (and, with isolation on, the same jail), `--kind read` for read-only roles.
-- **Typed handoffs and context budgets** that follow the resolved model's window, with any
-  truncation marked and traced rather than silent; session compaction on the live path.
-- **Opt-in sandboxing** (`docket setup sandbox on`: bwrap on Linux, else Docker; once on, a turn
-  with no backend is refused), git hooks read-only inside it.
-- **Retention and recovery**: `docket task prune --traces` expires old traces and run records; a corrupt
-  docket-owned JSON file recovers from its validated backup; `docket setup --fix` repairs drift.
-- **An embeddable runtime**: the standalone **`docket-runtime`** package (`pydantic` + `filelock`
-  only) dispatches an application's tools through the same chokepoint; source-built, **not
-  published to any index**; verified adapter configurations in [Compatibility](COMPATIBILITY.md).
-
-## Use something else if
-
-- **You want a board or a UI.** Use a worktree orchestrator, or point Tack (or your own consumer)
-  at docket's read API.
-- **You need hosted, multi-tenant execution.** docket is single-operator software.
+Edit a file, check it with `docket pod validate`, preview the run with `docket pod plan`, and
+apply it with `docket pod update .docket`. Commit the directory and a plain `docket init` builds
+the same team on any machine. [Configuration](docs/CONFIGURATION.md) covers every file and
+setting; the [recipe library](docs/recipes.md) shows what each recipe adds.
 
 ## Known limits
 
-Read these before trusting docket with anything consequential. The reproducible results behind
-the rest are in [Adoption evidence](docs/ADOPTION-EVIDENCE.md).
+Read these before trusting docket with anything consequential:
 
-- **Beta, single-operator software:** no tenant axis, hosted scheduler, quota system, or
-  large-deployment claim.
-- **Compatible HTTP, not provider SDK parity:** non-streaming `/chat/completions` with function
-  tools. A text-only endpoint can answer text turns but cannot complete tool-dependent work.
-  Anthropic documents its OpenAI-compatibility layer as intended for evaluation (no prompt caching)
-  and Google documents its Gemini layer as beta; the built-in documents say so in their preset notes.
-- **MCP tools are writes unless the operator says otherwise:** nothing can prove a remote tool is
-  read-only, so a server left at the default reaches no read-only role. `--kind read` is an
-  operator assertion. Stdio servers re-spawn per turn, jailed while isolation is on unless declared `isolate: false`.
-- **Telegram is not a chat:** five verbs, no free-text conversation, and a notification never
-  carries a control that decides.
-- **Metrics counters are not monotonic:** they count what current storage holds, so audit
-  rotation and trace retention can drop them. Do not alert on `rate()` over them.
-- **Cancellation is cooperative:** `cancel requested` is durable immediately and a running `bash`
-  command is killed, but a tool handler already executing may finish before its result is
-  discarded at the next safe checkpoint.
+- **One machine, one operator.** No multi-tenancy, hosted scheduler or worker queue.
+- **Sandboxing is opt-in.** Until you run `docket setup sandbox on`, an agent's shell commands run
+  on your machine and can reach the network.
+- **The audit log is tamper-evident, not tamper-proof.** Deleting it is visible, not impossible.
+- **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
+  budget limit works on a labelled estimate.
+- **Models vary.** A small local model can give different results run to run; a tool-calling
+  endpoint is required for real work.
 
-Read [SECURITY.md](SECURITY.md) before exposing a service, and [COMPATIBILITY.md](COMPATIBILITY.md)
-before relying on a model endpoint or MCP server.
+The full list, with the reasoning behind each limit, is in
+[Known limits](docs/README.md#known-limits). Read [SECURITY.md](SECURITY.md) before exposing a
+service and [COMPATIBILITY.md](COMPATIBILITY.md) before relying on a model endpoint or MCP server.
 
 ## Documentation
 
-| Need | Guide |
+| I want to… | Read |
 | --- | --- |
-| Install and first governed turn | [Quick start](docs/QUICK-START-DOCKET.md) |
-| Roles, pod shapes, handoffs, gates | [Agent teams](docs/AGENT-TEAMS.md) |
-| Every installed file and setting, skills, the team in the repo | [Configuration](docs/CONFIGURATION.md) |
-| The eighteen shipped recipes and what each brings | [Recipe library](docs/recipes.md) |
-| Every command and flag | [Command reference](docs/commands.md) |
-| Provider endpoints and coding harnesses | [Models and gateways](docs/MODEL-GATEWAYS.md) |
-| Security posture and deployment limits | [Security model](SECURITY.md) |
-| Runtime and protocol compatibility | [Compatibility](COMPATIBILITY.md) |
-| Deterministic adoption evidence and limits | [Adoption evidence](docs/ADOPTION-EVIDENCE.md) |
-| Architecture, state ownership, and embedding `docket-runtime` | [Architecture](docs/DOCKET.md) |
-| Pipeline examples | [Workflow guide](docs/WORKFLOW-GUIDE.md) |
-| Troubleshooting | [Troubleshooting](docs/troubleshooting.md) |
-| Current plans and measured triggers | [Roadmap](ROADMAP.md) |
-| Current executable contracts | [Specifications](specs/README.md) |
-| Contributing, tests, and CI gates | [Contributing](CONTRIBUTING.md) |
+| Go from install to a first governed run | [Quick start](docs/QUICK-START-DOCKET.md) |
+| Understand roles, pods, pipelines and gates | [Agent teams](docs/AGENT-TEAMS.md) |
+| Change any file or setting | [Configuration](docs/CONFIGURATION.md) |
+| Pick a ready-made team or method | [Recipe library](docs/recipes.md) |
+| Look up a command or flag | [Command reference](docs/commands.md) |
+| Connect a hosted or local model | [Models and gateways](docs/MODEL-GATEWAYS.md) |
+| Know what the gate enforces | [Security model](docs/SECURITY-SIMPLE.md) |
+| Fix a problem | [Troubleshooting](docs/troubleshooting.md) |
+| Embed the gate in my own application | [Architecture](docs/DOCKET.md) and [Compatibility](COMPATIBILITY.md) |
+
+The embeddable runtime ships as a separate package, **`docket-runtime`**, built from this
+repository's source and not published to any index. Every guide is listed in the
+[documentation index](docs/README.md).
 
 ## Contributing
 
-docket uses spec-first, test-first development and a three-layer architecture, `cli → core →
-edges`. Two boundaries are non-negotiable: `core/tools.py::dispatch_tool` is the sole
-tool-execution chokepoint, and `edges/store.py` is the sole writer of docket-owned JSON. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md). New features need a measured trigger, an executable acceptance
-case, and documentation that states limits as clearly as capabilities.
+docket is built spec-first and test-first. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the
+[roadmap](ROADMAP.md) records current plans and decisions, and [specs/](specs/README.md) holds the
+executable contracts.
 
 ## License
 
