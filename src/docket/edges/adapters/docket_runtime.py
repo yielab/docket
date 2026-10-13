@@ -272,6 +272,8 @@ def _resolve_network(agent_id: str, role: str, want_sandbox: bool) -> tuple[bool
         return True, None
     if want_sandbox:
         return False, None
+    if scope == "default":
+        return True, None
     audit_log("network.refused", f"agent={agent_id} role={role or '?'} scope={scope}")
     setting = (
         "'docket setup sandbox network none'" if scope == "global" else "the pod's network=none"

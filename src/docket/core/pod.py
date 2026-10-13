@@ -381,7 +381,7 @@ class PodSettings(BaseModel):
     # How many `consult` questions one task's turn may ask (core/consult.py); 0 disables.
     max_consultations_per_task: int = Field(3, alias="maxConsultationsPerTask", ge=0)
 
-    # 'open' (the default: follow the global mode) or 'none': cut this pod's jailed tool calls
+    # 'open' (the default: follow the global mode, itself 'none' unless granted) or 'none': cut this pod's jailed tool calls
     # off the network. It only ever narrows -- see ``effective_network``.
     network: str = Field("open", alias="network")
 
@@ -632,9 +632,10 @@ class PodSettings(BaseModel):
 
 def effective_network(project: str | None) -> tuple[str, str]:
     """``(mode, scope)`` for a turn: ``none`` if the global mode or the pod's ``network`` says so,
-    else ``open``. Scope is ``global``, ``pod`` or ``default``. A pod's ``open`` never widens a
-    global ``none``; unreadable pod settings fail closed to ``none``."""
-    if _fleet.get_network_mode() == "none":
+    else ``open``. Scope is ``global``, ``pod`` or ``default`` (the unrecorded ``none``). A pod's
+    ``open`` never widens a global ``none``; unreadable pod settings fail closed to ``none``."""
+    global_none = _fleet.get_network_mode() == "none"
+    if global_none and _fleet.network_mode_recorded():
         return "none", "global"
     if project is not None:
         try:
@@ -642,7 +643,7 @@ def effective_network(project: str | None) -> tuple[str, str]:
                 return "none", "pod"
         except PodSettingsError:
             return "none", "pod"
-    return "open", "default"
+    return ("none" if global_none else "open"), "default"
 
 
 # The docket-owned copy of a pod's bound pipeline file lives at this fixed name in the

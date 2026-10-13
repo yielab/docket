@@ -107,6 +107,9 @@ class TestResolution:
         [
             ("open", "", "open", "default"),
             ("open", "open", "open", "default"),
+            ("unset", "", "none", "default"),
+            ("unset", "open", "none", "default"),
+            ("unset", "none", "none", "pod"),
             ("open", "none", "none", "pod"),
             ("none", "", "none", "global"),
             ("none", "open", "none", "global"),
@@ -114,12 +117,14 @@ class TestResolution:
         ],
     )
     def test_pod_only_narrows(self, glob: str, pod_value: str, mode: str, scope: str) -> None:
-        if glob == "none":
-            _fleet.set_network_mode("none")
+        if glob != "unset":
+            _fleet.set_network_mode(glob)
         self._lead("shop", **({"network": pod_value} if pod_value else {}))
         assert _pod.effective_network("shop") == (mode, scope)
 
     def test_non_pod_agent_follows_global(self) -> None:
+        assert _pod.effective_network(None) == ("none", "default")
+        _fleet.set_network_mode("open")
         assert _pod.effective_network(None) == ("open", "default")
         _fleet.set_network_mode("none")
         assert _pod.effective_network(None) == ("none", "global")
@@ -157,6 +162,13 @@ class TestGatesCommand:
 
 
 class TestRefusal:
+    def test_the_unrecorded_default_is_not_refused_without_a_jail(self) -> None:
+        from docket.edges.adapters.docket_runtime import _resolve_network
+
+        assert _fleet.get_network_mode() == "none"
+        assert _resolve_network("solo-agent", "implementer", False) == (True, None)
+        assert _resolve_network("solo-agent", "implementer", True) == (False, None)
+
     def test_none_with_isolation_off_refuses_before_any_model_call(self) -> None:
         ws = _cfg.workspace_dir("solo-agent")
         ws.mkdir(parents=True, exist_ok=True)

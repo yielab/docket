@@ -476,7 +476,12 @@ def _check_security_gates() -> int:
 
     net_mode = _fleet.get_network_mode()
     if net_mode == "none":
-        if not enabled:
+        if not _fleet.network_mode_recorded():
+            ui.dim(
+                "  Network: none (default) -- enforced only inside the sandbox; "
+                "docket setup sandbox network open to grant it"
+            )
+        elif not enabled:
             ui.warn(
                 "  Network: none (global), but isolation is off -- turns will be refused. "
                 "docket setup sandbox on, or docket setup sandbox network open"
@@ -485,7 +490,7 @@ def _check_security_gates() -> int:
             ui.success("  Network: none (global) -- jailed tool calls have no network")
     else:
         ui.dim(
-            "  Network: open (default) -- docket setup sandbox network none to cut the sandbox's network"
+            "  Network: open (granted) -- docket setup sandbox network none to cut the sandbox's network"
         )
 
     unjailed = [

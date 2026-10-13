@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.41.0
+**Version**: 0.43.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -123,6 +123,18 @@ are owned here, not there.
    agent belonging to that pod carries the setting (see "In-turn tool-call gate" item 13 below for
    the live-path wiring), and a `pre_tool_call` policy `block`/`require_approval` on the same
    binary still wins (most-restrictive-wins, item 3 of the next section).
+   **Inside the execution envelope the allowlist stands down (ADR 0024 §2).**
+   `classify_command(command, extra_bins, roots, jailed=False)` takes `jailed`, which
+   `core/tools.py::evaluate_tool_call` sets from `ToolContext.sandbox == "auto"` (a turn whose
+   isolation posture was resolved to a real backend; a turn without one is refused before it
+   starts, so this is the same decision `run_bash` acts on). When `jailed`, a binary off
+   `SAFE_BINS`/`extra_bins` is `allow`ed instead of asking. Unchanged in both modes: the
+   not-statically-analysable `ask` (command substitution, `eval`, `exec`, unparseable text), every
+   high-risk class (`ask`, argument-aware), the empty-command `deny`, and redirect containment
+   (an output redirect whose targets do not all resolve inside `roots` still asks, for every
+   binary when jailed). With `jailed=False` (the default, and every host-side caller such as
+   dispatch's `run:` steps and `docket pod check`) every verdict is byte-identical to before.
+   `policy` hooks apply in both modes.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
    channel (CLI `docket task approve`/`docket task deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
@@ -941,7 +953,7 @@ either.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
-**Say the true thing: network egress is open by default, on this fleet, today.** This is not a
+**Say the true thing: the network default is `none`, but only a sandbox can enforce it.** With isolation off (the default, D-56) a turn's network is still open and the mode reads `none (default)`; nothing is refused until the operator records `none` (global or pod) explicitly. This is not a
 gap being quietly disclosed — it is the explicit, deliberate outcome of decision D-23, and this
 section exists so no other part of this spec (or any user-facing material) is read as implying
 otherwise.
@@ -1015,9 +1027,9 @@ otherwise.
    passed through `core.trace.redact`, and a `warn` result **MUST** return it unchanged; both
    **MUST** be audited (`fetch.result_warn`). `allow`, or no hit, passes the outcome byte-identical
    with no audit entry.
-7. **A network lockdown mode (ADR 0020 §4).** Open stays the default. The global mode
+7. **A network lockdown mode (ADR 0020 §4, default `none` since ADR 0024 §5).** `none` is the default: a fresh home reports `network none`, `open` is an operator grant (`docket setup sandbox network open`) and a pod's `network` can only narrow it. The refusal below fires only when `none` was recorded explicitly (global or pod); the unrecorded default with isolation off runs, with the network open, because nothing can cut it. The global mode
    (`docket setup sandbox network none|open`, `FleetSecurity.network_mode`, audited `gates.network`) and
-   the pod setting `network` (`none`|`open`, default `open`) resolve through
+   the pod setting `network` (`none`|`open`; `open` means follow the global mode) resolve through
    `core.pod.effective_network`: `none` when either says `none`, so a pod's `open` never widens a
    global `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed
    to `none`. Under `none`, `system.bwrap_argv(..., network=False)` omits `--share-net` (the
@@ -1616,6 +1628,11 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.43.0 (2026-10-12)
+
+- Tool-approval gates item 1: `classify_command(..., jailed=)`; inside a working jail an off-allowlist binary is allowed, high-risk classes, the opaque-command `ask` and redirect containment stay. `evaluate_tool_call` passes `ctx.sandbox == "auto"`.
+- Network egress item 7: the default network mode is `none` (`FleetSecurity.network_mode` unset reads `none`); `effective_network` reports scope `default` for it and the isolation-off refusal fires only for an explicitly recorded `none`.
 
 ### Version 0.41.0 (2026-10-12)
 
