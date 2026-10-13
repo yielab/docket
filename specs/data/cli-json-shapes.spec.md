@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.28.0
+**Version**: 1.29.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -227,6 +227,13 @@ value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an e
 naming the offending key and exits 1, with nothing on stdout, instead of showing that key's
 default. A pod that does not exist exits 1.
 
+### `docket setup harness --json`
+
+Owned by `harness-mode.spec.md` "Contract 1.2" section 5 (it is part of harness contract 1.2, so a
+caller pins it there): `v`, `setup_home`, `endpoint_override`, `ready`, `reason`, `role`,
+`default_model`, `default_models`, `models` (`{model, provider}`), `providers` (`{name, scope,
+base_url, credential: {needed, name, resolves, source}}`). Never a credential value.
+
 ### `docket setup export list --json`
 
 A JSON array, one object per catalog exporter (built-in + global, nearest-wins by name),
@@ -420,6 +427,9 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.29.0 (2026-10-13)
+- `docket setup harness --json` (harness contract 1.2's readiness document; shape owned by harness-mode.spec.md).
 
 ### Version 1.28.0 (2026-10-13)
 - `doctor --json` `securityGates.sandboxUsable`; a home with pods and no usable backend counts as

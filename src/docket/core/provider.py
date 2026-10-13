@@ -306,7 +306,10 @@ def _load_builtin_providers() -> dict[str, ProviderSpec]:
 
 
 def _load_global_providers() -> dict[str, ProviderSpec]:
-    raw = _store.read_json(_cfg.PROVIDERS_FILE)
+    return _global_providers_from(_store.read_json(_cfg.PROVIDERS_FILE))
+
+
+def _global_providers_from(raw: object) -> dict[str, ProviderSpec]:
     providers = raw.get("providers") if isinstance(raw, dict) else None
     entries: dict[str, ProviderSpec] = {}
     if not isinstance(providers, dict):
@@ -323,12 +326,21 @@ def _load_global_providers() -> dict[str, ProviderSpec]:
 
 def load_catalog() -> Catalog:
     """The merged provider catalog: a global document overrides the built-in of the same name."""
+    return _merged_catalog(_load_global_providers())
+
+
+def catalog_from_global(raw: object) -> Catalog:
+    """The merged catalog with *raw* (a ``docket-providers.json`` object) as the global layer."""
+    return _merged_catalog(_global_providers_from(raw))
+
+
+def _merged_catalog(global_entries: dict[str, ProviderSpec]) -> Catalog:
     entries: dict[str, ProviderSpec] = {}
     scopes: dict[str, str] = {}
     for name, spec in _load_builtin_providers().items():
         entries[name] = spec
         scopes[name] = "built-in"
-    for name, spec in _load_global_providers().items():
+    for name, spec in global_entries.items():
         entries[name] = spec
         scopes[name] = "global"
     return Catalog(entries=entries, scopes=scopes)

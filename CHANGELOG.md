@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Harness contract 1.2: `docket exec` runs on the operator's own setup (ADR 0026, D-62).**
+  `--contract 1.2` stamps every line `v: "1.2.0"`. With `DOCKET_LLM_BASE_URL` unset, the endpoint
+  and credential come from the setup home (`DOCKET_SETUP_HOME`, default `~/.docket`): the provider
+  catalog, the model registry and the credential store or keyring, read without a lock and never
+  written. `--model` is optional; the result's `model.source` says `explicit` or `setup default`.
+  A missing model, provider or credential, or a keyring lookup that fails (as inside a sandbox
+  with no D-Bus), refuses with exit 2 before any request, naming the provider and the
+  credential, never its value; the resolved key is redacted from traces and stripped from child
+  environments. `docket setup harness --json` is the offline readiness and model list. A caller
+  probes for 1.2 with `env -u DOCKET_HOME docket exec --contract 1.2 --workspace . --task probe`:
+  1.2 answers with the `DOCKET_HOME` refusal, older builds with `--contract must be one of`.
+  Schema in `docs/contracts/harness-v1.2/schema.json`.
 - **Wave 102: the sandbox is visible (P41-7).** `docket init` ends with a `This machine` /
   `Sandbox` block, `docket status` opens with it (the `Isolation` row is gone from the text), and
   `docket setup sandbox` prints what this machine has (`Backend: landlock (kernel 6.14)`, or what

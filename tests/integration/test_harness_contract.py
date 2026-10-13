@@ -226,3 +226,42 @@ class TestBlockedPayloadSurvivesTheDriverErrorRoundTrip:
 
     def test_the_status_is_blocked_rather_than_a_generic_failure(self) -> None:
         assert self._blocked_result().status == "blocked"
+
+
+SCHEMA_V12_PATH = REPO_ROOT / "docs" / "contracts" / "harness-v1.2" / "schema.json"
+FIXTURES_V12_DIR = REPO_ROOT / "tests" / "fixtures" / "harness-contract" / "v1.2"
+
+
+def test_generated_v12_schema_is_byte_identical_to_the_committed_file() -> None:
+    module = _load_schema_script()
+    assert module.render_v12() == SCHEMA_V12_PATH.read_text(encoding="utf-8")
+
+
+def test_generated_v12_schema_covers_the_v12_models_and_the_model_source() -> None:
+    document = json.loads(SCHEMA_V12_PATH.read_text(encoding="utf-8"))
+    assert set(document["definitions"]) == {"HarnessEvent", "HarnessResult", "AnswerLine"}
+    assert document["version"] == harness.HARNESS_CONTRACT_V12
+    source = document["$defs"]["ModelInfoV12"]["properties"]["source"]
+    assert set(source["enum"]) == {"explicit", "setup default", ""}
+
+
+@pytest.mark.parametrize("name", ["ok-setup-default", "probe-refused"])
+def test_every_v12_fixture_line_validates_against_the_models_and_the_committed_schema(
+    name: str,
+) -> None:
+    lines = (FIXTURES_V12_DIR / f"{name}.ndjson").read_text(encoding="utf-8").splitlines()
+    assert lines
+    document = json.loads(SCHEMA_V12_PATH.read_text(encoding="utf-8"))
+    event_validator = Draft202012Validator({**document, "$ref": "#/definitions/HarnessEvent"})
+    result_validator = Draft202012Validator({**document, "$ref": "#/definitions/HarnessResult"})
+    for line in lines[:-1]:
+        harness.HarnessEventV12.model_validate_json(line)
+        event_validator.validate(json.loads(line))
+    harness.HarnessResultV12.model_validate_json(lines[-1])
+    result_validator.validate(json.loads(lines[-1]))
+
+
+def test_a_v11_fixture_line_fails_the_v12_models() -> None:
+    line = (FIXTURES_V11_DIR / "ok-files.ndjson").read_text(encoding="utf-8").splitlines()[-1]
+    with pytest.raises(ValueError, match="unsupported harness contract version"):
+        harness.HarnessResultV12.model_validate_json(line)

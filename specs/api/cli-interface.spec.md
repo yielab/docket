@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -579,6 +579,12 @@ the choice in fleet.json; `auto` is landlock or seatbelt, `docker` is docker onl
 is a usage error, exit 2), `network none|open` (any other word is a usage error,
 exit 2), `classes` lists the high-risk action classes. Writes are audited as `gates.isolate`, `gates.backend` and
 `gates.network`. See security-gates.spec.md.
+**`setup harness [--json] [--role ROLE]`** — a read: what `docket exec --contract 1.2` would get
+from the setup home (`DOCKET_SETUP_HOME`, default `~/.docket`): ready or the refusal reason, the
+setup model per role, the reachable models and each provider's credential source. Reads only
+`docket-providers.json`, `docket-models.json` and `secrets.json` there, writes nothing, makes no
+network call and prints no credential value; exit 0 ready, 1 not. Shape in harness-mode.spec.md
+"Contract 1.2" section 5.
 **`setup shell <bash|zsh>`** — prints the completion script generated from the live command tree;
 any other shell is a usage error (exit 2). Enable it with `eval "$(docket setup shell bash)"`.
 **Return**: 0 on success; 1 when the model endpoint is missing off a terminal, a provider is
@@ -744,10 +750,12 @@ second signal
 **Purpose**: Run one agent, for one turn, to completion, in a workspace and `DOCKET_HOME` the
 caller supplies — for an external plan-of-record that spawns docket as a subprocess. Full
 contract (wire shapes, refusal table, result mapping) in `harness-mode.spec.md`
-**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) --model PROVIDER/ID
-[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1] [--answers stdin]
+**Syntax**: `docket exec --workspace DIR (--task TEXT | --task-file PATH) [--model PROVIDER/ID]
+[--role implementer] [--timeout SECONDS] [--agent-id ID] [--contract 1.0|1.1|1.2] [--answers stdin]
 [--answer-timeout S] [--token-file PATH] [--max-tokens N] [--policy FILE]... [--recipe NAME|DIR]
-[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2
+[--verify CMD]`; every option is a declared Typer option, an unknown one exits 2. `--model` is
+required under contracts 1.0 and 1.1; under 1.2 it defaults to the role's model in the
+operator's setup (harness-mode.spec.md "Contract 1.2")
 **Output**: Streams NDJSON `HarnessEvent` lines and exactly one `HarnessResult` on stdout;
 every log goes to stderr
 **Return**: 0 `ok`, 1 `failed`/`blocked`/`cancelled`, 2 refused before any run began (the one
@@ -978,6 +986,10 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.5.0 (2026-10-13)
+- `setup harness [--json] [--role]`, the offline readiness for harness callers; `exec --model`
+  optional and `--contract 1.2` (ADR 0026).
 
 ### Version 2.4.0 (2026-10-13)
 - The sandbox is visible: `init` closes with a `This machine` / `Sandbox` block, `status` opens

@@ -390,6 +390,18 @@ Enable it for the current shell with: eval "$(docket setup shell bash)"
 
 Example: docket setup shell zsh
 
+### setup harness
+
+**Usage:** `docket setup harness`
+
+Show what docket exec --contract 1.2 can use from this machine's setup.
+
+Reads the setup home (DOCKET_SETUP_HOME, default ~/.docket) and never writes it,
+calls no network and prints no credential value. Exit 0 when a run with no
+--model would resolve a model, an endpoint and a credential, 1 otherwise.
+
+Example: docket setup harness --json
+
 ### setup provider
 
 **Usage:** `docket setup provider`
@@ -803,7 +815,9 @@ Run one agent for one task in a workspace you own, for programs.
 
 Streams newline-delimited JSON events on stdout and ends with exactly one
 versioned result line; every log goes to stderr. Needs DOCKET_HOME set to a
-caller-owned directory and DOCKET_LLM_BASE_URL set. A tool call that would need
+caller-owned directory and DOCKET_LLM_BASE_URL set; under --contract 1.2 the
+endpoint and model may come from this machine's docket setup instead
+(DOCKET_SETUP_HOME, default ~/.docket, read only). A tool call that would need
 a human is denied at once. SIGTERM cancels the run. Exit 0 the result is ok,
 1 it failed, was blocked or cancelled, 2 refused before any run started.
 
