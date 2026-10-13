@@ -52,9 +52,7 @@ ALLOW = (
     '"docket help" not in',  # a test asserting the removed word is absent
 )
 
-LIVE_POD_VERBS = (
-    "show|add|remove|reset|delete|set|unset|apply|export|validate|plan|check|recipes|roles|policies"
-)
+LIVE_POD_VERBS = "show|add|remove|reset|delete|set|unset|update|export|validate|plan|check|recipes|roles|policies"
 OLD_POD_ACTIONS = (
     "config|add|info|delete|dispatch|answer|pregrant|roster|lead|maintain|apply|export|members"
     "|remove|reset|set-verify|queue|evidence|corrections|explain|worktrees|sync|delegate|list"
@@ -139,8 +137,8 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
         r"docket pod set verify \2 --member \1",
     ),
     (_pod("answer"), "docket task answer"),
-    (_pod("apply"), "docket pod apply"),
-    (_pod("sync"), "docket pod apply"),
+    (_pod("apply"), "docket pod update"),
+    (_pod("sync"), "docket pod update"),
     (_pod("export"), "docket pod export"),
     (_pod("remove"), "docket pod remove"),
     (_pod("add"), "docket pod add"),
@@ -162,7 +160,7 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     # roles, policies, recipes, plugins
     (_c("policies[ \t]+test"), "docket pod check"),
     (_c("policies[ \t]+validate"), "docket pod validate"),
-    (_c("(?:roles|policies|recipes)[ \t]+add"), "docket pod apply"),
+    (_c("(?:roles|policies|recipes)[ \t]+add"), "docket pod update"),
     (_c("roles(?:[ \t]+(?:list|show))?(?![ \t]+validate)"), "docket pod roles"),
     (_c("policies(?:[ \t]+(?:list|show))?(?![ \t]+init)"), "docket pod policies"),
     (_c("recipes(?:[ \t]+(?:list|show))?"), "docket pod recipes"),

@@ -97,6 +97,20 @@ def _last_run(project: str) -> dict[str, Any] | None:
     }
 
 
+def _commands(root: str) -> dict[str, Any] | None:
+    """The commands the operator allowed for the repository at *root* and how many of its
+    ``.docket/`` run items now differ; None when nothing was ever allowed."""
+    from docket.core import pod_apply as _pod_apply
+    from docket.core import reviewed_repos as _reviewed
+
+    found = _reviewed.lookup(Path(root)) if root else None
+    if found is None:
+        return None
+    directory = Path(root) / ".docket"
+    changed = len(_pod_apply.runs_changed(directory)) if directory.is_dir() else 0
+    return {"allowed": len(found.items), "date": found.date, "code": found.code, "changed": changed}
+
+
 def _project_summary(project: str) -> dict[str, Any]:
     registered = {agent.id for agent in _fleet.list_agents()}
     members = _pod.members_of(sorted(registered), project)
@@ -155,6 +169,7 @@ def _project_summary(project: str) -> dict[str, Any]:
             "p95Ms": outcomes.p95_ms,
         },
         "lastRun": _last_run(project),
+        **({"commands": c} if (c := _commands(roots[0] if roots else "")) else {}),
     }
 
 
@@ -220,6 +235,26 @@ def _seconds(ms: int | None) -> str:
     return "—" if ms is None else f"{ms / 1000:.1f}s"
 
 
+def _command_rows(commands: dict[str, Any] | None) -> list[tuple[str, str]]:
+    if not commands:
+        return []
+    rows = [
+        (
+            "Commands",
+            f"{commands['allowed']} allowed on {commands['date']} (code {commands['code']})",
+        )
+    ]
+    if commands["changed"]:
+        rows.append(
+            (
+                "",
+                f"{commands['changed']} changed in the repository, waiting for your OK: "
+                "docket run asks",
+            )
+        )
+    return rows
+
+
 def _render_current(summary: dict[str, Any]) -> None:
     tasks = summary["tasks"]
     usage = summary["usage"]
@@ -243,6 +278,7 @@ def _render_current(summary: dict[str, Any]) -> None:
             f"{tasks['waitingApproval']} waiting approval · {tasks['waitingInput']} waiting input"
             f" · {tasks['failed']} failed",
         ),
+        *_command_rows(summary.get("commands")),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
         (
@@ -256,7 +292,7 @@ def _render_current(summary: dict[str, Any]) -> None:
     ui.header("Pod", summary["id"])
     ui.console.print()
     for label, value in rows:
-        ui.console.print(f"  {label + ':':<26}{value}", markup=False)
+        ui.console.print(f"  {label + ':' if label else '':<26}{value}", markup=False)
 
 
 def _render_all(summaries: list[dict[str, Any]]) -> None:

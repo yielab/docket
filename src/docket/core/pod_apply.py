@@ -1,4 +1,4 @@
-"""``docket pod apply <dir>``: compose the pre-existing writers (``core.archetypes.
+"""``docket pod update <dir>``: compose the pre-existing writers (``core.archetypes.
 add_user_archetype``, member provisioning, the pipeline bind, and ``core.pod.PodSettings``)
 into one operation, driven by a small ``pod.yaml`` manifest (``members``, ``settings``,
 ``pipeline``) alongside the same ``roles/*.yaml``/``pipeline.yaml`` shape the shipped recipes
@@ -6,7 +6,7 @@ already ship. A role goes into *project*'s own pod-scoped overlay (``core.config
 pod_config_dir(project)/roles.json``), never the global one: ``core/pod.py``'s roster helpers
 (``_role_names``/``parse_member_id``, which ``pod_full_roster``/``members_of`` depend on to
 resolve a pipeline's roster) resolve that pod overlay too (see ``_plan_roles``), matching what
-``docket pod apply roles/<file>.yaml`` already did by hand. ``plan_apply`` is
+``docket pod update roles/<file>.yaml`` already did by hand. ``plan_apply`` is
 pure (reads only) and validates everything -- roles, the roster the pipeline would resolve
 against *after* ``members``, and every setting -- before ``apply`` writes anything. Idempotent:
 an item already matching what is on disk plans as ``skip``; nothing is ever removed."""
@@ -311,7 +311,7 @@ def _declared_servers(directory: Path) -> list[_mcp_tools.McpServerConfig]:
 
 def summarize_recipe(directory: Path) -> RecipeSummary:
     """Derive what *directory* brings: read-only, independent of any pod or role registry
-    (unlike ``plan_apply``). Used by ``docket pod validate``, ``docket pod apply``, and
+    (unlike ``plan_apply``). Used by ``docket pod validate``, ``docket pod update``, and
     ``init --recipe`` so a recipe's scope is always shown the same way, wherever applied."""
     manifest = _recipe_manifest(directory)
 
@@ -415,7 +415,7 @@ def _plan_roles(
     directory: Path, base_registry: _arch.ArchetypeRegistry, project: str
 ) -> tuple[list[ApplyItem], list[_RoleWrite], dict[str, _arch.RoleArchetype]]:
     """Plan ``roles/*.yaml`` into *project*'s own pod-scoped role overlay, the same target
-    ``docket pod apply --pod <project>`` writes to -- never the global overlay
+    ``docket pod update --pod <project>`` writes to -- never the global overlay
     (see module docstring)."""
     items: list[ApplyItem] = []
     writes: list[_RoleWrite] = []
@@ -944,6 +944,64 @@ def classify_directory(directory: Path) -> PlanReview:
     adds.extend(("setting", k) for k in sorted(settings) if k not in ("allowCommands", "network"))
     refused = tuple(n for n in names if n in REPO_REFUSED_COMMANDS)
     return PlanReview(tuple(adds), tuple(runs), refused)
+
+
+@dataclass(frozen=True)
+class RunChange:
+    """A run-on-this-machine item the repository changed: its new ``item`` and ``before`` text
+    (None when the operator never allowed an item of that name)."""
+
+    item: RunItem
+    before: str | None
+
+
+@dataclass(frozen=True)
+class RepoChanges:
+    """What a repository's ``.docket/`` changed since it was applied to a pod: the read-only
+    ``plan``, its non-skip ``adds_changed`` lines, ``runs_changed`` and the ``review``."""
+
+    plan: ApplyPlan
+    adds_changed: tuple[str, ...]
+    runs_changed: tuple[RunChange, ...]
+    review: PlanReview
+    allowed_on: str
+
+
+def runs_changed(repo_dir: Path) -> tuple[RunChange, ...]:
+    """The run-on-this-machine items of *repo_dir* that differ from the operator's remembered
+    review of its repository (every item when none was remembered)."""
+    from docket.core import reviewed_repos as _reviewed
+
+    found = _reviewed.lookup(repo_dir.parent)
+    was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
+    return tuple(
+        RunChange(i, was.get((i.kind, i.name)))
+        for i in classify_directory(repo_dir).runs
+        if was.get((i.kind, i.name)) != i.runs
+    )
+
+
+def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
+    """Compare *repo_dir* with what was last applied to *project*; None when it is not the
+    pod's recorded configuration of record or has not changed. Read-only."""
+    from docket.core import reviewed_repos as _reviewed
+
+    lead = pod.member_id(project, "lead")
+    source = _fleet.meta_get(lead, "configSource", "")
+    recorded = _fleet.meta_get(lead, "configDigest", "")
+    if not (repo_dir.is_dir() and recorded and source == str(repo_dir.resolve())):
+        return None
+    if directory_digest(repo_dir) == recorded:
+        return None
+    plan = plan_apply(project, repo_dir)
+    found = _reviewed.lookup(repo_dir.parent)
+    return RepoChanges(
+        plan=plan,
+        adds_changed=tuple(f"{i.kind} {i.name}" for i in plan.items if i.action != "skip"),
+        runs_changed=runs_changed(repo_dir),
+        review=classify_directory(repo_dir),
+        allowed_on=found.date if found else "",
+    )
 
 
 def apply(plan: ApplyPlan) -> ApplyResult:

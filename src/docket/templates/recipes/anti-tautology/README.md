@@ -16,7 +16,7 @@ adds.
 
 ```bash
 docket init --recipe anti-tautology          # a new pod
-docket pod apply anti-tautology    # onto an existing pod
+docket pod update anti-tautology    # onto an existing pod
 ```
 
 ## Commands the step runs
@@ -32,7 +32,7 @@ runner (default `python3 -m pytest -q <files>`).
 
 The step declares two overridable names under its own `env:`, set to the defaults below. A pod
 overrides them by editing the step: `docket pod export <dir>`, change the `env:` values in
-`<dir>/pipeline.yaml`, then `docket pod apply <dir>`.
+`<dir>/pipeline.yaml`, then `docket pod update <dir>`.
 
 - `ANTI_TAUTOLOGY_GLOB` -- comma-separated file-name globs, default `test_*.py,*_test.py`
 - `ANTI_TAUTOLOGY_RUNNER` -- the runner command, default `python3 -m pytest -q`

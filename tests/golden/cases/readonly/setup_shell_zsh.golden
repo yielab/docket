@@ -6,7 +6,7 @@ _docket_verbs() {
   case "$1" in
     "") echo "init status inbox run start stop exec task pod log setup" ;;
     "task") echo "add list show diff trace prune approve deny answer retry cancel" ;;
-    "pod") echo "show add remove reset delete set unset apply export validate plan check recipes roles policies" ;;
+    "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies" ;;
     "log") echo "verify" ;;
     "setup") echo "shell provider model sandbox notify export mcp" ;;
     "setup provider") echo "add list show remove export rotate" ;;
@@ -48,7 +48,7 @@ _docket_options() {
     "pod delete") echo "--confirm --pod --help" ;;
     "pod set") echo "--member --pod --help" ;;
     "pod unset") echo "--member --pod --help" ;;
-    "pod apply") echo "--pod --dry-run --json --help" ;;
+    "pod update") echo "--pod --dry-run --json --accept --help" ;;
     "pod export") echo "--pod --force --help" ;;
     "pod validate") echo "--help" ;;
     "pod plan") echo "--pod --pipeline --help" ;;
@@ -111,7 +111,7 @@ _docket_options() {
 
 _docket_takes_pod() {
   case "$1" in
-    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod apply"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies") echo yes ;;
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies") echo yes ;;
   esac
 }
 

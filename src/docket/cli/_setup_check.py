@@ -590,7 +590,7 @@ def _check_template_version(ids: list[str]) -> int:
 def _check_pod_sync(ids: list[str]) -> int:
     """Flag pod members whose managed files drifted from the current archetype +
     metadata -- the pod counterpart of ``_check_template_version``, which skips pod
-    members outright. Advisory; ``docket pod apply`` re-renders."""
+    members outright. Advisory; ``docket pod update`` re-renders."""
     from docket.core import pod as _pod
     from docket.core import pod_provisioning as _pp
 
@@ -607,7 +607,7 @@ def _check_pod_sync(ids: list[str]) -> int:
             stale += 1
             ui.console.print(
                 f"[red]✗[/red]   {aid}: stale (v{status.stored_template_version or '?'}, "
-                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod apply"
+                f"current v{_pp.POD_TEMPLATE_VERSION}) — docket pod update"
             )
         else:
             ui.success(f"  {aid}: v{status.stored_template_version} (current)")

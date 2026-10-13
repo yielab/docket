@@ -3,7 +3,7 @@
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the user-overlay pattern (mirrors `docket-models.json`:
 built-ins + starter library overlaid by `~/.docket/docket-roles.json`, user wins by name),
-`docket pod roles` list/show and `pod apply <file>`, and that reviewer/tester gate-contract data resolved
+`docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
 through `core.orchestrator` matches `core/pipeline.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
 constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
@@ -329,7 +329,7 @@ class TestRolesCli:
             'agentsTemplate: "hi ${project}"\n',
             encoding="utf-8",
         )
-        assert self._run("apply", str(p), "--pod", seeded_pod).exit_code == 0
+        assert self._run("update", str(p), "--pod", seeded_pod).exit_code == 0
         assert "producer" in self._run("roles", "--pod", seeded_pod).output
 
     def test_apply_rejects_invalid_scope(
@@ -349,7 +349,7 @@ class TestRolesCli:
             'agentsTemplate: "hi ${project}"\n',
             encoding="utf-8",
         )
-        assert self._run("apply", str(p), "--pod", seeded_pod).exit_code == 1
+        assert self._run("update", str(p), "--pod", seeded_pod).exit_code == 1
 
     def test_list_rejects_unknown_flag(self, registry_file: Path) -> None:
         """A flag `roles` does not declare is a usage error, never a silently ignored token."""

@@ -1,7 +1,7 @@
 """In-place ephemeral pods: one recipe, one task, the codebase as the Implementer's cwd (hermetic).
 
 The runner provisions a throwaway pod through the same core functions `docket init` uses,
-applies a recipe through the `pod apply` path, dispatches exactly one task synchronously
+applies a recipe through the `pod update` path, dispatches exactly one task synchronously
 against a scripted backend, and returns the persisted record.
 """
 

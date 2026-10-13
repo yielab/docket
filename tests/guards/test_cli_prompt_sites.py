@@ -33,6 +33,7 @@ _PROMPT_SITES: dict[str, int] = {
     "cli/_setup_export.py": 1,
     "cli/_agents.py": 2,
     "cli/_task.py": 2,
+    "cli/_run.py": 1,
 }
 
 

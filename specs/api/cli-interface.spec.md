@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Complete
-**Last Updated**: 2026-10-10
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -184,12 +184,12 @@ passes without a key.
   `<location>/.docket/`: giving both fails cleanly (exit 1) naming both sources, before
   provisioning
 - `--no-apply`: Provision the pod only, skipping the apply step for a present `.docket/` or a
-  resolved `--recipe`; prints the `docket pod apply <dir>` command that would apply it
+  resolved `--recipe`; prints the `docket pod update <dir>` command that would apply it
 
-A repository's own `<location>/.docket/` (the same directory shape `docket pod apply` reads,
+A repository's own `<location>/.docket/` (the same directory shape `docket pod update` reads,
 see pod-blueprints.spec.md, "Pod manifests: apply") is discovered automatically: `init` validates
 every document under it before provisioning anything, and — unless `--no-apply` is given — applies
-it after provisioning through the same `plan_apply`/`apply` path `docket pod apply` uses. A
+it after provisioning through the same `plan_apply`/`apply` path `docket pod update` uses. A
 validation error exits 1 naming the file and field, with nothing provisioned.
 **Output**: Creation progress and confirmation with member IDs. The closing `created with N
 members` line and the id list that follows it count every member of the pod as it stands after
@@ -217,6 +217,11 @@ provisioning belongs to `init`, including multi-project automation.
   `isolation`: `on (bwrap, network open)` or `off (default); bwrap found, network open`), measured tokens with a labelled dollar
   estimate, the success/failure/aborted counts and latency from trace `session_end` events, the
   last run, and whether `docket start` is running (its `serve.pid` names a live process).
+  When the operator has allowed a repository's commands (`reviewed-repos.json`), a `Commands`
+  row reads `N allowed on <date> (code <16 hex>)`, and when the repository's `.docket/` now
+  holds a run-on-this-machine item that differs from the allowed one, a second row reads `N
+  changed in the repository, waiting for your OK: docket run asks`; neither row exists without a
+  remembered review. `status` reads the repository and the store, and writes nothing.
 - `--all` reports the same summary for every registered pod, once per project rather than once
   per agent, with failed counts; `--all --json` also carries the fleet inventory
   (`timestamp`, `channels`, `agents`, `totalCostUsd`).
@@ -334,6 +339,17 @@ error
 starts nothing; `--resume` reclaims stale claims and clears a budget auto-pause; `--pipeline
 FILE` runs a pipeline file instead of the pod's own (pipeline-format.spec.md); repeatable
 `--var k=v` supplies its variables. With no model endpoint it exits 1 naming `docket setup`.
+Before dispatching (not with `--dry-run`), `run` compares the pod's recorded `configDigest` with
+the digest of its repository's `.docket/` when that is the recorded `configSource`: unchanged
+runs; a change that adds only (roles, policies, skills, settings, pipeline text) is applied with
+the single line `-> Updated from the repository: <kind name>[, ...].`; a changed
+run-on-this-machine item (pod-blueprints.spec.md requirement 12) is shown as before/now on a
+terminal and `Allow the new version? [y/N]` asked, `y` remembering and applying it and `n`
+running the allowed version (`-> Running with the version you allowed on <date>.`); off a
+terminal the allowed version runs and `! The repository changed a command that needs your OK.
+Running with the version you allowed on <date>. To review it, run docket run on a terminal.` is
+printed. A shell-like `allowCommands` in the changed repository is never applied. Only the typed
+`run` reads `.docket/`: `docket start`, `dispatch_pod` and `docket exec` never do (ADR 0012).
 **Output**: the banner of runnable steps, one line per task, one summary line, one `Next:` line.
 **Return**: `0` on success or an expected pause, `1` when a task ended `failed`, the run record
 ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknown flag.
@@ -341,7 +357,7 @@ ends `failed`, the pod is unknown or no endpoint is configured, `2` on an unknow
 #### docket pod
 
 **Purpose**: The pod: its roster, its settings and its configuration of record
-**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|apply|export|validate|plan|check|recipes|roles|policies> [args] [--pod <p>]`
+**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies> [args] [--pod <p>]`
 
 A real Typer sub-app (`cli/_pod.py::pod_app`): every verb declares its arguments and options, a
 bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
@@ -369,9 +385,10 @@ Each state-changing verb ends with one `Next:` line on stderr.
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
 removal; missing confirmation; failed distillation), `2` on a usage error.
 
-**`pod apply`**
-**Purpose**: Install configuration onto the pod, or re-sync its instructions
-**Syntax**: `docket pod apply [NAME|DIR|FILE] [--dry-run] [--json] [--pod <p>]`
+**`pod update`**
+**Purpose**: Install configuration onto the pod, or re-sync its instructions (`apply` was this
+verb's former name and is an ordinary unknown verb, exit 2)
+**Syntax**: `docket pod update [NAME|DIR|FILE] [--dry-run] [--json] [--accept CODE] [--pod <p>]`
 **Arguments**:
 - `NAME|DIR|FILE` (optional): a directory (`roles/*.yaml`, `policies/*`, `pipeline.yaml`, a small
   `pod.yaml` naming `members`/`settings`/`pipeline`/`description`/`exporters`) or, failing that, a
@@ -381,7 +398,12 @@ removal; missing confirmation; failed distillation), `2` on a usage error.
   with no argument, members whose stored template version is stale are re-rendered from the
   current archetype and metadata (`INSTRUCTIONS.md` is never touched)
 **Options**: `--dry-run` prints the plan or the diffs and writes nothing; `--json` prints `{"items":
-[{kind, name, action, note}]}` (exit 1 with no argument)
+[{kind, name, action, note}]}` (exit 1 with no argument); `--accept CODE` allows exactly the
+run-on-this-machine items whose review code is CODE, off a terminal. A directory that is not a
+shipped recipe goes through the operator's review exactly as `docket init` does
+(pod-blueprints.spec.md requirement 12; the repository is the pod's recorded codebase): exit 2
+with the items and code off a terminal without `--accept`, a `[y/N]` ask on one. A `--dry-run`
+writes nothing and asks nothing
 **Output**: For a directory or recipe: a header (`Apply plan`, the directory's `description` when
 set, `core.pod_apply.summarize_recipe`'s derived summary line), one `[action] kind: name` line per
 item, then one line per named exporter — its state from `core.exporter.activation_state` and,
@@ -448,7 +470,7 @@ classifier's reason when it decided, and the deciding policy id
 **`pod recipes`**
 **Purpose**: List and inspect the recipe library (ADR 0013 §1 rule 5) -- read-only discovery
 over both scopes `core.pod_apply.resolve_recipe` reads. Installs, removes, or fetches nothing;
-`docket pod apply`/`docket init --recipe` remain the only writers
+`docket pod update`/`docket init --recipe` remain the only writers
 **Syntax**: `docket pod recipes [NAME|DIR] [--json]`
 **Output**: With no argument, a table (NAME, SCOPE, BRINGS, DESCRIPTION) of every recipe
 `core.pod_apply.list_recipes()` returns -- the operator's own `$DOCKET_HOME/recipes/<name>/` before
@@ -456,9 +478,9 @@ the shipped `templates/recipes/<name>/`, nearest scope wins by name, sorted by n
 derived, never a stored field: the non-zero parts of the recipe's summary joined with `+` in
 summary order (`roles+members+pipeline+policies`, `policies`, `members+pipeline+skills`, ...;
 `nothing` for an empty directory). With an argument, the recipe resolved through the same
-`resolve_recipe` order `docket pod apply` uses: its scope, directory, derived summary line
+`resolve_recipe` order `docket pod update` uses: its scope, directory, derived summary line
 (`pod-blueprints.spec.md` 1.14.0), one line per exporter its `pod.yaml` names — the same state
-lines `docket pod apply` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
+lines `docket pod update` prints (`pod-blueprints.spec.md` 1.20.0) — and `README.md` body when
 present. `--json` prints a list of objects carrying `name`, `scope`, `brings`, `directory`,
 `description`, `unjailed_mcp_servers` and every `core.pod_apply.RecipeSummary` count; with an
 argument one such object plus a `readme` field
@@ -945,6 +967,13 @@ recovery hint line, then `typer.Exit(1)`. There is no multi-line Details/Suggest
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 2.3.0 (2026-10-12)
+
+- `docket pod apply` is renamed `docket pod update` with no alias (D-57); `--accept CODE` joins it
+  and a repository directory goes through the operator's review. `docket run` applies the
+  repository's added changes with one line and asks (or runs the allowed version) for a changed
+  command; `docket status` gains the `Commands` rows (ADR 0024 section 6).
 
 ### Version 2.2.0 (2026-10-10)
 

@@ -765,7 +765,7 @@ Tester:      ✓ Behavior-only validation
 - [x] The provider catalog: model endpoints are `kind: provider` documents, fourteen built in
   (`docket setup provider add|list|show|remove|export`)
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
-  (`docket pod apply|export`, `docket init` applies it), with drift reported by
+  (`docket pod update|export`, `docket init` applies it), with drift reported by
   `docket pod show`
 - [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket pod recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand

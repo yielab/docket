@@ -500,13 +500,13 @@ class TestMemberSync:
 def _sync(*flags: str) -> str:
     from typer.testing import CliRunner
 
-    result = CliRunner().invoke(_pod.pod_app, ["apply", "--pod", "demo", *flags])
+    result = CliRunner().invoke(_pod.pod_app, ["update", "--pod", "demo", *flags])
     assert result.exit_code == 0, result.output
     return result.output
 
 
 class TestPodSync:
-    """`docket pod apply` with no argument -- the CLI surface over `member_sync_status`/
+    """`docket pod update` with no argument -- the CLI surface over `member_sync_status`/
     `resync_member`."""
 
     def test_dry_run_reports_without_writing(

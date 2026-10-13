@@ -335,8 +335,8 @@ Then:
 
 ```bash
 docket pod validate                           # every document under .docket/, invalid files first
-docket pod apply --dry-run          # the plan: add / replace / skip per item
-docket pod apply                    # writes it; a second run plans every item skip
+docket pod update --dry-run          # the plan: add / replace / skip per item
+docket pod update                    # writes it; a second run plans every item skip
 git add .docket && git commit -m "Add: the myapp agent team"
 ```
 
@@ -347,8 +347,8 @@ global policies under most-restrictive-wins.
 
 **Add one thing later.** A recipe does not have to be a whole team. `docket pod recipes` shows
 eighteen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
-that fail a task whose tests prove nothing, and a tool pack. `docket pod apply git-safety` adds two guardrail policies and nothing else;
-`docket pod apply tdd` swaps the route for a test-first one. Apply what you need, then
+that fail a task whose tests prove nothing, and a tool pack. `docket pod update git-safety` adds two guardrail policies and nothing else;
+`docket pod update tdd` swaps the route for a test-first one. Apply what you need, then
 `docket pod export --force` writes the merged team back to `.docket/` for the commit.
 
 Pod-level knobs are one command each: `docket pod set budgetUsd 5`,

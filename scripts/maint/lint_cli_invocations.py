@@ -47,7 +47,7 @@ PLANTED = (
     ("docket setup sandbox isolate on", True),
     ("docket task FOO", True),
     ("docket pod $VERB --json", True),
-    ("docket pod <apply|export> a b c", True),
+    ("docket pod <update|export> a b c", True),
     ("docket setup <provider|model> list --bogus", True),
     ("docket setup <provider|model> list", False),
     ("docket pod <recipes|roles|policies> NAME", False),

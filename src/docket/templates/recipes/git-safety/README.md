@@ -18,7 +18,7 @@ text, so it fires on the command regardless of which role or pipeline step issue
 
 ```bash
 docket init --recipe git-safety          # a new pod for the current directory
-docket pod apply git-safety    # onto an existing pod
+docket pod update git-safety    # onto an existing pod
 ```
 
 `apply` validates both policy files and plans them (`policy` items only -- there is no
@@ -28,7 +28,7 @@ docket pod apply git-safety    # onto an existing pod
 ## See it fire
 
 ```bash
-docket pod apply git-safety
+docket pod update git-safety
 docket pod check "git push --force origin main" --role implementer
 ```
 

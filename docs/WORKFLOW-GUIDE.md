@@ -608,7 +608,7 @@ generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
 `maxConsultationsPerTask`, `network`. A repository's `.docket/pod.yaml` can carry the same keys under
-`settings:`, applied by `docket init` or `docket pod apply`.
+`settings:`, applied by `docket init` or `docket pod update`.
 
 ```bash
 docket pod show                    # every key, with its source (default vs. set)

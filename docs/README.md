@@ -60,7 +60,7 @@ docket init                                   # this directory -> a Lead + Imple
 docket pod recipes                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
 docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
 docket pod validate                               # check every document under ./.docket/
-docket pod apply [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
+docket pod update [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod
 docket pod export                       # write the pod's own scope back to ./.docket/
 docket pod roles                             # every role: built-in, starter, yours
 

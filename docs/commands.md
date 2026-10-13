@@ -254,9 +254,9 @@ Clear a pod setting back to its default; with --member, clear a verify command.
 
 Example: docket pod unset verify --member demo-implementer
 
-### pod apply
+### pod update
 
-**Usage:** `docket pod apply`
+**Usage:** `docket pod update`
 
 Install configuration onto the pod, or re-sync its instructions.
 
@@ -264,7 +264,7 @@ A recipe name or a directory is planned and written whole. A single role or
 policy file installs that document. With no argument, members whose SOUL,
 AGENTS or TOOLS are stale are re-rendered from the current archetypes.
 
-Example: docket pod apply .docket --dry-run
+Example: docket pod update .docket --dry-run
 
 ### pod export
 
@@ -272,7 +272,7 @@ Example: docket pod apply .docket --dry-run
 
 Write the pod's own configuration into a directory.
 
-The default is the repository's .docket/, the form `pod apply` and `docket
+The default is the repository's .docket/, the form `pod update` and `docket
 init` read back. A non-empty directory is refused unless --force.
 
 Example: docket pod export .docket --force
@@ -319,7 +319,7 @@ Example: docket pod check "git push origin production" --role implementer
 List the recipe library, or show one recipe.
 
 Recipes resolve nearest scope first: your own ~/.docket/recipes/ before the
-shipped library. Nothing is installed; `pod apply` installs.
+shipped library. Nothing is installed; `pod update` installs.
 
 Example: docket pod recipes tdd
 
@@ -330,7 +330,7 @@ Example: docket pod recipes tdd
 List the role archetypes, or show one in full.
 
 The registry is built-ins, the starter library, your overlay and, inside a
-pod, the pod's own overlay (nearest wins). Install one with `pod apply`.
+pod, the pod's own overlay (nearest wins). Install one with `pod update`.
 
 Example: docket pod roles reviewer
 

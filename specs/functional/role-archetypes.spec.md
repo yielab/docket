@@ -8,7 +8,7 @@ takes an optional `project` so a pod-scoped role's declared `tokenBudget` is hon
 instead of duplicating its `policy` id. **P30-4** retired `editRights` (ADR 0012 §2 rule 7): the archetype schema has no such field, and
 `deniedTools` is its only capability statement — see "Archetype schema" requirement 5 and
 "Per-role tool sets" below. **P27-6** gives a recipe's own role YAML a second consumer,
-`docket pod apply <dir>` (`core/pod_apply.py`), alongside `docket pod apply <file>` —
+`docket pod update <dir>` (`core/pod_apply.py`), alongside `docket pod update <file>` —
 see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
 remaining built-in exemption in "Hop
 instructions": the `lead` archetype now carries a real `hopInstruction` (the pre-existing
@@ -55,7 +55,7 @@ that closed set: a role's name, scope, model class, identity prose, gate contrac
 and tool profile are now data — built-in archetypes reproduce the four legacy roles
 byte-identical, a starter library ships six more (`researcher`, `analyst`, `writer`, `critic`,
 `operator`, `monitor`), and a user can define or override an archetype via a YAML file
-(`docket pod apply <file>`).
+(`docket pod update <file>`).
 
 ## Scope
 
@@ -85,7 +85,7 @@ This specification covers:
 - The `docket pod roles` CLI surface
 - Shipped recipe bundles (`templates/recipes/<name>/`, P26-20): pre-authored role YAML(s) for a
   bundle's own custom role, validated by the same `docket pod validate` and installed by the same
-  `docket pod apply <file>` this spec already documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
+  `docket pod update <file>` this spec already documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
   `pipeline-format.spec.md`'s document shape, not this spec's, and an optional policy pack is
   plain policy data (see `docket pod validate`), owned by neither spec
 
@@ -175,7 +175,7 @@ This specification does NOT cover:
    pod member, but not part of the publicly documented minimum a user archetype is guaranteed.
 3. `docket pod validate <file>` **MUST** dry-run render both templates against a representative sample
    variable set and report any unknown-variable error, so an authoring mistake is caught before
-   `docket pod apply` persists it.
+   `docket pod update` persists it.
 
 ### Built-in archetypes and legacy fidelity
 
@@ -380,11 +380,11 @@ to rediscover the same pitfalls.
    (`pipeline-format.spec.md`) and, once the roster its README describes is provisioned, **MUST**
    resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
    its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
-4. Applying a shipped recipe **MUST** be one command, `docket pod apply <name|dir>`
+4. Applying a shipped recipe **MUST** be one command, `docket pod update <name|dir>`
    (`pod-blueprints.spec.md`, "Pod manifests: apply"), which composes the pre-existing role,
    member and pipeline-binding writers (a recipe's own roles and its optional policy pack both
    land in the pod's own pod-scoped directories, never a global one) rather than replacing them —
-   `docket pod apply <file>` and `docket pod add <role>` remain valid for a partial or hand-tuned
+   `docket pod update <file>` and `docket pod add <role>` remain valid for a partial or hand-tuned
    application. `docket pod recipes` lists and shows the library (`pod-blueprints.spec.md`,
    "Recipe listing").
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
@@ -450,7 +450,7 @@ to rediscover the same pitfalls.
      has a project context)
    - `core/agent_loop.py`'s `_TurnState.run_compaction` **MUST** pass `self.project` to
      `compact_session`, the only call site in the live code.
-4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod apply <file>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
+4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod update <file>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
    is called; a call without the project argument **MUST** return the built-in value, not the
    pod-scoped override.
 
@@ -473,7 +473,7 @@ to rediscover the same pitfalls.
    (lead/implementer/reviewer/tester) is an explicit operator choice; the byte-identical
    guarantee (see "Built-in archetypes and legacy fidelity") applies to the out-of-the-box state
    with no user overlay present, not to a fleet a user has deliberately customized.
-3. The **authoring** format for a new archetype **MUST** be a standalone YAML file (`docket pod apply
+3. The **authoring** format for a new archetype **MUST** be a standalone YAML file (`docket pod update
    <file.yaml>`) — "a role becomes a versioned YAML definition." The file is parsed,
    validated, and merged into the JSON-backed overlay via `edges/store.py`'s atomic
    read-modify-write (docket's D-12 single-writer chokepoint for docket-owned JSON) — the same
@@ -507,7 +507,7 @@ to rediscover the same pitfalls.
    (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) layered above the global
    overlay, and report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`;
    outside any pod they see the global registry.
-3. `docket pod apply <file.yaml>` **MUST** validate the file's archetype definition (a `kind:
+3. `docket pod update <file.yaml>` **MUST** validate the file's archetype definition (a `kind:
    role` document, or one whose location names the kind) and, on success, merge it into that
    pod's own overlay; on failure it **MUST** report the specific invalid field(s) and make no
    change to the overlay file.
@@ -520,7 +520,7 @@ to rediscover the same pitfalls.
 
 ```text
 docket pod roles [<name>] [--json] [--pod <p>]
-docket pod apply <file.yaml>
+docket pod update <file.yaml>
 docket pod validate <file.yaml>
 ```
 
@@ -556,8 +556,8 @@ agentsTemplate: |
   Stay within the `${project}` pod.
 ```
 
-A second, short form is also accepted, both by `docket pod apply <file>`/`docket pod validate` and by
-`docket pod apply <dir>` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
+A second, short form is also accepted, both by `docket pod update <file>`/`docket pod validate` and by
+`docket pod update <dir>` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
 it (the presence of any of `cannot`/`verdict`/`verify`/`approval`/`instructions`/`model`, or an
 explicit `kind: role` with none of the canonical-only keys) and normalizes it into the canonical
 form above (`normalize_role`) before `from_wire` ever sees it. A document carrying any
@@ -630,7 +630,7 @@ docket pod roles reviewer
 ### Applying a custom archetype
 
 ```bash
-docket pod apply ./producer.yaml
+docket pod update ./producer.yaml
 # Applied role 'producer' to pod 'myapp'.
 ```
 
@@ -644,12 +644,12 @@ docket pod validate ./producer.yaml
 
 ### Pre-conditions
 
-- `~/.docket/` exists (created lazily by the first `docket init`); `docket pod apply` creates the
+- `~/.docket/` exists (created lazily by the first `docket init`); `docket pod update` creates the
   pod overlay file's parent directory if needed
 
 ### Post-conditions
 
-- `docket pod apply <file>` on a valid file leaves exactly one archetype added/overridden in the
+- `docket pod update <file>` on a valid file leaves exactly one archetype added/overridden in the
   pod's `roles.json` `roles:` map; no other key in that file is touched
 - The four legacy archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the pre-W-6
   generators for any input, with no user overlay present
@@ -664,7 +664,7 @@ docket pod validate ./producer.yaml
 - A malformed user-overlay entry never prevents the rest of the registry (built-ins, starter
   library, other user entries) from loading
 - A shipped recipe's role YAML carries no exemption from `from_wire`/`__post_init__`: a recipe
-  that could not pass `docket pod apply` if hand-copied is a broken recipe, not a special case
+  that could not pass `docket pod update` if hand-copied is a broken recipe, not a special case
 
 ## Changelog
 

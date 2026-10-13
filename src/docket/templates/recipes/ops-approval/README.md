@@ -14,7 +14,7 @@ For a new pod, or onto one that already exists:
 
 ```bash
 docket init --recipe ops-approval          # a new pod for the current directory
-docket pod apply ops-approval    # onto an existing pod
+docket pod update ops-approval    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`operator`); `apply` validates the policy

@@ -1,4 +1,4 @@
-"""`docket pod apply|export|validate|plan|check|recipes|roles|policies`: the configuration half."""
+"""`docket pod update|export|validate|plan|check|recipes|roles|policies`: the configuration half."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 import docket.config as _cfg
 from docket.cli import _pod, _pod_config, app
 from docket.core import archetypes as _arch
+from docket.core import pod as _pod_core
 from docket.core import pod_apply as _pod_apply
 from docket.core import policy as _policy
 
@@ -97,7 +98,7 @@ class TestPodApply:
         _seed_pod(tmp_path, monkeypatch)
         role = tmp_path / "vetter.yaml"
         role.write_text(_ROLE, encoding="utf-8")
-        result = _pod_run("apply", str(role), "--pod", "demo")
+        result = _pod_run("update", str(role), "--pod", "demo")
         assert result.exit_code == 0
         stored = json.loads((_cfg.pod_config_dir("demo") / "roles.json").read_text())
         assert "vetter" in stored["roles"]
@@ -107,7 +108,7 @@ class TestPodApply:
         _seed_pod(tmp_path, monkeypatch)
         role = tmp_path / "vetter.yaml"
         role.write_text(_ROLE, encoding="utf-8")
-        result = _pod_run("apply", str(role), "--pod", "demo", "--dry-run", "--json")
+        result = _pod_run("update", str(role), "--pod", "demo", "--dry-run", "--json")
         assert json.loads(result.output)["items"][0]["action"] == "add"
         assert not (_cfg.pod_config_dir("demo") / "roles.json").exists()
 
@@ -117,14 +118,14 @@ class TestPodApply:
         _seed_pod(tmp_path, monkeypatch)
         pipeline = tmp_path / "pipeline.yaml"
         pipeline.write_text("kind: pipeline\nname: p\nsteps:\n  - id: a\n    role: lead\n")
-        assert _pod_run("apply", str(pipeline), "--pod", "demo").exit_code == 1
+        assert _pod_run("update", str(pipeline), "--pod", "demo").exit_code == 1
 
     def test_a_policy_file_is_copied_into_the_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         source = sorted(_cfg.policy_templates_dir().glob("*.yaml"))[0]
-        result = _pod_run("apply", str(source), "--pod", "demo")
+        result = _pod_run("update", str(source), "--pod", "demo")
         assert result.exit_code == 0
         assert (_cfg.pod_config_dir("demo") / "policies" / source.name).is_file()
 
@@ -135,7 +136,7 @@ class TestPodApply:
         directory = tmp_path / "recipe"
         (directory / "roles").mkdir(parents=True)
         (directory / "roles" / "vetter.yaml").write_text(_ROLE, encoding="utf-8")
-        result = _pod_run("apply", str(directory), "--pod", "demo", "--dry-run", "--json")
+        result = _pod_run("update", str(directory), "--pod", "demo", "--dry-run", "--json")
         assert result.exit_code == 0
         assert [i["kind"] for i in json.loads(result.output)["items"]] == ["role"]
 
@@ -143,7 +144,7 @@ class TestPodApply:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        result = _pod_run("apply", "--pod", "demo")
+        result = _pod_run("update", "--pod", "demo")
         assert result.exit_code == 0
         assert "in sync" in result.output
 
@@ -151,7 +152,70 @@ class TestPodApply:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        assert _pod_run("apply", "--pod", "demo", "--json").exit_code == 1
+        assert _pod_run("update", "--pod", "demo", "--json").exit_code == 1
+
+
+class TestPodUpdateRenameAndReview:
+    """`pod apply` is gone; `pod update` asks before a repository's commands are installed."""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        code = tmp_path / "code"
+        (code / ".docket").mkdir(parents=True)
+        (code / ".docket" / "pipeline.yaml").write_text(
+            "name: p\nsteps:\n  - id: migrate\n    run: make migrate\n"
+        )
+        return code
+
+    def test_apply_is_an_unknown_verb(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        result = _pod_run("apply", "--pod", "demo")
+        assert result.exit_code == 2
+
+    def test_off_a_terminal_a_repository_command_exits_2_and_installs_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _agents
+
+        _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        code = self._repo(tmp_path)
+        result = _pod_run("update", str(code / ".docket"), "--pod", "demo")
+        assert result.exit_code == 2
+        assert "make migrate" in result.output and "docket pod update --accept " in result.output
+        assert not _pod_core.bound_pipeline_path("demo").exists()
+
+    def test_accept_with_the_printed_code_installs_and_remembers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _agents
+        from docket.core import reviewed_repos as _rr
+
+        _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        code = self._repo(tmp_path)
+        items = _pod_apply.classify_directory(code / ".docket").runs
+        wrong = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--accept", "0" * 16)
+        assert wrong.exit_code == 2
+        ok = _pod_run(
+            "update", str(code / ".docket"), "--pod", "demo", "--accept", _rr.review_code(items)
+        )
+        assert ok.exit_code == 0
+        assert _pod_core.bound_pipeline_path("demo").is_file()
+        assert _rr.is_reviewed(code, items)
+
+    def test_a_dry_run_asks_nothing_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.cli import _agents
+
+        _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr(_agents, "_stdin_is_tty", lambda: False)
+        code = self._repo(tmp_path)
+        result = _pod_run("update", str(code / ".docket"), "--pod", "demo", "--dry-run")
+        assert result.exit_code == 0
+        assert not _pod_core.bound_pipeline_path("demo").exists()
 
 
 class TestPodExport:

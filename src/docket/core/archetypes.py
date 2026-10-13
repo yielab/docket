@@ -32,7 +32,7 @@ resource budget cannot drift apart; defaults to 6000 when unset.
 User archetypes overlay built-ins via `~/.docket/docket-roles.json` (same
 pattern as `docket-models.json`), tolerant on load (a malformed entry is
 skipped, never crashes a live fleet; `docket pod validate` explains why).
-The authoring format is a standalone YAML file (`docket pod apply
+The authoring format is a standalone YAML file (`docket pod update
 <file.yaml>`), merged into the JSON overlay. Built-in/starter archetypes stay
 Python literals here, matching the project's convention of generating
 workspace prose inline rather than loading shipped template files.
@@ -835,7 +835,7 @@ def registry_for_role(base: ToolRegistry, role: str, project: str = "") -> ToolR
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
     """Validate a candidate archetype definition without raising. Returns a list of
-    human-readable error strings (empty = valid). Used by `docket pod validate` and `docket pod apply`
+    human-readable error strings (empty = valid). Used by `docket pod validate` and `docket pod update`
     to give a full error report instead of stopping at the first problem."""
     errors: list[str] = []
     try:
@@ -868,7 +868,7 @@ def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
 
 
 def parse_yaml_file(path: str) -> dict[str, Any]:
-    """Parse a standalone archetype YAML file (the `docket pod apply <file>` input)."""
+    """Parse a standalone archetype YAML file (the `docket pod update <file>` input)."""
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
     except ImportError:

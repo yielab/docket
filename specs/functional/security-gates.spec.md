@@ -583,7 +583,7 @@ it rewrite its own gate for the next turn.
    scope -- name, scope, file, sha256 -- global first, then the pod's own; `"No plugins
    applied."` when empty. A predicate present only under a codebase's own `.docket/plugins/`
    **MUST NOT** appear: only `PLUGINS_DIR` and a pod's own overlay are ever searched.
-8. `docket pod apply` **MUST** copy a recipe's `plugins/*.py` into that pod's own
+8. `docket pod update` **MUST** copy a recipe's `plugins/*.py` into that pod's own
    `pod_config_dir(project)/plugins`, by sha256 (an installed copy with the same hash is left
    alone, any other content is replaced) -- exactly the same by-hash copy `apply` already gives
    policies. A later edit to the codebase's own copy **MUST** change nothing until the operator

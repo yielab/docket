@@ -94,11 +94,14 @@ def _refuse_shell(review: _pod_apply.PlanReview) -> int:
     return 2
 
 
-def _changed_since_review(root: Path, code: str, review: _pod_apply.PlanReview) -> int:
+def _changed_since_review(
+    root: Path, code: str, review: _pod_apply.PlanReview, command: str = "docket init"
+) -> int:
     from docket.core import reviewed_repos as _reviewed
 
     ui.error(
-        f"Not set up. The repository changed what runs on this machine since review code {code}:"
+        f"{_stopped(command)}. The repository changed what runs on this machine since review "
+        f"code {code}:"
     )
     before = _reviewed.lookup(root)
     was = {(i.kind, i.name): i.runs for i in before.items} if before else {}
@@ -110,9 +113,14 @@ def _changed_since_review(root: Path, code: str, review: _pod_apply.PlanReview) 
             )
             ui.console.print(f"    now:    {escape(item.runs)}")
     ui.console.print(
-        "Review the new version with: docket init --no-apply, then docket pod apply --dry-run"
+        "Review the new version with: docket init --no-apply, then "
+        "docket pod update .docket --dry-run"
     )
     return 2
+
+
+def _stopped(command: str) -> str:
+    return "Not set up" if command == "docket init" else "Not updated"
 
 
 def _label(item: _pod_apply.RunItem) -> str:
@@ -121,7 +129,9 @@ def _label(item: _pod_apply.RunItem) -> str:
     return run_item_label(item)
 
 
-def _needs_review(req: InitRequest, review: _pod_apply.PlanReview, code: str) -> int:
+def _needs_review(
+    req: InitRequest, review: _pod_apply.PlanReview, code: str, command: str = "docket init"
+) -> int:
     from docket.cli._pod_config import render_run_items
 
     if req.json_out:
@@ -132,18 +142,22 @@ def _needs_review(req: InitRequest, review: _pod_apply.PlanReview, code: str) ->
         return 2
     n = len(review.runs)
     ui.error(
-        f"Not set up. The repository brings {n} command{'s' if n != 1 else ''} that need your OK, "
-        "and there is no terminal to ask on. Nothing was created."
+        f"{_stopped(command)}. The repository brings {n} command{'s' if n != 1 else ''} that "
+        "need your OK, and there is no terminal to ask on. Nothing was "
+        f"{'created' if command == 'docket init' else 'changed'}."
     )
     render_run_items(review.runs)
     ui.console.print("To continue, either:")
-    ui.console.print("  run docket init once on a terminal on this machine, or")
-    ui.console.print(f"  allow exactly these from the script: docket init --accept {code}")
-    ui.console.print("  or skip the repository's configuration: docket init --no-apply")
+    ui.console.print(f"  run {command} once on a terminal on this machine, or")
+    ui.console.print(f"  allow exactly these from the script: {command} --accept {code}")
+    if command == "docket init":
+        ui.console.print("  or skip the repository's configuration: docket init --no-apply")
     return 2
 
 
-def review_repo_source(req: InitRequest, loc_path: Path, apply_source: Path) -> int:
+def review_repo_source(
+    req: InitRequest, loc_path: Path, apply_source: Path, command: str = "docket init"
+) -> int:
     """The operator's OK for what *apply_source* runs on this machine, asked before anything is
     created. 0 means go on; 2 means stop (already printed). Shipped recipes are exempt."""
     from docket.cli._pod_config import render_review
@@ -159,28 +173,30 @@ def review_repo_source(req: InitRequest, loc_path: Path, apply_source: Path) -> 
     code = _reviewed.review_code(review.runs)
     if req.accept is not None:
         if req.accept != code:
-            return _changed_since_review(loc_path, req.accept, review)
+            return _changed_since_review(loc_path, req.accept, review, command)
     elif _stdin_is_tty() and not req.json_out:
         ui.console.print()
         render_review(review)
         ui.console.print("They run with your user's permissions.")
         answer = input("Allow them? You will only be asked again if they change. [y/N] ")
         if answer.strip().lower() not in ("y", "yes"):
-            ui.error("Not set up. Nothing was created.")
+            ui.error(
+                f"{_stopped(command)}. Nothing was {'created' if command == 'docket init' else 'changed'}."
+            )
             return 2
     else:
-        return _needs_review(req, review, code)
+        return _needs_review(req, review, code, command)
     _reviewed.remember(loc_path, review.runs)
     return 0
 
 
 def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
     """Plan and apply *apply_source* onto the just-provisioned pod *aid*, printing the plan
-    the way ``docket pod apply`` does; ``--no-apply`` only prints the command that would
+    the way ``docket pod update`` does; ``--no-apply`` only prints the command that would
     do it. Called only after provisioning succeeds (ADR 0012)."""
     if no_apply:
         ui.console.print()
-        ui.info(f"Skipping apply — run: docket pod apply {apply_source}")
+        ui.info(f"Skipping apply — run: docket pod update {apply_source}")
         return 0
 
     try:
@@ -696,7 +712,7 @@ def cmd_init(
     no_apply: bool = typer.Option(
         False,
         "--no-apply",
-        help="Provision only; print the docket pod apply command for .docket/ or the recipe.",
+        help="Provision only; print the docket pod update command for .docket/ or the recipe.",
     ),
     accept: str | None = typer.Option(
         None,
