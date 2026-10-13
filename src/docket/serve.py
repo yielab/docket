@@ -1050,7 +1050,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             from docket.core import evidence as _evidence
 
             try:
-                doc = _evidence.task_evidence(project, task_id)
+                doc = _evidence.task_evidence(project, task_id, "1.1.0")
             except _evidence.EvidenceNotFound as exc:
                 self._send_json_error(str(exc), 404)
                 return

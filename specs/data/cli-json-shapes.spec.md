@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.29.0
+**Version**: 1.30.0
 **Status**: Complete
 **Last Updated**: 2026-10-13
 
@@ -160,7 +160,7 @@ place, not yet claimed, or pruned). Queue order.
 {
   "pod":      "string",
   "task":     "one task list item, with worktree replaced by the object below or null",
-  "evidence": "the evidence-v1 document of docs/contracts/evidence-v1/schema.json",
+  "evidence": "the evidence-v1.1 document of docs/contracts/evidence-v1.1/schema.json",
   "runs":     "array of run records (below)",
   "corrections": "array of corrections-ledger records for this task",
   "interruptions": [{ "kind": "string", "description": "string", "detail": "object" }]
@@ -427,6 +427,9 @@ reflected in code fails CI.
 Every schema block above is a complete example of its command's output.
 
 ## Changelog
+
+### Version 1.30.0 (2026-10-13)
+- `docket task show --json` `evidence` is the 1.1.0 document (`hops[].gate`, `directives`, both absent when empty); the harness result's embedded evidence stays 1.0.0.
 
 ### Version 1.29.0 (2026-10-13)
 - `docket setup harness --json` (harness contract 1.2's readiness document; shape owned by harness-mode.spec.md).

@@ -171,6 +171,9 @@ class HopResult:
     # The hop's trace link, ``{"project", "session", "firstTs", "lastTs"}``: the session id the
     # hop's events were written under and the window they fall in. ``None`` when tracing is off.
     trace: dict[str, str] | None = None
+    # Repository files this hop's turn composed from the task's base commit, repository-relative
+    # path -> sha256 (``TurnResult.repo_files``). Empty when the turn read the filesystem.
+    repo_files: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.artifact is None:
@@ -1067,6 +1070,7 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "evidence": h.evidence,
         "usage": h.usage,
         "trace": h.trace,
+        "repoFiles": h.repo_files or None,
     }
 
 
@@ -1087,6 +1091,7 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     evidence_raw = rec.get("evidence")
     usage_raw = rec.get("usage")
     trace_raw = rec.get("trace")
+    files_raw = rec.get("repoFiles")
     return HopResult(
         role=str(rec.get("role", "")),
         member_id=str(rec.get("member", "")),
@@ -1103,6 +1108,7 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         evidence=evidence_raw if isinstance(evidence_raw, dict) else None,
         usage=usage_raw if isinstance(usage_raw, dict) else None,
         trace=trace_raw if isinstance(trace_raw, dict) else None,
+        repo_files=dict(files_raw) if isinstance(files_raw, dict) else {},
     )
 
 
@@ -1788,6 +1794,7 @@ def _build_hop_result(
         evidence=evidence,
         usage=_hop_usage(run_res),
         trace=_hop_trace_link(ctx, first_ts),
+        repo_files=dict(run_res.repo_files),
     )
 
 

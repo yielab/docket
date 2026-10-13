@@ -1,4 +1,4 @@
-"""evidence-v1: what a finished task's hops kept, as one published model.
+"""evidence: what a finished task's hops kept, as one published model (1.0.0 and 1.1.0).
 
 ``task_evidence`` is the one builder. It reads the persisted task record and projects each hop
 through these models; later surfaces (CLI, HTTP, harness) serve the result and never assemble it
@@ -9,13 +9,15 @@ The internal ``verify["touched"]`` key never crosses into this contract.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from docket.core import dispatch as _dispatch
 
-EVIDENCE_CONTRACT_VERSION = "1.0.0"
+EVIDENCE_V1 = "1.0.0"
+EVIDENCE_V1_1 = "1.1.0"
+EvidenceVersion = Literal["1.0.0", "1.1.0"]
 
 
 class EvidenceNotFound(LookupError):
@@ -69,11 +71,52 @@ class HopEvidence(_Model):
 
 
 class TaskEvidence(_Model):
-    v: Literal["1.0.0"] = EVIDENCE_CONTRACT_VERSION  # type: ignore[assignment]
+    v: Literal["1.0.0"] = EVIDENCE_V1  # type: ignore[assignment]
     pod: str
     task_id: str = Field(alias="taskId")
     status: str
     hops: list[HopEvidence]
+
+
+class GateEvidence(_Model):
+    """The label and raw exit of an external gate; no verdict about the work is added."""
+
+    label: str
+    exit_code: int = Field(alias="exitCode")
+    reasons_invalid: bool = Field(alias="reasonsInvalid")
+
+
+class DirectiveEvidence(_Model):
+    path: str
+    sha256: str
+
+
+class HopEvidence11(HopEvidence):
+    """``gate`` is absent, never ``null``, on a hop that ran no external gate."""
+
+    gate: GateEvidence | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast("dict[str, Any]", handler(self))
+        if self.gate is None:
+            data.pop("gate", None)
+        return data
+
+
+class TaskEvidence11(TaskEvidence):
+    """``directives`` is absent, never ``null``, when no hop composed a repository file."""
+
+    v: Literal["1.1.0"] = EVIDENCE_V1_1  # type: ignore[assignment]
+    hops: list[HopEvidence11]  # type: ignore[assignment]
+    directives: list[DirectiveEvidence] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast("dict[str, Any]", handler(self))
+        if self.directives is None:
+            data.pop("directives", None)
+        return data
 
 
 def _as_dict(value: Any) -> dict[str, Any] | None:
@@ -136,16 +179,55 @@ def _hop_evidence(rec: dict[str, Any]) -> HopEvidence:
     )
 
 
-def task_evidence(project: str, task_id: str) -> TaskEvidence:
-    """The one evidence builder: *task_id*'s persisted record in pod *project*.
-    Raises ``EvidenceNotFound`` for an unknown task."""
+def _gate_evidence(rec: dict[str, Any]) -> GateEvidence | None:
+    """The hop's external-gate block: only a ``verify`` that carries a ``label`` ran one."""
+    verify = _as_dict(rec.get("verify"))
+    if verify is None or not isinstance(verify.get("label"), str):
+        return None
+    try:
+        return GateEvidence.model_validate(
+            {
+                "label": verify["label"],
+                "exitCode": verify["exitCode"],
+                "reasonsInvalid": bool(verify.get("reasonsInvalid", False)),
+            }
+        )
+    except (KeyError, ValueError):
+        return None
+
+
+def _directives(records: list[dict[str, Any]]) -> list[DirectiveEvidence]:
+    """Distinct ``(path, sha256)`` pairs the hops recorded, in first-seen order."""
+    seen: dict[tuple[str, str], None] = {}
+    for rec in records:
+        files = _as_dict(rec.get("repoFiles")) or {}
+        for path, digest in files.items():
+            if isinstance(path, str) and isinstance(digest, str):
+                seen.setdefault((path, digest))
+    return [DirectiveEvidence(path=p, sha256=d) for p, d in seen]
+
+
+def task_evidence(project: str, task_id: str, version: EvidenceVersion) -> TaskEvidence:
+    """The one evidence builder: *task_id*'s record in pod *project* as the *version* document
+    (``"1.0.0"`` never carries the 1.1.0 fields). Raises ``EvidenceNotFound`` for an unknown
+    task and ``ValueError`` for an unknown version."""
+    if version not in (EVIDENCE_V1, EVIDENCE_V1_1):
+        raise ValueError(f"unknown evidence version {version!r}")
     for task in _dispatch.read_tasks(project):
         if task.get("id") == task_id:
-            hops = [_hop_evidence(h) for h in task.get("hops", []) if isinstance(h, dict)]
-            return TaskEvidence(
+            records = [h for h in task.get("hops", []) if isinstance(h, dict)]
+            hops = [_hop_evidence(h) for h in records]
+            status = str(task.get("status", ""))
+            if version == EVIDENCE_V1:
+                return TaskEvidence(pod=project, task_id=task_id, status=status, hops=hops)
+            return TaskEvidence11(
                 pod=project,
                 task_id=task_id,
-                status=str(task.get("status", "")),
-                hops=hops,
+                status=status,
+                hops=[
+                    HopEvidence11(**dict(hop), gate=_gate_evidence(rec))
+                    for hop, rec in zip(hops, records, strict=True)
+                ],
+                directives=_directives(records) or None,
             )
     raise EvidenceNotFound(f"no task {task_id!r} in pod {project!r}")

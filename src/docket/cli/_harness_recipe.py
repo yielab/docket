@@ -123,7 +123,7 @@ def _task_evidence(run: _pipeline.RecipeRun | None) -> dict[str, Any] | None:
     if run is None or not task_id:
         return None
     try:
-        return _evidence.task_evidence(run.project, str(task_id)).model_dump(
+        return _evidence.task_evidence(run.project, str(task_id), "1.0.0").model_dump(
             by_alias=True, mode="json"
         )
     except _evidence.EvidenceNotFound:
