@@ -1,8 +1,8 @@
 # Operator Loop Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -184,7 +184,9 @@ of its own.
    explicit `--since` MUST NOT write the cursor. An undeclared flag MUST exit 2. Every item MUST
    print the exact command that moves it forward (`docket task approve|deny|answer <id>`,
    `docket task retry <id>`, `docket run --pod <pod>`), a held command or question in full, never
-   truncated. A pending task whose approval was granted MUST appear under `Needs you` as
+   truncated; every continuation line of a multi-line question, held command or label MUST be
+   indented to the column of its first line's text, so no line of an item starts at column 0.
+   A pending task whose approval was granted MUST appear under `Needs you` as
    "approved, ready" (`state: "approved_ready"`) with the `docket run` command. `--json` MUST emit
    `InboxView.model_dump(by_alias=True, mode="json")` with `state` and `command` added to each
    item, and no escape codes.
@@ -796,6 +798,11 @@ Each JSONL line is a JSON object with these fields:
 - Text is redacted with the same function as trace payloads.
 
 ## Changelog
+
+### Version 1.7.0 (2026-10-13)
+
+- `docket inbox` indents every continuation line of a multi-line question, action and label
+  (requirement 5.6).
 
 ### Version 1.6.0 (2026-10-13)
 

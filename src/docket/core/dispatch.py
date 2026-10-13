@@ -1005,7 +1005,7 @@ def _render_operator_answers(task: dict[str, Any]) -> str:
     return capped
 
 
-def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
+def hop_env(member_id: str, role: str) -> dict[str, str] | None:
     """Subprocess env override: only an Implementer with an allocated port range gets one
     (real ``DOCKET_PORT_*``/``DOCKET_SCRATCH_DIR`` vars, not TOOLS.md prose); every other
     case returns ``None`` (inherit the parent env)."""
@@ -1557,7 +1557,7 @@ def _compose_hop(
         "tool_call",
         _json.dumps({"hop": role, "agent": member_id}),
     )
-    env = _hop_env(member_id, role)
+    env = hop_env(member_id, role)
     if pipeline_worktree:
         env = dict(env or {})
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree

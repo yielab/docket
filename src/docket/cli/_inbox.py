@@ -99,27 +99,32 @@ def _say(text: str) -> None:
     ui.console.print(text, markup=False)
 
 
+def _block(prefix: str, text: str) -> str:
+    """`prefix` before the first line; every later line aligned under the text after it."""
+    return prefix + text.replace("\n", "\n" + " " * len(prefix))
+
+
 def _render_item(item: TaskView | ApprovalView, *, ready: bool = False) -> None:
     state, command = _state_and_command(item, ready=ready)
     if isinstance(item, ApprovalView):
         _say(f"  approval {item.token}  pod={item.pod}  role={item.role}")
         if item.action:
-            _say(f"    asks: {item.action}")
+            _say(_block("    asks: ", item.action))
         _say(f"    approve: {command}")
         _say(f"    deny:    docket task deny {item.token}")
         return
     _say(f"  task {item.id}  pod={item.pod}  {state.replace('_', ' ')}")
     label = item.description or item.reason or ""
     if label:
-        _say(f"    {label}")
+        _say(_block("    ", label))
     if state == "needs_approval":
         action = _held_action(item.approval_token) if item.approval_token else ""
         if action:
-            _say(f"    asks: {action}")
+            _say(_block("    asks: ", action))
         _say(f"    approve: {command}")
         _say(f"    deny:    docket task deny {item.id}")
     elif state == "needs_answer" and item.question is not None:
-        _say(f"    Q: {item.question.message}")
+        _say(_block("    Q: ", item.question.message))
         options = getattr(item.question, "options", None) or []
         if options:
             rec = getattr(getattr(item.question, "recommendation", None), "option_id", None)

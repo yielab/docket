@@ -117,7 +117,7 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
     names: set[str] = set()
     for unit in _walk(nodes):
         if _is_implementer(unit) and unit.member_id:
-            names.update(_dispatch._hop_env(unit.member_id, "implementer") or {})
+            names.update(_dispatch.hop_env(unit.member_id, "implementer") or {})
     try:
         selection = _pod.PodSettings.load_for(project).mcp_servers
     except _pod.PodSettingsError:
