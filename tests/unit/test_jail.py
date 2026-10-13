@@ -44,3 +44,30 @@ def test_net_open_installs_no_filter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jail.os, "execvp", lambda f, a: None)
     jail.main(["--net", "open", "--", "true"])
     assert calls == ["nnp", "landlock"]
+
+
+def test_a_refused_root_runs_nothing_and_says_why(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran: list[list[str]] = []
+    monkeypatch.setattr(jail.os, "execvp", lambda f, a: ran.append(a))
+    code = jail.main(["--refuse", "the root holds a .git directory", "--", "true"])
+    assert code == jail.EXIT_REFUSED and ran == []
+    assert ".git directory" in capsys.readouterr().err
+
+
+def test_read_only_roots_reach_the_ruleset(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[str, ...]] = []
+    real = landlock.plan_ruleset
+
+    def spy(abi: int, rw: tuple[str, ...], ro: tuple[str, ...], network: bool) -> object:
+        seen.append(ro)
+        return real(abi, rw, ro, network)
+
+    monkeypatch.setattr(landlock, "abi_version", lambda: 5)
+    monkeypatch.setattr(landlock, "plan_ruleset", spy)
+    monkeypatch.setattr(landlock, "no_new_privs", lambda: None)
+    monkeypatch.setattr(landlock, "enforce", lambda plan: None)
+    monkeypatch.setattr(jail.os, "execvp", lambda f, a: None)
+    jail.main(["--ro", "/some/gitdir", "--", "true"])
+    assert "/some/gitdir" in seen[0]

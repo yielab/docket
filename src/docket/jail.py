@@ -18,6 +18,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m docket.jail", add_help=True)
     parser.add_argument("--rw", action="append", default=[], help="read-write root")
     parser.add_argument("--ro", action="append", default=[], help="extra read-only root")
+    parser.add_argument("--refuse", default="", help="refuse to run, printing this reason")
     parser.add_argument("--net", choices=("none", "open"), default="none")
     parser.add_argument("argv", nargs=argparse.REMAINDER)
     return parser
@@ -48,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     command = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
     if not command:
         print("jail: no command given", file=sys.stderr)
+        return EXIT_REFUSED
+    if args.refuse:
+        print(f"jail: refusing to run: {args.refuse}", file=sys.stderr)
         return EXIT_REFUSED
     try:
         confine(args.rw, args.ro, args.net == "open")

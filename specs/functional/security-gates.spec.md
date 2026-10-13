@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.47.0
+**Version**: 0.48.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -216,12 +216,22 @@ are owned here, not there.
    and `network none` against a host-side listener.
    The repository's `hooks/` and `config`, the worktree's `config.worktree`, and `info/attributes`
    are re-bound read-only on top (docker `:ro`, a seatbelt deny rule), after the read-write mounts they
-   shadow; Landlock cannot take a right from a sub-path of a granted root, so under landlock they stay writable: a writable hook or config (`core.hooksPath`, `core.fsmonitor`) would run attacker-chosen
-   code on the operator's next unjailed git command. The same applies, only when present, to every
+   shadow. Landlock cannot take a right from a sub-path of a granted root, so it grants the git
+   dir's writable parts instead of the git dir: the common dir is read-only except its `objects`,
+   `refs` and `logs` (and those of each submodule git dir under `modules/`), and in a linked
+   worktree the worktree's own git dir (`<common>/worktrees/<name>`, holding the index, `HEAD`
+   and `logs`) is read-write. `hooks`, `config`, `info/attributes` and `packed-refs` are never writable
+   there. Two things stay writable under Landlock and are covered on the host instead: the root's `.git` file and the
+   worktree git dir's `config.worktree`, `gitdir` and `commondir` (see Exec sandbox item 13). A root that holds a `.git`
+   **directory** (a main checkout used in place) cannot be guarded by Landlock at all, since the
+   directory is inside a writable root, so the Landlock jail refuses to run there: exit 125, the
+   reason on stderr, nothing run. Use a git worktree as the root, or choose docker. A root below a
+   main checkout's top (git dir outside the root) runs, but a commit there fails closed, because
+   `index` and `HEAD` live at the top of that git dir. The same read-only rules apply, only when present, to every
    submodule git dir under `modules/` of the git dir and common dir (any depth, found by walking
    for a directory holding `HEAD`, never by running git): its `hooks`, `config`, `config.worktree`
    and `info/attributes`, plus the submodule checkout's `.git` file (located through the `worktree`
-   line of that config). In a linked worktree the root's `.git` file and the admin files
+   line of that config). Under docker and seatbelt, in a linked worktree the root's `.git` file and the admin files
    `<common>/worktrees/<name>/gitdir` and `commondir` are read-only too, so the jail cannot repoint
    the host's next git command at a directory it controls. Objects, refs, index, logs and `HEAD`
    stay writable. A `hooks/` directory or `info/attributes` file missing when the jail starts is
@@ -974,8 +984,9 @@ either.
     and aarch64. `--net open` installs no filter and handles no network right. The entry fails
     closed: if the ruleset cannot be enforced, or `--net none` can be enforced by neither layer, it
     exits 125 naming the reason and runs nothing. It does not hide `/proc`. A Landlock rule cannot
-    take a right away from a sub-path of a granted root, so a root's `.git/hooks` and `config` are
-    writable inside this jail (only the docker and seatbelt jails guard them). Pinned by
+    take a right away from a sub-path of a granted root, so the entry takes `--ro <path>` for the
+    git dir, and `--rw` only for the git dir's writable parts (Enablement requirement 3); a root holding a `.git` directory
+    is passed `--refuse <reason>`, which exits 125 naming it and runs nothing. Pinned by
     unit tests over the ruleset plan, the argv and the BPF program (no syscall) and by
     `tests/integration/test_jail_landlock.py` on a real kernel.
 11. **One jail builder for every command docket launches.** `edges/adapters/system.py::jail_launch(roots,
@@ -1005,6 +1016,18 @@ either.
     escaped). The operator's home and `DOCKET_HOME` are unreadable. `sandbox-exec` is deprecated by
     Apple but still ships. `jail_launch` (item 11) builds it like the `landlock` argv, so `bash`,
     verify and `run:` all reach it.
+
+13. **Host-side git never reads what the jail can write.** `provision_task_worktree` records the
+    worktree's `gitDir` and `commonDir` beside `dir`, `branch` and `baseCommit`. Resolving a task's
+    worktree (`dispatch._task_worktree_dir`) registers them with `system.trust_worktree`, and from
+    then on every host-side git call for that path (`system._git_run`: status, the pin commit, diffs,
+    the identity lookup) names them through `GIT_DIR`, `GIT_COMMON_DIR` and `GIT_WORK_TREE`, and
+    `system.git_dirs` answers from the record when building the next jail. A `.git` file, `gitdir`
+    or `commondir` the agent rewrote is therefore never followed. A worktree whose `config.worktree`
+    exists while the shared config enables `extensions.worktreeConfig` is refused by those calls
+    (the file can name a program to run), since Landlock cannot keep it unwritable. A task with no
+    recorded `gitDir` (one that ran in place) is not covered. The escape matrix pins this with a
+    planted `core.fsmonitor` that must never run.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -1595,6 +1618,22 @@ $ git clone https://anywhere.example/repo.git
 - A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any
   host — the allowlist starts empty, not populated with a starter set, so "network egress is
   open" is never confused with "`fetch` reaches anywhere by default" (ROADMAP Phase 19 P19-11).
+- The escape matrix (`tests/integration/test_escape_matrix.py`, subject `docket.jail`) **MUST**
+  pass on every backend the host has (landlock, docker when its daemon answers, seatbelt on
+  macOS; a missing backend skips with a reason) and runs in the `release-journey` CI job on
+  Linux and macOS. It builds every jailed command through `system.jail_launch`, keeps every
+  protected path outside every temp dir the jails grant, and gives each negative row three
+  oracles: a marker the jailed command wrote proves it ran, the effect is absent afterwards, and
+  the same attempt without the jail (the network open, for the connect row) has the effect. The
+  rows are: a positive write inside the root; a positive `git add`/`commit`/`branch` inside a
+  jailed task worktree; a seeded secret under a fake home is unreadable; a write outside the
+  roots is refused; `<common>/hooks/pre-commit` and `<common>/config` cannot be written; a
+  `config.worktree`, a rewritten `.git` file and a rewritten `commondir` never make dispatch's
+  host-side git execute a planted `core.fsmonitor` (and `git_dirs` still returns the recorded
+  dirs); a `connect` to a host listener fails under network `none` and succeeds when open;
+  `/proc/<ppid>/environ` with a seeded key is unreadable (docker: `/proc/*/environ`); a
+  `verifyCmd` run through `dispatch._run_in_envelope` cannot write outside its worktree; a main
+  checkout root is refused on landlock and has guarded hooks and config on docker and seatbelt.
 
 ### Invariants
 
@@ -1684,6 +1723,15 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.48.0 (2026-10-13)
+
+- P41-8: the escape matrix is a release gate (Validation). The Landlock jail no longer grants a
+  repository's whole git dir: the common dir is read-only except `objects`, `refs` and `logs`,
+  a linked worktree's own git dir is read-write, and `docket.jail` takes `--ro` and `--refuse`
+  (Enablement requirement 3, Exec sandbox item 10). A root holding a `.git` directory is refused
+  on landlock. New Exec sandbox item 13: host-side git in a task worktree names the recorded
+  git dir, common dir and work tree and refuses a poisoned `config.worktree`.
 
 ### Version 0.47.0 (2026-10-13)
 

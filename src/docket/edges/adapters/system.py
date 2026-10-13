@@ -220,10 +220,96 @@ def sandbox_availability(choice: str | None = None) -> SandboxAvailability:
     )
 
 
+_TRUSTED_TREES: dict[str, tuple[str, str]] = {}
+
+
+def trust_worktree(path: str, git_dir: str, common_dir: str) -> None:
+    """Record the git dir and common dir docket created for the task worktree at *path*. Host-side
+    git then names them explicitly and never reads the worktree's ``.git`` file, which the
+    jailed agent can rewrite."""
+    if path and git_dir and common_dir:
+        _TRUSTED_TREES[os.path.realpath(path)] = (git_dir, common_dir)
+
+
+def worktree_git_dirs(path: str) -> tuple[str, str] | None:
+    """``(git dir, common dir)`` of the worktree at *path* straight from git, for the record
+    taken at provisioning; ``None`` when *path* is not a git checkout."""
+    result = _git_plain(path, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
+    lines = result.stdout.split() if result is not None and result.returncode == 0 else []
+    if len(lines) != 2:
+        return None
+    common = Path(lines[1])
+    if not common.is_absolute():
+        common = Path(path) / common
+    return lines[0], str(common.resolve())
+
+
+def _git_plain(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", cwd, *args],
+            capture_output=True,
+            text=True,
+            timeout=_SANDBOX_PROBE_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+_WORKTREE_CONFIG_ON = re.compile(r"^\s*worktreeconfig\s*=\s*(true|yes|on|1)\s*$", re.I | re.M)
+
+
+def _worktree_config_poisoned(git_dir: str, common_dir: str) -> bool:
+    """True when a per-worktree config file exists and the shared config makes git read it: the
+    jail can write that file under Landlock, and a config key can name a program."""
+    if not os.path.exists(os.path.join(git_dir, "config.worktree")):
+        return False
+    try:
+        text = Path(common_dir, "config").read_text(errors="replace")
+    except OSError:
+        return True
+    return bool(_WORKTREE_CONFIG_ON.search(text))
+
+
+def _git_run(
+    cwd: str,
+    args: list[str],
+    timeout: float,
+    env: dict[str, str] | None = None,
+    config: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    """Run ``git -C cwd <config> <args>``. In a worktree docket recorded, the git dir, common dir
+    and work tree are named through the environment, so nothing the agent wrote at ``.git``
+    is read; a poisoned per-worktree config makes it fail closed instead of running."""
+    trusted = _TRUSTED_TREES.get(os.path.realpath(cwd))
+    if trusted is not None:
+        git_dir, common_dir = trusted
+        if _worktree_config_poisoned(git_dir, common_dir):
+            return subprocess.CompletedProcess(
+                args, 1, "", "refused: the worktree config could name a program to run"
+            )
+        env = {
+            **(os.environ if env is None else env),
+            "GIT_DIR": git_dir,
+            "GIT_COMMON_DIR": common_dir,
+            "GIT_WORK_TREE": os.path.realpath(cwd),
+        }
+    return subprocess.run(
+        ["git", "-C", cwd, *config, *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+    )
+
+
 def git_dirs(root: Path) -> list[Path]:
-    """The repository dirs of *root* when it is inside a repo or linked worktree, else [].
-    A commit writes both the per-worktree dir (index) and the common dir (objects, refs), so a
-    jail that can commit must mount them read-write."""
+    """The repository dirs of *root* (per-worktree dir first, then the common dir), else []. A
+    worktree docket recorded answers from the record, never from its ``.git`` file."""
+    trusted = _TRUSTED_TREES.get(os.path.realpath(root))
+    if trusted is not None:
+        git_dir, common = (Path(p).resolve() for p in trusted)
+        return [git_dir] if git_dir == common else [git_dir, common]
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--absolute-git-dir", "--git-common-dir"],
@@ -421,11 +507,56 @@ def landlock_command_argv(
     return [*_landlock_prefix(roots, network), *argv]
 
 
+_GIT_WRITABLE_PARTS = ("objects", "refs", "logs")
+_GIT_DIR_IN_ROOT = (
+    "{root} holds a .git directory, and Landlock cannot keep its hooks and config read-only "
+    "inside a writable root; use a git worktree as the root, or choose docker with "
+    "'docket setup sandbox backend docker'"
+)
+
+
+def _landlock_git_mounts(root: Path, dirs: list[Path]) -> tuple[list[str], list[str]]:
+    """``(rw, ro)`` for a root's git dirs: the common dir read-only but ``objects``, ``refs`` and
+    ``logs``, plus a linked worktree's own git dir; never hooks or config (Landlock has no
+    sub-path override). A commit from a root whose git dir is not its own fails closed."""
+    gitdir, common = dirs[0], dirs[-1]
+    rw: list[str] = []
+    ro = [str(common)]
+    bases = [common, *_submodule_git_dirs(common)]
+    for base in bases:
+        with contextlib.suppress(OSError):
+            (base / "logs").mkdir(exist_ok=True)
+        rw += [str(base / part) for part in _GIT_WRITABLE_PARTS]
+    if gitdir != common:
+        rw.append(str(gitdir))
+    return rw, ro
+
+
+def _landlock_mounts(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
+    rw: list[str] = []
+    ro: list[str] = []
+    for root in roots:
+        resolved = root.resolve()
+        dirs = git_dirs(root)
+        git_rw, git_ro = _landlock_git_mounts(resolved, dirs) if dirs else ([], [])
+        for path in [str(resolved), *git_rw]:
+            if path not in rw:
+                rw.append(path)
+        ro += [p for p in git_ro if p not in ro]
+    return rw, ro
+
+
 def _landlock_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
-    rw, _ = _mount_dirs(roots)
+    rw, ro = _landlock_mounts(roots)
     argv = [sys.executable, "-m", "docket.jail"]
     for path in rw:
         argv += ["--rw", path]
+    for path in ro:
+        argv += ["--ro", path]
+    for root in roots:
+        if (root / ".git").is_dir() and not (root / ".git").is_symlink():
+            argv += ["--refuse", _GIT_DIR_IN_ROOT.format(root=root.resolve())]
+            break
     return [*argv, "--net", "open" if network else "none", "--"]
 
 
@@ -447,12 +578,7 @@ def git_identity_env(root: Path) -> dict[str, str]:
     resolved: dict[str, str] = {}
     for key in ("name", "email"):
         try:
-            out = subprocess.run(
-                ["git", "-C", str(root), "config", "--get", f"user.{key}"],
-                capture_output=True,
-                text=True,
-                timeout=_QUERY_TIMEOUT,
-            )
+            out = _git_run(str(root), ["config", "--get", f"user.{key}"], _QUERY_TIMEOUT)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if out.returncode == 0 and out.stdout.strip():
@@ -831,12 +957,7 @@ def git_current_branch(cwd: str) -> str:
     if not git_available():
         return ""
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return ""
     if result.returncode != 0:
@@ -849,12 +970,7 @@ def git_is_repo(cwd: str) -> bool:
     if not git_available():
         return False
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--git-dir"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["rev-parse", "--git-dir"], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
     return result.returncode == 0
@@ -871,12 +987,7 @@ def git_changed_files(cwd: str) -> list[str]:
     if not git_available():
         return []
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["status", "--porcelain"], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:
@@ -901,17 +1012,9 @@ def git_worktree_changes(cwd: str) -> list[tuple[str, str]]:
     if not git_available():
         return []
     try:
-        top = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
-        status = subprocess.run(
-            ["git", "-C", cwd, "status", "--porcelain", "-z", "--untracked-files=all"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
+        top = _git_run(cwd, ["rev-parse", "--show-toplevel"], _QUERY_TIMEOUT)
+        status = _git_run(
+            cwd, ["status", "--porcelain", "-z", "--untracked-files=all"], _QUERY_TIMEOUT
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
@@ -1048,12 +1151,7 @@ def git_head_sha(cwd: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["rev-parse", "HEAD"], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:
@@ -1068,12 +1166,7 @@ def git_merge_base(cwd: str, other_branch: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "merge-base", "HEAD", other_branch],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["merge-base", "HEAD", other_branch], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:
@@ -1093,11 +1186,8 @@ def git_diff_stat(cwd: str, base: str, head: str | None = None) -> dict[str, int
     if not git_available():
         return None
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "diff", "--shortstat", base, *([head] if head else [])],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
+        result = _git_run(
+            cwd, ["diff", "--shortstat", base, *([head] if head else [])], _QUERY_TIMEOUT
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
@@ -1120,12 +1210,7 @@ def git_diff(path: str, base: str) -> str | None:
     if not git_available():
         return None
     try:
-        result = subprocess.run(
-            ["git", "-C", path, "diff", base],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(path, ["diff", base], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     return result.stdout if result.returncode == 0 else None
@@ -1137,12 +1222,7 @@ def git_diff_names(cwd: str, base: str, head: str) -> list[str]:
     if not git_available():
         return []
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "diff", "--name-only", base, head],
-            capture_output=True,
-            text=True,
-            timeout=_QUERY_TIMEOUT,
-        )
+        result = _git_run(cwd, ["diff", "--name-only", base, head], _QUERY_TIMEOUT)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
     if result.returncode != 0:
@@ -1171,13 +1251,7 @@ def _pin_git(
     cwd: str, *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str] | None:
     try:
-        return subprocess.run(
-            ["git", "-C", cwd, *_PIN_CONFIG, *args],
-            capture_output=True,
-            text=True,
-            timeout=_PIN_TIMEOUT,
-            env=env,
-        )
+        return _git_run(cwd, list(args), _PIN_TIMEOUT, env=env, config=_PIN_CONFIG)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 

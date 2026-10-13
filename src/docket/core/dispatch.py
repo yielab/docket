@@ -922,9 +922,14 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
 
 def _task_worktree_dir(task: dict[str, Any]) -> str:
     """The directory of the worktree recorded on *task* at claim, or empty when the task runs in
-    place (no recorded worktree, or a recorded fallback)."""
+    place (no recorded worktree, or a recorded fallback). It also tells host-side git the git dir
+    docket recorded for that worktree, so nothing the agent wrote at ``.git`` is ever read."""
     record = task.get("worktree")
-    return str(record.get("dir") or "") if isinstance(record, dict) else ""
+    if not isinstance(record, dict):
+        return ""
+    wt_dir = str(record.get("dir") or "")
+    _sys.trust_worktree(wt_dir, str(record.get("gitDir") or ""), str(record.get("commonDir") or ""))
+    return wt_dir
 
 
 def _implementer_diff_probe(

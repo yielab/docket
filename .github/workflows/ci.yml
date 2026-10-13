@@ -236,3 +236,8 @@ jobs:
 
       - name: Run the artifact-installed release journey
         run: uv run python scripts/release_journey.py
+
+      - name: Escape matrix on this OS's sandbox backend
+        run: |
+          uv sync --locked --all-extras --dev
+          uv run pytest tests/integration/test_escape_matrix.py -q
