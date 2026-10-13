@@ -238,7 +238,7 @@ def run_recipe(
     old_handler = signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         with (
-            _answers.guard(answers_raw, answer_timeout_raw, token, questions, approvals),
+            _answers.guard(answers_raw, token, questions, approvals),
             _trace.subscribe(emit),
             _trace.subscribe(written.observe),
             _trace.subscribe(approvals.observe),

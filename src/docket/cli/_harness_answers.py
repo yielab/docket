@@ -13,14 +13,15 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import queue
+import select
 import sys
 import threading
 from collections.abc import Iterator
 
 from pydantic import ValidationError
 
-import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import consult as _consult
 from docket.core import harness
@@ -31,6 +32,9 @@ _APPROVAL_TOKEN = _approval.APPROVAL_TOKEN_RE
 
 # A content hit with either of these actions holds the answer, as /delegate does.
 _HOLD_ACTIONS = ("block", "require_approval")
+
+_POLL_S = 0.1
+_EOF = "\0eof"
 
 
 def _say(message: str) -> None:
@@ -143,20 +147,44 @@ def serve(
     ledger: harness.ApprovalLedger | None = None,
     version: str = harness.HARNESS_CONTRACT_V11,
 ) -> Iterator[None]:
-    """Read answers for run *token* from stdin on a daemon thread until EOF or *stop*. At EOF a
+    """Read answers for run *token* from stdin on a thread, joined on exit, until EOF or *stop*. At EOF a
     *questions* queue gets its ``None`` end marker and the approval answer stream is closed
     (``core.approval.close_answer_stream``): nobody will answer, so nothing waits on them."""
 
+    def _lines() -> Iterator[str]:
+        fd = sys.stdin.fileno()
+        pending = b""
+        while not stop.is_set():
+            ready, _, _ = select.select([fd], [], [], _POLL_S)
+            if not ready:
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            pending += chunk
+            *whole, pending = pending.split(b"\n")
+            for raw in whole:
+                yield raw.decode("utf-8", "replace")
+        else:
+            return
+        if pending:
+            yield pending.decode("utf-8", "replace")
+        yield _EOF
+
     def _pump() -> None:
-        for line in sys.stdin:
+        for line in _lines():
             if stop.is_set():
                 return
+            if line is _EOF:
+                break
             try:
                 handle_line(line, token, questions, ledger, version)
             except Exception:
                 # An answer that cannot be applied leaves its approval pending, and
                 # the deadline denies it. Say so without the line's contents.
                 _say("answer line ignored: internal error")
+        else:
+            return
         if questions is not None:
             questions.put(None)
         _consult.release_all()
@@ -177,38 +205,21 @@ def serve(
             yield
     finally:
         stop.set()
+        thread.join()
         _approval.open_answer_stream()
 
 
 @contextlib.contextmanager
 def guard(
     answers_raw: str | None,
-    answer_timeout_raw: str | None,
     token: str,
     questions: queue.Queue[harness.AnswerLine | None] | None = None,
     ledger: harness.ApprovalLedger | None = None,
     version: str = harness.HARNESS_CONTRACT_V11,
 ) -> Iterator[None]:
-    """Run the answer reader and the wait bound for ``--answers stdin``; otherwise a no-op."""
+    """Run the answer reader for ``--answers stdin``; otherwise a no-op."""
     if answers_raw != "stdin":
         yield
         return
-    timeout = int(answer_timeout_raw) if answer_timeout_raw is not None else None
-    with serve(token, threading.Event(), questions, ledger, version), wait_budget(timeout):
+    with serve(token, threading.Event(), questions, ledger, version):
         yield
-
-
-@contextlib.contextmanager
-def wait_budget(seconds: int | None) -> Iterator[None]:
-    """Bound in-turn approval waits to *seconds* inside the block; ``None`` leaves them alone.
-
-    The harness is its own process, so this sets ``config.TOOL_APPROVAL_TIMEOUT`` and restores it."""
-    if seconds is None:
-        yield
-        return
-    saved = _cfg.TOOL_APPROVAL_TIMEOUT
-    _cfg.TOOL_APPROVAL_TIMEOUT = seconds
-    try:
-        yield
-    finally:
-        _cfg.TOOL_APPROVAL_TIMEOUT = saved
