@@ -64,6 +64,8 @@ class FleetSecurity(BaseModel):
     isolation_mode: str = Field("unset", alias="isolationMode")
     # 'unset' (reads as 'none') | 'none' | 'open': whether a jailed tool call may reach the network.
     network_mode: str = Field("unset", alias="networkMode")
+    # 'auto' (landlock on Linux, seatbelt on macOS) | 'docker' (docker only, once chosen).
+    sandbox_backend: str = Field("auto", alias="sandboxBackend")
 
 
 class FleetConfig(BaseModel):
@@ -265,6 +267,21 @@ def set_network_mode(mode: str) -> None:
         raise ValueError(f"network mode must be 'none' or 'open', not {mode!r}")
     cfg = load_fleet()
     cfg.security.network_mode = mode
+    _save_fleet(cfg)
+
+
+def get_sandbox_backend(cfg: FleetConfig | None = None) -> str:
+    """'docker' only when the operator recorded it; anything else reads as 'auto'."""
+    mode = (cfg or load_fleet()).security.sandbox_backend
+    return "docker" if mode == "docker" else "auto"
+
+
+def set_sandbox_backend(choice: str) -> None:
+    """Record the sandbox backend choice: 'auto' or 'docker'."""
+    if choice not in ("auto", "docker"):
+        raise ValueError(f"sandbox backend must be 'auto' or 'docker', not {choice!r}")
+    cfg = load_fleet()
+    cfg.security.sandbox_backend = choice
     _save_fleet(cfg)
 
 

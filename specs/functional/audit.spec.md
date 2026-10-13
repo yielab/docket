@@ -114,7 +114,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      not a plain `allow`. `detail` names the tool, agent, role and project, a fixed
      `policy_id='…' policy_action='…'` pair, and the redacted call.
    - `isolation.refused` (`edges/adapters/docket_runtime.py`) — a turn refused because isolation
-     is on and neither docker nor bwrap is usable. `detail` names the agent, role and backend
+     is on and no sandbox backend is usable. `detail` names the agent, role and backend
      availability.
 2. **What the log does NOT see (scope boundary, not a backlog item).** Both gaps tracked through
    Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version

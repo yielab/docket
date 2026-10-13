@@ -471,16 +471,15 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         _setup_check._check_security_gates()
-        assert "Workspace isolation: on, backend bwrap" in capsys.readouterr().out
+        assert "Workspace isolation: on, backend landlock" in capsys.readouterr().out
         assert _setup_check._check_json_security() == {
             "toolCallGate": "always-on",
             "isolation": "on",
-            "sandboxBackend": "bwrap",
+            "sandboxBackend": "landlock",
             "dockerImageHasGit": None,
             "network": "none",
-            "unjailedMcpServers": [],
         }
 
     def test_security_gates_reports_the_refusal_when_no_backend(
@@ -492,7 +491,7 @@ class TestChecks:
         _setup_check._check_security_gates()
         out = capsys.readouterr().out
         assert "turns will be refused" in out
-        assert "bubblewrap" in out and "setup sandbox off" in out
+        assert "setup sandbox backend docker" in out and "setup sandbox off" in out
 
     def test_docker_backend_without_git_in_the_image_warns_with_the_fix(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -522,7 +521,7 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         _isolation_on()
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
 
         def boom() -> bool:
             raise AssertionError("probed")

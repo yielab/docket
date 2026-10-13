@@ -636,7 +636,7 @@ Waves 89-90 close (W89-10): the entries below were Unreleased and are now this v
 
 Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
 
-- `code-intel`'s `ast-grep` server declares `isolate: false` (uvx cannot write its cache in the jail); `language-intel` stays jailed.
+- `code-intel`'s MCP servers declare no `isolate` key: every stdio server starts in the turn's jail (`mcp-client.spec.md` Requirement 40).
 
 ### Version 1.22.0 (2026-10-04)
 

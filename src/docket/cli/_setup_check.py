@@ -21,7 +21,6 @@ from docket import ui
 from docket.core import channel as _channel
 from docket.core import exporter as _exporter
 from docket.core import fleet as _fleet
-from docket.core import mcp_tools as _mcp_tools
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _pol
@@ -416,22 +415,6 @@ def _check_notifications(ids: list[str]) -> int:
     return 0
 
 
-def _unjailed_mcp_servers() -> list[dict[str, str]]:
-    """Every server declared ``isolate: false``: the global registry's (``pod`` empty), then each
-    pod's own pod-scoped ones."""
-    from docket.core import dispatch as _dispatch
-
-    found = [{"name": s.name, "pod": ""} for s in _mcp_tools.load_mcp_servers() if not s.isolate]
-    taken = {s.name for s in _mcp_tools.load_mcp_servers()}
-    for pod in _dispatch.dispatchable_pods():
-        found += [
-            {"name": s.name, "pod": pod}
-            for s in _mcp_tools.load_pod_mcp_servers(pod)
-            if s.name not in taken and not s.isolate
-        ]
-    return found
-
-
 def _docker_image_has_git() -> bool | None:
     """The jail image's git probe, only when docker is the backend in use and isolation is not off;
     None when it does not apply."""
@@ -457,14 +440,14 @@ def _check_security_gates() -> int:
     if not enabled:
         ui.dim(
             f"  Workspace isolation: {'off (explicit)' if state == 'off' else state} -- "
-            "docket setup sandbox on (needs bubblewrap or docker)"
+            "docket setup sandbox on (needs landlock on Linux 5.13+, seatbelt on macOS, or a chosen docker)"
         )
     else:
         backend = _sys.sandbox_availability().backend
         if backend == "none":
             ui.warn(
                 f"  Workspace isolation: {state}, but no backend is usable -- turns will be "
-                "refused. Install bubblewrap or start docker, or docket setup sandbox off"
+                "refused. Use Linux 5.13+ or macOS, choose docker (docket setup sandbox backend docker), or docket setup sandbox off"
             )
         else:
             ui.success(f"  Workspace isolation: {state}, backend {backend}")
@@ -492,12 +475,6 @@ def _check_security_gates() -> int:
         ui.dim(
             "  Network: open (granted) -- docket setup sandbox network none to cut the sandbox's network"
         )
-
-    unjailed = [
-        f"{s['name']} (pod {s['pod']})" if s["pod"] else s["name"] for s in _unjailed_mcp_servers()
-    ]
-    if unjailed and enabled:
-        ui.warn(f"  MCP servers declared isolate: false (start on the host): {', '.join(unjailed)}")
 
     return 0
 
@@ -840,7 +817,6 @@ def _check_json_security() -> dict[str, Any]:
         "sandboxBackend": _sys.sandbox_availability().backend,
         "dockerImageHasGit": _docker_image_has_git(),
         "network": _fleet.get_network_mode(),
-        "unjailedMcpServers": _unjailed_mcp_servers(),
     }
 
 

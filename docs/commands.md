@@ -504,7 +504,7 @@ Example: docket setup sandbox status --json
 
 **Usage:** `docket setup sandbox on`
 
-Run tools inside a sandbox (bwrap, else docker).
+Run tools inside a sandbox (landlock or seatbelt, or the chosen docker).
 
 Example: docket setup sandbox on
 
@@ -515,6 +515,14 @@ Example: docket setup sandbox on
 Run tools on the host.
 
 Example: docket setup sandbox off
+
+### setup sandbox backend
+
+**Usage:** `docket setup sandbox backend`
+
+Choose the backend: auto (landlock or seatbelt) or docker.
+
+Example: docket setup sandbox backend docker
 
 ### setup sandbox network
 
@@ -914,7 +922,7 @@ No command emits any other exit code today.
 | `DOCKET_POD` | Pod that commands taking `--pod` act on when the flag is omitted | unset |
 | `DOCKET_NO_EXPORT` | Set to `1` to disable every export queue/flush action | unset (export on) |
 | `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket setup sandbox on`) | `alpine:3.20` |
-| `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`landlock`/`seatbelt`/`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (landlock > seatbelt > bwrap > docker > none) |
+| `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`landlock`/`seatbelt`/`docker`/`none`) regardless of what is actually installed | auto-detected (landlock on Linux, seatbelt on macOS; docker only after `docket setup sandbox backend docker`) |
 | `DOCKET_SANDBOX_PROBE` | `none` makes the Landlock probe report the kernel feature absent (tests that simulate a host with no backend) | unset (the kernel is probed) |
 | `SHELL` | Login shell name; `docket setup` uses it to name the completion command it offers | unset (bash assumed) |
 | `DOCKET_SERVE_TOKEN` | Fix `docket start`'s bearer token instead of generating one per run | unset (random) |

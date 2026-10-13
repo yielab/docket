@@ -25,6 +25,17 @@ class NetworkMode(StrEnum):
     open = "open"
 
 
+class BackendChoice(StrEnum):
+    auto = "auto"
+    docker = "docker"
+
+
+NO_BACKEND_HINT = (
+    "Linux needs kernel 5.13+ (landlock), macOS has seatbelt, or choose docker: "
+    "docket setup sandbox backend docker"
+)
+
+
 def _off_label(state: str) -> str:
     return "off (explicit)" if state == "off" else state
 
@@ -56,7 +67,9 @@ def status(json_out: bool = False) -> int:
         )
     else:
         ui.warn(f"Isolation: {_off_label(str(state['isolation']))}; tools run on the host")
-        ui.dim("Turn it on: docket setup sandbox on (needs bubblewrap or docker)")
+        ui.dim(
+            "Turn it on: docket setup sandbox on (needs landlock on Linux 5.13+, seatbelt on macOS, or a chosen docker)"
+        )
     if state["network"] == "none":
         default = "" if _fleet.network_mode_recorded() else " (default)"
         ui.success(f"Network: none{default}; jailed tool calls have no network")
@@ -66,7 +79,7 @@ def status(json_out: bool = False) -> int:
 
 
 def isolate(want: str) -> int:
-    """Turn workspace isolation on or off; ``on`` needs bwrap or docker."""
+    """Turn workspace isolation on or off; ``on`` needs a usable backend."""
     if want == "off":
         _sec.disable_workspace_isolation()
         audit_log("gates.isolate", "off")
@@ -74,7 +87,7 @@ def isolate(want: str) -> int:
         return 0
     avail = _sys.sandbox_availability()
     if avail.backend == "none":
-        ui.error("No sandbox backend is usable", "Install bubblewrap (bwrap) or start docker")
+        ui.error("No sandbox backend is usable", NO_BACKEND_HINT)
         return 1
     _sec.apply_workspace_isolation()
     audit_log("gates.isolate", "on")
@@ -94,6 +107,19 @@ def network(want: str) -> int:
     ui.dim("fetch runs in docket's own process and keeps its domain allowlist.")
     if not _fleet.get_isolation_enabled():
         ui.warn("Isolation is off: turns are refused until docket setup sandbox on")
+    return 0
+
+
+def backend(choice: str) -> int:
+    """Record the sandbox backend choice: ``auto`` (landlock or seatbelt) or ``docker``."""
+    _fleet.set_sandbox_backend(choice)
+    audit_log("gates.backend", choice)
+    if choice == "docker":
+        ui.success("Sandbox backend docker; landlock and seatbelt are not used")
+        if not _sys.docker_daemon_reachable():
+            ui.warn("Docker is not reachable now: turns are refused until it is")
+    else:
+        ui.success("Sandbox backend auto: landlock on Linux, seatbelt on macOS")
     return 0
 
 
@@ -131,7 +157,7 @@ def sandbox_status(json_out: bool = typer.Option(False, "--json", help="Emit JSO
 
 @sandbox_app.command("on")
 def sandbox_on() -> None:
-    """Run tools inside a sandbox (bwrap, else docker).
+    """Run tools inside a sandbox (landlock or seatbelt, or the chosen docker).
 
     Example: docket setup sandbox on"""
     rc = isolate("on")
@@ -148,6 +174,18 @@ def sandbox_off() -> None:
     rc = isolate("off")
     if rc == 0:
         _contract.next_step("docket setup")
+    raise typer.Exit(rc)
+
+
+@sandbox_app.command("backend")
+def sandbox_backend(
+    choice: BackendChoice = typer.Argument(..., help="auto or docker"),
+) -> None:
+    """Choose the backend: auto (landlock or seatbelt) or docker.
+
+    Example: docket setup sandbox backend docker"""
+    rc = backend(choice.value)
+    _contract.next_step("docket setup sandbox")
     raise typer.Exit(rc)
 
 

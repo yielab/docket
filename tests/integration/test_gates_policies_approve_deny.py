@@ -25,6 +25,7 @@ from docket.cli import _pod, _setup_sandbox, app
 from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
+from docket.core.audit import read_audit
 
 SUBJECT = "docket.cli"
 
@@ -163,12 +164,12 @@ class TestGatesIsolate:
         err = capsys.readouterr().err
         assert rc == 1
         assert "No sandbox backend is usable" in err
-        assert "bubblewrap" in err
+        assert "setup sandbox backend docker" in err
 
     def test_isolate_on_applies_when_a_backend_is_usable(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         rc = _setup_sandbox.isolate("on")
         out = capsys.readouterr().out
         assert rc == 0
@@ -180,7 +181,7 @@ class TestGatesIsolate:
     def test_isolate_off(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         _setup_sandbox.isolate("on")
         capsys.readouterr()
         rc = _setup_sandbox.isolate("off")
@@ -191,6 +192,27 @@ class TestGatesIsolate:
         assert "Isolation off" in out
         _setup_sandbox.status()
         assert "Isolation: off (explicit)" in capsys.readouterr().out
+
+
+class TestSandboxBackendChoice:
+    def test_docker_is_recorded_in_fleet_json_and_audited(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert _setup_sandbox.backend("docker") == 0
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["sandboxBackend"] == "docker"
+        assert "Sandbox backend docker" in capsys.readouterr().out
+        assert [e for e in read_audit() if e["action"] == "gates.backend"][-1]["detail"] == "docker"
+
+    def test_auto_returns_to_the_default(self, oc_dir: Path) -> None:
+        _setup_sandbox.backend("docker")
+        assert _setup_sandbox.backend("auto") == 0
+        assert json.loads(_cfg.FLEET_FILE.read_text())["security"]["sandboxBackend"] == "auto"
+
+    def test_the_verb_takes_only_auto_or_docker(self, oc_dir: Path) -> None:
+        runner = CliRunner()
+        assert runner.invoke(app, ["setup", "sandbox", "backend", "bwrap"]).exit_code == 2
+        assert runner.invoke(app, ["setup", "sandbox", "backend", "docker"]).exit_code == 0
 
 
 # ── policies ──────────────────────────────────────────────────────────────────

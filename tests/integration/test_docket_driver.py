@@ -56,7 +56,7 @@ def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # every test from the same clean slate and let individual tests opt in.
     monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
     # These turns are about the driver, not the jail: record the explicit opt-out so they do
-    # not depend on the host having bwrap or docker (a stock macOS runner has neither).
+    # not depend on the host having a sandbox backend (a stock macOS runner has neither).
     # TestIsolationWiring records its own choice, or clears it to test the default.
     record_isolation_off(tmp_path / "docket")
 
@@ -1653,7 +1653,7 @@ class TestIsolationWiring:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # No fleet.json at all: isolation is opt-in, so the turn runs unjailed and a host
-        # with neither bwrap nor docker is never asked for one.
+        # with no sandbox backend is never asked for one.
         _no_recorded_isolation_choice()
         _write_meta("solo-agent")
 
@@ -1673,7 +1673,7 @@ class TestIsolationWiring:
         assert tool_msg.content == "sandbox=off"
         assert not [e for e in read_audit() if e["action"] == "isolation.refused"]
 
-    def test_isolation_on_with_no_backend_refuses_naming_both_fixes(
+    def test_isolation_on_with_no_backend_refuses_naming_the_fixes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _write_meta("solo-agent")
@@ -1684,7 +1684,8 @@ class TestIsolationWiring:
         with pytest.raises(DispatchError) as excinfo:
             driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
-        assert "bubblewrap" in str(excinfo.value)
+        assert "landlock" in str(excinfo.value)
+        assert "setup sandbox backend docker" in str(excinfo.value)
         assert "docket setup sandbox off" in str(excinfo.value)
         assert [e for e in read_audit() if e["action"] == "isolation.refused"]
 
@@ -1695,7 +1696,7 @@ class TestIsolationWiring:
         monkeypatch.setattr(
             _system,
             "sandbox_availability",
-            lambda: SandboxAvailability(backend="docker", docker=True, bwrap=False),
+            lambda: SandboxAvailability(backend="docker", docker=True),
         )
         _fleet.set_sandbox_isolation(mode="non-main")
         backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
@@ -1713,7 +1714,7 @@ class TestIsolationWiring:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # The failure mode this card exists to end: isolation is ON but
-        # neither docker nor bwrap is usable. The turn must refuse outright
+        # no sandbox backend is usable. The turn must refuse outright
         # -- not silently downgrade to an unsandboxed run -- and the LLM
         # backend must never even be reached (`_never_called` fails the test
         # if it is).
@@ -1721,7 +1722,7 @@ class TestIsolationWiring:
         monkeypatch.setattr(
             _system,
             "sandbox_availability",
-            lambda: SandboxAvailability(backend="none", docker=False, bwrap=False),
+            lambda: SandboxAvailability(backend="none", docker=False),
         )
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
@@ -1730,13 +1731,13 @@ class TestIsolationWiring:
             driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
 
         assert "docker" in str(excinfo.value).lower()
-        assert "bwrap" in str(excinfo.value).lower()
+        assert "landlock" in str(excinfo.value).lower()
 
         refusals = [e for e in read_audit() if e["action"] == "isolation.refused"]
         assert len(refusals) == 1
         assert "agent=solo-agent" in refusals[0]["detail"]
         assert "docker=False" in refusals[0]["detail"]
-        assert "bwrap=False" in refusals[0]["detail"]
+        assert "landlock=False" in refusals[0]["detail"]
 
     def test_docket_sandbox_backend_override_still_wins(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1748,7 +1749,6 @@ class TestIsolationWiring:
         # last word, exactly as it already is for `toolbox.run_bash`.
         _write_meta("solo-agent")
         monkeypatch.setattr(_system, "docker_daemon_reachable", lambda: True)
-        monkeypatch.setattr(_system, "bwrap_available", lambda: True)
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
         _fleet.set_sandbox_isolation(mode="non-main")
         driver = DocketDriver(backend_factory=_never_called)
@@ -1767,7 +1767,7 @@ class TestIsolationWiring:
         monkeypatch.setattr(
             _system,
             "sandbox_availability",
-            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
+            lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
         )
         rc = _setup_sandbox.isolate("on")
         capsys.readouterr()
@@ -1996,7 +1996,7 @@ class TestAllowCommandsWiring:
         monkeypatch.setattr(
             _system,
             "sandbox_availability",
-            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
+            lambda: SandboxAvailability(backend="landlock", docker=False, landlock=True),
         )
         _write_meta("shop-implementer")
         _write_meta("shop-lead", role="lead", turnTimeoutS="not-a-number", allowCommands="tox")

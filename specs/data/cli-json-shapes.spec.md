@@ -59,10 +59,9 @@ structural rules hold everywhere:
     "securityGates": {
       "toolCallGate": "always-on",
       "isolation": "string ('off (default)' | 'on' | 'off')",
-      "sandboxBackend": "string ('bwrap' | 'docker' | 'none')",
+      "sandboxBackend": "string ('landlock' | 'seatbelt' | 'docker' | 'none')",
       "dockerImageHasGit": "boolean | null (null unless the backend is docker and isolation is on; false when the DOCKET_SANDBOX_IMAGE probe finds no git or no local image)",
-      "network": "string ('open' | 'none'; the global mode)",
-      "unjailedMcpServers": "array of { name, pod } (empty array if none)"
+      "network": "string ('open' | 'none'; the global mode)"
     },
     "templateDrift": "array of { id, agentVersion, currentVersion, ok }"
   }
@@ -303,7 +302,7 @@ winning scope's skill is listed (P31-6, ADR 0013 §3 rule 8).
     "allowed": "array of built-in tool names, after role and pod denial",
     "denied":  [ { "name": "string", "scope": "built-in | global | pod" } ],
     "mcpServers": [
-      { "name": "string", "kind": "read | write", "scope": "global | pod", "isolate": "boolean (true = jailed, false = unjailed)" }
+      { "name": "string", "kind": "read | write", "scope": "global | pod" }
     ]
   },
   "policies": [
@@ -362,7 +361,7 @@ when a source is recorded, one `Config source:` line carrying the digest prefix 
   "pod update": {"items": [{"kind": "role|policy|plugin|skill|mcp-server|member|pipeline|setting", "name": "string", "action": "add|replace|skip", "note": "string"}]},
   "pod roles": "array of {name, source, scope, modelClass, gate, description}; with a NAME, the archetype's wire object plus \"source\"",
   "pod policies": "array of {id, hook, action, description}; with --plugins, {\"policies\": that array, \"plugins\": array of {name, scope, file, sha256}}; with an ID, the policy's own JSON",
-  "pod recipes": "array of {name, scope, brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers, unjailed_mcp_servers}; with a NAME, one such object plus \"readme\""
+  "pod recipes": "array of {name, scope, brings, directory, description, roles, policies, members, pipeline, plugins, skills, settings, mcp_servers}; with a NAME, one such object plus \"readme\""
 }
 ```
 

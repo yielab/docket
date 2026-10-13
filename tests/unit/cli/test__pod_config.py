@@ -287,7 +287,8 @@ class TestLibraries:
         listed = json.loads(_pod_run("recipes", "--json").output)
         assert any(r["name"] == "code-intel" for r in listed)
         shown = json.loads(_pod_run("recipes", "code-intel", "--json").output)
-        assert shown["unjailed_mcp_servers"] == ["ast-grep"]
+        assert "unjailed_mcp_servers" not in shown
+        assert shown["mcp_servers"] == ["ast-grep", "language-intel"]
 
     def test_an_unknown_recipe_fails(self) -> None:
         assert _pod_run("recipes", "no-such-recipe").exit_code == 1
@@ -327,18 +328,3 @@ class TestRecipeRows:
     def test_brings_joins_only_the_parts_present(self) -> None:
         assert _pod_config._brings(_summary()) == "nothing"
         assert _pod_config._brings(_summary(roles=2, mcp_servers=("a",))) == "roles+mcp-servers"
-
-    def test_the_json_row_names_the_servers_that_run_unjailed(self) -> None:
-        row = _pod_config._info_dict(
-            "code-intel",
-            "shipped",
-            "/r",
-            _summary(mcp_servers=("ast-grep", "lsp"), unjailed_mcp_servers=("ast-grep",)),
-        )
-        assert row["mcp_servers"] == ["ast-grep", "lsp"]
-        assert row["unjailed_mcp_servers"] == ["ast-grep"]
-
-    def test_the_shipped_code_intel_recipe_declares_ast_grep_unjailed(self) -> None:
-        summary = _pod_apply.summarize_recipe(_pod_apply.resolve_recipe("code-intel"))
-        row = _pod_config._info_dict("code-intel", "shipped", "", summary)
-        assert row["unjailed_mcp_servers"] == ["ast-grep"]

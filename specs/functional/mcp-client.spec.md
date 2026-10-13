@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -39,7 +39,7 @@ role that denies `write` gets zero tools from a mixed server exactly as before, 
 cannot verify an operator's `kind: read` assertion is true. Remote tool results use the same live
 `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved for every call so a small-context
 endpoint cannot be bypassed through MCP output.
-**Last Updated**: 2026-10-12
+**Last Updated**: 2026-10-13
 
 ## Purpose
 
@@ -318,15 +318,15 @@ This specification does NOT cover:
     **MUST** call `load_mcp_tools` exactly as before.
 40. When the turn is isolated (`launch.sandbox == "auto"`) a stdio server **MUST** start inside the
     turn's jail: `_stdio_params` wraps `command`+`args` with the resolved backend
-    (`bwrap_command_argv`/`docker_command_argv`, the roots, repository-dir mounts and network mode
-    `bash` gets), keeping the stdio pipes (bwrap passes them through; docker runs with `-i`).
-    With no usable backend it **MUST** raise, never start unjailed. A server declared
-    `isolate: false` (`McpServerConfig.isolate`, default `true`; `docket setup mcp add
-    --no-isolate`, audited with `isolate=no`, shown by `list`, `doctor`, `config explain`,
-    and `recipes show --json`) **MUST** start on the
-    host. With isolation off, or no `launch`, the argv **MUST** be the server's own, unchanged.
-    Under docker the server binary must exist in the image; `isolate: false` or bwrap is the
-    path for host-installed servers. HTTP servers are not affected.
+    (`landlock_command_argv`/`seatbelt_command_argv`/`docker_command_argv`, the roots,
+    repository-dir mounts and network mode `bash` gets), keeping the stdio pipes (landlock and
+    seatbelt pass them through; docker runs with `-i`). With no usable backend it **MUST** raise,
+    never start unjailed. There is no per-server opt-out: `McpServerConfig` and the
+    `kind: mcp-server` document have no `isolate` field, `docket setup mcp add` has no
+    `--no-isolate`, and an `isolate:` key in a document is an ordinary unknown-key error. With
+    isolation off, or no `launch`, the argv **MUST** be the server's own, unchanged. Under docker
+    (chosen with `docket setup sandbox backend docker`) the server binary must exist in the
+    image. HTTP servers are not affected.
 
 ### Untrusted tool results
 
@@ -435,8 +435,7 @@ unrelated call's connection state.
       "env": {},
       "timeout": 0.0,
       "kind": "write",
-      "tools": [],
-      "isolate": true
+      "tools": []
     }
   ]
 }
@@ -444,14 +443,14 @@ unrelated call's connection state.
 
 `timeout: 0.0` means "use `docket.config.MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped
 to `MCP_CLIENT_MAX_TIMEOUT_S`. `kind`/`tools` are optional on read (Requirement 32): a file written
-before P27-3 has neither key and loads as `kind="write", tools=[]`; a file without `isolate` loads as `true`.
+before P27-3 has neither key and loads as `kind="write", tools=[]`.
 
 ### CLI syntax (`cli/_setup_mcp.py`)
 
 ```
 docket setup mcp list
 docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
-    [--kind read|write] [--tools NAME,NAME,...] [--no-isolate] -- <command> [args...]
+    [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
 docket setup mcp remove <name>
 ```
 
@@ -614,6 +613,13 @@ dispatch_tool(
   never as an ordinary turn outcome.
 
 ## Changelog
+
+### Version 1.11.0 (2026-10-13)
+
+- Requirement 40: `isolate: false` is deleted (P41-3, ADR 0024 section 3): the field, the
+  `--no-isolate` flag, the `isolate=no` audit detail and the doctor, `config explain` and
+  `recipes show` fields that reported it are gone, with no alias or migration; the `bwrap`
+  wrapper is gone with the bwrap backend. A stdio server always starts in the turn's jail.
 
 ### Version 1.10.0 (2026-10-12)
 

@@ -1,6 +1,6 @@
 """Network lockdown for the exec jail: `gates network none|open`, the pod `network` setting.
 
-Pins: both argv builders cut the network only when asked (default argv unchanged); a real bwrap
+Pins: the argv builders cut the network only when asked (default argv unchanged); a real landlock
 jail under `none` cannot reach the network while `open` gets past the network namespace; the pod
 setting only ever narrows the global mode; `none` with isolation off refuses the turn before any
 model call. See specs/functional/security-gates.spec.md (Network egress, requirement 6).
@@ -28,9 +28,8 @@ from docket.edges.adapters.docket_runtime import DocketDriver
 
 SUBJECT = "docket.edges.adapters.system"
 
-BWRAP_UP = system.bwrap_available()
-needs_bwrap = pytest.mark.skipif(
-    not BWRAP_UP, reason="bwrap not installed, or this host disallows unprivileged user namespaces"
+needs_landlock = pytest.mark.skipif(
+    not system.landlock_available(), reason="landlock is not available on this host"
 )
 
 # Prints the errno name when the connect fails at the network layer; never needs a real peer.
@@ -51,14 +50,11 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestArgv:
-    def test_bwrap_default_shares_net(self, tmp_path: Path) -> None:
-        argv = system.bwrap_argv((tmp_path,), "true")
-        assert "--share-net" in argv
-
-    def test_bwrap_none_omits_share_net_but_keeps_unshare_all(self, tmp_path: Path) -> None:
-        argv = system.bwrap_argv((tmp_path,), "true", network=False)
-        assert "--share-net" not in argv
-        assert "--unshare-all" in argv
+    def test_landlock_default_is_open_and_none_is_explicit(self, tmp_path: Path) -> None:
+        open_argv = system.landlock_argv((tmp_path,), "true")
+        none_argv = system.landlock_argv((tmp_path,), "true", network=False)
+        assert open_argv[open_argv.index("--net") + 1] == "open"
+        assert none_argv[none_argv.index("--net") + 1] == "none"
 
     def test_docker_default_has_no_network_flag(self, tmp_path: Path) -> None:
         assert "--network" not in system.docker_run_argv("c", (tmp_path,), "true", None)
@@ -70,8 +66,8 @@ class TestArgv:
         assert i < argv.index("sh")
 
 
-@needs_bwrap
-class TestRealBwrap:
+@needs_landlock
+class TestRealLandlock:
     def _run(self, tmp_path: Path, network: bool) -> str:
         script = tmp_path / "probe.py"
         script.write_text(_PROBE)

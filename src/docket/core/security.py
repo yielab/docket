@@ -422,9 +422,9 @@ def apply_workspace_isolation() -> None:
 
     The Docker capability check at ``docket setup sandbox on`` time is the
     caller's responsibility. Writes fleet.json's isolation mode, read by
-    ``DocketDriver`` on every turn to decide real docker/bwrap containment
+    ``DocketDriver`` on every turn to decide real landlock, seatbelt or docker containment
     when a backend is usable, or an audited refusal instead of an
-    unsandboxed run when neither is.
+    unsandboxed run when none is.
     """
     _fleet.set_sandbox_isolation(mode="non-main")
 

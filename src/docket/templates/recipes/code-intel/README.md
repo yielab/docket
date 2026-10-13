@@ -7,7 +7,7 @@ runs until a turn loads them. Applying never installs the binaries below.
 
 | Server | Gives the agent | Declared | Needs on PATH |
 | --- | --- | --- | --- |
-| `ast-grep` | `find_code`, `find_code_by_rule`, `dump_syntax_tree`, `test_match_code_rule` | `access: read`; the server exposes exactly these four search tools and no write or rewrite tool | `uvx` and `ast-grep`; declared `isolate: false`, see below |
+| `ast-grep` | `find_code`, `find_code_by_rule`, `dump_syntax_tree`, `test_match_code_rule` | `access: read`; the server exposes exactly these four search tools and no write or rewrite tool | `uvx` and `ast-grep` |
 | `language-intel` | `definition`, `references`, `diagnostics`, `hover` | `access: read` with `tools:` restricted to those four, because the same server also offers `edit_file` and `rename_symbol`, which are never registered | `mcp-language-server` and `pyright-langserver` |
 
 ## Verified on 2026-10-04
@@ -30,12 +30,9 @@ Neither server was executed here; the checks are package metadata and source rea
 
 ## Isolation
 
-A turn starts stdio servers in the same jail as `bash`. `ast-grep` declares `isolate: false`
-because, measured 2026-10-05 through `system.bwrap_command_argv` with a warm cache, `uvx` fails
-there with `Could not acquire lock ... Read-only file system (os error 30)` on its cache under
-`~/.cache/uv`. Applying prints `ast-grep: runs unjailed (isolate: false)`; the server starts on the
-host with your user's rights: this is **host execution**, the pinned server code runs
-unsandboxed. `language-intel` stays jailed (its binary was not installed on the measuring host); if it cannot start in the jail, add `isolate: false` to its document.
+A turn starts stdio servers in the same jail as `bash`, and no server can opt out. If a server
+cannot start there (for example `uvx` needing a writable cache), the turn reports it; fix the
+server's launch command or cache location rather than leaving the jail.
 
 ## Make it yours
 

@@ -185,46 +185,6 @@ class TestDesktopNotificationsAvailable:
         assert _sys.desktop_notifications_available() is True
 
 
-class TestBwrapHidesDocketHome:
-    """The jail binds the host read-only, which would expose docket's own store (secrets,
-    sessions, traces of every pod); DOCKET_HOME is masked before the roots are bound."""
-
-    def test_the_argv_masks_docket_home_before_binding_the_roots(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from tests.conftest import repoint_docket_home
-
-        home = tmp_path / "home"
-        repoint_docket_home(monkeypatch, home)
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        assert "--tmpfs" not in _sys.bwrap_argv((ws,), "true")  # no home yet: nothing to hide
-        home.mkdir()
-        argv = _sys.bwrap_argv((ws,), "true")
-        assert "--tmpfs" in argv
-        mask = argv.index("--tmpfs")
-        assert argv[mask + 1] == str(home)
-        assert argv.index("--ro-bind") < mask < argv.index("--bind")
-
-    @pytest.mark.skipif(not _sys.bwrap_available(), reason="bwrap not usable here")
-    def test_a_jailed_command_cannot_read_the_secret_store(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from tests.conftest import repoint_docket_home
-
-        from docket.edges.adapters import toolbox
-
-        home = tmp_path / "home"
-        home.mkdir()
-        (home / "secrets.json").write_text('{"K": "SECRET-VALUE-0b3e7"}')
-        repoint_docket_home(monkeypatch, home)
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
-        out = toolbox.run_bash((ws,), f"cat {home / 'secrets.json'}; ls {home}", sandbox="auto")
-        assert "SECRET-VALUE-0b3e7" not in (out.content or "")
-
-
 # ── landlock backend ──────────────────────────────────────────────────────────
 
 
@@ -246,11 +206,10 @@ class TestLandlockBackend:
     ) -> None:
         monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
         monkeypatch.setattr(_sys, "landlock_available", lambda: True)
-        monkeypatch.setattr(_sys, "bwrap_available", lambda: True)
         monkeypatch.setattr(_sys, "docker_daemon_reachable", lambda: True)
-        assert _sys.sandbox_availability().backend == "landlock"
+        assert _sys.sandbox_availability("auto").backend == "landlock"
         monkeypatch.setattr(_sys, "landlock_available", lambda: False)
-        assert _sys.sandbox_availability().backend == "bwrap"
+        assert _sys.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
         assert _sys.sandbox_availability().backend == "landlock"
 
@@ -272,6 +231,51 @@ class TestLandlockBackend:
         monkeypatch.setattr(landlock, "abi_version", lambda: 5)
         monkeypatch.setenv("DOCKET_SANDBOX_PROBE", "none")
         assert _sys.landlock_available() is False
+
+
+class TestChosenBackend:
+    def _hosts(self, monkeypatch: pytest.MonkeyPatch, *, landlock: bool, docker: bool) -> None:
+        monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
+        monkeypatch.setattr(_sys, "landlock_available", lambda: landlock)
+        monkeypatch.setattr(_sys, "seatbelt_available", lambda: False)
+        monkeypatch.setattr(_sys, "docker_daemon_reachable", lambda: docker)
+
+    def test_auto_never_picks_docker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._hosts(monkeypatch, landlock=False, docker=True)
+        availability = _sys.sandbox_availability("auto")
+        assert availability.backend == "none"
+        assert availability.docker is False
+
+    def test_docker_choice_uses_docker_even_where_landlock_works(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._hosts(monkeypatch, landlock=True, docker=True)
+        assert _sys.sandbox_availability("docker").backend == "docker"
+
+    def test_docker_choice_with_no_daemon_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._hosts(monkeypatch, landlock=True, docker=False)
+        assert _sys.sandbox_availability("docker").backend == "none"
+
+    def test_the_recorded_fleet_choice_is_read_when_none_is_passed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import fleet
+
+        self._hosts(monkeypatch, landlock=True, docker=True)
+        assert _sys.sandbox_availability().backend == "landlock"
+        fleet.set_sandbox_backend("docker")
+        assert _sys.sandbox_availability().backend == "docker"
+
+    def test_the_env_override_still_forces_a_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._hosts(monkeypatch, landlock=False, docker=False)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        assert _sys.sandbox_availability("auto").backend == "landlock"
+
+    def test_bwrap_is_no_longer_a_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._hosts(monkeypatch, landlock=False, docker=False)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
+        assert _sys.sandbox_availability("auto").backend == "none"
+        assert not hasattr(_sys, "bwrap_argv")
 
 
 class TestTaskEnvironmentCacheDir:
@@ -478,12 +482,12 @@ class TestSeatbeltBackend:
         monkeypatch.delenv("DOCKET_SANDBOX_PROBE", raising=False)
         monkeypatch.setattr(_sys.sys, "platform", "darwin")
         monkeypatch.setattr(_sys.os.path, "exists", lambda p: p == "/usr/bin/sandbox-exec")
-        monkeypatch.setattr(_sys, "bwrap_available", lambda: False)
+        monkeypatch.setattr(_sys, "landlock_available", lambda: False)
         monkeypatch.setattr(_sys, "docker_daemon_reachable", lambda: True)
-        availability = _sys.sandbox_availability()
+        availability = _sys.sandbox_availability("auto")
         assert availability.backend == "seatbelt"
         assert availability.landlock is False
         monkeypatch.setattr(_sys.os.path, "exists", lambda p: False)
-        assert _sys.sandbox_availability().backend == "docker"
+        assert _sys.sandbox_availability("auto").backend == "none"
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "seatbelt")
         assert _sys.sandbox_availability().backend == "seatbelt"

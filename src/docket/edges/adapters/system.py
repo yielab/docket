@@ -1,4 +1,4 @@
-"""System adapter: typed wrappers over docker, bwrap, sandbox-exec, and git.
+"""System adapter: typed wrappers over docker, sandbox-exec, and git.
 
 Every shell-out to a container runtime, sandbox tool, or git lives here. Every subprocess call
 catches FileNotFoundError / TimeoutExpired / OSError and degrades gracefully so a missing binary
@@ -133,7 +133,7 @@ def docker_available() -> bool:
 # module never decides, only detects and constructs, matching the existing
 # split with `core.security`'s classifier.
 
-SandboxBackend = Literal["landlock", "seatbelt", "docker", "bwrap", "none"]
+SandboxBackend = Literal["landlock", "seatbelt", "docker", "none"]
 
 # Detection probes must be fast (they run on every "auto" call) and must
 # never hang a tool call over a jail that turns out to be unusable.
@@ -178,73 +178,45 @@ def seatbelt_available() -> bool:
     return sys.platform == "darwin" and os.path.exists(_SANDBOX_EXEC)
 
 
-def bwrap_available() -> bool:
-    """True if bwrap is on PATH AND can actually build a sandbox right now. The binary alone is not
-    enough: disabled unprivileged user namespaces (hardened hosts, some containerized CI) make bwrap
-    fail at its first real invocation despite being installed -- this runs a real smoke test, not `which`."""
-    if not _which("bwrap"):
-        return False
-    try:
-        result = subprocess.run(
-            [
-                "bwrap",
-                "--unshare-all",
-                "--die-with-parent",
-                "--ro-bind",
-                "/",
-                "/",
-                "--",
-                "/bin/true",
-            ],
-            capture_output=True,
-            timeout=_SANDBOX_PROBE_TIMEOUT,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
-
-
 @dataclass(frozen=True)
 class SandboxAvailability:
-    """One probe of both backends: the strongest usable one, plus the raw per-backend result
-    explaining why not. Answers "is a jail available", never "did this command run in one" -- see
-    ``specs/functional/security-gates.spec.md``'s capability-reporting rule."""
+    """One probe of the backends: the usable one, plus the raw per-backend result explaining why
+    not. Answers "is a jail available", never "did this command run in one" -- see
+    ``specs/functional/security-gates.spec.md``'s capability-reporting rule. ``docker`` is probed
+    only when the operator chose it."""
 
     backend: SandboxBackend
     docker: bool
-    bwrap: bool
     landlock: bool = False
     seatbelt: bool = False
 
 
-def sandbox_availability() -> SandboxAvailability:
-    """Probe the backends once; report the first usable one: landlock (kernel ABI probe)
-    beats seatbelt (macOS sandbox-exec) beats bwrap (smoke test passes) beats docker (daemon reachable) beats none.
-    `DOCKET_SANDBOX_BACKEND` overrides this for tests or an operator."""
+def sandbox_availability(choice: str | None = None) -> SandboxAvailability:
+    """Probe the backends once. ``auto`` (the recorded default) is landlock on Linux or seatbelt on
+    macOS, nothing else; ``docker`` is docker only, and is the one case docker is probed. *choice*
+    defaults to the fleet's recorded ``sandboxBackend``. ``DOCKET_SANDBOX_BACKEND`` forces a
+    backend for tests or an operator."""
+    if choice is None:
+        from docket.core import fleet as _fleet
+
+        choice = _fleet.get_sandbox_backend()
+    override = os.environ.get("DOCKET_SANDBOX_BACKEND")
     landlock_ok = landlock_available()
     seatbelt_ok = seatbelt_available()
-    docker_ok = docker_daemon_reachable()
-    bwrap_ok = bwrap_available()
-    override = os.environ.get("DOCKET_SANDBOX_BACKEND")
+    docker_ok = (choice == "docker" or override == "docker") and docker_daemon_reachable()
     backend: SandboxBackend
-    if override in ("landlock", "seatbelt", "docker", "bwrap", "none"):
+    if override in ("landlock", "seatbelt", "docker", "none"):
         backend = override  # type: ignore[assignment]
+    elif choice == "docker":
+        backend = "docker" if docker_ok else "none"
     elif landlock_ok:
         backend = "landlock"
     elif seatbelt_ok:
         backend = "seatbelt"
-    elif bwrap_ok:
-        backend = "bwrap"
-    elif docker_ok:
-        backend = "docker"
     else:
         backend = "none"
     return SandboxAvailability(
-        backend=backend,
-        docker=docker_ok,
-        bwrap=bwrap_ok,
-        landlock=landlock_ok,
-        seatbelt=seatbelt_ok,
+        backend=backend, docker=docker_ok, landlock=landlock_ok, seatbelt=seatbelt_ok
     )
 
 
@@ -378,17 +350,6 @@ def _mount_dirs(roots: tuple[Path, ...]) -> tuple[list[str], list[str]]:
     return rw, ro
 
 
-def bwrap_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
-    """Build the bwrap argv that jails *command* to *roots*: host filesystem
-    read-only except *roots* (read-write on top), the same "contain to known
-    roots" shape `toolbox.resolve_within` uses for file tools. `--unshare-all`
-    isolates pid/ipc/uts/mount, so killing this call's process group cannot
-    leave a namespace orphan (Linux tears the pid namespace down with it).
-    Network stays shared unless *network* is False, which leaves the fresh network namespace
-    ``--unshare-all`` made empty -- see ``specs/functional/security-gates.spec.md``."""
-    return [*_bwrap_prefix(roots, network), "/bin/sh", "-c", command]
-
-
 def landlock_argv(roots: tuple[Path, ...], command: str, network: bool = True) -> list[str]:
     """The argv running *command* under ``python -m docket.jail``: the roots (and their repository
     dirs) read-write, nothing else of the host writable, the home unreadable. The first root is the cwd."""
@@ -468,11 +429,6 @@ def _landlock_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
     return [*argv, "--net", "open" if network else "none", "--"]
 
 
-def bwrap_command_argv(roots: tuple[Path, ...], argv: list[str], network: bool = True) -> list[str]:
-    """The same jail as :func:`bwrap_argv`, running *argv* directly (no shell), stdio passed through."""
-    return [*_bwrap_prefix(roots, network), *argv]
-
-
 _GIT_IDENTITY_VARS = (
     "GIT_AUTHOR_NAME",
     "GIT_AUTHOR_EMAIL",
@@ -506,36 +462,6 @@ def git_identity_env(root: Path) -> dict[str, str]:
         if var not in found and value:
             found[var] = value
     return found
-
-
-def _bwrap_prefix(roots: tuple[Path, ...], network: bool) -> list[str]:
-    argv = [
-        "bwrap",
-        "--unshare-all",
-        *(["--share-net"] if network else []),
-        "--die-with-parent",
-        "--ro-bind",
-        "/",
-        "/",
-        "--proc",
-        "/proc",
-        "--dev",
-        "/dev",
-    ]
-    if _cfg.DOCKET_HOME.is_dir():
-        # The host is bound read-only above, which would hand the jail docket's own store:
-        # secrets.json, every pod's sessions and traces, the audit log. Mask it; the roots
-        # bound below sit on top, so a task worktree under DOCKET_HOME stays reachable. A
-        # home that does not exist yet has nothing to hide, and bwrap could not create the
-        # mount point under the read-only root anyway.
-        argv += ["--tmpfs", str(_cfg.DOCKET_HOME)]
-    rw, ro = _mount_dirs(roots)
-    for resolved in rw:
-        argv += ["--bind", resolved, resolved]
-    for guarded in ro:
-        argv += ["--ro-bind", guarded, guarded]
-    argv.append("--")
-    return argv
 
 
 def docker_run_argv(
@@ -722,8 +648,6 @@ def jail_launch(
     if backend == "docker":
         name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
         return JailLaunch(docker_run_argv(name, all_roots, command, merged, network), None, name)
-    if backend == "bwrap":
-        return JailLaunch(bwrap_argv(all_roots, command, network), jailed_env(merged))
     if backend == "landlock":
         return JailLaunch(landlock_argv(all_roots, command, network), jailed_env(merged))
     if backend == "seatbelt":

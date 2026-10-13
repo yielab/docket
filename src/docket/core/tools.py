@@ -985,8 +985,8 @@ def builtin_registry() -> ToolRegistry:
                 "Run a shell command in the workspace. Commands are classified before they "
                 "run; anything off the allowlist or matching a high-risk action class "
                 "requires human approval. If sandboxing is enabled for this agent, an "
-                "approved command additionally runs inside the strongest exec jail (a "
-                "container or bwrap) available on the host; otherwise it runs directly in "
+                "approved command additionally runs inside the strongest exec jail (landlock, "
+                "seatbelt or docker) available on the host; otherwise it runs directly in "
                 "the workspace."
             ),
             parameters={
