@@ -228,3 +228,40 @@ jailed agent there can still `git update-ref refs/heads/main <sha>` or write a t
    in the image — see how existing docker rows skip): jailed `git update-ref refs/heads/main`
    and `refs/tags/x` fail; a commit on the task's own branch succeeds. Seatbelt rows the same
    way, skipped off darwin (they run in macOS CI). RED on the base for the docker main/tag rows.
+
+## Fifth batch — W108-9 (base: the commit that adds this section)
+
+Found by the Wave 108 close's live run (2026-10-13): a jailed `docket exec` in a linked worktree
+created `refs/heads/master` in its repository because the repository lived under `/tmp`, and
+`touch /tmp/<anything>` succeeds inside the Landlock jail. `landlock.plan_ruleset` grants every
+right on `tempfile.gettempdir()` (the shared `/tmp` on Linux), and `seatbelt_profile` grants the
+real `$TMPDIR`. The escape matrix knows (its `arena` fixture refuses a scratch dir under a temp
+dir) but no user doc says the jail can write anywhere under the shared temp dir, and the promise
+is "only the workspace and the task worktree are writable".
+
+Same §0 rules. Owns `edges/adapters/landlock.py::plan_ruleset`, `edges/adapters/system.py`
+(`jail_launch`, `seatbelt_profile`, `cache_environment` or a sibling helper, `jailed_env`),
+`tests/unit/edges/adapters/test_landlock.py`, `test_system.py`, and escape-matrix rows. Spec:
+`security-gates.spec.md` 0.54.0.
+
+## W108-9 — every jailed launch gets a private temp dir, not the shared one (Sonnet)
+
+1. `jail_launch` gives each launch a private temp dir: under the jail's cache dir when there is
+   one (`<cache_dir>/tmp`, created 0700, reused across runs like the cache), else under
+   `DOCKET_HOME` (e.g. `<DOCKET_HOME>/jail-tmp/<short hash of the first root>`, 0700). It is
+   granted read-write like `extra_rw` and exported as `TMPDIR`, `TMP` and `TEMP` in the jailed
+   env (Landlock and Seatbelt; Docker already has the container's own `/tmp` — leave Docker
+   alone, but say so in the spec).
+2. Remove the `tempfile.gettempdir()` grant from `landlock.plan_ruleset` and the `$TMPDIR` grant
+   from `seatbelt_profile`. Keep `/dev/null`, `/dev/tty` etc.
+3. Every other jailed launcher (stdio MCP servers via `mcp_client._jailed_command`, verify and
+   `run:` steps through `run_command`'s `JailPolicy`) must get the same private dir — find each
+   path that reaches `landlock_argv`/`seatbelt_argv`/`*_command_argv` and make sure none relies
+   on the shared temp grant (python's `tempfile`, uv, pip and pytest honour `TMPDIR`).
+4. Tests: unit — the plan no longer contains the system temp dir; jail_launch's env carries
+   `TMPDIR` pointing at a granted 0700 dir. Escape matrix (Landlock really runs here): a row that
+   writes `/tmp/<uuid>` (or `tempfile.gettempdir()`) from the jail fails, and a row that writes
+   `$TMPDIR/x` succeeds. RED on the base for the first row. Run the full suite AND
+   `scripts/maint/pytest-without-sandbox.sh -q`; jailed tests that wrote to `/tmp` directly will
+   now fail — fix the test if it assumed the shared grant, never re-add the grant.
+5. List every doc sentence that says `$TMPDIR` is writable in the jail as file:line.
