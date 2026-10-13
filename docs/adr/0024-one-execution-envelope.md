@@ -85,3 +85,10 @@ sentences in the same commit. The residual risks are stated rather than hidden: 
 docket itself running as the user, merged code still needing human review, and `sandbox-exec`'s
 deprecated status on macOS (shared with Claude Code and Codex). A release gate (P41-8) runs an
 escape matrix on real backends so the envelope's claims are measured, not read.
+
+**Closed by Waves 100–103 (2026-10-12/13).** All eight cards shipped. Two findings the decisions
+above did not foresee: Landlock has no read-only sub-path, so the jail grants a repository's
+`objects`, `refs` and `logs` (and a linked worktree's own git dir) instead of the git dir, and
+refuses a root that holds a `.git` directory (use a worktree, or choose docker); and host-side
+git in a task worktree names the git dirs docket recorded instead of reading the agent-writable
+`.git` file. Seatbelt is pinned by unit tests and runs live only in the macOS CI job.

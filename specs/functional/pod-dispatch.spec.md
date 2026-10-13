@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.40.0
+**Version**: 6.40.1
 **Status**: Complete. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
 (cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
 and `HopResult.evidence` (real commit/baseCommit/diffStat from `_implementer_diff_probe`, each
@@ -1677,8 +1677,11 @@ any CLI rendering of this evidence.*
 2. At claim (`_claim_next_task`), for a task with no `worktree` recorded, a pod whose Implementer
    has a `codebase` and is not `inPlace` **MUST** get `<Implementer workspace>/tasks/<taskId>`
    created on a new branch `docket/<project>/<taskId>` from the codebase's HEAD, and **MUST**
-   record `task["worktree"] = {dir, branch, baseCommit}` through the task-list writer
-   (`edges/store.py`); `baseCommit` is the new worktree's HEAD, the creation commit.
+   record `task["worktree"] = {dir, branch, baseCommit, gitDir, commonDir}` through the task-list
+   writer (`edges/store.py`); `baseCommit` is the new worktree's HEAD, the creation commit;
+   `gitDir`/`commonDir` are the worktree's git dirs as git reported them at creation. Resolving
+   the task's worktree registers them (`system.trust_worktree`), so host-side git in it names
+   them explicitly and never reads the agent-writable `.git` file (security-gates 0.48.0).
 3. Every hop, verify gate and `when`/command cwd of that task **MUST** resolve to that directory.
    A task that already records a worktree (parked `waiting_input`/`waiting_approval`, resumed, or
    retried) **MUST** reuse it; claim never creates a second one.
@@ -2127,6 +2130,10 @@ run is needed to observe this; a later `docket run` — with or without `--resum
   run against current state.
 
 ## Changelog
+
+### Version 6.40.1 (2026-10-13)
+
+- "Task worktrees" item 2: the worktree record carries `gitDir` and `commonDir`, registered for host-side git (P41-8).
 
 ### Version 6.40.0 (2026-10-13)
 

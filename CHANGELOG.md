@@ -80,6 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Wave 103: the Landlock jail keeps git hooks and config read-only (P41-8).** It granted a
+  repository's whole git dir, so an isolated agent on Linux could write `.git/hooks` or
+  `.git/config` and the operator's next git command would run it. The jail now grants only
+  `objects`, `refs` and `logs` (and a linked worktree's own git dir), and refuses a root that
+  holds a `.git` directory (exit 125, nothing run; use a worktree or `docket setup sandbox backend
+  docker`). Host-side git in a task worktree names the git dirs docket recorded and never reads
+  the worktree's `.git` file. `tests/integration/test_escape_matrix.py` runs every escape row on
+  each available backend and gates release on Linux and macOS.
+
 - **Wave 100: a sandboxed `bash` call with no usable backend runs nothing.** It used to fall
   back to the host with a `[sandbox: none]` marker; since the gate now allows off-allowlist
   binaries on the promise of a jail, it returns `not run: no sandbox backend is usable`.

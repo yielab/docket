@@ -13078,3 +13078,190 @@ SHA-pin the actions; replace the developer home path in those two files with a p
 CI jobs carry `--locked` and SHA-pinned actions; the scrub grep from the public-repo-privacy memory finds no developer home path in a tracked file.
 Oracle: the commands above and the scrub grep from the privacy memory.
 
+## ☑ PHASE 41 COMPLETE — one execution envelope (D-60, ADR 0024): eight cards over Waves 100–103, closed 2026-10-13
+
+> **Opened 2026-10-12; sub-waves A (P41-1, P41-6), B (P41-5, P41-4, P41-2) and C (P41-3,
+> P41-7) closed in Waves 100–102.** `system.jail_launch` is the one jail builder (`bash`, verify,
+> `run:`) and takes the pod cache dir as a rw root. bwrap and `isolate` are gone; Docker only when
+> chosen (`setup sandbox backend docker`). **Open, measured at the Wave 102 close:** with bwrap
+> gone, the Landlock jail is Linux's only automatic backend and it grants the whole git dir
+> read-write (`_mount_dirs`), so an isolated agent can write `.git/hooks`/`config`; P41-8 owns
+> the RED row and the fix. `docket exec` has no pod, so its jailed commands get no cache dir.
+> The maintainer's 2026-10-12 decisions (ADR 0024): one jail for
+> everything the project runs, Landlock + seccomp on Linux, Seatbelt on macOS, Docker when
+> chosen, bwrap and `isolate: false` deleted, the gate lenient inside the envelope and strict
+> outside, sandbox off by default and visible, network `none` by default. A coordinator activates
+> each sub-wave with the `ACTIVE BOARD` banner and a base commit.
+>
+> **Sub-waves, by contention on `edges/adapters/system.py`:** **A** P41-1 ∥ P41-6 ·
+> **B** (on A's rollup) P41-2 ∥ P41-4 ∥ P41-5 · **C** P41-3 ∥ P41-7 · **D** P41-8. Each worker
+> owns its card's files plus its owning spec section; `README.md`, `docs/SECURITY-SIMPLE.md`,
+> the quick start, CLAUDE.md's limits and this board are the integrator's, rewritten as each
+> card merges (D-37).
+
+### P41-1 — a Landlock + seccomp jail for Linux
+
+**Status:** DONE (2026-10-12, merge `65857797`) · **Size:** L · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
+
+**Trigger (D-60):** bwrap is a system package that needs user namespaces (absent in most CI
+containers) and its profile `--ro-bind / /` lets the agent read the whole disk.
+
+**Goal:** `src/docket/jail.py`, an entry run as `python -m docket.jail --rw <dir>... --ro
+<dir>... --net none|open -- <argv...>`: sets `PR_SET_NO_NEW_PRIVS`, builds a Landlock ruleset
+(ABI probed; rw: the given roots and `$TMPDIR`; ro: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`,
+`/etc`, `/opt`, `sys.prefix`, `/dev/null|zero|urandom|tty`; nothing else, so the home is
+denied), adds Landlock TCP rules when ABI >= 4, installs a seccomp BPF filter (via `prctl`,
+no libseccomp) that denies `socket(AF_INET|AF_INET6)` when `--net none`, then `execvp`s.
+`edges/adapters/landlock.py` holds the `ctypes` layer (`landlock_create_ruleset`,
+`landlock_add_rule` with `O_PATH` fds, `landlock_restrict_self`, the BPF program).
+`edges/adapters/system.py` gains `landlock_available()` (ABI version probe) and
+`landlock_argv(roots, command, network)`; `sandbox_availability` prefers `landlock` over
+`bwrap` and `docker`; `DOCKET_SANDBOX_BACKEND=landlock` is accepted. bwrap stays until P41-3.
+
+**Non-goals:** deleting bwrap (P41-3); jailing verify/`run:` (P41-4); the cache dir (P41-5);
+macOS (P41-2).
+
+**Acceptance:** RED (integration, real kernel, skip when ABI < 1) — on the base a subprocess
+under the only Linux backend reads a seeded file under a fake home. GREEN — under
+`python -m docket.jail --rw <root> --net none -- python3 -c ...`: reading that file raises
+`PermissionError`, writing outside the root raises, writing inside works, `socket.connect` to a
+local listener fails; `--net open` connects. Unit: argv and ruleset construction, no syscalls.
+Oracle: the child's exit code and captured errors. Note: this host runs kernel 6.14.
+
+### P41-2 — a Seatbelt backend for macOS
+
+**Status:** DONE (2026-10-13, merge `9dfca1e3`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md ("Exec sandbox")
+
+**Trigger (D-60):** on macOS the only backend is Docker Desktop, which most operators do not
+run; Claude Code and Codex use the OS's `sandbox-exec`.
+
+**Goal:** `system.py::seatbelt_available()` (darwin and `/usr/bin/sandbox-exec` exists) and
+`seatbelt_argv(roots, command, network)`: `sandbox-exec -p <profile> /bin/sh -c <command>` with
+one fixed profile template: `(version 1) (deny default) (allow process-exec* process-fork
+sysctl-read mach-lookup ...)`, `(allow file-read* (subpath "/usr") ...)` for the system paths
+P41-1 lists, `(allow file-read* file-write* (subpath "<root>"))` per root and `$TMPDIR`,
+`(deny network*)` or `(allow network*)`. `sandbox_availability` prefers it on darwin. The
+deprecation of `sandbox-exec` is noted in the module docstring.
+
+**Acceptance:** unit — the profile text for two roots and both network modes, byte-exact; the
+backend order on a monkeypatched darwin platform. The live run is P41-8's macOS CI job; this
+card cannot run it on Linux and says so.
+
+### P41-3 — delete bwrap and `isolate: false`; Docker is a chosen backend
+
+**Status:** DONE (2026-10-13, merge `e3a2ae7d`) · **Size:** S · **Model:** Haiku · **Spec:** mcp-client.spec.md (requirement 40 deleted), security-gates.spec.md
+
+**Goal:** delete `_bwrap_prefix`, `bwrap_argv`, `bwrap_available`, the `bwrap` backend value
+and its tests; delete the `isolate` field from `kind: mcp-server` documents (schema regenerated
+by `scripts/gen_operator_schemas.py`, `code-intel`'s `ast-grep.yaml` and README, recipe docs
+regenerated), its loader branch in `core/mcp_tools.py` and `mcp_client.py`; Docker is used only
+when `docket setup sandbox backend docker` was set (fleet.json key read by
+`sandbox_availability`; `auto` means landlock/seatbelt). `scripts/maint/pytest-without-sandbox.sh`
+exports `DOCKET_SANDBOX_PROBE=none`, a variable only the availability probe reads and no
+fixture touches, instead of stripping binaries from `PATH`. `CHANGELOG.md` line in the return.
+
+**Acceptance:** `rg -n 'bwrap|isolate' src tests docs specs` finds only the CHANGELOG and
+`docs/cycles-ended/`; the no-backend script passes; with `backend docker` unset and Docker
+running, a turn uses landlock.
+
+### P41-4 — verify, `run:` steps and MCP servers run inside the envelope
+
+**Status:** DONE (2026-10-13, merge `e51fabd2`) · **Size:** M · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (verify gate), security-gates.spec.md ("Credentials in task processes")
+
+**Trigger (D-60, measured 2026-10-12):** `core/dispatch.py` calls `system.run_verify_cmd` on
+the host, so a test file the agent writes runs with the operator's rights even with the sandbox
+on; `run:` steps and stdio MCP servers likewise.
+
+**Goal:** `run_verify_cmd` and the `run:` executor take the same jail decision `toolbox.run_bash`
+takes (`sandbox_availability` + the isolation flag + the pod's network) and wrap the command with
+the backend argv, cwd the task worktree; stdio MCP servers always start jailed. With the sandbox
+off: unchanged. The classification of the verify command (`classify_command` fail-closed) stays.
+
+**Acceptance:** RED — with `DOCKET_SANDBOX_BACKEND=landlock` and isolation on, a `verifyCmd`
+that writes a file outside the worktree succeeds on the base. GREEN — it fails and the task
+ends `verification_failed`; a `run:` step the same; a verify that writes inside passes; sandbox
+off still runs on the host. Oracle: the file outside not existing, the task record, in an
+isolated home (integration lane).
+
+### P41-5 — a per-pod cache directory and a hidden home
+
+**Status:** DONE (2026-10-13, merge `81e6cc41`) · **Size:** S · **Model:** Sonnet · **Spec:** pod-dispatch.spec.md (task environment)
+
+**Trigger (D-60):** `isolate: false` existed because `uv`'s cache under the home was read-only
+in the jail; with the home denied, every tool that writes `~/.cache`, `~/.npm` breaks.
+
+**Goal:** provisioning creates `<lead workspace>/cache/` (0700); `system.task_environment` sets,
+for a jailed command, `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `UV_CACHE_DIR`,
+`PIP_CACHE_DIR`, `npm_config_cache` to it, and the jail gets that directory as a rw root.
+Git identity keeps coming from the `GIT_*` variables dispatch already sets (the existing
+"commits with the operator's identity" tests must stay green).
+
+**Acceptance:** RED — a jailed `uv --version`-style command that writes its cache fails on the
+base with the home denied. GREEN — it writes under the pod cache; the env carries the six
+variables; the cache dir is 0700. Oracle: files under the cache dir, `oct(mode)`.
+
+### P41-6 — the gate rule: allowed inside the envelope, the allowlist outside; network `none`
+
+**Status:** DONE (2026-10-12, merge `0a238f7a`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Tool-approval gates item 1, Network egress)
+
+**Trigger (D-60 §2):** inside a jail the allowlist only produces approval noise (`bash -c`,
+`curl`), while high-risk classes are the real question; and `network: open` by default lets a
+jailed agent exfiltrate the repository's own secrets.
+
+**Goal:** `classify_command(..., jailed: bool = False)`: when jailed, a binary off the allowlist
+is `allow` unless a high-risk class matches (still `ask`) or the command is not statically
+analysable (still `ask`); `core/tools.py::evaluate_tool_call` passes `jailed` from the turn's
+sandbox decision. `core/pod.py` network default and `fleet.get_network_mode` default become
+`none`; `effective_network` unchanged (narrowing only). `docket setup sandbox` prints the
+network mode's new default.
+
+**Acceptance:** RED — `curl https://x` jailed is `ask` on the base; a fresh home reports
+`network open`. GREEN — jailed `curl` is `allow`, unjailed `ask`, jailed `git push origin
+production` `ask`, jailed `$(...)` `ask`; a fresh home reports `network none`. Goldens that
+print the network mode recaptured with the diff explained. Oracle: `classify_command` verdicts;
+`setup sandbox --json`.
+
+### P41-7 — the sandbox is visible: probe, platform lines, backend choice
+
+**Status:** DONE (2026-10-13, merge `b90a03b5`) · **Size:** M · **Model:** Sonnet · **Spec:** cli-interface.spec.md (`init`, `status`, `setup sandbox`), cli-json-shapes.spec.md (`status --json` if a field changes)
+
+**Trigger (D-60 §4-5):** `docket init` says nothing about the sandbox; only `status` has an
+`Isolation:` line; nobody installing learns whether a backend exists or what to install.
+
+**Goal:** `docket setup sandbox` (and `--json`) reports per platform: backend found (`landlock
+(kernel 6.14)`, `seatbelt`, `docker`), or what is missing (`Linux: a kernel with Landlock
+(>= 5.13)`; `Windows: use WSL2; native runs without a sandbox`); `docket setup sandbox backend
+auto|docker`; `init` ends with a `This machine / Sandbox` line (`off. The agent's commands run
+with your user's permissions. Turn it on: docket setup sandbox on`, or `on (landlock)`), `status`
+opens with it, `doctor` counts a home with pods and no backend as an issue; `install.sh` prints
+the probe's one line. Copy per ADR 0024 §4-5.
+
+**Acceptance:** RED — `init` output on the base has no sandbox line. GREEN — the line in each
+state (monkeypatched availability); `setup sandbox backend docker` persists and the probe
+honours it; goldens (`status`, `setup sandbox`) recaptured with the diff explained. Oracle:
+captured output, fleet.json.
+
+### P41-8 — the escape matrix as a release gate
+
+**Status:** DONE (2026-10-13, merge `97ba6191`) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Validation)
+
+**Goal:** `tests/integration/test_escape_matrix.py` (SUBJECT `docket.jail`), parametrized over
+the backends available on the host (landlock; docker when the daemon answers; seatbelt on
+darwin): read a seeded `~/.ssh/id` under a fake home, write outside the roots, write
+`.git/hooks/pre-commit` in the worktree, connect to a local listener under `network none`, read
+`/proc/<ppid>/environ` with a seeded key, a `verifyCmd` that writes outside the worktree; every
+row must fail, and one positive row (write inside the root) proves the jail was on. The macOS
+CI job (`release-journey`, macos-latest) runs it; `ci.yml` is in this card's files.
+
+**Acceptance:** the matrix passes on this host (landlock, docker) and in the macOS job;
+security-gates "Validation" lists the rows. Oracle: pytest on each backend.
+
+**Added at the Wave 100 close (P41-1's finding):** Landlock cannot make a sub-path of a writable
+root read-only, so the jail has no `.git/hooks`/`config` overlay. In a task worktree `.git` is a
+*file* pointing at the gitdir, and the hooks live outside the root; but the agent can rewrite that
+file to point at a gitdir it controls (with `core.hooksPath` set), and docket runs `git` on the
+host in that worktree after the hop. Add the row "replace the worktree's `.git` file, then let
+dispatch's host-side git run": it must not execute anything the agent wrote. If it fails, the fix
+is in this card: host-side git calls in a task worktree pass the gitdir docket recorded
+(`--git-dir`/`--work-tree`) and never read the worktree's `.git` file.
+
