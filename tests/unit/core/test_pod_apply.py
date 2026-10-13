@@ -199,3 +199,63 @@ class TestRecipeExporters:
             _pod_apply.plan_apply(project, recipe_dir)
 
         assert pod.PodSettings.load_for(project).exporters == ()
+
+
+def _repo_dir(tmp_path: Path, files: dict[str, str]) -> Path:
+    root = tmp_path / "dotdocket"
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    return root
+
+
+class TestClassifyDirectory:
+    """A directory splits into adds and what runs on this machine."""
+
+    def test_a_run_step_and_an_mcp_server_are_run_items(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {
+                "pipeline.yaml": "name: p\nsteps:\n  - id: migrate\n    run: sh scripts/migrate.sh\n",
+                "mcp-servers/db.yaml": "kind: mcp-server\nname: db\ncommand: npx\nargs: [-y, '@acme/db-mcp@1.4.2']\n",
+                "pod.yaml": "settings:\n  network: open\n  allowCommands: [make]\n",
+            },
+        )
+        review = _pod_apply.classify_directory(root)
+        got = {(i.kind, i.name, i.runs) for i in review.runs}
+        assert ("pipeline-step", "migrate", "sh scripts/migrate.sh") in got
+        assert ("mcp-server", "db", "npx -y @acme/db-mcp@1.4.2") in got
+        assert ("allow-commands", "allowCommands", "make") in got
+        assert ("network", "network", "open") in got
+
+    def test_policies_and_restricting_roles_are_adds_only(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {
+                "policies/no-secrets.json": "{}",
+                "roles/api-reviewer.yaml": "kind: role\nname: api-reviewer\ncannot: [write]\n",
+            },
+        )
+        review = _pod_apply.classify_directory(root)
+        assert review.runs == ()
+        assert ("policy", "no-secrets") in review.adds and ("role", "api-reviewer") in review.adds
+
+    def test_a_role_that_drops_a_builtin_denial_is_a_run_item(self, tmp_path: Path) -> None:
+        root = _repo_dir(
+            tmp_path,
+            {
+                "roles/reviewer.yaml": "kind: role\nname: reviewer\nmodel: cheap\ndescription: x\n",
+                "roles/reviewer.md": "Review.",
+            },
+        )
+        review = _pod_apply.classify_directory(root)
+        assert [(i.kind, i.name) for i in review.runs] == [("role-loosens", "reviewer")]
+
+    def test_a_shell_in_allow_commands_is_refused(self, tmp_path: Path) -> None:
+        root = _repo_dir(tmp_path, {"pod.yaml": "settings:\n  allowCommands: [bash, make]\n"})
+        assert _pod_apply.classify_directory(root).refused == ("bash",)
+
+    def test_shipped_recipes_are_exempt_and_other_directories_are_not(self, tmp_path: Path) -> None:
+        shipped = next(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
+        assert _pod_apply.is_shipped_recipe(shipped)
+        assert not _pod_apply.is_shipped_recipe(tmp_path)

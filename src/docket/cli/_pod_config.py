@@ -73,6 +73,41 @@ def render_apply_header(project: str, directory: Path, summary: _pod_apply.Recip
     ui.console.print(f"  {escape(summary.render())}")
 
 
+_RUN_LABELS = {
+    "pipeline-step": 'pipeline step "{}"',
+    "mcp-server": 'MCP server "{}"',
+    "plugin": 'plugin "{}"',
+    "allow-commands": "allowed commands",
+    "network": "network",
+    "role-loosens": 'role "{}"',
+    "verify": 'verify command "{}"',
+}
+
+
+def run_item_label(item: _pod_apply.RunItem) -> str:
+    """The console label of one run-on-this-machine item."""
+    return _RUN_LABELS.get(item.kind, item.kind).format(item.name)
+
+
+def render_run_items(items: tuple[_pod_apply.RunItem, ...]) -> None:
+    """Print the numbered ``Runs on this machine`` list, one exact command per item."""
+    width = max((len(run_item_label(i)) for i in items), default=0)
+    ui.console.print("Runs on this machine")
+    for n, item in enumerate(items, 1):
+        label = run_item_label(item).ljust(width)
+        ui.console.print(f"  {n}. {escape(label)}   {escape(item.runs)}")
+
+
+def render_review(review: _pod_apply.PlanReview) -> None:
+    """Print the two groups of a repository's directory: adds, then runs on this machine."""
+    if review.adds:
+        ui.console.print("Adds to the team")
+        width = max(len(kind) for kind, _ in review.adds)
+        for kind, name in review.adds:
+            ui.console.print(f"  {escape(kind.ljust(width))}   {escape(name)}")
+    render_run_items(review.runs)
+
+
 def _render_items(items: tuple[_pod_apply.ApplyItem, ...]) -> None:
     for item in items:
         ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}")

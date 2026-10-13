@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.26.2
+**Version**: 1.27.0
 **Status**: Implemented
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-12
 
 ## Purpose
 
@@ -359,6 +359,26 @@ shipped recipe to an existing pod meant a per-recipe sequence of role installs, 
     `INSTRUCTIONS.md`, and writes one `pod.sync` audit entry per re-rendered member; `--json` with
     no argument exits 1.
 
+12. **A repository's commands need the operator's OK (ADR 0024 §6, D-59).** Before provisioning
+    anything, `docket init` **MUST** classify a `.docket/` (or a `--recipe` given as a directory
+    or resolved from the operator's own recipes) with `core.pod_apply.classify_directory` into
+    *adds* and *runs on this machine*: pipeline `run:` steps, MCP server commands, plugins, a
+    `network: open` setting, `allowCommands`, and a role overlay that removes a built-in role's
+    denied tool. A shipped recipe resolved by name **MUST** be exempt. When the second group is
+    non-empty and the repository's remembered review (`core.reviewed_repos`, `reviewed-repos.json`
+    in the operator's home, 0600, written through `edges/store`) does not hold the same items,
+    `init` **MUST**: on a terminal, print both groups with each item's exact command and ask
+    `[y/N]` once, remember a `y` (repository root, digest of exactly those items, date, items)
+    and audit `repo.allow` with `repo`, `code` and `items`; off a terminal, create nothing and
+    exit 2 listing the numbered items, the six-hex review code and the three ways on (`docket
+    init` on a terminal, `docket init --accept <code>`, `docket init --no-apply`), or with
+    `--json` print `{"status": "needs_review", "reviewCode", "items"}`. `--accept <code>` **MUST**
+    match the code exactly and then behaves as a `y`; a different code **MUST** exit 2 showing
+    before/now per changed item and **MUST NOT** print the current code. The code is independent
+    of item order. A repository whose `allowCommands` names `sh`, `bash`, `zsh`, `dash`, `sudo`,
+    `ssh`, `nc` or `socat` **MUST** exit 2 before provisioning (security-gates item 1). `--no-apply`
+    skips the review because nothing is applied.
+
 ### Pod manifests: export
 
 The write direction the deferred manifest carried since "apply" shipped: `apply` composes a
@@ -570,6 +590,11 @@ $ docket init myproj --blueprint wizard-pod
   `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.27.0 (2026-10-12)
+
+- Pod manifests: apply, requirement 12: `docket init` asks the operator before it applies what a
+  repository runs on this machine; `--accept <code>`, `--json`, `reviewed-repos.json`.
 
 ### Version 1.26.2 (2026-10-08)
 

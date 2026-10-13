@@ -552,3 +552,5 @@ def no_export() -> bool:
 # a host that pre-pulled a different image, or has no network to pull this
 # one.
 SANDBOX_DOCKER_IMAGE = os.environ.get("DOCKET_SANDBOX_IMAGE", "alpine:3.20")
+
+REVIEWED_REPOS_FILE = DOCKET_HOME / "reviewed-repos.json"

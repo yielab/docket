@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.41.0
+**Version**: 0.42.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -123,6 +123,10 @@ are owned here, not there.
    agent belonging to that pod carries the setting (see "In-turn tool-call gate" item 13 below for
    the live-path wiring), and a `pre_tool_call` policy `block`/`require_approval` on the same
    binary still wins (most-restrictive-wins, item 3 of the next section).
+   A pod's `.docket/` repository directory **MUST NOT** allowlist a shell: `docket init` refuses
+   `allowCommands` naming `sh`, `bash`, `zsh`, `dash`, `sudo`, `ssh`, `nc` or `socat` (exit 2)
+   before provisioning, because a shell runs whatever follows it and the classifier never sees
+   that; `docket pod set allowCommands` by the operator is not subject to this.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
    channel (CLI `docket task approve`/`docket task deny`, HTTP `POST /approvals/<token>`, or — since
    ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
@@ -1616,6 +1620,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.42.0 (2026-10-12)
+
+- Tool-approval gates item 1: a repository's `.docket/` can never allowlist a shell. `allowCommands`
+  naming `sh`, `bash`, `zsh`, `dash`, `sudo`, `ssh`, `nc` or `socat` from a repository is refused
+  by `docket init` (exit 2); the operator's own `docket pod set allowCommands` is unchanged.
 
 ### Version 0.41.0 (2026-10-12)
 
