@@ -817,11 +817,23 @@ def run_verify_cmd(
     env: dict[str, str] | None = None,
     jail: JailPolicy | None = None,
 ) -> tuple[bool, str]:
+    """``run_command`` projected onto ``(passed, output)``: only exit status 0 passes."""
+    code, output = run_command(cmd, cwd, timeout, env=env, jail=jail)
+    return code == 0, output
+
+
+def run_command(
+    cmd: str,
+    cwd: str,
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    jail: JailPolicy | None = None,
+) -> tuple[int | None, str]:
     """Run a user-supplied verification command in *cwd*. Returns
-    ``(passed, combined_output)`` capped at _VERIFY_MAX_OUTPUT; the caller
-    must redact secrets before tracing it. Never raises: non-zero exit,
-    timeout, missing binary, or OS error all return ``False`` with a short
-    error string instead.
+    ``(exit_status, combined_output)`` capped at _VERIFY_MAX_OUTPUT; the caller
+    must redact secrets before tracing it. Never raises: a refusal, timeout,
+    missing binary, or OS error returns ``None`` with a short error string
+    instead. The status is the process's own, never a value the command wrote.
 
     *cmd* is classified against ``core.security``'s high-risk classes and
     fails closed -- refused outright, never run -- before the subprocess
@@ -843,7 +855,7 @@ def run_verify_cmd(
     on the host: no usable backend means it is not run. See specs/functional/security-gates.spec.md."""
     risk_cls = _sec.match_high_risk(cmd)
     if risk_cls is not None:
-        return False, (
+        return None, (
             f"[verify command refused: matches high-risk class '{risk_cls.name}' "
             f"({risk_cls.description}) -- see `docket setup sandbox classes`]"
         )
@@ -864,7 +876,7 @@ def run_verify_cmd(
             backend = sandbox_availability().backend
             if backend == "none" or not cwd:
                 return (
-                    False,
+                    None,
                     "[verify not run: no sandbox backend is usable or no working directory]",
                 )
             launch = jail_launch(
@@ -888,7 +900,7 @@ def run_verify_cmd(
                 env=launch.env,
             )
     except (FileNotFoundError, OSError) as exc:
-        return False, f"[verify error: {exc}]"
+        return None, f"[verify error: {exc}]"
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -901,11 +913,11 @@ def run_verify_cmd(
             os.killpg(proc.pid, _signal.SIGKILL)
         with contextlib.suppress(subprocess.SubprocessError, OSError):
             proc.communicate(timeout=5)
-        return False, f"[verify timed out after {timeout}s]"
+        return None, f"[verify timed out after {timeout}s]"
     except OSError as exc:
-        return False, f"[verify error: {exc}]"
+        return None, f"[verify error: {exc}]"
     combined = (stdout + stderr).strip()
-    return proc.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
+    return proc.returncode, combined[:_VERIFY_MAX_OUTPUT]
 
 
 def make_non_dumpable() -> None:

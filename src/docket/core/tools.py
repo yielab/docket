@@ -29,7 +29,11 @@ from docket.core.operator_contract import canonical_args_digest
 from docket.core.security import classify_command
 from docket.core.trace import redact as _redact
 from docket.edges.adapters import system as _sys
-from docket.edges.adapters.toolbox import SandboxMode, ToolOutcome
+
+# ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
+# handler module, which only this module may import.
+from docket.edges.adapters.toolbox import SandboxMode
+from docket.edges.adapters.toolbox import ToolOutcome as ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
 Decision = Literal["allow", "ask", "deny"]

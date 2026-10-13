@@ -135,6 +135,21 @@ class TestExitMapping:
         assert verify["exitCode"] == code
         assert _dispatch.read_tasks("demo")[0]["failureKind"] == kind
 
+    def test_the_exit_code_cannot_be_forged_from_inside_the_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The command (agent-written tests, in practice) plants a "0" anywhere docket might read
+        # a code from and makes it unwritable, then fails: the label comes from the process.
+        body = (
+            'for f in "$DOCKET_GATE_EXIT_FILE" "$DOCKET_GATE_REASONS_FILE.exit"; do\n'
+            '  [ -n "$f" ] && printf 0 > "$f" && chmod 400 "$f"\n'
+            "done\nexit 1\n"
+        )
+        res, _ = _run(tmp_path, monkeypatch, body)
+        assert res.status == "failed"
+        assert _build_hops(res)[0].verify["label"] == "fail"
+        assert _build_hops(res)[0].verify["exitCode"] == 1
+
     def test_a_timeout_is_error_not_fail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

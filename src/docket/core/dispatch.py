@@ -1945,15 +1945,17 @@ def _match_on_route(on: dict[str, Any] | None, label: str) -> Any:
 
 @dataclass
 class _GateRun:
-    """One gate command's result: pass/fail, redacted output, wall clock and the paths it
-    touched. ``code`` is the real exit code (``-1`` when none exists), set by the external
-    gate only."""
+    """One gate command's result: its exit status (``None`` when it never ran to an exit:
+    refused, timed out, failed to start), redacted output, wall clock and touched paths."""
 
-    passed: bool
+    code: int | None
     redacted: str
     duration_s: float
     touched: list[str]
-    code: int = -1
+
+    @property
+    def passed(self) -> bool:
+        return self.code == 0
 
 
 def _gate_cwd(ctx: _UnitContext, member_id: str) -> str:
@@ -1970,11 +1972,11 @@ def _run_gate_command(
     output is redacted here, once, so no caller can persist the raw string."""
     before = _sys.git_worktree_fingerprint(cwd)
     start = _time.monotonic()
-    passed, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
+    code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
     duration_s = _time.monotonic() - start
     after = _sys.git_worktree_fingerprint(cwd)
     produced = sorted(p for p, fp in after.items() if before.get(p) != fp)
-    return _GateRun(passed, _trace.redact(raw_output), duration_s, produced)
+    return _GateRun(code, _trace.redact(raw_output), duration_s, produced)
 
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
@@ -2102,9 +2104,7 @@ def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
 
     screened = _tools.screen_tool_result(
         role,
-        # `tools` imports ToolOutcome but does not re-export it; the handler module itself is
-        # the chokepoint's alone to import (test_only_the_chokepoint_imports_the_handler_module).
-        _tools.ToolOutcome(True, content=text),  # type: ignore[attr-defined]
+        _tools.ToolOutcome(True, content=text),
         source="an external gate",
         detail=f"task={ctx.task_id!r}",
         blocked_action="gate.reasons_blocked",
@@ -2151,22 +2151,6 @@ def _parse_gate_reasons(
     return reasons, False
 
 
-def _wrap_exit_capture(cmd: str) -> str:
-    """*cmd* in a subshell whose exit code is written to ``$DOCKET_GATE_EXIT_FILE``:
-    ``run_verify_cmd`` reports only pass/fail, and an exit map needs the real code."""
-    return (
-        f"( {cmd}\n); __docket_rc=$?; "
-        'printf %s "$__docket_rc" > "$DOCKET_GATE_EXIT_FILE"; exit "$__docket_rc"'
-    )
-
-
-def _read_exit_code(path: Path | None) -> int | None:
-    try:
-        return int(path.read_text(encoding="utf-8").strip()) if path is not None else None
-    except (OSError, ValueError):
-        return None
-
-
 def _evaluate_external_gate(
     ctx: _UnitContext,
     gate: _pipeline.ExternalGate,
@@ -2181,30 +2165,20 @@ def _evaluate_external_gate(
     label, else ``pass`` advances and the rest fail with their kind (pod-dispatch.spec.md)."""
     cmd = gate.command.strip()
     cwd = _gate_cwd(ctx, member_id)
-    stem = _gate_file_stem(ctx.task_id, node.step_id)
     reasons_path = _gate_reasons_path(ctx.project, ctx.task_id, node.step_id)
-    exit_path = reasons_path.with_name(f"{stem}.exit")
     usable = True
     try:
         reasons_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        for stale in (reasons_path, exit_path):
-            stale.unlink(missing_ok=True)
+        reasons_path.unlink(missing_ok=True)
     except OSError:
         usable = False
     env = {
         **_task_command_env(ctx, [*prior, hop]),
         "DOCKET_GATE_REASONS_FILE": str(reasons_path),
-        "DOCKET_GATE_EXIT_FILE": str(exit_path),
     }
-    run = _run_gate_command(
-        ctx, _wrap_exit_capture(cmd), cwd, gate.timeout or ctx.resolved_verify_timeout, env
-    )
-    code = _read_exit_code(exit_path if usable else None)
-    if code is None:
-        # No code: the command never finished (timeout, refusal, missing cache dir). With no
-        # cache dir the pass/fail projection is all there is; otherwise it is an error.
-        code = (0 if run.passed else 1) if not usable else -1
-    run.code = code
+    run = _run_gate_command(ctx, cmd, cwd, gate.timeout or ctx.resolved_verify_timeout, env)
+    # The status is the process's own exit; a command that never reached one is `error`.
+    code = -1 if run.code is None else run.code
     label = gate.label_for(code)
     reasons, invalid = _parse_gate_reasons(ctx, role, reasons_path) if usable else ([], False)
     evidence = _gate_evidence(cmd, code, run)
@@ -2602,17 +2576,17 @@ def _run_in_envelope(
     cwd: str,
     timeout: int,
     env: dict[str, str] | None = None,
-) -> tuple[bool, str]:
-    """Run a verify or ``run:`` command under the pod's isolation posture: in the jail when
-    isolation is on, refused when it is on with no usable backend, on the host otherwise."""
+) -> tuple[int | None, str]:
+    """Run a verify or ``run:`` command under the pod's isolation posture (jail when isolation
+    is on, refused with no usable backend, host otherwise): ``(exit status or None, output)``."""
     jail, refusal = _dr.resolve_command_jail(project, label)
     if refusal is not None:
-        return False, f"[{label} not run: {refusal}]"
+        return None, f"[{label} not run: {refusal}]"
     if jail is not None:
-        return _sys.run_verify_cmd(cmd, cwd, timeout, env=env, jail=jail)
+        return _sys.run_command(cmd, cwd, timeout, env=env, jail=jail)
     if env is None:
-        return _sys.run_verify_cmd(cmd, cwd, timeout)
-    return _sys.run_verify_cmd(cmd, cwd, timeout, env=env)
+        return _sys.run_command(cmd, cwd, timeout)
+    return _sys.run_command(cmd, cwd, timeout, env=env)
 
 
 def _run_command_step(
@@ -2666,9 +2640,10 @@ def _run_command_step(
 
     cwd = _when_cwd(ctx, prior)
     timeout = node.timeout or ctx.resolved_verify_timeout
-    passed, raw_output = _run_in_envelope(
+    code, raw_output = _run_in_envelope(
         ctx.project, "run", cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)
     )
+    passed = code == 0
     redacted = _trace.redact(raw_output)
     _trace_locked(
         ctx.project,

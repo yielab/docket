@@ -406,13 +406,13 @@ def test_a_verify_command_cannot_write_outside_the_worktree(
     jail = system.JailPolicy(network=True)
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (jail, None))
     cmd = f"touch inside-verify && echo escaped > {target}"
-    passed, output = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
+    code, output = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
     assert (wt / "inside-verify").exists(), f"the verify command never ran: {output}"
     assert not target.exists(), "a verifyCmd wrote outside its worktree"
-    assert passed is False
+    assert code != 0
     monkeypatch.setattr(_dispatch._dr, "resolve_command_jail", lambda project, label: (None, None))
-    host_passed, _ = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
-    assert host_passed is True and target.exists()
+    host_code, _ = _dispatch._run_in_envelope("proj", "verify", cmd, str(wt), 60)
+    assert host_code == 0 and target.exists()
 
 
 def test_a_rewritten_commondir_never_makes_dispatch_execute_anything(

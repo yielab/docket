@@ -423,17 +423,17 @@ class TestTimeoutResolution:
             return _rd.TurnResult(True, "done", 0.0, {})
 
         seen_verify_timeouts: list[int] = []
-        real_run_verify_cmd = _dispatch._sys.run_verify_cmd
+        real_run_command = _dispatch._sys.run_command
 
-        def _spy_run_verify_cmd(cmd: str, cwd: str, timeout: int) -> tuple[bool, str]:
+        def _spy_run_command(cmd: str, cwd: str, timeout: int) -> tuple[int | None, str]:
             seen_verify_timeouts.append(timeout)
-            return real_run_verify_cmd(cmd, cwd, timeout)
+            return real_run_command(cmd, cwd, timeout)
 
         import pytest as _pytest  # local import to keep monkeypatch scoped here
 
         mp = _pytest.MonkeyPatch()
         try:
-            mp.setattr(_dispatch._sys, "run_verify_cmd", _spy_run_verify_cmd)
+            mp.setattr(_dispatch._sys, "run_command", _spy_run_command)
             task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
             res = _dispatch.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         finally:
