@@ -11,15 +11,15 @@
 >
 > ---
 >
-> ## ◇ NO ACTIVE WAVE — Wave 102 closed 2026-10-13: Phase 41 sub-wave C done; sub-wave D (P41-8) next
+> ## ▶ ACTIVE BOARD — WAVE 103 (Phase 41's sub-wave D, P41-8; opened 2026-10-13)
 >
 > **Phase 40** (ROADMAP D-58, [ADR 0023](docs/adr/0023-harden-the-agent-boundary.md)) closed
 > 2026-10-12 over Waves 98–100, archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). **Phase 41** (one execution
 > envelope, D-60, [ADR 0024](docs/adr/0024-one-execution-envelope.md)) closed sub-waves A–C in
-> Waves 100–102. Sub-wave D (**P41-8**, the escape matrix) is ready on the Wave 102 rollup and now
-> carries a measured escape: the Landlock jail grants the whole git dir read-write (packet in
-> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md)).
+> Waves 100–102 (rollup `718c051e`). **Wave 103** runs its last card, **P41-8** (the escape matrix
+> and the Landlock git-dir fix), one Sonnet worker in an isolated worktree, packet in
+> [.agents/handoffs/phase-41-worker-packets.md](.agents/handoffs/phase-41-worker-packets.md).
 >
 > **Wave 97 closed 2026-10-08** (no phase): the live-run triage cards B–E, archived verbatim in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -314,7 +314,7 @@ decides `main` has fallen too far behind. Tags and release jobs still originate 
 ---
 
 
-## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A–C closed (Waves 100–102); sub-wave D (P41-8) next
+## ◇ PHASE 41 — one execution envelope (D-60, ADR 0024): sub-waves A–C closed (Waves 100–102); sub-wave D (P41-8) active in Wave 103
 
 > **Opened 2026-10-12; sub-waves A (P41-1, P41-6), B (P41-5, P41-4, P41-2) and C (P41-3,
 > P41-7) closed in Waves 100–102.** `system.jail_launch` is the one jail builder (`bash`, verify,
@@ -479,7 +479,7 @@ captured output, fleet.json.
 
 ### P41-8 — the escape matrix as a release gate
 
-**Status:** TODO (sub-wave D) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Validation)
+**Status:** IN PROGRESS (Wave 103, sub-wave D) · **Size:** M · **Model:** Sonnet · **Spec:** security-gates.spec.md (Validation)
 
 **Goal:** `tests/integration/test_escape_matrix.py` (SUBJECT `docket.jail`), parametrized over
 the backends available on the host (landlock; docker when the daemon answers; seatbelt on

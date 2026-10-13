@@ -49,6 +49,10 @@ client, Seatbelt and ~15 test files). Coordinator decisions:
 - Since Wave 101, `system.jail_launch` is the one jail builder and `mcp_client._jailed_command`
   the MCP one; the bwrap branches to delete live there, in `bwrap_*` and in `_sandbox_tag`.
 
+**Sub-wave D runs as Wave 103** (opened 2026-10-13), base the Wave 103 claim commit; worktree
+and branch `w103-p41-8`; Sonnet. The same prose rule as sub-wave C applies (another session owns
+`README.md` and `docs/*.md`; list now-false sentences instead).
+
 ## 0. Rules for every worker
 
 **Exactly §0 of [wave-98-worker-packets.md](wave-98-worker-packets.md)**, with the sub-wave's
